@@ -1,8 +1,9 @@
 import type { RunProjection, RunSummary } from '@corral/core';
 import { turnSummary } from '@corral/react';
 import { useEffect, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useFormatter, useLocale, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
+import { formatCount } from './numbers.ts';
 import { sessionStats } from './selectors.ts';
 
 /**
@@ -12,6 +13,7 @@ import { sessionStats } from './selectors.ts';
 export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
   const t = useTranslations('Turn');
   const format = useFormatter();
+  const locale = useLocale();
   const { transport } = useServices();
   const [projections, setProjections] = useState<RunProjection[]>([]);
   // A turn's status change is when its usage settles; nothing polls in between.
@@ -41,7 +43,9 @@ export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
     { text: t('statSteps', { count: stats.steps }), keep: '' },
     {
       text: t('statTokens', {
-        tokens: format.number(stats.tokens, { notation: 'compact', maximumFractionDigits: 1 }),
+        tokens: formatCount(stats.tokens, locale, (value) =>
+          format.number(value, { notation: 'compact', maximumFractionDigits: 1 }),
+        ),
       }),
       keep: '@max-2xs/composer-surface:hidden',
     },

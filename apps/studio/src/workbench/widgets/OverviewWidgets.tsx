@@ -36,7 +36,7 @@ import {
 } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
 import type { ReactElement, ReactNode } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useFormatter, useLocale, useTranslations } from 'use-intl';
 import {
   AgentsDetail,
   ContextDetail,
@@ -239,8 +239,9 @@ function Figure({ value, unit }: { value: ReactNode; unit?: ReactNode }) {
 function ContextWidget({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets.overview');
   const tw = useTranslations('Widgets');
+  const locale = useLocale();
   const { context } = model;
-  const summary = contextLabel(context, tw);
+  const summary = contextLabel(context, tw, locale);
   const complete = context.coverage === 'request' && context.completeness === 'complete';
   const meterValue =
     complete &&
@@ -256,7 +257,7 @@ function ContextWidget({ model }: { model: ChatWidgetModel }) {
     context.percent != null
       ? `${context.percent}%`
       : context.tokens != null
-        ? compactNumber(context.tokens)
+        ? compactNumber(context.tokens, locale)
         : null;
   return (
     <DetailWidget
@@ -271,7 +272,7 @@ function ContextWidget({ model }: { model: ChatWidgetModel }) {
               value={value}
               unit={
                 context.tokens != null && context.windowTokens
-                  ? `${compactNumber(context.tokens)} / ${compactNumber(context.windowTokens)}`
+                  ? `${compactNumber(context.tokens, locale)} / ${compactNumber(context.windowTokens, locale)}`
                   : context.percent == null
                     ? tw('tokens')
                     : null

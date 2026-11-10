@@ -34,8 +34,9 @@ import {
 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
+import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
 import { actionCopy, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
@@ -72,8 +73,10 @@ function viewedLabel(
     ? t('selectedRun', { number: viewed.number, total: viewed.total })
     : t('selectedRunUnordered');
 }
-export const compactNumber = (value: number) =>
-  value >= 1000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k` : number(value);
+export const compactNumber = (value: number, locale: string) =>
+  formatCount(value, locale, (short) =>
+    short >= 1000 ? `${(short / 1000).toFixed(short < 10_000 ? 1 : 0)}k` : number(short),
+  );
 
 function Chip({ chip, model }: { chip: WidgetChip; model: ChatWidgetModel }) {
   if (chip === 'context') return <ContextUsageChip model={model} />;
@@ -87,9 +90,10 @@ function Chip({ chip, model }: { chip: WidgetChip; model: ChatWidgetModel }) {
 export function contextLabel(
   context: ChatWidgetModel['context'],
   t: ReturnType<typeof useTranslations<'Widgets'>>,
+  locale: string,
 ) {
   return context.kind === 'messages' && context.tokens != null
-    ? t('contextMessages', { count: compactNumber(context.tokens) })
+    ? t('contextMessages', { count: compactNumber(context.tokens, locale) })
     : context.percent != null
       ? t('contextPercent', { percent: context.percent })
       : context.completeness === 'error'
@@ -101,8 +105,9 @@ export function contextLabel(
 
 function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
+  const locale = useLocale();
   const { context } = model;
-  const label = contextLabel(context, t);
+  const label = contextLabel(context, t, locale);
   return (
     <Popover>
       <PopoverTrigger data-testid="context-usage-chip" className={chipClass}>
