@@ -953,7 +953,7 @@ function RunHeader({
             live={!TERMINAL_RUN_STATUSES.has(projection.status)}
           />
         </span>
-        <div className={cn('ml-auto flex shrink-0 items-center gap-1', NARROW_HEAD_ICONS)}>
+        <div className={cn('ml-auto flex shrink-0 items-center gap-1', HEAD_ACTIONS)}>
           <RunActions session={session} compact narrowIcons />
           {trailing}
         </div>
@@ -967,7 +967,9 @@ function RunHeader({
  * its first sixteen characters: Pause/Resume and Cancel show the icons RunActions carries for a
  * narrow window, and their words stay their accessible names.
  */
-const NARROW_HEAD_ICONS = [
+const HEAD_ACTIONS = [
+  // The controls' receipts live region stays mounted; empty, it must not lift the buttons.
+  '[&>section]:gap-0 [&>section>[aria-live]:not(:empty)]:mt-2',
   '@max-[44rem]/run-head:[&_[data-run-action-label]]:sr-only',
   '@max-[44rem]/run-head:[&_button_svg]:inline',
   '@max-[44rem]/run-head:[&_button:has([data-run-action-label])]:w-7',

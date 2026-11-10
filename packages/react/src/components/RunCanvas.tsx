@@ -69,7 +69,7 @@ const relationStates: RelationState[] = ['call', 'data', 'ask', 'failed', 'settl
  * A fit frames the agents with a margin and may enlarge a small run, so four agents read large
  * while twenty still fit (down to the stage's smallest zoom).
  */
-export const RUN_GRAPH_FIT: FitRule = { padding: 40, maxZoom: 1.5 };
+export const RUN_GRAPH_FIT: FitRule = { padding: 40, maxZoom: 1.25 };
 /** Room above a mark for its breathing halo and selected scale. */
 const HALO = 8;
 

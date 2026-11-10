@@ -70,9 +70,10 @@ export interface GraphViewportOptions {
   /** How a fit frames the content. Omitted, a 48px margin and never past 100%. */
   fitRule?: FitRule;
   /**
-   * Fit only when first shown and on request. A later change of the pane's size keeps the zoom
-   * and the point at the pane's centre instead of fitting again. Omitted, the view refits with
-   * the pane until the person moves it.
+   * Fit when first shown and on request only. Until the person first works with the stage (a
+   * press, a key, the wheel or a zoom button), the first display follows the page as it settles;
+   * after that a change of the pane's size keeps the zoom and the point at the pane's centre.
+   * Omitted, the view refits with the pane until the person moves it.
    */
   fitOnce?: boolean;
 }
@@ -93,11 +94,11 @@ export function useGraphViewport({
 
   // Until the person moves the view, it follows the pane: a panel opening beside it refits.
   const moved = useRef(false);
-  // With `fitOnce`: whether the first fit happened, and the pane's size when the view was last
-  // placed, so a later size change keeps the view's centre.
-  const fitted = useRef(false);
+  // With `fitOnce`: whether the person has worked with the stage, which ends the first display,
+  // and the pane's size when the view was last placed, so a later size change keeps its centre.
+  const engaged = useRef(false);
   const size = useRef<{ width: number; height: number } | null>(null);
-  const fit = useCallback(() => {
+  const place = useCallback(() => {
     const element = pane.current;
     if (!element) return;
     moved.current = false;
@@ -111,6 +112,11 @@ export function useGraphViewport({
       ),
     );
   }, []);
+  /** A fit the person asked for. */
+  const fit = useCallback(() => {
+    engaged.current = true;
+    place();
+  }, [place]);
   useLayoutEffect(() => {
     const element = pane.current;
     if (!ready || !element) return;
@@ -118,15 +124,11 @@ export function useGraphViewport({
       const width = element.clientWidth;
       const height = element.clientHeight;
       if (width <= 0 || height <= 0) return;
-      if (!fitOnce) {
-        if (!moved.current) fit();
+      if (fitOnce ? !engaged.current : !moved.current) {
+        place();
         return;
       }
-      if (!fitted.current) {
-        fitted.current = true;
-        fit();
-        return;
-      }
+      if (!fitOnce) return;
       const last = size.current;
       size.current = { width, height };
       if (!last || (last.width === width && last.height === height)) return;
@@ -144,15 +146,17 @@ export function useGraphViewport({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [ready, fit, fitOnce]);
+  }, [ready, place, fitOnce]);
   const moveTo = useCallback((next: SetStateAction<Viewport | null>) => {
     moved.current = true;
+    engaged.current = true;
     setViewport(next);
   }, []);
 
   const zoomAt = useCallback((factor: number, at?: { x: number; y: number }) => {
     read.current.onMove?.();
     moved.current = true;
+    engaged.current = true;
     setViewport((current) => {
       if (!current) return current;
       const element = pane.current;
@@ -186,11 +190,14 @@ export function useGraphViewport({
   /** Moves the view by a screen distance, as the arrow keys and a drag do. */
   const panBy = useCallback((dx: number, dy: number) => {
     moved.current = true;
+    engaged.current = true;
     setViewport((value) => (value ? { ...value, x: value.x + dx, y: value.y + dy } : value));
   }, []);
 
   const drag = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Any press on the stage, an agent's included, ends the first display.
+    engaged.current = true;
     if (event.button !== 0 || (event.target as Element).closest('button')) return;
     if (read.current.canPan && !read.current.canPan(event)) return;
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
@@ -229,6 +236,9 @@ export function useGraphViewport({
       onPointerMove,
       onPointerUp,
       onPointerCancel: onPointerUp,
+      onKeyDown: () => {
+        engaged.current = true;
+      },
     },
   };
 }

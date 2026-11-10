@@ -141,6 +141,20 @@ describe('run graph fit', () => {
     await act(async () => {});
     const stage = () => document.querySelector<HTMLElement>('[data-graph-stage]')?.style.transform;
     const scale = () => Number(/scale\(([\d.]+)\)/.exec(stage() ?? '')?.[1]);
+    const translate = () =>
+      (/translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(stage() ?? '') ?? []).slice(1).map(Number);
+    const resize = async (width: number, height: number) => {
+      pane.width = width;
+      pane.height = height;
+      await act(async () => {
+        for (const callback of observers) callback();
+      });
+    };
+    // While the page settles and nobody has touched the graph, the first display follows it.
+    await resize(1100, 200);
+    const squeezed = scale();
+    expect(squeezed).toBeLessThan(RUN_GRAPH_FIT.maxZoom);
+    await resize(1100, 620);
     const first = stage();
     expect(scale()).toBe(RUN_GRAPH_FIT.maxZoom);
     // A delegate arrives: it is placed, and the view stays where it was.
@@ -158,13 +172,14 @@ describe('run graph fit', () => {
     });
     expect(document.querySelector('[data-agent-id="helper"]')).not.toBeNull();
     expect(stage()).toEqual(first);
-    // A panel opens beside the graph: the zoom stays and the view keeps its centre.
-    pane.width = 740;
-    await act(async () => {
-      for (const callback of observers) callback();
-    });
+    // Once the person works with the stage, a panel opening beside it keeps the zoom and the
+    // view's centre instead of fitting again.
+    const pane_ = document.querySelector<HTMLElement>('[data-graph-pane]') as HTMLElement;
+    await act(async () => fireEvent.keyDown(pane_, { key: 'Tab' }));
+    const [x, y] = translate();
+    await resize(740, 620);
     expect(scale()).toBe(RUN_GRAPH_FIT.maxZoom);
-    expect(stage()).not.toEqual(first);
+    expect(translate()).toEqual([(x ?? 0) - 180, y]);
     // Fit on request frames both agents in the narrower pane.
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Fit view' })));
     expect(scale()).toBeLessThanOrEqual(RUN_GRAPH_FIT.maxZoom);
