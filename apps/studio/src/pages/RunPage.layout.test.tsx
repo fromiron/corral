@@ -2262,8 +2262,9 @@ it('lists every result version with its source execution and opens it in the cen
     'Work in between',
   ]);
   expect(groups[0]?.querySelector('th[scope="rowgroup"]')?.textContent).toBe('Final results1');
+  // Made by names the agent, the run's execution that made the version, its round and attempt.
   for (const row of rows) {
-    expect(row.textContent).toContain('worker · Round 2 · Attempt 1');
+    expect(row.textContent).toContain('worker · execution 1 · Round 2 · Attempt 1');
     expect(row.textContent).not.toMatch(/token|cost|\$/i);
   }
   expect(rows[0]?.textContent).toContain('Report');
