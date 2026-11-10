@@ -322,7 +322,7 @@ function useChatWidgetState(
     text,
   });
   // Loading and error details must remain expandable so their scoped Retry is reachable.
-  const open = Boolean(ref) && workPlanOpen(preference, projection?.status ?? 'running');
+  const open = Boolean(ref) && workPlanOpen(preference);
   const calls = useMemo(
     () =>
       contextCalls(

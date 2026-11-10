@@ -107,10 +107,10 @@ describe('chat widget selectors', () => {
     expect(ready.completed).toBe(1);
     expect(ready.total).toBe(3);
     expect(ready.runFinished).toBe(false);
-    expect(workPlanOpen('auto', 'running')).toBe(true);
-    expect(workPlanOpen('auto', 'succeeded')).toBe(false);
-    expect(workPlanOpen('open', 'succeeded')).toBe(true);
-    expect(workPlanOpen('closed', 'running')).toBe(false);
+    // A new plan starts collapsed; only the person's own choice opens it, and that is kept.
+    expect(workPlanOpen('auto')).toBe(false);
+    expect(workPlanOpen('open')).toBe(true);
+    expect(workPlanOpen('closed')).toBe(false);
     expect(
       workPlanPreferenceKey({
         sessionId: 'ses_1',

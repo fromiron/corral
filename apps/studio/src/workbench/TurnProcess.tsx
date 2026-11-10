@@ -18,7 +18,7 @@ import {
   ThinkingStepsContent,
   ThinkingStepsHeader,
 } from '@corral/react/design-kit';
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 type IconName = 'brain' | 'search' | 'pencil' | 'play' | 'users' | 'message-circle' | 'dot' | 'x';
@@ -62,6 +62,21 @@ function Sources({ sources }: { sources: ProcessRow['sources'] }) {
   ) : null;
 }
 
+/**
+ * The one quiet line above an answer. Its controls hang into the gutter by their own padding,
+ * so their text, not their hover fill, starts on the answer's left edge.
+ */
+export function TurnLine({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-testid="turn-line"
+      className="-ml-2.5 flex min-w-0 flex-wrap items-center text-caption text-muted-foreground"
+    >
+      {children}
+    </div>
+  );
+}
+
 /** The source kit's progressive work log, composed from observed requests and tools. */
 export function TurnProcess({
   events,
@@ -70,6 +85,7 @@ export function TurnProcess({
   label,
   open,
   onOpenChange,
+  trailing,
 }: {
   events: readonly RunEvent[];
   projection: RunProjection;
@@ -79,6 +95,8 @@ export function TurnProcess({
   label: (nodeId: string) => string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** What follows the toggle on the same line: the run's number, which opens its record. */
+  trailing?: ReactNode;
 }) {
   const t = useTranslations('Turn');
   const ts = useTranslations('Status');
@@ -96,10 +114,12 @@ export function TurnProcess({
         ? t('seconds', { s: seconds })
         : t('minutes', { m: Math.floor(seconds / 60), s: seconds % 60 });
   const terminal = TERMINAL_RUN_STATUSES.has(projection.status);
+  // An ended turn reads as the time it took and its steps, whatever its end state: the turn
+  // says once, below, that it failed or was cancelled. A turn that waits names what it waits on.
   const header =
     summary.active && time
       ? t('working', { time })
-      : projection.status === 'succeeded' && time
+      : terminal && time
         ? summary.steps
           ? t('workedSteps', { time, count: summary.steps })
           : t('worked', { time })
@@ -112,7 +132,7 @@ export function TurnProcess({
     process.rows.length === 0 &&
     Object.keys(projection.modelCalls).length === 0
   )
-    return null;
+    return trailing ? <TurnLine>{trailing}</TurnLine> : null;
   const modelDescription = (row: Extract<ProcessRow, { kind: 'model' }>) => {
     const phase =
       row.phase === 'preparing'
@@ -153,14 +173,17 @@ export function TurnProcess({
       open={open}
       onOpenChange={onOpenChange}
     >
-      <ThinkingStepsHeader>
-        <span
-          data-testid="turn-process-header"
-          className={summary.active ? 'shimmer-text tabular-nums' : 'tabular-nums'}
-        >
-          {header}
-        </span>
-      </ThinkingStepsHeader>
+      <TurnLine>
+        <ThinkingStepsHeader>
+          <span
+            data-testid="turn-process-header"
+            className={summary.active ? 'shimmer-text tabular-nums' : 'tabular-nums'}
+          >
+            {header}
+          </span>
+        </ThinkingStepsHeader>
+        {trailing}
+      </TurnLine>
       <ThinkingStepsContent>
         {process.rows.map((row, index) => {
           const last = index === process.rows.length - 1;

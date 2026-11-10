@@ -1,6 +1,5 @@
 import type { CorralSummary, RunSummary, WorkSession } from '@corral/core';
-import { Button, cn, fontWeights, useSize } from '@corral/react/design-kit';
-import { FolderOpen } from '@corral/react/icons';
+import { cn, fontWeights, useSize } from '@corral/react/design-kit';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
@@ -104,6 +103,7 @@ export function WorkTab({
             content: (
               <RunCard
                 run={run}
+                number={runs.findIndex((item) => item.runId === run.runId) + 1}
                 artifactMetadataVersion={artifactMetadataVersion}
                 onPanel={onPanel}
               />
@@ -128,13 +128,16 @@ export function WorkTab({
             reference={reference}
             onReferenceUsed={onReferenceUsed}
             home={home}
+            {...(home && workspaces && binding === null
+              ? { onWorkFolder: () => onPanel('changes') }
+              : {})}
           />
         }
       >
         <section aria-label={t('heading')}>
           {home ? (
             // The kit home composition: a centered title right above the composer.
-            <div className="flex flex-col items-center gap-3 pb-4 text-center">
+            <div className="flex flex-col items-center gap-2 text-center">
               <h2
                 className={cn(size.type.display, 'm-0 text-foreground')}
                 style={{ fontVariationSettings: fontWeights.bold }}
@@ -144,12 +147,6 @@ export function WorkTab({
               {/* The purpose given when the session was made, not an explanation. */}
               {session.objective ? (
                 <p className="m-0 max-w-md text-ui text-muted-foreground">{session.objective}</p>
-              ) : null}
-              {workspaces && binding === null ? (
-                <Button variant="ghost" size="compact" onClick={() => onPanel('changes')}>
-                  <FolderOpen />
-                  {td('workFolder')}
-                </Button>
               ) : null}
             </div>
           ) : null}

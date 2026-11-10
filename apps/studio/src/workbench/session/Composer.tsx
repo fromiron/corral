@@ -39,6 +39,7 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   InputMessage,
   Menu,
   MenuItem,
@@ -49,7 +50,7 @@ import {
   Select,
   Tooltip,
 } from '@corral/react/design-kit';
-import { AtSign, Plus, X } from '@corral/react/icons';
+import { AtSign, FolderOpen, Plus, X } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
@@ -120,7 +121,7 @@ import { type ProfileInfo, type RoleModel, useModelProfiles, useTeamRoles } from
 import { ComposerDock, ComposerPlan } from '../widgets/ChatWidgets.tsx';
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
-import { ComposerHeader, ComposerStatus } from './ComposerStatus.tsx';
+import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 
 const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
 
@@ -148,6 +149,7 @@ export function Composer({
   onReferenceUsed,
   runControlsOwnConfirmation = false,
   home = false,
+  onWorkFolder,
 }: {
   session: WorkSession;
   team: CorralSummary | null;
@@ -164,13 +166,17 @@ export function Composer({
   runControlsOwnConfirmation?: boolean;
   /** An empty session: the kit home composition offers the saved teams as start suggestions. */
   home?: boolean;
+  /** Opens file-work setup; given while the project has no work folder yet. */
+  onWorkFolder?: () => void;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const td = useTranslations('Desktop');
   const format = useFormatter();
   // The Todo the one-line status expands, inside the input surface.
   const planRegion = useId();
+  const destinationId = useId();
   const contextMessages = useTranslations('Context');
   const materialMessages = useTranslations('Materials');
   const navigation = useSettingsNavigation();
@@ -1297,6 +1303,8 @@ export function Composer({
           })
         : tc('destination.steerUnavailable', { name: targetName(steerTarget) })
       : tc(`destination.${intent}`);
+  // A new run in this session is the default: the input's description says it, with no line.
+  const quietDestination = intent === 'next' && !resolved.blocked;
   // What Send does now, said where it is pressed (#89).
   const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
   // Items this intent does not carry share one notice and one wording (#89).
@@ -1392,7 +1400,7 @@ export function Composer({
       }}
       onSend={() => void send()}
       placeholder={tc('placeholder')}
-      textareaProps={{ 'aria-label': t('requestLabel') }}
+      textareaProps={{ 'aria-label': t('requestLabel'), 'aria-describedby': destinationId }}
       sendDisabled={busy || !text.trim() || unavailable}
       sendLabel={t('send')}
       sendDescription={sendMeaning}
@@ -1496,7 +1504,11 @@ export function Composer({
             </Banner>
           ) : null}
           {missingTeam && (intent === 'next' || intent === 'explain') ? (
-            <p role="alert" data-testid="selected-team-missing" className="text-xs text-warning">
+            <p
+              role="alert"
+              data-testid="selected-team-missing"
+              className="text-caption text-warning"
+            >
               {t('selectedTeamMissing')}
             </p>
           ) : null}
@@ -1515,7 +1527,7 @@ export function Composer({
             />
           ) : null}
           {missingChips.length ? (
-            <p role="alert" className="text-xs text-danger">
+            <p role="alert" className="text-caption text-danger">
               {tc('missingReferences', { count: missingChips.length })}
             </p>
           ) : null}
@@ -1528,7 +1540,7 @@ export function Composer({
                 <li
                   key={item.id}
                   data-missing={missing.has(item.id) || undefined}
-                  className={`flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-xs ${missing.has(item.id) ? 'bg-danger/10 text-danger line-through' : 'bg-subtle'}`}
+                  className={`flex max-w-full items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2 text-caption ${missing.has(item.id) ? 'bg-danger/10 text-danger line-through' : 'bg-subtle'}`}
                 >
                   <span className="truncate font-mono" title={mentionLabel(item)}>
                     {mentionLabel(item)}
@@ -1576,13 +1588,21 @@ export function Composer({
             onChange={setAttachments}
             disabled={busy || attachmentsBusy}
           />
-          <p data-testid="composer-destination" className="px-1 text-caption text-muted-foreground">
+          <p
+            id={destinationId}
+            data-testid="composer-destination"
+            className={
+              quietDestination
+                ? 'sr-only'
+                : `px-1 text-caption ${intent === 'steer' && !ownActive ? 'text-warning' : 'text-muted-foreground'}`
+            }
+          >
             {destination}
           </p>
           {attachments.length > 0 && intent !== 'next' && intent !== 'queue' ? (
             <div
               role="status"
-              className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+              className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground"
             >
               <span>{contextMessages('nextOrQueue')}</span>
               {allowed
@@ -1694,6 +1714,19 @@ export function Composer({
               ) : null}
             </MenuPopup>
           </Menu>{' '}
+          {onWorkFolder ? (
+            // The kit home's "work in a folder" entry, while the project has none.
+            <Tooltip content={td('workFolder')}>
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label={td('workFolder')}
+                onClick={onWorkFolder}
+              >
+                <FolderOpen />
+              </Button>
+            </Tooltip>
+          ) : null}
           {(intent === 'next' || intent === 'queue') && !resolved.blocked ? (
             <Select
               variant="chip"
@@ -1815,12 +1848,13 @@ export function Composer({
             targets={targets}
             targetName={targetName}
             onChooseTarget={chooseTarget}
+            about={latest?.label ?? null}
             quiet={home}
           />
         }
         note={
           heldForNew.length ? (
-            <span role="status" className="px-2 text-caption text-warning">
+            <span role="status" className="min-w-0 truncate px-2 text-caption text-warning">
               {tc('heldForNew', {
                 items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
               })}
@@ -1829,6 +1863,7 @@ export function Composer({
         }
         summary={<OverviewAccess />}
       />
+      <PreRun session={session} team={team} isAuto={isAuto} runMode={runMode} intent={intent} />
       <ComposerQueue
         queued={queued}
         autoStart={autoStart}
@@ -1841,7 +1876,7 @@ export function Composer({
       {compose}
       {home && corrals.length > 0 ? (
         // The kit home's start suggestions: a saved team picks the team chip, never a prompt.
-        <ul aria-label={t('startSuggestions')} className="mt-3 flex flex-wrap justify-center gap-2">
+        <ul aria-label={t('startSuggestions')} className="mt-4 flex flex-wrap justify-center gap-2">
           {corrals.slice(0, 4).map((corral) => (
             <li key={corral.corralId}>
               <Button
@@ -1860,14 +1895,10 @@ export function Composer({
         </ul>
       ) : null}
       <ComposerStatus
-        session={session}
         runs={runs}
-        team={team}
-        isAuto={isAuto}
-        runMode={runMode}
-        intent={intent}
-        latest={latest}
-        lastEnded={lastEnded}
+        // The demo's model chip already reads Simulated; a server without live models says it here.
+        simulated={runMode === 'mock' && services.mode !== 'browser'}
+        noResult={intent === 'explain' && !latest}
         liveUnavailable={liveUnavailable}
         reasoningBlocked={reasoningBlocked}
         error={error}
@@ -1908,7 +1939,7 @@ export function Composer({
               <ModelAssignments roles={roles} profiles={profiles} />
             ) : (
               <p
-                className="text-sm text-muted-foreground"
+                className="text-body text-muted-foreground"
                 data-testid={isAuto ? 'auto-model' : undefined}
               >
                 {missingTeam
@@ -2008,9 +2039,10 @@ function ModelAssignments({
   profiles: ProfileInfo[] | null;
 }) {
   const tc = useTranslations('Composer');
-  if (!roles.length) return <p className="text-sm text-muted-foreground">{tc('models.noTeam')}</p>;
+  if (!roles.length)
+    return <p className="text-body text-muted-foreground">{tc('models.noTeam')}</p>;
   return (
-    <ul className="flex flex-col divide-y divide-line/60 text-sm" data-testid="model-assignments">
+    <ul className="flex flex-col divide-y divide-line/60 text-body" data-testid="model-assignments">
       {roles.map((role) => {
         const profile = profiles?.find((p) => p.profileId === role.profileId);
         const state = !profiles
@@ -2022,13 +2054,13 @@ function ModelAssignments({
               : 'signin';
         return (
           <li key={role.roleId} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2">
-            <span className="font-medium">{role.name}</span>
-            <span className="font-mono text-xs text-muted-foreground">{role.profileId}</span>
-            <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+            <span style={{ fontVariationSettings: fontWeights.semibold }}>{role.name}</span>
+            <span className="font-mono text-caption text-muted-foreground">{role.profileId}</span>
+            <span className="min-w-0 flex-1 text-caption text-muted-foreground">
               {profile?.label ?? ''}
             </span>
             <span
-              className={`text-xs ${state === 'ready' ? 'text-success' : state === 'simulated' ? 'text-muted-foreground' : 'text-warning'}`}
+              className={`text-caption ${state === 'ready' ? 'text-success' : state === 'simulated' ? 'text-muted-foreground' : 'text-warning'}`}
             >
               {tc(`models.state.${state}`)}
             </span>

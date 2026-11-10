@@ -83,7 +83,7 @@ export function CodeBlock({ children }: { children: ReactNode }) {
   const language = /(?:^|\s)language-([^\s]+)/.exec(child.props.className ?? '')?.[1] ?? '';
   return (
     <div className="my-3 min-w-0 overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 border-b border-border py-0.5 pr-1 pl-3 text-caption text-muted-foreground">
         <span data-code-language>{language || t('plainText')}</span>
         <CopyTextButton text={text} code />
       </div>

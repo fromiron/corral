@@ -363,7 +363,8 @@
       }
     },
     "breakpoints": "시작 전에 멈출 단계",
-    "breakpointsCount": "시작 전에 멈출 단계 · {count}"
+    "breakpointsCount": "시작 전에 멈출 단계 · {count}",
+    "madeResults": "만든 산출물은 결과에서 볼 수 있습니다."
   },
   "Reins": {
     "executionNumber": "에이전트 실행 {number}",
@@ -1709,7 +1710,6 @@
     "modeLive": "실제 모델",
     "working": "진행 중…",
     "fromResult": "{label}에서 시작",
-    "continuesConversation": "이 대화를 이어 갑니다",
     "request": "요청",
     "save": "저장",
     "cancel": "취소",
@@ -1725,7 +1725,6 @@
     "filesNoCopy": "도구는 켜졌지만 작업 사본 없음",
     "filesNone": "파일 작업 없음",
     "didFinish": "수행함",
-    "didNotFinish": "못 끝냄({status}). 만든 산출물은 결과에서 볼 수 있습니다.",
     "agentSummary": "에이전트 결과(에이전트가 쓴 글)",
     "nextActions": "다음 행동",
     "reviewChanges": "변경 검토",
@@ -1775,7 +1774,7 @@
     "selectedRun": "선택한 실행",
     "justNow": "방금",
     "tryDemo": "시뮬레이션 데모 체험",
-    "noWorkingCopy": "이 세션에는 작업 사본이 없어 파일을 바꿀 수 없습니다. 파일을 수정하려면 폴더를 연결하고 작업 사본을 준비하세요.",
+    "noWorkingCopy": "작업 사본이 없어 이 대화에서는 파일을 바꿀 수 없습니다.",
     "prepareWorkingCopy": "파일 작업 준비",
     "retryRequest": "같은 요청 다시 보내기",
     "restoreRequest": "메시지 되돌리기",
@@ -1806,7 +1805,8 @@
     "collapseQueue": "대기 요청 접기",
     "collapse": "접기",
     "startSuggestions": "시작 제안",
-    "startWithTeam": "{team}(으)로 시작"
+    "startWithTeam": "{team}(으)로 시작",
+    "runNumber": "실행 #{number}"
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",

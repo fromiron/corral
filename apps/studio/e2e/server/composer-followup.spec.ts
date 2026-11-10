@@ -18,7 +18,7 @@ test.describe('saved requests with a stale instruction draft', () => {
       hold();
       try {
         await corral.open('/');
-        await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+        await page.getByRole('button', { name: 'New conversation', exact: true }).click();
         const box = requestBox(page);
         await box.fill('Original request');
         await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -82,7 +82,7 @@ test('same-name result references stay distinct after reload and deleting one', 
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   const box = requestBox(page);
   for (const [index, text] of ['First result', 'Second result'].entries()) {
     await box.fill(text);
@@ -150,7 +150,10 @@ for (const locale of ['en', 'ko']) {
       await page.addInitScript((value) => localStorage.setItem('corral:locale', value), locale);
       await corral.open('/');
       await page
-        .getByRole('button', { name: locale === 'ko' ? '대화 시작' : 'Start chat', exact: true })
+        .getByRole('button', {
+          name: locale === 'ko' ? '새 대화' : 'New conversation',
+          exact: true,
+        })
         .click();
       const label = locale === 'ko' ? '라이브 음성' : 'Live voice';
       const trigger = page.getByRole('button', { name: label, exact: true });

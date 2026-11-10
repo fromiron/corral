@@ -124,6 +124,29 @@
    they hide, and the composer's Overview button opens the same widgets. */
 [data-chat-view] {
   container: chat-view / inline-size;
+  /* The kit chat composition: a 680px conversation column (gutters included) over a composer
+     that is 744px with its gutters, 696px itself. The empty session is the kit home, whose
+     composer is 672px. */
+  --chat-column-width: 680px;
+  --chat-composer-width: 696px;
+}
+[data-chat-view][data-empty-centered] {
+  --chat-composer-width: 672px;
+}
+/* A turn's icon row keeps its place and its buttons stay in the tab order. It shows on hover or
+   focus within its message, always under the latest answer, and wherever nothing can hover. */
+.turn-actions {
+  opacity: 0;
+}
+.turn-actions-scope:hover .turn-actions,
+.turn-actions-scope:focus-within .turn-actions,
+[data-chat-item][data-latest] .turn-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .turn-actions {
+    opacity: 1;
+  }
 }
 .chat-overview {
   position: absolute;
@@ -159,8 +182,9 @@
     max-height: 18dvh;
   }
 }
+/* Each message reserves its own action row, so turns need only the kit's gap between them. */
 .chat-turn {
-  margin-bottom: 32px;
+  margin-bottom: 16px;
 }
 @media (max-width: 1023px) {
   .app-shell[data-sidebar-open="true"] .app-sidebar-trigger {

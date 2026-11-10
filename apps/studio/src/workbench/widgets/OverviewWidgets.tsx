@@ -62,7 +62,7 @@ export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   if (!model.runId) return null;
   return (
-    <div className="session-widget-access ml-auto justify-end">
+    <div className="session-widget-access ml-auto shrink-0 justify-end">
       <Popover>
         <PopoverTrigger data-testid="session-summary-trigger" className={chipClass}>
           <LayoutGrid size={14} aria-hidden="true" />

@@ -363,7 +363,8 @@
       }
     },
     "breakpoints": "Pause before steps",
-    "breakpointsCount": "Pause before steps · {count}"
+    "breakpointsCount": "Pause before steps · {count}",
+    "madeResults": "What it made is in its results."
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
@@ -1709,7 +1710,6 @@
     "modeLive": "Live models",
     "working": "Working…",
     "fromResult": "Starts from {label}",
-    "continuesConversation": "Continues this conversation",
     "request": "Request",
     "save": "Save",
     "cancel": "Cancel",
@@ -1725,7 +1725,6 @@
     "filesNoCopy": "tools on, but no working copy",
     "filesNone": "no file work",
     "didFinish": "Done",
-    "didNotFinish": "Not finished ({status}). What it made is in its results.",
     "agentSummary": "Agent's result (its own words)",
     "nextActions": "Next",
     "reviewChanges": "Review changes",
@@ -1775,7 +1774,7 @@
     "selectedRun": "Selected run",
     "justNow": "Just now",
     "tryDemo": "Try the simulation demo",
-    "noWorkingCopy": "This session has no working copy, so it cannot change files. Connect a folder and prepare a working copy to edit files.",
+    "noWorkingCopy": "No working copy yet, so this conversation cannot change files.",
     "prepareWorkingCopy": "Set up file work",
     "retryRequest": "Retry request",
     "restoreRequest": "Restore message",
@@ -1806,7 +1805,8 @@
     "collapseQueue": "Collapse queued requests",
     "collapse": "Collapse",
     "startSuggestions": "Start suggestions",
-    "startWithTeam": "Start with {team}"
+    "startWithTeam": "Start with {team}",
+    "runNumber": "Run #{number}"
   },
   "Files": {
     "folderHeading": "Project folder",

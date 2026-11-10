@@ -36,7 +36,9 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
   });
 
   // the next request carries the conversation; the first run is left as it was.
-  await expect(page.getByText('Continues this conversation', { exact: true })).toBeVisible();
+  await expect(box(page)).toHaveAccessibleDescription(
+    'Send to: new run in this session · follow-up',
+  );
   await box(page).fill('Now only for one writer');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(cards(page)).toHaveCount(2);

@@ -52,7 +52,7 @@ function updatePlan(corral: Harness, completed: number, expectedRevision = compl
 
 async function session(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }
 
@@ -179,6 +179,11 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(page).toHaveURL(new RegExp(`run=${current(corral).runId}`));
     await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
     await panelTab(page, 'Conversation');
+    // A new plan is one line: its count and current step. The person expands it.
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toContainText(titles[0] ?? '');
+    await expect(plan.getByRole('listitem')).toHaveCount(0);
+    await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(plan.getByRole('listitem')).toHaveCount(5);
     await expect(page.getByTestId('run-monitor')).toBeHidden();
@@ -480,7 +485,7 @@ test('inspecting the current result preserves the draft while a newer result rep
   }
 });
 
-test('a finished checklist does not finish its run, and only automatic disclosure collapses on success', async ({
+test('a finished checklist does not finish its run, and the plan stays one line unless opened', async ({
   page,
   corral,
 }) => {
@@ -505,7 +510,7 @@ test('a finished checklist does not finish its run, and only automatic disclosur
     await expect(toggle).toContainText('0/7 done');
     completePlan.release();
     await expect(toggle).toContainText('7/7');
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(toggle).toContainText('run still going');
     expect(current(corral).projection.status).toBe('running');
     completeRun.release();

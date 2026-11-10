@@ -35,25 +35,36 @@ export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
   }, [transport, key]);
   const stats = sessionStats(projections, (projection) => turnSummary(projection).steps);
   if (!stats) return null;
+  // Least needed last: a narrow composer gives up the cache share, then the tokens.
   const parts = [
-    t('statTurns', { count: stats.turns }),
-    t('statSteps', { count: stats.steps }),
-    t('statTokens', {
-      tokens: format.number(stats.tokens, { notation: 'compact', maximumFractionDigits: 1 }),
-    }),
-    stats.cacheShare === null
-      ? t('statCacheUnreported')
-      : t('statCache', { share: format.number(stats.cacheShare, { style: 'percent' }) }),
+    { text: t('statTurns', { count: stats.turns }), keep: '' },
+    { text: t('statSteps', { count: stats.steps }), keep: '' },
+    {
+      text: t('statTokens', {
+        tokens: format.number(stats.tokens, { notation: 'compact', maximumFractionDigits: 1 }),
+      }),
+      keep: '@max-2xs/composer-surface:hidden',
+    },
+    {
+      text:
+        stats.cacheShare === null
+          ? t('statCacheUnreported')
+          : t('statCache', { share: format.number(stats.cacheShare, { style: 'percent' }) }),
+      keep: '@max-md/composer-surface:hidden',
+    },
   ];
   return (
-    <>
-      <details data-testid="composer-stats" className="tabular-nums">
-        <summary className="cursor-pointer">
-          {t('statSession')} · {parts.join(' · ')}
-        </summary>
-        <p className="mt-1 max-w-prose text-muted-foreground">{t('statDefinition')}</p>
-      </details>
-      <span aria-hidden="true">·</span>
-    </>
+    <details data-testid="composer-stats" className="min-w-0 tabular-nums">
+      <summary className="cursor-pointer whitespace-nowrap">
+        {t('statSession')}
+        {parts.map((part) => (
+          <span key={part.text} className={part.keep}>
+            {' · '}
+            {part.text}
+          </span>
+        ))}
+      </summary>
+      <p className="mt-1 max-w-prose text-muted-foreground">{t('statDefinition')}</p>
+    </details>
   );
 }

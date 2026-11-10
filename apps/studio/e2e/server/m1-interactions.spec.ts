@@ -145,7 +145,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
       .evaluate((element: HTMLImageElement) => element.naturalWidth),
   ).toBe(1);
   expect(Object.keys(current().projection.modelCalls)).toHaveLength(calls);
-  await page.getByRole('button', { name: 'View run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run #1', exact: true }).click();
   await page
     .getByTestId('run-monitor')
     .getByRole('button', { name: 'Show side panel', exact: true })

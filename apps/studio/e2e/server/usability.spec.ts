@@ -191,12 +191,11 @@ test.describe('long multi-agent output', () => {
   }) => {
     const template = templateForWorkspace('research-team', 'audit_team');
     const { runId } = await graphSession(page, corral, template);
-    await expect(
-      timeline(page).getByRole('note').filter({ hasText: 'Not finished (Failed)' }),
-    ).toBeVisible({ timeout: 20000 });
+    await expect(timeline(page).getByTestId('run-ended')).toBeVisible({ timeout: 20000 });
     const projection = corral.server.coordinator.getSnapshot(runId).projection;
     expect(Object.keys(projection.reviews).length).toBeGreaterThan(0);
-    await expect(timeline(page).getByTestId('run-reason')).toContainText('failed');
+    await expect(timeline(page).getByTestId('run-ended')).toContainText('failed');
+    await expect(timeline(page).getByTestId('run-ended')).toHaveAttribute('role', 'note');
     await expect(timeline(page).getByTestId('review-verdict')).toContainText(
       'Cite a primary source',
     );

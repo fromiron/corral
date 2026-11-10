@@ -37,7 +37,7 @@ test('file and line references remain independent and Escape clears only an empt
       'no uncommitted changes',
     );
     await page.getByRole('tab', { name: /^Sessions/ }).click();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await page.getByRole('button', { name: 'New conversation', exact: true }).click();
     const box = requestBox(page);
     await box.fill('@README');
     await page
@@ -102,7 +102,11 @@ test('file and line references remain independent and Escape clears only an empt
     await box.press('Escape');
     await expect(box).toHaveValue('/typed-command');
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByTestId('composer-destination')).toBeInViewport();
+    await expect(box).toBeInViewport();
+    await expect(box).toHaveAccessibleDescription('Send to: new run in this session · follow-up');
+    await expect(page.getByTestId('composer-destination')).toHaveText(
+      'Send to: new run in this session · follow-up',
+    );
     await page.screenshot({ path: testInfo.outputPath('composer-destination-narrow.png') });
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);
     expect(corral.errors).toEqual([]);
@@ -127,7 +131,7 @@ test.describe('viewed and active execution', () => {
     holdReply();
     try {
       await corral.open('/');
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await page.getByRole('button', { name: 'New conversation', exact: true }).click();
       const box = requestBox(page);
       await box.fill('First request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -186,7 +190,7 @@ test.describe('viewed and active execution', () => {
     holdReply();
     try {
       await corral.open('/');
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await page.getByRole('button', { name: 'New conversation', exact: true }).click();
       const box = requestBox(page);
       await box.fill('First request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();

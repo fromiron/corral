@@ -1,17 +1,17 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, SessionEntry } from '@corral/core';
-import { MessageBody, StatusBadge } from '@corral/react';
+import { CopyTextButton, MessageBody, StatusBadge } from '@corral/react';
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
   Button,
   KitChatMessage,
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
+  Tooltip,
 } from '@corral/react/design-kit';
-import { PanelRight } from '@corral/react/icons';
-import { createContext, useContext, useEffect, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { PanelRight, Pencil, Settings } from '@corral/react/icons';
+import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
+import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { ImageAttachmentList } from '../ImageAttachments.tsx';
 import { MessageBranch } from '../MessageBranch.tsx';
@@ -39,18 +39,21 @@ export function EntryCard({
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
 }) {
   const t = useTranslations('Sessions');
+  const tm = useTranslations('MessageBody');
   const tq = useTranslations('Reasoning');
   const format = useFormatter();
+  const now = useNow();
   const run = entry.runId ? runs.find((r) => r.runId === entry.runId) : undefined;
   const resend = () =>
     window.dispatchEvent(
       new CustomEvent(RESEND_REQUEST, { detail: { sessionId, entryId: entry.entryId } }),
     );
   const canResend = !runs.some((item) => !TERMINAL_RUN_STATUSES.has(item.status));
-  const when = format.dateTime(new Date(entry.createdAt), {
-    timeStyle: 'short',
-    dateStyle: 'short',
-  });
+  // The time alone on the day it was sent; the date joins it afterwards and in the tooltip.
+  const created = new Date(entry.createdAt);
+  const day = (date: Date) => format.dateTime(date, { dateStyle: 'short' });
+  const full = format.dateTime(created, { timeStyle: 'short', dateStyle: 'short' });
+  const when = day(created) === day(now) ? format.dateTime(created, { timeStyle: 'short' }) : full;
   // A plain follow-up needs no label; queue, instruction and question say what they were.
   const label = isScheduledRequest(entry)
     ? t('scheduledRequest')
@@ -83,47 +86,80 @@ export function EntryCard({
     : null;
   const state =
     entry.state === 'started' || entry.state === 'sent' ? null : t(`state.${entry.state}`);
+  const unfinished =
+    run && ['cancelled', 'interrupted', 'failed'].includes(run.status) && entry.intent !== 'steer';
   return (
-    <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-4">
-      <KitChatMessage from="user" time={when}>
+    <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-2">
+      <div className="flex flex-col items-end gap-1">
+        {/* What the message was, when it was not a plain request that started. */}
         {label || state ? (
-          <p className="mb-1 text-2xs font-medium text-muted-foreground">
+          <p data-testid="entry-flag" className="px-1 text-caption text-muted-foreground">
             {[label, state].filter(Boolean).join(' · ')}
           </p>
         ) : null}
-        {auto ? (
-          <Accordion>
-            <AccordionItem value="run-settings" highlight="trigger">
-              <AccordionTrigger>{t('runSettings')}</AccordionTrigger>
-              <AccordionContent>
-                <p data-testid="entry-auto">{auto}</p>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        ) : null}
-        <MessageBody
-          text={entry.text}
-          actions={
-            entry.intent !== 'steer' ? (
-              <EditAsNewRequest onClick={() => editRequest(entry.text, entry)} />
-            ) : undefined
+        {/* The kit's sent message: a plain bubble, then its time and icon actions. */}
+        <KitChatMessage
+          from="user"
+          time={
+            <time dateTime={entry.createdAt} title={full}>
+              {when}
+            </time>
           }
-        />
-        {entry.attachments?.length ? <TextAttachmentList attachments={entry.attachments} /> : null}
-        {entry.images?.length ? (
-          <ImageAttachmentList sessionId={sessionId} images={entry.images} />
-        ) : null}
-        <span className="sr-only">
-          {t('youAsked', { intent: t(`intent.${entry.intent}`) })} · {t(`state.${entry.state}`)}
-        </span>
-      </KitChatMessage>
-      {entry.runId && run && (entry.intent === 'next' || entry.intent === 'explain') ? (
-        <MessageBranch
-          runId={entry.runId}
-          requestStart
-          disabled={!TERMINAL_RUN_STATUSES.has(run.status)}
-        />
-      ) : null}
+          actions={
+            <>
+              <CopyTextButton text={entry.text} />
+              {entry.intent !== 'steer' ? (
+                <Tooltip content={tm('editAsNew')}>
+                  <Button
+                    size="icon-compact"
+                    variant="ghost"
+                    aria-label={tm('editAsNew')}
+                    onClick={() => editRequest(entry.text, entry)}
+                  >
+                    <Pencil />
+                  </Button>
+                </Tooltip>
+              ) : null}
+              {entry.runId && run && (entry.intent === 'next' || entry.intent === 'explain') ? (
+                <MessageBranch
+                  icon
+                  runId={entry.runId}
+                  requestStart
+                  disabled={!TERMINAL_RUN_STATUSES.has(run.status)}
+                />
+              ) : null}
+              {auto ? (
+                <Popover>
+                  <PopoverTrigger
+                    title={t('runSettings')}
+                    render={
+                      <Button size="icon-compact" variant="ghost" aria-label={t('runSettings')} />
+                    }
+                  >
+                    <Settings />
+                  </PopoverTrigger>
+                  <PopoverPopup align="end" width="md">
+                    <p data-testid="entry-auto" className="text-caption text-muted-foreground">
+                      {auto}
+                    </p>
+                  </PopoverPopup>
+                </Popover>
+              ) : null}
+            </>
+          }
+        >
+          <MessageBody text={entry.text} copy={false} />
+          {entry.attachments?.length ? (
+            <TextAttachmentList attachments={entry.attachments} />
+          ) : null}
+          {entry.images?.length ? (
+            <ImageAttachmentList sessionId={sessionId} images={entry.images} />
+          ) : null}
+          <span className="sr-only">
+            {t('youAsked', { intent: t(`intent.${entry.intent}`) })} · {t(`state.${entry.state}`)}
+          </span>
+        </KitChatMessage>
+      </div>
       {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
         <RefusalHelp
           sessionId={sessionId}
@@ -142,32 +178,38 @@ export function EntryCard({
           }
         />
       ) : entry.detail ? (
-        <p role="note" className="text-xs text-danger">
+        <p role="note" className="text-caption text-danger">
           {entry.detail}
         </p>
-      ) : null}
-      {run &&
-      ['cancelled', 'interrupted', 'failed'].includes(run.status) &&
-      entry.intent !== 'steer' ? (
-        <div className="flex flex-wrap gap-2">
-          <Button size="compact" variant="tertiary" disabled={!canResend} onClick={resend}>
-            {t('retryRequest')}
-          </Button>
-          <Button size="compact" variant="ghost" onClick={() => editRequest(entry.text, entry)}>
-            {t('restoreRequest')}
-          </Button>
-        </div>
       ) : null}
       {run && entry.intent !== 'steer' ? (
         <RunCard
           run={run}
+          number={runs.findIndex((item) => item.runId === run.runId) + 1}
           nested
           artifactMetadataVersion={artifactMetadataVersion}
           onPanel={onPanel}
+          endActions={
+            unfinished ? (
+              // What to do next sits with the turn's one notice that it did not finish.
+              <>
+                <Button size="compact" variant="secondary" disabled={!canResend} onClick={resend}>
+                  {t('retryRequest')}
+                </Button>
+                <Button
+                  size="compact"
+                  variant="ghost"
+                  onClick={() => editRequest(entry.text, entry)}
+                >
+                  {t('restoreRequest')}
+                </Button>
+              </>
+            ) : undefined
+          }
         />
       ) : null}
       {entry.intent === 'steer' && entry.runId ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-end gap-2 text-caption text-muted-foreground">
           <DeliveryStatus
             runId={entry.runId}
             commandId={entry.commandId ?? null}
@@ -236,71 +278,79 @@ export function useRunChecks(sessionId: string, runs: RunSummary[]) {
 }
 
 /**
- * A run in the session: one line with its state, the agent's own words kept
- * apart from facts, and what can be done next. Details open in the side panel.
+ * A run in the session. In a conversation it reads as one quiet process line (time, steps and
+ * the run's number, which opens its record), then what needs the person, then the answer.
  */
 export function RunCard({
   run,
+  number,
   artifactMetadataVersion,
   nested = false,
   onPanel,
+  endActions,
 }: {
   run: RunSummary;
+  /** The run's place in its session, from 1; 0 when it is not known. */
+  number: number;
   artifactMetadataVersion: string;
   nested?: boolean;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
+  /** Retry and restore, for a request whose run did not finish. */
+  endActions?: ReactNode;
 }) {
   const t = useTranslations('Sessions');
-  const ts = useTranslations('Status');
   const tf = useTranslations('Files');
   const checks = useContext(RunChecks);
   const check = checks.of(run.runId);
   const ended = TERMINAL_RUN_STATUSES.has(run.status);
+  const name = number > 0 ? t('runNumber', { number }) : run.runId;
   return (
     <section
-      aria-label={run.runId}
+      aria-label={name}
       data-testid={`run-card-${run.runId}`}
-      className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-8'}`}
+      className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-4'}`}
     >
-      <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        {/* a working or finished turn speaks through its process and answer. */}
-        {nested && ['created', 'validating', 'running', 'succeeded'].includes(run.status) ? (
-          <span className="sr-only">
-            <StatusBadge status={run.status} />
-          </span>
-        ) : (
+      {/* In a conversation the turn speaks through its process line, notice and answer. */}
+      {nested ? (
+        <span className="sr-only">
           <StatusBadge status={run.status} />
-        )}
-        <span className="sr-only">{run.runId}</span>
-        {ended && checks.known ? (
-          <span className="text-muted-foreground" data-testid="run-check">
-            {check
-              ? t('checked', { name: check.name, state: tf(`checkState.${check.state}`) })
-              : t('notChecked')}
-          </span>
-        ) : null}
-        <Button
-          variant="ghost"
-          size="compact"
-          className="ml-auto"
-          onClick={() => onPanel('run', { run: run.runId, view: 'run' })}
-        >
-          {/* The same mark on every link that opens beside the conversation. */}
-          <PanelRight />
-          {t('openRun')}
-        </Button>
-      </div>
-      {ended && run.status !== 'succeeded' ? (
-        <p role="note" className="text-xs text-warning">
-          {t('didNotFinish', { status: ts(run.status) })}
-        </p>
-      ) : null}
+        </span>
+      ) : (
+        <div className="flex min-h-7 items-center">
+          <StatusBadge status={run.status} />
+        </div>
+      )}
+      <span className="sr-only">{run.runId}</span>
       <RunMessage
         runId={run.runId}
         sessionId={run.sessionId ?? null}
         live={!ended}
         artifactMetadataVersion={artifactMetadataVersion}
         onOpenArtifact={(result) => onPanel('run', { run: run.runId, view: 'results', result })}
+        endActions={endActions}
+        runLine={
+          <>
+            <Tooltip content={t('openRun')}>
+              <Button
+                variant="ghost"
+                size="compact"
+                data-testid="turn-run"
+                onClick={() => onPanel('run', { run: run.runId, view: 'run' })}
+              >
+                {/* The same mark on every link that opens beside the conversation. */}
+                <PanelRight />
+                <span className="tabular-nums">{name}</span>
+              </Button>
+            </Tooltip>
+            {ended && checks.known ? (
+              <span className="px-2" data-testid="run-check">
+                {check
+                  ? t('checked', { name: check.name, state: tf(`checkState.${check.state}`) })
+                  : t('notChecked')}
+              </span>
+            ) : null}
+          </>
+        }
       />
       {/* Only a session with a working copy has changes to review (its checks are known). */}
       {ended && checks.known && run.sessionId ? (
@@ -378,7 +428,7 @@ function DeliveryStatus({
   }, [transport, runId, commandId]);
   return (
     <>
-      <span data-testid="recipient" className="font-medium text-text" title={executionId ?? ''}>
+      <span data-testid="recipient" className="text-foreground" title={executionId ?? ''}>
         → {recipient ?? executionId}
       </span>
       <span>{t('appliesAt')}</span>
@@ -389,14 +439,5 @@ function DeliveryStatus({
         </Button>
       ) : null}
     </>
-  );
-}
-
-function EditAsNewRequest({ onClick }: { onClick(): void }) {
-  const t = useTranslations('MessageBody');
-  return (
-    <Button size="compact" variant="ghost" onClick={onClick}>
-      {t('editAsNew')}
-    </Button>
   );
 }

@@ -117,11 +117,13 @@ test.describe('runtime continuation', () => {
       page.getByTestId('run-monitor').getByRole('link', { name: 'Open the source Run' }),
     ).toBeVisible();
     await panelTab(page, 'Conversation');
-    await page
+    // The request's icon row shows on hover or focus.
+    const branchBefore = page
       .getByTestId('chat-timeline')
       .getByRole('button', { name: 'Branch before this request' })
-      .first()
-      .click();
+      .first();
+    await branchBefore.hover({ force: true });
+    await branchBefore.click();
     await expect(page.getByRole('dialog')).toContainText('before any model response');
     corral.fake!.answerWith('Original request branch.');
     const priorSession = new URL(page.url()).pathname;

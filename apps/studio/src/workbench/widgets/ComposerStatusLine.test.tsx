@@ -266,3 +266,20 @@ it('keeps the lead and note without a run', async () => {
   expect(view.toggle()).toBeNull();
   expect(view.line()?.textContent).not.toContain('Overview');
 });
+
+it('gives each end state its own mark, so a failure never looks like a success', async () => {
+  const view = await mount(model({ live: false }, { runStatus: 'succeeded' }));
+  const mark = () => view.line()?.querySelector('a svg');
+  const seen = new Set<string>();
+  for (const runStatus of ['succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+    await view.update(model({ live: false }, { runStatus }));
+    expect(view.line()?.querySelector('a')?.textContent).toContain(messages.Status[runStatus]);
+    expect(mark()?.getAttribute('data-state')).toBe(runStatus);
+    // The drawn shape differs, not only its color.
+    seen.add(mark()?.innerHTML ?? '');
+  }
+  expect(seen.size).toBe(4);
+  // A run whose state cannot be read is marked as a problem, never as done.
+  await view.update(model({ live: false, readState: 'error' }, { runStatus: 'succeeded' }));
+  expect(mark()?.getAttribute('data-state')).toBe('failed');
+});

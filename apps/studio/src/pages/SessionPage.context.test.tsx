@@ -1138,3 +1138,115 @@ it("the team picker's Create or manage opens the library's teams for this projec
     search: { project: 'project', returnTo: '/sessions/manage_teams?panel=files' },
   });
 });
+
+const destination = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="composer-destination"]');
+const describedBy = (container: HTMLElement) =>
+  (
+    container
+      .querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]')
+      ?.getAttribute('aria-describedby') ?? ''
+  ).split(' ');
+
+it('a new run in this session has no visible destination line; the input describes it', async () => {
+  const sessionId = 'quiet_destination';
+  const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
+  const f = await mount(sessionId, null, [], [finished]);
+  const line = destination(f.container);
+  expect(line?.textContent).toBe(messages.Composer.destination.next);
+  expect(line?.classList.contains('sr-only')).toBe(true);
+  expect(line?.id).toBeTruthy();
+  expect(describedBy(f.container)).toContain(line?.id);
+});
+
+it.each(['queue', 'steer'] as const)(
+  'a %s destination shows above the input and still describes it',
+  async (intent) => {
+    const sessionId = `shown_destination_${intent}`;
+    const current = { ...active, sessionId };
+    writeComposerDraft(sessionId, {
+      text: 'Later',
+      intent,
+      target: intent === 'steer' ? 'execution' : null,
+      targetLabel: intent === 'steer' ? 'Writer' : null,
+      references: [],
+    });
+    const f = await mount(sessionId, current, [], [current]);
+    const line = destination(f.container);
+    const input = f.container.querySelector('textarea[aria-label="Request"]');
+    expect(line?.textContent).toContain(intent === 'queue' ? 'queue' : 'instruction');
+    expect(line?.classList.contains('sr-only')).toBe(false);
+    expect(
+      line && input ? line.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING : 0,
+    ).toBeTruthy();
+    expect(describedBy(f.container)).toContain(line?.id);
+  },
+);
+
+it('an instruction whose target ended shows that it cannot be delivered', async () => {
+  const sessionId = 'unavailable_destination';
+  writeComposerDraft(sessionId, {
+    text: 'Too late',
+    intent: 'steer',
+    target: 'execution',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const ended = { ...active, runId: 'ended', sessionId, status: 'cancelled' as const };
+  const f = await mount(sessionId, null, [], [ended]);
+  const line = destination(f.container);
+  expect(line?.textContent).toContain('target unavailable');
+  expect(line?.classList.contains('sr-only')).toBe(false);
+  expect(describedBy(f.container)).toContain(line?.id);
+});
+
+it.each(['next', 'queue'] as const)(
+  'nothing but the session totals sits under the input (%s)',
+  async (intent) => {
+    const sessionId = `quiet_footer_${intent}`;
+    const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
+    const current = { ...active, sessionId };
+    const f =
+      intent === 'next'
+        ? await mount(sessionId, null, [], [finished])
+        : await mount(sessionId, current, [], [finished, current]);
+    await act(async () => {});
+    const footer = f.container.querySelector<HTMLElement>('[data-testid="composer-footer"]');
+    expect(footer).not.toBeNull();
+    const text = footer?.textContent ?? '';
+    for (const sentence of [
+      'Continues this conversation',
+      messages.Sessions.intentHint.queue,
+      messages.Sessions.intentHint.steer,
+      messages.Sessions.modeLive,
+    ])
+      expect(text).not.toContain(sentence);
+    expect(footer?.querySelector('[data-testid="pre-run"]')).toBeNull();
+    // The footer holds the totals and, where nothing else says so, the simulation badge.
+    expect(text).toBe(
+      [
+        footer?.querySelector('[data-testid="composer-stats"]')?.textContent ?? '',
+        footer?.querySelector('[data-testid="composer-environment"]')?.textContent ?? '',
+      ].join(''),
+    );
+  },
+);
+
+it('says Simulated once: under the input on a server without live models, on the model chip in the demo', async () => {
+  const server = await mount('environment_server', null);
+  expect(server.container.querySelector('[data-testid="composer-environment"]')?.textContent).toBe(
+    messages.Sessions.modeMock,
+  );
+  const demo = await mount('environment_demo', null, [], [], null, 'browser');
+  expect(demo.container.querySelector('[data-testid="composer-environment"]')).toBeNull();
+  expect(demo.container.textContent).toContain(messages.Composer.modelPicker.demo);
+});
+
+it('keeps what the next run starts with for assistive tech, not as a line under the input', async () => {
+  const f = await mount('pre_run_state', null);
+  await act(async () => {});
+  const summary = f.container.querySelector<HTMLElement>('[data-testid="pre-run"]');
+  expect(summary?.textContent).toContain('r1');
+  expect(summary?.classList.contains('sr-only')).toBe(true);
+  expect(summary?.closest('[data-testid="composer-footer"]')).toBeNull();
+});

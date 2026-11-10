@@ -28,6 +28,8 @@ import {
   ListChecks,
   LoaderCircle,
   Monitor,
+  TriangleAlert,
+  X,
 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
@@ -58,7 +60,7 @@ const CATEGORY_FILL: Record<string, string> = {
   other: 'bg-text/45',
 };
 export const chipClass =
-  'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
+  'inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground outline-none transition-colors hover:bg-subtle hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring';
 const number = (value: number) => value.toLocaleString();
 /** "Last run" only for the newest finished run; an older one names its position (#72). */
 function viewedLabel(
@@ -126,7 +128,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       <div>
         <div className="flex items-center justify-between gap-3">
           <PopoverTitle>{t('context')}</PopoverTitle>
-          <span className="rounded-md bg-subtle px-2 py-0.5 text-2xs text-muted-foreground">
+          <span className="rounded-md bg-subtle px-2 py-0.5 text-micro text-muted-foreground">
             {complete
               ? t('measurementFull')
               : context.kind === 'messages'
@@ -136,7 +138,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
                   : t('measurementPending')}
           </span>
         </div>
-        <p className="mt-1.5 break-words text-xs text-muted-foreground">
+        <p className="mt-1.5 break-words text-caption text-muted-foreground">
           {[
             model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
             context.roleLabel,
@@ -146,7 +148,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
             .join(' · ')}
         </p>
         {context.recordedAt ? (
-          <p className="mt-1 text-2xs text-muted-foreground">
+          <p className="mt-1 text-micro text-muted-foreground">
             {t('lastRequest', {
               time: new Date(context.recordedAt).toLocaleTimeString([], {
                 hour: '2-digit',
@@ -159,7 +161,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       </div>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {t(measured ? 'estimatedInput' : 'contextPending')}
           </p>
           {context.tokens != null ? (
@@ -169,7 +171,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
             >
               {number(context.tokens)}
               <span
-                className="ml-1.5 text-xs text-muted-foreground"
+                className="ml-1.5 text-caption text-muted-foreground"
                 style={{ fontVariationSettings: fontWeights.normal }}
               >
                 {context.windowTokens
@@ -180,7 +182,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           ) : null}
         </div>
         {context.percent != null ? (
-          <span className="flex items-center gap-2 text-sm tabular-nums">
+          <span className="flex items-center gap-2 text-body tabular-nums">
             <ContextGauge percent={context.barPercent} size={28} />
             {context.percent}%
           </span>
@@ -191,7 +193,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
         {CATEGORIES.map((category) => {
           const part = context.parts.find((item) => item.category === category);
           return (
-            <li key={category} className="flex items-start justify-between gap-4 text-xs">
+            <li key={category} className="flex items-start justify-between gap-4 text-caption">
               <span className="flex items-center gap-2">
                 <span
                   aria-hidden="true"
@@ -208,7 +210,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           );
         })}
         {context.freeTokens != null ? (
-          <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-xs text-muted-foreground">
+          <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-caption text-muted-foreground">
             <span>{t(context.freeTokens < 0 ? 'estimatedOverage' : 'estimatedRemaining')}</span>
             <span className={`tabular-nums ${context.freeTokens < 0 ? 'text-warning' : ''}`}>
               {number(Math.abs(context.freeTokens))}
@@ -217,7 +219,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
         ) : null}
       </ul>
       {model.simulated || !complete || context.awaitingRefresh || context.kind === 'highest' ? (
-        <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-xs text-muted-foreground">
+        <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-caption text-muted-foreground">
           {model.simulated ? <p>{t('simulatedNote')}</p> : null}
           {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
           {!complete ? (
@@ -249,14 +251,14 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
         </div>
       ) : null}
       {model.reserveTokens != null ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t('outputReserve', { count: number(model.reserveTokens) })}
         </p>
       ) : null}
       {context.providerInput != null ||
       context.providerCacheRead != null ||
       context.providerOutput != null ? (
-        <details className="text-xs text-muted-foreground">
+        <details className="text-caption text-muted-foreground">
           <summary className="cursor-pointer rounded-sm py-1 focus-visible:ring-2 focus-visible:ring-ring">
             {t('providerUsage')}
           </summary>
@@ -272,7 +274,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       ) : null}
       <RunLink
         model={model}
-        className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
+        className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-caption text-muted-foreground hover:text-text"
       >
         {t('contextDetails')}
         <ArrowRight size={14} />
@@ -351,7 +353,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   return (
     <>
       <PopoverTitle>{t('agentsHeading')}</PopoverTitle>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="mt-2 text-caption text-muted-foreground">
         {[
           t('agents', model.agents),
           t('agentsWaiting', { count: model.agents.waiting }),
@@ -371,7 +373,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
                 <span className="truncate">
                   {choice.key === 'team' ? t('teamPlan') : choice.label}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-caption text-muted-foreground">
                   {choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : ''}
                 </span>
               </Button>
@@ -381,7 +383,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
       ) : null}
       <RunLink
         model={model}
-        className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
+        className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-caption text-muted-foreground hover:text-text"
       >
         {t('allAgents')}
         <ArrowRight size={14} />
@@ -410,7 +412,7 @@ function ChangesChip({ model }: { model: ChatWidgetModel }) {
       <FileDiff size={14} />
       <span className="truncate">{text}</span>
       {model.changeLines != null ? (
-        <span className="text-2xs">{t('changesLines', { count: model.changeLines })}</span>
+        <span className="text-micro">{t('changesLines', { count: model.changeLines })}</span>
       ) : null}
     </Link>
   );
@@ -437,14 +439,14 @@ export function EnvironmentDetail({ model }: { model: ChatWidgetModel }) {
   return (
     <>
       <PopoverTitle>{t('environmentHeading')}</PopoverTitle>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-2 text-caption leading-relaxed text-muted-foreground">
         {t(
           model.environment === 'simulated'
             ? 'environmentSimulationDetail'
             : 'environmentRestrictedDetail',
         )}
       </p>
-      <RunLink model={model} className="mt-3 inline-flex items-center gap-2 text-xs">
+      <RunLink model={model} className="mt-3 inline-flex items-center gap-2 text-caption">
         {t('contextDetails')}
         <ArrowRight size={14} />
       </RunLink>
@@ -495,6 +497,20 @@ function planCount(
     : status.state === 'loading'
       ? t('planLoading')
       : t('planError');
+}
+
+/**
+ * An ended run's state as a mark, so a failure never looks like a success: a check for done,
+ * an alert for failed, a cross for cancelled, a warning for interrupted. The word sits beside it.
+ */
+function RunStateIcon({ status, failed }: { status: string | null; failed: boolean }) {
+  const state = failed ? 'failed' : status;
+  const mark = { size: 12, 'aria-hidden': true, 'data-state': state ?? undefined } as const;
+  if (state === 'failed') return <CircleAlert {...mark} className="shrink-0 text-danger" />;
+  if (state === 'succeeded') return <CircleCheck {...mark} className="shrink-0 text-success" />;
+  if (state === 'cancelled') return <X {...mark} className="shrink-0" />;
+  if (state === 'interrupted') return <TriangleAlert {...mark} className="shrink-0 text-warning" />;
+  return <Circle {...mark} className="shrink-0" />;
 }
 
 /**
@@ -551,19 +567,20 @@ export function ComposerDock({
       data-testid="composer-dock"
       className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col"
     >
+      {/* One line at every width: the lead and the Overview opener keep their place, and the
+          items between give up their lower-priority words (container queries) and truncate. */}
       <div
         data-testid="composer-status-pills"
-        className="mb-2 flex min-w-0 flex-wrap items-center gap-1 empty:hidden"
+        className="mb-2 flex min-w-0 flex-nowrap items-center gap-1 empty:hidden"
       >
         {lead}
         {run &&
         composerShowsRunStatus({ runStatus: run.plan.runStatus, readState: run.readState }) ? (
           // An ended run keeps one state, which leads to its record.
-          <RunLink model={run} className={`${chipClass} bg-raised`}>
-            <Circle
-              size={12}
-              aria-hidden="true"
-              className={run.action.visible ? 'text-warning' : 'text-muted-foreground'}
+          <RunLink model={run} className={`${chipClass} shrink-0`}>
+            <RunStateIcon
+              status={run.readState === 'ready' ? run.plan.runStatus : null}
+              failed={run.readState === 'error'}
             />
             <span>
               {run.readState === 'error'
@@ -574,7 +591,11 @@ export function ComposerDock({
                     ? ts(run.plan.runStatus)
                     : t('runUnavailable')}
             </span>
-            {run.viewed ? <span className="text-2xs">{viewedLabel(run.viewed, t)}</span> : null}
+            {run.viewed ? (
+              <span className="text-micro @max-lg/composer-surface:hidden">
+                {viewedLabel(run.viewed, t)}
+              </span>
+            ) : null}
           </RunLink>
         ) : null}
         {run &&
@@ -612,11 +633,15 @@ export function ComposerDock({
             aria-controls={planId}
             onClick={() => run.plan.setOpen(!open)}
           >
-            <ListChecks size={14} aria-hidden="true" />
-            <span>{t('planHeading')}</span>
-            <span className="tabular-nums">{planCount(status, t)}</span>
+            <ListChecks size={14} aria-hidden="true" className="shrink-0" />
+            <span className="shrink-0 @max-md/composer-surface:hidden">{t('planHeading')}</span>
+            <span className="min-w-0 truncate tabular-nums">{planCount(status, t)}</span>
             {/* Collapsed, the line names the step in progress; open, the Todo shows it. */}
-            {step && !open ? <span className="min-w-0 max-w-64 truncate">{step}</span> : null}
+            {step && !open ? (
+              <span className="min-w-0 max-w-64 truncate @max-md/composer-surface:hidden">
+                {step}
+              </span>
+            ) : null}
             <ChevronDown
               size={12}
               aria-hidden="true"
@@ -628,7 +653,7 @@ export function ComposerDock({
         {tool ? (
           <span
             data-testid="composer-activity"
-            className="min-w-0 max-w-48 truncate px-2 text-caption text-muted-foreground"
+            className="min-w-0 max-w-48 truncate px-2 text-caption text-muted-foreground @max-md/composer-surface:hidden"
           >
             {tool}
           </span>
@@ -718,24 +743,24 @@ export function ComposerPlan({
   const body = (
     <>
       {status.state === 'stale-criteria' || status.state === 'stale-attempt' ? (
-        <p className="mb-2 text-xs text-warning">
+        <p className="mb-2 text-caption text-warning">
           {t(status.state === 'stale-attempt' ? 'planOldAttempt' : 'planStale')}
         </p>
       ) : null}
       {selection?.lastTeam ? (
-        <p className="mb-2 text-xs text-muted-foreground">{t('teamLast')}</p>
+        <p className="mb-2 text-caption text-muted-foreground">{t('teamLast')}</p>
       ) : null}
       {model.plan.runStatus &&
       ['failed', 'cancelled', 'interrupted'].includes(model.plan.runStatus) ? (
-        <p className="mb-2 text-xs text-warning">
+        <p className="mb-2 text-caption text-warning">
           {ts(model.plan.runStatus)} · {t('planPreserved')}
         </p>
       ) : null}
       {status.state === 'loading' ? (
-        <p className="py-2 text-xs text-muted-foreground">{t('planLoading')}</p>
+        <p className="py-2 text-caption text-muted-foreground">{t('planLoading')}</p>
       ) : null}
       {status.state === 'error' || status.state === 'mismatch' ? (
-        <div className="flex items-center justify-between gap-2 pb-2 text-xs">
+        <div className="flex items-center justify-between gap-2 pb-2 text-caption">
           <p className="text-warning">
             {t(status.state === 'mismatch' ? 'planMismatch' : 'planError')}
           </p>
@@ -856,7 +881,7 @@ export function ComposerPlan({
             type="button"
             variant="ghost"
             data-testid="work-plan-toggle"
-            className="h-auto min-h-10 w-full justify-start gap-2 rounded-none px-4 py-2 text-left text-xs"
+            className="h-auto min-h-10 w-full justify-start gap-2 rounded-none px-4 py-2 text-left text-caption"
             aria-expanded={model.plan.open}
             aria-controls={panelId}
             onClick={() => model.plan.setOpen(!model.plan.open)}

@@ -1,5 +1,5 @@
 import type { CorralSummary, RunSummary, SessionIntent, WorkSession } from '@corral/core';
-import { Button, Select } from '@corral/react/design-kit';
+import { Badge, Button, Select } from '@corral/react/design-kit';
 import { Square } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -25,6 +25,7 @@ export function ComposerHeader({
   targets,
   targetName,
   onChooseTarget,
+  about = null,
   quiet = false,
 }: {
   choosingAuto: boolean;
@@ -37,6 +38,8 @@ export function ComposerHeader({
   targets: { id: string; label: string }[];
   targetName: (id: string) => string;
   onChooseTarget: (value: string) => void;
+  /** The result a question starts from. */
+  about?: string | null;
   /** An empty session has nothing to follow up yet. */
   quiet?: boolean;
 }) {
@@ -69,8 +72,19 @@ export function ComposerHeader({
           }))}
         />
       ) : intent !== 'next' || blocked || !quiet ? (
-        <span title={t(`intentHint.${intent}`)} className="px-2 text-ui text-muted-foreground">
+        <span
+          title={t(`intentHint.${intent}`)}
+          className="shrink-0 px-2 text-ui text-muted-foreground"
+        >
           {t(`intentShort.${intent}`)}
+        </span>
+      ) : null}
+      {intent === 'explain' && about ? (
+        <span
+          title={t('fromResult', { label: about })}
+          className="min-w-0 truncate px-2 text-ui text-muted-foreground"
+        >
+          {about}
         </span>
       ) : null}
       {intent === 'steer' ? (
@@ -99,30 +113,23 @@ export function ComposerHeader({
   );
 }
 
-/** Below the input: what the next request would start with, and why it cannot be sent now. */
+/**
+ * Below the input: one quiet line of session totals, and a simulation badge where nothing else
+ * says the runs are simulated. Why a request cannot be sent now follows as its own alert.
+ */
 export function ComposerStatus({
-  session,
   runs,
-  team,
-  isAuto,
-  runMode,
-  intent,
-  latest,
-  lastEnded,
+  simulated,
+  noResult,
   liveUnavailable,
   reasoningBlocked,
   error,
 }: {
-  session: WorkSession;
   runs: RunSummary[];
-  team: CorralSummary | null;
-  isAuto: boolean;
-  runMode: 'mock' | 'live';
-  intent: SessionIntent;
-  /** The newest final result, which a question is about. */
-  latest: { runId: string; id: string; label: string } | null;
-  /** The newest ended run, which a follow-up continues. */
-  lastEnded: RunSummary | null;
+  /** Runs are simulated and the model chip does not already say so. */
+  simulated: boolean;
+  /** A question has no result to be about yet. */
+  noResult: boolean;
   liveUnavailable: boolean;
   reasoningBlocked: boolean;
   error: string | null;
@@ -131,49 +138,59 @@ export function ComposerStatus({
   const tc = useTranslations('Composer');
   return (
     <>
-      <div className="flex min-h-5 flex-wrap items-center gap-x-2 px-4 pt-1.5 text-2xs text-muted-foreground">
+      <div
+        data-testid="composer-footer"
+        className="flex min-w-0 items-center gap-2 px-4 pt-1.5 text-micro text-muted-foreground empty:hidden"
+      >
         <ComposerStats runs={runs} />
-        {(intent === 'next' || intent === 'explain') && isAuto ? (
-          <AutoPreRunSummary session={session} mode={runMode} intent={intent} />
+        {simulated ? (
+          <Badge data-testid="composer-environment" variant="outline" size="sm">
+            {t('modeMock')}
+          </Badge>
         ) : null}
-        {intent === 'explain' && !latest ? (
-          <span className="text-warning">{t('noResult')}</span>
-        ) : null}
-        {(intent === 'next' || intent === 'explain') && team ? (
-          <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
-        ) : null}
-        {intent === 'next' && lastEnded ? (
-          <>
-            <span aria-hidden="true">·</span>
-            <span>{t('continuesConversation')}</span>
-          </>
-        ) : null}
-        {intent === 'explain' && latest ? (
-          <>
-            <span aria-hidden="true">·</span>
-            <span>{t('fromResult', { label: latest.label })}</span>
-          </>
-        ) : null}
-        {intent === 'steer' ? <span>{t('intentHint.steer')}</span> : null}
-        {intent === 'queue' ? <span>{t('intentHint.queue')}</span> : null}
       </div>
-      {liveUnavailable || reasoningBlocked ? (
+      {noResult || liveUnavailable || reasoningBlocked ? (
         <div className="flex flex-col gap-1 px-4 pt-1 text-caption text-warning">
+          {noResult ? <p role="status">{t('noResult')}</p> : null}
           {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
           {reasoningBlocked ? (
-            <p role="status" data-testid="reasoning-not-supported" className="text-warning">
+            <p role="status" data-testid="reasoning-not-supported">
               {tc('reasoningUnsupportedHint')}
             </p>
           ) : null}
         </div>
       ) : null}
       {error ? (
-        <p role="alert" className="px-4 pt-1 text-xs text-danger">
+        <p role="alert" className="px-4 pt-1 text-caption text-danger">
           {error}
         </p>
       ) : null}
     </>
   );
+}
+
+/**
+ * What the next run would start with, for assistive tech only: the team chip, the model chip
+ * and the session's Files and Changes views already show it.
+ */
+export function PreRun({
+  session,
+  team,
+  isAuto,
+  runMode,
+  intent,
+}: {
+  session: WorkSession;
+  team: CorralSummary | null;
+  isAuto: boolean;
+  runMode: 'mock' | 'live';
+  intent: SessionIntent;
+}) {
+  if (intent !== 'next' && intent !== 'explain') return null;
+  if (isAuto) return <AutoPreRunSummary session={session} mode={runMode} intent={intent} />;
+  return team ? (
+    <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
+  ) : null;
 }
 
 /**
@@ -240,7 +257,11 @@ function PreRunSummary({
     intent,
     t,
   ]);
-  return text ? <span data-testid="pre-run">{text}</span> : null;
+  return text ? (
+    <span data-testid="pre-run" className="sr-only">
+      {text}
+    </span>
+  ) : null;
 }
 
 /** Mode and file work for the next auto request. The team control says Auto, and the model menu says the model when one can be chosen. */
@@ -275,5 +296,9 @@ function AutoPreRunSummary({
   const modeLabel = mode === 'live' ? t('modeLive') : t('modeMock');
   // Auto roles get file tools only with a working copy.
   const files = intent === 'next' && copy ? t('filesCopy') : null;
-  return <span data-testid="pre-run">{[files, modeLabel].filter(Boolean).join(' · ')}</span>;
+  return (
+    <span data-testid="pre-run" className="sr-only">
+      {[files, modeLabel].filter(Boolean).join(' · ')}
+    </span>
+  );
 }

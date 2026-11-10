@@ -154,10 +154,9 @@ export function workPlanPreferenceKey(input: {
 }
 
 /** Auto opens while the run is not a success. A manual open or closed choice stays. */
-export function workPlanOpen(preference: 'auto' | 'open' | 'closed', runStatus: string) {
-  if (preference === 'open') return true;
-  if (preference === 'closed') return false;
-  return runStatus !== 'succeeded';
+export function workPlanOpen(preference: 'auto' | 'open' | 'closed') {
+  // A plan starts as one line (count and current step); the person chooses to expand it.
+  return preference === 'open';
 }
 
 export interface ExecutionFact {
