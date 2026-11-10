@@ -307,6 +307,9 @@ it('walks the browser QA steps by keyboard and attaches the screenshot only insi
     ['Read console', 'Next: Screenshot'],
   ]) {
     await click(button(container, action as string));
+    // One mark per action's result: the step's summary, not again on every result row.
+    const panel = container.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
+    expect(panel?.querySelectorAll('[data-simulated]')).toHaveLength(1);
     await click(button(container, next as string));
   }
   expect(byText(container, 'td', /TypeError/)).toBeUndefined();

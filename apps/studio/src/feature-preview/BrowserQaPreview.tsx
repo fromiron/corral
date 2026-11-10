@@ -191,14 +191,8 @@ function ActStep({ done }: { done: boolean }) {
                 <TableCell>
                   <code className="font-mono">{action.ref}</code> {target(action.ref)?.name}
                 </TableCell>
-                <TableCell>
-                  {done ? (
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                      {say(action.result)}
-                      <Simulated />
-                    </span>
-                  ) : null}
-                </TableCell>
+                {/* The step's summary above carries the one simulation mark for these rows. */}
+                <TableCell>{done ? say(action.result) : null}</TableCell>
               </TableRow>
             ))}
           </TableBody>
