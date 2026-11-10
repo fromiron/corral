@@ -18,7 +18,10 @@ export const TOPBAR_TIERS = [
   'project-icon',
   /** The views and actions take a second row; the tabs return while they fit there. */
   'two-rows',
-  /** The second row holds the view menu, and the run pill is its mark and "#N". */
+  /**
+   * The second row holds the view menu, the run pill is its mark and "#N", and the page's tools
+   * fold into its menu, so the run and its controls still share that row.
+   */
   'two-rows-menu',
 ] as const;
 
@@ -34,6 +37,8 @@ export interface TopbarLayout {
   views: 'tabs' | 'menu';
   project: 'name' | 'icon';
   rows: 1 | 2;
+  /** Where the page's tools (its changes, terminal and side panel) sit: buttons, or its menu. */
+  tools: 'bar' | 'menu';
   /**
    * Cheap steps (icons, the clock, the pill's words) are taken to show the whole name. Folding
    * the tabs or the project is taken only once the name would fall below a comfortable length,
@@ -54,6 +59,7 @@ export function topbarLayout(index: number): TopbarLayout {
     views: at === 4 || at === 5 || at === 7 ? 'menu' : 'tabs',
     project: at >= 5 ? 'icon' : 'name',
     rows,
+    tools: at === LAST ? 'menu' : 'bar',
     path: rows === 2 || at === 5 ? 'minimum' : at >= 3 ? 'comfortable' : 'full',
   };
 }

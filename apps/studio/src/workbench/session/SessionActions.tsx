@@ -27,9 +27,12 @@ import { shortcutLabel } from '../../shortcuts.ts';
 import { ChatDensityMenu } from '../ChatView.tsx';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
-import { TopbarActions } from '../TopbarSlot.tsx';
+import { TopbarActions, useTopbarLayout } from '../TopbarSlot.tsx';
 
-/** The session's own actions, in the top bar: changes, the side panel, and a menu. */
+/**
+ * The session's own actions, in the top bar: changes, the side panel, and a menu. In the bar's
+ * last tier the changes, terminal and side panel fold into the menu (topbarTier.ts).
+ */
 export function SessionActions({
   session,
   corrals,
@@ -61,6 +64,7 @@ export function SessionActions({
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const folded = useTopbarLayout().tools === 'menu';
   const update = async (change: {
     corralId?: string | null;
     pinned?: boolean;
@@ -177,6 +181,8 @@ export function SessionActions({
       run: () => void update({ archived: !session.archivedAt }),
     },
   ]);
+  const changeCount = changes?.length ?? 0;
+  const fileViewerLabel = tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer');
   return (
     // The selected team is read from the composer's chip and this menu's team line, not the bar.
     <TopbarActions>
@@ -185,7 +191,7 @@ export function SessionActions({
           {error}
         </p>
       ) : null}
-      {changes && changes.length > 0 ? (
+      {folded ? null : changeCount > 0 ? (
         <Button
           variant="ghost"
           size="compact"
@@ -194,10 +200,10 @@ export function SessionActions({
           className="gap-1.5 text-muted-foreground"
         >
           <FileDiff />
-          {tw('sessionChangeCount', { count: changes.length })}
+          {tw('sessionChangeCount', { count: changeCount })}
         </Button>
       ) : null}
-      {terminals ? (
+      {terminals && !folded ? (
         <Tooltip content={tdock('terminal')}>
           <Button
             variant="ghost"
@@ -209,20 +215,19 @@ export function SessionActions({
           </Button>
         </Tooltip>
       ) : null}
-      <Tooltip
-        content={tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer')}
-        shortcut={shortcutLabel('view.panel')}
-      >
-        <Button
-          variant="ghost"
-          size="icon-compact"
-          aria-label={tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer')}
-          aria-pressed={fileViewerOpen}
-          onClick={() => onToggleFileViewer(!fileViewerOpen)}
-        >
-          <PanelRight />
-        </Button>
-      </Tooltip>
+      {folded ? null : (
+        <Tooltip content={fileViewerLabel} shortcut={shortcutLabel('view.panel')}>
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            aria-label={fileViewerLabel}
+            aria-pressed={fileViewerOpen}
+            onClick={() => onToggleFileViewer(!fileViewerOpen)}
+          >
+            <PanelRight />
+          </Button>
+        </Tooltip>
+      )}
       <Menu>
         <Tooltip content={td('sessionActions', { title: session.title })}>
           <MenuTrigger
@@ -241,6 +246,22 @@ export function SessionActions({
           {/* The page's display choice leads its menu. */}
           <ChatDensityMenu />
           <MenuSeparator />
+          {folded ? (
+            <>
+              {changeCount > 0 ? (
+                <MenuItem onClick={() => onPanel(panel === 'changes' ? undefined : 'changes')}>
+                  {tw('sessionChangeCount', { count: changeCount })}
+                </MenuItem>
+              ) : null}
+              {terminals ? (
+                <MenuItem onClick={() => onPanel('terminal')}>{tdock('terminal')}</MenuItem>
+              ) : null}
+              <MenuItem onClick={() => onToggleFileViewer(!fileViewerOpen)}>
+                {fileViewerLabel}
+              </MenuItem>
+              <MenuSeparator />
+            </>
+          ) : null}
           <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
           <MenuSub>
             <MenuSubTrigger>

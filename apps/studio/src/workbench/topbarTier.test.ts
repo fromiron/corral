@@ -53,6 +53,11 @@ it('gives way in the documented order, one thing at a time', () => {
     'icon',
   ]);
   expect(layouts.map((layout) => layout.rows)).toEqual([1, 1, 1, 1, 1, 1, 2, 2]);
+  // Only the last tier folds the page's tools into its menu, so the second row holds.
+  expect(layouts.map((layout) => layout.tools)).toEqual([
+    ...Array.from({ length: 7 }, () => 'bar'),
+    'menu',
+  ]);
 });
 
 it('keeps the whole name through the cheap steps and a readable one to the last', () => {
