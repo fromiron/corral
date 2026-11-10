@@ -210,6 +210,29 @@ it('renders the plan Todo only when the line is expanded, and only once', async 
   expect(view.container.querySelector('input[type="checkbox"], [role="checkbox"]')).toBeNull();
 });
 
+it('marks the step in progress as the current step, with the kit plan rows', async () => {
+  const view = await mount(model({}, { open: true }));
+  const rows = [...view.rows()];
+  expect(rows).toHaveLength(5);
+  // chat-widgets-contract §4.1: the plan above the input uses the AgentSteering plan rows.
+  expect(rows.map((row) => row.getAttribute('aria-current'))).toEqual([
+    null,
+    'step',
+    null,
+    null,
+    null,
+  ]);
+  expect(rows.map((row) => row.getAttribute('data-status'))).toEqual([
+    'done',
+    'active',
+    'pending',
+    'pending',
+    'pending',
+  ]);
+  // Each row still says its state to assistive tech.
+  expect(rows[1]?.textContent).toContain(messages.Widgets.in_progress);
+});
+
 it('leaves a live run that needs the person to the notice, and keeps one status for an ended run', async () => {
   const waiting = model({
     action: { ...noAction, visible: true, needsUser: true, count: 1, summary: 'question' },

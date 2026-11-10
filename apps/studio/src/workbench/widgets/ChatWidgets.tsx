@@ -27,7 +27,6 @@ import {
   CircleCheck,
   FileDiff,
   ListChecks,
-  LoaderCircle,
   Monitor,
   TriangleAlert,
   X,
@@ -812,7 +811,9 @@ export function ComposerPlan({
           </Button>
         </div>
       ) : null}
-      {plan && variant === 'steering' ? (
+      {/* Both places use the kit's plan rows (chat-widgets-contract §4.1): its glyphs, and the
+          step in progress marked as the current step. */}
+      {plan ? (
         <AgentSteeringPlan
           steps={(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => ({
             id: item.id,
@@ -834,29 +835,9 @@ export function ComposerPlan({
             t(state === 'done' ? 'completed' : state === 'active' ? 'in_progress' : 'pending')
           }
           wrapTitles
+          // The composer's Todo box has its own inset.
+          className={variant === 'composer' ? 'px-0 pb-0' : undefined}
         />
-      ) : plan ? (
-        <ol className="flex flex-col">
-          {(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => (
-            <li
-              key={item.id}
-              data-plan-item={item.id}
-              className="flex min-h-8 items-start gap-2.5 py-1.5 text-ui leading-5"
-            >
-              <WorkPlanStatusIcon status={item.status} label={t(item.status)} />
-              <span
-                className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted-foreground' : ''}`}
-                style={
-                  item.status === 'in_progress'
-                    ? { fontVariationSettings: fontWeights.semibold }
-                    : undefined
-                }
-              >
-                {item.title}
-              </span>
-            </li>
-          ))}
-        </ol>
       ) : null}
       {plan && plan.items.length > 5 ? (
         <Button
@@ -956,29 +937,5 @@ export function ComposerPlan({
         </div>
       ) : null}
     </div>
-  );
-}
-function WorkPlanStatusIcon({
-  status,
-  label,
-}: {
-  status: 'pending' | 'in_progress' | 'completed';
-  label: string;
-}) {
-  return (
-    <span
-      role="img"
-      className={`mt-0.5 inline-flex shrink-0 ${status === 'in_progress' ? 'text-primary' : 'text-muted-foreground'}`}
-      title={label}
-      aria-label={label}
-    >
-      {status === 'completed' ? (
-        <CircleCheck size={15} />
-      ) : status === 'in_progress' ? (
-        <LoaderCircle size={15} className="motion-safe:animate-spin" />
-      ) : (
-        <Circle size={15} strokeDasharray="3 3" />
-      )}
-    </span>
   );
 }
