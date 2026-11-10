@@ -496,14 +496,22 @@ function useHarnessResolver(): ((ref: HarnessBindingRef) => boolean) | undefined
   useEffect(() => {
     if (!harnesses) return;
     let live = true;
-    harnesses.profileManagement().then(
-      (profiles) =>
-        live &&
-        setLatest(new Map(profiles.map((profile) => [profile.profileId, profile.revision]))),
-      () => live && setLatest(null),
-    );
+    // As the role's work style setting does: read again when work styles may have changed.
+    const refresh = () =>
+      void harnesses.profileManagement().then(
+        (profiles) =>
+          live &&
+          setLatest(new Map(profiles.map((profile) => [profile.profileId, profile.revision]))),
+        // A failed read keeps what was read before; with nothing read, nothing resolves.
+        () => {},
+      );
+    refresh();
+    window.addEventListener('focus', refresh);
+    window.addEventListener('corral:harness-changed', refresh);
     return () => {
       live = false;
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('corral:harness-changed', refresh);
     };
   }, [harnesses]);
   return useMemo(
