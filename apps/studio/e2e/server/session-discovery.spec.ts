@@ -75,7 +75,10 @@ test('search scopes lead to explicit private search and group matching entries b
     .click();
   const dialog = page.getByRole('dialog', { name: 'Search sessions and results' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(/^All projects · titles and purposes\./)).toBeVisible();
+  // The palette's chips showed the chosen scope; this search covers every project, and its
+  // status line names what it searched (workbench.md: "고른 범위를 표시하고 … 세션·결과 검색은
+  // 모든 프로젝트를 대상으로 하며 비공개 메시지·결과는 명시적으로 포함한 경우에만 찾는다").
+  await expect(dialog.getByRole('status').first()).toHaveText('Metadata · 0 matches');
   await expect(
     dialog.getByRole('switch', { name: 'Include private messages and results' }),
   ).toHaveAttribute('aria-checked', 'false');
@@ -85,6 +88,7 @@ test('search scopes lead to explicit private search and group matching entries b
     ),
   ).toBeVisible();
   await dialog.getByRole('switch', { name: 'Include private messages and results' }).click();
+  await expect(dialog.getByRole('status')).toHaveText('Private transcript · 2 matches');
   await expect(dialog.locator('mark')).toHaveCount(2);
   await expect(dialog.getByRole('heading', { level: 3 })).toHaveCount(1);
   await expect(dialog.getByRole('link')).toHaveCount(2);
