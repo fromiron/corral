@@ -102,7 +102,9 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
     // Where sign-in is kept is said once, on Sign-in, not under every tab or again per key.
     expect(container.querySelector('[data-description]')?.textContent).toBe(messages.Models.intro);
     expect(container.textContent?.split(messages.Models.intro)).toHaveLength(2);
-    expect(container.textContent).not.toContain(messages.Models.keyHint);
+    expect(container.textContent).not.toContain(
+      'Kept on this computer, outside the workspace, and used only',
+    );
     // The kit keeps an invisible bold copy of each label for its width; read the visible one.
     const visible = (node: HTMLElement) => {
       const copy = node.cloneNode(true) as HTMLElement;
