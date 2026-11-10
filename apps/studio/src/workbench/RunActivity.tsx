@@ -192,7 +192,7 @@ export function RunActivity({
               aria-pressed={active}
               onClick={() => onSelect(execution.executionId)}
               className={cn(
-                'flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 text-left text-body transition-colors duration-80 hover:bg-hover',
+                'flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 text-left text-body transition-colors duration-(--duration-fast) hover:bg-hover',
                 'focus-visible:outline-2 focus-visible:outline-[color:var(--focus-ring)] focus-visible:outline-offset-2',
                 active && 'bg-active',
               )}

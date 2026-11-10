@@ -343,7 +343,7 @@ function RootFrame() {
                   'app-main relative overflow-hidden bg-background',
                   'peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:peer-data-[side=left]:ml-0',
                   'peer-data-[variant=inset]:peer-data-[state=collapsed]:peer-data-[side=left]:ml-2',
-                  'transition-[margin] duration-80',
+                  'transition-[margin] duration-(--duration-fast)',
                   shape.bgRadius >= 20
                     ? 'peer-data-[variant=inset]:rounded-3xl'
                     : 'peer-data-[variant=inset]:rounded-xl',
