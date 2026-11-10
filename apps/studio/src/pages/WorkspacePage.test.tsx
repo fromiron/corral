@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-import type { InboxItemView, WorkspaceBindingView, WorktreeView } from '@corral/client';
+import type {
+  InboxItemView,
+  SessionEvidenceView,
+  WorkspaceBindingView,
+  WorktreeView,
+} from '@corral/client';
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import {
   createMemoryHistory,
@@ -15,6 +20,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { SettingsNavigationContext } from '../workbench/navigation.ts';
 import { WorkspacePage } from './WorkspacePage.tsx';
 
@@ -106,6 +112,7 @@ beforeEach(() => {
     repository: { listSessions: vi.fn(async () => []) },
     workspaces: {
       inbox: vi.fn(async () => [pending('session_1'), pending('session_2')]),
+      sessionEvidence: vi.fn(async (): Promise<SessionEvidenceView[]> => []),
       binding: vi.fn(async () => binding),
       worktree: vi.fn(async (sessionId: string) => (sessionId === 'session_1' ? copy : null)),
       gitStatus: vi.fn(async () => {
@@ -604,11 +611,14 @@ it('keeps the last items and says so when a later inbox read fails', async () =>
 });
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-/** A row's text: its title, then its facts joined by " · ", ending with when it last changed. */
+/**
+ * A row's text: its title, then its facts joined by " · ", ending with when it last changed,
+ * worded as the sidebar words it: the time alone, never "Saved …".
+ */
 function rowText(title: string, ...facts: string[]) {
-  const saved = escaped(messages.Workspace.updated).replace(escaped('{time}'), '[^·]+');
+  const saved = escaped(messages.Workspace.updated.replace('{time}', ''));
   const shown = facts.map((fact) => `${escaped(fact)} · `).join('');
-  return new RegExp(`^${escaped(title)}${shown}${saved}$`);
+  return new RegExp(`^${escaped(title)}${shown}(?!${saved})[^·]+$`);
 }
 
 it('says on each row only what its group does not', async () => {
@@ -651,4 +661,276 @@ it('says on each row only what its group does not', async () => {
   expect(container.querySelector('[role="tabpanel"]')?.textContent).not.toContain(
     messages.Sessions.pinned,
   );
+});
+
+it('gives a row the time as the sidebar does, without "Saved"', async () => {
+  fixture.data = {
+    ...fixture.data,
+    sessions: [{ ...session('session_1', 'Fix the build'), updatedAt: new Date().toISOString() }],
+  };
+  const workspaces = fixture.services.workspaces as Record<string, unknown>;
+  fixture.services = { ...fixture.services, workspaces: { ...workspaces, inbox: async () => [] } };
+  const { container } = await render();
+  const row = container.querySelector('[role="tabpanel"] a[href^="/sessions/session_1"]');
+  expect(row?.textContent).toBe(`Fix the build${messages.Sessions.justNow}`);
+  expect(container.querySelector('[role="tabpanel"]')?.textContent).not.toContain(
+    messages.Workspace.updated.replace(' {time}', ''),
+  );
+});
+
+// What a row says of its recorded check, decision and applying
+// (docs/specs/features/session-evidence.md).
+const fact = messages.Sessions.fact;
+const evidence = (
+  sessionId: string,
+  change: Partial<SessionEvidenceView> = {},
+): SessionEvidenceView => ({
+  sessionId,
+  check: null,
+  decision: null,
+  integration: null,
+  ...change,
+});
+const checked = (
+  verdict: NonNullable<SessionEvidenceView['check']>['verdict'],
+  writesSince = false,
+) => ({ name: 'Unit tests', verdict, writesSince });
+const approved = (writesSince = false) => ({ decision: 'approved' as const, writesSince });
+function evidenceFixture(read: () => Promise<SessionEvidenceView[]>) {
+  const spy = vi.fn(read);
+  const workspaces = fixture.services.workspaces as Record<string, unknown>;
+  fixture.services = { ...fixture.services, workspaces: { ...workspaces, sessionEvidence: spy } };
+  return spy;
+}
+const rowOf = (container: HTMLElement, id: string) =>
+  container.querySelector<HTMLAnchorElement>(`[role="tabpanel"] a[href^="/sessions/${id}?"]`);
+const panelOf = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+const retries = (container: HTMLElement) =>
+  [...panelOf(container).querySelectorAll('button')].filter(
+    (button) => button.textContent === messages.Sessions.retry,
+  );
+
+it('says Checks passed first on a row whose latest check passed with nothing written since', async () => {
+  stateFixture(async () => reviewItems());
+  const read = evidenceFixture(async () => [
+    evidence('E', { check: checked('pass') }),
+    evidence('A', { check: checked('pass') }),
+  ]);
+  const { container } = await render();
+  expect(read).toHaveBeenCalledWith('alpha');
+  expect(rowOf(container, 'E')?.textContent).toMatch(
+    rowText('Edit the notes', fact.checks_passed, '1 run'),
+  );
+  // Ahead of what the group puts on the row.
+  expect(rowOf(container, 'A')?.textContent).toMatch(
+    rowText('Answer the question', fact.checks_passed, messages.Status.awaiting_user, '1 run'),
+  );
+});
+
+it('says Changed after checks once Corral wrote after the check, and Checks passed nowhere', async () => {
+  stateFixture(async () => reviewItems());
+  evidenceFixture(async () => [evidence('E', { check: checked('pass', true) })]);
+  const { container } = await render();
+  expect(rowOf(container, 'E')?.textContent).toMatch(
+    rowText('Edit the notes', fact.changed_after_checks, '1 run'),
+  );
+  expect(container.textContent).not.toContain(fact.checks_passed);
+});
+
+it('shows no check fact for a check that was cancelled, failed or could not decide', async () => {
+  stateFixture(async () => reviewItems());
+  evidenceFixture(async () => [
+    // A cancelled or still running check has not completed: the server sends none.
+    evidence('E', { check: null }),
+    evidence('X', { check: checked('inconclusive') }),
+    evidence('C', { check: checked('not_evaluated') }),
+    evidence('B', { check: checked('fail') }),
+  ]);
+  const { container } = await render();
+  expect(rowOf(container, 'E')?.textContent).toMatch(rowText('Edit the notes', '1 run'));
+  expect(rowOf(container, 'X')?.textContent).toMatch(rowText('Cancelled export', '1 run'));
+  expect(rowOf(container, 'C')?.textContent).toMatch(rowText('Crunch the numbers', '1 run'));
+  // A failed check is the Review group's to say, once.
+  expect(rowOf(container, 'B')?.textContent).toMatch(
+    rowText(
+      'Build the report',
+      messages.Inbox.kind.unreviewed,
+      messages.Inbox.kind.check_failed,
+      '1 run',
+    ),
+  );
+  expect(container.textContent).not.toContain(fact.checks_passed);
+  expect(container.textContent).not.toContain(fact.changed_after_checks);
+});
+
+it('says Approved · Applied in that order, after the check', async () => {
+  stateFixture(async () => reviewItems());
+  evidenceFixture(async () => [
+    evidence('C', { integration: 'applied', decision: approved() }),
+    evidence('E', { integration: 'applied', decision: approved(), check: checked('pass') }),
+    evidence('D', { decision: { decision: 'changes_requested', writesSince: false } }),
+    // Applying that did not finish cleanly is the Review group's; it never reads as applied.
+    evidence('X', { integration: 'partial', decision: approved() }),
+  ]);
+  const { container } = await render();
+  expect(rowOf(container, 'C')?.textContent).toMatch(
+    rowText('Crunch the numbers', fact.approved, fact.applied, '1 run'),
+  );
+  expect(rowOf(container, 'E')?.textContent).toMatch(
+    rowText('Edit the notes', fact.checks_passed, fact.approved, fact.applied, '1 run'),
+  );
+  expect(rowOf(container, 'D')?.textContent).toMatch(
+    rowText('Draft the plan', fact.changes_requested),
+  );
+  expect(rowOf(container, 'X')?.textContent).toMatch(
+    rowText('Cancelled export', fact.approved, '1 run'),
+  );
+});
+
+it('drops Approved once Corral wrote after it; the Review group names the unreviewed writes', async () => {
+  stateFixture(async () => reviewItems());
+  evidenceFixture(async () => [evidence('B', { decision: approved(true) })]);
+  const { container } = await render();
+  expect(groups(container).find((group) => group.name === 'Review')?.rows).toEqual(['B']);
+  expect(rowOf(container, 'B')?.textContent).toMatch(
+    rowText(
+      'Build the report',
+      messages.Inbox.kind.unreviewed,
+      messages.Inbox.kind.check_failed,
+      '1 run',
+    ),
+  );
+  expect(container.textContent).not.toContain(fact.approved);
+});
+
+it('never moves a session to another group for its facts', async () => {
+  stateFixture(async () => reviewItems());
+  evidenceFixture(async () =>
+    ['A', 'B', 'C', 'D', 'E', 'X', 'Y'].map((id) =>
+      evidence(id, { check: checked('pass'), decision: approved(), integration: 'applied' }),
+    ),
+  );
+  const { container } = await render();
+  expect(rowOf(container, 'Y')?.textContent).toContain(fact.applied);
+  expect(groups(container).map(({ name, rows }) => [name, rows])).toEqual([
+    ['Needs attention', ['A']],
+    ['Review', ['B']],
+    ['In progress', ['C']],
+    ['No run yet', ['D']],
+    ['Completed', ['E']],
+    ['Cancelled', ['X']],
+    ['Empty session', ['Y']],
+  ]);
+});
+
+it('drops every fact and says so in one line with a retry when a later evidence read fails', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    let fail = false;
+    const inbox = stateFixture(async () => reviewItems());
+    const read = evidenceFixture(async () => {
+      if (fail) throw new Error('evidence unavailable');
+      return [evidence('E', { check: checked('pass') })];
+    });
+    const { container } = await render();
+    expect(rowOf(container, 'E')?.textContent).toContain(fact.checks_passed);
+    fail = true;
+    // Read on the inbox's schedule.
+    await act(async () => vi.advanceTimersByTime(5000));
+    await settle();
+    expect(inbox).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledTimes(2);
+    // The last values are gone: no row says what can no longer be read.
+    expect(container.textContent).not.toContain(fact.checks_passed);
+    const panel = panelOf(container);
+    expect(panel.textContent?.split(messages.Sessions.evidenceLoadFailed)).toHaveLength(2);
+    expect(panel.textContent).not.toContain(messages.Sessions.reviewLoadFailed);
+    // A failed read is not "no record".
+    expect(container.textContent).not.toContain(messages.Sessions.notChecked);
+    expect(container.textContent).not.toMatch(/no (record|check|decision)/i);
+    // The inbox still groups the sessions.
+    expect(groups(container).find((group) => group.name === 'Review')?.rows).toEqual(['B']);
+    expect(retries(container)).toHaveLength(1);
+    fail = false;
+    await act(async () => retries(container)[0]?.click());
+    await settle();
+    expect(panel.textContent).not.toContain(messages.Sessions.evidenceLoadFailed);
+    expect(rowOf(container, 'E')?.textContent).toContain(fact.checks_passed);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('says one line with one retry when both reads fail, and the retry reads both', async () => {
+  const inbox = stateFixture(async () => {
+    throw new Error('inbox unavailable');
+  });
+  const read = evidenceFixture(async () => {
+    throw new Error('evidence unavailable');
+  });
+  const { container } = await render();
+  const panel = panelOf(container);
+  const line = messages.Sessions.reviewAndEvidenceLoadFailed;
+  expect(panel.textContent?.split(line)).toHaveLength(2);
+  expect(panel.textContent).not.toContain(messages.Sessions.reviewLoadFailed);
+  expect(panel.textContent).not.toContain(messages.Sessions.evidenceLoadFailed);
+  expect(retries(container)).toHaveLength(1);
+  await act(async () => retries(container)[0]?.click());
+  await settle();
+  expect(inbox).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(panel.textContent?.split(line)).toHaveLength(2);
+});
+
+it('never lets an older evidence answer replace a newer one', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    stateFixture(async () => reviewItems());
+    const answers: { resolve(list: SessionEvidenceView[]): void; reject(error: Error): void }[] =
+      [];
+    evidenceFixture(() => new Promise((resolve, reject) => answers.push({ resolve, reject })));
+    const { container } = await render();
+    await act(async () => vi.advanceTimersByTime(5000));
+    await act(async () => vi.advanceTimersByTime(5000));
+    await settle();
+    expect(answers).toHaveLength(3);
+    // The newest read answers first; the older ones arrive late, one with values, one failed.
+    await act(async () => answers[2]?.resolve([evidence('E', { check: checked('pass', true) })]));
+    await settle();
+    await act(async () => answers[0]?.resolve([evidence('E', { check: checked('pass') })]));
+    await act(async () => answers[1]?.reject(new Error('late failure')));
+    await settle();
+    expect(rowOf(container, 'E')?.textContent).toContain(fact.changed_after_checks);
+    expect(container.textContent).not.toContain(fact.checks_passed);
+    expect(container.textContent).not.toContain(messages.Sessions.evidenceLoadFailed);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('reads no evidence without a server workspace, as in the browser demo', async () => {
+  stateFixture(async () => reviewItems());
+  const read = evidenceFixture(async () => [evidence('E', { check: checked('pass') })]);
+  fixture.services = { ...fixture.services, mode: 'browser' };
+  const { container } = await render();
+  expect(read).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain(fact.checks_passed);
+  expect(container.textContent).not.toContain(messages.Sessions.evidenceLoadFailed);
+});
+
+it('reads neither list and shows no facts or failure without any workspace client', async () => {
+  stateFixture(async () => reviewItems());
+  fixture.services = { ...fixture.services, workspaces: null };
+  const { container } = await render();
+  expect(rowOf(container, 'E')?.textContent).toMatch(rowText('Edit the notes', '1 run'));
+  expect(retries(container)).toHaveLength(0);
+});
+
+it('never calls a fact verified or confirmed, in either language', () => {
+  for (const catalog of [messages, ko]) {
+    const { fact, evidenceLoadFailed, reviewAndEvidenceLoadFailed } = catalog.Sessions;
+    const words = JSON.stringify({ fact, evidenceLoadFailed, reviewAndEvidenceLoadFailed });
+    expect(words).not.toMatch(/verified|confirmed|criteria met|검증됨|완료 확인|기준 충족/i);
+  }
 });

@@ -2014,7 +2014,16 @@
     "emptyText": "세션은 한 목적을 여러 요청과 실행에 걸쳐 이어 갑니다.",
     "connectModel": "모델 연결하기",
     "noMatches": "검색 조건에 맞는 세션이 없습니다.",
-    "meeting": "회의"
+    "meeting": "회의",
+    "fact": {
+      "checks_passed": "검사 통과",
+      "changed_after_checks": "검사 뒤 변경됨",
+      "approved": "승인함",
+      "changes_requested": "수정 요청함",
+      "applied": "반영함"
+    },
+    "evidenceLoadFailed": "검사·판단·반영 기록을 불러오지 못했습니다.",
+    "reviewAndEvidenceLoadFailed": "검토할 항목과 검사·판단·반영 기록을 불러오지 못했습니다."
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",

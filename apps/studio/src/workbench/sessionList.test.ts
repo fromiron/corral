@@ -1,7 +1,13 @@
-import type { InboxItemView } from '@corral/client';
+import type { InboxItemView, SessionEvidenceView } from '@corral/client';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import { needsYouCount, SESSION_GROUPS, sessionGroups, sessionListState } from './sessionList.ts';
+import {
+  needsYouCount,
+  SESSION_GROUPS,
+  sessionFacts,
+  sessionGroups,
+  sessionListState,
+} from './sessionList.ts';
 
 const session = (sessionId: string, projectId = 'alpha') =>
   ({ sessionId, projectId, entries: [], archivedAt: null }) as unknown as WorkSession;
@@ -252,5 +258,68 @@ describe('sessionGroups', () => {
     const groups = sessionGroups(sessions, runs, attention);
     for (const group of groups.filter((group) => group.id !== 'attention'))
       for (const row of group.rows) expect(row.attention).toEqual([]);
+  });
+});
+
+// A row's recorded facts (docs/specs/features/session-evidence.md): check · decision · applied.
+describe('sessionFacts', () => {
+  const evidence = (change: Partial<SessionEvidenceView> = {}): SessionEvidenceView => ({
+    sessionId: 'A',
+    check: null,
+    decision: null,
+    integration: null,
+    ...change,
+  });
+  const check = (
+    verdict: NonNullable<SessionEvidenceView['check']>['verdict'],
+    writesSince = false,
+  ) => ({ name: 'Unit tests', verdict, writesSince }) as const;
+
+  it('says the checks passed only for a passing check with no write after it', () => {
+    expect(sessionFacts(evidence({ check: check('pass') }))).toEqual(['checks_passed']);
+    // A write after the check: it changed since, and never also "passed".
+    expect(sessionFacts(evidence({ check: check('pass', true) }))).toEqual([
+      'changed_after_checks',
+    ]);
+  });
+
+  it('says nothing for a check that did not pass, or none that completed', () => {
+    // A failure is the Review group's "Checks failed"; cancelled and running checks are null.
+    for (const verdict of ['fail', 'inconclusive', 'not_evaluated'] as const) {
+      expect(sessionFacts(evidence({ check: check(verdict) }))).toEqual([]);
+      expect(sessionFacts(evidence({ check: check(verdict, true) }))).toEqual([]);
+    }
+    expect(sessionFacts(evidence())).toEqual([]);
+    expect(sessionFacts(undefined)).toEqual([]);
+  });
+
+  it('says the latest decision only while no write follows it', () => {
+    expect(
+      sessionFacts(evidence({ decision: { decision: 'approved', writesSince: false } })),
+    ).toEqual(['approved']);
+    expect(
+      sessionFacts(evidence({ decision: { decision: 'changes_requested', writesSince: false } })),
+    ).toEqual(['changes_requested']);
+    // A write after it is the Review group's unreviewed writes.
+    for (const decision of ['approved', 'changes_requested'] as const)
+      expect(sessionFacts(evidence({ decision: { decision, writesSince: true } }))).toEqual([]);
+  });
+
+  it('says applied only for an applying that finished, never for the other states', () => {
+    expect(sessionFacts(evidence({ integration: 'applied' }))).toEqual(['applied']);
+    for (const integration of ['applying', 'partial', 'conflict', 'reverted', 'failed'] as const)
+      expect(sessionFacts(evidence({ integration }))).toEqual([]);
+  });
+
+  it('keeps the order check, decision, applied', () => {
+    expect(
+      sessionFacts(
+        evidence({
+          integration: 'applied',
+          decision: { decision: 'approved', writesSince: false },
+          check: check('pass'),
+        }),
+      ),
+    ).toEqual(['checks_passed', 'approved', 'applied']);
   });
 });

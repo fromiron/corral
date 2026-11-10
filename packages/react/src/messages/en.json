@@ -2014,7 +2014,16 @@
     "emptyText": "A session keeps one purpose across its requests and runs.",
     "connectModel": "Connect a model",
     "noMatches": "No sessions match this search.",
-    "meeting": "Meeting"
+    "meeting": "Meeting",
+    "fact": {
+      "checks_passed": "Checks passed",
+      "changed_after_checks": "Changed after checks",
+      "approved": "Approved",
+      "changes_requested": "Changes requested",
+      "applied": "Applied"
+    },
+    "evidenceLoadFailed": "Couldn't load checks, decisions and applying.",
+    "reviewAndEvidenceLoadFailed": "Couldn't load items to review, checks, decisions or applying."
   },
   "Files": {
     "folderHeading": "Project source folder",

@@ -1,4 +1,9 @@
-import type { InboxItemView, WorkspaceBindingView, WorktreeView } from '@corral/client';
+import type {
+  InboxItemView,
+  SessionEvidenceView,
+  WorkspaceBindingView,
+  WorktreeView,
+} from '@corral/client';
 import {
   type CorralSummary,
   DEFAULT_PROJECT_ID,
@@ -62,8 +67,10 @@ import { RunList } from '../workbench/RunList.tsx';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import {
   type AttentionReason,
+  type SessionFact,
   type SessionGroupId,
   type SessionGroupRow,
+  sessionFacts,
   sessionGroups,
   uncertainSessionTerminal,
 } from '../workbench/sessionList.ts';
@@ -221,40 +228,83 @@ interface ProjectInbox {
   items: InboxItemView[];
   /** The latest read failed; `items` are what the last good read found, or none. */
   failed: boolean;
+  /** Each session's recorded check, decision and applying, by session. */
+  evidence: ReadonlyMap<string, SessionEvidenceView>;
+  /** The latest evidence read failed; `evidence` is then empty, never the last values. */
+  evidenceFailed: boolean;
+  /** Reads both again. */
   retry: () => void;
 }
 
-/** The project's pending items, as the header counts them and the Sessions tab groups them. */
+const NO_EVIDENCE: ReadonlyMap<string, SessionEvidenceView> = new Map();
+
+/**
+ * The project's pending items, as the header counts them and the Sessions tab groups them, and
+ * its sessions' recorded facts, read on the same schedule (docs/specs/features/session-evidence.md).
+ */
 function useProjectInbox(projectId: string): ProjectInbox {
-  const { workspaces } = useServices();
+  const { workspaces, mode } = useServices();
   const [items, setItems] = useState<InboxItemView[]>([]);
   const [failed, setFailed] = useState(false);
+  const [evidence, setEvidence] = useState(NO_EVIDENCE);
+  const [evidenceFailed, setEvidenceFailed] = useState(false);
   const reload = useRef<() => void>(() => {});
+  // Only a server workspace records checks, decisions and applying; the demo has none to read.
+  const recorded = mode === 'server';
   useEffect(() => {
     setItems([]);
     setFailed(false);
+    setEvidence(NO_EVIDENCE);
+    setEvidenceFailed(false);
     reload.current = () => {};
     if (!workspaces) return;
     let live = true;
     // Reads overlap (the timer, a retry): an older answer never replaces a newer one.
-    let sent = 0;
-    let shown = 0;
+    const latest = <T,>(read: () => Promise<T>, shown: (value: T) => void, lost: () => void) => {
+      let sent = 0;
+      let answered = 0;
+      return () => {
+        const id = ++sent;
+        const current = () => live && id > answered;
+        new Promise<T>((resolve) => resolve(read())).then(
+          (value) => {
+            if (!current()) return;
+            answered = id;
+            shown(value);
+          },
+          () => {
+            if (!current()) return;
+            answered = id;
+            lost();
+          },
+        );
+      };
+    };
+    const inbox = latest(
+      () => workspaces.inbox(projectId),
+      (list) => {
+        setItems(list);
+        setFailed(false);
+      },
+      () => setFailed(true),
+    );
+    // A failed read drops what an earlier one said: a fact that cannot be read is not shown.
+    const facts = recorded
+      ? latest(
+          () => workspaces.sessionEvidence(projectId),
+          (list) => {
+            setEvidence(new Map(list.map((item) => [item.sessionId, item])));
+            setEvidenceFailed(false);
+          },
+          () => {
+            setEvidence(NO_EVIDENCE);
+            setEvidenceFailed(true);
+          },
+        )
+      : () => {};
     const load = () => {
-      const read = ++sent;
-      const current = () => live && read > shown;
-      workspaces.inbox(projectId).then(
-        (list) => {
-          if (!current()) return;
-          shown = read;
-          setItems(list);
-          setFailed(false);
-        },
-        () => {
-          if (!current()) return;
-          shown = read;
-          setFailed(true);
-        },
-      );
+      inbox();
+      facts();
     };
     reload.current = load;
     load();
@@ -263,9 +313,9 @@ function useProjectInbox(projectId: string): ProjectInbox {
       live = false;
       clearInterval(timer);
     };
-  }, [workspaces, projectId]);
+  }, [workspaces, projectId, recorded]);
   const retry = useCallback(() => reload.current(), []);
-  return { items, failed, retry };
+  return { items, failed, evidence, evidenceFailed, retry };
 }
 
 type Folder =
@@ -957,6 +1007,14 @@ function SessionList({
   );
   // Rows keep room for the pin when any is shown, so pinned or not their meta ends together.
   const pinSlot = groups.some((group) => group.rows.some((row) => row.session.pinned));
+  const loadFailed =
+    inbox.failed && inbox.evidenceFailed
+      ? 'reviewAndEvidenceLoadFailed'
+      : inbox.failed
+        ? 'reviewLoadFailed'
+        : inbox.evidenceFailed
+          ? 'evidenceLoadFailed'
+          : null;
   return (
     <section aria-labelledby="sessions-heading" className="flex flex-col gap-2">
       <h2 id="sessions-heading" className="sr-only">
@@ -977,11 +1035,12 @@ function SessionList({
           </InputGroup>
         </div>
       ) : null}
-      {inbox.failed ? (
+      {loadFailed ? (
         // The groups below are then by run state, or the last items read: no review group is not
-        // "nothing to review".
+        // "nothing to review", and rows without facts are not "nothing recorded". One line says
+        // what could not be read, and one retry reads both again.
         <Banner status="error" size="compact">
-          <BannerTitle>{t('reviewLoadFailed')}</BannerTitle>
+          <BannerTitle>{t(loadFailed)}</BannerTitle>
           <BannerActions>
             <Button variant="tertiary" size="compact" onClick={inbox.retry}>
               {t('retry')}
@@ -1035,6 +1094,7 @@ function SessionList({
                   <SessionRow
                     key={row.session.sessionId}
                     row={row}
+                    facts={sessionFacts(inbox.evidence.get(row.session.sessionId))}
                     runs={runs}
                     attention={inbox.items}
                     pinSlot={pinSlot}
@@ -1096,12 +1156,14 @@ function SessionGroupHeading({ id, name, count }: { id: string; name: string; co
 }
 
 /**
- * One session: its title, then only what its group does not already say (docs/specs/workbench.md
- * #세션-목록의-상태와-처리할-항목): why it needs attention, or what there is to review; then its
- * runs and when it last changed. Pinned is the sidebar's pin, at the row's end.
+ * One session: its title, then its recorded facts (docs/specs/features/session-evidence.md) and
+ * only what its group does not already say (docs/specs/workbench.md#세션-목록의-상태와-처리할-항목):
+ * why it needs attention, or what there is to review; then its runs and when it last changed,
+ * worded as the sidebar words it. Pinned is the sidebar's pin, at the row's end.
  */
 function SessionRow({
   row: { session: x, attention: reasons, review },
+  facts,
   runs,
   attention,
   pinSlot,
@@ -1110,6 +1172,8 @@ function SessionRow({
   onArchive,
 }: {
   row: SessionGroupRow;
+  /** Check · decision · applied, as recorded; none when they could not be read. */
+  facts: SessionFact[];
   runs: RunSummary[];
   attention: InboxItemView[];
   /** Some listed row is pinned: every row keeps the pin's room. */
@@ -1121,7 +1185,6 @@ function SessionRow({
   const status = useTranslations('Status');
   const t = useTranslations('Sessions');
   const ti = useTranslations('Inbox');
-  const tw = useTranslations('Workspace');
   const ago = useSessionAge();
   const size = useSize();
   const terminal = uncertainSessionTerminal(x.sessionId, attention);
@@ -1159,11 +1222,12 @@ function SessionRow({
             )}
           >
             {[
+              ...facts.map((fact) => t(`fact.${fact}`)),
               ...reasons.map(reason),
               // What there is to review, by kind: never a count or a request's text.
               ...review.map((kind) => ti(`kind.${kind}`)),
               runCount ? t('runCount', { count: runCount }) : null,
-              tw('updated', { time: ago(x.updatedAt) }),
+              ago(x.updatedAt),
             ]
               .filter(Boolean)
               .join(' · ')}

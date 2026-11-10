@@ -1,4 +1,4 @@
-import type { InboxItemView } from '@corral/client';
+import type { InboxItemView, SessionEvidenceView } from '@corral/client';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { INBOX_GROUPS, type InboxGroupId } from './inbox.ts';
@@ -157,4 +157,31 @@ export function sessionGroups(
     const rows = grouped.get(id);
     return rows ? [{ id, rows }] : [];
   });
+}
+
+/** A recorded fact a session row says (docs/specs/features/session-evidence.md). */
+export type SessionFact =
+  | 'checks_passed'
+  | 'changed_after_checks'
+  | 'approved'
+  | 'changes_requested'
+  | 'applied';
+
+/**
+ * What a session's latest check, decision and applying say on its row, in that order. Only the
+ * good outcomes show: a failed check, a decision with writes after it and an applying that did
+ * not finish are the Review group's kinds, and a fact never changes a session's group.
+ */
+export function sessionFacts(
+  evidence: Pick<SessionEvidenceView, 'check' | 'decision' | 'integration'> | undefined,
+): SessionFact[] {
+  if (!evidence) return [];
+  const facts: SessionFact[] = [];
+  const { check, decision, integration } = evidence;
+  if (check?.verdict === 'pass')
+    facts.push(check.writesSince ? 'changed_after_checks' : 'checks_passed');
+  if (decision && !decision.writesSince)
+    facts.push(decision.decision === 'approved' ? 'approved' : 'changes_requested');
+  if (integration === 'applied') facts.push('applied');
+  return facts;
 }
