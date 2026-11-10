@@ -448,3 +448,18 @@ export async function startTestRun(page: Page) {
   await panel.getByRole('button', { name: 'Run', exact: true }).click();
   return panel;
 }
+
+/**
+ * Browser studio: imports `definition` in the library's Teams view, as a person imports a
+ * .corral.json file, and opens it in the editor. `delay` paces the simulated replies of this
+ * page load.
+ */
+export async function importTeam(page: Page, definition: unknown, delay?: number) {
+  await page.goto(delay === undefined ? '/library/teams' : `/library/teams?delay=${delay}`);
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'team.corral.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(definition)),
+  });
+  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+}

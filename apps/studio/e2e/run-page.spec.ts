@@ -4,23 +4,11 @@ import { startTestRun } from './workbench.ts';
 // The Run page on the in-browser demo team. Demo runs live in the page's worker,
 // so these tests reach the Run page through the app's own link instead of reloading.
 
-const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
-  const card = page.locator('[data-testid^="approval-"]').filter({ hasText: kind });
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  // UX-11: each step's button says what approving it does.
-  await card
-    .getByRole('button', {
-      name: kind === 'Final output' ? 'Confirm as final result' : 'Continue with this version',
-    })
-    .click();
-};
-
 async function finishedTeamRun(page: Page) {
   await page.goto('/demo?delay=150');
   await startTestRun(page);
-  await approve(page, 'Your decision');
-  await approve(page, 'Final output');
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  // The demo team asks for no approval, so its run finishes by itself.
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
   await expect(graph(page)).toBeVisible();

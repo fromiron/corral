@@ -1,11 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { showResults, startTestRun } from './workbench.ts';
+import { approvalResearchTeam } from '../src/demo/testing/approval-team.ts';
+import { importTeam, showResults, startTestRun } from './workbench.ts';
 
-// The Results view on the in-browser demo
-// team. Demo runs live in the page's worker, so the Run page is reached through the app's link.
+// The Results view on the in-browser research team, with its approvals put back so the run
+// waits for a person. Browser runs live in the page's worker, so the Run page is reached
+// through the app's link.
 
 test('a cancelled run keeps what it made as a partial result', async ({ page }) => {
-  await page.goto('/demo?delay=150');
+  await importTeam(page, approvalResearchTeam().definition, 150);
   await startTestRun(page);
   // The decision waits for a person after the drafts and reviews are written.
   await expect(

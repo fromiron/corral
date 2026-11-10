@@ -22,7 +22,7 @@ test('Ctrl+K opens the command palette; typing filters and Enter runs the comman
   await input.press('Enter');
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
   await expect(page.getByRole('heading', { name: 'Research team', level: 1 })).toBeVisible();
-  await expect(page.locator('[data-team-canvas] [data-node]')).toHaveCount(9);
+  await expect(page.locator('[data-team-canvas] [data-node]')).toHaveCount(8);
 });
 
 test('the palette closes with Escape, and an IME composition Enter does not run a command', async ({
