@@ -218,6 +218,57 @@ it('a detail takes the widgets’ place, and Back or Escape returns to the widge
   expect(document.activeElement).toBe(openButton(container, 'Context'));
 });
 
+/** Text a sighted reader sees: screen-reader-only words left out. */
+const visible = (node: Element | null | undefined) => {
+  const copy = node?.cloneNode(true) as Element | undefined;
+  for (const hidden of copy?.querySelectorAll('.sr-only') ?? []) hidden.remove();
+  return copy?.textContent ?? '';
+};
+
+it('the context detail says each measurement once and states only what is measured', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      reserveTokens: 16_384,
+      context: {
+        ...base.context,
+        kind: 'highest',
+        tokens: 2_399,
+        windowTokens: 128_000,
+        percent: null,
+        barPercent: null,
+        coverage: 'request',
+        completeness: 'partial',
+        measurementStage: 'assembled',
+        providerInput: 2_000,
+        providerCacheRead: null,
+        providerOutput: 44,
+        parts: [
+          { category: 'messages', tokens: 457 },
+          { category: 'system_prompt', tokens: 0 },
+        ],
+      },
+    } as Partial<ChatWidgetModel>),
+  );
+  await act(async () => openButton(container, 'Context')?.click());
+  const detail = container.querySelector('[data-testid="context-inspector"]');
+  expect(visible(detail)).toContain('Partial measurement');
+  const rows = [...(detail?.querySelectorAll('li') ?? [])];
+  const row = (label: string) => rows.find((item) => item.textContent?.startsWith(label));
+  // A measured zero stays a zero; an unmeasured part is a dash named "Not measured".
+  expect(visible(row('System prompt'))).toBe('System prompt0');
+  expect(visible(row('Skills'))).toBe('Skills—');
+  expect(row('Skills')?.textContent).toContain('Not measured');
+  expect(visible(detail)).not.toContain('Not measured');
+  expect(visible(detail)).toContain('16,384 reserved for output');
+  expect(visible(detail)).not.toContain('separate from input usage');
+  expect(visible(detail)).not.toContain('Request assembled');
+  expect(visible(detail)).not.toContain('The highest known ratio');
+  expect(visible(detail)).not.toContain('stay separate from this estimate');
+  // An unreported provider number is a dash, never 0.
+  expect(visible(detail)).toContain('Input 2,000 · cached — · output 44');
+});
+
 it('in the Overview popover Escape first leaves the detail, then closes the popover', async () => {
   const container = await render(model(), (value) => <OverviewPopover model={value} />);
   const trigger = container.querySelector<HTMLElement>('[data-testid="session-summary-trigger"]');
@@ -285,6 +336,25 @@ it('does not present a partial or unmeasured context as a full-window meter', as
   );
 });
 
+it('states an estimate without a percentage once: the tokens, then the window as its unit', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      context: {
+        ...base.context,
+        tokens: 2_399,
+        windowTokens: 128_000,
+        completeness: 'partial',
+        percent: null,
+        barPercent: null,
+      },
+    }),
+  );
+  const figure = container.querySelector('[data-overview-widget="context"] [data-slot="card-content"] p:not(.sr-only)');
+  expect(figure?.textContent).toBe('2.4k/ 128k');
+  expect(figure?.textContent).not.toMatch(/2\.4k.*2\.4k/);
+});
+
 it('uses a measured meter and a sparkline only for reported completed-call values', async () => {
   const base = model();
   const container = await render(model({ usage: { ...base.usage!, perCall: [10, 0, 30] } }));
@@ -323,6 +393,13 @@ it('shows agent identity and accurate current status while work is active, then 
     'Reviewer',
   );
   expect(widgets(completed)[0]).toBe('results');
+});
+
+it('names no run scope while the last run is shown', async () => {
+  const container = await render(model());
+  expect(container.querySelector('[data-testid="overview-run-scope"]')).toBeNull();
+  const live = await render(model({ live: true, viewed: null, runNumber: 2 } as never));
+  expect(live.querySelector('[data-testid="overview-run-scope"]')).toBeNull();
 });
 
 it('identifies an older selected run without changing its usage or results', async () => {

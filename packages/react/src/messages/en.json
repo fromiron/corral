@@ -3572,10 +3572,9 @@
     "completed": "Completed",
     "free": "About {count} left in this window",
     "window": "Window {count}",
-    "providerSeparate": "Provider input, cache, and output stay separate from this estimate.",
     "unmeasuredExecutions": "{count} executions have no complete measurement",
     "noPercent": "Some input is unmeasured, so no full context percentage is shown.",
-    "outputReserve": "{count} output tokens reserved · separate from input usage",
+    "outputReserve": "{count} reserved for output",
     "notInRequest": "Not in this request",
     "category": {
       "messages": "Messages",
@@ -3598,7 +3597,6 @@
     "estimatedRemaining": "Estimated remaining",
     "measurementFailed": "The request record could not be read. Check the execution details.",
     "measurementWaiting": "No measured request yet. Usage appears after a model request is recorded.",
-    "highestContext": "The highest known ratio is shown. Each execution has its own context window.",
     "missingCoverage": "Unmeasured coverage",
     "providerUsage": "Provider usage",
     "providerNumbers": "Input {input} · cached {cache} · output {output}",
@@ -3612,7 +3610,6 @@
     "retry": "Retry",
     "environmentSimulationDetail": "Simulated agents are running. No paid model calls, real file changes, or deployments are performed.",
     "environmentRestrictedDetail": "This run has a read-only scope or worker isolation setting. Check execution details for the applied scope.",
-    "measurementAssembled": "Request assembled. Awaiting measurement of the final provider payload.",
     "omission": {
       "unmeasured_image": "Image input",
       "unsupported_payload": "Unsupported input format",

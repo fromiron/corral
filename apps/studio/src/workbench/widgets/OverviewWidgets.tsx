@@ -191,11 +191,14 @@ export function OverviewWidgets({
         </div>
       ) : (
         <>
-          <p data-testid="overview-run-scope" className="text-caption text-muted-foreground">
-            {model.runNumber || model.viewed?.number
-              ? t('runScope', { number: model.runNumber ?? model.viewed?.number ?? 0 })
-              : t('selectedRun')}
-          </p>
+          {/* Only an older run needs saying; the last or live run is what Overview shows. */}
+          {model.viewed && !model.viewed.latest ? (
+            <p data-testid="overview-run-scope" className="text-caption text-muted-foreground">
+              {model.runNumber || model.viewed.number
+                ? t('runScope', { number: model.runNumber ?? model.viewed.number })
+                : t('selectedRun')}
+            </p>
+          ) : null}
           {overviewWidgets(model).map((widget) => (
             <div key={widget} data-overview-widget={widget}>
               <Widget widget={widget} model={model} open={choose} />
@@ -331,9 +334,13 @@ function ContextWidget({ model, open }: { model: ChatWidgetModel; open: () => vo
         {value ? (
           <Figure
             value={value}
+            // Each number once: a percentage is backed by tokens of the window; tokens alone
+            // take the window as their unit.
             unit={
               context.tokens != null && context.windowTokens
-                ? `${compactNumber(context.tokens, locale)} / ${compactNumber(context.windowTokens, locale)}`
+                ? context.percent != null
+                  ? `${compactNumber(context.tokens, locale)} / ${compactNumber(context.windowTokens, locale)}`
+                  : `/ ${compactNumber(context.windowTokens, locale)}`
                 : context.percent == null
                   ? tw('tokens')
                   : null

@@ -3572,10 +3572,9 @@
     "completed": "완료",
     "free": "이 창에서 약 {count} 남음",
     "window": "창 {count}",
-    "providerSeparate": "공급자 입력·캐시·출력은 이 추정에 더하지 않습니다.",
     "unmeasuredExecutions": "전체 비율을 확인할 수 없는 실행 {count}개",
     "noPercent": "부분 추정에는 측정하지 못한 입력이 있어 전체 비율을 표시하지 않습니다.",
-    "outputReserve": "출력 예약 {count}토큰 · 입력 점유량과 별도",
+    "outputReserve": "출력용 예약 {count}",
     "notInRequest": "이번 요청에 없음",
     "category": {
       "messages": "메시지",
@@ -3598,7 +3597,6 @@
     "estimatedRemaining": "추정 잔여 공간",
     "measurementFailed": "요청 기록을 읽지 못했습니다. 실행 상세에서 상태를 확인하세요.",
     "measurementWaiting": "아직 측정된 요청이 없습니다. 모델 요청이 기록되면 표시됩니다.",
-    "highestContext": "확인된 비율이 가장 높은 실행입니다. 에이전트마다 컨텍스트 창이 다릅니다.",
     "missingCoverage": "측정에서 빠진 범위",
     "providerUsage": "공급자 사용량",
     "providerNumbers": "입력 {input} · 캐시 {cache} · 출력 {output}",
@@ -3612,7 +3610,6 @@
     "retry": "다시 시도",
     "environmentSimulationDetail": "모의 에이전트가 실행됩니다. 유료 모델 호출이나 실제 파일 변경·배포는 수행하지 않습니다.",
     "environmentRestrictedDetail": "이 실행에 읽기 전용 범위 또는 작업자 격리 설정이 적용되어 있습니다. 적용 범위는 실행 상세에서 확인할 수 있습니다.",
-    "measurementAssembled": "요청 구성을 추정했습니다. 공급자에 전달할 최종 입력의 측정을 기다리고 있습니다.",
     "omission": {
       "unmeasured_image": "이미지 입력",
       "unsupported_payload": "지원하지 않는 입력 형식",

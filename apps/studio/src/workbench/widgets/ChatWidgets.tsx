@@ -218,9 +218,17 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
                 {tc(category)}
               </span>
               <span className="max-w-44 text-right tabular-nums text-muted-foreground">
-                {part
-                  ? `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
-                  : t(complete ? 'notInRequest' : 'notMeasured')}
+                {part ? (
+                  `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
+                ) : complete ? (
+                  t('notInRequest')
+                ) : (
+                  // The badge says the measurement is partial; each unmeasured row is a dash.
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">{t('notMeasured')}</span>
+                  </>
+                )}
               </span>
             </li>
           );
@@ -234,22 +242,25 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </li>
         ) : null}
       </ul>
-      {model.simulated || !complete || context.awaitingRefresh || context.kind === 'highest' ? (
+      {model.simulated ||
+      context.awaitingRefresh ||
+      (!complete && context.measurementStage !== 'assembled') ||
+      context.unmeasuredExecutions ||
+      context.omissions?.length ||
+      model.readState === 'error' ? (
         <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-caption text-muted-foreground">
           {model.simulated ? <p>{t('simulatedNote')}</p> : null}
           {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
-          {!complete ? (
+          {/* An assembled request needs no sentence: the badge already says it is partial. */}
+          {!complete && context.measurementStage !== 'assembled' ? (
             <p>
-              {context.measurementStage === 'assembled'
-                ? t('measurementAssembled')
-                : context.completeness === 'error'
-                  ? t('measurementFailed')
-                  : measured
-                    ? t('noPercent')
-                    : t('measurementWaiting')}
+              {context.completeness === 'error'
+                ? t('measurementFailed')
+                : measured
+                  ? t('noPercent')
+                  : t('measurementWaiting')}
             </p>
           ) : null}
-          {context.kind === 'highest' ? <p>{t('highestContext')}</p> : null}
           {context.unmeasuredExecutions ? (
             <p>{t('unmeasuredExecutions', { count: context.unmeasuredExecutions })}</p>
           ) : null}
@@ -276,7 +287,6 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       context.providerOutput != null ? (
         <details className="text-caption text-muted-foreground">
           <summary className="cursor-pointer rounded-sm py-1">{t('providerUsage')}</summary>
-          <p className="mt-1">{t('providerSeparate')}</p>
           <p className="mt-1 tabular-nums">
             {t('providerNumbers', {
               input: context.providerInput == null ? '—' : number(context.providerInput),
