@@ -1,9 +1,10 @@
 /* Copy-in kit values stay in design-kit/tokens.css; Corral roles live here. */
 @import "./design-kit/tokens.css";
 
+/* Same selectors as the kit's theme blocks, so these roles win when the theme class is set. */
 :root,
-.light,
-.dark {
+.light:not(.react-flow),
+.dark:not(.react-flow) {
   /* Small secondary/status text and focus need stronger contrast on light surfaces. */
   --destructive: light-dark(#b91c1c, #fca5a5);
   --destructive-contrast: light-dark(#ffffff, #171717);
