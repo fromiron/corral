@@ -171,7 +171,7 @@ it('shows a judged request on its row and keeps other reasoning in the request d
 it('opens a step’s details from its row, by pointer or keyboard, with no details label', async () => {
   const { act } = await import('react');
   const { createRoot } = await import('react-dom/client');
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   globalThis.ResizeObserver ??= class {
     observe() {}
     disconnect() {}

@@ -48,11 +48,10 @@ export function WorkingCopyChip({ onSetup }: { onSetup(): void }) {
         data-testid="working-copy-chip"
         variant="ghost"
         size="compact"
-        iconLeft
         aria-label={`${t('noWorkingCopy')} · ${t('prepareWorkingCopy')}`}
         onClick={onSetup}
       >
-        <FolderOpen aria-hidden />
+        <FolderOpen aria-hidden="true" />
         {t('noWorkingCopy')}
       </Button>
     </Tooltip>
