@@ -471,7 +471,7 @@
     "due": "Scheduled for",
     "dispatchResult": "Dispatch",
     "runStatus": "Run status",
-    "manual": "Run now",
+    "manual": "Manual",
     "session": "Session",
     "targetMissing": "Session not found",
     "settings": "Schedule settings",

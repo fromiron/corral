@@ -26,6 +26,7 @@ import { schedulesApi } from '../schedules-api.ts';
 import { useServices } from '../services.tsx';
 import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { watchRefresh } from '../workbench/refresh.ts';
+import { watchRunList } from '../workbench/runList.ts';
 import { scheduleHistoryStatus } from '../workbench/scheduledRuns.ts';
 
 /** Sunday first, as the rule's weekday numbers count them. */
@@ -101,14 +102,14 @@ export function ScheduledPage() {
   targetId.current = shown?.sessionId ?? null;
   const reads = useRef(0);
   /**
-   * The list, the runs, and histories: every schedule's when `every`, else only the one shown.
-   * An older read that finishes after a newer one has started is dropped.
+   * The list and histories: every schedule's when `every`, else only the one shown. An older read
+   * that finishes after a newer one has started is dropped. Runs come from the shared run list.
    */
   const readSchedules = async (every: boolean, current: () => boolean = () => true) => {
     const id = ++reads.current;
     const chosen = selectedId.current;
     const chosenTarget = targetId.current;
-    const [listed, latestRuns, session] = await Promise.allSettled([
+    const [listed, session] = await Promise.allSettled([
       schedulesApi.list().then(async ({ schedules }) => ({
         schedules,
         histories: Object.fromEntries(
@@ -122,7 +123,6 @@ export function ScheduledPage() {
           ),
         ),
       })),
-      transport.listRuns(),
       chosenTarget ? readTarget(repository, chosenTarget) : Promise.resolve(null),
     ]);
     if (!current() || id !== reads.current) return;
@@ -135,12 +135,29 @@ export function ScheduledPage() {
       );
       setReadError(null);
     } else setReadError(message(listed.reason));
-    // A failed run lookup never leaves an older status standing in for the current one.
-    setRuns(latestRuns.status === 'fulfilled' ? latestRuns.value : null);
   };
   const readRef = useRef(readSchedules);
   readRef.current = readSchedules;
-  const refresh = () => readSchedules(true);
+  // The run list the sidebar and its scheduled-run notice read: when a run settles, its history
+  // row changes with the same snapshot that raises the notice, not at this page's next tick.
+  const runList = useRef<{ refresh(): void } | null>(null);
+  useEffect(() => {
+    if (mode !== 'server') return;
+    const watcher = watchRunList(transport, async (result, current) => {
+      if (!current()) return;
+      // A failed run lookup never leaves an older status standing in for the current one.
+      setRuns('error' in result ? null : result.runs);
+    });
+    runList.current = watcher;
+    return () => {
+      runList.current = null;
+      watcher.dispose();
+    };
+  }, [mode, transport]);
+  const refresh = () => {
+    runList.current?.refresh();
+    return readSchedules(true);
+  };
   useEffect(() => {
     if (mode !== 'server') return;
     let active = true;
@@ -444,7 +461,8 @@ export function ScheduledPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t('due')}</TableHead>
-                      <TableHead>{t('dispatchResult')}</TableHead>
+                      {/* Narrow: the firing's result stacks under its time, like the list above. */}
+                      <TableHead className="max-md:hidden">{t('dispatchResult')}</TableHead>
                       <TableHead>{t('runStatus')}</TableHead>
                       <TableHead>
                         <span className="sr-only">{t('openRun')}</span>
@@ -460,8 +478,12 @@ export function ScheduledPage() {
                           <TableCell className="tabular-nums">
                             {format.dateTime(new Date(entry.dueAt), DATE_TIME)}
                             {entry.manual ? ` · ${t('manual')}` : ''}
+                            <span className="block text-caption md:hidden">
+                              {t(`occurrence.${entry.status}`)}
+                              {entry.detail ? ` · ${entry.detail}` : ''}
+                            </span>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="max-md:hidden">
                             {t(`occurrence.${entry.status}`)}
                             {entry.detail ? (
                               <p className="m-0 text-caption text-muted-foreground">

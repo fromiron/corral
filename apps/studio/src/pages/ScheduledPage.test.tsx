@@ -225,10 +225,16 @@ it('a refresh tick reads only the shown schedule’s history; opening, focus and
     fixture.api.history.mockClear();
     fixture.api.list.mockClear();
     fixture.services.transport.listRuns.mockClear();
-    await act(async () => vi.advanceTimersByTime(3000));
+    // Runs are read only by the shared run list, at its own 1.5 s step; the schedule's 3 s tick
+    // reads the list and the shown history, and adds no run read of its own.
+    await act(async () => vi.advanceTimersByTime(1500));
+    await settle();
+    expect(fixture.services.transport.listRuns).toHaveBeenCalledTimes(1);
+    expect(fixture.api.list).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(1500));
     await settle();
     expect(fixture.api.list).toHaveBeenCalledTimes(1);
-    expect(fixture.services.transport.listRuns).toHaveBeenCalledTimes(1);
+    expect(fixture.services.transport.listRuns).toHaveBeenCalledTimes(2);
     expect(read()).toEqual(['schedule_3']);
     fixture.api.history.mockClear();
     await act(async () => window.dispatchEvent(new Event('focus')));
@@ -364,6 +370,32 @@ it('Run now asks once for a double click and keeps its command ID for a retry', 
   expect(first?.[1]).toMatch(/^manual_/);
   expect(second?.[1]).toBe(first?.[1]);
   expect(history()?.textContent).toContain('Started');
+  // The firing is marked as a manual one, not with the name of the action that made it.
+  const due = history()?.querySelector('tbody td');
+  expect(due?.textContent).toContain(`AM · ${messages.Schedules.manual}`);
+  expect(due?.textContent).not.toContain('Run now');
+});
+
+it('a run that settles updates its history row with the shared run list, not a later tick', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+    fixture.api.history.mockResolvedValue({ occurrences: [started({ manual: true })] });
+    fixture.services.transport.listRuns.mockResolvedValue([run('running')]);
+    await page();
+    await click(button(/Daily project review/));
+    await settle();
+    expect(history()?.textContent).toContain('Running');
+    // The run settles. The run list the sidebar and its notice read sees it at its next step,
+    // before the schedule's own refresh tick comes round.
+    fixture.services.transport.listRuns.mockResolvedValue([run('succeeded')]);
+    await act(async () => vi.advanceTimersByTime(1500));
+    await settle();
+    expect(history()?.textContent).toContain('Succeeded');
+    expect(history()?.textContent).not.toContain('Running');
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 /** The detail's Target value. */
