@@ -979,6 +979,112 @@ it('a finished execution offers no instruction screen', async () => {
   expect(labels).not.toContain('Give instruction');
 });
 
+/** The run failed: worker's execution ended with the recorded error, the run with `reason`. */
+async function failRun(
+  run: RunSessionStore,
+  {
+    reason,
+    error,
+    executions = true,
+  }: { reason: string | null; error?: string; executions?: boolean },
+) {
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  const failed: ExecutionView = {
+    ...graphExecution('exec_worker', 'worker'),
+    status: 'failed',
+    activity: null,
+    error: error ?? null,
+  };
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        status: 'failed',
+        statusReason: reason,
+        ...(executions
+          ? {
+              executionOrder: ['exec_worker'],
+              executions: { exec_worker: failed },
+              nodeExecutions: { worker: ['exec_worker'] },
+            }
+          : {}),
+      },
+    }),
+  );
+}
+
+const header = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="run-header"]');
+const endReason = (container: HTMLElement) =>
+  header(container)?.querySelector<HTMLElement>('[data-testid="run-end-reason"]') ?? null;
+const failureEntry = (container: HTMLElement) =>
+  [...(header(container)?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent === 'Open the failed execution',
+  );
+
+it('a failed run names its recorded end reason beside its state and opens the failed execution', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model request failed: HTTP 500 (SERVER)',
+  });
+  // The same words as Run info's reason, once, in the header beside the state.
+  expect(endReason(container)?.textContent).toBe('worker failed');
+  const entry = failureEntry(container);
+  expect(entry).toBeDefined();
+  await act(async () => entry?.click());
+  expect(navigations.at(-1)?.patch).toMatchObject({ execution: 'exec_worker' });
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(false);
+  // The detail leads its failure with the recorded reason, open, not behind a closed disclosure.
+  const failure = side?.querySelector<HTMLElement>('[data-testid="execution-failure"]');
+  expect(failure).not.toBeNull();
+  expect(failure?.querySelector('p')?.textContent).toBe(
+    'The model provider is temporarily unavailable.',
+  );
+  expect(failure?.querySelector('details')?.open).toBe(true);
+  expect(failure?.textContent).toContain('the model request failed: HTTP 500 (SERVER)');
+});
+
+it('a failed execution of unknown cause leads its failure with the recorded text', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model worker reported a request failure',
+  });
+  const failure = container.querySelector<HTMLElement>(
+    '[data-testid="run-side"] [data-testid="execution-failure"]',
+  );
+  expect(failure?.querySelector('p')?.textContent).toBe(
+    'the model worker reported a request failure',
+  );
+  // Nothing is left folded away, and the recorded text is not repeated below it.
+  expect(failure?.querySelector('details:not([open])')).toBeNull();
+  expect(failure?.textContent?.split('the model worker reported a request failure')).toHaveLength(
+    2,
+  );
+});
+
+it('a failed run without a recorded reason still opens its failed execution', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await failRun(run, { reason: null });
+  expect(endReason(container)).toBeNull();
+  expect(failureEntry(container)).toBeDefined();
+});
+
+it('a failed run with no failed execution names its reason and offers no entry', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await failRun(run, { reason: 'internal_error: Error: secret detail', executions: false });
+  expect(endReason(container)?.textContent).toBe('An internal error stopped the run');
+  expect(header(container)?.textContent).not.toContain('secret detail');
+  expect(failureEntry(container)).toBeUndefined();
+});
+
 it('workspace changes inspected executions without silently retargeting an instruction draft', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run, navigate } = await mount('inline_team', null, {

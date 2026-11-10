@@ -564,6 +564,38 @@ export function toolRows(
   return [...rows.values()];
 }
 
+/** The calls of a run as tool rows, each call's effect outcome beside its phase. */
+export function runToolRows(projection: RunProjection | null) {
+  return toolRows(
+    Object.values(projection?.toolCalls ?? {}).map((call) => ({
+      toolCallId: call.toolCallId,
+      name: call.name,
+      phase: call.phase ?? call.status,
+      effect: call.effectId ? projection?.effects[call.effectId]?.outcome : null,
+    })),
+  );
+}
+
+/** The execution of the run's first failed tool call: where its failed steps are reviewed. */
+export function failedToolExecutionId(
+  projection: RunProjection | null,
+  rows = runToolRows(projection),
+): string | null {
+  const id = rows.find((row) => row.tone === 'failed')?.id;
+  return (id ? projection?.toolCalls[id]?.executionId : null) ?? null;
+}
+
+/**
+ * The run's failed execution, for the one way to its detail: the latest execution that ended
+ * failed, else the execution of its first failed tool call. None when nothing failed.
+ */
+export function failedExecutionId(projection: RunProjection | null): string | null {
+  const failed = projection?.executionOrder
+    .filter((id) => projection.executions[id]?.status === 'failed')
+    .at(-1);
+  return failed ?? failedToolExecutionId(projection);
+}
+
 export type WidgetChip = 'context' | 'environment' | 'agents' | 'changes';
 
 /** What the Usage widget states about a run. Limits are null when none apply. */

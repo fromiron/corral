@@ -5272,6 +5272,7 @@
     "nonAgentNode": "This node has no separate agent execution. Its outcome appears in the graph and recorded results.",
     "workPlans": "Work plans",
     "failedSteps": "Failed steps",
+    "openFailure": "Open the failed execution",
     "lanes": {
       "running": "{count} running",
       "needsYou": "{count} needs you",

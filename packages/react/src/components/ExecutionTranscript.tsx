@@ -31,12 +31,15 @@ export function ExecutionTranscript({
   executionId,
   onOpenArtifact,
   compact = false,
+  failureShown = false,
 }: {
   session: RunSessionStore;
   executionId: string;
   onOpenArtifact?: (artifactVersionId: string) => void;
   /** Fold each model reply until the reader opens it. The full run page stays expanded. */
   compact?: boolean;
+  /** The host already leads with why the execution failed; its end keeps only the outcome. */
+  failureShown?: boolean;
 }) {
   const t = useTranslations('Transcript');
   const events = useRunDisplay(session, (s) => s.events);
@@ -90,6 +93,7 @@ export function ExecutionTranscript({
             labelOf={labelOf}
             {...(onOpenArtifact ? { onOpenArtifact } : {})}
             compact={compact}
+            failureShown={failureShown}
           />
         ),
       )}
@@ -273,11 +277,13 @@ function Entry({
   labelOf,
   onOpenArtifact,
   compact = false,
+  failureShown = false,
 }: {
   entry: TranscriptEntry;
   labelOf: (nodeId: string) => string;
   onOpenArtifact?: (id: string) => void;
   compact?: boolean;
+  failureShown?: boolean;
 }) {
   const t = useTranslations('Transcript');
   switch (entry.kind) {
@@ -371,7 +377,7 @@ function Entry({
           className={`text-center text-caption ${entry.outcome === 'succeeded' ? 'text-success' : 'text-danger'}`}
         >
           {t(`settled.${entry.outcome}`)}
-          {entry.error ? (
+          {entry.error && !(failureShown && entry.outcome === 'failed') ? (
             <FailureNotice message={entry.error} cancelled={entry.outcome === 'cancelled'} />
           ) : null}
         </div>

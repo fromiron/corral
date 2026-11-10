@@ -38,11 +38,12 @@ import {
   changesPresentation,
   currentAgentExecutions,
   effectAttention,
+  failedToolExecutionId,
   fileChangeSignals,
   type PlanRef,
   presentContext,
+  runToolRows,
   selectPresentedPlan,
-  toolRows,
   type UsageSummary,
   usageSummary,
   viewedRun,
@@ -444,14 +445,7 @@ function useChatWidgetState(
     planStatus.state === 'ready' && selectedChoice?.live
       ? planStatus.plan.items.find((item) => item.status === 'in_progress')
       : undefined;
-  const tools = toolRows(
-    Object.values(projection?.toolCalls ?? {}).map((call) => ({
-      toolCallId: call.toolCallId,
-      name: call.name,
-      phase: call.phase ?? call.status,
-      effect: call.effectId ? projection?.effects[call.effectId]?.outcome : null,
-    })),
-  );
+  const tools = runToolRows(projection);
   const currentTool = tools.find((row) => row.tone === 'running') ?? null;
   const resultText = useTranslations('Results');
   const listed = projection ? runResults(projection) : null;
@@ -582,9 +576,7 @@ function useChatWidgetState(
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
     questionNotice,
-    failedExecutionId:
-      projection?.toolCalls[tools.find((row) => row.tone === 'failed')?.id ?? '']?.executionId ??
-      null,
+    failedExecutionId: failedToolExecutionId(projection, tools),
     activity,
     plan: {
       open,

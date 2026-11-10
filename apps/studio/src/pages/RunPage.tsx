@@ -89,6 +89,7 @@ import { RunViews } from '../workbench/RunViews.tsx';
 import { runFlowChecks } from '../workbench/runFlowChecks.ts';
 import { toolMarks } from '../workbench/toolMarks.ts';
 import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
+import { failedExecutionId } from '../workbench/widgets/selectors.ts';
 import { markRunReviewed } from './GettingStarted.tsx';
 
 export type { RunDetailSearch } from '../workbench/panels/routes.ts';
@@ -255,6 +256,9 @@ function RunWorkspace({
   const events = useStore(session, (s) => s.events);
   // The work flow's tree and decisions show the same inspected Loop rounds.
   const rounds = useRoundInspection(projection, execution ?? null);
+  // Why the selected execution failed, as recorded; the detail leads its failure with it.
+  const selectedExecution = execution ? projection?.executions[execution] : undefined;
+  const failedError = selectedExecution?.status === 'failed' ? selectedExecution.error : null;
   const failedTools = execution
     ? Object.values(projection?.toolCalls ?? {}).filter(
         (call) =>
@@ -517,6 +521,10 @@ function RunWorkspace({
           setSearch({ artifact: undefined, result: undefined, view: undefined });
           setPanel('approval');
           requestAnimationFrame(() => response.current?.focus({ preventScroll: true }));
+        }}
+        onOpenExecution={(id) => {
+          setSteeringOpen(false);
+          chooseExecution(id);
         }}
         trailing={
           <Button
@@ -819,16 +827,6 @@ function RunWorkspace({
                   {m('steer')}
                 </Button>
               ) : null}
-              {failedTools.length && panel === 'selection' ? (
-                <section aria-label={m('failedSteps')} className="my-3 space-y-2">
-                  {failedTools.map((call) => (
-                    <div key={call.toolCallId} data-testid={`failed-step-${call.toolCallId}`}>
-                      <p className="text-xs font-medium">{call.name}</p>
-                      <FailureNotice code={call.errorCode} message={call.reason ?? ''} />
-                    </div>
-                  ))}
-                </section>
-              ) : null}
               {panel === 'run' ? (
                 <Tabs value={detail} onValueChange={setDetail} className="mt-3">
                   <div className="overflow-x-auto">
@@ -871,22 +869,43 @@ function RunWorkspace({
                   </TabPanel>
                 </Tabs>
               ) : null}
+              {panel === 'selection' && selectedTarget && sessionId ? (
+                <ExecutionEvidence
+                  session={session}
+                  sessionId={sessionId}
+                  executionId={selectedTarget.executionId}
+                  onOpenArtifact={openArtifact}
+                />
+              ) : null}
+              {panel === 'selection' && (failedError || failedTools.length) ? (
+                <section
+                  aria-label={m('failedSteps')}
+                  data-testid="execution-failure"
+                  className="mt-4 grid gap-2"
+                >
+                  {failedError ? <FailureNotice message={failedError} open /> : null}
+                  {failedTools.map((call) => (
+                    <div key={call.toolCallId} data-testid={`failed-step-${call.toolCallId}`}>
+                      <p
+                        className="text-caption"
+                        style={{ fontVariationSettings: fontWeights.semibold }}
+                      >
+                        {call.name}
+                      </p>
+                      <FailureNotice code={call.errorCode} message={call.reason ?? ''} />
+                    </div>
+                  ))}
+                </section>
+              ) : null}
               {panel === 'selection' && selectedTarget ? (
-                <div className="grid gap-4">
-                  {sessionId ? (
-                    <ExecutionEvidence
-                      session={session}
-                      sessionId={sessionId}
-                      executionId={selectedTarget.executionId}
-                      onOpenArtifact={openArtifact}
-                    />
-                  ) : null}
+                <div className="mt-4 grid gap-4">
                   <ExecutionContext session={session} executionId={selectedTarget.executionId} />
                   <section aria-label={m('calls')} className="-mx-4 grid">
                     <ExecutionTranscript
                       session={session}
                       executionId={selectedTarget.executionId}
                       onOpenArtifact={openArtifact}
+                      failureShown={Boolean(failedError)}
                     />
                   </section>
                 </div>
@@ -978,6 +997,7 @@ function RunHeader({
   trailing,
   waiting = 0,
   onRespond,
+  onOpenExecution,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
@@ -988,12 +1008,19 @@ function RunHeader({
   /** Questions and approvals waiting for the person; the status becomes the way to them. */
   waiting?: number;
   onRespond?: () => void;
+  /** Opens an execution's detail: a failed run's one way to the execution that failed. */
+  onOpenExecution?: (executionId: string) => void;
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
   const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
   if (!projection) return null;
+  // A failed run says why beside its state, in Run info's words, and leads to what failed.
+  const failed = projection.status === 'failed';
+  const failedExecution = failed ? failedExecutionId(projection) : null;
+  const labelOf = (nodeId: string) =>
+    definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
   const title = runNumber
     ? t('runName', { number: runNumber, name: request ?? definition.name })
     : (request ?? definition.name);
@@ -1037,6 +1064,28 @@ function RunHeader({
             />
           </span>
         </div>
+        {failed && (projection.statusReason || (failedExecution && onOpenExecution)) ? (
+          <div className="flex min-w-0 items-center gap-2 @max-[44rem]/run-head:flex-1">
+            {projection.statusReason ? (
+              <span
+                data-testid="run-end-reason"
+                className="min-w-0 truncate text-caption text-muted-foreground"
+              >
+                <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+              </span>
+            ) : null}
+            {failedExecution && onOpenExecution ? (
+              <Button
+                variant="tertiary"
+                size="compact"
+                className="shrink-0"
+                onClick={() => onOpenExecution(failedExecution)}
+              >
+                {m('openFailure')}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         <div className={cn('ml-auto flex shrink-0 items-center gap-1', HEAD_ACTIONS)}>
           <RunActions session={session} compact narrowIcons />
           {trailing}
