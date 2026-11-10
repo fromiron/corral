@@ -277,7 +277,7 @@ it('says the pending count once, in the header', async () => {
   expect(container.textContent?.match(/2 pending/g)).toHaveLength(1);
 });
 
-it('shows one empty state that starts a conversation when the project has no sessions', async () => {
+it('shows one empty state when the project has no sessions; the header alone starts one', async () => {
   fixture.data = { ...fixture.data, sessions: [] };
   const createSession = vi.fn(async () => ({ ok: true, session: session('session_9', 'New') }));
   fixture.services = {
@@ -292,18 +292,14 @@ it('shows one empty state that starts a conversation when the project has no ses
   // The old getting-started card and its separate sentence are gone.
   expect(container.textContent).not.toContain('Getting started');
   expect(panel.querySelectorAll('p').length).toBeLessThanOrEqual(1);
-  const start = [...panel.querySelectorAll('button')].find(
-    (button) => button.textContent === messages.Sessions.start,
+  // One primary start on the page: the header's, not a second one under the empty state.
+  expect(panel.querySelectorAll('button')).toHaveLength(0);
+  const starts = [...container.querySelectorAll('button')].filter(
+    (button) => button.textContent === 'New conversation',
   );
-  expect(start).toBeTruthy();
-  // Its name differs from the header's New conversation, so neither is ambiguous.
-  expect(
-    [...container.querySelectorAll('button')].filter(
-      (button) => button.textContent === 'New conversation',
-    ),
-  ).toHaveLength(1);
-  // It is the header's own start: one session, then the conversation opens.
-  await act(async () => start?.click());
+  expect(starts).toHaveLength(1);
+  // It starts one session, then the conversation opens.
+  await act(async () => starts[0]?.click());
   await settle();
   expect(createSession).toHaveBeenCalledTimes(1);
   expect(router.state.location.pathname).toBe('/sessions/session_9');

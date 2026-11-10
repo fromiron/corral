@@ -1804,8 +1804,7 @@
     "emptyText": "세션은 한 목적을 여러 요청과 실행에 걸쳐 이어 갑니다.",
     "connectModel": "모델 연결하기",
     "noMatches": "검색 조건에 맞는 세션이 없습니다.",
-    "meeting": "회의",
-    "start": "대화 시작"
+    "meeting": "회의"
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",

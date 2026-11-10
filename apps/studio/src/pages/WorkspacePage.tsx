@@ -41,15 +41,7 @@ import {
 } from '@corral/react/design-kit';
 import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import {
-  type FormEvent,
-  type Ref,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react';
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
@@ -101,8 +93,6 @@ export function WorkspacePage() {
   const { newSession } = workspaceRoute.useSearch();
   const [meeting, setMeeting] = useState(false);
   const shown = projectName(project, tp('defaultName'));
-  // The empty Sessions tab starts a conversation through the header's own control.
-  const starter = useRef<ConversationStarter>(null);
   const inboxReturn = workHref(href);
 
   const runsPanel = (
@@ -168,7 +158,6 @@ export function WorkspacePage() {
                       <>
                         <NewConversation
                           key={`${projectId}:${newSession ? 'new' : 'start'}`}
-                          handle={starter}
                           focus={Boolean(newSession)}
                           projectId={projectId}
                           corrals={corrals}
@@ -209,7 +198,7 @@ export function WorkspacePage() {
                   sessions={sessions}
                   runs={runs}
                   attention={inboxItems}
-                  {...(archived ? {} : { onStart: () => starter.current?.start() })}
+                  archived={archived}
                 />
               }
               runs={runsPanel}
@@ -477,23 +466,15 @@ function ProjectMenu({
   );
 }
 
-/** What other parts of the page may ask of the header's New conversation. */
-interface ConversationStarter {
-  /** The same start as the button: saved details are shown first, never sent silently. */
-  start(): void;
-}
-
 /**
  * Starts a conversation at once. Its menu opens the name, purpose and team first; those details
  * are remembered for the project and nothing runs until the first request is sent.
  */
 function NewConversation({
-  handle,
   focus,
   projectId,
   corrals,
 }: {
-  handle: Ref<ConversationStarter>;
   focus: boolean;
   projectId: string;
   corrals: CorralSummary[];
@@ -590,7 +571,6 @@ function NewConversation({
     if (hasDetails) setDetailsOpen(true);
     else void create();
   };
-  useImperativeHandle(handle, () => ({ start }));
 
   // The explicit new-session link opens the composer once; it never starts a Run.
   // biome-ignore lint/correctness/useExhaustiveDependencies: later form edits must not create another session
@@ -879,19 +859,20 @@ function EnvironmentPanel({
 
 /**
  * The project's work sessions and meetings: pinned first, searchable. Without any, one empty
- * state names what a session is and starts the first; a missing model is the one other step.
+ * state names what a session is; the header's New conversation starts the first, and a missing
+ * model is the one other step.
  */
 function SessionList({
   sessions,
   runs,
   attention,
-  onStart,
+  archived,
 }: {
   sessions: WorkSession[];
   runs: RunSummary[];
   attention: InboxItemView[];
-  /** Absent for an archived project, which starts nothing. */
-  onStart?: () => void;
+  /** An archived project starts nothing. */
+  archived: boolean;
 }) {
   const status = useTranslations('Status');
   const t = useTranslations('Sessions');
@@ -991,15 +972,10 @@ function SessionList({
           <div className="w-full">
             <EmptyState title={t('emptyTitle')} text={t('emptyText')} />
           </div>
-          {onStart ? (
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={onStart}>{t('start')}</Button>
-              {needsModel ? (
-                <Button variant="tertiary" render={<Link {...navigation.link('models')} />}>
-                  {t('connectModel')}
-                </Button>
-              ) : null}
-            </div>
+          {needsModel && !archived ? (
+            <Button variant="tertiary" render={<Link {...navigation.link('models')} />}>
+              {t('connectModel')}
+            </Button>
           ) : null}
         </div>
       ) : shown.length === 0 ? (

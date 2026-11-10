@@ -1804,8 +1804,7 @@
     "emptyText": "A session keeps one purpose across its requests and runs.",
     "connectModel": "Connect a model",
     "noMatches": "No sessions match this search.",
-    "meeting": "Meeting",
-    "start": "Start a conversation"
+    "meeting": "Meeting"
   },
   "Files": {
     "folderHeading": "Project source folder",
