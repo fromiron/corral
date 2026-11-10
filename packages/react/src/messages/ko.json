@@ -2023,7 +2023,13 @@
       "applied": "반영함"
     },
     "evidenceLoadFailed": "검사·판단·반영 기록을 불러오지 못했습니다.",
-    "reviewAndEvidenceLoadFailed": "검토할 항목과 검사·판단·반영 기록을 불러오지 못했습니다."
+    "reviewAndEvidenceLoadFailed": "검토할 항목과 검사·판단·반영 기록을 불러오지 못했습니다.",
+    "criteria": {
+      "label": "완료 기준",
+      "placeholder": "빌드가 경고 없이 통과합니다",
+      "tooMany": "완료 기준은 {max}줄까지 적을 수 있습니다.",
+      "tooLong": "{line}번째 줄이 {max}자를 넘습니다."
+    }
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",

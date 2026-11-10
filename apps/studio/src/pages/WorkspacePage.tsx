@@ -58,12 +58,18 @@ import { projectName, projectsChanged, setCurrentProject } from '../projects.ts'
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { CriteriaField } from '../workbench/CriteriaField.tsx';
 import { NewMeetingDialog } from '../workbench/NewMeeting.tsx';
 import { useSettingsNavigation, workHref } from '../workbench/navigation.ts';
-import { newSessionDraftKey } from '../workbench/newSessionDraft.ts';
+import {
+  EMPTY_DRAFT,
+  type NewSessionDraft,
+  newSessionDraftKey,
+} from '../workbench/newSessionDraft.ts';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { RunList } from '../workbench/RunList.tsx';
+import { readCriteria } from '../workbench/sessionCriteria.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import {
   type AttentionReason,
@@ -546,16 +552,20 @@ function NewConversation({
   const creating = useRef(false);
   const active = useRef(true);
   const automatic = useRef(false);
-  const [draft, saveDraft] = useRemembered(newSessionDraftKey(projectId), {
-    title: '',
-    objective: '',
-    corralId: '',
-  });
+  const [draft, saveDraft] = useRemembered<NewSessionDraft>(
+    newSessionDraftKey(projectId),
+    EMPTY_DRAFT,
+  );
   const title = typeof draft?.title === 'string' ? draft.title : '';
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const objective = typeof draft?.objective === 'string' ? draft.objective : '';
   const corralId = typeof draft?.corralId === 'string' ? draft.corralId : '';
+  // As typed, one per line; trimmed and without blank lines only when sent.
+  const criteria = typeof draft?.criteria === 'string' ? draft.criteria : '';
+  const edit = (change: Partial<NewSessionDraft>) =>
+    saveDraft({ title, objective, corralId, criteria, ...change });
+  const criteriaField = useRef<HTMLTextAreaElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -568,7 +578,7 @@ function NewConversation({
   const chooseTeam = (available: CorralSummary[]) =>
     available.some((c) => c.corralId === corralId) || isSuggested(corralId) ? corralId : '';
   const team = chooseTeam(corrals);
-  const hasDetails = Boolean(title || objective || corralId);
+  const hasDetails = Boolean(title || objective || corralId || criteria.trim());
   useEffect(() => {
     active.current = true;
     return () => {
@@ -579,6 +589,13 @@ function NewConversation({
   const create = async (event?: FormEvent) => {
     event?.preventDefault();
     if (creating.current) return;
+    // Criteria past a limit say so on their field; nothing is made or sent.
+    const sentCriteria = readCriteria(criteria);
+    if (!sentCriteria) {
+      setDetailsOpen(true);
+      criteriaField.current?.focus();
+      return;
+    }
     creating.current = true;
     const submittedDraft = JSON.stringify(draftRef.current);
     setSaving(true);
@@ -600,6 +617,7 @@ function NewConversation({
         title: title.trim() || (objective.trim() ? '' : t('new')),
         autoTitle: !title.trim() && !objective.trim(),
         objective,
+        ...(sentCriteria.length ? { criteria: sentCriteria } : {}),
         corralId: teamId || null,
       });
       if (!result.ok) return setError(result.message);
@@ -607,8 +625,7 @@ function NewConversation({
       projectsChanged();
       // A completed background creation must not dismiss the person's settings or retarget work.
       if (!active.current || router.state.location.search.settings) return;
-      if (JSON.stringify(draftRef.current) === submittedDraft)
-        saveDraft({ title: '', objective: '', corralId: '' });
+      if (JSON.stringify(draftRef.current) === submittedDraft) saveDraft(EMPTY_DRAFT);
       await navigate({
         to: '/sessions/$sessionId',
         params: { sessionId: result.session.sessionId },
@@ -685,7 +702,7 @@ function NewConversation({
                   label={t('teamLabel')}
                   value={team}
                   onValueChange={(value) => {
-                    if (!creating.current) saveDraft({ title, objective, corralId: value });
+                    if (!creating.current) edit({ corralId: value });
                   }}
                   options={[
                     { value: '', label: t('autoTeam') },
@@ -704,7 +721,7 @@ function NewConversation({
                     id={`new-session-title-${projectId}`}
                     disabled={saving}
                     value={title}
-                    onChange={(value) => saveDraft({ title: value, objective, corralId })}
+                    onChange={(value) => edit({ title: value })}
                   />
                 </InputGroup>
                 <label
@@ -719,7 +736,7 @@ function NewConversation({
                     placeholder={t('objectivePlaceholder')}
                     value={objective}
                     rows={3}
-                    onChange={(e) => saveDraft({ title, objective: e.target.value, corralId })}
+                    onChange={(e) => edit({ objective: e.target.value })}
                     onKeyDown={(e) => {
                       if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                       if (isSendKey(e, sendKey)) {
@@ -729,6 +746,14 @@ function NewConversation({
                     }}
                   />
                 </label>
+                {/* A work session's criteria; Enter adds a line here, it never starts. */}
+                <CriteriaField
+                  id={`new-session-criteria-${projectId}`}
+                  fieldRef={criteriaField}
+                  disabled={saving}
+                  value={criteria}
+                  onChange={(value) => edit({ criteria: value })}
+                />
                 {error ? (
                   <p role="alert" className="text-body text-destructive">
                     {error}

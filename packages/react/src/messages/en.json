@@ -2023,7 +2023,13 @@
       "applied": "Applied"
     },
     "evidenceLoadFailed": "Couldn't load checks, decisions and applying.",
-    "reviewAndEvidenceLoadFailed": "Couldn't load items to review, checks, decisions or applying."
+    "reviewAndEvidenceLoadFailed": "Couldn't load items to review, checks, decisions or applying.",
+    "criteria": {
+      "label": "Completion criteria",
+      "placeholder": "The build passes without warnings",
+      "tooMany": "Completion criteria have up to {max} lines.",
+      "tooLong": "Line {line} is longer than {max} characters."
+    }
   },
   "Files": {
     "folderHeading": "Project source folder",

@@ -5,7 +5,7 @@ import type {
   WorkspaceBindingView,
   WorktreeView,
 } from '@corral/client';
-import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
+import type { NewSession, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -927,10 +927,199 @@ it('reads neither list and shows no facts or failure without any workspace clien
   expect(retries(container)).toHaveLength(0);
 });
 
-it('never calls a fact verified or confirmed, in either language', () => {
+it('never calls a fact or the criteria verified, confirmed or met, in either language', () => {
   for (const catalog of [messages, ko]) {
-    const { fact, evidenceLoadFailed, reviewAndEvidenceLoadFailed } = catalog.Sessions;
-    const words = JSON.stringify({ fact, evidenceLoadFailed, reviewAndEvidenceLoadFailed });
+    const { fact, evidenceLoadFailed, reviewAndEvidenceLoadFailed, criteria } = catalog.Sessions;
+    const words = JSON.stringify({
+      fact,
+      evidenceLoadFailed,
+      reviewAndEvidenceLoadFailed,
+      criteria,
+    });
     expect(words).not.toMatch(/verified|confirmed|criteria met|검증됨|완료 확인|기준 충족/i);
   }
+});
+
+// Completion criteria on a new conversation (docs/specs/workbench.md#세션-완료-기준).
+async function type(field: HTMLTextAreaElement | HTMLInputElement | null, value: string) {
+  if (!field) throw new Error('no field');
+  const prototype =
+    field instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+function stubMedia() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+}
+/** Opens the New conversation menu's "name, purpose and team first" form. */
+async function openDetails(container: HTMLElement) {
+  stubMedia();
+  const more = container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${messages.Workspace.newConversationMenu}"]`,
+  );
+  await act(async () => more?.click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) =>
+    row.textContent?.startsWith(messages.Workspace.detailsFirst),
+  );
+  expect(item).toBeTruthy();
+  await act(async () => item?.click());
+  await settle();
+  return document.querySelector<HTMLFormElement>(`form[aria-label="${messages.Sessions.new}"]`);
+}
+const criteriaField = () =>
+  document.querySelector<HTMLTextAreaElement>(
+    `textarea[aria-label="${messages.Sessions.criteria.label}"]`,
+  );
+const startChat = () =>
+  [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent === messages.Workspace.startChat,
+  );
+const describedError = (field: HTMLElement | null) => {
+  const id = field?.getAttribute('aria-describedby');
+  return id ? document.getElementById(id)?.textContent : undefined;
+};
+function creating(result?: () => Promise<unknown>) {
+  const createSession = vi.fn(
+    result ?? (async (_input: NewSession) => ({ ok: true, session: session('session_9', 'New') })),
+  );
+  fixture.services = {
+    ...fixture.services,
+    repository: { listSessions: vi.fn(async () => []), createSession },
+  };
+  return createSession;
+}
+
+it('starts a conversation with its completion criteria, trimmed and without blank lines', async () => {
+  const createSession = creating();
+  const { container, router } = await render();
+  const form = await openDetails(container);
+  const field = criteriaField();
+  expect(field).toBeTruthy();
+  // The limits are not a standing hint.
+  expect(form?.textContent).not.toMatch(/\b20\b|\b200\b/);
+  expect(field?.getAttribute('aria-invalid')).toBeNull();
+  await type(field, '  The build passes  \n\n   \nDocs mention the new flag\n');
+  await act(async () => startChat()?.click());
+  await settle();
+  expect(createSession).toHaveBeenCalledOnce();
+  expect(createSession.mock.calls[0]?.[0]).toMatchObject({
+    criteria: ['The build passes', 'Docs mention the new flag'],
+  });
+  expect(router.state.location.pathname).toBe('/sessions/session_9');
+  // The sent draft is cleared.
+  expect(
+    JSON.parse(localStorage.getItem('corral:new-session:v1:alpha') ?? '{}').criteria ?? '',
+  ).toBe('');
+});
+
+it('sends no criteria when none were written', async () => {
+  const createSession = creating();
+  const { container } = await render();
+  await openDetails(container);
+  await type(criteriaField(), '  \n ');
+  await act(async () => startChat()?.click());
+  await settle();
+  expect(createSession).toHaveBeenCalledOnce();
+  expect(createSession.mock.calls[0]?.[0]).not.toHaveProperty('criteria');
+});
+
+it('keeps the criteria in the remembered draft through closing and opening the form', async () => {
+  const createSession = creating();
+  const { container } = await render();
+  await openDetails(container);
+  await type(criteriaField(), 'The build passes\n');
+  const close = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent === 'Close',
+  );
+  await act(async () => close?.click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 600)));
+  await settle();
+  expect(criteriaField()).toBeNull();
+  expect(JSON.parse(localStorage.getItem('corral:new-session:v1:alpha') ?? '{}')).toMatchObject({
+    criteria: 'The build passes\n',
+  });
+  // Saved criteria are never sent silently: New conversation shows them first.
+  const start = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent === messages.Workspace.newConversation,
+  );
+  await act(async () => start?.click());
+  await settle();
+  expect(createSession).not.toHaveBeenCalled();
+  expect(criteriaField()?.value).toBe('The build passes\n');
+});
+
+it('says on the field when there are more than 20 criteria or a line over 200 characters, and sends nothing', async () => {
+  const createSession = creating();
+  const { container } = await render();
+  await openDetails(container);
+  const field = criteriaField();
+  const lines = (count: number) =>
+    Array.from({ length: count }, (_, index) => `Criterion ${index + 1}`);
+  // Twenty, with blank lines between them, is within the limit.
+  await type(field, lines(20).join('\n\n'));
+  expect(field?.getAttribute('aria-invalid')).toBeNull();
+  expect(describedError(field)).toBeUndefined();
+  await type(field, lines(21).join('\n'));
+  expect(field?.getAttribute('aria-invalid')).toBe('true');
+  expect(describedError(field)).toBe(messages.Sessions.criteria.tooMany.replace('{max}', '20'));
+  await act(async () => startChat()?.click());
+  await settle();
+  expect(createSession).not.toHaveBeenCalled();
+  await type(field, `Short\n\n${'x'.repeat(201)}`);
+  expect(field?.getAttribute('aria-invalid')).toBe('true');
+  expect(describedError(field)).toBe(
+    messages.Sessions.criteria.tooLong.replace('{line}', '3').replace('{max}', '200'),
+  );
+  await act(async () => startChat()?.click());
+  await settle();
+  expect(createSession).not.toHaveBeenCalled();
+  // Within the limits again, the error goes and the form starts the conversation.
+  await type(field, `Short\n${'x'.repeat(200)}`);
+  expect(field?.getAttribute('aria-invalid')).toBeNull();
+  await act(async () => startChat()?.click());
+  await settle();
+  expect(createSession.mock.calls[0]?.[0]).toMatchObject({ criteria: ['Short', 'x'.repeat(200)] });
+});
+
+it('adds a line on Enter in the criteria field, also while composing, and never submits', async () => {
+  const createSession = creating();
+  const { container } = await render();
+  await openDetails(container);
+  const field = criteriaField();
+  for (const isComposing of [false, true]) {
+    const enter = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+      isComposing,
+    });
+    await act(async () => field?.dispatchEvent(enter));
+    expect(enter.defaultPrevented).toBe(false);
+  }
+  await settle();
+  expect(createSession).not.toHaveBeenCalled();
+  expect(criteriaField()).toBe(field);
+});
+
+it('keeps the typed criteria when the conversation could not be created', async () => {
+  const message = 'Completion criteria have up to 20 lines of 1 to 200 characters.';
+  const createSession = creating(async () => ({ ok: false, error: 'invalid', message }));
+  const { container } = await render();
+  await openDetails(container);
+  await type(criteriaField(), 'The build passes');
+  await act(async () => startChat()?.click());
+  await settle();
+  expect(createSession).toHaveBeenCalledOnce();
+  expect(criteriaField()?.value).toBe('The build passes');
+  expect(document.body.textContent).toContain(message);
 });
