@@ -24,12 +24,7 @@ export async function newTeam(page: Page) {
 /** On a project page: makes a Corral from a template and comes back to the project. */
 export async function teamFromTemplate(page: Page, name = 'Single agent') {
   await page.goto(new URL('/library/templates', page.url()).href);
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: name })
-    .getByRole('button', { name: 'Edit this team' })
-    .click();
+  await page.getByRole('button', { name: `Edit a copy of ${name}`, exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();

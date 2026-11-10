@@ -6,13 +6,19 @@ test('opening a template waits for an explicit named copy and cancel leaves no t
   await page.goto('/');
   await page.getByRole('tab', { name: /^Teams/ }).click();
   for (let attempt = 0; attempt < 2; attempt++) {
-    await page.getByRole('button', { name: 'Edit this team' }).first().click();
+    await page
+      .getByRole('button', { name: /^Edit a copy of / })
+      .first()
+      .click();
     const dialog = page.getByRole('dialog', { name: 'Save a team copy' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
   }
-  await page.getByRole('button', { name: 'Edit this team' }).first().click();
+  await page
+    .getByRole('button', { name: /^Edit a copy of / })
+    .first()
+    .click();
   const dialog = page.getByRole('dialog', { name: 'Save a team copy' });
   await dialog.getByRole('textbox', { name: 'Team name' }).fill('Research copy');
   await dialog.getByRole('button', { name: 'Save copy and edit' }).click();
@@ -42,7 +48,10 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
   for (let team = 1; team <= 2; team++) {
     await page.goto(projectUrl);
     await page.getByRole('tab', { name: /^Teams/ }).click();
-    await page.getByRole('button', { name: 'Edit this team' }).first().click();
+    await page
+      .getByRole('button', { name: /^Edit a copy of / })
+      .first()
+      .click();
     await page.getByRole('button', { name: 'Save copy and edit' }).click();
     await expect(page).toHaveURL(/\/edit$/);
     const name = `Saved research ${team}`;

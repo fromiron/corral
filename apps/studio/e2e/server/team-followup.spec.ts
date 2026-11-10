@@ -85,8 +85,7 @@ for (const locale of ['en', 'ko'] as const) {
     await page.getByRole('tab', { name: locale === 'en' ? /^Teams/ : /^팀/ }).click();
     await page
       .getByRole('button', {
-        name: locale === 'en' ? 'Edit this team' : '팀 편집해서 쓰기',
-        exact: true,
+        name: locale === 'en' ? /^Edit a copy of / : / 사본 편집$/,
       })
       .first()
       .click();

@@ -72,11 +72,7 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
     .getByRole('textbox', { name: 'Purpose', exact: true })
     .fill('Keep this purpose through team setup');
   await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Edit this team' })
-    .click();
+  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.goBack();
