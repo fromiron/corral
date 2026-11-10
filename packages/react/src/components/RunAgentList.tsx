@@ -106,12 +106,14 @@ export function RunAgentList({
           {rows.map(({ node, execution, interval, round }, index) => {
             const shown = present(node);
             const selected = selectedNodeId === node.id;
+            // The button's own inset is taken back, so the name starts where the column's header
+            // and the stacked line below it do; its fill reaches into the cell's padding.
             const button = (
               <Button
                 variant={selected ? 'secondary' : 'ghost'}
                 size="compact"
                 aria-pressed={selected}
-                className="max-w-full justify-start text-foreground"
+                className="-ml-3 max-w-full justify-start text-foreground"
                 onClick={(event) => onSelectNode(node.id, event.currentTarget)}
               >
                 <span className="truncate">{node.label}</span>
@@ -137,7 +139,7 @@ export function RunAgentList({
                   {stacked ? (
                     <span
                       title={stacked}
-                      className="block truncate px-3 pb-1 text-caption @xl/agent-list:hidden"
+                      className="block truncate pr-3 pb-1 text-caption @xl/agent-list:hidden"
                     >
                       {stacked}
                     </span>
