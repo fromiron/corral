@@ -5079,6 +5079,7 @@
     "nonresponse": "No answer — not counted as agreement",
     "candidate": "Decision candidate",
     "editCandidate": "Review and adopt",
+    "adoptedAs": "Adopted as Decision v{number}",
     "adopt": "Adopt decision",
     "revise": "Revise as new version",
     "editHint": "Edit the request below. Put one item per line; remove actions you do not want to adopt.",

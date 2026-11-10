@@ -5079,6 +5079,7 @@
     "nonresponse": "미응답 — 합의에 포함하지 않음",
     "candidate": "결정 후보",
     "editCandidate": "검토하고 채택",
+    "adoptedAs": "결정 v{number}로 채택됨",
     "adopt": "결정 채택",
     "revise": "새 버전으로 수정",
     "editHint": "작업 요청서를 검토하고 고치세요. 항목은 한 줄에 하나씩 적고 채택하지 않을 행동은 지우세요.",

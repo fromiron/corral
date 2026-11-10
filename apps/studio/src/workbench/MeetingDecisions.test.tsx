@@ -194,6 +194,44 @@ it('a revision form opens in view and focused, and a draft restored on remount t
   expect(reveal).not.toHaveBeenCalled();
 });
 
+it('an adopted candidate reads as one line naming its decision; the decision stays open', async () => {
+  const other = { candidateId: 'c2', content: { ...content, goal: 'Rewrite later' } };
+  const minutes = view.minutes?.[0];
+  if (!minutes?.document) throw new Error('The minutes fixture is missing');
+  const f = await mount({
+    ...view,
+    minutes: [
+      {
+        ...minutes,
+        document: { ...minutes.document, candidates: [{ candidateId: 'c1', content }, other] },
+      },
+    ],
+    decisions: [decision],
+  } as MeetingView);
+  const adopted = f.container.querySelector<HTMLDetailsElement>('details[data-candidate="c1"]');
+  expect(adopted).not.toBeNull();
+  expect(adopted?.open).toBe(false);
+  expect(adopted?.querySelector('summary')?.textContent).toContain('Ship safely');
+  expect(adopted?.querySelector('summary')?.textContent).toContain('adoptedAs1');
+  // The decision's sections are what stays open: they appear once outside the folded candidate.
+  const openText = [...f.container.querySelectorAll('article')]
+    .filter((item) => !item.closest('details[data-candidate]'))
+    .map((item) => item.textContent ?? '')
+    .join(' ');
+  expect(openText).toContain('decisionLabel1Ship safely');
+  // A candidate that was not adopted stays as it was, ready to edit before adopting.
+  const pending = f.container.querySelector('[data-candidate="c2"]');
+  expect(pending?.tagName).not.toBe('DETAILS');
+  expect(pending?.textContent).toContain('Rewrite later');
+  expect(
+    [...(pending?.querySelectorAll('button') ?? [])].some((b) => b.textContent === 'editCandidate'),
+  ).toBe(true);
+  // The adopted candidate can still be opened and adopted again.
+  expect(
+    [...(adopted?.querySelectorAll('button') ?? [])].some((b) => b.textContent === 'editCandidate'),
+  ).toBe(true);
+});
+
 it('withdrawn and superseded versions cannot hand off', async () => {
   const f = await mount({
     ...view,

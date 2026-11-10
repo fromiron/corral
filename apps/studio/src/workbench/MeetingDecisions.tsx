@@ -98,6 +98,14 @@ export function MeetingDecisions({
       ?.querySelector<HTMLTextAreaElement>('textarea[name="goal"]')
       ?.focus({ preventScroll: true });
   }, [draft]);
+  // The decision a candidate became, by its version number; none until one is adopted from it.
+  const adoptedAs = (minutesId: string, candidateId: string) => {
+    const index =
+      view.decisions?.findIndex(
+        (decision) => decision.minutesId === minutesId && decision.candidateId === candidateId,
+      ) ?? -1;
+    return index < 0 ? null : index + 1;
+  };
   const nameOf = (id: string) =>
     view.config.participants.find((p) => p.participantId === id)?.name ?? id;
   const run = async (kind: 'adopt' | 'withdraw') => {
@@ -225,40 +233,65 @@ export function MeetingDecisions({
                     </ul>
                   </div>
                 ) : null}
-                {doc.candidates.map((candidate) => (
-                  <div
-                    key={candidate.candidateId}
-                    className="flex flex-col gap-2 border-t border-border pt-3"
-                  >
-                    {/* The goal is the candidate's name; it is printed once, here. */}
-                    <h4 className="text-subtitle" style={semibold}>
-                      <span className="block text-caption text-muted-foreground" style={normal}>
-                        {t('candidate')}
-                      </span>
-                      {candidate.content.goal}
-                    </h4>
-                    <DecisionContent content={candidate.content} />
-                    <div>
-                      <Button
-                        size="compact"
-                        variant="secondary"
-                        disabled={busy}
-                        onClick={(event) =>
-                          openDraft(
-                            {
-                              minutesId: minutes.minutesId,
-                              candidateId: candidate.candidateId,
-                              content: candidate.content,
-                            },
-                            event.currentTarget,
-                          )
-                        }
-                      >
-                        {t('editCandidate')}
-                      </Button>
+                {doc.candidates.map((candidate) => {
+                  const body = (
+                    <>
+                      <DecisionContent content={candidate.content} />
+                      <div>
+                        <Button
+                          size="compact"
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={(event) =>
+                            openDraft(
+                              {
+                                minutesId: minutes.minutesId,
+                                candidateId: candidate.candidateId,
+                                content: candidate.content,
+                              },
+                              event.currentTarget,
+                            )
+                          }
+                        >
+                          {t('editCandidate')}
+                        </Button>
+                      </div>
+                    </>
+                  );
+                  const number = adoptedAs(minutes.minutesId, candidate.candidateId);
+                  // Once adopted, the decision holds these sections; the candidate folds to its
+                  // goal and the decision it became.
+                  return number ? (
+                    <details
+                      key={candidate.candidateId}
+                      data-candidate={candidate.candidateId}
+                      className="border-t border-border pt-3"
+                    >
+                      <summary className="flex-wrap gap-x-2">
+                        <span className="text-foreground" style={semibold}>
+                          {candidate.content.goal}
+                        </span>
+                        <span className="text-caption">{t('adoptedAs', { number })}</span>
+                      </summary>
+                      <div className="mt-2 flex flex-col gap-2">{body}</div>
+                    </details>
+                  ) : (
+                    <div
+                      key={candidate.candidateId}
+                      data-candidate={candidate.candidateId}
+                      className="flex flex-col gap-2 border-t border-border pt-3"
+                    >
+                      {/* The goal is the candidate's name; it is printed once, here. */}
+                      <h4 className="text-subtitle" style={semibold}>
+                        <span className="block text-caption text-muted-foreground" style={normal}>
+                          {t('candidate')}
+                        </span>
+                        {candidate.content.goal}
+                      </h4>
+                      {body}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             ) : null}
           </article>
