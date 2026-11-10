@@ -14,6 +14,7 @@
 | 리소스 | `/library/resources` | Skill·Hook·MCP 서버·패키지·확장 목록과 상태 |
 
 - 팀과 템플릿은 프로젝트 필터(`?project=`)를 가진다. 필터가 없으면 마지막으로 연 프로젝트를 쓴다. 프로젝트 작업공간에는 팀 탭이 없다. 옛 `/projects/:projectId#corrals` 주소는 `/library/teams?project=:projectId`로 replace 이동한다.
+- 기본 제공 템플릿과 목표에서 만든 초안은 결과의 승인을 넣지 않는다. 팀은 사람의 승인 없이 끝까지 돈다. 승인 단계(결정 노드의 승인 모드, 결과의 승인 요구)는 사람이 편집기에서 더한다. 이미 저장한 팀은 바뀌지 않는다.
 - 리소스 행은 이름, 범위(개인·프로젝트), 상태, 실패 원인과 다음 행동을 보인다. 지금 서버가 자원별로 알려 주는 원인은 루트 `SKILL.md` 패키지의 Skill 판정이다.
   - 패키지 설치 거부(크기·파일 수 한도)는 저장되지 않고, 하네스 보고 코드(`extension_load_failed`, `resource_invalid`, `policy_denied`, `sdk_start_failed`, `packages/contracts/src/harness.ts`)는 실행의 `harness.load_failed` 이벤트로만 남는다. 그래서 리소스 행에는 보이지 않는다.
   - 충돌한 도구 이름처럼 계약에 없는 세부도 보이지 않는다.
