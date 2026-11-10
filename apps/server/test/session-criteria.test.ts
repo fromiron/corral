@@ -176,13 +176,22 @@ it('stores criteria with the session, under its revision, and refuses malformed 
     ['First', ''],
     ['x'.repeat(201)],
   ]) {
-    expect(
-      (await s.send('PATCH', `/sessions/${id}`, { criteria, expectedRevision: 2 })).status,
-    ).toBe(400);
-    expect(
-      (await s.send('POST', '/sessions', { projectId: 'default', title: 'Bad', criteria })).status,
-    ).toBe(400);
+    for (const refused of [
+      await s.send('PATCH', `/sessions/${id}`, { criteria, expectedRevision: 2 }),
+      await s.send('POST', '/sessions', { projectId: 'default', title: 'Bad', criteria }),
+    ]) {
+      expect(refused.status).toBe(400);
+      expect(refused.body.error).toMatchObject({
+        code: 'SCHEMA_INVALID',
+        message: 'Completion criteria have up to 20 lines of 1 to 200 characters.',
+      });
+    }
   }
+  const updatedThroughClient = await s.repository.updateSession(id, {
+    criteria: ['x'.repeat(201)],
+    expectedRevision: 2,
+  });
+  expect(updatedThroughClient).toMatchObject({ ok: false, error: 'invalid' });
   expect(await s.repository.getSession(id)).toMatchObject({ revision: 2, criteria: ['One line'] });
 
   const meeting = {

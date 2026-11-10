@@ -82,7 +82,6 @@ import {
   parseWorkspaceConfig,
   planRun,
   type SaveResult,
-  SessionCriteria,
   SessionEntryAuto,
   type SessionResult,
   ToolRefusal,
@@ -322,12 +321,14 @@ const CreateCorral = z.strictObject({
   projectId: Identifier.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
+// Bounded here; the session rules (20 lines of 1 to 200 characters) answer with their reason.
+const CriteriaBody = z.array(z.string().max(2_000)).max(100).optional();
 const CreateSession = z.strictObject({
   projectId: Identifier,
   title: z.string().max(200),
   autoTitle: z.boolean().optional(),
   objective: z.string().max(20_000).optional(),
-  criteria: SessionCriteria.optional(),
+  criteria: CriteriaBody,
   corralId: Identifier.nullable().optional(),
   /** creates a meeting with these participants. */
   meeting: MeetingConfig.optional(),
@@ -335,7 +336,7 @@ const CreateSession = z.strictObject({
 const UpdateSession = z.strictObject({
   title: z.string().max(200).optional(),
   objective: z.string().max(20_000).optional(),
-  criteria: SessionCriteria.optional(),
+  criteria: CriteriaBody,
   corralId: Identifier.nullable().optional(),
   auto: AutoModelChoice.nullable().optional(),
   pinned: z.boolean().optional(),
