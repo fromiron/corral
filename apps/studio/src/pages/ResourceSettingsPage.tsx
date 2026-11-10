@@ -13,7 +13,6 @@ import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
 import { SkillQualityPanel } from '../workbench/harness/SkillQualityPanel.tsx';
 import { operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
-import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -48,7 +47,6 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
   const n = useTranslations('Navigation');
-  const p = useTranslations('Packages');
   const navigation = useSettingsNavigation();
   const confirmation = useManagementConfirmation();
   const [entries, setEntries] = useState<HarnessEntryView[]>([]),
@@ -115,21 +113,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
   const none = loaded && entries.length === 0;
   return (
     <main className="settings-content">
-      {/* Package management lives below the hook library; say so at the top (#82). */}
-      {kind === 'extension' ? (
-        <SectionIndex
-          sections={[
-            { id: 'resources-library', label: t('library') },
-            { id: 'resources-packages', label: p('title') },
-          ]}
-        />
-      ) : null}
-      <section
-        id="resources-library"
-        tabIndex={-1}
-        aria-label={t('library')}
-        className="flex flex-wrap items-center gap-3 outline-none"
-      >
+      <section aria-label={t('library')} className="flex flex-wrap items-center gap-3">
         {none ? null : (
           <>
             <Input
@@ -341,10 +325,9 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           }}
         />
       ) : null}
+      {/* Below the hook library, named by its own heading. */}
       {kind === 'extension' ? (
-        <div id="resources-packages" tabIndex={-1} className="outline-none">
-          <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
-        </div>
+        <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
       ) : null}
       {confirmation.dialog}
     </main>

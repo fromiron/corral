@@ -198,11 +198,16 @@ test.describe('long settings pages', () => {
       images.getByRole('region', { name: 'Image generation', exact: true }),
     ).toBeVisible();
     await page.getByRole('link', { name: 'Hooks & extensions', exact: true }).click();
+    // Hooks names its packages once, by their section's heading under the library; no row of
+    // links above the page repeats it (workbench.md: a name shows once per screen).
     await expect(
       page
-        .getByRole('navigation', { name: 'On this page', exact: true })
-        .getByRole('button', { name: 'Packages', exact: true }),
+        .getByRole('region', { name: 'Packages', exact: true })
+        .getByRole('heading', { name: 'Packages', exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'On this page', exact: true })).toHaveCount(
+      0,
+    );
     expect(corral.errors).toEqual([]);
   });
 });
