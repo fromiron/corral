@@ -3744,18 +3744,10 @@
     "allPreviews": "All previews",
     "list": "Previews",
     "name": "Preview",
-    "actions": "Actions",
-    "open": "Open",
-    "openNamed": "Open {name}",
     "feature": {
       "taskBoard": "Task board",
       "prReview": "PR review",
       "browserQa": "Browser QA"
-    },
-    "summary": {
-      "taskBoard": "Tasks with their steps, changed files and linked session; change a task's status.",
-      "prReview": "A pull request's diff and checks; comment on it and request fixes.",
-      "browserQa": "Open a page, snapshot it, act on it, read console errors, then attach a screenshot to the conversation."
     },
     "board": {
       "detail": "Task details",

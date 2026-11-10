@@ -191,16 +191,26 @@ it('keeps only an in-app return address', () => {
     expect(validatePreviewSearch({ returnTo })).toEqual({});
 });
 
-it('lists every preview with an Open link under the sample banner, also for an unknown feature', async () => {
+it('lists every preview as a row that is its link, under the sample banner, also for an unknown feature', async () => {
   for (const url of ['/preview', '/preview/unknown', '/preview/toString']) {
     const { container } = await render(url);
     expect(container.querySelector('h1')?.textContent).toBe('Feature previews');
     expect(container.querySelector('main')?.dataset.previewFeature).toBeUndefined();
     expect(banner(container)).toBeDefined();
+    // Each row is its preview's name, and the name is the link: no Open button, no summary.
     const links = PREVIEW_FEATURES.map((feature) =>
       container.querySelector<HTMLAnchorElement>(`a[href="/preview/${feature}"]`),
     );
-    expect(links.every((link) => link?.textContent === 'Open')).toBe(true);
+    expect(links.map((link) => link?.textContent)).toEqual([
+      'Task board',
+      'PR review',
+      'Browser QA',
+    ]);
+    const rows = [...container.querySelectorAll('tbody tr')];
+    expect(rows.map((row) => row.textContent)).toEqual(['Task board', 'PR review', 'Browser QA']);
+    expect(container.querySelectorAll('tbody button')).toHaveLength(0);
+    // The one column's header is there for the table's reader, not on screen.
+    expect(container.querySelector('thead')?.className).toContain('sr-only');
   }
   expectNoRequests();
 });
