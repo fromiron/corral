@@ -9,11 +9,12 @@ import type {
 } from '@corral/contracts';
 import { canonicalJson, WorkTool } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button, Checkbox, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import { Button, Checkbox, cn, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { PermissionPolicyEditor } from '../workbench/harness/PermissionPolicyEditor.tsx';
 import { updateResourceSelection } from '../workbench/harness/selection.ts';
@@ -411,9 +412,12 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                     .map((p) => (
                       <li key={p.profileId}>
                         <Button
-                          variant={selected?.profileId === p.profileId ? 'secondary' : 'ghost'}
+                          variant="ghost"
                           aria-pressed={selected?.profileId === p.profileId}
-                          className="w-full justify-start"
+                          className={cn(
+                            'w-full justify-start',
+                            selected?.profileId === p.profileId && CHOSEN_BUTTON_ROW,
+                          )}
                           onClick={() => choose(p)}
                         >
                           {p.name} · r{p.revision}

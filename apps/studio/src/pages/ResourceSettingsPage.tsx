@@ -1,11 +1,12 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryKey, HarnessEntryView, ManagedHook } from '@corral/contracts';
-import { Button, EmptyState, fontWeights, Input, Switch } from '@corral/react/design-kit';
+import { Button, cn, EmptyState, fontWeights, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { PackageManager } from '../workbench/harness/PackageManager.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
@@ -180,10 +181,13 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 {filtered.map((entry) => (
                   <li key={keyOf(entry)}>
                     <Button
-                      variant={selection === keyOf(entry) ? 'secondary' : 'ghost'}
+                      variant="ghost"
                       aria-pressed={selection === keyOf(entry)}
                       onClick={() => setSelection(keyOf(entry))}
-                      className="h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left"
+                      className={cn(
+                        'h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left',
+                        selection === keyOf(entry) && CHOSEN_BUTTON_ROW,
+                      )}
                     >
                       <span style={{ fontVariationSettings: fontWeights.semibold }}>
                         {entry.name}

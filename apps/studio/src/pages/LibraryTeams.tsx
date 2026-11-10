@@ -28,6 +28,7 @@ import { useServices } from '../services.tsx';
 import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
 import { TemplateCopyDialog } from '../TemplateCopyDialog.tsx';
 import { WORKSPACE_TEMPLATES, type WorkspaceTemplateId } from '../templates.ts';
+import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { chooseNewSessionTeam } from '../workbench/newSessionDraft.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
 
@@ -79,6 +80,7 @@ export function LibraryTeams({
   const [errors, setErrors] = useState<string[]>([]);
   const teams = corrals.filter((corral) => corral.projectId === projectId);
   const selected = teams.find((corral) => corral.corralId === selection) ?? teams[0];
+  const chosenIndex = selected ? teams.indexOf(selected) : -1;
   const archived = Boolean(project?.archivedAt);
 
   const work = async (action: () => Promise<string[] | undefined>) => {
@@ -250,7 +252,7 @@ export function LibraryTeams({
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <Table aria-label={tl('teams.list')}>
             <TableHeader>
-              <TableRow>
+              <TableRow className={chosenIndex === 0 ? ABOVE_CHOSEN_TABLE_ROW : undefined}>
                 <TableHead>{tl('teams.name')}</TableHead>
                 <TableHead>{tl('teams.version')}</TableHead>
                 <TableHead>{tl('teams.updated')}</TableHead>
@@ -258,13 +260,19 @@ export function LibraryTeams({
             </TableHeader>
             <TableBody>
               {teams.map((corral, index) => {
-                const chosen = corral.corralId === selected?.corralId;
+                const chosen = index === chosenIndex;
                 return (
                   <TableRow
                     key={corral.corralId}
                     index={index}
                     data-selected={chosen}
-                    className={chosen ? 'bg-secondary [&>td]:text-foreground' : undefined}
+                    className={
+                      chosen
+                        ? CHOSEN_TABLE_ROW
+                        : index === chosenIndex - 1
+                          ? ABOVE_CHOSEN_TABLE_ROW
+                          : undefined
+                    }
                   >
                     <TableCell className="max-w-0 w-1/2">
                       {/* The row's one control; it stretches over the row for the pointer. */}

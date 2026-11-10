@@ -24,6 +24,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { projectName } from '../projects.ts';
 import { schedulesApi } from '../schedules-api.ts';
 import { useServices } from '../services.tsx';
+import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { watchRefresh } from '../workbench/refresh.ts';
 import { scheduleHistoryStatus } from '../workbench/scheduledRuns.ts';
 
@@ -93,6 +94,7 @@ export function ScheduledPage() {
   const manualCommand = useRef<{ scheduleId: string; revision: number; id: string } | null>(null);
   // The listing holds the current revision; the snapshot covers the moment before it is read.
   const shown = selected ? (schedules.find((s) => s.id === selected.id) ?? selected) : null;
+  const chosenIndex = shown ? schedules.findIndex((s) => s.id === shown.id) : -1;
   const selectedId = useRef<string | null>(null);
   selectedId.current = selected?.id ?? null;
   const targetId = useRef<string | null>(null);
@@ -343,7 +345,7 @@ export function ScheduledPage() {
           <div className="min-w-0 overflow-x-auto">
             <Table aria-label={t('title')}>
               <TableHeader>
-                <TableRow>
+                <TableRow className={chosenIndex === 0 ? ABOVE_CHOSEN_TABLE_ROW : undefined}>
                   <TableHead>{t('name')}</TableHead>
                   <TableHead className="max-md:hidden">{t('schedule')}</TableHead>
                   <TableHead>{t('state')}</TableHead>
@@ -353,13 +355,19 @@ export function ScheduledPage() {
               </TableHeader>
               <TableBody>
                 {schedules.map((schedule, index) => {
-                  const current = shown?.id === schedule.id;
+                  const current = index === chosenIndex;
                   return (
                     <TableRow
                       key={schedule.id}
                       index={index}
                       data-selected={current}
-                      className={current ? 'bg-secondary [&>td]:text-foreground' : undefined}
+                      className={
+                        current
+                          ? CHOSEN_TABLE_ROW
+                          : index === chosenIndex - 1
+                            ? ABOVE_CHOSEN_TABLE_ROW
+                            : undefined
+                      }
                     >
                       <TableCell className="w-1/3 max-w-0">
                         {/* The row's one control; it stretches over the row for the pointer. */}
