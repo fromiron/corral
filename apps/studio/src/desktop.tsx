@@ -75,7 +75,8 @@ export function DesktopWorkspace() {
   return (
     <section className="settings-row">
       <div>
-        <h3>{t('openWorkspace')}</h3>
+        {/* The button names the action; the row names what it acts on. */}
+        <h3>{t('appWorkspace')}</h3>
         <p>{t('appWorkspaceHint')}</p>
         <p>{t('switchWorkspaceHint')}</p>
         {error ? (

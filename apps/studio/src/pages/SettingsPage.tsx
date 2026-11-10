@@ -117,7 +117,7 @@ export function SettingsPage({
             <section className="settings-row">
               <div>
                 <h3>{t('sendKey')}</h3>
-                <p>{t('sendKeyHint')}</p>
+                {/* The one place the other key is named. */}
                 <p>
                   {t('sendCombination', {
                     send: sendKeyLabel(sendKey),
@@ -140,7 +140,6 @@ export function SettingsPage({
             <section className="settings-row">
               <div>
                 <h3>{t('language')}</h3>
-                <p>{t('languageHint')}</p>
               </div>
               <Select
                 label={t('language')}
@@ -149,21 +148,11 @@ export function SettingsPage({
                 options={LOCALES.map((l) => ({ value: l.id, label: l.name }))}
               />
             </section>
-            {/* Native-only controls stay in the app menu; say where (#84). Desktop shell only:
-                remote windows never get local desktop controls. */}
-            {desktop ? (
-              <section className="settings-row" data-testid="desktop-native-options">
-                <div>
-                  <h3>{t('nativeHeading')}</h3>
-                  <p>{t('nativeHint')}</p>
-                </div>
-              </section>
-            ) : null}
+            {/* Desktop shell only: remote windows never get local desktop controls. */}
             {desktop ? (
               <section className="settings-row">
                 <div>
-                  <h3>{t('notifySetting')}</h3>
-                  <p>{t('notifyHint')}</p>
+                  <h3>{t('notifyOn')}</h3>
                 </div>
                 <KitSwitch
                   label={t('notifyOn')}
@@ -188,7 +177,6 @@ export function SettingsPage({
           </section>
         ) : (
           <>
-            <p className="text-body text-muted-foreground">{t('aboutText')}</p>
             <DesktopAbout serverVersion={serverVersion} />
             <Button
               variant="tertiary"
