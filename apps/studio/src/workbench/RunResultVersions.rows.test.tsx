@@ -28,7 +28,7 @@ const artifact = (id: string, name: string, authorExecutionId: string, kept = tr
     version: 1,
     parentVersionId: null,
     name,
-    contract: 'markdown',
+    contract: 'notes',
     authorExecutionId,
     submitted: true,
     byteLength: 10,
