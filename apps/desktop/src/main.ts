@@ -153,7 +153,7 @@ function refreshTray() {
               {
                 running: ko ? '실행 중' : 'Running',
                 paused: ko ? '일시정지' : 'Paused',
-                awaiting_user: ko ? '응답 필요' : 'Needs input',
+                awaiting_user: ko ? '응답 대기' : 'Waiting for you',
                 cancelling: ko ? '취소 중' : 'Cancelling',
               } as Record<string, string>
             )[run.status] ?? (ko ? '준비 중' : 'Preparing')
