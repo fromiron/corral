@@ -5676,7 +5676,8 @@
       "mixedBoxes": "Only steps in the same box can be wrapped together.",
       "notABox": "Only a Loop or a Team defined here can hold steps.",
       "noPredecessor": "Only a step that something leads to can be split.",
-      "oneAgentOnly": "Split one agent in the flow at a time."
+      "oneAgentOnly": "Split one agent in the flow at a time.",
+      "roleNeedsAgent": "Choose one agent to copy a role onto."
     },
     "structure": "Structure",
     "outline": "Team structure",
@@ -5764,6 +5765,11 @@
       "parallel": "Runs a copy beside it and joins the two"
     },
     "withNewAgent": "With a new agent",
+    "importRole": "Import role…",
+    "importRoleTitle": "Import role",
+    "rolePresets": "Role presets",
+    "roleSearch": "Find a role…",
+    "workStyleDropped": "Copied without its work style, which is not available here.",
     "problemsList": "Problems",
     "noProblems": "Nothing to fix.",
     "openTeam": "Open this team",

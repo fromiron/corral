@@ -48,6 +48,8 @@ export interface InspectorSheetProps {
   /** Other saved teams at their latest revision, for reference teams. */
   teams: readonly TeamReference[];
   onOpenTeam?: ((corralId: string) => void) | undefined;
+  /** Opens the roles to copy onto the selected agent. */
+  onImportRole?: (() => void) | undefined;
   onSelect: (selection: TeamSelection) => void;
   onClose: () => void;
 }
@@ -129,6 +131,7 @@ export function InspectorSheet({
   loopSettings,
   teams,
   onOpenTeam,
+  onImportRole,
   onSelect,
   onClose,
 }: InspectorSheetProps) {
@@ -230,6 +233,11 @@ export function InspectorSheet({
               {action.label}
             </Button>
           ))}
+        {onImportRole && ids.length === 1 && nodes.get(ids[0] as string)?.type === 'agent' ? (
+          <Button variant="secondary" size="compact" onClick={onImportRole}>
+            {t('importRole')}
+          </Button>
+        ) : null}
         <Button
           variant="secondary"
           size="compact"

@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { AgentRole } from '@corral/contracts';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -6,12 +7,14 @@ import { StudioStoresProvider } from '../src/context.tsx';
 import { type EditorDraft, emptyDraft } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import koMessages from '../src/messages/ko.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
 import {
   applyPattern,
   type EditResult,
   patchNode,
   placeStep,
+  type TeamReference,
 } from '../src/team-editor/commands.ts';
 import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
 
@@ -168,5 +171,189 @@ describe('team editor', () => {
     expect(nodes.find((n) => n.id === 'agent_1')?.parentId).toBe(loop?.id);
     expect(nodes.some((n) => n.type === 'decision' && n.mode === 'review')).toBe(true);
     expect(nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(false);
+  });
+});
+
+describe('team editor: importing a role', () => {
+  const releaseCheck: AgentRole = {
+    id: 'release',
+    name: 'Release check',
+    prompt: 'Check the release notes against the change.',
+    modelProfile: 'model-b',
+    allowedWorkTools: ['write_artifact', 'read_file'],
+    allowedCollaborationTools: ['read_artifact', 'submit_result'],
+    outputContract: 'review',
+    harness: { profileId: 'careful', revision: 2 },
+  };
+  const otherTeams: TeamReference[] = [
+    { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', roles: [releaseCheck] },
+  ];
+  const presetNames = [
+    'Implementation',
+    'Plan',
+    'Review',
+    'Cause investigation',
+    'Correctness review',
+    'Security review',
+    'Research',
+    'Writing',
+  ];
+
+  function renderWith(
+    draft: EditorDraft,
+    options: { locale?: 'en' | 'ko'; teams?: TeamReference[] } = {},
+  ) {
+    const editor = createEditorStore(draft);
+    const locale = options.locale ?? 'en';
+    const view = render(
+      <IntlProvider locale={locale} messages={locale === 'ko' ? koMessages : messages}>
+        <StudioStoresProvider editor={editor} session={sessionStore()}>
+          <TeamEditor editor={editor} teams={options.teams ?? otherTeams} />
+        </StudioStoresProvider>
+      </IntlProvider>,
+    );
+    return { editor, view };
+  }
+  const roleOf = (draft: EditorDraft, nodeId: string) => {
+    const node = draft.definition.nodes.find((n) => n.id === nodeId);
+    return draft.definition.roles.find((r) => node?.type === 'agent' && r.id === node.roleId);
+  };
+
+  it('is a command in ⌘K and an action in the agent sheet', async () => {
+    renderWith(chain(2));
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    const sheet = screen.getByRole('complementary', { name: 'Settings' });
+    expect(within(sheet).getByRole('button', { name: 'Import role…' })).toBeTruthy();
+    await act(async () => fireEvent.keyDown(canvasNode('agent_1'), { key: 'k', ctrlKey: true }));
+    expect(screen.getByRole('option', { name: /Import role…/ })).toBeTruthy();
+  });
+
+  it('lists the presets first, then the roles of the other saved teams', async () => {
+    renderWith(chain(1));
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    const sheet = screen.getByRole('complementary', { name: 'Settings' });
+    await act(async () =>
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    );
+    const groups = screen.getAllByRole('group').map((group) => ({
+      heading: group.getAttribute('aria-labelledby')
+        ? document.getElementById(group.getAttribute('aria-labelledby') as string)?.textContent
+        : null,
+      options: within(group)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    }));
+    expect(groups.map((g) => g.heading)).toEqual(['Role presets', 'Harbor']);
+    expect(groups[0]?.options.map((o) => presetNames.find((name) => o?.startsWith(name)))).toEqual(
+      presetNames,
+    );
+    expect(groups[1]?.options).toEqual(['Release check']);
+  });
+
+  it('copies the chosen role onto the selected agent from the sheet', async () => {
+    const draft = chain(2);
+    const { editor } = renderWith(draft);
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    const sheet = screen.getByRole('complementary', { name: 'Settings' });
+    await act(async () =>
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    );
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Release check' })));
+    const next = editor.getState().draft;
+    expect(roleOf(next, 'agent_1')).toMatchObject({
+      prompt: releaseCheck.prompt,
+      outputContract: 'review',
+      modelProfile: 'model-b',
+    });
+    expect(next.definition.nodes.find((n) => n.id === 'agent_1')?.label).toBe('Agent 1');
+    expect(roleOf(next, 'agent_2')).toEqual(roleOf(draft, 'agent_2'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => editor.getState().undo());
+    expect(editor.getState().draft).toBe(draft);
+  });
+
+  it('works from the keyboard alone and gives focus back to the editor', async () => {
+    const { editor, view } = renderWith(chain(1));
+    const user = userEvent.setup();
+    await act(async () => canvasNode('agent_1').focus());
+    await user.keyboard('{Enter}');
+    expect(canvasNode('agent_1').getAttribute('aria-pressed')).toBe('true');
+    await user.keyboard('{Control>}k{/Control}');
+    await user.keyboard('import');
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('option', { name: 'Release check' })).toBeTruthy();
+    await user.keyboard('rel');
+    await user.keyboard('{Enter}');
+    expect(roleOf(editor.getState().draft, 'agent_1')?.prompt).toBe(releaseCheck.prompt);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(view.container.contains(document.activeElement)).toBe(true);
+  });
+
+  it('adds an agent named after the role when nothing is selected', async () => {
+    const { editor } = renderWith(chain(1));
+    await act(async () =>
+      fireEvent.keyDown(document.querySelector('[data-team-canvas]') as HTMLElement, {
+        key: 'k',
+        ctrlKey: true,
+      }),
+    );
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: /Import role…/ })));
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Plan' })));
+    const added = editor
+      .getState()
+      .draft.definition.nodes.find((n) => n.type === 'agent' && n.id !== 'agent_1');
+    expect(added?.label).toBe('Plan');
+    expect(canvasNode(added?.id as string).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('shows the presets in Korean on the Korean screen', async () => {
+    renderWith(chain(1), { locale: 'ko' });
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    const sheet = screen.getByRole('complementary', { name: '설정' });
+    await act(async () =>
+      fireEvent.click(within(sheet).getByRole('button', { name: '역할 가져오기…' })),
+    );
+    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    for (const name of [
+      '구현',
+      '계획',
+      '검토',
+      '원인 조사',
+      '정확성 검토',
+      '보안 검토',
+      '조사',
+      '작성',
+    ])
+      expect(options).toContain(name);
+    expect(options).not.toContain('Implementation');
+  });
+
+  it('says once that a work style it could not resolve was left out', async () => {
+    const { editor } = renderWith(chain(2));
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    const sheet = screen.getByRole('complementary', { name: 'Settings' });
+    await act(async () =>
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    );
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Release check' })));
+    expect(roleOf(editor.getState().draft, 'agent_1')).not.toHaveProperty('harness');
+    const notices = screen
+      .getAllByRole('status')
+      .filter((s) => s.textContent?.includes('without its work style'));
+    expect(notices).toHaveLength(1);
+    // The next edit takes the notice away; it does not come back.
+    await act(async () => editor.getState().updateNode('agent_2', { label: 'Writer' }));
+    expect(screen.queryByText(/without its work style/)).toBeNull();
+  });
+
+  it('says nothing when the role had no work style', async () => {
+    renderWith(chain(1));
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    const sheet = screen.getByRole('complementary', { name: 'Settings' });
+    await act(async () =>
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    );
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: /^Plan/ })));
+    expect(screen.queryByText(/without its work style/)).toBeNull();
   });
 });

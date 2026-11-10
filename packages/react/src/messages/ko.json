@@ -5676,7 +5676,8 @@
       "mixedBoxes": "같은 상자 안의 단계끼리만 함께 묶을 수 있습니다.",
       "notABox": "이 팀 안에서 정의한 Loop나 팀만 단계를 담을 수 있습니다.",
       "noPredecessor": "앞 단계가 있는 단계만 나눌 수 있습니다.",
-      "oneAgentOnly": "흐름 안의 에이전트 하나씩만 나눌 수 있습니다."
+      "oneAgentOnly": "흐름 안의 에이전트 하나씩만 나눌 수 있습니다.",
+      "roleNeedsAgent": "역할을 복사할 에이전트 하나를 고르세요."
     },
     "structure": "구조",
     "outline": "팀 구조",
@@ -5764,6 +5765,11 @@
       "parallel": "사본을 나란히 돌리고 둘을 합칩니다"
     },
     "withNewAgent": "새 에이전트로",
+    "importRole": "역할 가져오기…",
+    "importRoleTitle": "역할 가져오기",
+    "rolePresets": "역할 프리셋",
+    "roleSearch": "역할 찾기…",
+    "workStyleDropped": "여기서 쓸 수 없는 작업 방식은 빼고 가져왔습니다.",
     "problemsList": "문제",
     "noProblems": "고칠 것이 없습니다.",
     "openTeam": "이 팀 열기",
