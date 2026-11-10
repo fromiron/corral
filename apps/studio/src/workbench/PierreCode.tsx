@@ -1,15 +1,13 @@
 import type { ReviewCommentView } from '@corral/client';
-import { Button, Input, Select } from '@corral/react/design-kit';
-import type { CodeViewItem, FileDiffMetadata, Hunk, SelectedLineRange } from '@pierre/diffs';
+import { cn } from '@corral/react/design-kit';
+import type { CodeViewItem, FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
 import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
-import { type ReactNode, type RefObject, useMemo, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { type HunkNavigation, HunkNavigator } from './HunkNavigator.tsx';
 import { usePreferences } from './preferences.ts';
-import { CommentBody, ReviewCommentForm } from './ReviewCommentForm.tsx';
+import { CommentBody } from './ReviewCommentForm.tsx';
 import { prefersReducedMotion } from './reviewNavigation.ts';
-import { reviewSelection } from './reviewSelection.ts';
 
 // Public Pierre API only.
 const poolOptions = { workerFactory: () => new HighlightWorker(), poolSize: 2 };
@@ -72,56 +70,48 @@ export function SourceCode({
   );
 }
 
-export type NewComment = Pick<
-  ReviewCommentView,
-  'side' | 'startLine' | 'endLine' | 'quote' | 'body'
->;
+/** Scrolls the shown diff to one of its changes. */
+export interface DiffHandle {
+  revealHunk(index: number): void;
+}
 
-/** A hunk header as Git writes it, with the enclosing function when the diff names one. */
-const hunkLabel = (hunk: Hunk) =>
-  [
-    hunk.hunkSpecs ??
-      `@@ -${hunk.deletionStart},${hunk.deletionCount} +${hunk.additionStart},${hunk.additionCount} @@`,
-    hunk.hunkContext,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
+/**
+ * One file's diff. Lines are picked in the diff itself: a click on a line number, a drag or
+ * Shift+click across numbers, or the "+" that follows the pointer in the gutter. `onSelection`
+ * follows the range while it is drawn and `onPick` reports the finished one; the owner shows
+ * `selection` back as the highlighted range. Long lines wrap, so the diff never runs wider
+ * than its column.
+ */
 export function DiffCode({
   diff,
-  before,
-  after,
   layout,
   comments,
-  onComment,
-  navigation,
+  selection = null,
+  onSelection,
+  onPick,
+  handle,
+  className,
 }: {
   diff: FileDiffMetadata;
-  before: string;
-  after: string;
   layout: 'unified' | 'split';
   comments: ReviewCommentView[];
-  onComment?: (comment: NewComment) => Promise<void>;
-  /** Filled with this diff's change navigation while it is shown. */
-  navigation?: RefObject<HunkNavigation | null> | undefined;
+  /** The highlighted line range, if any. */
+  selection?: SelectedLineRange | null;
+  onSelection?(range: SelectedLineRange): void;
+  /** Absent where comments do not apply; lines are then not picked. */
+  onPick?(range: SelectedLineRange): void;
+  /** Filled with this diff's scroll moves while it is shown. */
+  handle?: RefObject<DiffHandle | null> | undefined;
+  /** The scroll box's size; the default suits a diff inside a longer page. */
+  className?: string;
 }) {
   const t = useTranslations('Review');
-  const td = useTranslations('Desktop');
-  const tf = useTranslations('Files');
   const { theme } = usePreferences();
   const viewer = useRef<CodeViewHandle<ReviewCommentView, undefined>>(null);
-  const hunks = useMemo(() => diff.hunks.map((hunk) => ({ label: hunkLabel(hunk) })), [diff]);
-  const [range, setRange] = useState<SelectedLineRange>({
-    start: 1,
-    end: 1,
-    side: after ? 'additions' : 'deletions',
-  });
-  const [open, setOpen] = useState(false);
-  const anchor = reviewSelection(range, before, after);
   const annotations = useMemo(
     () =>
       comments.map((comment) => ({
-        lineNumber: comment.startLine,
+        lineNumber: comment.endLine,
         side: comment.side === 'before' ? ('deletions' as const) : ('additions' as const),
         metadata: comment,
       })),
@@ -134,132 +124,66 @@ export function DiffCode({
     () => [{ id: 'comparison', type: 'diff', fileDiff: diff, annotations, version: seen.version }],
     [diff, annotations, seen.version],
   );
-  const choose = (selection: SelectedLineRange) => {
-    setRange(selection);
-    if (reviewSelection(selection, before, after)) setOpen(true);
-  };
-  const revealHunk = (index: number) => {
-    const hunk = diff.hunks[index];
-    if (!hunk) return;
-    const added = hunk.additionCount > 0;
-    viewer.current?.scrollTo({
-      type: 'line',
-      id: 'comparison',
-      lineNumber: added ? hunk.additionStart : hunk.deletionStart,
-      side: added ? 'additions' : 'deletions',
-      align: 'start',
-      behavior: prefersReducedMotion() ? 'instant' : 'smooth',
-    });
-  };
+  useEffect(() => {
+    if (!handle) return;
+    const value: DiffHandle = {
+      revealHunk(index) {
+        const hunk = diff.hunks[index];
+        if (!hunk) return;
+        const added = hunk.additionCount > 0;
+        viewer.current?.scrollTo({
+          type: 'line',
+          id: 'comparison',
+          lineNumber: added ? hunk.additionStart : hunk.deletionStart,
+          side: added ? 'additions' : 'deletions',
+          align: 'start',
+          behavior: prefersReducedMotion() ? 'instant' : 'smooth',
+        });
+      },
+    };
+    handle.current = value;
+    return () => {
+      if (handle.current === value) handle.current = null;
+    };
+  }, [handle, diff]);
   return (
-    <div className="space-y-2" data-testid="pierre-diff">
-      <HunkNavigator hunks={hunks} onReveal={revealHunk} navigation={navigation} />
-      {onComment ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Select
-            label={td('commentSide')}
-            size="xs"
-            value={range.side ?? 'additions'}
-            onValueChange={(side) => setRange((r) => ({ ...r, side, endSide: undefined }))}
-            options={[
-              { value: 'deletions' as const, label: tf('before') },
-              { value: 'additions' as const, label: tf('after') },
-            ]}
-          />
-          <label>
-            {td('fromLine')}{' '}
-            <Input
-              type="number"
-              min={1}
-              value={range.start}
-              onChange={(e) => setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))}
-              className="w-14"
-            />
-          </label>
-          <label>
-            {td('toLine')}{' '}
-            <Input
-              type="number"
-              min={1}
-              value={range.end}
-              onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
-              className="w-14"
-            />
-          </label>
-          <Button
-            size="compact"
-            variant="tertiary"
-            disabled={!anchor}
-            onClick={() => setOpen(true)}
+    <CodeFrame>
+      <CodeView
+        ref={viewer}
+        className={cn('min-h-24 overflow-auto', className ?? 'max-h-[min(65vh,600px)] rounded')}
+        style={{ fontSize: 12, lineHeight: '20px' }}
+        items={items}
+        selectedLines={selection ? { id: 'comparison', range: selection } : null}
+        onSelectedLinesChange={(next) => {
+          if (next) onSelection?.(next.range);
+        }}
+        options={{
+          ...codeOptions,
+          overflow: 'wrap',
+          themeType: theme,
+          diffStyle: layout,
+          enableLineSelection: true,
+          enableGutterUtility: Boolean(onPick),
+          hunkSeparators: 'line-info',
+          ...(onPick
+            ? {
+                onLineSelectionEnd: (range: SelectedLineRange | null) => {
+                  if (range) onPick(range);
+                },
+                onGutterUtilityClick: (range: SelectedLineRange) => onPick(range),
+              }
+            : {}),
+        }}
+        renderAnnotation={({ metadata }) => (
+          <p
+            data-testid="inline-comment"
+            className="m-0 border-l-2 border-primary bg-card px-3 py-2 font-sans text-caption"
           >
-            {t('commentLine', { line: Math.min(range.start, range.end) })}
-          </Button>
-        </div>
-      ) : null}
-      {open && anchor && onComment ? (
-        <ReviewCommentForm
-          anchor={anchor}
-          onSubmit={async (comment) => {
-            await onComment(comment);
-            setOpen(false);
-          }}
-          onCancel={() => setOpen(false)}
-        />
-      ) : null}
-      <CodeFrame>
-        <CodeView
-          ref={viewer}
-          className="max-h-[min(65vh,600px)] min-h-24 overflow-auto rounded fill-group"
-          style={{ fontSize: 12, lineHeight: '20px' }}
-          items={items}
-          renderGutterUtility={
-            onComment
-              ? (hoveredLine) => (
-                  <button
-                    type="button"
-                    aria-label={t('addComment')}
-                    onClick={() => {
-                      const line = hoveredLine();
-                      if (line)
-                        choose({
-                          start: line.lineNumber,
-                          end: line.lineNumber,
-                          side:
-                            'side' in line &&
-                            (line.side === 'deletions' || line.side === 'additions')
-                              ? line.side
-                              : 'additions',
-                        });
-                    }}
-                  >
-                    +
-                  </button>
-                )
-              : undefined
-          }
-          selectedLines={{ id: 'comparison', range }}
-          onSelectedLinesChange={(selection) => {
-            if (selection) setRange(selection.range);
-          }}
-          options={{
-            ...codeOptions,
-            themeType: theme,
-            diffStyle: layout,
-            enableLineSelection: true,
-            enableGutterUtility: !!onComment,
-            hunkSeparators: 'line-info',
-          }}
-          renderAnnotation={({ metadata }) => (
-            <p
-              data-testid="inline-comment"
-              className="border-l-2 border-primary bg-raised px-3 py-2 font-sans text-xs"
-            >
-              <CommentBody body={metadata.body} />{' '}
-              <span className="text-muted-foreground">· {t(`commentState.${metadata.state}`)}</span>
-            </p>
-          )}
-        />
-      </CodeFrame>
-    </div>
+            <CommentBody body={metadata.body} />{' '}
+            <span className="text-muted-foreground">· {t(`commentState.${metadata.state}`)}</span>
+          </p>
+        )}
+      />
+    </CodeFrame>
   );
 }

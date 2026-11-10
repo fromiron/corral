@@ -125,13 +125,21 @@ test('review file choices and expanded original preview remain reachable at narr
   await page.goto(`${corral.server.url}/sessions/${sessionId}/review`);
   const files = page.getByRole('navigation', { name: 'Review changes', exact: true });
   const readme = files.getByRole('button', { name: /^README.md/ });
+  // Below the three-column width the list folds into its head once a file is open.
+  const fold = files.getByRole('button', { name: /^\d+ files$/ });
+  const showFiles = async () => {
+    if ((await fold.isVisible()) && (await fold.getAttribute('aria-expanded')) === 'false')
+      await fold.click();
+  };
   await reachable(readme);
   await readme.click();
+  await showFiles();
   await reachable(files.getByRole('button', { name: /^other.txt/ }));
   await files.getByRole('button', { name: /^other.txt/ }).click();
+  await showFiles();
   await readme.click();
-  const parts = page.getByRole('region', { name: 'Selected changes', exact: true });
-  await parts.getByRole('button', { name: 'Select changed parts', exact: true }).click();
+  const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
+  await parts.getByRole('button', { name: 'Choose parts of this file', exact: true }).click();
   await parts.getByRole('checkbox', { name: /Part 1/ }).check();
   await parts.getByRole('button', { name: 'Preview original-folder changes', exact: true }).click();
   const apply = parts.getByRole('button', { name: 'Approve and apply to original', exact: true });
@@ -143,13 +151,17 @@ test('review file choices and expanded original preview remain reachable at narr
       const comments = page.locator('#comments-heading');
       const applyBox = await apply.boundingBox();
       const commentBox = await comments.boundingBox();
+      // The partial apply sits with the decision, never over the comments.
       expect(
         applyBox &&
           commentBox &&
-          (applyBox.y + applyBox.height <= commentBox.y ||
+          (applyBox.y >= commentBox.y + commentBox.height ||
+            applyBox.y + applyBox.height <= commentBox.y ||
+            applyBox.x >= commentBox.x + commentBox.width ||
             applyBox.x + applyBox.width <= commentBox.x),
       ).toBe(true);
       await reachable(comments);
+      await showFiles();
       await reachable(readme);
       await page.screenshot({ path: testInfo.outputPath(`review-${width}-${colorScheme}.png`) });
     }

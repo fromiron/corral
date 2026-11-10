@@ -13,24 +13,48 @@ import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import {
   Button,
+  cn,
   Dialog,
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Input,
+  Menu,
+  MenuCheckboxItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
   Select,
-  Switch,
+  Tooltip,
 } from '@corral/react/design-kit';
-import { ArrowDown, ArrowUp, Check, Eye } from '@corral/react/icons';
-import type { FileDiffMetadata } from '@pierre/diffs';
+import {
+  ArrowDown,
+  ArrowUp,
+  Bot,
+  Check,
+  ChevronDown,
+  Eye,
+  GitMerge,
+  Info,
+  ListFilter,
+  Pencil,
+  Plus,
+  Trash2,
+} from '@corral/react/icons';
+import type { FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   lazy,
+  type ReactNode,
   type RefObject,
   Suspense,
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -53,11 +77,12 @@ import {
   uniqueFileOperations,
 } from '../workbench/fileReviewPresentation.ts';
 import { HunkActions } from '../workbench/HunkActions.tsx';
-import type { HunkNavigation } from '../workbench/HunkNavigator.tsx';
+import { type HunkNavigation, HunkNavigator, hunkLabel } from '../workbench/HunkNavigator.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import type { DiffHandle } from '../workbench/PierreCode.tsx';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { ReviewSearch } from '../workbench/panels/routes.ts';
-import { CommentBody } from '../workbench/ReviewCommentForm.tsx';
+import { CommentBody, ReviewCommentForm } from '../workbench/ReviewCommentForm.tsx';
 import { rangeChanged, sideText } from '../workbench/reviewComments.ts';
 import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
 import {
@@ -66,18 +91,24 @@ import {
   reviewMoveFor,
   stepIndex,
 } from '../workbench/reviewNavigation.ts';
+import { reviewSelection } from '../workbench/reviewSelection.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import { useBinding } from './FilesViews.tsx';
 import { LspProposals } from './LspProposals.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
-// Reviewing a session's file changes: a fixed comparison range, the files it
-// changed with where each change came from, the diff in the middle, and the agreed checks.
+// Reviewing a session's file changes: a fixed comparison range, then three columns. The files
+// the range changed (with where each change came from), the selected file's changes, and the
+// decision area: comments, the decision and applying. Below the three-column width the file
+// list folds into its head and the decision area follows the changes.
 
 const DiffCode = lazy(() =>
   import('../workbench/PierreCode.tsx').then((module) => ({ default: module.DiffCode })),
 );
+
+const semibold = { fontVariationSettings: fontWeights.semibold };
+// The three columns sit side by side from a 1100px review width (`@min-[1100px]/review`).
 
 // Git state has one home, the Git pane; an old `scope=git` address is redirected there (#91).
 type ReviewScope = ChangeScopeQuery;
@@ -118,7 +149,10 @@ export function ReviewContent({
   embedded?: boolean;
   onPrepareCopy?: () => void;
   onSessionChange?: () => void | Promise<void>;
-  /** Where the host's header shows the compare range; in this view's own header without one. */
+  /**
+   * Where the host's header shows the compare range. A host that gives one owns the view's
+   * header (and its "mark all read" action); without one this view heads itself.
+   */
   rangeSlot?: HTMLElement | null;
   /** False where checks have their own view beside this one. */
   showChecks?: boolean;
@@ -270,6 +304,11 @@ export function ReviewContent({
   const numbered = runs.toReversed().sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   const runNumber = (runId: string) => numbered.findIndex((run) => run.runId === runId) + 1;
   const sinceRead = copyRead?.sessionId === session.sessionId && copyRead.read;
+  // The chosen range's detail is the exact pair of trees it compares.
+  const trees =
+    changes?.from && changes.to
+      ? t('compareRange', { from: changes.from.slice(0, 8), to: changes.to.slice(0, 8) })
+      : undefined;
   const ranges = [
     { value: 'session', label: t('scopes.session') },
     ...(sinceRead || scope.kind === 'review'
@@ -283,26 +322,20 @@ export function ReviewContent({
       value: `run:${r.runId}`,
       label: tw('runNumber', { number: runNumber(r.runId) }),
     })),
-  ];
+  ].map((option) =>
+    option.value === scopeKey && trees
+      ? { ...option, hint: <span className="font-mono">{trees}</span> }
+      : option,
+  );
+  // The options name what they compare; the label stays for assistive technology.
   const range = (
-    <>
-      {/* The options name what they compare; the label stays for assistive technology. */}
-      <Select
-        variant="chip"
-        label={t('scope')}
-        value={scopeKey}
-        onValueChange={setScope}
-        options={ranges}
-      />
-      {changes?.from && changes.to ? (
-        <span
-          className="font-mono text-caption text-muted-foreground"
-          title={`${changes.from} → ${changes.to}`}
-        >
-          {t('compareRange', { from: changes.from.slice(0, 8), to: changes.to.slice(0, 8) })}
-        </span>
-      ) : null}
-    </>
+    <Select
+      variant="chip"
+      label={t('scope')}
+      value={scopeKey}
+      onValueChange={setScope}
+      options={ranges}
+    />
   );
 
   // Next/previous file follows the list as shown (its filters and folded group); the brace keys
@@ -341,6 +374,21 @@ export function ReviewContent({
     root.addEventListener('keydown', onKey);
     return () => root.removeEventListener('keydown', onKey);
   }, [root]);
+  // The comment form is opened from the diff and shown in the decision area.
+  const [commentSlot, setCommentSlot] = useState<HTMLElement | null>(null);
+  const active = runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
+  const drafts = comments.filter((comment) => comment.state === 'draft').length;
+  // One line where the changes would be, whenever there is no diff to show.
+  const noFiles = Boolean(changes) && (Boolean(changes?.unavailable) || !changes?.files.length);
+  const idle = !changes
+    ? t('preparing')
+    : changes.unavailable
+      ? t('noBaseline')
+      : changes.files.length === 0
+        ? scope.kind === 'run'
+          ? t('runChangedNothing')
+          : t('nothingChanged')
+        : t('chooseFile');
   const Container = embedded ? 'div' : 'main';
 
   return (
@@ -351,84 +399,67 @@ export function ReviewContent({
         sessionId: session.sessionId,
       })}
       main={
-        <Container ref={setRoot} className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2">
-            {!embedded ? (
-              <>
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: session.sessionId }}
-                  className="text-xs underline"
-                >
-                  ← {session.title}
-                </Link>
-                <h2 className="text-base font-semibold">{t('reviewHeading')}</h2>
-              </>
-            ) : null}
-            {rangeSlot ? createPortal(range, rangeSlot) : range}
-            {changes ? (
-              <span className="text-caption text-muted-foreground">
-                {scope.kind === 'review'
-                  ? t('newChanges', { count: changes.files.length })
-                  : t('files', { count: changes.files.length })}
-              </span>
-            ) : null}
-            <span className="flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label={tr('previousFile')}
-                title={`${tr('previousFile')} (${REVIEW_MOVE_KEYS.previousFile})`}
-                aria-keyshortcuts={REVIEW_MOVE_KEYS.previousFile}
-                disabled={order.length === 0 || position === 0}
-                onClick={() => moveFile(-1)}
-              >
-                <ArrowUp aria-hidden />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label={tr('nextFile')}
-                title={`${tr('nextFile')} (${REVIEW_MOVE_KEYS.nextFile})`}
-                aria-keyshortcuts={REVIEW_MOVE_KEYS.nextFile}
-                disabled={order.length === 0 || position === order.length - 1}
-                onClick={() => moveFile(1)}
-              >
-                <ArrowDown aria-hidden />
-              </Button>
-            </span>
-            <Button
-              variant="tertiary"
-              size="compact"
-              onClick={() =>
-                void workspaces
-                  ?.markReviewed(session.sessionId)
-                  .then(() => setVersion((n) => n + 1))
-              }
-              title={t('reviewedNote')}
-              aria-describedby={reviewedHint}
-              className="ml-auto"
-            >
-              {t('markReviewed')}
-            </Button>
-            {/* The baseline always covers the whole current copy (#78 IA-07); the button names
-                it, so the longer note is its description and tooltip only. */}
-            <span id={reviewedHint} className="sr-only">
-              {t('reviewedNote')}
-            </span>
-          </header>
+        <Container
+          ref={setRoot}
+          className="@container/review flex h-full min-h-0 min-w-0 flex-1 flex-col"
+        >
+          {rangeSlot ? createPortal(range, rangeSlot) : null}
+          {!embedded || rangeSlot === undefined ? (
+            <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-2">
+              {!embedded ? (
+                <>
+                  <Link
+                    to="/sessions/$sessionId"
+                    params={{ sessionId: session.sessionId }}
+                    className="text-caption underline"
+                  >
+                    ← {session.title}
+                  </Link>
+                  <h2 className="text-title" style={semibold}>
+                    {t('reviewHeading')}
+                  </h2>
+                </>
+              ) : null}
+              {rangeSlot === undefined ? range : null}
+              {!embedded ? (
+                <>
+                  <Button
+                    variant="tertiary"
+                    size="compact"
+                    onClick={() =>
+                      void workspaces
+                        ?.markReviewed(session.sessionId)
+                        .then(() => setVersion((n) => n + 1))
+                    }
+                    title={t('reviewedNote')}
+                    aria-describedby={reviewedHint}
+                    className="ml-auto"
+                  >
+                    {t('markReviewed')}
+                  </Button>
+                  {/* The baseline always covers the whole current copy (#78 IA-07); the button
+                      names it, so the longer note is its description and tooltip only. */}
+                  <span id={reviewedHint} className="sr-only">
+                    {t('reviewedNote')}
+                  </span>
+                </>
+              ) : null}
+            </header>
+          ) : null}
           {runsLost ? (
-            <p role="alert" className="p-3 text-sm text-danger">
+            <p role="alert" className="m-0 p-3 text-body text-destructive">
               {ts('connectionLost')}
             </p>
           ) : null}
           {noCopy ? (
             <section
               data-testid="review-empty"
-              className="mx-auto flex max-w-lg flex-col items-start gap-3 p-8 text-sm"
+              className="mx-auto flex max-w-lg flex-col items-start gap-3 p-8"
             >
-              <h3 className="text-base font-semibold">{t('noCopyTitle')}</h3>
-              <p className="text-muted-foreground">{t('noCopyBody')}</p>
+              <h3 className="text-subtitle" style={semibold}>
+                {t('noCopyTitle')}
+              </h3>
+              <p className="m-0 text-body text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="compact"
@@ -461,31 +492,54 @@ export function ReviewContent({
               </div>
             </section>
           ) : error ? (
-            <div role="alert" className="flex flex-wrap items-center gap-2 p-3 text-sm text-danger">
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-2 p-3 text-body text-destructive"
+            >
               {t('failed', { message: error })}
               <Button variant="tertiary" size="compact" onClick={() => setVersion((n) => n + 1)}>
                 {t('retry')}
               </Button>
             </div>
           ) : null}
-          <div className={`${noCopy || error ? 'hidden' : 'grid'} review-layout min-h-0 flex-1`}>
+          <div
+            className={cn(
+              noCopy || error ? 'hidden' : 'grid',
+              // Stacked, each part keeps its own height and the view scrolls as one.
+              'min-h-0 flex-1 auto-rows-max grid-cols-1 content-start overflow-auto',
+              `@min-[1100px]/review:grid-cols-[clamp(14.5rem,20cqi,17rem)_minmax(0,1fr)_clamp(19rem,26cqi,22rem)]`,
+              `@min-[1100px]/review:grid-rows-[minmax(0,1fr)] @min-[1100px]/review:content-stretch @min-[1100px]/review:overflow-hidden`,
+            )}
+          >
             <nav
               ref={fileNav}
               aria-label={t('reviewHeading')}
-              className="review-files min-w-0 overflow-auto border-line p-2"
+              className={cn(
+                'flex min-h-0 min-w-0 flex-col border-b border-border',
+                `@min-[1100px]/review:border-r @min-[1100px]/review:border-b-0`,
+              )}
             >
               <FileList
-                sessionId={session.sessionId}
                 changes={changes}
                 selected={selected}
                 reviewed={reviewed}
                 onChoose={choose}
-                scopeIsRun={scope.kind === 'run'}
+                sinceRead={scope.kind === 'review'}
+                position={position}
+                total={order.length}
+                onMove={moveFile}
               />
             </nav>
-            <section aria-label={selected ?? t('chooseFile')} className="review-diff min-w-0 p-3">
+            <section
+              aria-label={selected ?? t('chooseFile')}
+              className={cn(
+                'flex min-h-0 min-w-0 flex-col',
+                `@min-[1100px]/review:overflow-hidden`,
+              )}
+            >
               {selected && changes?.from && changes.to ? (
                 <FileDiff
+                  fill
                   path={selected}
                   loadKey={`${session.sessionId}:${scopeKey}:${changes.from}:${changes.to}:${selected}`}
                   load={() =>
@@ -504,6 +558,7 @@ export function ReviewContent({
                   comments={comments.filter(
                     (c) => c.from === changes.from && c.to === changes.to && c.path === selected,
                   )}
+                  commentSlot={commentSlot}
                   onComment={async (comment: NewComment) => {
                     await workspaces?.addComment(session.sessionId, {
                       ...comment,
@@ -515,48 +570,24 @@ export function ReviewContent({
                   }}
                 />
               ) : (
-                <p className="text-sm text-muted-foreground">{t('chooseFile')}</p>
+                <p
+                  {...(noFiles ? { 'data-testid': 'no-changes' } : {})}
+                  className="m-auto max-w-xs px-6 py-10 text-center text-caption text-muted-foreground"
+                >
+                  {idle}
+                </p>
               )}
-              {selected && changes?.from && changes.to ? (
-                <HunkActions
-                  key={`${session.sessionId}:${selected}:${changes.from}:${changes.to}`}
-                  sessionId={session.sessionId}
-                  projectId={session.projectId}
-                  from={changes.from}
-                  to={changes.to}
-                  path={selected}
-                  active={runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
-                  onApplied={() => setVersion((value) => value + 1)}
-                  onAttach={onAttach}
-                />
-              ) : null}
             </section>
-            <aside className="review-details flex min-w-0 flex-col gap-3 border-line p-3">
-              {workspaces && mode === 'server' ? (
-                <LspProposals
-                  key={`lsp:${session.sessionId}`}
-                  api={workspaces}
-                  sessionId={session.sessionId}
-                  version={version}
-                  onApplied={() => setVersion((current) => current + 1)}
-                  renderFile={(proposal, file) => (
-                    <FileDiff
-                      path={file.path}
-                      loadKey={`${proposal.hash}:${file.path}`}
-                      load={async () => ({
-                        before: { kind: 'text', text: file.before },
-                        after: { kind: 'text', text: file.after },
-                      })}
-                      mark={{
-                        pressed: reviewed.has(`proposal:${proposal.hash}:${file.path}`),
-                        toggle: () => reviewed.toggle(`proposal:${proposal.hash}:${file.path}`),
-                      }}
-                      comments={[]}
-                    />
-                  )}
-                />
-              ) : null}
-
+            <aside
+              aria-label={tr('decisionArea')}
+              // Under the changes it is one column, then comments beside the decision once
+              // there is room for both; beside the changes it is one column again.
+              className={cn(
+                'flex min-w-0 flex-col gap-3 border-t border-border p-3',
+                '@min-[640px]/review:grid @min-[640px]/review:grid-cols-2 @min-[640px]/review:items-start @min-[640px]/review:gap-x-6',
+                '@min-[1100px]/review:flex @min-[1100px]/review:items-stretch @min-[1100px]/review:overflow-auto @min-[1100px]/review:border-t-0 @min-[1100px]/review:border-l',
+              )}
+            >
               <CommentsPanel
                 key={`comments:${session.sessionId}`}
                 session={session}
@@ -564,33 +595,86 @@ export function ReviewContent({
                 runsReady={loadedRuns.sessionId === session.sessionId && !runsLost}
                 comments={comments}
                 current={changes}
+                composer={<div ref={setCommentSlot} className="empty:hidden" />}
                 onChange={async () => {
                   refreshRuns();
                   await reloadComments();
                   await onSessionChange?.();
                 }}
               />
-              {scope.kind === 'session' && changes?.from && changes.to ? (
-                <DecisionPanel
-                  key={`decision:${session.sessionId}`}
-                  sessionId={session.sessionId}
-                  from={changes.from}
-                  to={changes.to}
-                  changed={version}
-                  linked={Boolean(binding)}
-                  active={runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
-                />
-              ) : null}
-              {showChecks ? (
-                <Checks
-                  sessionId={session.sessionId}
-                  projectId={session.projectId}
-                  binding={binding ?? null}
-                  changed={version}
-                  onAttach={onAttach}
-                />
-              ) : null}
-              <Operations sessionId={session.sessionId} />
+              {/* Each part below rules itself off from the one above; the first one is ruled
+                  off from the comments only while it sits under them. */}
+              <div
+                className={cn(
+                  'flex min-w-0 flex-col gap-3 border-t border-border pt-3 empty:hidden',
+                  '[&>*:first-child]:border-t-0 [&>*:first-child]:pt-0',
+                  '@min-[640px]/review:border-t-0 @min-[640px]/review:pt-0',
+                  '@min-[1100px]/review:border-t @min-[1100px]/review:pt-3',
+                )}
+              >
+                {scope.kind === 'session' && changes?.from && changes.to ? (
+                  <DecisionPanel
+                    key={`decision:${session.sessionId}`}
+                    sessionId={session.sessionId}
+                    from={changes.from}
+                    to={changes.to}
+                    changed={version}
+                    linked={Boolean(binding)}
+                    active={active}
+                    // Draft comments make sending them the next step; approving waits its turn.
+                    primary={drafts === 0}
+                  />
+                ) : null}
+                {selected && changes?.from && changes.to ? (
+                  <HunkActions
+                    key={`${session.sessionId}:${selected}:${changes.from}:${changes.to}`}
+                    sessionId={session.sessionId}
+                    projectId={session.projectId}
+                    from={changes.from}
+                    to={changes.to}
+                    path={selected}
+                    active={active}
+                    onApplied={() => setVersion((value) => value + 1)}
+                    onAttach={onAttach}
+                  />
+                ) : null}
+                {workspaces && mode === 'server' ? (
+                  <LspProposals
+                    key={`lsp:${session.sessionId}`}
+                    api={workspaces}
+                    sessionId={session.sessionId}
+                    version={version}
+                    onApplied={() => setVersion((current) => current + 1)}
+                    renderFile={(proposal, file) => (
+                      <FileDiff
+                        path={file.path}
+                        loadKey={`${proposal.hash}:${file.path}`}
+                        load={async () => ({
+                          before: { kind: 'text', text: file.before },
+                          after: { kind: 'text', text: file.after },
+                        })}
+                        mark={{
+                          pressed: reviewed.has(`proposal:${proposal.hash}:${file.path}`),
+                          toggle: () => reviewed.toggle(`proposal:${proposal.hash}:${file.path}`),
+                        }}
+                        comments={[]}
+                      />
+                    )}
+                  />
+                ) : null}
+                {showChecks ? (
+                  <div className="border-t border-border pt-3">
+                    <Checks
+                      sessionId={session.sessionId}
+                      projectId={session.projectId}
+                      binding={binding ?? null}
+                      changed={version}
+                      onAttach={onAttach}
+                    />
+                  </div>
+                ) : null}
+                <Operations sessionId={session.sessionId} />
+              </div>
             </aside>
           </div>
         </Container>
@@ -609,6 +693,18 @@ interface ChangeMark {
 const changeMark = (marks: ReviewMarks, file: FileChangeView | undefined): ChangeMark | undefined =>
   file && { pressed: marks.changeReviewed(file), toggle: () => marks.toggleChange(file) };
 
+/** The lines being commented on in one loaded comparison of a file. */
+interface LinePick {
+  key: string;
+  range: SelectedLineRange;
+  open: boolean;
+}
+
+/**
+ * One file's changes under a single toolbar: the path, the change position with previous/next,
+ * the view mode and, where the change can be reviewed, its review mark. With `onComment`, lines
+ * picked in the diff open the comment form with that range; the form's own inputs change it.
+ */
 export function FileDiff({
   path,
   loadKey,
@@ -616,7 +712,9 @@ export function FileDiff({
   mark,
   comments = [],
   onComment,
+  commentSlot,
   navigation,
+  fill = false,
 }: {
   path: string;
   /** Changes whenever what to load changes. */
@@ -626,14 +724,21 @@ export function FileDiff({
   comments?: ReviewCommentView[];
   /** Absent where comments do not apply (the linked folder's Git state). */
   onComment?: (comment: NewComment) => Promise<void>;
+  /** Where the comment form shows (the decision area); under the toolbar without one. */
+  commentSlot?: HTMLElement | null;
   /** Takes the shown diff's next/previous change moves (keyboard navigation). */
   navigation?: RefObject<HunkNavigation | null> | undefined;
+  /** Fills a review column: a ruled toolbar, and a diff that takes the height left. */
+  fill?: boolean;
 }) {
   const t = useTranslations('Files');
+  const tr = useTranslations('Review');
   const [sides, setSides] = useState<{ before: FileSideView; after: FileSideView } | null>(null);
   const [layout, setLayout] = useState<'unified' | 'split' | 'raw'>('unified');
   const [diff, setDiff] = useState<FileDiffMetadata | 'stopped' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pick, setPick] = useState<LinePick | null>(null);
+  const viewer = useRef<DiffHandle | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `loadKey` names what `load` reads
   useEffect(() => {
     let live = true;
@@ -677,18 +782,16 @@ export function FileDiff({
       worker.terminate();
     };
   }, [sides, path]);
-  if (error)
-    return (
-      <p role="alert" className="text-sm text-danger">
-        {error}
-      </p>
-    );
-  if (!sides) return <p className="text-sm text-muted-foreground">…</p>;
+  const hunks = useMemo(
+    () =>
+      diff && diff !== 'stopped' ? diff.hunks.map((hunk) => ({ label: hunkLabel(hunk) })) : [],
+    [diff],
+  );
   const notText = (side: FileSideView) =>
     side.kind === 'binary' ? t('binary') : side.kind === 'too_large' ? t('tooLarge') : null;
-  const before = sideText(sides.before);
-  const after = sideText(sides.after);
-  const source = sides.after.kind === 'text' ? sides.after.text : (before ?? '');
+  const before = sides ? sideText(sides.before) : null;
+  const after = sides ? sideText(sides.after) : null;
+  const source = sides?.after.kind === 'text' ? sides.after.text : (before ?? '');
   const download = () => {
     const url = URL.createObjectURL(new Blob([source], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a');
@@ -697,29 +800,91 @@ export function FileDiff({
     link.click();
     URL.revokeObjectURL(url);
   };
+  // A pick belongs to the comparison it was made in; another file starts without one.
+  const picked = pick?.key === loadKey ? pick : null;
+  const range: SelectedLineRange = picked?.range ?? {
+    start: 1,
+    end: 1,
+    side: after ? 'additions' : 'deletions',
+  };
+  const anchor = sides ? reviewSelection(range, before ?? '', after ?? '') : null;
+  const commentable = Boolean(onComment) && before !== null && after !== null;
+  const composer =
+    onComment && commentable ? (
+      picked?.open ? (
+        <ReviewCommentForm
+          anchor={anchor}
+          path={path}
+          range={{
+            side: range.side === 'deletions' ? 'before' : 'after',
+            start: range.start,
+            end: range.end,
+          }}
+          onRange={(next) =>
+            setPick({
+              key: loadKey,
+              open: true,
+              range: {
+                start: next.start,
+                end: next.end,
+                side: next.side === 'before' ? 'deletions' : 'additions',
+              },
+            })
+          }
+          onSubmit={async (comment) => {
+            await onComment(comment);
+            setPick((value) => (value?.key === loadKey ? { ...value, open: false } : value));
+          }}
+          onCancel={() =>
+            setPick((value) => (value?.key === loadKey ? { ...value, open: false } : value))
+          }
+        />
+      ) : (
+        <Button
+          variant="tertiary"
+          size="compact"
+          className="self-start"
+          onClick={() => setPick({ key: loadKey, range, open: true })}
+        >
+          <Plus aria-hidden />
+          {tr('addComment')}
+        </Button>
+      )
+    ) : null;
+  const cut = path.lastIndexOf('/') + 1;
+  const note = fill ? 'm-0 px-3 py-2 text-caption' : 'm-0 text-caption';
   return (
-    <div className="flex flex-col gap-2" data-testid="file-diff">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="break-all font-mono text-sm">{path}</h3>
-        {mark ? (
-          <Button
-            variant={mark.pressed ? 'secondary' : 'tertiary'}
-            size="compact"
-            aria-pressed={mark.pressed}
-            onClick={mark.toggle}
-            title={t('changeReviewNote')}
-          >
-            {mark.pressed ? (
-              <>
-                <Check className="text-success" />
-                {t('reviewedFile')}
-              </>
-            ) : (
-              t('markFileReviewed')
-            )}
-          </Button>
+    <div
+      className={cn('flex min-w-0 flex-col', fill ? 'min-h-0 flex-1' : 'gap-2')}
+      data-testid="file-diff"
+    >
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-x-2 gap-y-1',
+          fill && 'min-h-10 shrink-0 border-b border-border px-3 py-1',
+        )}
+      >
+        {/* A long path keeps its file name: it is cut at the start. */}
+        <h3
+          dir="rtl"
+          title={path}
+          className="m-0 min-w-24 flex-1 truncate text-left font-mono text-caption"
+        >
+          <bdi>
+            <span className="text-muted-foreground">{path.slice(0, cut)}</span>
+            {path.slice(cut)}
+          </bdi>
+        </h3>
+        {layout !== 'raw' && diff && diff !== 'stopped' ? (
+          <HunkNavigator
+            key={loadKey}
+            hunks={hunks}
+            onReveal={(index) => viewer.current?.revealHunk(index)}
+            navigation={navigation}
+          />
         ) : null}
-        <fieldset className="ml-auto flex gap-0.5">
+        <fieldset className="flex shrink-0 gap-0.5">
+          <legend className="sr-only">{t('viewMode')}</legend>
           {(['unified', 'split', 'raw'] as const).map((value) => (
             <Button
               key={value}
@@ -732,42 +897,103 @@ export function FileDiff({
             </Button>
           ))}
         </fieldset>
+        {mark ? (
+          <Tooltip content={t('changeReviewNote')}>
+            <Button
+              variant={mark.pressed ? 'secondary' : 'tertiary'}
+              size="compact"
+              aria-pressed={mark.pressed}
+              onClick={mark.toggle}
+              className="shrink-0"
+            >
+              {mark.pressed ? (
+                <>
+                  <Check aria-hidden className="text-success" />
+                  {t('reviewedFile')}
+                </>
+              ) : (
+                t('markFileReviewed')
+              )}
+            </Button>
+          </Tooltip>
+        ) : null}
       </div>
-      {diff === 'stopped' && layout !== 'raw' ? (
-        <p role="alert" className="text-xs text-warning">
-          {t('diffStopped')}
+      {composer && commentSlot === undefined ? (
+        <div className="flex flex-col">{composer}</div>
+      ) : null}
+      {composer && commentSlot ? createPortal(composer, commentSlot) : null}
+      {error ? (
+        <p role="alert" className={cn(note, 'text-destructive')}>
+          {error}
         </p>
-      ) : null}
-      {diff === null && layout !== 'raw' && !notText(sides.before) && !notText(sides.after) ? (
-        <p className="text-xs text-muted-foreground">{t('computing')}</p>
-      ) : null}
-      {notText(sides.before) || notText(sides.after) ? (
-        <p className="text-sm text-muted-foreground">
-          {notText(sides.after) ?? notText(sides.before)}
-        </p>
-      ) : layout === 'raw' ? (
-        <div className="flex flex-col gap-1">
-          <Button variant="tertiary" size="compact" onClick={download} className="self-start">
-            {t('downloadFile')}
-          </Button>
-          <pre className="overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2 font-mono text-ui">
-            {source}
-          </pre>
-        </div>
-      ) : diff && diff !== 'stopped' ? (
-        <Suspense fallback={<p className="text-xs text-muted-foreground">{t('computing')}</p>}>
-          <DiffCode
-            key={loadKey}
-            diff={diff}
-            before={before ?? ''}
-            after={after ?? ''}
-            layout={layout}
-            comments={comments}
-            navigation={navigation}
-            {...(onComment ? { onComment } : {})}
-          />
-        </Suspense>
-      ) : null}
+      ) : !sides ? (
+        <p className={cn(note, 'text-muted-foreground')}>{t('computing')}</p>
+      ) : (
+        <>
+          {diff === 'stopped' && layout !== 'raw' ? (
+            <p role="alert" className={cn(note, 'text-warning')}>
+              {t('diffStopped')}
+            </p>
+          ) : null}
+          {diff === null && layout !== 'raw' && !notText(sides.before) && !notText(sides.after) ? (
+            <p className={cn(note, 'text-muted-foreground')}>{t('computing')}</p>
+          ) : null}
+          {notText(sides.before) || notText(sides.after) ? (
+            <p className={cn(note, 'text-muted-foreground')}>
+              {notText(sides.after) ?? notText(sides.before)}
+            </p>
+          ) : layout === 'raw' ? (
+            <div className={cn('flex min-h-0 flex-col gap-2', fill && 'flex-1 p-3')}>
+              <Button variant="tertiary" size="compact" onClick={download} className="self-start">
+                {t('downloadFile')}
+              </Button>
+              <pre
+                className={cn(
+                  'm-0 overflow-auto fill-group p-3 font-mono text-caption break-all whitespace-pre-wrap',
+                  fill && 'min-h-0 flex-1',
+                )}
+              >
+                {source}
+              </pre>
+            </div>
+          ) : diff && diff !== 'stopped' ? (
+            <Suspense
+              fallback={<p className={cn(note, 'text-muted-foreground')}>{t('computing')}</p>}
+            >
+              <DiffCode
+                key={loadKey}
+                diff={diff}
+                layout={layout}
+                comments={comments}
+                handle={viewer}
+                selection={picked?.open ? picked.range : null}
+                className={
+                  fill
+                    ? `max-h-[min(70dvh,40rem)] @min-[1100px]/review:max-h-none @min-[1100px]/review:min-h-0 @min-[1100px]/review:flex-1`
+                    : 'max-h-[min(65vh,600px)] rounded fill-group'
+                }
+                {...(commentable
+                  ? {
+                      // A range across both sides quotes neither, so it is never taken.
+                      onSelection: (next: SelectedLineRange) => {
+                        if (reviewSelection(next, before ?? '', after ?? ''))
+                          setPick((value) => ({
+                            key: loadKey,
+                            range: next,
+                            open: value?.key === loadKey && value.open,
+                          }));
+                      },
+                      onPick: (next: SelectedLineRange) => {
+                        if (reviewSelection(next, before ?? '', after ?? ''))
+                          setPick({ key: loadKey, range: next, open: true });
+                      },
+                    }
+                  : {})}
+              />
+            </Suspense>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -811,11 +1037,14 @@ function Operations({ sessionId }: { sessionId: string }) {
   }, [workspaces, repository, sessionId]);
   if (ops.length === 0) return null;
   return (
-    <section aria-labelledby="ops-heading" className="flex flex-col gap-1">
-      <h3 id="ops-heading" className="text-sm font-semibold">
+    <section
+      aria-labelledby="ops-heading"
+      className="flex flex-col gap-2 border-t border-border pt-3"
+    >
+      <h3 id="ops-heading" className="m-0 text-body" style={semibold}>
         {t('operations')}
       </h3>
-      <ul className="flex flex-col gap-1 text-xs">
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-caption">
         {ops.slice(0, 50).map((op) => (
           <li
             key={op.id}
@@ -824,7 +1053,7 @@ function Operations({ sessionId }: { sessionId: string }) {
             {op.kind}{' '}
             <span className="font-mono">{op.to_path ? `${op.path} → ${op.to_path}` : op.path}</span>{' '}
             · {op.state}
-            <p className="line-clamp-2 wrap-anywhere">
+            <p className="m-0 line-clamp-2 wrap-anywhere">
               <time dateTime={op.created_at}>
                 {format.dateTime(new Date(op.created_at), {
                   dateStyle: 'short',
@@ -907,13 +1136,27 @@ function useMovedRanges(
   );
 }
 
-/** Draft comments go out together, to the running execution or as a new run. */
+/** Where a comment sits: its file and line range. */
+function CommentPlace({ comment }: { comment: ReviewCommentView }) {
+  return (
+    <span className="font-mono text-muted-foreground">
+      {comment.path}:{comment.startLine}
+      {comment.endLine > comment.startLine ? `–${comment.endLine}` : ''}
+    </span>
+  );
+}
+
+/**
+ * The review's comments: the form for a new one (`composer`), the drafts, sending them together
+ * to the running execution or as a new run, and the comments already sent.
+ */
 export function CommentsPanel({
   session,
   runs,
   runsReady = true,
   comments,
   current,
+  composer,
   onChange,
 }: {
   session: WorkSession;
@@ -921,6 +1164,8 @@ export function CommentsPanel({
   runsReady?: boolean;
   comments: ReviewCommentView[];
   current: ChangeSetView | null;
+  /** The new-comment form's place, at the head of the list. */
+  composer?: ReactNode;
   onChange: () => Promise<void>;
 }) {
   const t = useTranslations('Review');
@@ -965,8 +1210,9 @@ export function CommentsPanel({
     };
   }, [services, activeRunId]);
   const drafts = comments.filter((c) => c.state === 'draft');
-  const earlier = comments.filter(
-    (c) => c.state !== 'draft' && (!current || c.from !== current.from || c.to !== current.to),
+  const sentComments = comments.filter((c) => c.state !== 'draft');
+  const earlier = sentComments.filter(
+    (c) => !current || c.from !== current.from || c.to !== current.to,
   );
   const movedRanges = useMovedRanges(session.sessionId, current, comments);
   const steerTo = targets.find((x) => x.id === target);
@@ -1056,68 +1302,79 @@ export function CommentsPanel({
 
   return (
     <section aria-labelledby="comments-heading" className="flex flex-col gap-2">
-      <h3 id="comments-heading" className="text-sm font-semibold">
+      <h3 id="comments-heading" className="m-0 flex items-center gap-2 text-body" style={semibold}>
         {t('commentsHeading')}
+        {drafts.length > 0 ? (
+          <span className="text-muted-foreground tabular-nums">{drafts.length}</span>
+        ) : null}
       </h3>
-      <p className="text-xs text-muted-foreground">{t('draftCount', { count: drafts.length })}</p>
+      {composer}
       {drafts.length > 0 || pending ? (
         <>
-          <ul className="flex flex-col gap-1 text-xs">
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-caption">
             {drafts.map((c) => (
-              <li key={c.commentId} className="flex items-start justify-between gap-1">
-                <span>
-                  <span className="font-mono">
-                    {c.path}:{c.startLine}
-                  </span>{' '}
+              <li
+                key={c.commentId}
+                className="flex items-start gap-1 fill-group py-1.5 pr-1 pl-2.5"
+              >
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5 wrap-anywhere">
+                  <CommentPlace comment={c} />
                   <CommentBody body={c.body} />
                 </span>
-                <Button
-                  variant="ghost"
-                  size="compact"
-                  disabled={busy || Boolean(pending)}
-                  onClick={() =>
-                    void workspaces
-                      ?.setCommentState(session.sessionId, c.commentId, 'deleted')
-                      .then(onChange)
-                  }
-                >
-                  {t('deleteDraft')}
-                </Button>
+                <Tooltip content={t('deleteDraft')}>
+                  <Button
+                    variant="ghost"
+                    size="icon-compact"
+                    aria-label={t('deleteDraft')}
+                    disabled={busy || Boolean(pending)}
+                    onClick={() =>
+                      void workspaces
+                        ?.setCommentState(session.sessionId, c.commentId, 'deleted')
+                        .then(onChange)
+                    }
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                </Tooltip>
               </li>
             ))}
           </ul>
-          <div className="flex flex-col gap-1 text-xs">
-            <span aria-hidden="true">{t('sendTo')}</span>
-            <Select
-              label={t('sendTo')}
-              value={active && !pending ? target : 'next'}
-              disabled={busy || Boolean(pending) || !runsReady}
-              onValueChange={setTarget}
-              options={[
-                ...(active && !pending ? [] : [{ value: 'next', label: t('sendNext') }]),
-                ...targets.map((x) => ({ value: x.id, label: t('sendSteer', { label: x.label }) })),
-              ]}
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-32 flex-1">
+              <Select
+                label={t('sendTo')}
+                size="xs"
+                value={active && !pending ? target : 'next'}
+                disabled={busy || Boolean(pending) || !runsReady}
+                onValueChange={setTarget}
+                options={[
+                  ...(active && !pending ? [] : [{ value: 'next', label: t('sendNext') }]),
+                  ...targets.map((x) => ({
+                    value: x.id,
+                    label: t('sendSteer', { label: x.label }),
+                  })),
+                ]}
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="compact"
+              type="button"
+              disabled={busy || startBlocked || (!pending && Boolean(active) && !steerTo)}
+              onClick={() => void send()}
+            >
+              {t(pending ? 'retrySend' : 'sendReview')}
+            </Button>
           </div>
-          <Button
-            variant="primary"
-            size="compact"
-            type="button"
-            disabled={busy || startBlocked || (!pending && Boolean(active) && !steerTo)}
-            onClick={() => void send()}
-            className="self-start"
-          >
-            {t(pending ? 'retrySend' : 'sendReview')}
-          </Button>
         </>
       ) : null}
       {!runsReady && !pending && drafts.length > 0 ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="m-0 text-caption text-muted-foreground">
           {widgets('runLoading')}
         </p>
       ) : null}
       {(modelBlocked || reasoningBlocked) && drafts.length > 0 ? (
-        <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+        <div role="status" className="flex flex-wrap items-center gap-2 text-caption">
           <span>
             {modelBlocked
               ? profiles === null
@@ -1145,51 +1402,48 @@ export function CommentsPanel({
         </div>
       ) : null}
       {note ? (
-        <p role="status" className="text-xs">
+        <p role="status" className="m-0 text-caption">
           {note}
         </p>
       ) : null}
-      {comments.filter((c) => c.state !== 'draft').length > 0 ? (
-        <details open={earlier.length > 0}>
-          <summary className="cursor-pointer text-xs text-muted-foreground">{t('earlier')}</summary>
-          <ul className="mt-1 flex flex-col gap-1 text-xs">
-            {comments
-              .filter((c) => c.state !== 'draft')
-              .map((c) => (
-                <li key={c.commentId} className="rounded fill-group p-1">
-                  <span className="font-mono">
-                    {c.path}:{c.startLine}
-                  </span>{' '}
-                  · {t(`commentState.${c.state}`)}
+      {sentComments.length > 0 ? (
+        <details open={earlier.length > 0} className="text-caption">
+          <summary className="cursor-pointer text-muted-foreground">{t('earlier')}</summary>
+          <ul className="m-0 mt-1.5 flex list-none flex-col gap-1.5 p-0">
+            {sentComments.map((c) => (
+              <li key={c.commentId} className="flex flex-col gap-1 fill-group px-2.5 py-2">
+                <span className="wrap-anywhere">
+                  <CommentPlace comment={c} /> · {t(`commentState.${c.state}`)}
                   {movedRanges.has(c.commentId) ? (
                     <span className="text-warning"> · {t('rangeChanged')}</span>
                   ) : null}
-                  <blockquote className="border-l-2 border-line pl-1 font-mono text-muted-foreground">
-                    {c.quote}
-                  </blockquote>
-                  <p>
-                    <CommentBody body={c.body} />
-                  </p>
-                  {c.state === 'submitted' ? (
-                    <div className="flex gap-1">
-                      {(['addressed', 'obsolete'] as const).map((state) => (
-                        <Button
-                          key={state}
-                          variant="ghost"
-                          size="compact"
-                          onClick={() =>
-                            void workspaces
-                              ?.setCommentState(session.sessionId, c.commentId, state)
-                              .then(onChange)
-                          }
-                        >
-                          {state === 'addressed' ? t('markAddressed') : t('markObsolete')}
-                        </Button>
-                      ))}
-                    </div>
-                  ) : null}
-                </li>
-              ))}
+                </span>
+                <blockquote className="m-0 border-l-2 border-border pl-2 font-mono text-muted-foreground wrap-anywhere">
+                  {c.quote}
+                </blockquote>
+                <p className="m-0 wrap-anywhere">
+                  <CommentBody body={c.body} />
+                </p>
+                {c.state === 'submitted' ? (
+                  <div className="-ml-1.5 flex gap-1">
+                    {(['addressed', 'obsolete'] as const).map((state) => (
+                      <Button
+                        key={state}
+                        variant="ghost"
+                        size="compact"
+                        onClick={() =>
+                          void workspaces
+                            ?.setCommentState(session.sessionId, c.commentId, state)
+                            .then(onChange)
+                        }
+                      >
+                        {state === 'addressed' ? t('markAddressed') : t('markObsolete')}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+              </li>
+            ))}
           </ul>
         </details>
       ) : null}
@@ -1208,6 +1462,7 @@ export function DecisionPanel({
   changed,
   linked,
   active,
+  primary = true,
 }: {
   sessionId: string;
   from: string;
@@ -1215,6 +1470,8 @@ export function DecisionPanel({
   changed: number;
   linked: boolean;
   active: boolean;
+  /** False while another step leads the review (draft comments waiting to be sent). */
+  primary?: boolean;
 }) {
   const t = useTranslations('Review');
   const { workspaces } = useServices();
@@ -1252,6 +1509,7 @@ export function DecisionPanel({
   const earlier = latest !== null && (latest.stale || latest.from !== from || latest.to !== to);
   // Applying writes the approved tree; an approval from another starting point is not applied.
   const approved = latest && latest.decision === 'approved' && latest.from === from ? latest : null;
+  const settled = Boolean(approved && !earlier);
   const decide = async (decision: 'approved' | 'changes_requested') => {
     await workspaces?.decide(sessionId, { from, to, decision, note: '' });
     setPlan(null);
@@ -1260,32 +1518,41 @@ export function DecisionPanel({
   const applying = plan?.filter((f) => f.outcome === 'apply').length ?? 0;
 
   return (
-    <section aria-labelledby="decision-heading" className="flex flex-col gap-2">
-      <h3 id="decision-heading" className="text-sm font-semibold">
-        {t('decisionHeading')}
-      </h3>
-      <p className="text-xs text-muted-foreground">{t('decisionScope')}</p>
+    <section
+      aria-labelledby="decision-heading"
+      className="flex flex-col gap-2 border-t border-border pt-3"
+    >
+      <div className="flex items-center gap-1">
+        <h3 id="decision-heading" className="m-0 text-body" style={semibold}>
+          {t('decisionHeading')}
+        </h3>
+        <Tooltip content={t('decisionScope')}>
+          <Button variant="ghost" size="icon-compact" aria-label={t('decisionScope')}>
+            <Info aria-hidden />
+          </Button>
+        </Tooltip>
+        {latest ? (
+          <p className="m-0 ml-auto text-caption" data-testid="decision">
+            {t(`decisionState.${latest.decision}`)}
+            {earlier ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
+          </p>
+        ) : null}
+      </div>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="m-0 text-caption text-destructive">
           {error}
         </p>
       ) : null}
-      {latest ? (
-        <p className="text-xs" data-testid="decision">
-          {t(`decisionState.${latest.decision}`)}
-          {earlier ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap gap-1 text-xs">
+      <div className="flex flex-wrap gap-2">
         <Button
-          variant="tertiary"
+          variant={primary && !settled ? 'primary' : 'tertiary'}
           size="compact"
           type="button"
-          disabled={busy || Boolean(approved && !earlier)}
+          disabled={busy || settled}
           onClick={() => void act(() => decide('approved'))}
-          className=""
         >
-          {t(approved && !earlier ? 'decisionState.approved' : 'approve')}
+          {settled ? <Check aria-hidden /> : null}
+          {t(settled ? 'decisionState.approved' : 'approve')}
         </Button>
         <Button
           variant="tertiary"
@@ -1297,11 +1564,19 @@ export function DecisionPanel({
         </Button>
       </div>
       {approved && linked ? (
-        <div className="flex flex-col gap-1 rounded fill-group p-2 text-xs">
-          <h4 className="font-semibold">{t('integrateHeading')}</h4>
-          <p className="text-muted-foreground">{t('integrateNote')}</p>
+        <div className="flex flex-col gap-2 fill-group p-3 text-caption">
+          <div className="flex items-center gap-1">
+            <h4 className="m-0" style={semibold}>
+              {t('integrateHeading')}
+            </h4>
+            <Tooltip content={t('integrateNote')}>
+              <Button variant="ghost" size="icon-compact" aria-label={t('integrateNote')}>
+                <Info aria-hidden />
+              </Button>
+            </Tooltip>
+          </div>
           <Button
-            variant="tertiary"
+            variant={plan ? 'tertiary' : 'secondary'}
             size="compact"
             onClick={() =>
               void act(async () => {
@@ -1315,10 +1590,14 @@ export function DecisionPanel({
           </Button>
           {plan ? (
             <>
-              <ul data-testid="integration-plan">
+              <ul
+                data-testid="integration-plan"
+                className="m-0 flex list-none flex-col gap-0.5 p-0"
+              >
                 {plan.map((f) => (
                   <li key={f.path} className={f.outcome === 'conflict' ? 'text-warning' : ''}>
-                    <span className="font-mono">{f.path}</span> · {t(`planOutcome.${f.outcome}`)}
+                    <span className="font-mono wrap-anywhere">{f.path}</span> ·{' '}
+                    {t(`planOutcome.${f.outcome}`)}
                   </li>
                 ))}
               </ul>
@@ -1346,29 +1625,31 @@ export function DecisionPanel({
         <div
           key={integration.integrationId}
           data-testid="integration"
-          className="flex flex-col gap-1 rounded fill-group p-2 text-xs"
+          className="flex flex-col gap-1.5 fill-group p-3 text-caption"
         >
-          <span className="font-medium">
+          <span style={semibold}>
             {t(`integrationState.${integrationDisplayState(integration)}`)}
           </span>
-          <ul>
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
             {integration.files.map((f) => (
               <li key={f.path}>
-                <span className="font-mono">{f.path}</span> · {t(`fileOutcome.${f.outcome}`)}
+                <span className="font-mono wrap-anywhere">{f.path}</span> ·{' '}
+                {t(`fileOutcome.${f.outcome}`)}
               </li>
             ))}
           </ul>
           {integration.files.some((f) => f.outcome === 'applied') ? (
-            <Button
-              variant="tertiary"
-              size="compact"
-              title={t('revertNote')}
-              disabled={busy || active}
-              onClick={() => setRevertTarget({ sessionId, integration })}
-              className="self-start"
-            >
-              {t('revert')}
-            </Button>
+            <Tooltip content={t('revertNote')}>
+              <Button
+                variant="tertiary"
+                size="compact"
+                disabled={busy || active}
+                onClick={() => setRevertTarget({ sessionId, integration })}
+                className="self-start"
+              >
+                {t('revert')}
+              </Button>
+            </Tooltip>
           ) : null}
         </div>
       ))}
@@ -1381,7 +1662,7 @@ export function DecisionPanel({
         <DialogPopup showCloseButton={false} bottomStickOnMobile={false}>
           <DialogTitle>{t('confirmRevert')}</DialogTitle>
           <DialogDescription>{t('confirmRevertNote')}</DialogDescription>
-          <ul className="my-3 max-h-48 overflow-y-auto text-xs font-mono">
+          <ul className="my-3 max-h-48 list-none overflow-y-auto p-0 font-mono text-caption">
             {revertTarget?.integration.files
               .filter((file) => file.outcome === 'applied')
               .map((file) => (
@@ -1426,118 +1707,275 @@ function reviewOrder(files: FileChangeView[]) {
   return [...files.filter((f) => !foldedFile(f)), ...files.filter(foldedFile)].map((f) => f.path);
 }
 
+/** Who last wrote the file: Corral, Corral and then someone else, or not Corral at all. */
+const PROVENANCE_ICONS = {
+  managed_agent: Bot,
+  mixed: GitMerge,
+  external_observed: Pencil,
+} as const;
+/** Git's one-letter status for what is not a plain modification. */
+const STATUS_MARKS: Partial<Record<FileChangeView['status'], { letter: string; tone: string }>> = {
+  added: { letter: 'A', tone: 'text-success' },
+  deleted: { letter: 'D', tone: 'text-destructive' },
+  type_changed: { letter: 'T', tone: 'text-muted-foreground' },
+};
+
+/**
+ * The files of the range, one line each: its review or read mark, name and folder, what changed
+ * and who wrote it. The head carries the count and the previous/next file moves; below the
+ * three-column width it also folds the list away once a file is chosen.
+ */
 function FileList({
-  sessionId,
   changes,
   selected,
   reviewed,
   onChoose,
-  scopeIsRun = false,
+  sinceRead = false,
+  position,
+  total,
+  onMove,
 }: {
-  scopeIsRun?: boolean;
-  sessionId: string;
   changes: ChangeSetView | null;
   selected: string | null;
   reviewed: ReviewMarks;
   onChoose: (path: string) => void;
+  /** The range lists only what changed since the copy was marked read. */
+  sinceRead?: boolean;
+  position: number;
+  total: number;
+  onMove(direction: 1 | -1): boolean;
 }) {
   const t = useTranslations('Files');
+  const tr = useTranslations('Review');
+  const listId = useId();
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | FileChangeView['status']>('all');
   const [unreviewedOnly, setUnreviewedOnly] = useState(false);
-  void sessionId;
-  if (!changes) return <p className="text-xs text-muted-foreground">{t('preparing')}</p>;
-  if (changes.unavailable)
-    return <p className="text-xs text-muted-foreground">{t('noBaseline')}</p>;
-  if (changes.files.length === 0)
-    return (
-      <p data-testid="no-changes" className="text-xs text-muted-foreground">
-        {scopeIsRun ? t('runChangedNothing') : t('nothingChanged')}
-      </p>
-    );
+  // Below the three-column width the list folds into its head once a file is being read; a
+  // fold or unfold made by hand holds for that file.
+  const [fold, setFold] = useState<{ file: string | null; collapsed: boolean } | null>(null);
+  const files = changes && !changes.unavailable ? changes.files : [];
+  const collapsed = fold && fold.file === selected ? fold.collapsed : selected !== null;
   const needle = query.trim().toLowerCase();
-  const matches = changes.files.filter(
+  const matches = files.filter(
     (f) =>
       (!needle || f.path.toLowerCase().includes(needle)) &&
       (kind === 'all' || f.status === kind) &&
       (!unreviewedOnly || !reviewed.changeReviewed(f)),
   );
-  const folded = matches.filter(foldedFile);
-  const main = matches.filter((f) => !folded.includes(f));
-  const row = (file: FileChangeView) => (
-    <li key={file.path}>
-      <Button
-        variant={selected === file.path ? 'secondary' : 'ghost'}
-        aria-current={selected === file.path ? 'true' : undefined}
-        data-review-file={file.path}
-        onClick={() => onChoose(file.path)}
-        className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal py-1.5 text-left text-xs"
-      >
-        <span className="flex items-start gap-1 break-all font-mono">
-          {reviewed.changeReviewed(file) ? (
-            <>
-              <Check aria-hidden className="mt-0.5 size-3 shrink-0 text-success" />
-              <span className="sr-only">{t('reviewedFile')}</span>
-            </>
-          ) : reviewed.contentRead(file) ? (
-            <span title={t('readElsewhere')} className="contents">
-              <Eye aria-hidden className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
-              <span className="sr-only">{t('readElsewhere')}</span>
+  const generated = matches.filter(foldedFile);
+  const main = matches.filter((f) => !generated.includes(f));
+  const count = changes
+    ? sinceRead
+      ? t('newChanges', { count: files.length })
+      : t('files', { count: files.length })
+    : t('reviewHeading');
+  const row = (file: FileChangeView) => {
+    const cut = file.path.lastIndexOf('/') + 1;
+    const isReviewed = reviewed.changeReviewed(file);
+    const isRead = !isReviewed && reviewed.contentRead(file);
+    const status = STATUS_MARKS[file.status];
+    const Provenance = PROVENANCE_ICONS[file.provenance];
+    const counts =
+      file.additions !== null ? `+${file.additions} −${file.deletions ?? 0}` : undefined;
+    return (
+      <li key={file.path}>
+        <Button
+          variant={selected === file.path ? 'secondary' : 'ghost'}
+          size="compact"
+          aria-current={selected === file.path ? 'true' : undefined}
+          data-review-file={file.path}
+          title={file.path}
+          onClick={() => onChoose(file.path)}
+          className="w-full justify-start gap-1.5 px-2 text-left"
+        >
+          <span className="sr-only">
+            {[
+              file.path,
+              t(`status.${file.status}`),
+              counts,
+              file.binary ? 'bin' : undefined,
+              t(`provenance.${file.provenance}`),
+              isReviewed ? t('reviewedFile') : isRead ? t('readElsewhere') : undefined,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+          <span
+            aria-hidden
+            className="grid size-3.5 shrink-0 place-items-center"
+            title={isReviewed ? t('reviewedFile') : isRead ? t('readElsewhere') : undefined}
+          >
+            {isReviewed ? (
+              <Check className="text-success" />
+            ) : isRead ? (
+              <Eye className="text-muted-foreground" />
+            ) : null}
+          </span>
+          <span aria-hidden className="min-w-0 flex-1 truncate font-mono">
+            {file.path.slice(cut)}
+            {cut > 0 ? (
+              <span className="text-muted-foreground"> {file.path.slice(0, cut - 1)}</span>
+            ) : null}
+          </span>
+          <span aria-hidden className="flex shrink-0 items-center gap-1.5 tabular-nums">
+            {status ? (
+              <span className={status.tone} title={t(`status.${file.status}`)}>
+                {status.letter}
+              </span>
+            ) : null}
+            {file.binary ? <span className="text-muted-foreground">bin</span> : null}
+            {file.additions !== null ? (
+              <>
+                {file.additions > 0 || !file.deletions ? (
+                  <span className="text-success">+{file.additions}</span>
+                ) : null}
+                {file.deletions ? (
+                  <span className="text-destructive">−{file.deletions}</span>
+                ) : null}
+              </>
+            ) : null}
+            <span
+              className="grid size-3.5 place-items-center text-muted-foreground"
+              title={t(`provenance.${file.provenance}`)}
+            >
+              <Provenance />
             </span>
-          ) : null}
-          {file.path}
-        </span>
-        <span className="text-muted-foreground">
-          {t(`status.${file.status}`)}
-          {file.additions !== null ? ` · +${file.additions} −${file.deletions ?? 0}` : ''}
-          {file.binary ? ' · bin' : ''} · {t(`provenance.${file.provenance}`)}
-        </span>
-      </Button>
-    </li>
-  );
+          </span>
+        </Button>
+      </li>
+    );
+  };
   return (
-    <div className="flex flex-col gap-2">
-      <Input
-        type="search"
-        size="compact"
-        aria-label={t('filterSearch')}
-        placeholder={t('filterSearch')}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Select
-          variant="chip"
-          label={t('kindAll')}
-          value={kind}
-          onValueChange={setKind}
-          options={[
-            { value: 'all' as const, label: t('kindAll') },
-            ...(['added', 'modified', 'deleted', 'type_changed'] as const).map((value) => ({
-              value,
-              label: t(`status.${value}`),
-            })),
-          ]}
-        />
-        <Switch
-          label={t('unreviewedOnly')}
-          checked={unreviewedOnly}
-          onToggle={() => setUnreviewedOnly((value) => !value)}
-        />
+    <>
+      <div className="flex h-10 shrink-0 items-center gap-0.5 pr-2 pl-3">
+        <h3
+          className={cn(
+            'm-0 hidden text-caption text-muted-foreground',
+            `@min-[1100px]/review:block`,
+          )}
+          style={semibold}
+        >
+          {count}
+        </h3>
+        <Button
+          variant="ghost"
+          size="compact"
+          aria-expanded={!collapsed}
+          aria-controls={listId}
+          disabled={files.length === 0}
+          onClick={() => setFold({ file: selected, collapsed: !collapsed })}
+          className={cn('-ml-2', `@min-[1100px]/review:hidden`)}
+        >
+          {count}
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              'transition-transform motion-reduce:transition-none',
+              !collapsed && 'rotate-180',
+            )}
+          />
+        </Button>
+        {files.length > 0 ? (
+          <Tooltip content={t('ignoredNote')}>
+            <Button variant="ghost" size="icon-compact" aria-label={t('ignoredNote')}>
+              <Info aria-hidden />
+            </Button>
+          </Tooltip>
+        ) : null}
+        <span className="ml-auto flex items-center gap-0.5">
+          <Tooltip content={tr('previousFile')} shortcut={REVIEW_MOVE_KEYS.previousFile}>
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={tr('previousFile')}
+              aria-keyshortcuts={REVIEW_MOVE_KEYS.previousFile}
+              disabled={total === 0 || position === 0}
+              onClick={() => onMove(-1)}
+            >
+              <ArrowUp aria-hidden />
+            </Button>
+          </Tooltip>
+          <Tooltip content={tr('nextFile')} shortcut={REVIEW_MOVE_KEYS.nextFile}>
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={tr('nextFile')}
+              aria-keyshortcuts={REVIEW_MOVE_KEYS.nextFile}
+              disabled={total === 0 || position === total - 1}
+              onClick={() => onMove(1)}
+            >
+              <ArrowDown aria-hidden />
+            </Button>
+          </Tooltip>
+        </span>
       </div>
-      {changes.files.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t('noChanges')}</p>
-      ) : null}
-      <ul className="flex flex-col gap-1">{main.map(row)}</ul>
-      {folded.length > 0 ? (
-        <details>
-          <summary className="cursor-pointer text-xs text-muted-foreground">
-            {t('generatedGroup', { count: folded.length })}
-          </summary>
-          <ul className="mt-1 flex flex-col gap-1">{folded.map(row)}</ul>
-        </details>
-      ) : null}
-      <p className="text-xs text-muted-foreground">{t('ignoredNote')}</p>
-    </div>
+      <div
+        id={listId}
+        className={cn(
+          'max-h-64 min-h-0 flex-col gap-2 overflow-auto px-2 pb-2',
+          files.length === 0 || collapsed ? 'hidden' : 'flex',
+          files.length > 0 && `@min-[1100px]/review:flex`,
+          `@min-[1100px]/review:max-h-none @min-[1100px]/review:flex-1`,
+        )}
+      >
+        <div className="flex items-center gap-1">
+          <Input
+            type="search"
+            size="compact"
+            aria-label={t('filterSearch')}
+            placeholder={t('filterSearch')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <Menu>
+            <Tooltip content={t('filterFiles')}>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant={kind !== 'all' || unreviewedOnly ? 'secondary' : 'ghost'}
+                    size="icon-compact"
+                    aria-label={t('filterFiles')}
+                  />
+                }
+              >
+                <ListFilter aria-hidden />
+              </MenuTrigger>
+            </Tooltip>
+            <MenuPopup align="end" className="min-w-44">
+              <MenuRadioGroup value={kind} onValueChange={(value) => setKind(value as typeof kind)}>
+                <MenuRadioItem value="all" closeOnClick>
+                  {t('kindAll')}
+                </MenuRadioItem>
+                {(['added', 'modified', 'deleted', 'type_changed'] as const).map((value) => (
+                  <MenuRadioItem key={value} value={value} closeOnClick>
+                    {t(`status.${value}`)}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+              <MenuSeparator />
+              <MenuCheckboxItem
+                checked={unreviewedOnly}
+                onCheckedChange={(checked) => setUnreviewedOnly(checked)}
+              >
+                {t('unreviewedOnly')}
+              </MenuCheckboxItem>
+            </MenuPopup>
+          </Menu>
+        </div>
+        {matches.length === 0 ? (
+          <p className="m-0 px-2 py-1 text-caption text-muted-foreground">{t('noMatches')}</p>
+        ) : null}
+        <ul className="m-0 flex list-none flex-col gap-0.5 p-0">{main.map(row)}</ul>
+        {generated.length > 0 ? (
+          <details className="text-caption">
+            <summary className="cursor-pointer text-muted-foreground">
+              {t('generatedGroup', { count: generated.length })}
+            </summary>
+            <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0">{generated.map(row)}</ul>
+          </details>
+        ) : null}
+      </div>
+    </>
   );
 }

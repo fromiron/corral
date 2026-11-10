@@ -18,29 +18,35 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
 }));
 vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
-// The diff renderer needs real workers; the comment form inside it is the real one, open on
-// README.md as if its first line had been chosen.
-vi.mock('../workbench/PierreCode.tsx', async () => {
-  const { ReviewCommentForm } = await import('../workbench/ReviewCommentForm.tsx');
-  return {
-    DiffCode: ({
-      diff,
-      after,
-      onComment,
-    }: {
-      diff: { name: string };
-      after: string;
-      onComment?: (comment: Record<string, unknown>) => Promise<void>;
-    }) =>
-      onComment && diff.name === 'README.md' ? (
-        <ReviewCommentForm
-          anchor={{ side: 'after', startLine: 1, endLine: 1, quote: after.split('\n')[0] ?? '' }}
-          onSubmit={onComment}
-          onCancel={() => {}}
-        />
-      ) : null,
-  };
-});
+// The diff renderer needs real workers. This one reports line picks the way the renderer does
+// (a finished range on the "after" side) and shows which range it is asked to highlight; the
+// comment form the pick opens is the real one.
+type Picked = { start: number; end: number; side: 'additions' | 'deletions' };
+vi.mock('../workbench/PierreCode.tsx', () => ({
+  DiffCode: ({
+    selection,
+    onPick,
+  }: {
+    selection?: Picked | null;
+    onPick?: (range: Picked) => void;
+  }) => (
+    <div
+      data-testid="diff"
+      data-selection={selection ? `${selection.side}:${selection.start}-${selection.end}` : ''}
+    >
+      {onPick ? (
+        <>
+          <button type="button" onClick={() => onPick({ start: 1, end: 1, side: 'additions' })}>
+            pick line 1
+          </button>
+          <button type="button" onClick={() => onPick({ start: 3, end: 2, side: 'additions' })}>
+            pick lines 2-3
+          </button>
+        </>
+      ) : null}
+    </div>
+  ),
+}));
 vi.mock('@corral/react/design-kit', async (original) => ({
   ...(await original<typeof import('@corral/react/design-kit')>()),
   Select: ({
@@ -130,8 +136,8 @@ class ImmediateWorker {
   terminate() {}
 }
 
-function setValue(field: HTMLTextAreaElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+function setValue(field: HTMLTextAreaElement | HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set;
   setter?.call(field, value);
   field.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -184,7 +190,7 @@ async function mount({
       fileVersions: vi.fn(async (_s: string, _f: string, _t: string, path: string) => ({
         path,
         before: { kind: 'text', text: 'old line\n' },
-        after: { kind: 'text', text: 'new line\n' },
+        after: { kind: 'text', text: 'new line\nsecond line\nthird line\n' },
       })),
       verifications: async () => [],
       fileOperations: async () => [],
@@ -222,17 +228,125 @@ async function mount({
     );
   const scope = () =>
     container.querySelector<HTMLSelectElement>('select[aria-label="Files.scope"]');
-  return { container, writes, addComment, startAuto, searches, fileButton, scope };
+  const button = (text: string, within: ParentNode = container) =>
+    [...within.querySelectorAll<HTMLButtonElement>('button')].find(
+      (item) => item.textContent === text,
+    );
+  const click = async (text: string, within?: ParentNode) => {
+    const target = button(text, within);
+    if (!target) throw new Error(`Missing button ${text}`);
+    await act(async () => target.click());
+  };
+  return { container, writes, addComment, startAuto, searches, fileButton, scope, button, click };
 }
+
+it('picking lines in the changes opens the comment form on that range and saves a draft for it', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  const field = (label: string) =>
+    area.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+  // Nothing is highlighted and no form is open until lines are picked.
+  expect(area.querySelector('form')).toBeNull();
+  expect(view.container.querySelector('[data-testid="diff"]')?.getAttribute('data-selection')).toBe(
+    '',
+  );
+
+  await view.click('pick lines 2-3');
+  // The form is in the decision area, with the picked side and lines filled in.
+  expect(area.querySelector('form')).not.toBeNull();
+  expect(
+    area.querySelector<HTMLSelectElement>('select[aria-label="Desktop.commentSide"]')?.value,
+  ).toBe('after');
+  expect([field('Desktop.fromLine')?.value, field('Desktop.toLine')?.value]).toEqual(['3', '2']);
+  expect(view.container.querySelector('[data-testid="diff"]')?.getAttribute('data-selection')).toBe(
+    'additions:3-2',
+  );
+  const note = area.querySelector<HTMLTextAreaElement>('form textarea');
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Join these two lines.'));
+  await view.click('Review.addComment', area);
+  expect(view.addComment).toHaveBeenCalledTimes(1);
+  expect(view.addComment.mock.calls[0]?.[1]).toMatchObject({
+    path: 'README.md',
+    from,
+    to,
+    side: 'after',
+    startLine: 2,
+    endLine: 3,
+    quote: 'second line\nthird line',
+    body: 'Join these two lines.',
+  });
+  // Saved as a draft in the same area; the form closes and the highlight goes with it.
+  expect(area.querySelector('form')).toBeNull();
+  expect(area.textContent).toContain('README.md:2–3');
+  expect(view.container.querySelector('[data-testid="diff"]')?.getAttribute('data-selection')).toBe(
+    '',
+  );
+
+  // Typing the lines is the other way in: the same form, opened without a pick.
+  await view.click('Review.addComment', area);
+  const first = field('Desktop.fromLine');
+  const last = field('Desktop.toLine');
+  if (!first || !last) throw new Error('Missing the line fields');
+  await act(async () => setValue(first, '1'));
+  await act(async () => setValue(last, '1'));
+  const again = area.querySelector<HTMLTextAreaElement>('form textarea');
+  if (!again) throw new Error('Missing the comment field');
+  await act(async () => setValue(again, 'Start with a title.'));
+  await view.click('Review.addComment', area);
+  expect(view.addComment.mock.calls[1]?.[1]).toMatchObject({
+    startLine: 1,
+    endLine: 1,
+    quote: 'new line',
+    body: 'Start with a title.',
+  });
+  for (const write of Object.values(view.writes)) expect(write).not.toHaveBeenCalled();
+});
+
+it('keeps the decision in the decision area, recorded on the exact comparison', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  expect(area.querySelector('#comments-heading')).not.toBeNull();
+  await view.click('Review.approve', area);
+  expect(view.writes.decide).toHaveBeenLastCalledWith(session.sessionId, {
+    from,
+    to,
+    decision: 'approved',
+    note: '',
+  });
+  await view.click('Review.requestChanges', area);
+  expect(view.writes.decide).toHaveBeenLastCalledWith(session.sessionId, {
+    from,
+    to,
+    decision: 'changes_requested',
+    note: '',
+  });
+  // Deciding is neither applying nor sending.
+  expect(view.writes.integrate).not.toHaveBeenCalled();
+  expect(view.writes.recordFeedback).not.toHaveBeenCalled();
+  expect(view.startAuto).not.toHaveBeenCalled();
+});
 
 it('a replacement suggestion is only a comment: it never writes a file or applies anything', async () => {
   const view = await mount({ search: { scope: 'session', file: 'README.md' } });
-  const kind = [...view.container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'Review.kindReplace',
+  await view.click('pick line 1');
+  // The kind is chosen in the form: comment, suggested deletion or suggested replacement.
+  const kind = view.container.querySelector<HTMLSelectElement>(
+    'form select[aria-label="Review.kindLabel"]',
   );
-  expect(kind).toBeDefined();
-  await act(async () => kind?.click());
-  expect(kind?.getAttribute('aria-pressed')).toBe('true');
+  expect([...(kind?.options ?? [])].map((option) => option.textContent)).toEqual([
+    'Review.kindComment',
+    'Review.kindDelete',
+    'Review.kindReplace',
+  ]);
+  await act(async () => {
+    if (!kind) throw new Error('Missing the comment kind');
+    kind.value = 'replace';
+    kind.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(kind?.value).toBe('replace');
   const replacement = view.container.querySelector<HTMLTextAreaElement>(
     'textarea[aria-label="Review.replaceWith"]',
   );

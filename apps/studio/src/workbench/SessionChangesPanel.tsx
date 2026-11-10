@@ -1,7 +1,19 @@
 import type { TextAttachment } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
-import { Button, TabItem, TabPanel, Tabs, TabsList } from '@corral/react/design-kit';
-import { GitBranch } from '@corral/react/icons';
+import {
+  Badge,
+  Button,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+  TabItem,
+  TabPanel,
+  Tabs,
+  TabsList,
+  Tooltip,
+} from '@corral/react/design-kit';
+import { Ellipsis, GitBranch } from '@corral/react/icons';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -17,10 +29,17 @@ import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 /** The Changes tab's sub-views. Review and Checks have addresses; Git and Checkpoints do not. */
 export type ChangesView = 'review' | 'git' | 'checkpoints' | 'checks';
 
-/** The session copy's current branch, or null while unknown, detached or without a copy. */
-function useCopyBranch(sessionId: string) {
+interface CopyState {
+  /** `unknown` until the first read; `none` when the session has no working copy. */
+  state: 'unknown' | 'none' | 'ready';
+  /** The copy's current branch; null while unknown, detached or without a copy. */
+  branch: string | null;
+}
+
+/** Whether the session has a working copy, and the branch it is on. */
+function useCopy(sessionId: string): CopyState {
   const { workspaces } = useServices();
-  const [read, setRead] = useState<{ sessionId: string; branch: string | null } | null>(null);
+  const [read, setRead] = useState<({ sessionId: string } & CopyState) | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const changed = () => setTick((value) => value + 1);
@@ -31,23 +50,29 @@ function useCopyBranch(sessionId: string) {
     void tick;
     if (!workspaces) return;
     let live = true;
-    void (async () => {
-      const copy = await workspaces.worktree(sessionId);
-      if (!copy || copy.missing) return null;
-      const status = await workspaces.gitStatus({ kind: 'session', id: sessionId });
-      return status.target.kind === 'session' &&
-        status.target.copyGeneration === copy.copyGeneration
-        ? status.head.branch
-        : null;
-    })().then(
-      (branch) => live && setRead({ sessionId, branch }),
-      () => live && setRead({ sessionId, branch: null }),
-    );
+    void (async (): Promise<CopyState> => {
+      const copy = await workspaces.worktree(sessionId).catch(() => null);
+      if (!copy || copy.missing) return { state: 'none', branch: null };
+      const status = await workspaces
+        .gitStatus({ kind: 'session', id: sessionId })
+        .catch(() => null);
+      return {
+        state: 'ready',
+        branch:
+          status?.target.kind === 'session' && status.target.copyGeneration === copy.copyGeneration
+            ? status.head.branch
+            : null,
+      };
+    })().then((copy) => live && setRead({ sessionId, ...copy }));
     return () => {
       live = false;
     };
   }, [workspaces, sessionId, tick]);
-  return read?.sessionId === sessionId ? read.branch : null;
+  // Without a workspace service there is nothing to prepare; the sub-views say so themselves.
+  if (!workspaces) return { state: 'ready', branch: null };
+  return read?.sessionId === sessionId
+    ? { state: read.state, branch: read.branch }
+    : { state: 'unknown', branch: null };
 }
 
 function ChecksView({
@@ -70,16 +95,18 @@ function ChecksView({
       projectId={session.projectId}
       binding={binding ?? null}
       changed={version}
+      titled={false}
       {...(onAttach ? { onAttach } : {})}
     />
   );
 }
 
 /**
- * The Changes tab: a header with the sub-views, the review's compare range, the copy's branch
- * and the PR review preview link; then Review (diff, comments, decision), Git (copy preparation
- * and Git state), Checkpoints and Checks. Each sub-view stays mounted once opened, so moving
- * between them keeps drafts, selections and reads.
+ * The Changes tab. One header row: the sub-views, the review's compare range, the copy's branch
+ * and a menu with the PR review preview and "mark all read". It opens on Review (files, changes
+ * and the decision area); Git, Checkpoints and Checks are the other sub-views. Each stays
+ * mounted once opened, so moving between them keeps drafts, selections and reads. A session
+ * without a working copy shows the copy's setup once, above whichever sub-view is open.
  */
 export function SessionChangesPanel({
   session,
@@ -107,24 +134,26 @@ export function SessionChangesPanel({
   const tp = useTranslations('Checkpoints');
   const tk = useTranslations('Checks');
   const tf = useTranslations('Files');
+  const { workspaces } = useServices();
   const href = useRouterState({ select: (state) => state.location.href });
-  const branch = useCopyBranch(session.sessionId);
+  const copy = useCopy(session.sessionId);
   const reviewing = reviewSearch !== undefined;
   const [remembered, setRemembered] = useState<ReviewSearch | undefined>(reviewSearch);
   if (reviewSearch && reviewSearch !== remembered) setRemembered(reviewSearch);
   const search = reviewSearch ?? remembered ?? {};
-  // The address picks Review or Checks; leaving the sub-view it picked returns to Git, while a
-  // sub-view chosen here in the meantime stays.
+  // The address picks Review or Checks. Without one the view opens on Review, and leaving the
+  // sub-view the address picked returns there, while a sub-view chosen here in the meantime
+  // stays.
   const entry: ChangesView | null = reviewing
     ? 'review'
     : requestedView === 'checks'
       ? 'checks'
       : null;
-  const [view, setView] = useState<ChangesView>(entry ?? 'git');
+  const [view, setView] = useState<ChangesView>(entry ?? 'review');
   const [seen, setSeen] = useState(entry);
   let shown = view;
   if (entry !== seen) {
-    shown = entry ?? (view === seen ? 'git' : view);
+    shown = entry ?? (view === seen ? 'review' : view);
     setSeen(entry);
     setView(shown);
   }
@@ -137,6 +166,8 @@ export function SessionChangesPanel({
     else if (onViewChange) onViewChange(next);
     else if (reviewing) onReviewChange(undefined);
   };
+  const ready = copy.state === 'ready';
+  const missing = copy.state === 'none';
   return (
     <Tabs
       size="compact"
@@ -144,7 +175,7 @@ export function SessionChangesPanel({
       onValueChange={(value) => choose(value as ChangesView)}
       className="flex h-full min-h-0 min-w-0 flex-col"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-3 py-2">
         <TabsList aria-label={tr('changesViews')}>
           <TabItem value="review" label={tr('tabReview')} />
           <TabItem value="git" label={tg('title')} />
@@ -153,39 +184,74 @@ export function SessionChangesPanel({
         </TabsList>
         <div
           ref={setRangeSlot}
-          hidden={shown !== 'review'}
-          className="flex min-w-0 flex-wrap items-center gap-2"
+          hidden={shown !== 'review' || !ready}
+          className="flex min-w-0 items-center"
         />
-        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
-          {branch ? (
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          {copy.branch ? (
             <span
-              className="inline-flex min-w-0 items-center gap-1"
-              title={tf('branch', { branch })}
+              className="inline-flex min-w-0 items-center gap-1 text-caption text-muted-foreground"
+              title={tf('branch', { branch: copy.branch })}
             >
               <GitBranch size={12} aria-hidden className="shrink-0" />
-              <span className="sr-only">{tf('branch', { branch })}</span>
+              <span className="sr-only">{tf('branch', { branch: copy.branch })}</span>
               <span aria-hidden className="truncate font-mono">
-                {branch}
+                {copy.branch}
               </span>
             </span>
           ) : null}
-          <Button
-            variant="ghost"
-            size="compact"
-            render={
-              <Link
-                to="/preview/$feature"
-                params={{ feature: 'pr-review' }}
-                search={{ returnTo: href }}
-              />
-            }
-          >
-            {tr('prPreview')}
-          </Button>
+          <Menu>
+            <Tooltip content={tr('more')}>
+              <MenuTrigger
+                render={<Button variant="ghost" size="icon-compact" aria-label={tr('more')} />}
+              >
+                <Ellipsis aria-hidden />
+              </MenuTrigger>
+            </Tooltip>
+            <MenuPopup align="end" className="min-w-56">
+              <MenuItem
+                label={tr('prPreview')}
+                render={
+                  <Link
+                    to="/preview/$feature"
+                    params={{ feature: 'pr-review' }}
+                    search={{ returnTo: href }}
+                  />
+                }
+              >
+                <span className="flex w-full items-center justify-between gap-3">
+                  {tr('prPreview')}
+                  <Badge size="sm" variant="secondary">
+                    {tr('previewBadge')}
+                  </Badge>
+                </span>
+              </MenuItem>
+              {/* The baseline always covers the whole current copy (#78 IA-07); the item names
+                  it, and the longer note is its tooltip. */}
+              <MenuItem
+                disabled={!ready || !workspaces}
+                title={tf('reviewedNote')}
+                onClick={() =>
+                  void workspaces
+                    ?.markReviewed(session.sessionId)
+                    .then(() => window.dispatchEvent(new Event(WORKSPACE_CHANGED)))
+                }
+              >
+                {tf('markReviewed')}
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
         </div>
       </div>
+      {missing ? (
+        <div className="shrink-0 p-3">
+          <div className="max-w-2xl">
+            <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
+          </div>
+        </div>
+      ) : null}
       <TabPanel value="review" keepMounted className="min-h-0 flex-1">
-        {visited.has('review') ? (
+        {visited.has('review') && ready ? (
           <ReviewContent
             session={session}
             search={search}
@@ -201,7 +267,9 @@ export function SessionChangesPanel({
       <TabPanel value="git" keepMounted className="min-h-0 flex-1 overflow-auto">
         {visited.has('git') ? (
           <div className="flex flex-col gap-4 p-3">
-            <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
+            {missing ? null : (
+              <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
+            )}
             <GitPanel sessionId={session.sessionId} projectId={session.projectId} />
           </div>
         ) : null}

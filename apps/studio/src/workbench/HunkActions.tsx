@@ -5,7 +5,7 @@ import type {
   TextAttachment,
 } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Button, Checkbox } from '@corral/react/design-kit';
+import { Button, Checkbox, fontWeights } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -77,12 +77,18 @@ export function HunkActions({
       }
     });
   return (
-    <section className="mt-4 space-y-2 border-t border-line pt-3 text-xs" aria-label={t('heading')}>
-      <h3 className="font-medium">{t('heading')}</h3>
+    <section
+      className="flex flex-col gap-2 border-t border-border pt-3 text-caption"
+      aria-label={t('heading')}
+    >
+      <h3 className="m-0 text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('heading')}
+      </h3>
       {!hunks ? (
         <Button
           size="compact"
           variant="tertiary"
+          className="self-start"
           disabled={busy}
           onClick={() =>
             void act(async () => {
@@ -95,7 +101,10 @@ export function HunkActions({
         </Button>
       ) : (
         <>
-          <ul className="space-y-2">
+          <p className="m-0 truncate font-mono text-muted-foreground" title={path}>
+            {path}
+          </p>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {hunks.hunks.map((hunk, index) => (
               <li key={hunk.id}>
                 <Checkbox
@@ -117,7 +126,9 @@ export function HunkActions({
                   <summary className="cursor-pointer text-muted-foreground">
                     {t('showPatch')}
                   </summary>
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap">{hunk.patch}</pre>
+                  <pre className="m-0 max-h-64 overflow-auto font-mono whitespace-pre-wrap">
+                    {hunk.patch}
+                  </pre>
                 </details>
               </li>
             ))}
@@ -192,12 +203,12 @@ export function HunkActions({
         </>
       )}
       {plan && !result ? (
-        <div className="space-y-2 rounded fill-group p-2">
-          <p className="font-medium">
+        <div className="flex flex-col items-start gap-2 fill-group p-3">
+          <p className="m-0" style={{ fontVariationSettings: fontWeights.semibold }}>
             {t(plan.target === 'original' ? 'original' : 'workingCopy')}
           </p>
-          <p>{t('approval', { count: selected.length, path })}</p>
-          <p className="font-mono">
+          <p className="m-0">{t('approval', { count: selected.length, path })}</p>
+          <p className="m-0 font-mono">
             {plan.expectedTree.slice(0, 12)} → {plan.targetTree.slice(0, 12)}
           </p>
           <Button
@@ -222,10 +233,18 @@ export function HunkActions({
           </Button>
         </div>
       ) : null}
-      {result ? <p role="status">{t(`state.${result.state}`)}</p> : null}
-      {attached ? <p role="status">{tc('attached')}</p> : null}
+      {result ? (
+        <p role="status" className="m-0">
+          {t(`state.${result.state}`)}
+        </p>
+      ) : null}
+      {attached ? (
+        <p role="status" className="m-0">
+          {tc('attached')}
+        </p>
+      ) : null}
       {error ? (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="m-0 text-destructive">
           {error}
         </p>
       ) : null}

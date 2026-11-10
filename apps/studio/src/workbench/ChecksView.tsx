@@ -1,12 +1,16 @@
 import type { VerificationResultView, WorkspaceBindingView } from '@corral/client';
 import type { TextAttachment } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Button, fontWeights } from '@corral/react/design-kit';
+import { Button, cn, fontWeights, Tooltip, useShape } from '@corral/react/design-kit';
+import { Info, Settings } from '@corral/react/icons';
+import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { fixRequestName, fixRequestText } from './checkFixRequest.ts';
+import { commandLine } from './commandLine.ts';
 import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
+import { useSettingsNavigation } from './navigation.ts';
 
 const failed = (result: VerificationResultView) =>
   result.state === 'failed' ||
@@ -35,16 +39,21 @@ export function Checks({
   binding,
   changed,
   onAttach,
+  titled = true,
 }: {
   sessionId: string;
   projectId?: string;
   binding: WorkspaceBindingView | null;
   changed: number;
   onAttach?(attachment: TextAttachment, capture: AttachmentCapture): void | Promise<void>;
+  /** False where the host already names this view (the Checks sub-view's tab). */
+  titled?: boolean;
 }) {
   const t = useTranslations('Files');
   const tk = useTranslations('Checks');
   const tc = useTranslations('Context');
+  const navigation = useSettingsNavigation();
+  const shape = useShape();
   const { workspaces, mode, workspaceId } = useServices();
   const source = useMemo(
     () => ({ workspaces, workspaceId, projectId, sessionId }),
@@ -157,42 +166,93 @@ export function Checks({
       if (mounted.current) setAttaching(false);
     }
   };
+  // Checks are registered with the project's folder, in its settings.
+  const tools =
+    mode === 'server' && projectId ? (
+      <Link {...navigation.link('workspace', projectId)} />
+    ) : undefined;
   return (
-    <section aria-labelledby="checks-heading" className="flex flex-col gap-2">
-      <h3
-        id="checks-heading"
-        className="text-body"
-        style={{ fontVariationSettings: fontWeights.semibold }}
-      >
-        {t('checksHeading')}
-      </h3>
-      {mode !== 'browser' && commands.length ? (
-        <p className="text-caption text-muted-foreground">{t('isolatedChecksNote')}</p>
+    <section
+      {...(titled ? { 'aria-labelledby': 'checks-heading' } : { 'aria-label': tk('title') })}
+      className="flex flex-col gap-3"
+    >
+      {titled ? (
+        <h3
+          id="checks-heading"
+          className="text-body"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {t('checksHeading')}
+        </h3>
       ) : null}
       {error ? (
         <p role="alert" className="text-caption text-destructive">
           {error}
         </p>
       ) : null}
-      {commands.length === 0 ? (
-        <p className="text-caption text-muted-foreground">
-          {mode === 'browser' ? t('checksServerOnly') : t('noChecks')}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap gap-1">
-        {commands.map((command) => (
-          <Button
-            variant="tertiary"
-            size="compact"
-            key={command.id}
-            type="button"
-            disabled={running}
-            onClick={() => workspaces && void checkAction(workspaces.verify(sessionId, command.id))}
-          >
-            {t('runCheck', { name: command.name })}
-          </Button>
-        ))}
-      </div>
+      {commands.length === 0 && results.length === 0 ? (
+        <div
+          data-testid="checks-empty"
+          className={cn(
+            shape.container,
+            'grid justify-items-center gap-3 border border-dashed border-border px-6 py-10 text-center',
+          )}
+        >
+          <div className="grid justify-items-center gap-1">
+            <b className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {t('noChecks')}
+            </b>
+            {mode === 'browser' ? (
+              <p className="m-0 max-w-sm text-caption text-muted-foreground">
+                {t('checksServerOnly')}
+              </p>
+            ) : null}
+          </div>
+          {tools ? (
+            <Button variant="secondary" size="compact" render={tools}>
+              {tk('openProjectTools')}
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1">
+          {commands.map((command) => (
+            <Button
+              variant="tertiary"
+              size="compact"
+              key={command.id}
+              type="button"
+              disabled={running}
+              onClick={() =>
+                workspaces && void checkAction(workspaces.verify(sessionId, command.id))
+              }
+            >
+              {t('runCheck', { name: command.name })}
+            </Button>
+          ))}
+          <span className="ml-auto flex items-center gap-0.5">
+            {mode !== 'browser' && commands.length ? (
+              <Tooltip content={t('isolatedChecksNote')}>
+                <Button variant="ghost" size="icon-compact" aria-label={t('isolatedChecksNote')}>
+                  <Info aria-hidden />
+                </Button>
+              </Tooltip>
+            ) : null}
+            {tools ? (
+              <Tooltip content={tk('openProjectTools')}>
+                <Button
+                  variant="ghost"
+                  size="icon-compact"
+                  aria-label={tk('openProjectTools')}
+                  render={tools}
+                >
+                  <Settings aria-hidden />
+                </Button>
+              </Tooltip>
+            ) : null}
+          </span>
+        </div>
+      )}
       <ul className="flex flex-col gap-1">
         {results.map((r) => (
           <li
@@ -266,7 +326,7 @@ export function Checks({
               ) : null}
               {attached === r.verificationId ? <span role="status">{tc('attached')}</span> : null}
             </div>
-            <code className="break-all text-muted-foreground">{r.argv.join(' ')}</code>
+            <code className="break-all font-mono text-muted-foreground">{commandLine(r.argv)}</code>
             {r.report ? (
               <details className="text-muted-foreground">
                 <summary>{t('checkEvidence')}</summary>

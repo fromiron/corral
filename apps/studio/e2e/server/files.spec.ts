@@ -163,7 +163,11 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     expect(existsSync(join(original, 'notes'))).toBe(false);
 
     // a comment on a line goes out as a request for changes, as a new run.
-    await page.getByRole('button', { name: 'Comment on line 1' }).first().click();
+    const decisionArea = page.getByRole('complementary', {
+      name: 'Comments and decision',
+      exact: true,
+    });
+    await decisionArea.getByRole('button', { name: 'Add comment', exact: true }).click();
     const draft = page.getByRole('textbox', { name: 'Comment on line 1' });
     await draft.fill('Start with a title.');
 
@@ -187,8 +191,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(draft).toHaveValue('Start with a title.');
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(draft).toHaveValue('Start with a title.');
-    await page
-      .getByTestId('pierre-diff')
+    await decisionArea
       .locator('form')
       .getByRole('button', { name: 'Add comment', exact: true })
       .click();
@@ -214,8 +217,8 @@ test('a session works in its own copy, and its changes are reviewed and checked'
       .click();
     await expect(page.getByTestId('integration').first()).toContainText('Reverted');
     expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(false);
-    const parts = page.getByRole('region', { name: 'Selected changes', exact: true });
-    await parts.getByRole('button', { name: 'Select changed parts' }).click();
+    const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
+    await parts.getByRole('button', { name: 'Choose parts of this file' }).click();
     await parts.getByRole('checkbox', { name: /Part 1/ }).check();
     await parts.getByRole('button', { name: 'Preview original-folder changes' }).click();
     await expect(parts).toContainText('Target: original folder');

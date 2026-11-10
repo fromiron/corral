@@ -1842,7 +1842,7 @@
       "run": "실행 {runId}"
     },
     "noBaseline": "이 실행의 시작·종료 시점 변경을 비교할 수 없습니다.",
-    "noChanges": "이 범위에는 변경이 없습니다.",
+    "noMatches": "맞는 파일이 없어요.",
     "files": "파일 {count, plural, other {#개}}",
     "status": {
       "added": "추가",
@@ -1891,6 +1891,8 @@
     "tooLargeToAlign": "줄이 너무 많아 맞추지 못해 전체 교체로 보입니다. 원문으로 읽으세요.",
     "preparing": "비교 기준을 준비하는 중…",
     "ignoredNote": "Git 제외 목록(.GITIGNORE)에 든 파일은 비교하지 않습니다.",
+    "viewMode": "보기 방식",
+    "filterFiles": "파일 거르기",
     "folderMissing": "연결한 폴더가 {path}에 더 이상 없습니다. 다시 연결하거나 연결을 해제하세요. 기록은 남습니다.",
     "copyMissing": "이 세션의 작업 사본 폴더가 사라졌습니다. 여기서 지우고 새로 만드세요. 기록된 변경은 남습니다.",
     "permission": {
@@ -1972,7 +1974,6 @@
     "addComment": "의견 추가",
     "cancel": "취소",
     "commentsHeading": "의견",
-    "draftCount": "{count, plural, =0 {보낼 의견 없음} other {보낼 의견 #개}}",
     "sendReview": "수정 요청 보내기",
     "sendTo": "보낼 곳",
     "sendNext": "이 세션의 새 실행",
@@ -2055,7 +2056,10 @@
     "replaceWith": "바꿀 내용",
     "suggestionNote": "이유 (선택)",
     "commentTooLong": "의견이 너무 깁니다. 메모나 선택한 줄을 줄이세요.",
-    "rangeChanged": "범위 내용이 바뀜"
+    "rangeChanged": "범위 내용이 바뀜",
+    "more": "더 보기",
+    "previewBadge": "미리보기",
+    "decisionArea": "의견과 판단"
   },
   "Workbench": {
     "sidebar": "프로젝트와 세션",
@@ -2708,7 +2712,6 @@
   "LspProposals": {
     "heading": "언어 서버 변경 제안",
     "hint": "제안한 변경은 적용하기 전까지 따로 보관합니다.",
-    "empty": "언어 서버의 변경 제안이 없습니다.",
     "refresh": "제안 새로고침",
     "review": "{title} 검토",
     "files": "파일 {count}개",
@@ -3328,8 +3331,8 @@
     }
   },
   "Hunks": {
-    "heading": "변경 조각",
-    "load": "변경 조각 선택",
+    "heading": "일부만 반영·되돌리기",
+    "load": "이 파일의 변경 조각 고르기",
     "part": "변경 조각 {number}",
     "showPatch": "이 변경 내용 보기",
     "planOriginal": "원본 반영 미리보기",
@@ -4429,7 +4432,8 @@
     "title": "검사",
     "current": "현재 기준",
     "output": "출력",
-    "draftFix": "수정 요청 작성"
+    "draftFix": "수정 요청 작성",
+    "openProjectTools": "프로젝트 도구 열기"
   },
   "Materials": {
     "heading": "지침·메모리",

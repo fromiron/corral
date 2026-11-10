@@ -1842,7 +1842,7 @@
       "run": "Run {runId}"
     },
     "noBaseline": "A fixed start/end comparison is not available for this run.",
-    "noChanges": "No changes in this range.",
+    "noMatches": "No matching files.",
     "files": "{count, plural, one {# file} other {# files}}",
     "status": {
       "added": "Added",
@@ -1891,6 +1891,8 @@
     "tooLargeToAlign": "Too many lines to align: shown as replaced. Use Source to read it.",
     "preparing": "Preparing the comparison…",
     "ignoredNote": "Files ignored by .gitignore are not compared.",
+    "viewMode": "View",
+    "filterFiles": "Filter files",
     "folderMissing": "The linked folder is no longer at {path}. Link it again or unlink it; the records stay.",
     "copyMissing": "This session's working copy folder is gone. Remove it here and make a new one; recorded changes stay.",
     "permission": {
@@ -1972,7 +1974,6 @@
     "addComment": "Add comment",
     "cancel": "Cancel",
     "commentsHeading": "Comments",
-    "draftCount": "{count, plural, =0 {No draft comments} one {# draft comment} other {# draft comments}}",
     "sendReview": "Send for changes",
     "sendTo": "Send to",
     "sendNext": "A new run in this session",
@@ -2055,7 +2056,10 @@
     "replaceWith": "Replace with",
     "suggestionNote": "Why (optional)",
     "commentTooLong": "This comment is too long. Shorten the note or the selected lines.",
-    "rangeChanged": "Range changed"
+    "rangeChanged": "Range changed",
+    "more": "More",
+    "previewBadge": "Preview",
+    "decisionArea": "Comments and decision"
   },
   "Workbench": {
     "sidebar": "Projects and sessions",
@@ -2708,7 +2712,6 @@
   "LspProposals": {
     "heading": "Language server proposals",
     "hint": "Proposed changes are kept separately until you apply them.",
-    "empty": "No language server changes have been proposed.",
     "refresh": "Refresh proposals",
     "review": "Review {title}",
     "files": "{count, plural, one {# file} other {# files}}",
@@ -3328,8 +3331,8 @@
     }
   },
   "Hunks": {
-    "heading": "Selected changes",
-    "load": "Select changed parts",
+    "heading": "Apply or revert a part",
+    "load": "Choose parts of this file",
     "part": "Part {number}",
     "showPatch": "Show this patch",
     "planOriginal": "Preview original-folder changes",
@@ -4429,7 +4432,8 @@
     "title": "Checks",
     "current": "Current",
     "output": "Output",
-    "draftFix": "Draft a fix request"
+    "draftFix": "Draft a fix request",
+    "openProjectTools": "Open project tools"
   },
   "Materials": {
     "heading": "Instructions & memory",

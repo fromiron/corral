@@ -1,4 +1,5 @@
 import type { VerificationResultView } from '@corral/client';
+import { commandLine } from './commandLine.ts';
 
 // "Draft a fix request" from a failed check: the check's name, command, result and the end of
 // its displayed output, as one text for the composer. It is put in the composer only; nothing is
@@ -33,7 +34,7 @@ export function fixRequestText(result: VerificationResultView): string {
   const summary = outputSummary(result.output);
   return [
     `Fix the failing check "${result.name}".`,
-    `Command: ${result.argv.join(' ')}`,
+    `Command: ${commandLine(result.argv)}`,
     result.timedOut
       ? 'Result: Timed out'
       : `Exit code: ${result.exitCode ?? result.signal ?? 'none'}`,

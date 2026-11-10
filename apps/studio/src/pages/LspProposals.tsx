@@ -91,6 +91,8 @@ export function LspProposals({
     }
   }
   const file = detail?.files.find((file) => file.path === path);
+  // Nothing proposed and nothing failed: the area is not there at all.
+  if (items.length === 0 && !error && selected === null) return null;
   return (
     <section className="flex flex-col gap-2 border-t border-line pt-3" aria-label={t('heading')}>
       <div className="flex items-center justify-between gap-2">
@@ -105,8 +107,7 @@ export function LspProposals({
           <RefreshCw />
         </Button>
       </div>
-      {/* What a proposal is matters once there is one; an empty list says so on its own. */}
-      <p className="text-xs text-muted-foreground">{items.length ? t('hint') : t('empty')}</p>
+      {items.length ? <p className="text-xs text-muted-foreground">{t('hint')}</p> : null}
       {items.map((item) => (
         <div key={item.proposalId} className="flex flex-col gap-1 border-b border-line pb-2">
           <Button variant="tertiary" size="compact" onClick={() => setSelected(item.proposalId)}>
