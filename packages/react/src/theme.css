@@ -173,7 +173,8 @@
 }
 
 @media (forced-colors: active) {
-  [data-slot="menu-popup"] {
+  [data-slot="menu-popup"],
+  [data-slot="model-picker-popup"] {
     outline: 1px solid CanvasText;
   }
 
