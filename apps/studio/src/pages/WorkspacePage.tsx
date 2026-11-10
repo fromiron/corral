@@ -52,7 +52,7 @@ import {
 } from '@corral/react/design-kit';
 import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Pin, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, Fragment, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
@@ -1246,6 +1246,7 @@ function SessionRow({
               size.type.caption,
             )}
           >
+            {/* A long line wraps between items, never inside one; the dot ends its line. */}
             {[
               ...facts.map((fact) => t(`fact.${fact}`)),
               ...reasons.map(reason),
@@ -1254,8 +1255,15 @@ function SessionRow({
               runCount ? t('runCount', { count: runCount }) : null,
               ago(x.updatedAt),
             ]
-              .filter(Boolean)
-              .join(' · ')}
+              .filter((item): item is string => Boolean(item))
+              .map((item, index, items) => (
+                <Fragment key={item}>
+                  <span className="whitespace-nowrap">
+                    {index < items.length - 1 ? `${item} ·` : item}
+                  </span>
+                  {index < items.length - 1 ? ' ' : null}
+                </Fragment>
+              ))}
           </span>
         </span>
         {pinSlot ? (
