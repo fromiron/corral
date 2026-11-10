@@ -495,7 +495,8 @@
       "ask": "매번 확인",
       "accept_edits": "편집 허용",
       "auto": "자동"
-    }
+    },
+    "retry": "다시 시도"
   },
   "Status": {
     "created": "시작 중…",

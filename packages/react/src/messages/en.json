@@ -495,7 +495,8 @@
       "ask": "Ask",
       "accept_edits": "Accept edits",
       "auto": "Auto"
-    }
+    },
+    "retry": "Try again"
   },
   "Status": {
     "created": "Starting…",

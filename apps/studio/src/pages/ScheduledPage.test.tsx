@@ -561,3 +561,49 @@ it('reports every settled run of the shown schedule’s history, and only the la
   await settle();
   expect(shownRuns().sort()).toEqual(['run_1', 'run_2', 'run_3']);
 });
+
+it('shows no empty state before the first read, and only the error with a retry after it fails', async () => {
+  let answer: (value: { schedules: Schedule[] }) => void = () => {};
+  fixture.api.list.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+  await page();
+  // Still reading: nothing says there are no schedules.
+  expect(container.textContent).not.toContain(messages.Schedules.emptyTitle);
+  expect(container.querySelector('.border-dashed')).toBeNull();
+  await act(async () => answer({ schedules: [] }));
+  await settle();
+  expect(container.textContent).toContain(messages.Schedules.emptyTitle);
+  await dispose();
+
+  fixture.api.list.mockRejectedValueOnce(new Error('The server did not answer.'));
+  await page();
+  const alert = container.querySelector('[role="alert"]');
+  expect(alert?.textContent).toContain('The server did not answer.');
+  expect(container.textContent).not.toContain(messages.Schedules.emptyTitle);
+  // The retry reads again; an empty answer is then the verdict.
+  await click(button(messages.Schedules.retry));
+  await settle();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain(messages.Schedules.emptyTitle);
+});
+
+it('keeps the reason New schedule is disabled after a failed read, and never claims it unread', async () => {
+  fixture.services.repository.listSessions.mockResolvedValueOnce([]);
+  fixture.api.list.mockRejectedValueOnce(new Error('The server did not answer.'));
+  await page();
+  expect(button('New schedule').disabled).toBe(true);
+  expect(container.textContent).not.toContain(messages.Schedules.emptyTitle);
+  // The sessions were read and there are none: that is still why New schedule waits.
+  expect(container.textContent).toContain(messages.Schedules.needsSession);
+  await dispose();
+
+  // The sessions could not be read: the page says so and does not claim there are none.
+  fixture.services.repository.listProjects.mockRejectedValueOnce(new Error('Projects offline'));
+  await page();
+  expect(button('New schedule').disabled).toBe(true);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Projects offline');
+  expect(container.textContent).not.toContain(messages.Schedules.needsSession);
+  await click(button(messages.Schedules.retry));
+  await settle();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(button('New schedule').disabled).toBe(false);
+});

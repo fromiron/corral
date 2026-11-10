@@ -84,13 +84,18 @@ export function ScheduledPage() {
   /** Null until read, and after a failed read: a run's status is then unknown. */
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  /** The schedule list has been read once: only then can an empty list be the verdict. */
+  const [listRead, setListRead] = useState(false);
   /** The editor: a new schedule (`base` null) or a change to `base`. */
   const [editing, setEditing] = useState<{ base: Schedule | null; draft: ScheduleDraft } | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The sessions and profiles were read; until then no session is not known to be none. */
   const [loaded, setLoaded] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [sessionsRead, setSessionsRead] = useState(0);
   /** The shown schedule's session as last read: its current title, or null once it is gone. */
   const [target, setTarget] = useState<{ sessionId: string; session: WorkSession | null } | null>(
     null,
@@ -139,6 +144,7 @@ export function ScheduledPage() {
         every ? listed.value.histories : { ...known, ...listed.value.histories },
       );
       setReadError(null);
+      setListRead(true);
     } else setReadError(message(listed.reason));
   };
   const readRef = useRef(readSchedules);
@@ -165,6 +171,7 @@ export function ScheduledPage() {
   };
   useEffect(() => {
     if (mode !== 'server') return;
+    void sessionsRead;
     let active = true;
     void Promise.all([
       repository.listProjects().then(async (projects) => {
@@ -186,14 +193,15 @@ export function ScheduledPage() {
         setSessions(available);
         setProfiles(configured.map((profile) => profile.profileId));
         setLoaded(true);
+        setSessionsError(null);
       })
       .catch((cause) => {
-        if (active) setError(String(cause.message));
+        if (active) setSessionsError(message(cause));
       });
     return () => {
       active = false;
     };
-  }, [repository, models, mode]);
+  }, [repository, models, mode, sessionsRead]);
   // Choosing a schedule reads its session at once rather than at the next tick.
   const shownTarget = shown?.sessionId;
   useEffect(() => {
@@ -349,15 +357,18 @@ export function ScheduledPage() {
     automationShownRuns.setState({ runIds: shownRunKey ? shownRunKey.split(',') : [] });
   }, [shownRunKey]);
   useEffect(() => () => automationShownRuns.setState({ runIds: [] }), []);
+  // What New schedule waits for, once the sessions were read and there is none to run in. Never
+  // said while they are unread or their read failed: then the failure is the reason.
+  const needsSession = loaded && !sessions.length;
   // Without the local server the empty state's title is the reason, as in Library resources.
-  // Its one line is what New schedule waits for, while there is no session to run in.
+  // In server mode an empty list is a verdict only once the list was read and the read holds:
+  // nothing stands in its place while it is read, and a failed read shows only its error.
   const empty =
     mode !== 'server'
       ? { title: t('localOnly'), text: undefined }
-      : {
-          title: t('emptyTitle'),
-          text: loaded && !sessions.length ? t('needsSession') : undefined,
-        };
+      : listRead && !readError
+        ? { title: t('emptyTitle'), text: needsSession ? t('needsSession') : undefined }
+        : null;
   /** The session's current name when it can be read, else the one listed when the page opened. */
   const targetSession = (sessionId: string) =>
     target?.sessionId === sessionId
@@ -381,9 +392,33 @@ export function ScheduledPage() {
           : {})}
       >
         {readError ? (
-          <p role="alert" className="text-body text-destructive">
-            {readError}
-          </p>
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-2 text-body text-destructive"
+          >
+            <p className="m-0">{readError}</p>
+            <Button variant="tertiary" size="compact" onClick={() => void refresh()}>
+              {t('retry')}
+            </Button>
+          </div>
+        ) : null}
+        {sessionsError ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-2 text-body text-destructive"
+          >
+            <p className="m-0">{sessionsError}</p>
+            <Button
+              variant="tertiary"
+              size="compact"
+              onClick={() => {
+                setSessionsError(null);
+                setSessionsRead((count) => count + 1);
+              }}
+            >
+              {t('retry')}
+            </Button>
+          </div>
         ) : null}
         {error ? (
           <p role="alert" className="text-body text-destructive">
@@ -442,9 +477,13 @@ export function ScheduledPage() {
               </TableBody>
             </Table>
           </div>
-        ) : editing ? null : (
+        ) : editing || !empty ? null : (
           <EmptyState title={empty.title} text={empty.text} />
         )}
+        {/* Where no empty state carries it, the reason New schedule is disabled stays on screen. */}
+        {needsSession && !editing && !(empty && !schedules.length) ? (
+          <p className="m-0 text-body text-muted-foreground">{t('needsSession')}</p>
+        ) : null}
         {editing ? (
           <ScheduleEditor
             key={editing.base?.id ?? 'new'}
