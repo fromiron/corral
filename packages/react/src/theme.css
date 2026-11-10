@@ -200,6 +200,17 @@
     font-family: var(--font-sans);
     font-size: var(--fs-body);
     line-height: var(--lh-body);
+    /* Korean wraps between words, never inside one; a word longer than its line still breaks. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  /* Code, paths and diffs are not prose: they wrap by their own rules. */
+  code,
+  kbd,
+  pre,
+  samp {
+    word-break: normal;
   }
 
   :focus-visible {
