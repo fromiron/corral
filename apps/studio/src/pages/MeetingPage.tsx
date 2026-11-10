@@ -528,8 +528,8 @@ function MeetingMessage({ round, config }: { round: RoundView; config: MeetingCo
         }
         actions={round.message ? <CopyTextButton text={round.message} /> : undefined}
       >
-        <span className="sr-only">{t('you')} </span>
-        {round.message}
+        <span className="sr-only">{t('you')}</span>
+        <p className="wrap-anywhere">{round.message}</p>
         {round.attachments?.length ? <TextAttachmentList attachments={round.attachments} /> : null}
       </KitChatMessage>
     </div>
