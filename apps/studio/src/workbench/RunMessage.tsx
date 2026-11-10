@@ -330,6 +330,8 @@ export function RunMessage({
         onOpenArtifact={onOpenArtifact}
         showPlan={!sessionId}
         showRelatedPanels={!sessionId}
+        // In a conversation the top bar's pill says the run waits; the card names the decision.
+        headed={!sessionId}
         policySettingsAction={
           sessionId ? (
             <Button

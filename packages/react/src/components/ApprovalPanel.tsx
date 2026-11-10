@@ -62,8 +62,9 @@ export function ApprovalPanel({
   /** Conversation turns already own their workflow and question surfaces. */
   showRelatedPanels?: boolean;
   /**
-   * False when the host already titles this area (the Run page's panel, Needs you's detail):
-   * no visible heading is added, and the region keeps its name.
+   * False when the host already names this area or its state (the Run page's panel, Needs you's
+   * detail, a session conversation under the top bar's waiting pill): no visible heading is
+   * added, and the region keeps its name.
    */
   headed?: boolean;
   /** Navigation only: never grants broader permission to this call. */

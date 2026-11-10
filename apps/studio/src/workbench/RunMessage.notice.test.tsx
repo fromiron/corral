@@ -93,7 +93,7 @@ const question = (requestId: string, executionId: string, runSeq: number) =>
 const body = (prompt: string) =>
   JSON.stringify({ key: 'layout', questions: [{ id: 'layout', kind: 'text', prompt }] });
 
-async function show() {
+async function show(sessionId: string | null = 'session_chat') {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -104,11 +104,31 @@ async function show() {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <RunMessage runId="run_chat" sessionId="session_chat" live onOpenArtifact={vi.fn()} />
+        <RunMessage runId="run_chat" sessionId={sessionId} live onOpenArtifact={vi.fn()} />
       </IntlProvider>,
     ),
   );
   return container;
+}
+
+/** What a person sees: the text of each element outside screen-reader-only ones. */
+function visibleLines(container: HTMLElement) {
+  const copy = container.cloneNode(true) as HTMLElement;
+  for (const node of copy.querySelectorAll('.sr-only')) node.remove();
+  return [...copy.querySelectorAll('*')].map((node) => node.textContent?.trim() ?? '');
+}
+
+function approvalWaiting(): RunProjection {
+  const projection = waitingRun();
+  projection.statusReason = 'approval_requested: user_action';
+  projection.approvals.approval_1 = {
+    approvalId: 'approval_1',
+    kind: 'user_action',
+    subjectVersionIds: ['artv_draft'],
+    criteriaVersionId: null,
+    status: 'pending',
+  };
+  return projection;
 }
 
 function waitingRun(): RunProjection {
@@ -147,6 +167,43 @@ it('leaves a waiting question to the composer notice: the turn neither names nor
   // The turn does not read the question's body for a line it no longer shows.
   expect(loadArtifact).not.toHaveBeenCalledWith('body_q_1');
   expect(loadArtifact).not.toHaveBeenCalledWith('body_q_2');
+});
+
+it('draws a waiting approval in the turn under no heading of its own', async () => {
+  fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
+  const container = await show();
+  // The card is the decision, with its buttons, in the conversation.
+  const card = container.querySelector('[data-testid="approval-approval_1"]');
+  expect(card?.textContent).toContain(messages.Approvals.kind.user_action);
+  const buttons = [...(card?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
+  expect(buttons).toEqual(
+    expect.arrayContaining([
+      messages.Approvals.rejectAs.user_action,
+      messages.Approvals.approveAs.user_action,
+    ]),
+  );
+  // The top bar's pill says the run waits: no visible heading repeats it, and the area keeps
+  // its accessible name.
+  expect(container.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
+  expect(visibleLines(container)).not.toContain(messages.Approvals.heading);
+  expect(
+    container.querySelector(`section[aria-label="${messages.Approvals.heading}"]`),
+  ).not.toBeNull();
+});
+
+it('keeps the heading for a run outside a session', async () => {
+  // The standalone turn's work log measures its panel.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
+  const container = await show(null);
+  expect(container.querySelector('h3')?.textContent).toBe(messages.Approvals.heading);
 });
 
 it('shows a thinking indicator where the answer will appear until observed output arrives', async () => {
