@@ -486,6 +486,19 @@ it('switches to a timeline per task drawn from its actual record, with no plan m
   expect(board?.querySelector('.border-dashed')).toBeNull();
 });
 
+it('the task board repeats no title the By task tab already says, and keeps its name', () => {
+  const container = taskFixture(true);
+  const board = container.querySelector<HTMLElement>('[data-task-id]')?.closest('[role="list"]');
+  // The kit board always draws a header (title and elapsed time); here it stays hidden.
+  const header = board?.parentElement?.querySelector(':scope > header');
+  expect(header?.parentElement?.className).toContain('[&>header]:hidden');
+  // Its list is still named, by the hidden title.
+  const name = board?.getAttribute('aria-labelledby');
+  expect(name ? document.getElementById(name)?.textContent : null).toBe(
+    messages.RunMonitor.taskTimeline.title,
+  );
+});
+
 it('opens the latest attempt of a chosen task and marks the task of the selected execution', () => {
   const onSelect = vi.fn();
   const container = taskFixture(true, 'exec_w1', onSelect);

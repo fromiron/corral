@@ -149,6 +149,9 @@ export function RunMenu({
       : tw('runNumber', { number: number(id) });
   };
   const chosen = runs.find((run) => run.runId === runId);
+  const full = tw('runNumber', { number: number(runId) });
+  const short = tw('runNumberShort', { number: number(runId) });
+  const word = full.endsWith(short) ? full.slice(0, -short.length).trim() : '';
   // The run is its number: the run header below the bar names its request, and the menu lists
   // each run's request beside its number.
   return (
@@ -164,9 +167,27 @@ export function RunMenu({
         }
       >
         {chosen ? <StatusDot status={chosen.status} label={label(chosen)} /> : null}
-        <span data-crumb-label="" className="truncate">
-          {tw('runNumber', { number: number(runId) })}
-        </span>
+        {word ? (
+          // With no room for "Run #1", the number stands alone ("#1"), never a cut word: the
+          // label is one line tall, and the word wraps above that line, out of sight.
+          <span
+            data-crumb-label=""
+            className="relative flex h-lh min-w-0 flex-wrap content-end gap-x-1 overflow-hidden"
+          >
+            <span data-run-word className="whitespace-nowrap">{`${word} `}</span>
+            <span data-run-number className="whitespace-nowrap">
+              {short}
+            </span>
+            {/* The whole label's width, which the bar's fit reads (topbarTier.ts). */}
+            <span aria-hidden="true" className="invisible absolute top-0 left-0 whitespace-nowrap">
+              {full}
+            </span>
+          </span>
+        ) : (
+          <span data-crumb-label="" className="truncate">
+            {full}
+          </span>
+        )}
         <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
       </MenuTrigger>
       <MenuPopup align="start" aria-label={tw('chooseRun')} className="min-w-48 max-w-96">

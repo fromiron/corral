@@ -1,23 +1,41 @@
 // @vitest-environment jsdom
 import { Tabs } from '@corral/react/design-kit';
-import { act, type ComponentProps } from 'react';
+import { act, type ComponentProps, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { TopbarSlotContext } from '../TopbarSlot.tsx';
-import { topbarLayout } from '../topbarTier.ts';
+import { TopbarBar, TopbarFit, TopbarSlotContext } from '../TopbarSlot.tsx';
+import { type TopbarLayout, topbarLayout } from '../topbarTier.ts';
 import { DockTopBar, type PrimaryView } from './DockTopBar.tsx';
 
-const fixture = vi.hoisted(() => ({ tier: 0 }));
-vi.mock('../TopbarSlot.tsx', async (original) => ({
-  ...(await original<typeof import('../TopbarSlot.tsx')>()),
-  useTopbarLayout: () => topbarLayout(fixture.tier),
-}));
+// Two ways to put the bar on a tier. `tier` sets it outright; null leaves it to the real fit,
+// which measures what each tier asks for. jsdom lays nothing out, so `needs` gives those
+// measurements, as a 390px phone's bar would take them.
+const fixture = vi.hoisted(() => ({ tier: 0 as number | null, needs: [] as number[] }));
+vi.mock('../TopbarSlot.tsx', async (original) => {
+  const real = await original<typeof import('../TopbarSlot.tsx')>();
+  return {
+    ...real,
+    useTopbarLayout: () => {
+      const fitted = real.useTopbarLayout();
+      return fixture.tier === null ? fitted : topbarLayout(fixture.tier);
+    },
+  };
+});
+vi.mock('../topbarTier.ts', async (original) => {
+  const real = await original<typeof import('../topbarTier.ts')>();
+  return {
+    ...real,
+    measureTopbar: (_bar: HTMLElement, layout: TopbarLayout) =>
+      fixture.needs[real.TOPBAR_TIERS.indexOf(layout.tier)] ?? 0,
+  };
+});
 
 const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {
   fixture.tier = 0;
+  fixture.needs = [];
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
@@ -38,6 +56,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -47,6 +66,9 @@ function visibleText(element: Element | null | undefined) {
   for (const hidden of copy?.querySelectorAll('[aria-hidden="true"]') ?? []) hidden.remove();
   return copy?.textContent?.trim();
 }
+
+/** A control on screen: not inside an element the bar keeps hidden for another tier. */
+const shown = (element: Element) => !element.closest('[hidden]');
 
 async function mount(props: Partial<ComponentProps<typeof DockTopBar>> = {}) {
   const topbar = document.createElement('div');
@@ -91,9 +113,12 @@ async function mount(props: Partial<ComponentProps<typeof DockTopBar>> = {}) {
 it('names the session views Conversation, Files, Changes and Runs', async () => {
   const view = await mount();
   expect(
-    [...view.topbar.querySelectorAll('[role="tab"]')].map((item) => visibleText(item)),
+    [...view.topbar.querySelectorAll('[role="tab"]')]
+      .filter(shown)
+      .map((item) => visibleText(item)),
   ).toEqual(['Conversation', 'Files', 'Changes', 'Runs']);
-  expect(view.topbar.querySelector('[role="combobox"]')).toBeNull();
+  // While the tabs fit, the folded menu is kept hidden, never shown beside them.
+  expect([...view.topbar.querySelectorAll('[role="combobox"]')].filter(shown)).toEqual([]);
 });
 
 it('marks the Changes tab with the count of changed files and keeps its name', async () => {
@@ -111,7 +136,9 @@ it('marks the Changes tab with the count of changed files and keeps its name', a
 it('folds the tabs into one menu that shows the current view and switches views', async () => {
   fixture.tier = 4;
   const view = await mount({ sessionView: 'changes', changeCount: 3 });
-  const menu = view.topbar.querySelector<HTMLElement>('[role="combobox"]');
+  const menus = [...view.topbar.querySelectorAll<HTMLElement>('[role="combobox"]')].filter(shown);
+  expect(menus).toHaveLength(1);
+  const [menu] = menus;
   expect(menu?.getAttribute('aria-label')).toBe('Session views');
   expect(menu?.textContent).toContain('Changes');
   expect(menu?.textContent).toContain('3');
@@ -184,4 +211,68 @@ it('a narrow pane switcher reads Panes, not the open file its tab already names'
   const switcher = toolbar?.querySelector<HTMLElement>('[role="combobox"]');
   expect(switcher?.getAttribute('aria-label')).toBe('Panes');
   expect(visibleText(switcher)).toBe('Panes');
+});
+
+function Bar() {
+  const [views, setViews] = useState<HTMLElement | null>(null);
+  return (
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <TopbarFit>
+        <TopbarBar>
+          <div data-topbar-part="views" ref={setViews} />
+        </TopbarBar>
+        <TopbarSlotContext.Provider value={{ views, actions: null, crumbs: null }}>
+          <Tabs value="files">
+            <DockTopBar
+              sessionView="files"
+              fileWork
+              compact
+              active="context:files"
+              panels={[]}
+              openContext={() => {}}
+              onSelectView={() => {}}
+              onSelectPane={() => {}}
+            />
+          </Tabs>
+        </TopbarSlotContext.Provider>
+      </TopbarFit>
+    </IntlProvider>
+  );
+}
+
+it('keeps the folded view menu, and its focus, while the bar tries a roomier tier', async () => {
+  // The real fit, on a 390px phone's bar: it rests on its last tier (the folded view menu on a
+  // second row).
+  fixture.tier = null;
+  fixture.needs = [1322, 1188, 1146, 1063, 838, 763, 517, 366];
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => 390);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () => root.render(<Bar />));
+  const bar = container.querySelector('header');
+  expect(bar?.getAttribute('data-topbar-tier')).toBe('two-rows-menu');
+  const trigger = () =>
+    [...container.querySelectorAll<HTMLElement>('[role="combobox"]')].find(
+      (element) => element.getAttribute('aria-label') === 'Session views' && shown(element),
+    );
+  const menu = trigger();
+  expect(menu).toBeDefined();
+  act(() => menu?.focus());
+  expect(document.activeElement).toBe(menu);
+  // The content changed (another view's run pill): the tier on screen asks for a new width, so
+  // the bar tries the roomier tier with tabs before it settles back on the menu.
+  fixture.needs = fixture.needs.map((need) => need + 4);
+  await act(async () => {
+    bar?.append(document.createElement('span'));
+    await Promise.resolve();
+  });
+  expect(bar?.getAttribute('data-topbar-tier')).toBe('two-rows-menu');
+  // The same trigger is there, and still holds the keyboard.
+  expect(trigger()).toBe(menu);
+  expect(document.activeElement).toBe(menu);
 });

@@ -515,7 +515,7 @@ export function TeamEditor({
         <div
           role="toolbar"
           aria-label={t('palette')}
-          className="absolute top-3 left-3 flex gap-0.5 rounded-[12px] border border-border bg-card p-1 shadow-sm"
+          className="absolute top-3 left-3 flex gap-0.5 rounded-xl border border-border bg-card p-1 shadow-sm"
         >
           {ADDABLE.map((kind) => {
             const Icon = KIND_ICON[kind];

@@ -90,3 +90,42 @@ it('waits for a hidden workspace to have size, then preserves the initialized vi
   expect(mounts).toBe(1);
   expect(graph?.textContent).toBe('Zoom 2');
 });
+
+it('scrolls the view tabs in the list itself, with the kit edge fade, when they do not fit', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunViews
+          visible
+          views={['Graph', 'Workflow', 'Timeline', 'Events', 'Results'].map((label) => ({
+            id: label.toLowerCase(),
+            label,
+            render: () => null,
+          }))}
+        />
+      </IntlProvider>,
+    ),
+  );
+  // The fade follows the scroll position of the element that carries it, so the list must be
+  // the scroller: a wrapper that scrolls instead leaves the cut edge plain.
+  const list = container.querySelector('[role="tablist"]');
+  expect(list?.classList.contains('overflow-x-auto')).toBe(true);
+  expect(list?.classList.contains('scroll-fade-x')).toBe(true);
+  expect(list?.parentElement?.classList.contains('overflow-x-auto')).toBe(false);
+});

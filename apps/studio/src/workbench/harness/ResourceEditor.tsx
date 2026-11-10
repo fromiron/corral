@@ -403,7 +403,7 @@ export function ResourceEditor({
             {review ? (
               <section className="rounded-lg bg-surface p-3 text-body" aria-label={h('review')}>
                 <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('reviewReady')}</p>
-                <ul className="mt-2 list-inside list-disc">
+                <ul className="mt-2 list-outside list-disc pl-5">
                   {review.resource.skills.map((skill) => (
                     <li key={skill.entry}>
                       {skill.entry === reviewedEntry ? name.trim() : skill.name} —{' '}

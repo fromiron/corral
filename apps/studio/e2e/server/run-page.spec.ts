@@ -347,7 +347,8 @@ test.describe('active graph preview', () => {
       await steer.click();
       const reins = monitor.getByTestId('run-instructions');
       await expect(reins).toBeVisible();
-      await expect(reins).toBeFocused();
+      // A running execution takes instructions, so focus lands in the instruction box.
+      await expect(reins.getByLabel('Instruction', { exact: true })).toBeFocused();
       await expect(reins).toContainText('Agent execution 1');
       await expect(monitor.getByTestId('run-side')).toBeHidden();
       expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
@@ -485,16 +486,19 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
 });
 
-test('the conversation’s request link opens the run’s response area, even in a narrow window', async ({
+test('the waiting pill opens the run’s response area, even in a narrow window', async ({
   page,
   corral,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
-  const notice = page.getByTestId('action-required');
-  await expect(notice).toBeVisible({ timeout: 30_000 });
-  await notice.getByRole('link', { name: 'Respond', exact: true }).click();
+  // An approval alone is decided in its turn's card; the composer has no notice for it, and the
+  // top bar's pill (only the run's number at this width) is the way to the response area.
+  const pill = page.getByRole('banner').getByTestId('dock-open-active-run');
+  await expect(pill).toHaveAttribute('data-state', 'waiting', { timeout: 30_000 });
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  await pill.click();
   const response = page.locator(`[data-run-response="${started.runId}"]`);
   await expect(response).toBeVisible();
   await expect(response).toBeFocused();
@@ -504,6 +508,79 @@ test('the conversation’s request link opens the run’s response area, even in
   await page.getByTestId('run-side').getByRole('button', { name: 'Close details' }).click();
   await expect(response).toBeHidden();
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+/**
+ * The session screen's main area as a person reads it: the top bar and the workbench, without
+ * the sidebar and without screen-reader-only text.
+ */
+function mainText(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const hidden = [...document.querySelectorAll<HTMLElement>('.sr-only')];
+    for (const node of hidden) node.style.setProperty('display', 'none', 'important');
+    const text = [
+      document.querySelector<HTMLElement>('[role="banner"], header'),
+      document.querySelector<HTMLElement>('section[aria-label="Workbench layout"]'),
+    ]
+      .map((node) => node?.innerText ?? '')
+      .join('\n');
+    for (const node of hidden) node.style.removeProperty('display');
+    return text;
+  });
+}
+
+test('a waiting approval shows its state once (the pill) and its decision once (the card)', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const card = page.locator('[data-testid^="approval-"]');
+  await expect(card.getByRole('button', { name: 'Continue with this version' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole('banner').getByTestId('dock-open-active-run')).toContainText(
+    'Waiting for you',
+  );
+  const shown = await mainText(page);
+  // "Waiting for you", not the start of "Waiting for your decision".
+  expect(shown.match(/Waiting for you(?!r)/g)).toHaveLength(1);
+  expect(shown.match(/Your decision/g)).toHaveLength(1);
+  expect(shown.match(/Continue with this version/g)).toHaveLength(1);
+  expect(shown).not.toContain('Reason:');
+  expect(shown).not.toContain('Approval needed');
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  expect(corral.errors).toEqual([]);
+});
+
+test('a decision sent from the conversation’s card hands focus on instead of dropping it', async ({
+  page,
+  corral,
+}) => {
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const decide = page
+    .locator('[data-testid^="approval-"]')
+    .getByRole('button', { name: 'Continue with this version' });
+  await expect(decide).toBeVisible({ timeout: 30_000 });
+  await decide.focus();
+  await page.keyboard.press('Enter');
+  await expect(decide).toHaveCount(0);
+  // The card left: focus goes to the next waiting card's main action if the final output
+  // already waits, else to the request box; never to the page.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) return 'page';
+        if (active.matches('[data-testid="chat-composer"] textarea')) return 'request';
+        if (active.textContent === 'Confirm as final result') return 'final';
+        return active.outerHTML.slice(0, 120);
+      }),
+    )
+    .toMatch(/^(request|final)$/);
   expect(corral.errors).toEqual([]);
 });
 

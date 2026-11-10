@@ -171,6 +171,10 @@ export function RunReason({
   nodeLabel: (id: string) => string;
 }) {
   const t = useTranslations('RunReasons');
+  const recipe = useTranslations('Recipe');
+  // A run its review recipe stopped records `review_recipe:{reason}`; the recipe names it.
+  const stop = /^review_recipe:([a-z_]+)$/.exec(code)?.[1];
+  if (stop && recipe.has(`reasons.${stop}`)) return <>{recipe(`reasons.${stop}`)}</>;
   const at = code.indexOf(': ');
   const head = at < 0 ? code : code.slice(0, at);
   const rest = at < 0 ? '' : code.slice(at + 2);

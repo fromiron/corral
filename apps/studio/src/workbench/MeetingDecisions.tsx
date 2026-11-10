@@ -214,7 +214,7 @@ export function MeetingDecisions({
                 {nonresponses.length ? (
                   <div>
                     <h4 style={semibold}>{t('nonresponse')}</h4>
-                    <ul className="list-inside list-disc">
+                    <ul className="list-outside list-disc pl-5">
                       {nonresponses.map((answer) => (
                         <li
                           key={`${answer.roundId}:${answer.participantId}`}
@@ -464,7 +464,7 @@ function TextList({ title, values }: { title: string; values: string[] }) {
     <div>
       <h4 style={semibold}>{title}</h4>
       {values.length ? (
-        <ul className="list-inside list-disc">
+        <ul className="list-outside list-disc pl-5">
           {values.map((value, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: A saved immutable list may contain repeated text.
             <li key={`${index}:${value}`} className="wrap-anywhere">

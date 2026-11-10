@@ -148,6 +148,8 @@ export function RunOutput({
   const result = useRunDisplay(session, (s) =>
     resultId ? s.projection?.artifacts[resultId] : undefined,
   );
+  // Until there is output the run's status badge says it is still working; nothing is added.
+  if (outputText === null && !(onOpenResults && finals.length > 0)) return null;
   return (
     <div className="flex flex-col gap-1">
       {heading ? (
@@ -179,9 +181,7 @@ export function RunOutput({
           })}
         </div>
       ) : null}
-      {outputText === null ? (
-        <p className="text-caption text-muted-foreground">{t('outputPending')}</p>
-      ) : (
+      {outputText === null ? null : (
         <div
           data-testid="run-output"
           className={`overflow-auto rounded-md fill-group p-2 ${heading ? 'max-h-64' : ''}`}

@@ -46,6 +46,18 @@ vi.mock('./DecisionApiSettings.tsx', () => ({
   DecisionApiSettings: () => <p>decision panel</p>,
 }));
 vi.mock('./ModelUsagePanel.tsx', () => ({ ModelUsagePanel: () => <p>usage panel</p> }));
+// The editor's "Change the key on the … card" action, for each endpoint it names.
+vi.mock('./ModelConfigEditor.tsx', () => ({
+  ModelConfigEditor: ({ onShowKey }: { onShowKey?: (endpointId: string) => void }) => (
+    <>
+      {['hive', 'other'].map((id) => (
+        <button key={id} type="button" onClick={() => onShowKey?.(id)}>
+          {`key on ${id}`}
+        </button>
+      ))}
+    </>
+  ),
+}));
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -99,11 +111,26 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
       ),
     );
     const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
-    // The heading names the section alone: no intro line under it, and no storage note per key.
+    // The heading names the section alone: no intro line under it, and no storage note at the top.
     expect(container.querySelector('[data-description]')).toBeNull();
     expect(container.textContent).not.toContain(
       'Kept on this computer, outside the workspace, and used only',
     );
+    // What happens to a saved key is one line under the key field, once per card, and the
+    // field's description.
+    const card = container.querySelector<HTMLElement>('[data-testid="provider-openai"]');
+    const safety = [...(card?.querySelectorAll('p') ?? [])].filter(
+      (node) => node.textContent === messages.Models.keySafety,
+    );
+    expect(safety).toHaveLength(1);
+    expect(container.textContent?.split(messages.Models.keySafety)).toHaveLength(2);
+    const field = card?.querySelector('input');
+    expect(field?.getAttribute('aria-describedby')).toBe(safety[0]?.id);
+    expect(
+      field && safety[0]
+        ? field.compareDocumentPosition(safety[0]) & Node.DOCUMENT_POSITION_FOLLOWING
+        : 0,
+    ).toBeTruthy();
     // The kit keeps an invisible bold copy of each label for its width; read the visible one.
     const visible = (node: HTMLElement) => {
       const copy = node.cloneNode(true) as HTMLElement;
@@ -153,6 +180,83 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
     expect(
       container.querySelector<HTMLInputElement>('[data-testid="provider-openai"] input')?.value,
     ).toBe('typed-but-unsaved');
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+const provider = (providerId: string, saved: boolean) => ({
+  providerId,
+  name: providerId,
+  signedIn: saved,
+  method: saved ? 'api_key' : null,
+  methods: { oauth: false, apiKey: true },
+  endpoint: null,
+  endpointChanged: false,
+  connectionTest: null,
+  subscription: false,
+  expiresAt: null,
+  login: null,
+  source: saved ? 'corral' : null,
+  permissionsOk: true,
+});
+
+it('changing a key from the editor shows the Sign-in tab and focuses that card', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  fixture.models = {
+    profiles: async () => [],
+    // Hive holds a saved key, so its card has no key field; the other one still asks for one.
+    auth: async () => [provider('hive', true), provider('other', false)],
+    catalog: async () => [],
+    config: async () => ({ revision: 'r1', modelProviders: [], modelProfiles: [] }),
+  } as unknown as ModelsApi;
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <ModelSettingsPage />
+        </IntlProvider>,
+      ),
+    );
+    const tabs = () => [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
+    const button = (text: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+        (item) => item.textContent === text,
+      );
+    const card = (id: string) =>
+      container.querySelector<HTMLElement>(`[data-testid="provider-${id}"]`);
+    const signIn = () => card('hive')?.closest<HTMLElement>('[role="tabpanel"]');
+    await act(async () => tabs()[1]?.click());
+    await act(async () => button('Edit models')?.click());
+    expect(signIn()?.hidden).toBe(true);
+
+    await act(async () => button('key on hive')?.click());
+    expect(signIn()?.hidden).toBe(false);
+    expect(tabs()[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(card('hive'));
+
+    await act(async () => tabs()[1]?.click());
+    await act(async () => button('key on other')?.click());
+    expect(signIn()?.hidden).toBe(false);
+    expect(document.activeElement).toBe(card('other')?.querySelector('input'));
   } finally {
     await act(async () => root.unmount());
     container.remove();

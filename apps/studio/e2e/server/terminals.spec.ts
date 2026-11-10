@@ -147,10 +147,12 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await expect(sessionRow).toContainText('Terminal needs attention');
   await expect(sessionRow).toHaveAttribute('href', terminalPath);
   await summary.click();
+  // Only this project has an item, so the row does not name it (inbox.md: "프로젝트 이름은
+  // 목록에 프로젝트가 둘 이상일 때만 보인다").
   await page
     .getByRole('list', { name: 'Waiting for you', exact: true })
     .getByRole('button', {
-      name: 'Observed terminal owner · Terminal exit needs checking · Unvisited terminal project',
+      name: 'Observed terminal owner · Terminal exit needs checking',
       exact: true,
     })
     .click();

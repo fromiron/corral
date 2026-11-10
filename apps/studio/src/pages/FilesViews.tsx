@@ -311,12 +311,15 @@ export function WorkingCopyPanel({
   // or make the copy.
   if (!worktree) {
     const folderSettings = <Link {...navigation.link('workspace', projectId)} />;
-    const next: { text: string; action: EmptyViewAction } = !binding
+    // The button names the commit the copy starts from. The one thing it cannot say is that
+    // uncommitted changes in the folder stay behind, so that is told only when there are some.
+    const left = binding?.status?.changed ?? 0;
+    const next: { text?: string; action: EmptyViewAction } = !binding
       ? { text: t('noFolder'), action: { label: t('openFolderSettings'), render: folderSettings } }
       : !binding.trusted
         ? { text: t('notTrusted'), action: { label: t('openTrust'), render: folderSettings } }
         : {
-            text: `${t('copyIntro')} ${t('createHint', { changed: binding.status?.changed ?? 0 })}`,
+            ...(left > 0 ? { text: t('createHint', { changed: left }) } : {}),
             action: {
               label: t('create', { head: binding.status?.head ?? 'HEAD' }),
               disabled: busy,

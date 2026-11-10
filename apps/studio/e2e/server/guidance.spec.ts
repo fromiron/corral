@@ -105,17 +105,19 @@ test.describe('no connected models', () => {
     );
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(requestBox(page)).toHaveValue('Do not send without a connection.');
-    // The sidebar's status card is the connection entry point and says the same thing.
-    const status = page.getByTestId('sidebar-status');
-    await expect(status).toContainText('Live requests are blocked');
-    await expect(
-      status.getByRole('button', { name: 'Connect a model', exact: true }),
-    ).toBeVisible();
+    // The sidebar head's connection word is the connection entry point; no card repeats the
+    // banner (workbench.md: "모델 미연결의 연결 진입점과 데모·시뮬레이션 표시는 머리의 연결 상태
+    // 낱말 하나가 맡고, 같은 사실을 카드나 문장으로 반복하지 않는다").
+    const word = page.getByTestId('app-sidebar').getByTestId('sidebar-connection');
+    await expect(word).toHaveText('No model');
+    await expect(word).toHaveRole('button');
+    await expect(word).toHaveAccessibleName('No model: open model settings');
+    await expect(page.getByTestId('app-sidebar')).not.toContainText('Live requests are blocked');
     await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
     await page.reload();
     await expect(page.getByTestId('models-not-ready')).toBeVisible();
-    await expect(status).toContainText('실제 요청은 차단됩니다');
-    await expect(status.getByRole('button', { name: '모델 연결 필요', exact: true })).toBeVisible();
+    await expect(word).toHaveText('모델 없음');
+    await expect(word).toHaveAccessibleName('모델 없음: 모델 설정 열기');
     await corral.open('/projects/default?settings=project-defaults');
     await expect(
       page.getByRole('combobox', { name: '프로젝트 기본값', exact: true }),

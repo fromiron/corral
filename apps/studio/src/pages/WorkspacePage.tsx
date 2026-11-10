@@ -414,10 +414,11 @@ function ProjectTabs({
       onValueChange={(value) => chooseTab(value as ProjectTab)}
       className="flex min-w-0 flex-col gap-4"
     >
-      {/* The strip hugs its tabs and scrolls inside itself when the page is narrower. */}
+      {/* The strip hugs its tabs and scrolls inside itself when the page is narrower; the
+          kit's edge fade shows there is more beyond the cut. */}
       <TabsList
         aria-label={t('tabsLabel')}
-        className="scrollbar-hide max-w-full self-start overflow-x-auto"
+        className="scroll-fade-x scrollbar-hide max-w-full self-start overflow-x-auto"
       >
         {TABS.map((value) => (
           <TabItem key={value} value={value} label={label(value)} />
@@ -582,6 +583,15 @@ function NewConversation({
     available.some((c) => c.corralId === corralId) || isSuggested(corralId) ? corralId : '';
   const team = chooseTeam(corrals);
   const hasDetails = Boolean(title || objective || corralId || criteria.trim());
+  // Saved details show on the way back to them while the form is closed: the name, else the
+  // start of the purpose, else the first completion criterion, else the team chosen
+  // (workbench.md, 세션 목록과 검색).
+  const savedHint =
+    title.trim() ||
+    objective.trim().split('\n')[0]?.trim() ||
+    criteria.trim().split('\n')[0]?.trim() ||
+    corrals.find((c) => c.corralId === team)?.name ||
+    (isSuggested(team) ? tw('suggestedTeam', { name: tw(`template.${team.slice(9)}.name`) }) : '');
   useEffect(() => {
     active.current = true;
     return () => {
@@ -675,8 +685,26 @@ function NewConversation({
           >
             <ChevronDown />
           </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuItem onClick={() => setDetailsOpen(true)}>{tw('detailsFirst')}</MenuItem>
+          {/* Wider while it carries saved details, so they read beside the label. */}
+          <MenuPopup align="end" className={savedHint ? 'w-96' : undefined}>
+            <MenuItem
+              label={savedHint ? `${tw('detailsFirst')} · ${savedHint}` : tw('detailsFirst')}
+              onClick={() => setDetailsOpen(true)}
+            >
+              {savedHint ? (
+                <span className="flex w-full min-w-0 items-center gap-3">
+                  <span className="shrink-0">{tw('detailsFirst')}</span>
+                  <span
+                    data-testid="new-conversation-draft"
+                    className="ml-auto max-w-48 truncate text-caption text-muted-foreground"
+                  >
+                    {savedHint}
+                  </span>
+                </span>
+              ) : (
+                tw('detailsFirst')
+              )}
+            </MenuItem>
           </MenuPopup>
         </Menu>
       </div>

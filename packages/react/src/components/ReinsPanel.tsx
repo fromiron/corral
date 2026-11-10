@@ -2,7 +2,7 @@ import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { type KeyboardEvent, useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, fontWeights, KitBadge, Textarea } from '../design-kit/index.ts';
+import { Button, cn, fontWeights, KitBadge, Textarea } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
 import { ExecutionSteering } from './ExecutionSteering.tsx';
@@ -138,7 +138,15 @@ export function ReinsPanel({
 
   const compose =
     !target.finished || draft ? (
-      <div className="mt-2.5 flex flex-col gap-1 border-t border-border py-2.5 pr-3 pl-3.5">
+      <div
+        data-reins-compose
+        className={cn(
+          'mt-2.5 flex flex-col gap-1 border-t border-border py-2.5',
+          // Inside the full panel's activity card it takes the card's inset; the compact form
+          // stands in the page, its field flush with the heading and the lines around it.
+          compact ? null : 'pr-3 pl-3.5',
+        )}
+      >
         {/* The heading above already says what this field is; the label stays its name. */}
         <label htmlFor={inputId} className="sr-only">
           {t('instruction')}

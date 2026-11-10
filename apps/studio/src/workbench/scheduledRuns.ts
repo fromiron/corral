@@ -1,7 +1,18 @@
 import { type ScheduledOccurrence, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
+import { createStore } from 'zustand/vanilla';
 
 export type ScheduledRunOutcome = Pick<RunSummary, 'runId' | 'status'> & { sessionId: string };
+
+/**
+ * The scheduled runs whose final status Automation shows on screen now: each listed schedule's
+ * last result and the shown schedule's history. On Automation their banners are dismissed; a
+ * result the page did not show (its schedule is gone, or the page's read failed) keeps its
+ * banner for the next screen.
+ */
+export const automationShownRuns = createStore<{ runIds: readonly string[] }>(() => ({
+  runIds: [],
+}));
 
 /** The scheduler owns this command namespace; request text never identifies the source. */
 export const isScheduledRequest = (entry: { commandId?: string | null }) =>

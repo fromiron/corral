@@ -39,18 +39,24 @@ for (const locale of ['en', 'ko'] as const) {
       );
     });
 
-    // Product gap: the new conversation's details are a dialog, and once closed nothing shows
-    // that a purpose is saved (workbench.md 세션 목록과 검색: 접힌 머리글에 목적 앞부분을 표시한다).
-    test.fixme('collapsed objective has a visible summary', async ({ page, corral }) => {
+    // workbench.md (세션 목록과 검색: 접힌 머리글에 목적 앞부분을 표시한다): the new conversation's
+    // details are a dialog; once it is closed, the menu item that opens it shows the purpose.
+    test('collapsed objective has a visible summary', async ({ page, corral }) => {
       await corral.open('/');
-      const details = page.getByRole('button', {
-        name: new RegExp(m.Navigation.sessionDetails.replace(/[()]/g, '\\$&')),
+      const more = page.getByRole('button', {
+        name: m.Workspace.newConversationMenu,
+        exact: true,
       });
+      const details = page.getByRole('menuitem', {
+        name: new RegExp(`^${m.Workspace.detailsFirst.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+      });
+      await more.click();
       await details.click();
       await page
         .getByRole('textbox', { name: m.Sessions.objectiveLabel, exact: true })
         .fill('Objective-only summary');
-      await details.click();
+      await page.keyboard.press('Escape');
+      await more.click();
       await expect(details).toContainText('Objective-only summary');
     });
 

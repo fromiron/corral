@@ -19,6 +19,7 @@ import {
   FailureNotice,
   primaryWorkPlan,
   QuestionsPanel,
+  RecipeStatusPanel,
   ReinsPanel,
   RoutingTally,
   RunActions,
@@ -244,6 +245,7 @@ function RunWorkspace({
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
   const status = useTranslations('Status');
+  const harness = useTranslations('Harness');
   const { execution, artifact, result } = search;
   const resultOpen = search.view === 'results' || result !== undefined;
   const documentOpen = resultOpen || artifact !== undefined;
@@ -353,8 +355,29 @@ function RunWorkspace({
       item.kind === 'approval' ? item.approval.approvalId : item.event.payload.requestId,
     )
     .join('|');
+  // An extension can answer back after its prompt: what it says shows in the response area
+  // under the prompt that was answered, so the area stays while the live run may still reply,
+  // and holds the extension's notices while their text is kept (it is released with the run's
+  // other working bodies when the run ends; api-contract.md, 산출물 본문 수명).
+  const extensionSaid = useStore(session, (s) =>
+    s.events.some(
+      (event) =>
+        event.type === 'extension.ui_notified' &&
+        canReadArtifactBody(s.projection, event.payload.bodyRef),
+    ),
+  );
+  const extensionReplying = useStore(
+    session,
+    (s) =>
+      Boolean(s.projection && !TERMINAL_RUN_STATUSES.has(s.projection.status)) &&
+      s.events.findLast(
+        (event) =>
+          event.type === 'extension.ui_requested' || event.type === 'extension.ui_answered',
+      )?.type === 'extension.ui_answered',
+  );
+  const responding = pending > 0 || extensionSaid || extensionReplying;
   const sideShown =
-    !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || pending > 0);
+    !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || responding);
   useEffect(() => {
     if (hasOutput) markRunReviewed();
   }, [hasOutput]);
@@ -374,8 +397,21 @@ function RunWorkspace({
     }
   }, [execution, executionNodeId, listedNodeId]);
   useEffect(() => {
-    if (panel === 'approval' && pending === 0) setPanel('closed');
-  }, [panel, pending]);
+    if (panel === 'approval' && !responding) setPanel('closed');
+  }, [panel, responding]);
+  // The response area leaves with the last answer; focus that was in it goes to the run's title
+  // instead of falling to the page.
+  const wasResponding = useRef(responding);
+  useEffect(() => {
+    const left = wasResponding.current && !responding;
+    wasResponding.current = responding;
+    if (!left) return;
+    const frame = requestAnimationFrame(() => {
+      if (document.activeElement === document.body)
+        document.querySelector<HTMLElement>('[data-run-title]')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [responding]);
   // A new question or approval opens the response area once, only into free space on a wide
   // page. An item counts as announced only once the area has actually shown it, so one first seen
   // behind a document, an inspector or a narrow page still opens it when the space frees up.
@@ -482,7 +518,14 @@ function RunWorkspace({
     setSteeringId(id);
     setSteeringTargets((previous) => new Set(previous).add(id));
     setSteeringOpen(true);
-    requestAnimationFrame(() => steeringPane.current?.focus({ preventScroll: true }));
+    // Opening it is asking to type: the instruction box takes focus, or the pane when the
+    // execution takes no instruction any more.
+    requestAnimationFrame(() =>
+      (
+        steeringPane.current?.querySelector<HTMLElement>('textarea:not([disabled])') ??
+        steeringPane.current
+      )?.focus({ preventScroll: true }),
+    );
   };
   const closeSteering = () => {
     setSteeringOpen(false);
@@ -503,6 +546,16 @@ function RunWorkspace({
   };
   const highlightedNode = selectedNodeId ?? executionNodeId;
   const selectedTarget = execution ? target : null;
+  const closeDetails = (
+    <Button
+      variant="ghost"
+      size="icon-compact"
+      aria-label={m('closeDetails')}
+      onClick={closeDetail}
+    >
+      <X />
+    </Button>
+  );
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
       {notice}
@@ -522,6 +575,7 @@ function RunWorkspace({
           setSteeringOpen(false);
           chooseExecution(id);
         }}
+        onOpenArtifact={(id) => openArtifact(id)}
         trailing={
           <Button
             ref={detailsButton}
@@ -767,42 +821,41 @@ function RunWorkspace({
         >
           {/* One column the panel's width: an open part wraps or scrolls in it, never widens it. */}
           <div className="grid grid-cols-1 gap-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                {/* The response area's state is the header's status: its heading stays unseen. */}
-                <h2
-                  className={panel === 'approval' ? 'sr-only' : 'truncate text-subtitle'}
-                  style={{ fontVariationSettings: fontWeights.semibold }}
-                >
-                  {panel === 'approval'
-                    ? status('awaiting_user')
-                    : panel === 'run'
+            {panel === 'approval' ? (
+              // The response area's state is the header's status: its heading stays unseen, and
+              // the close sits on the area's first row instead of a row of its own.
+              <h2 className="sr-only">
+                {pending > 0 ? status('awaiting_user') : harness('extensionNotice')}
+              </h2>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2
+                    className="truncate text-subtitle"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {panel === 'run'
                       ? m('runInfo')
                       : (selectedTarget?.nodeLabel ??
                         definition.nodes.find((node) => node.id === listedNodeId)?.label ??
                         m('details'))}
-                </h2>
-                {panel === 'selection' && execution && projection?.executions[execution] ? (
-                  <div className="text-caption text-muted-foreground">
-                    <ExecutionIdentity projection={projection} executionId={execution} />
-                  </div>
-                ) : null}
+                  </h2>
+                  {panel === 'selection' && execution && projection?.executions[execution] ? (
+                    <div className="text-caption text-muted-foreground">
+                      <ExecutionIdentity projection={projection} executionId={execution} />
+                    </div>
+                  ) : null}
+                </div>
+                {closeDetails}
               </div>
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label={m('closeDetails')}
-                onClick={closeDetail}
-              >
-                <X />
-              </Button>
-            </div>
+            )}
             <div hidden={panel !== 'approval'}>
-              {pending > 0 ? (
+              {responding ? (
                 <RunResponseArea
                   session={session}
                   focusRef={response}
                   onOpenArtifact={openArtifact}
+                  {...(panel === 'approval' ? { action: closeDetails } : {})}
                 />
               ) : null}
             </div>
@@ -999,6 +1052,7 @@ function RunHeader({
   waiting = 0,
   onRespond,
   onOpenExecution,
+  onOpenArtifact,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
@@ -1009,16 +1063,28 @@ function RunHeader({
   onRespond?: () => void;
   /** Opens an execution's detail: a failed run's one way to the execution that failed. */
   onOpenExecution?: (executionId: string) => void;
+  /** Opens a version the review recipe evaluated. */
+  onOpenArtifact?: (artifactVersionId: string) => void;
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
   const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
+  const recipeStopped = useStore(session, (s) =>
+    s.events.some((event) => event.type === 'recipe.stopped'),
+  );
   if (!projection) return null;
   // A failed run says why beside its state, in Run info's words, and leads to what failed. With
   // one agent, "{agent} failed" only restates the state chip, so it is left out.
   const failed = projection.status === 'failed';
   const failedExecution = failed ? failedExecutionId(projection) : null;
+  // A run its review recipe stopped says why in the recipe's panel, with the rounds it judged;
+  // the reason is not said again beside the state.
+  const recipeStop =
+    failed &&
+    recipeStopped &&
+    Boolean(onOpenArtifact) &&
+    Boolean(projection.statusReason?.startsWith('review_recipe:'));
   // The run's agents: those it schedules, and any callable helper that actually ran.
   const ran = new Set(Object.values(projection.executions).map((execution) => execution.nodeId));
   const soleAgent =
@@ -1027,6 +1093,7 @@ function RunHeader({
     ).length <= 1;
   const endReason =
     projection.statusReason &&
+    !recipeStop &&
     !(soleAgent && projection.statusReason.split(': ')[0] === 'execution_failed')
       ? projection.statusReason
       : null;
@@ -1046,7 +1113,9 @@ function RunHeader({
         <div className="flex items-center gap-3 @max-[44rem]/run-head:basis-full">
           <h2
             title={title}
-            className="line-clamp-2 min-w-[16ch] shrink text-subtitle [overflow-wrap:anywhere]"
+            tabIndex={-1}
+            data-run-title
+            className="line-clamp-2 min-w-[16ch] shrink text-subtitle outline-none [overflow-wrap:anywhere]"
             style={{ fontVariationSettings: fontWeights.semibold }}
           >
             {title}
@@ -1101,6 +1170,11 @@ function RunHeader({
           {trailing}
         </div>
       </div>
+      {recipeStop && onOpenArtifact ? (
+        <div className="pt-1 pb-2">
+          <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
+        </div>
+      ) : null}
     </section>
   );
 }

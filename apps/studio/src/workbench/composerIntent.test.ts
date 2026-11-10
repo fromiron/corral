@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveIntent } from './composerIntent.ts';
+import { blockedReason, resolveIntent } from './composerIntent.ts';
 
 // UX-01: what a request is (and for which execution) is fixed when the person starts typing;
 // it never changes by itself when the run moves on.
@@ -99,5 +99,20 @@ describe('composer intent (UX-01)', () => {
       target: 'exec_research',
       blocked: null,
     });
+  });
+
+  it('says a queued request is blocked because its run ended, not because a run works', () => {
+    const queued = resolveIntent({
+      ...base,
+      allowed: ['next'],
+      running: false,
+      lock: { intent: 'queue', target: null },
+    });
+    expect(queued.blocked).toBe('intent');
+    expect(blockedReason('intent', queued.intent)).toBe('queueEnded');
+    // A follow-up typed before another run started is the case a working run explains.
+    expect(blockedReason('intent', 'next')).toBe('intent');
+    expect(blockedReason('run', 'steer')).toBe('run');
+    expect(blockedReason('target', 'steer')).toBe('target');
   });
 });

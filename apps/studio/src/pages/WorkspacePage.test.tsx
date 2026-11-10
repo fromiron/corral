@@ -276,6 +276,46 @@ it('keeps rename, archive and all projects in one more menu', async () => {
   expect(menu?.textContent).not.toMatch(/Task board|Preview/);
 });
 
+it('shows saved new-conversation details on the menu item that opens them', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  fixture.data = {
+    ...fixture.data,
+    corrals: [{ corralId: 'team_1', name: 'Release crew', projectId: 'alpha' }],
+  };
+  const item = async (draft: { title: string; objective: string; corralId: string } | null) => {
+    for (const dispose of disposals.splice(0)) await dispose();
+    localStorage.clear();
+    if (draft) localStorage.setItem('corral:new-session:v1:alpha', JSON.stringify(draft));
+    const { container } = await render();
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('button[aria-label="More ways to start a conversation"]')
+        ?.click(),
+    );
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    const row = document.querySelector<HTMLElement>('[role="menu"] [role="menuitem"]');
+    return {
+      hint: row?.querySelector('[data-testid="new-conversation-draft"]')?.textContent ?? null,
+      name: row?.getAttribute('aria-label') ?? row?.textContent ?? '',
+    };
+  };
+  // Nothing saved: the item is its action alone.
+  expect(await item(null)).toMatchObject({ hint: null });
+  // The saved name, else the purpose's first line, else the team.
+  const named = await item({ title: 'Visible name', objective: 'A purpose', corralId: '' });
+  expect(named.hint).toBe('Visible name');
+  expect(named.name).toContain('Visible name');
+  expect(
+    (await item({ title: '', objective: 'Objective-only summary\nmore lines', corralId: '' })).hint,
+  ).toBe('Objective-only summary');
+  expect((await item({ title: '', objective: '', corralId: 'team_1' })).hint).toBe('Release crew');
+});
+
 it('says the pending count once, in the header', async () => {
   const { container } = await render();
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]');

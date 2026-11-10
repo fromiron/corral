@@ -198,11 +198,40 @@ test.describe('long settings pages', () => {
       images.getByRole('region', { name: 'Image generation', exact: true }),
     ).toBeVisible();
     await page.getByRole('link', { name: 'Hooks & extensions', exact: true }).click();
-    await expect(
-      page
-        .getByRole('navigation', { name: 'On this page', exact: true })
-        .getByRole('button', { name: 'Packages', exact: true }),
-    ).toBeVisible();
+    // With no hooks, Packages sits right under the empty library, named by its own heading; no
+    // row of links above the page repeats it (workbench.md: a name shows once per screen).
+    const packages = page
+      .getByRole('region', { name: 'Packages', exact: true })
+      .getByRole('heading', { name: 'Packages', exact: true });
+    await expect(packages).toBeVisible();
+    const index = page.getByRole('navigation', { name: 'On this page', exact: true });
+    await expect(index).toHaveCount(0);
+    // With hooks listed, Packages sits below the library, so the top of the page says it is there
+    // and a keyboard user can jump to it.
+    await page.evaluate(async () => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const call = async (path: string, body: unknown, method = 'POST') => {
+        const response = await fetch(`/api/v1/harness${path}`, {
+          method,
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(`setup failed: ${path} ${response.status}`);
+        return response.json();
+      };
+      const review = await call('/documents/review', {
+        kind: 'extension',
+        name: 'format-on-save',
+        content: 'export default () => {};',
+      });
+      await call('/resources', { reviewId: review.reviewId });
+    });
+    await page.reload();
+    await expect(page.getByRole('button', { name: /format-on-save/ })).toBeVisible();
+    await expect(index.getByRole('button')).toHaveText(['Library', 'Packages']);
+    await index.getByRole('button', { name: 'Packages', exact: true }).click();
+    await expect(page.locator('#resources-packages')).toBeFocused();
+    await expect(packages).toBeInViewport();
     expect(corral.errors).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierr
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { type DiffLabels, localizeDiffLabels } from './diffLabels.ts';
 import { usePreferences } from './preferences.ts';
 import { CommentBody } from './ReviewCommentForm.tsx';
 import { prefersReducedMotion } from './reviewNavigation.ts';
@@ -35,6 +36,9 @@ const codeOptions = {
   // GitHub's diff gutter red/green fails 4.5:1; text color keeps every line number readable.
   unsafeCSS: `${surfaceCSS}\n[data-line-number-content] { color: var(--diffs-fg); }`,
 };
+// The renderer hangs its line "+" past the number column into the code, over the line's first
+// character; it stays inside the gutter, over the hovered line's number.
+const gutterCSS = '[data-utility-button] { margin-right: 0; }';
 
 const viewerClass = 'h-[min(65vh,600px)] min-h-48 overflow-auto rounded fill-group';
 
@@ -118,6 +122,17 @@ export function DiffCode({
 }) {
   const t = useTranslations('Review');
   const { theme } = usePreferences();
+  const td = useTranslations('Review.diff');
+  const labels = useRef<DiffLabels | null>(null);
+  labels.current = {
+    unmodifiedLines: (count) => td('unmodifiedLines', { count }),
+    moreContext: td('moreContext'),
+    expandAll: td('expandAll'),
+    noNewline: td('noNewline'),
+    expandUp: td('expandUp'),
+    expandDown: td('expandDown'),
+    expandBoth: td('expandBoth'),
+  };
   const viewer = useRef<CodeViewHandle<ReviewCommentView, undefined>>(null);
   const annotations = useMemo(
     () =>
@@ -169,12 +184,18 @@ export function DiffCode({
         }}
         options={{
           ...codeOptions,
+          unsafeCSS: `${codeOptions.unsafeCSS}\n${gutterCSS}`,
           overflow: 'wrap',
           themeType: theme,
           diffStyle: layout,
           enableLineSelection: true,
           enableGutterUtility: Boolean(onPick),
           hunkSeparators: 'line-info',
+          // The renderer's own words come from the catalog (diffLabels.ts).
+          onPostRender: (node: HTMLElement, _diff: unknown, phase: string) => {
+            if (phase !== 'unmount' && labels.current)
+              localizeDiffLabels(node.shadowRoot ?? node, labels.current);
+          },
           ...(onPick
             ? {
                 onLineSelectionEnd: (range: SelectedLineRange | null) => {

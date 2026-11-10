@@ -92,6 +92,7 @@ test('server connection failure stays on its host and retries the same session',
   await expect(page).toHaveURL(/#bootstrap=/);
   await page.unroute('**/api/v1/health');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  // workbench.md (사이드바는 정상 모델 연결 배지를 상시 표시하지 않는다): the header's one word marks simulation.
   await expect(page.getByTestId('sidebar-connection')).toHaveText('Simulated');
   await expect(page).not.toHaveURL(/#bootstrap=/);
 });

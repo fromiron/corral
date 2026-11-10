@@ -117,14 +117,20 @@ test.describe('live models', () => {
     // with live models possible, a session runs live; it offers no simulated way out.
     await expect(page.getByRole('combobox', { name: 'Run mode' })).toHaveCount(0);
     const notReady = page.getByTestId('models-not-ready');
-    await expect(notReady).toContainText('model-a is not connected');
-    // The Connect button says where to go; no sentence repeats it.
+    // The banner names the role and its model; the Connect button says where to go, so no
+    // sentence repeats it, and a live session is not told to send with simulated agents.
+    await expect(notReady).toContainText('Not connected: writer (model-a)');
     await expect(notReady).not.toContainText('Settings');
+    await expect(notReady).not.toContainText(/simulated/i);
     await expect(
       notReady.getByRole('link', { name: 'Connect a model', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-    await expect(page.getByTestId('app-sidebar')).toContainText('Connect a model');
+    // The sidebar head's word is its way to connect one (workbench.md: "모델 미연결의 연결
+    // 진입점과 데모·시뮬레이션 표시는 머리의 연결 상태 낱말 하나가 맡고").
+    await expect(page.getByTestId('app-sidebar').getByTestId('sidebar-connection')).toHaveText(
+      'No model',
+    );
     await expect(page.getByRole('button', { name: 'Use simulated agents' })).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Use the live model');
     // /model shows each role's model and that it needs a sign-in.

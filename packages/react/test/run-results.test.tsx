@@ -236,6 +236,59 @@ describe('RunResults view', () => {
     expect(screen.queryByTestId('result-body')).toBeNull();
   });
 
+  it('opens a step result the run still keeps from its address, and never one it released', async () => {
+    // A finished run keeps its final result and each step's last submission (here the one a
+    // fork carried); its other versions are released.
+    const projection = projectionWith(
+      [
+        version('step', 'notes', 1, { submitted: true }),
+        version('gone', 'scratch', 1),
+        version('fin', 'report', 1, { submitted: true }),
+      ],
+      {
+        status: 'succeeded',
+        output: { nodeId: 'out', artifactVersionIds: ['fin'] },
+        forkedFrom: {
+          runId: 'run_0',
+          nodeId: 'notes_node',
+          carried: [{ nodeId: 'notes_node', artifactVersionIds: ['step'] }],
+        },
+      },
+    );
+    const texts = { step: 'kept step body', gone: 'released body', fin: 'final body' };
+    const session = sessionStore({ runId: 'run_1', projection, artifactTexts: texts });
+    const view = wrap(<RunResults session={session} selectedId="step" onSelect={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('result-body')).toHaveTextContent('kept step body'),
+    );
+    expect(screen.getByRole('heading', { name: 'notes v1' })).toBeInTheDocument();
+    // The list beside it keeps the run's final results and shows the opened step result as the
+    // selected row, under its own group, so the reader always has a row chosen on screen.
+    const list = screen.getByRole('navigation', { name: 'Results' });
+    const finals = within(list).getByRole('region', { name: 'Final results' });
+    expect(
+      within(finals)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual([expect.stringContaining('report v1')]);
+    expect(within(finals).getByRole('button')).not.toHaveAttribute('aria-current');
+    const between = within(list).getByRole('region', { name: 'Work in between' });
+    const step = within(between).getByRole('button');
+    expect(step).toHaveTextContent('notes v1');
+    expect(step).toHaveAttribute('aria-current', 'true');
+    // The released version is never offered as a row.
+    expect(within(list).queryByText(/scratch/)).toBeNull();
+
+    view.rerender(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunResults session={session} selectedId="gone" onSelect={vi.fn()} />
+      </IntlProvider>,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('This result could not be loaded.');
+    expect(screen.queryByText('released body')).toBeNull();
+    expect(screen.queryByTestId('result-body')).toBeNull();
+  });
+
   it('shows the source and an isolated preview for an HTML document', async () => {
     const html = '<!doctype html><html><body><h1>Page</h1><script>alert(1)</script></body></html>';
     const session = sessionStore({
@@ -322,5 +375,33 @@ describe('Output tab with several final results', () => {
       fireEvent.click(screen.getByRole('button', { name }));
     }
     expect(onOpenResults.mock.calls.map((c) => c[0])).toEqual(['v_a', 'v_b', 'v_c']);
+  });
+});
+
+describe('Output before the run has one', () => {
+  // The run's status badge already says it is still working, so the output area adds no
+  // sentence of its own about when the output will appear, and no empty Output heading.
+  it('shows nothing while a running run has no output', () => {
+    const session = sessionStore({
+      runId: 'run_1',
+      projection: projectionWith([], { status: 'running' }),
+    });
+    const view = wrap(<RunOutput session={session} />);
+    expect(view.container.textContent).toBe('');
+    expect(screen.queryByRole('heading', { name: messages.Run.output })).toBeNull();
+  });
+
+  it('keeps the heading and text once the output exists', () => {
+    const session = sessionStore({
+      runId: 'run_1',
+      projection: projectionWith([version('v_a', 'report', 1)], {
+        status: 'succeeded',
+        output: { nodeId: 'out', artifactVersionIds: ['v_a'] },
+      }),
+      outputText: 'alpha body',
+    });
+    wrap(<RunOutput session={session} />);
+    expect(screen.getByRole('heading', { name: messages.Run.output })).toBeInTheDocument();
+    expect(screen.getByTestId('run-output')).toHaveTextContent('alpha body');
   });
 });

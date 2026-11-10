@@ -63,3 +63,21 @@ it.each([
   expect(css).toMatch(/--diffs-font-size:\s*var\(--fs-caption\)/);
   expect(view.style?.fontSize).toBeUndefined();
 });
+
+it.each(['unified', 'split'] as const)(
+  'keeps the %s diff comment "+" inside the gutter, off the code',
+  async (layout) => {
+    await render(
+      <DiffCode
+        diff={{ name: 'a.ts', hunks: [] } as unknown as FileDiffMetadata}
+        layout={layout}
+        comments={[]}
+        onPick={() => {}}
+      />,
+    );
+    const css = shown.views.at(-1)?.options.unsafeCSS ?? '';
+    // The renderer's own rule hangs the button past the number column by a line height less one
+    // character; with no overhang it covers the line number, never the line's first character.
+    expect(css).toMatch(/\[data-utility-button\]\s*\{\s*margin-right:\s*0;?\s*\}/);
+  },
+);

@@ -17,9 +17,11 @@ test('a cancelled run keeps what it made as a partial result', async ({ page }) 
   await page.getByRole('link', { name: 'Open execution page' }).click();
 
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
-  // What it made before it stopped is offered as partial, and opens as the artifact it is.
+  // What it made before it stopped is offered as partial, and opens as the artifact it is. The
+  // Results view is a table whose groups of rows are named (execution-monitor.md: "결과 보기는
+  // 결과 버전마다 이름·출처 실행·버전을 보이고 기존 결과 읽기로 연다").
   const partial = (await showResults(page))
-    .getByRole('region', { name: 'Partial results', exact: true })
+    .getByRole('rowgroup', { name: 'Partial results', exact: true })
     .getByRole('button')
     .first();
   await partial.click();

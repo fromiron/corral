@@ -498,6 +498,23 @@ it('offers project references in the unified add menu instead of a second toolba
   expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
 });
 
+it('names the add button in a tooltip, as the row’s other icon buttons are', async () => {
+  const f = await mount('add_tooltip', null);
+  const add = f.container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${messages.Composer.attachmentActions}"]`,
+  );
+  expect(add).not.toBeNull();
+  await act(async () => {
+    add?.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    add?.dispatchEvent(new MouseEvent('mouseenter'));
+    add?.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    add?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+  const tooltip = document.querySelector('[role="tooltip"]');
+  expect(tooltip?.textContent).toBe(messages.Composer.attachmentActions);
+});
+
 it('removes a whole-file token without damaging its range or longer paths', async () => {
   const sessionId = 'exact_file_reference';
   writeComposerDraft(sessionId, {

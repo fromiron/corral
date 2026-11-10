@@ -265,6 +265,8 @@ function WorkSessionPage() {
           <div hidden={Boolean(auxiliary)} className="min-h-0 flex-1">
             <SessionChangesPanel
               session={session}
+              visible={panel === 'changes' || panel === 'git' || panel === 'checks'}
+              copyChanged={runStates(runs)}
               reviewSearch={
                 search.review
                   ? { scope: search.scope, runId: search.runId, file: search.file }
@@ -521,6 +523,10 @@ function WorkSessionPage() {
 }
 
 /** The session's changed files in its working copy, or null without one. */
+/** Each run of the session with its state: it changes when a run starts or ends. */
+const runStates = (runs: readonly RunSummary[]) =>
+  runs.map((run) => `${run.runId}:${run.status}`).join(',');
+
 function useSessionChanges(sessionId: string, runs: RunSummary[]) {
   const { workspaces } = useServices();
   const [files, setFiles] = useState<FileChangeView[] | null>(null);
@@ -531,7 +537,7 @@ function useSessionChanges(sessionId: string, runs: RunSummary[]) {
     return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
   }, []);
   // Refresh when a run of the session starts or ends.
-  const key = runs.map((r) => `${r.runId}:${r.status}`).join(',');
+  const key = runStates(runs);
   useEffect(() => {
     void key;
     void tick;

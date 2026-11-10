@@ -8,7 +8,7 @@ import {
 } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { SETTINGS_GROUPS, type SettingsSection, useSettingsNavigation } from './navigation.ts';
 import { SettingsContent } from './SettingsContent.tsx';
@@ -18,6 +18,41 @@ import {
   SettingsProjectPicker,
   useSettingsSectionLabel,
 } from './SettingsNavigation.tsx';
+
+const FOCUS_FALLBACKS = [
+  '[data-testid="chat-composer"] textarea',
+  '[role="tab"][aria-selected="true"]',
+  '.app-sidebar-trigger',
+];
+
+/** Where focus goes when what opened settings is gone: the first of these that can be seen. */
+function fallbackFocus() {
+  for (const selector of FOCUS_FALLBACKS)
+    for (const element of document.querySelectorAll<HTMLElement>(selector))
+      if (!element.closest('[data-settings-dialog]') && element.getClientRects().length)
+        return element;
+  return null;
+}
+
+/**
+ * What opened settings can leave just after it closes, once the screen reads what was saved (a
+ * connect notice, an empty state's link). For a moment after closing, focus that fell to the
+ * page is handed to the screen instead.
+ */
+function keepFocusAfterClose() {
+  let checks = 0;
+  const timer = setInterval(() => {
+    checks += 1;
+    if (document.activeElement !== document.body) {
+      // Still on the opener, or the person moved it: nothing to do unless the opener leaves.
+      if (checks >= 15) clearInterval(timer);
+      return;
+    }
+    clearInterval(timer);
+    if (!document.querySelector('[data-settings-dialog]'))
+      fallbackFocus()?.focus({ preventScroll: true });
+  }, 100);
+}
 
 export function SettingsDialog({
   section,
@@ -33,6 +68,7 @@ export function SettingsDialog({
   const t = useTranslations('SettingsDialog');
   const n = useTranslations('Navigation');
   const [trigger] = useState(() => document.activeElement as HTMLElement | null);
+  useEffect(() => keepFocusAfterClose, []);
   const projectScope = ['workspace', 'mcp', 'project-defaults'].includes(section);
   // Sections that read the settings target project; on a narrow screen the picker joins them.
   const projectTarget = projectScope || section === 'harness' || section === 'diagnostics';
@@ -78,9 +114,7 @@ export function SettingsDialog({
         finalFocus={() =>
           trigger?.isConnected && trigger.getClientRects().length
             ? trigger
-            : (document.querySelector<HTMLElement>(
-                '[data-testid="chat-composer"] textarea, .app-sidebar-trigger',
-              ) ?? false)
+            : (fallbackFocus() ?? false)
         }
       >
         {/* Wide enough that no section name is cut, in English or Korean. */}

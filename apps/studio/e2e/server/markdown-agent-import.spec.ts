@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { openLibraryTeams, openTestRun, teamCanvas } from '../workbench.ts';
+import { expectTeamSaved, openLibraryTeams, openTestRun, teamCanvas } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, compatibleEndpoint: true });
@@ -51,7 +51,7 @@ Read the supplied code and report the evidence.`);
   );
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expectTeamSaved(page);
   await page.reload();
   await expect(teamCanvas(page).locator('[data-node]').filter({ hasText: 'explorer' })).toHaveCount(
     1,
@@ -207,7 +207,7 @@ Read the current file before applying a bounded edit.`);
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expectTeamSaved(page);
   await page.reload();
   const path = new URL(page.url()).pathname
     .replace('/edit', '')
@@ -277,7 +277,7 @@ Use only the command requested by the parent.`);
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expectTeamSaved(page);
   await page.reload();
   const path = new URL(page.url()).pathname
     .replace('/edit', '')

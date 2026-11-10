@@ -19,6 +19,7 @@ export { PathCrumb } from './components/PathCrumb.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningSummary } from './components/ReasoningSummary.tsx';
+export { RecipeStatusPanel } from './components/RecipeStatusPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
 export { RoutingTally } from './components/RoutingTally.tsx';
 export { RunActions } from './components/RunActions.tsx';
@@ -42,7 +43,6 @@ export {
 } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
 export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
-export { SidebarStatusCard } from './components/SidebarStatusCard.tsx';
 export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';

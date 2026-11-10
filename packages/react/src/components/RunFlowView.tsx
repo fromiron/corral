@@ -600,7 +600,7 @@ export function DecisionDetail({
           <p>{t('reviewVerdict', { verdict: optionLabel(decision.reviewVerdict) })}</p>
         )}
         {decision.issues.length > 0 && (
-          <ul className="list-inside list-disc">
+          <ul className="list-outside list-disc pl-5">
             {[...new Set(decision.issues)].map((issue) => (
               <li key={issue}>{issue}</li>
             ))}

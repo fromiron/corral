@@ -116,8 +116,14 @@ export function SessionChangesPanel({
   onViewChange,
   onSessionChange,
   onAttach,
+  visible = true,
+  copyChanged,
 }: {
   session: WorkSession;
+  /** False while the host keeps the tab mounted behind another one. */
+  visible?: boolean;
+  /** Changes whenever a run of the session starts or ends, which may change the copy. */
+  copyChanged?: string | undefined;
   /** The review's address; present while the address names the Review sub-view. */
   reviewSearch?: ReviewSearch | undefined;
   /** A sub-view the address names other than Review (Checks). */
@@ -260,6 +266,8 @@ export function SessionChangesPanel({
             showChecks={false}
             onPrepareCopy={() => choose('git')}
             onSessionChange={onSessionChange}
+            shown={visible && shown === 'review'}
+            copyChanged={copyChanged}
           />
         ) : null}
       </TabPanel>

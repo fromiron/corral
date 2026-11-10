@@ -21,7 +21,7 @@ import {
 } from '@corral/react/design-kit';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { useFormatter, useNow, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../projects.ts';
 import { projectsRoute } from '../router.tsx';
@@ -29,6 +29,7 @@ import { useServices } from '../services.tsx';
 import { createDemoExamples, useTemplateText } from '../templates.ts';
 import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { type GitCloneDraft, GitCloneFolder } from '../workbench/GitCloneFolder.tsx';
+import { useSessionAge } from '../workbench/useSessionAge.ts';
 
 const NO_CLONE: GitCloneDraft = { source: '', destination: '' };
 
@@ -41,8 +42,8 @@ export function ProjectsPage() {
   const templates = useTemplateText();
   const tw = useTranslations('Workspace');
   const shell = useTranslations('Shell');
-  const format = useFormatter();
-  const now = useNow({ updateInterval: 60_000 });
+  // The studio's one relative time: "Just now" under a minute, as every other list says.
+  const ago = useSessionAge();
   const { projects, corrals, runs } = projectsRoute.useLoaderData();
   const { repository, workspaces, mode } = useServices();
   const router = useRouter();
@@ -205,10 +206,11 @@ export function ProjectsPage() {
                     <TableCell className="max-md:hidden">
                       {t('counts', { corrals: corralCount, runs: runCount })}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {format.relativeTime(new Date(project.updatedAt), now)}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="whitespace-nowrap">{ago(project.updatedAt)}</TableCell>
+                    {/* Without the cell's own padding the archive button fits the height a text
+                        row already has, so a row with it and the default project's row without
+                        it are one height. */}
+                    <TableCell className="py-0 text-right">
                       {project.projectId === DEFAULT_PROJECT_ID ? null : (
                         <Button
                           type="button"

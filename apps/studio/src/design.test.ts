@@ -65,6 +65,20 @@ describe('design guard (Workbench polish P0)', () => {
     expect(found).toEqual([]);
   });
 
+  // DESIGN.md: controls 8px, panels and popup containers 12px, compact badges 4px, through the
+  // kit's radius classes. Only the kit itself sets a radius in pixels (its shape map's
+  // concentric focus rings and chips).
+  it('rounds corners with the kit radii, never an arbitrary pixel radius outside the kit', () => {
+    const found = [...text]
+      .filter(([path]) => !where(path).startsWith('packages/react/src/design-kit/'))
+      .flatMap(([path, body]) =>
+        [...body.matchAll(/\brounded(?:-[a-z]{1,2})?-\[[0-9.]+px\]/g)].map(
+          (match) => `${where(path)}: ${match[0]}`,
+        ),
+      );
+    expect(found).toEqual([]);
+  });
+
   it('does not extend the touch-field exception to local or other pixel sizes', () => {
     const shared = join(root, 'packages/react/src/design-kit/lib/type-scale.ts');
     const touchRole = "const fieldTouchClass = 'pointer-coarse:text-[16px]';";
@@ -194,6 +208,24 @@ describe('design guard (Workbench polish P0)', () => {
   it('merges the extra type steps as font sizes, not colors', () => {
     expect(cn('text-ui text-muted')).toBe('text-ui text-muted');
     expect(cn('text-xs text-ui')).toBe('text-ui');
+  });
+
+  it('hangs every bulleted list: a wrapped item continues under its text, not its bullet', () => {
+    // An inside marker sits in the text's line, so a second line starts under the bullet.
+    const found = [...text].flatMap(([path, body]) =>
+      [...body.matchAll(/\blist-inside\b/g)].map((m) => `${where(path)}: ${m[0]}`),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it('fades the cut edge of every tab list that scrolls, so a narrow strip shows there is more', () => {
+    const found = [...text].flatMap(([path, body]) =>
+      [...body.matchAll(/<TabsList\b((?:[^>{]|\{[^}]*\})*)>/g)]
+        .filter((m) => /\boverflow-x-auto\b/.test(m[1] as string))
+        .filter((m) => !/\bscroll-fade-x\b/.test(m[1] as string))
+        .map(() => where(path)),
+    );
+    expect(found).toEqual([]);
   });
 });
 

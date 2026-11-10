@@ -316,7 +316,6 @@ export function RunCard({
       <span className="sr-only">
         <StatusBadge status={run.status} />
       </span>
-      <span className="sr-only">{run.runId}</span>
       <RunMessage
         runId={run.runId}
         sessionId={run.sessionId ?? null}

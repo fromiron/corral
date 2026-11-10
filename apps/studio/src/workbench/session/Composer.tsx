@@ -84,7 +84,7 @@ import {
 } from '../autoChoice.ts';
 import { ComposerInput } from '../ComposerInput.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
-import { type IntentLock, resolveIntent } from '../composerIntent.ts';
+import { blockedReason, type IntentLock, resolveIntent } from '../composerIntent.ts';
 import {
   type MentionItem,
   mentionLabel,
@@ -1443,11 +1443,10 @@ export function Composer({
           {resolved.blocked ? (
             <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
               <BannerTitle>
-                {resolved.blocked === 'target'
-                  ? tc('blocked.target', { name: targetName(steerTarget) })
-                  : resolved.blocked === 'run'
-                    ? tc('blocked.run')
-                    : tc('blocked.intent', { intent: t(`intentShort.${intent}`) })}
+                {tc(`blocked.${blockedReason(resolved.blocked, intent)}`, {
+                  name: targetName(steerTarget),
+                  intent: t(`intentShort.${intent}`),
+                })}
               </BannerTitle>
               <BannerActions>
                 {allowed
@@ -1649,13 +1648,19 @@ export function Composer({
       leftSlot={
         <>
           <Menu>
-            <MenuTrigger
-              render={
-                <Button variant="ghost" size="icon-compact" aria-label={tc('attachmentActions')} />
-              }
-            >
-              <Plus />
-            </MenuTrigger>
+            <Tooltip content={tc('attachmentActions')}>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-compact"
+                    aria-label={tc('attachmentActions')}
+                  />
+                }
+              >
+                <Plus />
+              </MenuTrigger>
+            </Tooltip>
             <MenuPopup align="start">
               <MenuItem
                 onClick={() => {

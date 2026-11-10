@@ -2,19 +2,33 @@ import {
   type EventOf,
   ExtensionUiNotice,
   ExtensionUiRequest,
+  type RunEvent,
   type UserAnswers,
   UserInputRequest,
   validUserAnswers,
 } from '@corral/contracts';
-import { pendingInteractions } from '@corral/core';
-import { useEffect, useId, useRef, useState } from 'react';
+import { pendingInteractions, type RunProjection } from '@corral/core';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Check, Copy } from '../design-kit/icons.ts';
 import { Button, fontWeights, Input, Select, Tooltip } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import { FirstRow, RowAction } from './FirstRow.tsx';
 
-export function InteractionPanel({ session }: { session: RunSessionStore }) {
+/** Whether the panel shows: a question or extension prompt waits, or an extension said something. */
+export const interactionShown = (events: readonly RunEvent[], projection: RunProjection | null) =>
+  pendingInteractions(events, projection).some((item) => item.kind !== 'approval') ||
+  events.some((event) => event.type === 'extension.ui_notified');
+
+export function InteractionPanel({
+  session,
+  action,
+}: {
+  session: RunSessionStore;
+  /** A control of the host's frame, at the end of the first row (see ApprovalPanel). */
+  action?: ReactNode;
+}) {
   const events = useStore(session, (s) => s.events);
   const projection = useStore(session, (s) => s.projection);
   const bodies = useStore(session, (s) => s.artifactTexts);
@@ -54,9 +68,22 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
     };
   }, [session, refs, retry]);
   if (!pending.length && !notices.length) return null;
+  const shownNotices = notices.flatMap((event) => {
+    const text = bodies[event.payload.bodyRef];
+    if (!text) return [];
+    try {
+      const notice = ExtensionUiNotice.parse(JSON.parse(text));
+      return notice.text ? [{ event, notice }] : [];
+    } catch {
+      return [];
+    }
+  });
   return (
-    <section aria-label={t('extensionUi')} className="flex flex-col gap-2">
-      {pending.map((event) =>
+    <section
+      aria-label={pending.length ? t('extensionUi') : t('extensionNotice')}
+      className="flex flex-col gap-2"
+    >
+      {pending.map((event, index) =>
         event.type === 'user_input.requested' ? (
           <UserQuestionPrompt
             key={event.payload.requestId}
@@ -68,6 +95,7 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
               setFailedRefs(new Set());
               setRetry((n) => n + 1);
             }}
+            action={index === 0 ? action : undefined}
           />
         ) : (
           <ExtensionPrompt
@@ -84,28 +112,24 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
               });
               setRetry((current) => current + 1);
             }}
+            action={index === 0 ? action : undefined}
           />
         ),
       )}
-      {notices.map((event) => {
-        const text = bodies[event.payload.bodyRef];
-        if (!text) return null;
-        let notice: ExtensionUiNotice;
-        try {
-          notice = ExtensionUiNotice.parse(JSON.parse(text));
-        } catch {
-          return null;
-        }
-        return notice.text ? (
+      {shownNotices.map(({ event, notice }, index) => (
+        <FirstRow key={event.eventId} action={!pending.length && index === 0 ? action : undefined}>
           <p
-            key={event.eventId}
             role="status"
             className={`text-caption ${notice.level === 'info' ? 'text-muted-foreground' : 'text-warning'}`}
           >
             {t('extensionNotice')} · {notice.text}
           </p>
-        ) : null;
-      })}
+        </FirstRow>
+      ))}
+      {/* Notices whose text is not kept show nothing; the host's control still has its place. */}
+      {!pending.length && !shownNotices.length && action ? (
+        <FirstRow action={action}>{null}</FirstRow>
+      ) : null}
     </section>
   );
 }
@@ -116,12 +140,14 @@ function ExtensionPrompt({
   text,
   loadFailed,
   retry,
+  action,
 }: {
   session: RunSessionStore;
   event: EventOf<'extension.ui_requested'>;
   text: string | undefined;
   loadFailed: boolean;
   retry(): void;
+  action?: ReactNode;
 }) {
   const t = useTranslations('Harness');
   const format = useFormatter();
@@ -162,12 +188,14 @@ function ExtensionPrompt({
       className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
       data-testid={`extension-ui-${event.payload.requestId}`}
     >
-      <p
-        className="text-caption text-muted-foreground"
-        style={{ fontVariationSettings: fontWeights.semibold }}
-      >
-        {t('extensionUi')}
-      </p>
+      <FirstRow action={action}>
+        <p
+          className="text-caption text-muted-foreground"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {t('extensionUi')}
+        </p>
+      </FirstRow>
       <h3 style={{ fontVariationSettings: fontWeights.semibold }}>
         {request?.title ??
           t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')}
@@ -259,12 +287,14 @@ function UserQuestionPrompt({
   text,
   loadFailed,
   retry,
+  action,
 }: {
   session: RunSessionStore;
   event: EventOf<'user_input.requested'>;
   text?: string;
   loadFailed: boolean;
   retry(): void;
+  action?: ReactNode;
 }) {
   const t = useTranslations('Harness');
   const form = useRef<HTMLFormElement>(null);
@@ -427,6 +457,7 @@ function UserQuestionPrompt({
         session={session}
         executionId={event.payload.executionId}
         attemptNo={event.payload.attemptNo}
+        action={action}
       />
       {!request ? (
         <>
@@ -514,10 +545,12 @@ function ExecutionLine({
   session,
   executionId,
   attemptNo,
+  action,
 }: {
   session: RunSessionStore;
   executionId: string;
   attemptNo: number;
+  action?: ReactNode;
 }) {
   const t = useTranslations('Harness');
   const definition = useStore(session, (s) => s.definition);
@@ -536,6 +569,7 @@ function ExecutionLine({
   ].filter(Boolean);
   return (
     <p className="flex min-w-0 items-center gap-1 text-caption text-muted-foreground">
+      <RowAction action={action} />
       <span className="min-w-0 truncate">{words.join(' · ')}</span>
       <Tooltip content={copied ? t('executionIdCopied') : executionId}>
         <Button

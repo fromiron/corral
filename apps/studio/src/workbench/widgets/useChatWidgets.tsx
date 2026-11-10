@@ -448,6 +448,7 @@ function useChatWidgetState(
   const tools = runToolRows(projection);
   const currentTool = tools.find((row) => row.tone === 'running') ?? null;
   const resultText = useTranslations('Results');
+  const turnText = useTranslations('Turn');
   const listed = projection ? runResults(projection) : null;
   const resultItems = (
     listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? [])
@@ -482,7 +483,12 @@ function useChatWidgetState(
       now,
       planTitle: activeItem?.title ?? null,
       planVisible: open && Boolean(activeItem),
-      toolName: currentTool?.name ?? null,
+      // The tool is named as the work log names it (Wait, not await_tasks).
+      toolName: currentTool
+        ? turnText.has(`tool.${currentTool.name}`)
+          ? turnText(`tool.${currentTool.name}`)
+          : currentTool.name
+        : null,
       failed: action.hasFailure,
       needsUser: action.needsUser,
     }),

@@ -25,10 +25,13 @@ export function ModelConfigEditor({
   config: initialConfig,
   catalog,
   onDone,
+  onShowKey,
 }: {
   config: ModelConfig;
   catalog: CatalogProvider[];
   onDone: () => void;
+  /** Shows an endpoint's sign-in card, where its saved key lives, wherever the page holds it. */
+  onShowKey?: (endpointId: string) => void;
 }) {
   const t = useTranslations('ModelConfig');
   const { models } = useServices();
@@ -408,6 +411,7 @@ export function ModelConfigEditor({
                     size="compact"
                     type="button"
                     onClick={() => {
+                      if (onShowKey) return onShowKey(endpoint.id.trim());
                       const card = document.querySelector<HTMLElement>(
                         `[data-testid="provider-${CSS.escape(endpoint.id.trim())}"]`,
                       );

@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { automationShownRuns } from '../workbench/scheduledRuns.ts';
 import { ScheduledPage } from './ScheduledPage.tsx';
 
 const fixture = vi.hoisted(() => {
@@ -126,7 +127,10 @@ async function page() {
   container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
+  let disposed = false;
   dispose = async () => {
+    if (disposed) return;
+    disposed = true;
     await act(async () => root.unmount());
     container.remove();
   };
@@ -472,4 +476,134 @@ it('in the browser demo, the empty state gives the reason and there is no disabl
   expect(
     [...container.querySelectorAll('button')].some((item) => item.textContent === 'New schedule'),
   ).toBe(false);
+});
+
+// Automation hides the scheduled-run banners; a result is dismissed only once this page has
+// shown its final status, in a schedule's Last result or in the shown schedule's history.
+const shownRuns = () => [...automationShownRuns.getState().runIds];
+
+it('reports a run as shown once its final status is on screen', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.history.mockResolvedValue({ occurrences: [started()] });
+  fixture.services.transport.listRuns.mockResolvedValue([
+    run('succeeded'),
+    // A scheduled run whose schedule was deleted: no history here carries it.
+    { ...run('failed'), runId: 'run_orphan' },
+  ]);
+  await page();
+  expect(container.textContent).toContain('Succeeded');
+  expect(shownRuns()).toEqual(['run_1']);
+  // Leaving Automation shows nothing as seen there any more.
+  await dispose();
+  expect(shownRuns()).toEqual([]);
+});
+
+it('does not report a run still in progress, or one whose status cannot be read', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.history.mockResolvedValue({ occurrences: [started()] });
+  fixture.services.transport.listRuns.mockResolvedValue([run('running')]);
+  await page();
+  expect(shownRuns()).toEqual([]);
+  fixture.services.transport.listRuns.mockRejectedValue(new Error('offline'));
+  await act(async () => window.dispatchEvent(new Event('focus')));
+  await settle();
+  expect(shownRuns()).toEqual([]);
+});
+
+it('does not report a result that settles while the schedule read is failing', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+    fixture.api.history.mockResolvedValue({ occurrences: [started()] });
+    fixture.services.transport.listRuns.mockResolvedValue([run('running')]);
+    await page();
+    fixture.api.list.mockRejectedValue(new Error('The server did not answer.'));
+    await act(async () => vi.advanceTimersByTime(3000));
+    await settle();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'The server did not answer.',
+    );
+    // The run settles while the page cannot read its schedules: what it shows may be stale.
+    fixture.services.transport.listRuns.mockResolvedValue([run('succeeded')]);
+    await act(async () => vi.advanceTimersByTime(1500));
+    await settle();
+    expect(shownRuns()).toEqual([]);
+    // Once the read works again the result is shown, and so reported.
+    fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+    await act(async () => vi.advanceTimersByTime(1500));
+    await settle();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(shownRuns()).toEqual(['run_1']);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('reports every settled run of the shown schedule’s history, and only the latest of the others', async () => {
+  fixture.api.list.mockResolvedValue({
+    schedules: [schedule(), schedule({ id: 'schedule_2', title: 'Weekly digest' })],
+  });
+  fixture.api.history.mockImplementation(async (id: string) => ({
+    occurrences:
+      id === 'schedule_1'
+        ? [started({ id: 'o_2', runId: 'run_2' }), started()]
+        : [started({ id: 'o_3', scheduleId: 'schedule_2', runId: 'run_3' })],
+  }));
+  fixture.services.transport.listRuns.mockResolvedValue([
+    run('succeeded'),
+    { ...run('failed'), runId: 'run_2' },
+    { ...run('succeeded'), runId: 'run_3' },
+  ]);
+  await page();
+  // The list shows each schedule's last result; run_1 is an older firing nobody sees yet.
+  expect(shownRuns().sort()).toEqual(['run_2', 'run_3']);
+  await click(button(/Daily project review/));
+  await settle();
+  expect(shownRuns().sort()).toEqual(['run_1', 'run_2', 'run_3']);
+});
+
+it('shows no empty state before the first read, and only the error with a retry after it fails', async () => {
+  let answer: (value: { schedules: Schedule[] }) => void = () => {};
+  fixture.api.list.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+  await page();
+  // Still reading: nothing says there are no schedules.
+  expect(container.textContent).not.toContain(messages.Schedules.emptyTitle);
+  expect(container.querySelector('.border-dashed')).toBeNull();
+  await act(async () => answer({ schedules: [] }));
+  await settle();
+  expect(container.textContent).toContain(messages.Schedules.emptyTitle);
+  await dispose();
+
+  fixture.api.list.mockRejectedValueOnce(new Error('The server did not answer.'));
+  await page();
+  const alert = container.querySelector('[role="alert"]');
+  expect(alert?.textContent).toContain('The server did not answer.');
+  expect(container.textContent).not.toContain(messages.Schedules.emptyTitle);
+  // The retry reads again; an empty answer is then the verdict.
+  await click(button(messages.Schedules.retry));
+  await settle();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain(messages.Schedules.emptyTitle);
+});
+
+it('keeps the reason New schedule is disabled after a failed read, and never claims it unread', async () => {
+  fixture.services.repository.listSessions.mockResolvedValueOnce([]);
+  fixture.api.list.mockRejectedValueOnce(new Error('The server did not answer.'));
+  await page();
+  expect(button('New schedule').disabled).toBe(true);
+  expect(container.textContent).not.toContain(messages.Schedules.emptyTitle);
+  // The sessions were read and there are none: that is still why New schedule waits.
+  expect(container.textContent).toContain(messages.Schedules.needsSession);
+  await dispose();
+
+  // The sessions could not be read: the page says so and does not claim there are none.
+  fixture.services.repository.listProjects.mockRejectedValueOnce(new Error('Projects offline'));
+  await page();
+  expect(button('New schedule').disabled).toBe(true);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Projects offline');
+  expect(container.textContent).not.toContain(messages.Schedules.needsSession);
+  await click(button(messages.Schedules.retry));
+  await settle();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(button('New schedule').disabled).toBe(false);
 });

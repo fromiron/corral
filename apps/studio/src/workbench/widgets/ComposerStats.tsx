@@ -11,14 +11,7 @@ import { sessionStats } from './selectors.ts';
  * composer (DSH-style), read from each run's Coordinator snapshot. Each figure is named so it
  * needs no definition. An unreported cache figure is named, never 0.
  */
-export function ComposerStats({
-  runs,
-  besideBadge = false,
-}: {
-  runs: readonly RunSummary[];
-  /** A badge shares the line: the figures give way one container step sooner. */
-  besideBadge?: boolean;
-}) {
+export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
   const t = useTranslations('Turn');
   const format = useFormatter();
   const locale = useLocale();
@@ -45,36 +38,32 @@ export function ComposerStats({
   }, [transport, key]);
   const stats = sessionStats(projections, (projection) => turnSummary(projection).steps);
   if (!stats) return null;
-  // Least needed last: a narrow composer gives up the cache share, then the tokens. Whatever
-  // still does not fit is cut at the end of the line, never drawn over what sits beside it.
   const parts = [
-    { text: t('statRuns', { count: stats.turns }), keep: '' },
-    { text: t('statSteps', { count: stats.steps }), keep: '' },
-    {
-      text: t('statTokens', {
-        tokens: formatCount(stats.tokens, locale, (value) =>
-          format.number(value, { notation: 'compact', maximumFractionDigits: 1 }),
-        ),
-      }),
-      keep: besideBadge ? '@max-md/composer-surface:hidden' : '@max-2xs/composer-surface:hidden',
-    },
-    {
-      text:
-        stats.cacheShare === null
-          ? t('statCacheUnreported')
-          : t('statCache', { share: format.number(stats.cacheShare, { style: 'percent' }) }),
-      keep: besideBadge ? '@max-xl/composer-surface:hidden' : '@max-md/composer-surface:hidden',
-    },
+    t('statSession'),
+    t('statRuns', { count: stats.turns }),
+    t('statSteps', { count: stats.steps }),
+    t('statTokens', {
+      tokens: formatCount(stats.tokens, locale, (value) =>
+        format.number(value, { notation: 'compact', maximumFractionDigits: 1 }),
+      ),
+    }),
+    stats.cacheShare === null
+      ? t('statCacheUnreported')
+      : t('statCache', { share: format.number(stats.cacheShare, { style: 'percent' }) }),
   ];
+  // Every figure stays, each kept whole: a narrow composer breaks the line between figures,
+  // never inside one. Each figure carries the separator before it in a fixed slot; the row is
+  // pulled left by that slot and clipped, so a wrapped line starts with a figure, not a "·".
   return (
-    <p data-testid="composer-stats" className="min-w-0 truncate tabular-nums">
-      {t('statSession')}
-      {parts.map((part) => (
-        <span key={part.text} className={part.keep}>
-          {' · '}
-          {part.text}
-        </span>
-      ))}
+    <p data-testid="composer-stats" className="min-w-0 overflow-hidden tabular-nums">
+      <span className="-ml-2.5 flex flex-wrap">
+        {parts.map((part, index) => (
+          <span key={part} data-stat className="whitespace-nowrap">
+            <span className="inline-block w-2.5 text-center">{index ? ' · ' : ''}</span>
+            {part}
+          </span>
+        ))}
+      </span>
     </p>
   );
 }

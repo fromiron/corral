@@ -732,6 +732,21 @@ it("heads the chosen team's detail with its name and leaves the row's details to
   expect(detail?.textContent).not.toContain('Saved');
 });
 
+it('keeps the version and saved time on one line and lets the team name give way', async () => {
+  await team(repository, 'Research brief (collaboration) with a long name', 'project_1');
+  const { container } = await render('/library/teams?project=project_1');
+  const [name, version, saved] = [
+    ...(container.querySelector('tbody tr')?.querySelectorAll<HTMLElement>('td') ?? []),
+  ];
+  expect(version?.textContent).toContain('Version 1');
+  // Narrow, these cells never break onto a second line...
+  expect(version?.className).toMatch(/\bwhitespace-nowrap\b/);
+  expect(saved?.className).toMatch(/\bwhitespace-nowrap\b/);
+  // ...and the name column is the one that is cut short.
+  expect(name?.querySelector('button')?.className).toMatch(/\btruncate\b/);
+  expect(name?.className).toMatch(/\bmax-w-0\b/);
+});
+
 it('selects a team by its whole row', async () => {
   await team(repository, 'Alpha reviewers', 'project_1');
   await team(repository, 'Alpha writers', 'project_1');

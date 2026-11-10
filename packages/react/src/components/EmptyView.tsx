@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactElement } from 'react';
+import type { HTMLAttributes, ReactElement, Ref } from 'react';
 import { Button, cn, EmptyState } from '../design-kit/index.ts';
 
 /** The one next step an empty view offers. */
@@ -8,6 +8,8 @@ export interface EmptyViewAction {
   /** The element the button renders as, such as a router link. */
   render?: ReactElement;
   disabled?: boolean;
+  /** The button, for a page that returns focus to it. */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 /**
@@ -31,6 +33,7 @@ export function EmptyView({
       <EmptyState title={title} text={text} />
       {action ? (
         <Button
+          ref={action.ref}
           variant="secondary"
           size="compact"
           className="justify-self-center"

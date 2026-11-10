@@ -90,9 +90,12 @@ export function MeetingParticipants({
                   {person.name}
                 </span>
                 {state === 'idle' ? (
-                  <span className="truncate text-caption text-muted-foreground">
-                    {person.model}
-                  </span>
+                  // A participant still named after its model shows that name once.
+                  person.model === person.name ? null : (
+                    <span className="truncate text-caption text-muted-foreground">
+                      {person.model}
+                    </span>
+                  )
                 ) : (
                   <AgentStatusLabel
                     status={KIT_STATUS[state]}

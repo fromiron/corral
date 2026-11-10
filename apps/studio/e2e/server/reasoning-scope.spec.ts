@@ -2,6 +2,7 @@ import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import {
   editorSettings,
+  expectTeamSaved,
   openLibraryTeams,
   openProject,
   openTestRun,
@@ -90,7 +91,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
   await effort.click();
   await page.getByRole('option', { name: 'Low', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expectTeamSaved(page);
   await page.reload();
   await teamNode(page, 'writer').click();
   await expect(effort).toContainText('Low');

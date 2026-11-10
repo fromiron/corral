@@ -4,41 +4,28 @@ import {
   BannerActions,
   BannerTitle,
   Button,
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   focusRing,
   fontWeights,
-  Popover,
-  PopoverPopup,
-  PopoverTitle,
-  PopoverTrigger,
   Select,
 } from '@corral/react/design-kit';
 import {
   ArrowRight,
-  Bot,
   ChevronDown,
   Circle,
   CircleAlert,
   CircleCheck,
   FileDiff,
   ListChecks,
-  LoaderCircle,
-  Monitor,
   TriangleAlert,
   X,
 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
 import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
-import { actionCopy, actionTone, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
+import { actionCopy, actionTone, composerShowsRunStatus } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -81,15 +68,7 @@ export const compactNumber = (value: number, locale: string) =>
     short >= 1000 ? `${(short / 1000).toFixed(short < 10_000 ? 1 : 0)}k` : number(short),
   );
 
-function Chip({ chip, model }: { chip: WidgetChip; model: ChatWidgetModel }) {
-  if (chip === 'context') return <ContextUsageChip model={model} />;
-  if (chip === 'agents' && model.agents) return <AgentChip model={model} />;
-  if (chip === 'changes') return <ChangesChip model={model} />;
-  if (chip === 'environment' && model.environment) return <EnvironmentChip model={model} />;
-  return null;
-}
-
-/** The context chip's words, also the context widget's accessible summary. */
+/** The context widget's words, also its accessible summary. */
 export function contextLabel(
   context: ChatWidgetModel['context'],
   t: ReturnType<typeof useTranslations<'Widgets'>>,
@@ -106,24 +85,6 @@ export function contextLabel(
           : t('contextPending');
 }
 
-function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  const locale = useLocale();
-  const { context } = model;
-  const label = contextLabel(context, t, locale);
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="context-usage-chip" className={chipClass}>
-        <ContextGauge percent={context.barPercent} />
-        <span className="truncate">{label}</span>
-        <ChevronDown size={12} />
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="lg">
-        <ContextDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
 /** A detail's heading. Details open in Overview's own place, so none is a popover's title. */
 function DetailTitle({ children }: { children: ReactNode }) {
   return (
@@ -139,6 +100,16 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const { context } = model;
   const measured = context.tokens != null;
   const complete = context.coverage === 'request' && context.completeness === 'complete';
+  // An assembled request needs no sentence: the badge already says it is partial. Nor does one
+  // not measured yet: the badge says so.
+  const measurementNote =
+    complete || context.measurementStage === 'assembled'
+      ? null
+      : context.completeness === 'error'
+        ? t('measurementFailed')
+        : measured
+          ? t('noPercent')
+          : null;
   return (
     <div data-testid="context-inspector" className="flex flex-col gap-4 text-ui">
       <div>
@@ -175,12 +146,11 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </p>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-caption text-muted-foreground">
-            {t(measured ? 'estimatedInput' : 'contextPending')}
-          </p>
-          {context.tokens != null ? (
+      {/* Before a measured request the heading and its badge already say so; no line repeats it. */}
+      {context.tokens != null ? (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-caption text-muted-foreground">{t('estimatedInput')}</p>
             <p
               className="mt-1 text-title tabular-nums"
               style={{ fontVariationSettings: fontWeights.semibold }}
@@ -195,15 +165,15 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
                   : t('tokens')}
               </span>
             </p>
+          </div>
+          {context.percent != null ? (
+            <span className="flex items-center gap-2 text-body tabular-nums">
+              <ContextGauge percent={context.barPercent} size={28} />
+              {context.percent}%
+            </span>
           ) : null}
         </div>
-        {context.percent != null ? (
-          <span className="flex items-center gap-2 text-body tabular-nums">
-            <ContextGauge percent={context.barPercent} size={28} />
-            {context.percent}%
-          </span>
-        ) : null}
-      </div>
+      ) : null}
       <SegmentBar parts={context.parts} total={complete ? context.windowTokens : context.tokens} />
       <ul className="flex flex-col gap-2">
         {CATEGORIES.map((category) => {
@@ -244,23 +214,14 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       </ul>
       {model.simulated ||
       context.awaitingRefresh ||
-      (!complete && context.measurementStage !== 'assembled') ||
+      measurementNote ||
       context.unmeasuredExecutions ||
       context.omissions?.length ||
       model.readState === 'error' ? (
         <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-caption text-muted-foreground">
           {model.simulated ? <p>{t('simulatedNote')}</p> : null}
           {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
-          {/* An assembled request needs no sentence: the badge already says it is partial. */}
-          {!complete && context.measurementStage !== 'assembled' ? (
-            <p>
-              {context.completeness === 'error'
-                ? t('measurementFailed')
-                : measured
-                  ? t('noPercent')
-                  : t('measurementWaiting')}
-            </p>
-          ) : null}
+          {measurementNote ? <p>{measurementNote}</p> : null}
           {context.unmeasuredExecutions ? (
             <p>{t('unmeasuredExecutions', { count: context.unmeasuredExecutions })}</p>
           ) : null}
@@ -353,22 +314,6 @@ export function SegmentBar({
     </div>
   );
 }
-function AgentChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  if (!model.agents) return null;
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="agent-activity-chip" className={chipClass}>
-        <Bot size={14} />
-        <span className="truncate">{t('agents', model.agents)}</span>
-        <ChevronDown size={12} />
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="md">
-        <AgentsDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
 /** Agent states and the plan each agent owns. */
 export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
@@ -439,42 +384,6 @@ function ChangesChip({ model }: { model: ChatWidgetModel }) {
         <span className="text-micro">{t('changesLines', { count: model.changeLines })}</span>
       ) : null}
     </Link>
-  );
-}
-function EnvironmentChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="environment-chip" className={chipClass}>
-        <Monitor size={14} />
-        <span className="truncate">
-          {t(model.environment === 'simulated' ? 'environmentSimulated' : 'environmentRestricted')}
-        </span>
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="md">
-        <EnvironmentDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
-/** Why this run's environment differs from an ordinary local run. */
-export function EnvironmentDetail({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  return (
-    <>
-      <PopoverTitle>{t('environmentHeading')}</PopoverTitle>
-      <p className="mt-2 text-caption leading-relaxed text-muted-foreground">
-        {t(
-          model.environment === 'simulated'
-            ? 'environmentSimulationDetail'
-            : 'environmentRestrictedDetail',
-        )}
-      </p>
-      <RunLink model={model} className="mt-3 inline-flex items-center gap-2 text-caption">
-        {t('contextDetails')}
-        <ArrowRight size={14} />
-      </RunLink>
-    </>
   );
 }
 export function RunLink({
@@ -548,7 +457,8 @@ function RunStateIcon({ status, failed }: { status: string | null; failed: boole
  * with the step in progress (its toggle expands the Todo, `planId`), the change summary, the
  * current tool, the host's "applies to a new request only" note and the Overview opener. A live
  * run's state and controls belong to the top bar's pill, so the line never repeats them. One
- * announcement and a scoped entry to the existing approval/interaction host follow it.
+ * announcement and a scoped entry to the existing approval/interaction host follow it; approvals
+ * alone are announced only, since their turn's card in the conversation decides them.
  */
 export function ComposerDock({
   lead,
@@ -571,6 +481,7 @@ export function ComposerDock({
   const model = useChatWidget();
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
+  const tt = useTranslations('Turn');
   const run = model?.runId ? model : null;
   if (!run && !lead && !note) return null;
   const status = run?.plan.status ?? { state: 'hidden' as const };
@@ -582,15 +493,20 @@ export function ComposerDock({
     plan && run?.plan.selectedChoice?.live
       ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
       : null;
-  const tool =
+  const running =
     run?.live && run.plan.runStatus === 'running' && !run.action.visible
       ? (run.tools.find((row) => row.tone === 'running')?.name ?? null)
       : null;
+  // Named as the work log names it (Wait, not await_tasks); an unknown tool keeps its own name.
+  const tool = running && tt.has(`tool.${running}`) ? tt(`tool.${running}`) : running;
   // A failed run is told by its turn's card when that card is the latest turn; the notice
   // stays while another run or result is on screen, so the failure stays discoverable. A run
-  // that completed with failed steps keeps it: the notice is the way to those steps.
+  // that completed with failed steps keeps it: the notice is the way to those steps. Approvals
+  // alone are decided in their turn's card, and the top bar's pill says the run waits, so the
+  // notice would only repeat them; the live region below still announces them.
   const notice =
     run?.action.visible &&
+    run.action.summary !== 'approval' &&
     !(run.action.summary === 'failure' && !run.action.completedWithFailures && run.viewed?.latest);
   // Waiting questions alone name the first one, as the conversation's notice does.
   const actionLabel = run
@@ -812,7 +728,9 @@ export function ComposerPlan({
           </Button>
         </div>
       ) : null}
-      {plan && variant === 'steering' ? (
+      {/* Both places use the kit's plan rows (chat-widgets-contract §4.1): its glyphs, and the
+          step in progress marked as the current step. */}
+      {plan ? (
         <AgentSteeringPlan
           steps={(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => ({
             id: item.id,
@@ -834,29 +752,9 @@ export function ComposerPlan({
             t(state === 'done' ? 'completed' : state === 'active' ? 'in_progress' : 'pending')
           }
           wrapTitles
+          // The composer's Todo box has its own inset.
+          className={variant === 'composer' ? 'px-0 pb-0' : undefined}
         />
-      ) : plan ? (
-        <ol className="flex flex-col">
-          {(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => (
-            <li
-              key={item.id}
-              data-plan-item={item.id}
-              className="flex min-h-8 items-start gap-2.5 py-1.5 text-ui leading-5"
-            >
-              <WorkPlanStatusIcon status={item.status} label={t(item.status)} />
-              <span
-                className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted-foreground' : ''}`}
-                style={
-                  item.status === 'in_progress'
-                    ? { fontVariationSettings: fontWeights.semibold }
-                    : undefined
-                }
-              >
-                {item.title}
-              </span>
-            </li>
-          ))}
-        </ol>
       ) : null}
       {plan && plan.items.length > 5 ? (
         <Button
@@ -956,29 +854,5 @@ export function ComposerPlan({
         </div>
       ) : null}
     </div>
-  );
-}
-function WorkPlanStatusIcon({
-  status,
-  label,
-}: {
-  status: 'pending' | 'in_progress' | 'completed';
-  label: string;
-}) {
-  return (
-    <span
-      role="img"
-      className={`mt-0.5 inline-flex shrink-0 ${status === 'in_progress' ? 'text-primary' : 'text-muted-foreground'}`}
-      title={label}
-      aria-label={label}
-    >
-      {status === 'completed' ? (
-        <CircleCheck size={15} />
-      ) : status === 'in_progress' ? (
-        <LoaderCircle size={15} className="motion-safe:animate-spin" />
-      ) : (
-        <Circle size={15} strokeDasharray="3 3" />
-      )}
-    </span>
   );
 }

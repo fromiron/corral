@@ -295,13 +295,14 @@ export function LibraryTeams({
                         {corral.name}
                       </button>
                     </TableCell>
-                    <TableCell>
+                    {/* The version and the time keep one line; the name gives way, cut short. */}
+                    <TableCell className="whitespace-nowrap">
                       {t('revisions', {
                         definition: corral.definitionRevision,
                         nodes: corral.nodeCount,
                       })}
                     </TableCell>
-                    <TableCell>{ago(corral.updatedAt)}</TableCell>
+                    <TableCell className="whitespace-nowrap">{ago(corral.updatedAt)}</TableCell>
                   </TableRow>
                 );
               })}

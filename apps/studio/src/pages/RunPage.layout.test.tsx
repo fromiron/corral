@@ -78,10 +78,20 @@ vi.mock('@corral/react', async (original) => {
       </section>
     ),
     RunFlowView: () => <output data-testid="run-flow">Workflow</output>,
-    ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
-      <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
-        Approval evidence
-      </button>
+    // Like the real panel, it sets the host's control on its first row.
+    ApprovalPanel: ({
+      onOpenArtifact,
+      action,
+    }: {
+      onOpenArtifact: (id: string) => void;
+      action?: ReactNode;
+    }) => (
+      <p data-testid="approval-first-row">
+        {action}
+        <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
+          Approval evidence
+        </button>
+      </p>
     ),
     RunCanvas: ({
       definition,
@@ -851,6 +861,29 @@ it('does not reopen a completed approval panel when a later decision appears', a
   expect(side?.hidden).toBe(true);
 });
 
+it('sets the response area close on the area first row, never on a row of its own', async () => {
+  fixture.pending = 1;
+  const { container } = await mount('inline_team', null, {});
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  const respond = container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]');
+  respond?.focus();
+  await act(async () => respond?.click());
+  const closes = side?.querySelectorAll<HTMLButtonElement>('button[aria-label="Close details"]');
+  expect(closes).toHaveLength(1);
+  const close = closes?.[0];
+  // The response area's first row carries it; its heading stays for screen readers only.
+  expect(close?.closest('[data-run-response]')).not.toBeNull();
+  expect(close?.closest('[data-testid="approval-first-row"]')?.textContent).toContain(
+    'Approval evidence',
+  );
+  expect(side?.querySelector('h2')?.className).toContain('sr-only');
+  await act(async () => {
+    close?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(side?.hidden).toBe(true);
+});
+
 it('returns focus to Run info after closing it even if a node was selected earlier', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container } = await mount('inline_team', null, {});
@@ -1115,6 +1148,58 @@ it('a failed run with no failed execution names its reason and offers no entry',
   expect(endReason(container)?.textContent).toBe('An internal error stopped the run');
   expect(header(container)?.textContent).not.toContain('secret detail');
   expect(failureEntry(container)).toBeUndefined();
+});
+
+it('a run its review recipe stopped says why once, in the recipe panel with its rounds', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  const recipe = {
+    loopNodeId: 'review_loop',
+    recipeId: 'recipe_1',
+    revision: 1,
+    recipeHash: 'a'.repeat(64),
+    criteriaVersionId: 'criteria_1',
+  };
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `evt_${runSeq}`,
+      runId: 'run_layout',
+      runSeq,
+      recordedAt: '2026-10-26T09:06:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  await act(async () =>
+    run.setState({
+      events: [
+        event(1, 'recipe.evaluated', {
+          ...recipe,
+          iterationId: 'iteration_1',
+          candidateVersionId: 'candidate_1',
+          reviewVersionId: 'review_1',
+          checkReportIds: [],
+          tree: null,
+          verdict: 'revise',
+        }),
+        event(2, 'recipe.stopped', {
+          ...recipe,
+          reason: 'attempt_limit',
+          candidateVersionId: 'candidate_1',
+        }),
+      ],
+    }),
+  );
+  await failRun(run, { reason: 'review_recipe:attempt_limit', executions: false });
+  const panel = header(container)?.querySelector<HTMLElement>('[data-testid="recipe-status"]');
+  expect(panel?.textContent).toContain('Generation attempt limit reached');
+  expect(panel?.textContent).toContain('Revise');
+  // The reason is said once, in words, never as its code.
+  expect(endReason(container)).toBeNull();
+  expect(header(container)?.textContent).not.toContain('review_recipe');
+  expect(header(container)?.textContent?.split('Generation attempt limit reached')).toHaveLength(2);
 });
 
 it('workspace changes inspected executions without silently retargeting an instruction draft', async () => {
@@ -1791,6 +1876,70 @@ it('turns the waiting status into the one way to respond', async () => {
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
 });
 
+it('keeps the response area for what an extension says after its prompt is answered', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const target = { requestId: 'request_1', executionId: 'exec_worker', attemptNo: 1 };
+  const hash = 'b'.repeat(64);
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `evt_${runSeq}`,
+      runId: 'run_layout',
+      runSeq,
+      recordedAt: '2026-10-26T09:06:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const asked = event(1, 'extension.ui_requested', {
+    ...target,
+    kind: 'confirm',
+    bodyRef: 'prompt_1',
+    bodyHash: hash,
+    deadline: '2026-10-26T09:16:00.000Z',
+  });
+  const answered = event(2, 'extension.ui_answered', {
+    ...target,
+    answerRef: 'answer_1',
+    answerHash: hash,
+  });
+  const said = event(3, 'extension.ui_notified', {
+    executionId: 'exec_worker',
+    kind: 'notify',
+    key: 'notice',
+    level: 'info',
+    bodyRef: 'notice_1',
+    bodyHash: hash,
+  });
+  const { container, run } = await mount('inline_team', null, {});
+  await act(async () => run.setState({ events: [asked] }));
+  await waitFor(run, 1);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Answered while the run goes on: the extension may still reply where it asked.
+  await act(async () => run.setState({ events: [asked, answered] }));
+  await waitFor(run, 0);
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Its reply holds the area while its text is kept; the area is named for it, not as waiting.
+  await act(async () => run.setState({ events: [asked, answered, said] }));
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('h2')?.textContent).toBe(messages.Harness.extensionNotice);
+  // The run ended and released the notice's text: nothing is left to show, so the area closes.
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () => run.setState({ projection: { ...projection, status: 'succeeded' } }));
+  expect(side(container)?.hidden).toBe(true);
+
+  // A decision with no extension behind it still closes the area once it is answered.
+  for (const done of cleanup.splice(0)) await done();
+  const plain = await mount('inline_team', null, {});
+  await waitFor(plain.run, 1);
+  expect(side(plain.container)?.hidden).toBe(false);
+  await waitFor(plain.run, 0);
+  expect(side(plain.container)?.hidden).toBe(true);
+});
+
 it('opens the response area once when a new decision arrives and the side is free', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run } = await mount('inline_team', null, {});
@@ -2113,8 +2262,9 @@ it('lists every result version with its source execution and opens it in the cen
     'Work in between',
   ]);
   expect(groups[0]?.querySelector('th[scope="rowgroup"]')?.textContent).toBe('Final results1');
+  // Made by names the agent, the run's execution that made the version, its round and attempt.
   for (const row of rows) {
-    expect(row.textContent).toContain('worker · Round 2 · Attempt 1');
+    expect(row.textContent).toContain('worker · execution 1 · Round 2 · Attempt 1');
     expect(row.textContent).not.toMatch(/token|cost|\$/i);
   }
   expect(rows[0]?.textContent).toContain('Report');

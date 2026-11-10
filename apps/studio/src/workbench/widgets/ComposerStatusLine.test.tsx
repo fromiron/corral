@@ -176,7 +176,8 @@ it('keeps the plan count, current step, activity, note and overview in one line'
   expect(toggle?.textContent).toContain('1/7 done');
   // Collapsed, the line names the step in progress.
   expect(toggle?.textContent).toContain('Plan item 2');
-  expect(line.querySelector('[data-testid="composer-activity"]')?.textContent).toBe('read_file');
+  // The tool is named as the work log names it, not by its identifier.
+  expect(line.querySelector('[data-testid="composer-activity"]')?.textContent).toBe('Read');
   // The top bar's pill owns the in-progress state; the line does not repeat it.
   expect(line.textContent).not.toContain(messages.Status.running);
   expect(line.querySelector('a')).toBeNull();
@@ -208,6 +209,55 @@ it('renders the plan Todo only when the line is expanded, and only once', async 
   expect(view.toggle()?.textContent).not.toContain('Plan item 2');
   // Read only: no checkbox completes an item.
   expect(view.container.querySelector('input[type="checkbox"], [role="checkbox"]')).toBeNull();
+});
+
+it.each(['running', 'pausing', 'paused', 'awaiting_user'] as const)(
+  'a %s run puts no state word on the line; the top bar says it',
+  async (runStatus) => {
+    const view = await mount(
+      model(
+        runStatus === 'awaiting_user'
+          ? {
+              action: {
+                ...noAction,
+                visible: true,
+                needsUser: true,
+                count: 1,
+                summary: 'question',
+              },
+            }
+          : {},
+        { runStatus },
+      ),
+    );
+    const line = view.line()?.textContent ?? '';
+    for (const state of ['running', 'pausing', 'paused', 'awaiting_user'] as const)
+      expect(line).not.toContain(messages.Status[state]);
+    expect(view.line()?.querySelector('a')).toBeNull();
+  },
+);
+
+it('marks the step in progress as the current step, with the kit plan rows', async () => {
+  const view = await mount(model({}, { open: true }));
+  const rows = [...view.rows()];
+  expect(rows).toHaveLength(5);
+  // chat-widgets-contract §4.1: the plan above the input uses the AgentSteering plan rows.
+  expect(rows.map((row) => row.getAttribute('aria-current'))).toEqual([
+    null,
+    'step',
+    null,
+    null,
+    null,
+  ]);
+  expect(rows.map((row) => row.getAttribute('data-status'))).toEqual([
+    'done',
+    'active',
+    'pending',
+    'pending',
+    'pending',
+  ]);
+  // Each row still says its state to assistive tech.
+  expect(rows[1]?.textContent).toContain(messages.Widgets.in_progress);
 });
 
 it('leaves a live run that needs the person to the notice, and keeps one status for an ended run', async () => {
@@ -299,6 +349,37 @@ it("names the waiting question in the notice and links to its run's response are
   expect(unclear?.textContent).toBe(messages.Widgets.actionOpenRun);
   expect(unclear?.textContent).not.toBe(messages.Widgets.actionOpen);
   expect(JSON.parse(unclear?.getAttribute('data-search') ?? '{}')).not.toHaveProperty('respond');
+});
+
+it("leaves an approval to its turn's card and the top bar's pill, and still announces it", async () => {
+  const approval = { ...noAction, visible: true, needsUser: true, count: 1, summary: 'approval' };
+  const view = await mount(
+    model({ action: approval } as Partial<ChatWidgetModel>, { runStatus: 'awaiting_user' }),
+  );
+  // No visible notice and no second way to the same decision.
+  expect(view.container.querySelector('[data-testid="action-required"]')).toBeNull();
+  expect(view.container.querySelector('[data-slot="banner"]')).toBeNull();
+  // The screen reader still hears that an approval is needed.
+  const live = view.container.querySelector('[aria-live="polite"]');
+  expect(live?.classList.contains('sr-only')).toBe(true);
+  expect(live?.textContent).toContain(messages.Widgets.actionApproval);
+  // Two approvals are still approvals only.
+  await view.update(
+    model({ action: { ...approval, count: 2 } } as Partial<ChatWidgetModel>, {
+      runStatus: 'awaiting_user',
+    }),
+  );
+  expect(view.container.querySelector('[data-testid="action-required"]')).toBeNull();
+  // An approval beside a question, a failure or an unclear result keeps the notice.
+  for (const action of [
+    { ...approval, count: 2, summary: 'mixed' },
+    { ...approval, hasFailure: true, count: 2, summary: 'mixed' },
+  ]) {
+    await view.update(
+      model({ action } as Partial<ChatWidgetModel>, { runStatus: 'awaiting_user' }),
+    );
+    expect(view.container.querySelector('[data-testid="action-required"]')).not.toBeNull();
+  }
 });
 
 it('keeps the notice for a live waiting run while another result is open', async () => {

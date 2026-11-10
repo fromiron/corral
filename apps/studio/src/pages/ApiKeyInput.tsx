@@ -8,10 +8,13 @@ export function ApiKeyInput({
   value,
   onChange,
   disabled = false,
+  describedBy,
 }: {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** The id of a line that says more about the key, read as the field's description. */
+  describedBy?: string;
 }) {
   const t = useTranslations('Models');
   const id = useId();
@@ -33,6 +36,7 @@ export function ApiKeyInput({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
+          aria-describedby={describedBy}
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}

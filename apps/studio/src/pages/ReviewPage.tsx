@@ -146,6 +146,8 @@ export function ReviewContent({
   onSessionChange,
   rangeSlot,
   showChecks = true,
+  shown = true,
+  copyChanged,
 }: {
   session: WorkSession;
   search: ReviewSearch;
@@ -160,6 +162,10 @@ export function ReviewContent({
   rangeSlot?: HTMLElement | null;
   /** False where checks have their own view beside this one. */
   showChecks?: boolean;
+  /** False while a host keeps the view mounted behind another; showing it again reads it again. */
+  shown?: boolean;
+  /** Changes whenever the copy may have changed outside this view (a run of the session moved). */
+  copyChanged?: string | undefined;
 }) {
   const t = useTranslations('Files');
   const tr = useTranslations('Review');
@@ -203,7 +209,14 @@ export function ReviewContent({
   };
   const scope = scopeFromSearch(search);
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
-  const [changes, setChanges] = useState<ChangeSetView | null>(null);
+  // The changes are held with the session and range they were read for: another range starts
+  // empty, while reading the same one again keeps the list (and the place in it) until the new
+  // answer, which replaces it only when it differs.
+  const readFor = `${session.sessionId}\n${scopeKey}`;
+  const [loadedChanges, setChanges] = useState<{ readFor: string; changes: ChangeSetView } | null>(
+    null,
+  );
+  const changes = loadedChanges?.readFor === readFor ? loadedChanges.changes : null;
   const [error, setError] = useState<string | null>(null);
   // UX-05: a session without a working copy has nothing to compare; that is not a failure.
   const [noCopy, setNoCopy] = useState(false);
@@ -226,6 +239,15 @@ export function ReviewContent({
     window.addEventListener(WORKSPACE_CHANGED, changed);
     return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
   }, []);
+  // Shown again, or told a run of the session moved, the view reads the copy and its runs again.
+  const [seen, setSeen] = useState({ shown, copyChanged });
+  if (seen.shown !== shown || seen.copyChanged !== copyChanged) {
+    if ((shown && !seen.shown) || seen.copyChanged !== copyChanged) {
+      setVersion((value) => value + 1);
+      setRunTick((tick) => tick + 1);
+    }
+    setSeen({ shown, copyChanged });
+  }
   const { binding } = useBinding(session.projectId);
   const [loadedComments, setComments] = useState<{
     sessionId: string;
@@ -267,13 +289,17 @@ export function ReviewContent({
     const timer = setInterval(refreshRuns, 1500);
     return () => clearInterval(timer);
   }, [runActive, runsLost, refreshRuns]);
+  const lastRead = useRef<string | null>(null);
   useEffect(() => {
     void version;
     if (!workspaces) return;
     let live = true;
-    setChanges(null);
-    setError(null);
-    setNoCopy(false);
+    const key = `${session.sessionId}\n${scopeKey}`;
+    if (lastRead.current !== key) {
+      lastRead.current = key;
+      setError(null);
+      setNoCopy(false);
+    }
     const chosen = scopeFromSearch({
       scope: scopeKey.split(':')[0],
       runId: scopeKey.split(':')[1],
@@ -282,9 +308,22 @@ export function ReviewContent({
     void (async () => {
       const copy = await workspaces.worktree(sessionId).catch(() => null);
       if (live) setCopyRead({ sessionId, read: Boolean(copy?.reviewed) });
-      if (!copy || copy.missing) return live && setNoCopy(true);
+      if (!copy || copy.missing) {
+        if (live) {
+          setError(null);
+          setNoCopy(true);
+        }
+        return;
+      }
       const result = await workspaces.changes(session.sessionId, chosen);
-      if (live) setChanges(result);
+      if (!live) return;
+      setError(null);
+      setNoCopy(false);
+      setChanges((shown) =>
+        shown?.readFor === key && sameChanges(shown.changes, result)
+          ? shown
+          : { readFor: key, changes: result },
+      );
     })().catch(
       (failure: unknown) =>
         live && setError(failure instanceof Error ? failure.message : String(failure)),
@@ -704,6 +743,11 @@ export function ReviewContent({
       }
     />
   );
+}
+
+/** Whether two reads of a range found the same trees and the same changed files. */
+function sameChanges(a: ChangeSetView, b: ChangeSetView) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 type NewComment = Pick<ReviewCommentView, 'side' | 'startLine' | 'endLine' | 'quote' | 'body'>;

@@ -71,25 +71,30 @@ export function DockTopBar({
     <>
       {/* The session's views share the top bar's one row; standalone hosts keep their own. */}
       <TopbarViews>
-        {folded ? (
-          <Select
-            variant="chip"
-            align="end"
-            label={t('sessionViews')}
-            value={sessionView}
-            onValueChange={onSelectView}
-            options={primaryTabs.map((view) => ({
-              value: view,
-              label: counted(view) ? (
-                <span className="flex items-center gap-1.5">
-                  {viewLabel(view)}
-                  <span className="text-muted-foreground tabular-nums">{changeCount}</span>
-                </span>
-              ) : (
-                viewLabel(view)
-              ),
-            }))}
-          />
+        {/* The menu stays in the document too, hidden while the tabs fit: the bar tries a
+            roomier tier whenever its content changes (another view's run pill), and a menu
+            mounted again for it would drop the keyboard focus it holds. */}
+        {viewsInTopbar ? (
+          <div hidden={!folded} className="contents">
+            <Select
+              variant="chip"
+              align="end"
+              label={t('sessionViews')}
+              value={sessionView}
+              onValueChange={onSelectView}
+              options={primaryTabs.map((view) => ({
+                value: view,
+                label: counted(view) ? (
+                  <span className="flex items-center gap-1.5">
+                    {viewLabel(view)}
+                    <span className="text-muted-foreground tabular-nums">{changeCount}</span>
+                  </span>
+                ) : (
+                  viewLabel(view)
+                ),
+              }))}
+            />
+          </div>
         ) : null}
         <div
           hidden={folded}
