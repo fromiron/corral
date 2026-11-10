@@ -79,6 +79,44 @@ const waitingWords = {
   you: 'waiting',
 } as const satisfies Record<Awaited, string>;
 
+/** The quick view's size on screen, px: the kit's medium popover and a typical height. */
+const QUICK_VIEW = { width: 320, height: 260, gap: 6 } as const;
+type QuickViewSide = 'right' | 'left' | 'bottom' | 'top';
+
+/**
+ * The side of an agent its quick view opens on: the first, from the right, where it hides no
+ * other agent's mark, so the next agent stays one click away. Crowded on every side, right.
+ */
+export function quickViewSide(
+  id: string,
+  positions: ReadonlyMap<string, AgentGraphPosition>,
+  zoom: number,
+): QuickViewSide {
+  const at = positions.get(id);
+  if (!at) return 'right';
+  const mark = TILE.markHalf * zoom;
+  const { width, height, gap } = QUICK_VIEW;
+  const x = at.x * zoom;
+  const y = at.y * zoom;
+  const areas: [QuickViewSide, number, number, number, number][] = [
+    ['right', x + mark + gap, x + mark + gap + width, y - mark, y - mark + height],
+    ['left', x - mark - gap - width, x - mark - gap, y - mark, y - mark + height],
+    ['bottom', x - mark, x - mark + width, y + mark + gap, y + mark + gap + height],
+    ['top', x - mark, x - mark + width, y - mark - gap - height, y - mark - gap],
+  ];
+  const others = [...positions].filter(([other]) => other !== id).map(([, p]) => p);
+  const free = areas.find(([, x0, x1, y0, y1]) =>
+    others.every(
+      (p) =>
+        p.x * zoom + mark <= x0 ||
+        p.x * zoom - mark >= x1 ||
+        p.y * zoom + mark <= y0 ||
+        p.y * zoom - mark >= y1,
+    ),
+  );
+  return free?.[0] ?? 'right';
+}
+
 function kitStatus(status: NodeRunStatus): AgentStatus {
   if (['active', 'model', 'tool', 'finalizing'].includes(status)) return 'running';
   if (status === 'done') return 'done';
@@ -602,7 +640,7 @@ export function RunCanvas({
             return node ? (
               <PopoverPopup
                 width="md"
-                side="right"
+                side={quickViewSide(node.id, positions, viewport?.k ?? 1)}
                 align="start"
                 padding="compact"
                 finalFocus={restorePreviewFocus}

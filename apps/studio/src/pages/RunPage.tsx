@@ -573,6 +573,7 @@ function RunWorkspace({
                         selectedExecutionId={execution ?? null}
                         rounds={rounds}
                         compact
+                        wideCards
                       />
                       <RunFlowDecisions
                         session={session}

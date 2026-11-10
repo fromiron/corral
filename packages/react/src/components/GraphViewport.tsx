@@ -72,7 +72,7 @@ export interface GraphViewportOptions {
   /**
    * Fit when first shown and on request only. Until the person first works with the stage (a
    * press, a key, the wheel or a zoom button), the first display follows the page as it settles;
-   * after that a change of the pane's size keeps the zoom and the point at the pane's centre.
+   * after that the view stays exactly where the person left it, whatever the pane's size.
    * Omitted, the view refits with the pane until the person moves it.
    */
   fitOnce?: boolean;
@@ -94,15 +94,12 @@ export function useGraphViewport({
 
   // Until the person moves the view, it follows the pane: a panel opening beside it refits.
   const moved = useRef(false);
-  // With `fitOnce`: whether the person has worked with the stage, which ends the first display,
-  // and the pane's size when the view was last placed, so a later size change keeps its centre.
+  // With `fitOnce`: whether the person has worked with the stage, which ends the first display.
   const engaged = useRef(false);
-  const size = useRef<{ width: number; height: number } | null>(null);
   const place = useCallback(() => {
     const element = pane.current;
     if (!element) return;
     moved.current = false;
-    size.current = { width: element.clientWidth, height: element.clientHeight };
     setViewport(
       fitBounds(
         read.current.bounds(),
@@ -121,26 +118,8 @@ export function useGraphViewport({
     const element = pane.current;
     if (!ready || !element) return;
     const measure = () => {
-      const width = element.clientWidth;
-      const height = element.clientHeight;
-      if (width <= 0 || height <= 0) return;
-      if (fitOnce ? !engaged.current : !moved.current) {
-        place();
-        return;
-      }
-      if (!fitOnce) return;
-      const last = size.current;
-      size.current = { width, height };
-      if (!last || (last.width === width && last.height === height)) return;
-      setViewport((current) =>
-        current
-          ? {
-              ...current,
-              x: current.x + (width - last.width) / 2,
-              y: current.y + (height - last.height) / 2,
-            }
-          : current,
-      );
+      if (element.clientWidth <= 0 || element.clientHeight <= 0) return;
+      if (fitOnce ? !engaged.current : !moved.current) place();
     };
     measure();
     const observer = new ResizeObserver(measure);

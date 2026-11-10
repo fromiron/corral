@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fitBounds, ZOOM } from '../src/components/GraphViewport.tsx';
-import { RUN_GRAPH_FIT, RunCanvas } from '../src/components/RunCanvas.tsx';
+import { quickViewSide, RUN_GRAPH_FIT, RunCanvas } from '../src/components/RunCanvas.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import type { RunAgentGraph } from '../src/run/agent-graph.ts';
 import { layoutRunAgents, TILE } from '../src/run/agent-graph-layout.ts';
@@ -141,8 +141,6 @@ describe('run graph fit', () => {
     await act(async () => {});
     const stage = () => document.querySelector<HTMLElement>('[data-graph-stage]')?.style.transform;
     const scale = () => Number(/scale\(([\d.]+)\)/.exec(stage() ?? '')?.[1]);
-    const translate = () =>
-      (/translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(stage() ?? '') ?? []).slice(1).map(Number);
     const resize = async (width: number, height: number) => {
       pane.width = width;
       pane.height = height;
@@ -172,17 +170,37 @@ describe('run graph fit', () => {
     });
     expect(document.querySelector('[data-agent-id="helper"]')).not.toBeNull();
     expect(stage()).toEqual(first);
-    // Once the person works with the stage, a panel opening beside it keeps the zoom and the
-    // view's centre instead of fitting again.
+    // Once the person works with the stage, a panel opening beside it leaves the view where it
+    // was instead of fitting again.
     const pane_ = document.querySelector<HTMLElement>('[data-graph-pane]') as HTMLElement;
     await act(async () => fireEvent.keyDown(pane_, { key: 'Tab' }));
-    const [x, y] = translate();
+    const kept = stage();
     await resize(740, 620);
-    expect(scale()).toBe(RUN_GRAPH_FIT.maxZoom);
-    expect(translate()).toEqual([(x ?? 0) - 180, y]);
+    expect(stage()).toEqual(kept);
     // Fit on request frames both agents in the narrower pane.
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Fit view' })));
     expect(scale()).toBeLessThanOrEqual(RUN_GRAPH_FIT.maxZoom);
     expect(stage()).not.toEqual(first);
+  });
+});
+
+describe('the quick view', () => {
+  it('opens on a side that leaves the neighbouring agents clickable', () => {
+    const row = new Map([
+      ['research', { x: 0, y: 0 }],
+      ['writer', { x: 200, y: 0 }],
+    ]);
+    expect(quickViewSide('research', row, 1.25)).toBe('left');
+    expect(quickViewSide('writer', row, 1.25)).toBe('right');
+    const alone = new Map([['lead', { x: 0, y: 0 }]]);
+    expect(quickViewSide('lead', alone, 1)).toBe('right');
+    const boxed = new Map([
+      ['middle', { x: 0, y: 0 }],
+      ['east', { x: 200, y: 0 }],
+      ['west', { x: -200, y: 0 }],
+      ['south', { x: 0, y: 180 }],
+      ['north', { x: 0, y: -180 }],
+    ]);
+    expect(quickViewSide('middle', boxed, 1)).toBe('right');
   });
 });

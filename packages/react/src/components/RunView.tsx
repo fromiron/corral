@@ -288,6 +288,7 @@ export function ExecutionTree({
   onSteer,
   selectedExecutionId = null,
   compact = false,
+  wideCards = false,
   now,
   rounds,
 }: {
@@ -295,6 +296,8 @@ export function ExecutionTree({
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
   compact?: boolean;
+  /** Cards widen to the room their branches have, for a tree that owns a wide view. */
+  wideCards?: boolean;
   /** The inspected rounds when other views of the work flow share them; otherwise its own. */
   rounds?: RoundInspection;
   /** Fixed clock for a past view, ms. Omitted, open spans run to the present. */
@@ -315,14 +318,18 @@ export function ExecutionTree({
   const [treeElement, treeRef] = useState<HTMLDivElement | null>(null);
   const [treeWidth, setTreeWidth] = useState(0);
   useLayoutEffect(() => {
-    if (!treeElement) return;
-    const measure = () => setTreeWidth(treeElement.clientWidth);
+    if (!wideCards || !treeElement) return;
+    // A scrollbar coming and going must not resize the cards back and forth.
+    const measure = () =>
+      setTreeWidth((current) =>
+        Math.abs(treeElement.clientWidth - current) < 24 ? current : treeElement.clientWidth,
+      );
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
     observer.observe(treeElement);
     return () => observer.disconnect();
-  }, [treeElement]);
+  }, [wideCards, treeElement]);
   const { selected: selectedIterations, choose } = rounds ?? own;
   const intervals = useMemo(
     () => new Map(executionIntervals(events).map((row) => [row.executionId, row])),
@@ -578,7 +585,7 @@ export function ExecutionTree({
       onSelect={(agent) => onSteer(agent.id)}
       labels={labels}
       size="compact"
-      cardWidth={fittedCardWidth(root, treeWidth)}
+      cardWidth={wideCards ? fittedCardWidth(root, treeWidth) : TREE.card}
       // The column shrinks to the panel; cards truncate instead of widening it.
       className="grid-cols-[minmax(0,1fr)]"
       {...(now === undefined ? {} : { now })}
