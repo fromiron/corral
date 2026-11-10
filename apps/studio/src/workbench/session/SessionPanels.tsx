@@ -300,7 +300,6 @@ export function ArtifactsPanel({
                     className="h-auto w-full justify-start gap-2.5 py-1.5 text-left"
                     aria-label={`${tr(item.kind)} ${item.label} · ${source}`}
                     onClick={() => onOpen(item.runId, item.id)}
-                    title={item.runId}
                   >
                     {row(false)}
                   </Button>

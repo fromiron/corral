@@ -91,6 +91,9 @@ it('lists a partial result the run no longer keeps as a row that cannot be opene
   // The kept one opens as before.
   const open = kept?.querySelector('button');
   expect(open?.getAttribute('aria-label')).toBe('Partial results draft v1 · Run #1');
+  // The row already names its run (Run #1); no raw run id shows as a tooltip.
+  expect(open?.hasAttribute('title')).toBe(false);
+  expect(kept?.innerHTML).not.toContain('run_a');
   expect(kept?.textContent).not.toContain('Text no longer kept');
   await act(async () => open?.click());
   expect(onOpen).toHaveBeenCalledWith('run_a', 'kept');
