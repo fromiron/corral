@@ -100,7 +100,9 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect
     .poll(() => corral.server.coordinator.getSnapshot(nextRunId).projection.status)
     .toBe('succeeded');
-  await expect(page.getByTestId('composer-status-pills')).toContainText('Run #2');
+  // The composer says it is the last run; the turn's link carries its number.
+  await expect(page.getByTestId('composer-status-pills')).toContainText('Last run');
+  await expect(page.getByTestId('turn-run').last()).toHaveText('Run #2');
   await expect(graph).toBeHidden();
   await panelTab(page, 'Runs');
   await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
