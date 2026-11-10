@@ -13,6 +13,7 @@ import {
   FILE_TOOLS,
   type HarnessBindingRef,
   type ModelProfileSnapshot,
+  type PatternSlot,
   type PermissionMode,
   type ReasoningLevel,
   type RunInput,
@@ -29,7 +30,7 @@ import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import type { CorralRecord } from './repository/index.ts';
-import { draftFromPlan, planFromGoal, type TeamWording } from './team-draft.ts';
+import { basePatternFromGoal, draftFromPlan, type TeamWording } from './team-draft.ts';
 
 // a session without a chosen team runs in auto mode. A start model picks one of the
 // built-in templates (the team patterns); the template fixes roles, tools, wiring and
@@ -66,7 +67,7 @@ const WORDING: TeamWording = {
   labels: { loop: 'Review loop', decision: 'Review decision', output: 'Output' },
 };
 
-const SLOTS: Record<AutoTemplate, TeamSlot[]> = {
+const SLOTS: Record<AutoTemplate, PatternSlot<AutoTemplate>[]> = {
   single: ['worker'],
   write_review: ['planner', 'writer', 'reviewer'],
   research_write_review: ['researcher', 'writer', 'reviewer'],
@@ -362,8 +363,7 @@ export function parseAutoRoute(
 
 /** The choice without a model (the demo, simulated runs): the local suggestion. */
 export function localAutoRoute(brief: string): { template: AutoTemplate; reason: string } {
-  const plan = planFromGoal(brief, WORDING);
-  return { template: plan?.pattern ?? 'single', reason: '' };
+  return { template: basePatternFromGoal(brief), reason: '' };
 }
 
 export type RouteAnswer =

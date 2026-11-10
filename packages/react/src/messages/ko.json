@@ -1411,10 +1411,12 @@
     "ask": "모델에게 묻기",
     "asking": "모델에게 묻는 중…",
     "askHint": "로그인한 모델 요청을 1회 씁니다.",
+    "retry": "다시 시도",
+    "unusable": "모델에게서 쓸 수 있는 팀을 받지 못했습니다.",
+    "patternLabel": "팀 구성",
     "patterns": {
-      "single": "에이전트 하나",
-      "write_review": "기획 후 작성·검토",
-      "research_write_review": "조사 후 작성·검토"
+      "write_review": "작성·검토",
+      "research_write_review": "조사·작성·검토"
     },
     "nameLabel": "팀 이름",
     "briefLabel": "브리프",

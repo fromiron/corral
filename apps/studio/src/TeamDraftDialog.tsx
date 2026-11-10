@@ -1,6 +1,13 @@
 import { ApiError } from '@corral/client';
-import { TEAM_SLOTS, TeamPlan } from '@corral/contracts';
-import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/react';
+import {
+  hasReviewLoop,
+  TEAM_PATTERNS,
+  TEAM_SLOTS,
+  type TeamPattern,
+  TeamPlan,
+} from '@corral/contracts';
+import { planWithPattern, type TeamWording } from '@corral/core';
+import { draftFromPlan, planFromGoal } from '@corral/react';
 import {
   Button,
   fontWeights,
@@ -11,10 +18,11 @@ import {
   Textarea,
 } from '@corral/react/design-kit';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMessages, useTranslations } from 'use-intl';
 import { Modal } from './CommandPalette.tsx';
 import { useServices } from './services.tsx';
+import { draftWording, patternName } from './templates.ts';
 
 /**
  * Goal → team draft. The person writes a goal, gets a plan from the local suggestion or
@@ -30,13 +38,15 @@ export function TeamDraftDialog({
   projectId?: string;
 }) {
   const t = useTranslations('TeamDraft');
-  const messages = useMessages() as { TeamDraft: { wording: TeamWording } };
+  const messages = useMessages();
+  const wording = useMemo(() => draftWording(messages), [messages]);
   const { repository, models, live } = useServices();
   const navigate = useNavigate();
   const [goal, setGoal] = useState('');
   const [plan, setPlan] = useState<TeamPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [askFailed, setAskFailed] = useState(false);
   const pendingRequest = useRef<AbortController | null>(null);
   const draftIntent = useRef<{ goal: string; id: string } | null>(null);
   useEffect(() => () => pendingRequest.current?.abort(), []);
@@ -56,7 +66,8 @@ export function TeamDraftDialog({
 
   const suggest = () => {
     setError(null);
-    setPlan(planFromGoal(goal, messages.TeamDraft.wording));
+    setAskFailed(false);
+    setPlan(planFromGoal(goal, wording));
   };
   const ask = async () => {
     if (!models) return;
@@ -72,15 +83,24 @@ export function TeamDraftDialog({
         operationId: draftIntent.current.id,
         signal: controller.signal,
       });
-      if (!controller.signal.aborted) setPlan(result.plan);
+      if (!controller.signal.aborted) {
+        setAskFailed(false);
+        setPlan(result.plan);
+      }
     } catch (failure) {
+      const unusable = failure instanceof ApiError && failure.code === 'MODEL_UNAVAILABLE';
       if (
         failure instanceof ApiError &&
         ['MODEL_UNAVAILABLE', 'CAPABILITY_DENIED'].includes(failure.code)
       )
         draftIntent.current = null;
-      if (!controller.signal.aborted)
-        setError(failure instanceof Error ? failure.message : String(failure));
+      if (!controller.signal.aborted) {
+        setAskFailed(true);
+        // The server's words for an unusable answer are not in the screen's language.
+        setError(
+          unusable ? t('unusable') : failure instanceof Error ? failure.message : String(failure),
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -93,7 +113,7 @@ export function TeamDraftDialog({
     const draft = draftFromPlan(
       checked.data,
       `team_${globalThis.crypto.randomUUID().slice(0, 8)}`,
-      messages.TeamDraft.wording.labels,
+      wording.labels,
     );
     const saved = await repository.save({
       ...draft,
@@ -130,6 +150,7 @@ export function TeamDraftDialog({
               onChange={(e) => {
                 pendingRequest.current?.abort();
                 draftIntent.current = null;
+                setAskFailed(false);
                 setGoal(e.target.value);
               }}
               placeholder={t('goalPlaceholder')}
@@ -158,7 +179,7 @@ export function TeamDraftDialog({
                     onClick={() => void ask()}
                     className="self-start"
                   >
-                    {busy ? t('asking') : t('ask')}
+                    {busy ? t('asking') : askFailed ? t('retry') : t('ask')}
                   </Button>
                   <span className="text-caption text-muted-foreground">{t('askHint')}</span>
                 </div>
@@ -166,7 +187,7 @@ export function TeamDraftDialog({
             </div>
           </>
         ) : (
-          <PlanEditor plan={plan} onChange={setPlan} />
+          <PlanEditor plan={plan} wording={wording} onChange={setPlan} />
         )}
         {error ? (
           <p role="alert" className="text-body text-danger">
@@ -209,11 +230,28 @@ export function TeamDraftDialog({
   );
 }
 
-function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPlan): void }) {
+function PlanEditor({
+  plan,
+  wording,
+  onChange,
+}: {
+  plan: TeamPlan;
+  wording: TeamWording;
+  onChange(plan: TeamPlan): void;
+}) {
   const t = useTranslations('TeamDraft');
+  const messages = useMessages();
   const id = useId();
   // The raw text, so a new empty line can be typed; the plan keeps the non-empty lines.
   const [criteria, setCriteria] = useState(plan.criteria.join('\n'));
+  // Criteria typed since the suggestion survive a pattern change; a new suggestion mounts a
+  // new editor, and criteria from a model answer count as not typed.
+  const [criteriaEdited, setCriteriaEdited] = useState(false);
+  const changePattern = (pattern: TeamPattern) => {
+    const next = planWithPattern(plan, pattern, wording, { keepCriteria: criteriaEdited });
+    if (!criteriaEdited) setCriteria(next.criteria.join('\n'));
+    onChange(next);
+  };
   const ordered = TEAM_SLOTS[plan.pattern].map((slot) => plan.roles.find((r) => r.slot === slot));
   const setRole = (index: number, patch: { name?: string; duty?: string }) =>
     onChange({
@@ -224,14 +262,19 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
     });
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-body">
-        <span
-          className="rounded bg-surface px-2 py-0.5"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {t(`patterns.${plan.pattern}`)}
-        </span>
-      </p>
+      <div className="flex flex-col gap-1 text-body">
+        <span aria-hidden="true">{t('patternLabel')}</span>
+        <Select<TeamPattern>
+          label={t('patternLabel')}
+          value={plan.pattern}
+          onValueChange={changePattern}
+          options={TEAM_PATTERNS.map((pattern) => ({
+            value: pattern,
+            label: patternName(messages, pattern),
+          }))}
+          className="w-full"
+        />
+      </div>
       <label htmlFor={`${id}-name`} className="flex flex-col gap-1 text-body">
         {t('nameLabel')}
         <Input
@@ -290,6 +333,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           rows={3}
           onChange={(e) => {
             setCriteria(e.target.value);
+            setCriteriaEdited(true);
             onChange({
               ...plan,
               criteria: e.target.value
@@ -301,7 +345,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
         />
       </label>
       <div className="flex flex-wrap items-center gap-4 text-body">
-        {plan.pattern !== 'single' ? (
+        {hasReviewLoop(plan.pattern) ? (
           <div className="flex items-center gap-2">
             <span>{t('rounds')}</span>
             <Select

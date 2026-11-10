@@ -1,9 +1,11 @@
-import { type CorralDefinition, FILE_TOOLS } from '@corral/contracts';
+import { type CorralDefinition, FILE_TOOLS, type TeamPattern } from '@corral/contracts';
 import {
   type CorralRepository,
   type CorralSummary,
   compileDefinition,
   DEFAULT_PROJECT_ID,
+  isTemplatePattern,
+  PATTERN_TEMPLATES,
   type PlanStep,
   type RolePresetId,
   type RoleWording,
@@ -13,6 +15,7 @@ import {
   type TeamTemplateId,
   type TeamTemplateLabels,
   type TeamTemplateWording,
+  type TeamWording,
   teamTemplate,
 } from '@corral/core';
 import { emptyDraft } from '@corral/react';
@@ -116,6 +119,49 @@ export function templateText(messages: unknown): TemplateText {
 export function useTemplateText(): TemplateText {
   const messages = useMessages();
   return useMemo(() => templateText(messages), [messages]);
+}
+
+/**
+ * The words a draft from a goal uses: the draft's own three patterns, and the five template
+ * patterns worded as the library templates of the same name.
+ */
+export function draftWording(messages: unknown): TeamWording {
+  const { TeamDraft, TeamTemplates } = messages as {
+    TeamDraft: { wording: TeamWording };
+    TeamTemplates: { labels: TeamTemplateLabels };
+  };
+  const text = templateText(messages);
+  const templates = Object.fromEntries(
+    Object.entries(PATTERN_TEMPLATES).map(([pattern, id]) => {
+      const { roles, criteria } = text.wording(id);
+      return [pattern, { roles, criteria }];
+    }),
+  ) as NonNullable<TeamWording['templates']>;
+  return {
+    ...TeamDraft.wording,
+    labels: { ...TeamDraft.wording.labels, join: TeamTemplates.labels.join },
+    templates,
+  };
+}
+
+/**
+ * A pattern's name, the same as its template card's on the Library page: the single agent card
+ * for single, the template's card for the five; the two without a card have the draft's names.
+ */
+export function patternName(messages: unknown, pattern: TeamPattern): string {
+  const { TeamDraft, Workspace } = messages as {
+    TeamDraft: { patterns: Record<string, string> };
+    Workspace: { template: Record<string, { name: string } | undefined> };
+  };
+  const card =
+    pattern === 'single'
+      ? 'starter'
+      : isTemplatePattern(pattern)
+        ? PATTERN_TEMPLATES[pattern]
+        : null;
+  return card
+    ? (Workspace.template[card]?.name ?? pattern)
+    : (TeamDraft.patterns[pattern] ?? pattern);
 }
 
 /** The definition a template saves, under `corralId`. */

@@ -10,7 +10,7 @@ import {
   type OutputContract,
   type WorkTool,
 } from '@corral/contracts';
-import { rolePrompt } from './team-draft.ts';
+import { rolePrompt } from './role-prompt.ts';
 
 // The library's team templates (docs/specs/features/library.md). A template's roles come from
 // role presets: a preset fixes a role's tools, output contract and model slot; its name and duty

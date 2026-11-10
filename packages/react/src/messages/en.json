@@ -1411,10 +1411,12 @@
     "ask": "Ask the model",
     "asking": "Asking the model…",
     "askHint": "Uses one model request with your sign-in.",
+    "retry": "Try again",
+    "unusable": "The model did not give a usable team.",
+    "patternLabel": "Team shape",
     "patterns": {
-      "single": "One agent",
-      "write_review": "Plan, then write and review",
-      "research_write_review": "Research, then write and review"
+      "write_review": "Write and review",
+      "research_write_review": "Research, write and review"
     },
     "nameLabel": "Team name",
     "briefLabel": "Brief",
