@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
 import { expect, test } from './harness.ts';
 
@@ -87,16 +88,55 @@ test.describe('extension input during an SDK run', () => {
         },
         { source, definition },
       );
-      corral.fake?.answerWith('The confirmed result.');
-      await page.goto(
-        `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
-      );
-      const detail = page.getByTestId('run-monitor');
-      await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
-      await detail.getByRole('button', { name: 'Confirm', exact: true }).click();
-      await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
-      await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
-      await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
+      // The model's reply waits until the notice has been seen: a notice the extension leaves
+      // after its answer stays while the run is live (execution-monitor.md: "확장이 물은 것에 답한
+      // 뒤 확장이 남긴 알림은 실행이 살아 있거나 그 글이 보관된 동안 응답 영역에 남는다").
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      corral.fake?.setResponses([
+        async () => {
+          await held;
+          return fauxAssistantMessage(
+            [fauxToolCall('write_artifact', { text: 'The confirmed result.' })],
+            { stopReason: 'toolUse' },
+          );
+        },
+        (context) => {
+          const written = context.messages.findLast(
+            (message) => message.role === 'toolResult' && message.toolName === 'write_artifact',
+          );
+          const content =
+            written?.role === 'toolResult'
+              ? written.content.find((part) => part.type === 'text')
+              : undefined;
+          const { artifactVersionId } = JSON.parse(content?.text ?? '{}') as {
+            artifactVersionId?: string;
+          };
+          if (!artifactVersionId) throw new Error('write_artifact did not answer with a version');
+          return fauxAssistantMessage(
+            [fauxToolCall('submit_result', { artifactVersionIds: [artifactVersionId] })],
+            { stopReason: 'toolUse' },
+          );
+        },
+        fauxAssistantMessage('Done.'),
+      ]);
+      try {
+        await page.goto(
+          `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
+        );
+        const detail = page.getByTestId('run-monitor');
+        await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
+        await detail.getByRole('button', { name: 'Confirm', exact: true }).click();
+        await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
+        await expect(page.getByTestId('run-status').first()).toContainText('Running');
+        release();
+        await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+        await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
+      } finally {
+        release();
+      }
       expect(corral.errors).toEqual([]);
     } finally {
       rmSync(source, { recursive: true, force: true });
