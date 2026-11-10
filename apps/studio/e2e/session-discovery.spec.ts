@@ -95,8 +95,10 @@ test('sidebar session links remain keyboard reachable and row menu returns focus
   await expect(page.getByRole('menuitem', { name: 'Rename session', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(menu).toBeFocused();
+  // The row already says what it does, so its tooltip holds only its shortcut (workbench.md:
+  // "한 화면에서 같은 이름·상태·개수는 사이드바 탐색 밖에서 한 번만 보인다").
   await sidebar.getByRole('link', { name: 'New conversation', exact: true }).hover();
-  await expect(page.getByRole('tooltip', { name: /^New conversation/ })).toBeVisible();
+  await expect(page.getByRole('tooltip', { name: /^Ctrl\+Alt\+N$/ })).toBeVisible();
   await page.mouse.move(700, 700);
   await sessionLink.focus();
   await sessionLink.press('ArrowDown');

@@ -102,26 +102,28 @@ test('primary icon controls expose tooltips on hover and keyboard focus', async 
   const sidebar = page.getByTestId('app-sidebar');
   // Session search is the sidebar's labelled search field now, not an icon control.
   const controls = [
-    [sidebar.getByRole('link', { name: 'New conversation', exact: true }), 'New conversation'],
-    [sidebar.getByRole('button', { name: 'Hide the sidebar' }), 'Hide the sidebar'],
+    // The New conversation row already says what it does, so its tooltip holds only its shortcut
+    // (workbench.md: "한 화면에서 같은 이름·상태·개수는 사이드바 탐색 밖에서 한 번만 보인다").
+    [sidebar.getByRole('link', { name: 'New conversation', exact: true }), /^Ctrl\+Alt\+N$/],
+    [sidebar.getByRole('button', { name: 'Hide the sidebar' }), /Hide the sidebar/],
     [
       page.getByRole('banner').getByRole('button', { name: /Actions for/ }),
-      'Actions for New session',
+      /Actions for New session/,
     ],
-    [page.getByRole('button', { name: 'Open file viewer', exact: true }), 'Open file viewer'],
-    [page.getByRole('banner').getByRole('button', { name: 'Search', exact: true }), 'Search'],
-    [page.getByRole('button', { name: 'Attachments', exact: true }), 'Attachments'],
+    [page.getByRole('button', { name: 'Open file viewer', exact: true }), /Open file viewer/],
+    [page.getByRole('banner').getByRole('button', { name: 'Search', exact: true }), /Search/],
+    [page.getByRole('button', { name: 'Attachments', exact: true }), /Attachments/],
   ] as const;
   for (const [control, name] of controls) {
     await control.hover();
-    await expect(page.getByRole('tooltip', { name: new RegExp(name) })).toBeVisible();
+    await expect(page.getByRole('tooltip', { name })).toBeVisible();
     await page.mouse.move(700, 700);
     await page.keyboard.press('Tab');
     await control.focus();
-    await expect(page.getByRole('tooltip', { name: new RegExp(name) })).toBeVisible();
+    await expect(page.getByRole('tooltip', { name })).toBeVisible();
     await expect(control).toHaveAttribute('aria-describedby', /.+/);
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('tooltip', { name: new RegExp(name) })).toBeHidden();
+    await expect(page.getByRole('tooltip', { name })).toBeHidden();
   }
   await page.screenshot({ path: test.info().outputPath('session-controls.png') });
   expect(corral.errors).toEqual([]);
