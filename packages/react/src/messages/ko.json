@@ -1503,7 +1503,7 @@
     "invalidRelation": "요약 여유 토큰은 컨텍스트보다 작고, 최근 기록 토큰은 컨텍스트에서 요약 여유를 뺀 값보다 작아야 합니다.",
     "previewPending": "유효값 계산 중…",
     "previewUnavailable": "유효값을 계산하지 못했습니다. 프로필과 연결 설정을 확인하세요.",
-    "endpointAddressHint": "HTTPS를 쓰고, HTTP는 이 컴퓨터(localhost, 127.0.0.1)에서만 쓰세요."
+    "endpointAddressHint": "HTTPS를 쓰고, HTTP는 이 컴퓨터(127.0.0.1)에서만 쓰세요."
   },
   "Compare": {
     "heading": "실행 비교",
