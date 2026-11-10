@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { modelSettingsTab } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, reasoningApi: true });
@@ -14,6 +15,7 @@ test('Settings imports selected models and keeps reasoning capability', async ({
     'model = "gpt-test-a"\nmodel_provider = "openai"\nmodel_reasoning_effort = "high"',
   );
   await corral.open('/settings/models');
+  await modelSettingsTab(page, 'Profiles');
   const panel = page.getByRole('region', { name: 'Import model settings' });
   await panel.getByRole('combobox', { name: 'Source', exact: true }).click();
   await page.getByRole('option', { name: 'Codex', exact: true }).click();
@@ -27,6 +29,7 @@ test('Settings imports selected models and keeps reasoning capability', async ({
   const imported = page.locator('[data-testid^="profile-import-"]');
   await expect(imported).toContainText('gpt-test-a');
   await page.reload();
+  await modelSettingsTab(page, 'Profiles');
   await expect(page.locator('[data-testid^="profile-import-"]')).toContainText('gpt-test-a');
   await panel.getByRole('button', { name: 'View model metadata' }).click();
   await expect(panel.getByText('No cached catalog. Refresh to download metadata.')).toBeVisible();
@@ -50,6 +53,7 @@ test('unsupported configuration stays unselectable without leaking keys', async 
     }),
   );
   await corral.open('/settings/models');
+  await modelSettingsTab(page, 'Profiles');
   const panel = page.getByRole('region', { name: 'Import model settings' });
   await panel.getByLabel('Configuration file (optional)').fill(path);
   await panel.getByRole('button', { name: 'Preview settings' }).click();

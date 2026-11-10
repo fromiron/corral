@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { editModels, modelSettingsTab } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Settings layout regressions from the workbench audit (#75 onwards) that need the server.
@@ -13,7 +14,7 @@ test.describe('model profiles', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    await page.getByRole('button', { name: 'Edit models' }).click();
+    await editModels(page);
     const editor = page.getByRole('region', { name: 'Edit models' });
     await expect(editor.getByText('Profile name', { exact: true }).first()).toBeVisible();
     await expect(editor.getByText('Provider', { exact: true }).first()).toBeVisible();
@@ -125,8 +126,13 @@ test('#80 a project settings page shows its target project as a visible scope', 
   page,
   corral,
 }) => {
-  await corral.open('/settings/mcp');
-  await expect(page.getByText('Settings apply to project', { exact: true })).toBeVisible();
+  // From a work URL the target is the current project (a bare /settings URL opens over the
+  // project list, where the project is chosen explicitly). The one project choice heads the
+  // navigation's project group (workbench.md 문맥형 설정).
+  await corral.open('/projects/default?settings=mcp');
+  await expect(page.getByRole('combobox', { name: 'Settings for', exact: true })).toContainText(
+    'My project',
+  );
   expect(corral.errors).toEqual([]);
 });
 
@@ -179,17 +185,18 @@ test.describe('long settings pages', () => {
   test.use({ live: true });
   test('#82 Models and Hooks list what they manage at the top', async ({ page, corral }) => {
     await corral.open('/settings/models');
-    const index = page.getByRole('navigation', { name: 'On this page', exact: true });
-    await expect(index.getByRole('button')).toHaveText([
-      'Model profiles',
-      'Sign-in',
-      'Import model settings',
-      'Image generation',
-      'Automatic effort choice · server-wide',
-      'Model request history',
-    ]);
-    await index.getByRole('button', { name: 'Image generation', exact: true }).click();
-    await expect(page.locator('#models-images')).toBeFocused();
+    // Models lists what it manages as its tabs (each keeps a hidden copy of its label for width).
+    const tabs = page
+      .getByRole('tablist', { name: 'Model settings', exact: true })
+      .getByRole('tab');
+    const names = ['Sign-in', 'Profiles', 'Local AI & judgment', 'Images', 'Usage'];
+    await expect(tabs).toHaveCount(names.length);
+    for (const [index, name] of names.entries())
+      await expect(tabs.nth(index)).toHaveAccessibleName(name);
+    const images = await modelSettingsTab(page, 'Images');
+    await expect(
+      images.getByRole('region', { name: 'Image generation', exact: true }),
+    ).toBeVisible();
     await page.getByRole('link', { name: 'Hooks & extensions', exact: true }).click();
     await expect(
       page

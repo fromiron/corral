@@ -1,4 +1,17 @@
 import { expect, type Page } from '@playwright/test';
+import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
+
+/** The labels the search helpers use, from a locale's message catalog (English by default). */
+type SearchLabels = {
+  Shell: { searchSessions: string };
+  CommandPalette: {
+    label: string;
+    sessionSearch: string;
+    searchText: string;
+    searchTextEmpty: string;
+  };
+  SessionSearch: { title: string };
+};
 
 // Shared user-facing steps: start a chat directly, or explicitly choose a saved Corral.
 // The team for the next turn is chosen from the composer's team chip. Teams and templates live
@@ -92,19 +105,33 @@ export async function newConversation(page: Page) {
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }
 
+/** From any screen: the sidebar's New conversation starts one in the project opened last. */
+export async function newConversationFromSidebar(page: Page) {
+  await page
+    .getByTestId('app-sidebar')
+    .getByRole('link', { name: 'New conversation', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+}
+
 /**
- * Opens a project's workspace from the top bar's path: the named project, else the open one.
- * (The project item of the path is the menu that changes projects; its current entry goes home.)
+ * Opens a project's workspace: the named project, else the open one, from the top bar's path
+ * (its project item is the menu that changes projects; its current entry goes home). A screen
+ * outside any project names itself there instead, so the named project opens from the sidebar.
  */
 export async function openProject(page: Page, name?: string) {
-  await page
+  const switcher = page
     .getByRole('navigation', { name: 'Current location', exact: true })
-    .getByRole('button', { name: 'Go to project', exact: true })
-    .click();
-  await (name
-    ? page.getByRole('menuitemradio', { name, exact: true })
-    : page.getByRole('menuitemradio', { checked: true })
-  ).click();
+    .getByRole('button', { name: 'Go to project', exact: true });
+  if (name && !(await switcher.isVisible()))
+    await page.getByTestId('app-sidebar').getByRole('link', { name, exact: true }).first().click();
+  else {
+    await switcher.click();
+    await (name
+      ? page.getByRole('menuitemradio', { name, exact: true })
+      : page.getByRole('menuitemradio', { checked: true })
+    ).click();
+  }
   await expect(page).toHaveURL(/\/projects\/[^/?#]+(?:[?#].*)?$/);
 }
 
@@ -122,7 +149,8 @@ export async function openAllProjects(page: Page) {
 export async function projectTab(page: Page, name: string) {
   const tab = page
     .getByRole('tablist', { name: 'Project views', exact: true })
-    .getByRole('tab', { name: new RegExp(`^${name.replace(/[&]/g, '\\$&')}\\b`) });
+    // A tab's name may carry its count (Sessions 3).
+    .getByRole('tab', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`) });
   await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
@@ -154,13 +182,16 @@ export async function openSettings(page: Page, section?: string) {
  * Opens the command palette from the sidebar's search field, which starts it on finding sessions,
  * and returns the palette and its field.
  */
-export async function openSessionSearch(page: Page) {
+export async function openSessionSearch(page: Page, m: SearchLabels = en) {
   await page
     .getByTestId('app-sidebar')
-    .getByRole('textbox', { name: 'Search sessions', exact: true })
+    .getByRole('textbox', { name: m.Shell.searchSessions, exact: true })
     .click();
-  const palette = page.getByRole('dialog', { name: 'Command palette', exact: true });
-  const input = palette.getByRole('combobox', { name: 'Search sessions', exact: true });
+  const palette = page.getByRole('dialog', { name: m.CommandPalette.label, exact: true });
+  const input = palette.getByRole('combobox', {
+    name: m.CommandPalette.sessionSearch,
+    exact: true,
+  });
   await expect(input).toBeFocused();
   return { palette, input };
 }
@@ -169,15 +200,17 @@ export async function openSessionSearch(page: Page) {
  * Opens the search of message and result text (server mode): the palette's last entry for what
  * was typed in it. Returns the search dialog.
  */
-export async function openTextSearch(page: Page, query = '') {
-  const { palette, input } = await openSessionSearch(page);
+export async function openTextSearch(page: Page, query = '', m: SearchLabels = en) {
+  const { palette, input } = await openSessionSearch(page, m);
   if (query) await input.fill(query);
   await palette
     .getByRole('option', {
-      name: query ? `Search messages and results for “${query}”` : 'Search messages and results',
+      name: query
+        ? m.CommandPalette.searchText.replace('{query}', query)
+        : m.CommandPalette.searchTextEmpty,
     })
     .click();
-  const dialog = page.getByRole('dialog', { name: 'Search sessions and results', exact: true });
+  const dialog = page.getByRole('dialog', { name: m.SessionSearch.title, exact: true });
   await expect(dialog).toBeVisible();
   return dialog;
 }
@@ -196,6 +229,15 @@ export async function modelSettingsTab(page: Page, name: string) {
   await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
   return page.getByRole('tabpanel', { name, exact: true });
+}
+
+/** In Settings › Models: opens the model profiles editor from the Profiles tab. */
+export async function editModels(page: Page) {
+  await modelSettingsTab(page, 'Profiles');
+  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Edit models' });
+  await expect(editor).toBeVisible();
+  return editor;
 }
 
 /** Closes the settings dialog and waits for it to leave. */
@@ -252,6 +294,16 @@ export async function slash(page: Page, command: string) {
 
 /** Opens an existing session view, or its contextual file pane through the command palette. */
 export async function panelTab(page: Page, name: string) {
+  // Git, Checkpoints and Checks are sub-views of Changes, which opens on Review.
+  if (['Review', 'Git', 'Checkpoints', 'Checks'].includes(name)) {
+    await panelTab(page, 'Changes');
+    const sub = page
+      .getByRole('tablist', { name: 'Changes views', exact: true })
+      .getByRole('tab', { name, exact: true });
+    await sub.click();
+    await expect(sub).toHaveAttribute('aria-selected', 'true');
+    return;
+  }
   const views = page.getByRole('tablist', { name: 'Session views', exact: true });
   // A top bar too narrow for the tabs folds them into one menu of the same name.
   const folded = page.getByRole('combobox', { name: 'Session views', exact: true });

@@ -4,7 +4,13 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { panelTab, requestBox } from '../workbench.ts';
+import {
+  closeSettings,
+  newConversation,
+  openFolderSettings,
+  panelTab,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('session file preview isolates cookies, reads refreshed assets and closes its lease', async ({
@@ -57,16 +63,15 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
   });
   try {
     await corral.open('/');
-    await page.getByRole('tab', { name: /^Project folder/ }).click();
-    const folder = page.getByRole('tabpanel', { name: 'Project folder' });
+    const folder = await openFolderSettings(page);
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     const trust = folder.getByRole('switch', { name: /Trust this repository/ });
     await expect(trust).toBeVisible();
     await trust.click();
     await expect(trust).toBeChecked();
-    await page.getByRole('tab', { name: /^Sessions/ }).click();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await closeSettings(page);
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionId = new URL(page.url()).pathname.split('/')[2];
     if (!sessionId) throw new Error('session did not open');
@@ -208,15 +213,14 @@ test.describe('run-owned previews', () => {
     });
     try {
       await corral.open('/');
-      await page.getByRole('tab', { name: /^Project folder/ }).click();
-      const folder = page.getByRole('tabpanel', { name: 'Project folder' });
+      const folder = await openFolderSettings(page);
       await folder.getByLabel('Folder path on this computer').fill(original);
       await folder.getByRole('button', { name: 'Link folder' }).click();
       const trust = folder.getByRole('switch', { name: /Trust this repository/ });
       await trust.click();
       await expect(trust).toBeChecked();
-      await page.getByRole('tab', { name: /^Sessions/ }).click();
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await closeSettings(page);
+      await newConversation(page);
       await expect(page).toHaveURL(/\/sessions\/session_/);
       const sessionId = new URL(page.url()).pathname.split('/')[2];
       if (!sessionId) throw new Error('Session did not open');

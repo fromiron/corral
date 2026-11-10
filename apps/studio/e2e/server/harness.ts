@@ -113,7 +113,8 @@ async function serve(
   });
 }
 
-function watchErrors(page: Page): string[] {
+/** Collects the page's errors, leaving out the one 404 the client reads as "no stored turn". */
+export function watchErrors(page: Page): string[] {
   const errors: string[] = [];
   const absentConversationTurns = new Set<string>();
   page.on('response', (response) => {

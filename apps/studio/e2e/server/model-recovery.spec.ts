@@ -1,4 +1,4 @@
-import { requestBox } from '../workbench.ts';
+import { modelSettingsTab, newConversation, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, compatibleEndpoint: true });
@@ -8,7 +8,7 @@ test('a request to a stopped endpoint explains the connection failure in the con
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(requestBox(page)).toBeVisible();
   await corral.endpoint?.close();
   await requestBox(page).fill('Check the local connection.');
@@ -33,9 +33,12 @@ test('model settings keep configuration distinct from endpoint reachability and 
   corral,
 }) => {
   await corral.open('/settings/models');
+  // Profiles and sign-ins are two tabs of the models settings.
+  await modelSettingsTab(page, 'Profiles');
   await expect(
     page.getByTestId('profile-model-a').getByText('Configured', { exact: true }),
   ).toBeVisible();
+  await modelSettingsTab(page, 'Sign-in');
   const provider = page.getByTestId('provider-local');
   await provider.getByRole('button', { name: 'Test connection', exact: true }).click();
   // The fixture serves inference only; a metadata 404 must not trigger inference fallback.
