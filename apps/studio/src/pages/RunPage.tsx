@@ -866,7 +866,7 @@ function RunWorkspace({
                     </Accordion>
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3" data-run-usage>
-                    <UsageInspector session={session} prices={prices} />
+                    <UsageInspector session={session} prices={prices} headed={false} />
                     {projection ? <RoutingTally projection={projection} /> : null}
                   </TabPanel>
                 </Tabs>

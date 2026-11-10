@@ -29,9 +29,12 @@ import { usageByAgent } from '../run/usage-by-agent.ts';
 export function UsageInspector({
   session,
   prices,
+  headed = true,
 }: {
   session: RunSessionStore;
   prices?: ModelPrices | undefined;
+  /** Show the heading. Inside a tab whose label already says Usage, the region keeps the name. */
+  headed?: boolean;
 }) {
   const t = useTranslations('Usage');
   const format = useFormatter();
@@ -85,12 +88,17 @@ export function UsageInspector({
     (id) => projection.executions[id]?.parentExecutionId,
   ).length;
   return (
-    <KitCard role="region" aria-labelledby={headingId}>
-      <KitCardHeader>
-        <h3 id={headingId}>
-          <KitCardTitle>{t('heading')}</KitCardTitle>
-        </h3>
-      </KitCardHeader>
+    <KitCard
+      role="region"
+      {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
+    >
+      {headed ? (
+        <KitCardHeader>
+          <h3 id={headingId}>
+            <KitCardTitle>{t('heading')}</KitCardTitle>
+          </h3>
+        </KitCardHeader>
+      ) : null}
       <KitCardContent className="flex flex-col gap-3">
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
           <dt>{t('outputTokens')}</dt>
