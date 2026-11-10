@@ -3352,6 +3352,7 @@
       "resources_changed": "The pinned work style resources changed.",
       "files_changed_or_uncertain": "Files changed or a file operation is unconfirmed.",
       "checkpoint_corrupt": "Checkpoint integrity could not be verified.",
+      "content_released": "The Run's kept text was released when it ended, so it cannot continue from this checkpoint. Send a new request instead.",
       "already_resumed": "This Run already has a continuation."
     }
   },

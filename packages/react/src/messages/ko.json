@@ -3352,6 +3352,7 @@
       "resources_changed": "고정된 작업 방식 리소스가 변경되었습니다.",
       "files_changed_or_uncertain": "파일이 변경되었거나 파일 작업 결과가 확정되지 않았습니다.",
       "checkpoint_corrupt": "체크포인트 무결성을 확인하지 못했습니다.",
+      "content_released": "실행이 끝나며 보관하던 본문을 해제해 이 체크포인트에서 이어갈 수 없습니다. 대신 새 요청을 보내세요.",
       "already_resumed": "이 실행은 이미 다른 실행에서 이어가고 있습니다."
     }
   },
