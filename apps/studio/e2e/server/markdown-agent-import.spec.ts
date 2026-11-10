@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { openTestRun, teamCanvas } from '../workbench.ts';
+import { openLibraryTeams, openTestRun, teamCanvas } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, compatibleEndpoint: true });
@@ -15,7 +15,7 @@ test('reviewed Markdown agent import survives save/reload and is one undoable ed
 }, testInfo) => {
   test.setTimeout(60000);
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Can change files/ }).check();
@@ -51,7 +51,7 @@ Read the supplied code and report the evidence.`);
   );
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await page.reload();
   await expect(teamCanvas(page).locator('[data-node]').filter({ hasText: 'explorer' })).toHaveCount(
     1,
@@ -187,7 +187,7 @@ test('Markdown Edit imports a reviewed Hashline role with parent file permission
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Can change files/ }).check();
@@ -207,7 +207,7 @@ Read the current file before applying a bounded edit.`);
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await page.reload();
   const path = new URL(page.url()).pathname
     .replace('/edit', '')
@@ -254,7 +254,7 @@ test('Bash import inherits a verified local parent work style without trusting s
     });
     if (!response.ok) throw new Error(`Local work style setup failed: ${response.status}`);
   });
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.getByRole('button', { name: 'New team', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Run shell commands/ }).check();
@@ -277,7 +277,7 @@ Use only the command requested by the parent.`);
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await page.reload();
   const path = new URL(page.url()).pathname
     .replace('/edit', '')

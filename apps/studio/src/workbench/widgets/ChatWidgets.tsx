@@ -38,7 +38,7 @@ import { useLocale, useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
 import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
-import { actionCopy, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
+import { actionCopy, actionTone, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -63,12 +63,15 @@ const CATEGORY_FILL: Record<string, string> = {
 };
 export const chipClass = `inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground transition-colors hover:bg-subtle hover:text-foreground ${focusRing}`;
 const number = (value: number) => value.toLocaleString();
-/** "Last run" only for the newest finished run; an older one names its position (#72). */
+/**
+ * "Last run" for the newest finished run, whose turn already links it by number; an older one
+ * names its position (#72).
+ */
 function viewedLabel(
   viewed: NonNullable<ChatWidgetModel['viewed']>,
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
-  if (viewed.latest && viewed.number) return t('lastRunNumber', { number: viewed.number });
+  if (viewed.latest && viewed.number) return t('lastRun');
   return viewed.number
     ? t('selectedRun', { number: viewed.number, total: viewed.total })
     : t('selectedRunUnordered');
@@ -121,6 +124,14 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
     </Popover>
   );
 }
+/** A detail's heading. Details open in Overview's own place, so none is a popover's title. */
+function DetailTitle({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+      {children}
+    </h2>
+  );
+}
 /** ContextInspector: what the presented run's last request held. */
 export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
@@ -132,7 +143,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
     <div data-testid="context-inspector" className="flex flex-col gap-4 text-ui">
       <div>
         <div className="flex items-center justify-between gap-3">
-          <PopoverTitle>{t('context')}</PopoverTitle>
+          <DetailTitle>{t('context')}</DetailTitle>
           <span className="rounded-md bg-subtle px-2 py-0.5 text-micro text-muted-foreground">
             {complete
               ? t('measurementFull')
@@ -207,9 +218,17 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
                 {tc(category)}
               </span>
               <span className="max-w-44 text-right tabular-nums text-muted-foreground">
-                {part
-                  ? `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
-                  : t(complete ? 'notInRequest' : 'notMeasured')}
+                {part ? (
+                  `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
+                ) : complete ? (
+                  t('notInRequest')
+                ) : (
+                  // The badge says the measurement is partial; each unmeasured row is a dash.
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">{t('notMeasured')}</span>
+                  </>
+                )}
               </span>
             </li>
           );
@@ -223,22 +242,25 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </li>
         ) : null}
       </ul>
-      {model.simulated || !complete || context.awaitingRefresh || context.kind === 'highest' ? (
+      {model.simulated ||
+      context.awaitingRefresh ||
+      (!complete && context.measurementStage !== 'assembled') ||
+      context.unmeasuredExecutions ||
+      context.omissions?.length ||
+      model.readState === 'error' ? (
         <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-caption text-muted-foreground">
           {model.simulated ? <p>{t('simulatedNote')}</p> : null}
           {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
-          {!complete ? (
+          {/* An assembled request needs no sentence: the badge already says it is partial. */}
+          {!complete && context.measurementStage !== 'assembled' ? (
             <p>
-              {context.measurementStage === 'assembled'
-                ? t('measurementAssembled')
-                : context.completeness === 'error'
-                  ? t('measurementFailed')
-                  : measured
-                    ? t('noPercent')
-                    : t('measurementWaiting')}
+              {context.completeness === 'error'
+                ? t('measurementFailed')
+                : measured
+                  ? t('noPercent')
+                  : t('measurementWaiting')}
             </p>
           ) : null}
-          {context.kind === 'highest' ? <p>{t('highestContext')}</p> : null}
           {context.unmeasuredExecutions ? (
             <p>{t('unmeasuredExecutions', { count: context.unmeasuredExecutions })}</p>
           ) : null}
@@ -265,7 +287,6 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       context.providerOutput != null ? (
         <details className="text-caption text-muted-foreground">
           <summary className="cursor-pointer rounded-sm py-1">{t('providerUsage')}</summary>
-          <p className="mt-1">{t('providerSeparate')}</p>
           <p className="mt-1 tabular-nums">
             {t('providerNumbers', {
               input: context.providerInput == null ? '—' : number(context.providerInput),
@@ -355,7 +376,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   if (!model.agents) return null;
   return (
     <>
-      <PopoverTitle>{t('agentsHeading')}</PopoverTitle>
+      <DetailTitle>{t('agentsHeading')}</DetailTitle>
       <p className="mt-2 text-caption text-muted-foreground">
         {[
           t('agents', model.agents),
@@ -682,7 +703,7 @@ export function ComposerDock({
         // The live region below announces it; the banner itself stays a note.
         <Banner
           data-testid="action-required"
-          status="warning"
+          status={actionTone(run.action)}
           contrast="high"
           size="compact"
           role="note"

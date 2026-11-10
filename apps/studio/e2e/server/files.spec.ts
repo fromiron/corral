@@ -2,7 +2,15 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { panelTab, requestBox } from '../workbench.ts';
+import {
+  closeSettings,
+  openConversationDetails,
+  openFolderSettings,
+  openLibraryTeams,
+  openProject,
+  panelTab,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Work folder → working copy → a run that writes through the broker → review and a check
@@ -84,8 +92,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
   const scratch = mkdtempSync(join(tmpdir(), 'corral-e2e-def-'));
   try {
     await corral.open('/');
-    await page.getByRole('tab', { name: /^Project folder/ }).click();
-    const folder = page.getByRole('tabpanel', { name: 'Project folder', exact: true });
+    const folder = await openFolderSettings(page);
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     await expect(folder).toContainText('no uncommitted changes');
@@ -96,18 +103,19 @@ test('a session works in its own copy, and its changes are reviewed and checked'
       .getByRole('textbox', { name: /Checks/ })
       .fill("Notes exist = node -e \"require('fs').statSync('notes/team_writer_role.md')\"");
     await folder.getByRole('button', { name: 'Save checks' }).click();
+    await closeSettings(page);
 
-    await page.getByRole('tab', { name: /^Teams/ }).click();
+    await openLibraryTeams(page);
     await page.locator('input[type=file]').setInputFiles([writerWithFiles(scratch)]);
     await expect(page).toHaveURL(/\/edit$/);
-    await page.getByRole('link', { name: 'Project home', exact: true }).click();
-    await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-    await page.getByLabel('Purpose').fill('Keep notes in the repository');
+    await openProject(page);
+    const details = await openConversationDetails(page);
+    await details.getByLabel('Purpose').fill('Keep notes in the repository');
     // this journey runs the imported team; the session's lead calls its writer, whose
     // node is team_writer_role.
-    await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
+    await details.getByRole('combobox', { name: 'Corral', exact: true }).click();
     await page.getByRole('option', { name: 'Writer with files', exact: true }).click();
-    await page.getByRole('button', { name: 'Start chat' }).click();
+    await details.getByRole('button', { name: 'Start chat' }).click();
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionPath = new URL(page.url()).pathname;
 
@@ -129,19 +137,26 @@ test('a session works in its own copy, and its changes are reviewed and checked'
 
     await requestBox(page).fill('Write the notes');
     await page.getByRole('button', { name: 'Send' }).click();
-    const card = page.locator('[data-testid^="entry-"]').first();
-    await expect(card.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
+    // The turn's run card begins with its state.
+    const card = page
+      .getByTestId('chat-timeline')
+      .getByRole('region', { name: 'Run #1', exact: true });
+    await expect(card).toContainText(/^Succeeded/, { timeout: 20_000 });
     await expect(card.getByTestId('run-change-summary')).toContainText(/1 changed file · \+\d+ −0/);
     await expect(card.getByRole('link', { name: /1 changed file/ })).toHaveAttribute(
       'href',
       /scope=run/,
     );
 
+    // With changes to read, the Changes view opens on its review (workbench.md: "변경 화면은
+    // 검토 보기로 열린다").
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-    await copy.getByRole('link', { name: 'Review changes' }).click();
-    await expect(page).toHaveURL(
-      new URL(`${sessionPath}?panel=changes&review=true`, corral.server.url).href,
-    );
+    await expect(
+      page
+        .getByRole('tablist', { name: 'Changes views', exact: true })
+        .getByRole('tab', { name: 'Review', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveURL(new URL(`${sessionPath}?panel=changes`, corral.server.url).href);
     const file = page.getByRole('button', { name: /notes\/team_writer_role\.md/ });
     await expect(file).toContainText('Added');
     await expect(file).toContainText('Corral');
@@ -150,14 +165,15 @@ test('a session works in its own copy, and its changes are reviewed and checked'
       page.getByTestId('file-diff').locator('[data-line-type="change-addition"]').first(),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Run Notes exist' }).click();
+    // A completed run shows its verdict alone.
     await expect(
-      page.getByTestId('check-result').first().getByText('Completed', { exact: true }),
+      page.getByTestId('check-result').first().getByText('Pass', { exact: true }),
     ).toBeVisible({
       timeout: 20_000,
     });
     await expect(
-      page.getByTestId('check-result').first().getByText('Pass', { exact: true }),
-    ).toBeVisible();
+      page.getByTestId('check-result').first().getByText('Completed', { exact: true }),
+    ).toHaveCount(0);
 
     // The linked folder itself was never written by the run.
     expect(existsSync(join(original, 'notes'))).toBe(false);
@@ -218,7 +234,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(page.getByTestId('integration').first()).toContainText('Reverted');
     expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(false);
     const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
-    await parts.getByRole('button', { name: 'Choose parts of this file' }).click();
+    await parts.getByRole('button', { name: 'Apply or revert a part' }).click();
     await parts
       .getByRole('checkbox', { name: /^Lines? \d/ })
       .first()

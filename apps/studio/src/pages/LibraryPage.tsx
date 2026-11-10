@@ -86,6 +86,13 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
     ...(search.returnTo ? { returnTo: search.returnTo } : {}),
   };
   const returnTo = search.returnTo;
+  // The Teams tab carries the project's team count; the list under it has no label of its own.
+  const teamCount =
+    data.state === 'ready'
+      ? data.corrals.filter((corral) => corral.projectId === projectId).length
+      : 0;
+  const viewLabel = (value: LibraryView) =>
+    value === 'teams' && teamCount ? `${t('view.teams')} ${teamCount}` : t(`view.${value}`);
 
   const content =
     data.state === 'failed' ? (
@@ -137,7 +144,7 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
           <div className="flex flex-wrap items-center justify-between gap-3">
             <TabsList aria-label={t('views')}>
               {LIBRARY_VIEWS.map((value) => (
-                <TabItem key={value} value={value} label={t(`view.${value}`)} />
+                <TabItem key={value} value={value} label={viewLabel(value)} />
               ))}
             </TabsList>
             <div className="flex flex-wrap items-center gap-2">

@@ -148,13 +148,23 @@ async function mount(
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(
       (node) => node.textContent === name || node.getAttribute('aria-label') === name,
     );
+  const more = () =>
+    container.querySelector<HTMLElement>('[aria-label="More actions for src/notes/today.md"]');
   const openMenu = async () => {
-    await act(async () =>
-      container
-        .querySelector<HTMLElement>('[aria-label="More actions for src/notes/today.md"]')
-        ?.click(),
-    );
+    await act(async () => more()?.click());
+    // The rows read are an open menu's, never those of a menu on its way out.
+    expect(more()?.getAttribute('aria-expanded')).toBe('true');
     return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  };
+  // A press outside closes the menu, as a person's does: Base UI dismisses a menu on the
+  // pointer going down outside it and ignores a bare click event.
+  const closeMenu = async () => {
+    await act(async () =>
+      document.body.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' }),
+      ),
+    );
+    expect(more()?.getAttribute('aria-expanded')).toBe('false');
   };
   const choose = async (name: string) => {
     const row = (await openMenu()).find((node) => node.getAttribute('aria-label') === name);
@@ -186,7 +196,7 @@ async function mount(
     await act(async () => action?.click());
     return action;
   };
-  return { container, owner, button, openMenu, choose, popover, fill, submit };
+  return { container, owner, button, openMenu, closeMenu, choose, popover, fill, submit };
 }
 
 it('the head is one row and leaves no helper sentences on the document', async () => {
@@ -275,7 +285,7 @@ it('every moved action is a named row of the more menu and calls its handler', a
     messages.Documents.attachSelection,
     `${messages.Documents.tabFocus}, Ctrl+M`,
   ]);
-  await act(async () => document.body.click());
+  await view.closeMenu();
   await view.choose(messages.Documents.refresh);
   expect(view.owner.refresh).toHaveBeenCalledWith('document');
   await view.choose(`${messages.Documents.tabFocus}, Ctrl+M`);
@@ -285,7 +295,7 @@ it('every moved action is a named row of the more menu and calls its handler', a
     (row) => row.getAttribute('aria-label') === messages.Documents.attachSelection,
   );
   expect(attach?.getAttribute('aria-disabled')).toBe('true');
-  await act(async () => document.body.click());
+  await view.closeMenu();
   await act(async () => view.button('Select code')?.click());
   vi.stubGlobal('crypto', { subtle: { digest: async () => new Uint8Array(32).buffer } });
   await view.choose(messages.Documents.attachSelection);

@@ -2,7 +2,7 @@ import type { MeetingHandoffReceipt, MeetingView } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
 import { Gate, simulatedReply } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { newConversation, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // only model replies are simulated. Creation, conversation, decisions and handoffs
@@ -112,7 +112,7 @@ async function adoptDecision(page: Page, id: string) {
   await expect
     .poll(async () => (await meeting(page, id)).minutes?.[0]?.document?.candidates.length)
     .toBe(1);
-  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Review and adopt', exact: true }).click();
   await page.locator('textarea[name="goal"]').fill('Measure before releasing');
@@ -223,7 +223,12 @@ test.describe('general chat', () => {
       { name: 'Participant 2', prompt: '', modelProfile: 'model-b' },
     ]);
     const conversation = page.getByTestId('chat-timeline');
-    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
+    // The records panel stays closed until asked for.
+    const records = page.getByRole('complementary', {
+      name: 'Minutes, plan and handoff',
+      exact: true,
+    });
+    await expect(records).toHaveCount(0);
     await expect(page.getByRole('button', { name: /round|rebuttal/i })).toHaveCount(0);
     await send(page, 'What should I eat for dinner?');
     await finishReplies(page, id, 0);
@@ -257,7 +262,7 @@ test.describe('general chat', () => {
     await expect(
       conversation.getByRole('article', { name: 'Participant 2', exact: true }).first(),
     ).toContainText('I would have potato soup.');
-    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
+    await expect(records).toHaveCount(0);
     await expect(conversation.getByRole('article', { name: 'Secretary', exact: true })).toHaveCount(
       0,
     );
@@ -265,10 +270,15 @@ test.describe('general chat', () => {
 
     await page.getByRole('button', { name: 'Ask secretary for a plan', exact: true }).click();
     await finishReplies(page, id, 3);
-    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toBeVisible();
     await expect(
       conversation.getByRole('article', { name: 'Secretary', exact: true }),
     ).toBeVisible();
+    // Where the secretary posts the minutes, they open for review in the records panel.
+    await conversation
+      .getByRole('article', { name: 'Secretary', exact: true })
+      .getByRole('button', { name: 'Review minutes and plan', exact: true })
+      .click();
+    await expect(records).toBeVisible();
     expect((await meeting(page, id)).minutes?.[0]?.document?.candidates).toEqual([]);
     expect(corral.server.coordinator.listRuns()).toHaveLength(6);
     expect(corral.errors).toEqual([]);
@@ -376,6 +386,12 @@ test('minutes retain dissent and only a human adopts or withdraws a decision', a
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  // Below 1024px the records open as a drawer on request; a panel left open on a wide screen
+  // does not cover the phone's conversation by itself.
+  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Minutes, plan and handoff', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Withdraw decision', exact: true }).click();
   await page
     .getByRole('textbox', { name: 'Reason for withdrawal', exact: true })
@@ -385,7 +401,7 @@ test('minutes retain dissent and only a human adopts or withdraws a decision', a
     .poll(async () => (await meeting(page, id)).decisionWithdrawals?.[0]?.reason)
     .toBe('Need another measurement first');
   await page.reload();
-  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   expect((await meeting(page, id)).decisions).toHaveLength(1);
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
@@ -398,7 +414,7 @@ test('handoffs preserve existing input and start work only when requested', asyn
 }) => {
   test.setTimeout(60_000);
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const targetId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
   await requestBox(page).fill('Keep my unsent request');
@@ -426,7 +442,13 @@ test('handoffs preserve existing input and start work only when requested', asyn
   ).toHaveAttribute('href', `/sessions/${id}`);
 
   await page.goto(`${corral.server.url}/sessions/${id}`);
-  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
+  // The records panel was left open here, so it comes back open.
+  await expect(
+    page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('complementary', { name: 'Minutes, plan and handoff', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
   await page.getByRole('textbox', { name: 'New session name', exact: true }).fill('Saved handoff');
   await page.getByRole('button', { name: 'Hand off as draft', exact: true }).click();
@@ -468,7 +490,7 @@ test('unsent meeting drafts survive navigation, reload and closing their tab', a
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const workUrl = page.url();
   await requestBox(page).fill('Keep the work draft too');
@@ -560,9 +582,10 @@ test.describe('secretary failure', () => {
       .getByRole('alert')
       .filter({ hasText: 'The secretary could not prepare the minutes.' });
     await expect(recovery).toBeVisible();
+    // The failure shows outside the records panel, which stays closed.
     await expect(
-      page.getByRole('group', { name: 'Minutes, plan and handoff' }),
-    ).not.toHaveAttribute('open');
+      page.getByRole('complementary', { name: 'Minutes, plan and handoff', exact: true }),
+    ).toHaveCount(0);
     await page.getByRole('button', { name: 'Request minutes again', exact: true }).click();
     await finishReplies(page, id, 2);
     await expect(recovery).toHaveCount(1);

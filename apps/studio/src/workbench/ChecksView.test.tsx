@@ -27,7 +27,8 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 vi.mock('use-intl', () => ({
-  useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
+  useTranslations: (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values?.name ? `${namespace}.${key}:${values.name}` : `${namespace}.${key}`,
 }));
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -38,12 +39,13 @@ afterEach(async () => {
 async function mount(
   results: VerificationResultView[],
   commands: WorkspaceBindingView['verifyCommands'] = [],
+  verify = vi.fn(async () => ({})),
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.services = {
     mode: 'server',
     workspaceId: 'host',
-    workspaces: { verifications: async () => results },
+    workspaces: { verifications: async () => results, verify },
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -140,17 +142,76 @@ it('colours the verdict, not the run state: a completed check that failed reads 
     [...(row?.querySelectorAll<HTMLElement>('span') ?? [])].find(
       (span) => span.textContent === text,
     );
-  for (const row of [failedRow, passedRow]) {
-    const state = part(row, 'Files.checkReportState.completed');
-    expect(state).toBeDefined();
-    expect(state?.className).not.toMatch(/text-(destructive|success)/);
-  }
+  // A completed run is the normal case: the verdict says the outcome, not "Completed" too.
+  for (const row of [failedRow, passedRow])
+    expect(part(row, 'Files.checkReportState.completed')).toBeUndefined();
   const fail = part(failedRow, 'Files.checkVerdict.fail');
   expect(fail?.className).toContain('text-destructive');
   expect(fail?.querySelector('svg')).not.toBeNull();
   const pass = part(passedRow, 'Files.checkVerdict.pass');
   expect(pass?.className).toContain('text-success');
   expect(pass?.querySelector('svg')).not.toBeNull();
+});
+
+it('names the run state beside the verdict only when the run did not complete', async () => {
+  const container = await mount([
+    {
+      ...record(['node', '-e', '0']),
+      state: 'failed',
+      report: {
+        verificationId: 'verification_1',
+        owner: { kind: 'manual', sessionId: 'session' },
+        sessionId: 'session',
+        commandId: 'readme',
+        configRevision: 1,
+        fingerprint: 'f'.repeat(64),
+        tree: 'a'.repeat(40),
+        state: 'error',
+        verdict: 'not_evaluated',
+        exitCode: null,
+        signal: null,
+        timedOut: false,
+        cleanupConfirmed: true,
+        targetUnchanged: true,
+        durationMs: 12,
+        startedAt: '2026-11-10T01:02:00.000Z',
+        endedAt: '2026-11-10T01:02:01.000Z',
+        retainUntil: '2026-12-10T01:02:01.000Z',
+        output: { text: '', bytes: 0, hash: 'c'.repeat(64), truncated: false },
+      },
+    } as VerificationResultView,
+  ]);
+  const row = container.querySelector('[data-testid="check-result"]');
+  const error = [...(row?.querySelectorAll('span') ?? [])].find(
+    (span) => span.textContent === 'Files.checkReportState.error',
+  );
+  expect(error?.className).toContain('text-destructive');
+  expect(row?.textContent).toContain('Files.checkVerdict.not_evaluated');
+});
+
+it('runs a check from its own row once it has one, and from the bar above until then', async () => {
+  const verify = vi.fn(async () => ({}));
+  const container = await mount(
+    [record(['node', '-e', '0'])],
+    [
+      { id: 'readme', name: 'README has a title', argv: ['node'], timeoutMs: 1000 },
+      { id: 'lint', name: 'Lint', argv: ['node'], timeoutMs: 1000 },
+    ],
+    verify,
+  );
+  const row = container.querySelector<HTMLElement>('[data-testid="check-result"]');
+  const named = (scope: Element | null | undefined, name: string) =>
+    [...(scope?.querySelectorAll('button') ?? [])].filter(
+      (button) => (button.getAttribute('aria-label') ?? button.textContent) === name,
+    );
+  // The row's own Run, named for its check; the bar above keeps only the check without a row.
+  const rowRun = named(row, 'Files.runCheck:README has a title');
+  expect(rowRun).toHaveLength(1);
+  expect(named(container, 'Files.runCheck:README has a title')).toHaveLength(1);
+  expect(named(container, 'Files.runCheck:Lint')).toHaveLength(1);
+  expect(row?.contains(named(container, 'Files.runCheck:Lint')[0] ?? null)).toBe(false);
+  await act(async () => rowRun[0]?.click());
+  expect(verify).toHaveBeenCalledWith('session', 'readme');
 });
 
 it('shows a record command with the quoting a shell needs to read the same arguments', async () => {

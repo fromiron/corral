@@ -27,12 +27,8 @@ export function EmptyView({
   action?: EmptyViewAction | undefined;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'title'>) {
   return (
-    <div
-      data-slot="empty-view"
-      className={cn('grid gap-3', !text && '[&_p:empty]:hidden', className)}
-      {...props}
-    >
-      <EmptyState title={title} text={text ?? ''} />
+    <div data-slot="empty-view" className={cn('grid gap-3', className)} {...props}>
+      <EmptyState title={title} text={text} />
       {action ? (
         <Button
           variant="secondary"

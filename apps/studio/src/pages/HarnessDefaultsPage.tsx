@@ -14,13 +14,9 @@ const bindingKey = (value: HarnessDefault) =>
 
 export function HarnessDefaultsPage({ scope }: { scope: 'personal' | 'project' }) {
   const navigation = useSettingsNavigation();
-  const t = useTranslations('Harness');
   const scopeId = scope === 'personal' ? 'default' : navigation.projectId;
   return (
-    <SettingsLayout
-      active={scope === 'personal' ? 'defaults' : 'project-defaults'}
-      description={t(scope === 'personal' ? 'personalDefaultHint' : 'projectDefaultHint')}
-    >
+    <SettingsLayout active={scope === 'personal' ? 'defaults' : 'project-defaults'}>
       <main className="settings-content">
         <ScopeLadder current={scope} />
         {scopeId ? (

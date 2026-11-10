@@ -175,19 +175,13 @@ export function MeetingDecisions({
             className="flex min-w-0 flex-col gap-3 rounded-lg fill-group p-3"
             aria-label={t('minutes')}
           >
-            <h3 className="flex flex-wrap items-baseline gap-x-2 text-subtitle" style={semibold}>
-              {t('minutes')}
-              <time
-                dateTime={minutes.createdAt}
-                className="text-caption text-muted-foreground"
-                style={normal}
-              >
-                {format.dateTime(new Date(minutes.createdAt), {
-                  dateStyle: 'short',
-                  timeStyle: 'medium',
-                })}
-              </time>
-            </h3>
+            {/* The panel title names the records; each minutes is told apart by its time. */}
+            <time dateTime={minutes.createdAt} className="text-caption text-muted-foreground">
+              {format.dateTime(new Date(minutes.createdAt), {
+                dateStyle: 'short',
+                timeStyle: 'medium',
+              })}
+            </time>
             {minutes.error ? (
               <div role="note" className="text-danger wrap-anywhere">
                 {t('invalidMinutes')}

@@ -40,7 +40,7 @@ export function validatePreviewSearch(search: Record<string, unknown>): PreviewS
   return returnTo ? { returnTo } : {};
 }
 
-/** The catalog key of each preview's name and summary. */
+/** The catalog key of each preview's name. */
 const FEATURE_KEY = {
   'pr-review': 'prReview',
   'browser-qa': 'browserQa',
@@ -118,42 +118,28 @@ function PreviewList({ returnTo }: { returnTo: string | undefined }) {
   return (
     <Page title={t('title')}>
       <Table aria-label={t('list')}>
-        <TableHeader>
+        {/* One column: its header is for the table's reader, not a label over the names. */}
+        <TableHeader className="sr-only">
           <TableRow>
             <TableHead>{t('name')}</TableHead>
-            <TableHead>
-              <span className="sr-only">{t('actions')}</span>
-            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {PREVIEW_FEATURES.map((feature, index) => {
-            const name = t(`feature.${FEATURE_KEY[feature]}`);
-            return (
-              <TableRow key={feature} index={index}>
-                <TableCell>
-                  <span className="block text-foreground">{name}</span>
-                  <span className="block text-caption">{t(`summary.${FEATURE_KEY[feature]}`)}</span>
-                </TableCell>
-                <TableCell className="w-px text-right">
-                  <Button
-                    variant="ghost"
-                    size="compact"
-                    aria-label={t('openNamed', { name })}
-                    render={
-                      <Link
-                        to="/preview/$feature"
-                        params={{ feature }}
-                        search={returnTo ? { returnTo } : {}}
-                      />
-                    }
-                  >
-                    {t('open')}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            );
-          })}
+          {PREVIEW_FEATURES.map((feature, index) => (
+            <TableRow key={feature} index={index}>
+              <TableCell>
+                {/* The row is the link: the name stretches over it for the pointer. */}
+                <Link
+                  to="/preview/$feature"
+                  params={{ feature }}
+                  search={returnTo ? { returnTo } : {}}
+                  className="block w-full truncate rounded-sm text-foreground after:absolute after:inset-0 after:content-['']"
+                >
+                  {t(`feature.${FEATURE_KEY[feature]}`)}
+                </Link>
+              </TableCell>
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
     </Page>

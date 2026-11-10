@@ -87,61 +87,77 @@ export function RunAgentList({
   });
   const ticking = live && rows.some((row) => row.interval && !row.interval.finished);
   const now = useNow(1000, ticking);
+  // A narrow list keeps a row to two lines: the model and the current attempt leave their
+  // columns and stack under the agent's name, as the kit's narrow tables do.
+  const wide = '@max-xl/agent-list:hidden';
   return (
-    <Table aria-label={t('label')}>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t('agent')}</TableHead>
-          <TableHead>{t('model')}</TableHead>
-          <TableHead>{t('status')}</TableHead>
-          <TableHead>{t('current')}</TableHead>
-          <TableHead className="text-right">{t('elapsed')}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map(({ node, execution, interval, round }, index) => {
-          const shown = present(node);
-          const selected = selectedNodeId === node.id;
-          const button = (
-            <Button
-              variant={selected ? 'secondary' : 'ghost'}
-              size="compact"
-              aria-pressed={selected}
-              className="max-w-full justify-start text-foreground"
-              onClick={(event) => onSelectNode(node.id, event.currentTarget)}
-            >
-              <span className="truncate">{node.label}</span>
-            </Button>
-          );
-          const end = interval
-            ? interval.finished || !live
-              ? Date.parse(interval.endedAt)
-              : Math.max(now, Date.parse(interval.endedAt))
-            : null;
-          return (
-            <TableRow key={node.id} index={index} data-agent-row={node.id}>
-              <TableCell className="py-1">{trigger ? trigger(node.id, button) : button}</TableCell>
-              <TableCell>{shown.model ?? null}</TableCell>
-              <TableCell>
-                <AgentStatusBadge status={shown.status} label={shown.statusLabel} />
-              </TableCell>
-              <TableCell>
-                {execution
-                  ? [
-                      ...(round ? [run('round', { no: round })] : []),
-                      run('attempt', { no: execution.attemptNo }),
-                    ].join(' · ')
-                  : null}
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {interval && end !== null
-                  ? formatClock(end - Date.parse(interval.startedAt))
-                  : null}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <div className="@container/agent-list min-w-0">
+      <Table aria-label={t('label')}>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('agent')}</TableHead>
+            <TableHead className={wide}>{t('model')}</TableHead>
+            <TableHead>{t('status')}</TableHead>
+            <TableHead className={wide}>{t('current')}</TableHead>
+            <TableHead className="text-right">{t('elapsed')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map(({ node, execution, interval, round }, index) => {
+            const shown = present(node);
+            const selected = selectedNodeId === node.id;
+            const button = (
+              <Button
+                variant={selected ? 'secondary' : 'ghost'}
+                size="compact"
+                aria-pressed={selected}
+                className="max-w-full justify-start text-foreground"
+                onClick={(event) => onSelectNode(node.id, event.currentTarget)}
+              >
+                <span className="truncate">{node.label}</span>
+              </Button>
+            );
+            const end = interval
+              ? interval.finished || !live
+                ? Date.parse(interval.endedAt)
+                : Math.max(now, Date.parse(interval.endedAt))
+              : null;
+            const current = execution
+              ? [
+                  ...(round ? [run('round', { no: round })] : []),
+                  run('attempt', { no: execution.attemptNo }),
+                ].join(' · ')
+              : null;
+            const stacked = [shown.model, current].filter(Boolean).join(' · ');
+            return (
+              <TableRow key={node.id} index={index} data-agent-row={node.id}>
+                {/* Narrow, the name column takes what the others leave and cuts its lines short. */}
+                <TableCell className="py-1 @max-xl/agent-list:w-full @max-xl/agent-list:max-w-0">
+                  {trigger ? trigger(node.id, button) : button}
+                  {stacked ? (
+                    <span
+                      title={stacked}
+                      className="block truncate px-3 pb-1 text-caption @xl/agent-list:hidden"
+                    >
+                      {stacked}
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell className={wide}>{shown.model ?? null}</TableCell>
+                <TableCell>
+                  <AgentStatusBadge status={shown.status} label={shown.statusLabel} />
+                </TableCell>
+                <TableCell className={wide}>{current}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {interval && end !== null
+                    ? formatClock(end - Date.parse(interval.startedAt))
+                    : null}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

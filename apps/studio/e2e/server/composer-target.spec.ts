@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { requestBox } from '../workbench.ts';
+import { closeSettings, openFolderSettings, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('file and line references remain independent and Escape clears only an empty command trigger', async ({
@@ -30,13 +30,11 @@ test('file and line references remain independent and Escape clears only an empt
     );
     await corral.open('/');
     await page.setViewportSize({ width: 1262, height: 833 });
-    await page.getByRole('tab', { name: /^Project folder/ }).click();
-    await page.getByLabel('Folder path on this computer').fill(original);
-    await page.getByRole('button', { name: 'Link folder', exact: true }).click();
-    await expect(page.getByRole('tabpanel', { name: 'Project folder', exact: true })).toContainText(
-      'no uncommitted changes',
-    );
-    await page.getByRole('tab', { name: /^Sessions/ }).click();
+    const folder = await openFolderSettings(page);
+    await folder.getByLabel('Folder path on this computer').fill(original);
+    await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
+    await expect(folder).toContainText('no uncommitted changes');
+    await closeSettings(page);
     await page.getByRole('button', { name: 'New conversation', exact: true }).click();
     const box = requestBox(page);
     await box.fill('@README');

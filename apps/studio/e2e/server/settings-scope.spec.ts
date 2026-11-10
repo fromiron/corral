@@ -12,12 +12,11 @@ test('project settings share an explicit empty state and keep their target on na
     await expect(
       body.getByText('Choose the project whose settings you want to manage.', { exact: true }),
     ).toBeVisible();
-    await expect(
-      body.getByRole('combobox', { name: 'Applies to project', exact: true }),
-    ).toHaveCount(1);
+    // One project choice heads the navigation's project group (workbench.md 문맥형 설정).
+    await expect(page.getByRole('combobox', { name: 'Settings for', exact: true })).toHaveCount(1);
     await expect(body.getByRole('button', { name: /^(Save|Add)$/ })).toHaveCount(0);
   }
-  await page.getByRole('combobox', { name: 'Applies to project', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Settings for', exact: true }).click();
   await page.getByRole('option', { name: 'My project', exact: true }).click();
   await page
     .getByTestId('settings-sidebar')

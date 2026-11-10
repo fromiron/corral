@@ -5,12 +5,9 @@ import {
   DialogPopup,
   DialogTitle,
   fontWeights,
-  Popover,
-  PopoverPopup,
-  PopoverTrigger,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Info, Maximize2, Minimize2, X } from '@corral/react/icons';
+import { Maximize2, Minimize2, X } from '@corral/react/icons';
 import { type ReactNode, type RefObject, useId, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -75,7 +72,6 @@ export function MeetingRecordsPanel({
           >
             {t('records')}
           </h2>
-          <RecordsInfo />
         </div>
         <Tooltip content={t(widened ? 'compactRecords' : 'expandRecords')}>
           <Button
@@ -131,7 +127,6 @@ export function MeetingRecordsDrawer({
             >
               {t('records')}
             </DialogTitle>
-            <RecordsInfo />
           </div>
           <CloseRecords onClose={onClose} />
         </div>
@@ -140,31 +135,6 @@ export function MeetingRecordsDrawer({
         </div>
       </DialogPopup>
     </Dialog>
-  );
-}
-
-/** What the records hold, said once beside their heading instead of above them. */
-function RecordsInfo() {
-  const t = useTranslations('Meetings');
-  const td = useTranslations('MeetingsDecisions');
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-compact"
-            className="shrink-0 text-muted-foreground"
-            aria-label={t('aboutDecisions')}
-          />
-        }
-      >
-        <Info />
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="sm">
-        <p className="text-caption text-foreground">{td('candidateHint')}</p>
-      </PopoverPopup>
-    </Popover>
   );
 }
 

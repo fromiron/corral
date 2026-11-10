@@ -30,6 +30,10 @@
   min-width: 0;
   overflow: auto;
 }
+/* One h1 per screen: the app's name heads a screen until a list page names itself (kit Page). */
+.app-main:has([data-slot="page-title"]) .app-name {
+  display: none;
+}
 .app-shell[data-sidebar-open="true"] .app-sidebar-trigger {
   display: none;
 }

@@ -42,7 +42,6 @@ export function ModelUsagePanel() {
       <h3 id="models-usage-heading" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('heading')}
       </h3>
-      <p className="text-body text-muted-foreground">{t('description')}</p>
       <Button variant="tertiary" size="compact" disabled={busy} onClick={() => void load()}>
         {t(page ? 'refresh' : 'load')}
       </Button>

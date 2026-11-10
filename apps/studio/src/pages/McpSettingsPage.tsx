@@ -19,9 +19,8 @@ export function McpSettingsPage() {
   const { harnesses } = useServices(),
     { projectId } = useSettingsNavigation();
   const t = useTranslations('Harness');
-  const r = useTranslations('Resources');
   return (
-    <SettingsLayout active="mcp" {...(harnesses ? { description: r('mcpIntro') } : {})}>
+    <SettingsLayout active="mcp">
       {harnesses && projectId ? (
         <McpManager key={projectId} api={harnesses} projectId={projectId} />
       ) : !harnesses ? (
@@ -150,7 +149,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       ) : null}
       <div className="flex flex-col gap-6">
         {none ? (
-          <EmptyState title={t('emptyMcp')} text={t('emptyMcpText')} />
+          <EmptyState title={t('emptyMcp')} />
         ) : (
           <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('mcp')}>
             {!loaded ? (

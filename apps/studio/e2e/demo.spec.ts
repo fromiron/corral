@@ -143,7 +143,7 @@ test('the default demo team delegates, asks, revises once and finishes after app
   await expect(page.getByRole('heading', { name: 'Research team', level: 1 })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Demo');
   await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
   await expect(step(page, 'start')).toHaveAttribute('data-state', 'current');
   await context.setOffline(true);

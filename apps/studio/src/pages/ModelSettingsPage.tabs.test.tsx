@@ -99,9 +99,8 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
       ),
     );
     const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
-    // Where sign-in is kept is said once, on Sign-in, not under every tab or again per key.
-    expect(container.querySelector('[data-description]')?.textContent).toBe(messages.Models.intro);
-    expect(container.textContent?.split(messages.Models.intro)).toHaveLength(2);
+    // The heading names the section alone: no intro line under it, and no storage note per key.
+    expect(container.querySelector('[data-description]')).toBeNull();
     expect(container.textContent).not.toContain(
       'Kept on this computer, outside the workspace, and used only',
     );

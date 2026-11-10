@@ -183,7 +183,7 @@ export function LibraryResources({ projectId }: { projectId: string }) {
     mcp: { rows: map(mcp, mcpRows), retry: retryMcp },
   };
   // Without the local server every group is the same one state, said once.
-  if (!harnesses) return <EmptyState title={t('localOnly')} text={t('localOnlyText')} />;
+  if (!harnesses) return <EmptyState title={t('localOnly')} />;
   const rowsOf = (group: ResourceGroup) => groups[group].rows;
   // A group is listed when it has rows or failed to load; a failure is never "none".
   const listed = RESOURCE_GROUPS.filter((group) => {
@@ -199,7 +199,7 @@ export function LibraryResources({ projectId }: { projectId: string }) {
     return (
       <div className="grid justify-items-center gap-4">
         <div className="w-full">
-          <EmptyState title={t('emptyTitle')} text={t('emptyText')} />
+          <EmptyState title={t('emptyTitle')} />
         </div>
         <AddResources groups={empty} projectId={projectId} />
       </div>

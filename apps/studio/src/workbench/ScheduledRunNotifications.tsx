@@ -1,5 +1,6 @@
 import { Banner, BannerActions, BannerTitle, Button } from '@corral/react/design-kit';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
+import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import type { ScheduledRunOutcome } from './scheduledRuns.ts';
 
@@ -12,6 +13,13 @@ export function ScheduledRunNotifications({
 }) {
   const t = useTranslations('Schedules');
   const status = useTranslations('Status');
+  // Automation lists every schedule with its last result, and the chosen one's history: there a
+  // banner would say it again. What is seen there does not come back on the next screen.
+  const onAutomation = useRouterState({ select: (s) => s.location.pathname === '/schedules' });
+  useEffect(() => {
+    if (onAutomation) for (const run of results) dismiss(run.runId);
+  }, [onAutomation, results, dismiss]);
+  if (onAutomation) return null;
   return (
     <div className="flex max-h-40 shrink-0 flex-col gap-1 overflow-y-auto" aria-live="polite">
       {results.map((run) => (

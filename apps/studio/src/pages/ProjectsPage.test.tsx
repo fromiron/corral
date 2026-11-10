@@ -128,7 +128,10 @@ const type = (control: HTMLInputElement, value: string) =>
 
 it('lists the projects first, as a table, with one New project action and no form', async () => {
   const container = await show();
-  expect(container.querySelector('h1')?.textContent).toBe(messages.Projects.heading);
+  // One name for the screen: the path bar's "All projects", kept as the outline's heading only.
+  const heading = container.querySelector('h1');
+  expect(heading?.textContent).toBe(messages.Shell.allProjects);
+  expect(heading?.className).toContain('sr-only');
   expect(form()).toBeNull();
   expect(container.textContent).not.toContain('A project keeps its teams and runs apart');
   const rows = [...container.querySelectorAll('table tbody tr')];

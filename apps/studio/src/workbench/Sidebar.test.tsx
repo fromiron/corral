@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { shortcutLabel } from '../shortcuts.ts';
 import { Sidebar, sidebarRowHeights } from './Sidebar.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -51,7 +52,9 @@ vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: () => useState(fixture.collapsed),
 }));
 vi.mock('./navigation.ts', () => ({
-  useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+  useSettingsNavigation: () => ({
+    link: (section: string) => ({ to: '/', search: { settings: section } }),
+  }),
 }));
 vi.mock('./useModels.ts', () => ({ useModelProfiles: () => fixture.profiles }));
 
@@ -440,6 +443,20 @@ function corralMenu(container: HTMLElement) {
   return button;
 }
 
+/** Hovers `element` long enough for a tooltip to open; returns what the page then reads. */
+async function hover(element: Element) {
+  await act(async () => {
+    element.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mouseenter'));
+    element.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+  return document.body.textContent ?? '';
+}
+
+const occurrences = (text: string, part: string) => text.split(part).length - 1;
+
 it.each([
   ['a demo', { mode: 'browser', live: false }, [], 'Demo · simulated', 'Demo'],
   [
@@ -450,13 +467,6 @@ it.each([
     'Simulated',
   ],
   [
-    'a live server without a model',
-    { mode: 'server', live: true },
-    [],
-    'No model connected',
-    'No model',
-  ],
-  [
     'a live server with a model',
     { mode: 'server', live: true },
     [{ available: true }],
@@ -464,35 +474,73 @@ it.each([
     'Connected',
   ],
 ] as const)(
-  'names the connection state of %s in the header',
+  'names the connection state of %s once, as the header’s word',
   async (_name, services, profiles, state, word) => {
     fixture.services = { repository: {}, ...services };
     fixture.profiles = [...profiles];
     const container = await mount();
     const menu = corralMenu(container);
-    // The row reads Corral and one whole word; the full state is the button's name and the
-    // first line of its menu, which is not a choice.
+    // The row reads Corral and one whole word; the full state is only the button's name.
     expect(visibleText(menu)).toBe(`Corral${word}`);
-    expect(menu.querySelector('[data-testid="sidebar-connection"]')?.textContent).toBe(word);
+    const mark = menu.querySelector('[data-testid="sidebar-connection"]');
+    expect(mark?.textContent).toBe(word);
+    // The word keeps its width; the name before it gives way first.
+    expect(mark?.className).toContain('shrink-0');
     expect(menu.getAttribute('aria-label')).toContain(state);
+    // No card, tooltip or menu line says it again.
+    expect(container.querySelector('[data-testid="sidebar-status"]')).toBeNull();
+    const read = await hover(menu);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(occurrences(read, word)).toBe(1);
+    if (state !== word) expect(read).not.toContain(state);
     await act(async () => menu.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
     const popup = document.querySelector('[role="menu"]');
-    const line = popup?.querySelector('[data-slot="menu-label"]');
-    expect(line?.textContent).toBe(state);
-    expect(line?.getAttribute('role')).not.toBe('menuitem');
+    expect(popup?.querySelector('[data-slot="menu-label"]')).toBeNull();
     expect(
       [...(popup?.querySelectorAll('[role="menuitem"]') ?? [])].map((item) => visibleText(item)),
     ).toEqual([messages.Shell.allProjects, messages.Shell.newProject]);
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
-    // The footer card stays for every state that cannot reach a model.
-    const card = container.querySelector('[data-testid="sidebar-status"]');
-    if (state === 'Connected') expect(card).toBeNull();
-    else expect(card).not.toBeNull();
   },
 );
+
+it('without a model, the header word is the one control that opens model settings', async () => {
+  fixture.services = { repository: {}, mode: 'server', live: true };
+  fixture.profiles = [];
+  const container = await mount();
+  const word = container.querySelector<HTMLElement>('[data-testid="sidebar-connection"]');
+  expect(word?.tagName).toBe('BUTTON');
+  expect(visibleText(word)).toBe(messages.Shell.stateNoModel);
+  // Its name says where it leads and keeps the word it shows.
+  expect(word?.getAttribute('aria-label')).toBe(messages.Shell.openModelSettings);
+  expect(messages.Shell.openModelSettings).toContain(messages.Shell.stateNoModel);
+  // Beside the Corral menu, not a button inside its button.
+  expect(corralMenu(container).contains(word)).toBe(false);
+  expect(visibleText(corralMenu(container))).toBe('Corral');
+  expect(container.querySelector('[data-testid="sidebar-status"]')).toBeNull();
+  const read = await hover(corralMenu(container));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(occurrences(read, messages.Shell.stateNoModel)).toBe(1);
+  expect(read).not.toContain(messages.Shell.noModel);
+  await act(async () => word?.click());
+  expect(fixture.navigate).toHaveBeenLastCalledWith({ to: '/', search: { settings: 'models' } });
+});
+
+it('names New conversation once: its tooltip holds only the shortcut', async () => {
+  const container = await mount();
+  const link = [...primaryMenu(container).querySelectorAll('a')].find(
+    (item) => visibleText(item) === messages.Shell.newConversation,
+  );
+  if (!link) throw new Error('Missing New conversation');
+  // The kit draws a row's label twice (once hidden, to reserve its bold width).
+  const before = occurrences(document.body.textContent ?? '', messages.Shell.newConversation);
+  const read = await hover(link);
+  const tip = document.querySelector('[role="tooltip"]');
+  expect(tip?.textContent).toBe(shortcutLabel('session.new'));
+  expect(occurrences(read, messages.Shell.newConversation)).toBe(before);
+});
 
 it('opens the projects page at its new-project form from the Corral menu', async () => {
   const container = await mount();

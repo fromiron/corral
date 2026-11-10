@@ -337,7 +337,7 @@ it('keeps the decision in the decision area, recorded on the exact comparison', 
   const view = await mount({ search: { scope: 'session', file: 'README.md' } });
   const area = view.container.querySelector('aside');
   if (!area) throw new Error('Missing the decision area');
-  expect(area.querySelector('#comments-heading')).not.toBeNull();
+  expect(area.querySelector('[data-testid="review-comments"]')).not.toBeNull();
   await view.click('Review.approve', area);
   expect(view.writes.decide).toHaveBeenLastCalledWith(session.sessionId, {
     from,
@@ -358,13 +358,50 @@ it('keeps the decision in the decision area, recorded on the exact comparison', 
   expect(view.startAuto).not.toHaveBeenCalled();
 });
 
+it('heads the comments only once there are comments to head', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  const heads = () =>
+    [...area.querySelectorAll('h3')].filter((h) =>
+      h.textContent?.startsWith('Review.commentsHeading'),
+    );
+  // One control, no heading over it: Add comment names itself; the part keeps its name.
+  expect(heads()).toHaveLength(0);
+  expect(area.querySelector('[data-testid="review-comments"]')?.getAttribute('aria-label')).toBe(
+    'Review.commentsHeading',
+  );
+  await view.click('pick line 1');
+  const note = area.querySelector<HTMLTextAreaElement>('form textarea');
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Name the run.'));
+  await view.click('Review.addComment', area);
+  expect(heads()).toHaveLength(1);
+});
+
+it('puts no heading over the two decision buttons and keeps the scope note beside them', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  const decision = area.querySelector<HTMLElement>('[data-testid="review-decision"]');
+  if (!decision) throw new Error('Missing the decision');
+  expect(decision.getAttribute('aria-label')).toBe('Review.decisionHeading');
+  expect(decision.querySelector('h3')).toBeNull();
+  const approve = view.button('Review.approve', decision);
+  const info = decision.querySelector('[aria-label="Review.decisionScope"]');
+  expect(approve).toBeDefined();
+  expect(info).not.toBeNull();
+  // The note sits in the buttons' row.
+  expect(approve?.parentElement?.contains(info)).toBe(true);
+});
+
 it('leads the decision area with the decision, so opening a comment never moves it', async () => {
   const view = await mount({ search: { scope: 'session', file: 'README.md' } });
   const area = view.container.querySelector('aside');
   if (!area) throw new Error('Missing the decision area');
-  const decision = area.querySelector('#decision-heading');
-  const comments = area.querySelector('#comments-heading');
-  if (!decision || !comments) throw new Error('Missing a heading');
+  const decision = area.querySelector('[data-testid="review-decision"]');
+  const comments = area.querySelector('[data-testid="review-comments"]');
+  if (!decision || !comments) throw new Error('Missing a part');
   // The decision comes first and holds the top of the area; the comments follow it.
   expect(area.firstElementChild?.contains(decision)).toBe(true);
   expect(decision.compareDocumentPosition(comments) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(

@@ -150,7 +150,6 @@ export function WorkspacePage() {
         <main className="flex min-h-0 flex-1 flex-col">
           <Page
             title={shown}
-            {...(project.description ? { description: project.description } : {})}
             toolbar={
               <div className="flex flex-col gap-3">
                 {/* State on the left, the ways to start and the project's menu on the right. */}
@@ -175,7 +174,10 @@ export function WorkspacePage() {
                       </Button>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  {/* The row fills from its end, so when it wraps New conversation takes the
+                      first line alone and the menu stays beside New meeting; the reversed order
+                      and direction cancel out, so it still reads left to right in source order. */}
+                  <div className="flex flex-row-reverse flex-wrap-reverse items-center justify-end gap-2 [&>*]:order-2 [&>:first-child]:order-3 [&>:last-child]:order-1">
                     {archived ? null : (
                       <>
                         <NewConversation
@@ -890,7 +892,7 @@ function EnvironmentPanel({
             {t('loading')}
           </p>
         ) : rows.length === 0 ? (
-          <EmptyState title={t('noCopies')} text={t('noCopiesText')} />
+          <EmptyState title={t('noCopies')} />
         ) : (
           <Table aria-label={t('copies')}>
             <TableHeader>
@@ -1081,7 +1083,7 @@ function SessionList({
       {none ? (
         <div className="grid justify-items-center gap-4">
           <div className="w-full">
-            <EmptyState title={t('emptyTitle')} text={t('emptyText')} />
+            <EmptyState title={t('emptyTitle')} />
           </div>
           {needsModel && !archived ? (
             <Button variant="tertiary" render={<Link {...navigation.link('models')} />}>

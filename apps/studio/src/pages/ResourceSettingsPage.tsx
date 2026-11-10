@@ -32,12 +32,8 @@ export function HookSettingsPage() {
 function ResourceSettingsPage({ kind }: { kind: 'skill' | 'extension' }) {
   const { harnesses } = useServices();
   const t = useTranslations('Harness');
-  const r = useTranslations('Resources');
   return (
-    <SettingsLayout
-      active={kind === 'skill' ? 'skills' : 'hooks'}
-      {...(harnesses ? { description: r(kind === 'skill' ? 'skillsIntro' : 'hooksIntro') } : {})}
-    >
+    <SettingsLayout active={kind === 'skill' ? 'skills' : 'hooks'}>
       {harnesses ? (
         <ResourceManager key={kind} api={harnesses} kind={kind} />
       ) : (
@@ -162,10 +158,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       ) : null}
       <div className="flex flex-col gap-6">
         {none ? (
-          <EmptyState
-            title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')}
-            text={t(kind === 'skill' ? 'emptySkillsText' : 'emptyHooksText')}
-          />
+          <EmptyState title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')} />
         ) : (
           <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('library')}>
             {!loaded ? (

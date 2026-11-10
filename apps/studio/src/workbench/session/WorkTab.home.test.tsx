@@ -7,19 +7,28 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { WorkTab } from './WorkTab.tsx';
 
-const fixture = vi.hoisted(() => ({ composer: [] as { home?: boolean }[] }));
+type ComposerProps = {
+  home?: boolean;
+  onWorkFolder?: () => void;
+  onSetUpWorkingCopy?: () => void;
+};
+const fixture = vi.hoisted(() => ({
+  composer: [] as ComposerProps[],
+  workspaces: null as object | null,
+  copyMissing: false,
+}));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({
     runFor: () => ({ getState: () => ({ open: async () => {} }) }),
     sessionFor: () => ({ getState: () => ({ open: async () => {} }) }),
     retainRun: () => () => {},
-    workspaces: null,
+    workspaces: fixture.workspaces,
   }),
 }));
 vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('../../router.tsx', () => ({ sessionRoute: { useSearch: () => ({}) } }));
 vi.mock('../MeetingHandoff.tsx', () => ({ MeetingHandoffLinks: () => null }));
-vi.mock('../WorkFolderNotice.tsx', () => ({ WorkFolderNotice: () => null }));
+vi.mock('../WorkFolderNotice.tsx', () => ({ useWorkingCopyMissing: () => fixture.copyMissing }));
 vi.mock('./SessionEntries.tsx', () => ({
   EntryCard: ({ entry }: { entry: SessionEntry }) => <p>{entry.text}</p>,
   RunCard: () => null,
@@ -27,7 +36,7 @@ vi.mock('./SessionEntries.tsx', () => ({
   useRunChecks: () => null,
 }));
 vi.mock('./Composer.tsx', () => ({
-  Composer: (props: { home?: boolean }) => {
+  Composer: (props: ComposerProps) => {
     fixture.composer.push(props);
     return <textarea data-testid="composer" aria-label="Request" />;
   },
@@ -45,6 +54,8 @@ beforeEach(() => {
     },
   );
   fixture.composer = [];
+  fixture.workspaces = null;
+  fixture.copyMissing = false;
 });
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
@@ -132,4 +143,17 @@ it('returns to the conversation layout once a request exists', async () => {
   expect(container.querySelector('h2')).toBeNull();
   expect(container.textContent).toContain('First request');
   expect(fixture.composer.at(-1)?.home).toBe(false);
+});
+
+it('marks a missing working copy once, in the composer row, in place of the folder icon', async () => {
+  fixture.workspaces = {};
+  await show(session());
+  expect(fixture.composer.at(-1)?.onWorkFolder).toBeTypeOf('function');
+  expect(fixture.composer.at(-1)?.onSetUpWorkingCopy).toBeUndefined();
+  fixture.copyMissing = true;
+  const container = await show(session());
+  expect(fixture.composer.at(-1)?.onSetUpWorkingCopy).toBeTypeOf('function');
+  expect(fixture.composer.at(-1)?.onWorkFolder).toBeUndefined();
+  // Nothing above the conversation repeats it.
+  expect(container.textContent).not.toContain(messages.Sessions.noWorkingCopy);
 });

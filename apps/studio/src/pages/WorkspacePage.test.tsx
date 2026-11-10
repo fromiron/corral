@@ -218,9 +218,11 @@ it('has Sessions, Runs, Environment and Instructions & memory tabs, and no Teams
   ).toBe(false);
 });
 
-it('heads the project with its name, folder state, pending count and actions', async () => {
+it('heads the project with its folder state, pending count and actions', async () => {
   const { container } = await render();
+  // The path bar names the project; the page keeps the name for the outline only.
   expect(container.querySelector('h1')?.textContent).toBe('Alpha');
+  expect(container.querySelector('h1')?.className).toContain('sr-only');
   const count = [...container.querySelectorAll('a')].find(
     (link) => link.textContent === '2 pending',
   );

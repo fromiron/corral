@@ -239,7 +239,8 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
         startAt={board.start}
         now={now}
         {...(live ? {} : { endAt: board.end })}
-        title={t('time')}
+        // The tab names the lanes and the run header carries the state and the elapsed time.
+        className="[&>header]:hidden"
         selectedTaskId={selected ?? null}
         onSelectTask={onSelect}
         labels={labels}

@@ -1364,14 +1364,22 @@ export function CommentsPanel({
     </Button>
   );
 
+  // A heading only over comments; before the first one, Add comment names itself.
+  const headed = drafts.length > 0 || sentComments.length > 0 || Boolean(pending);
   return (
-    <section aria-labelledby="comments-heading" className={cn('flex flex-col gap-2', className)}>
-      <h3 id="comments-heading" className="m-0 flex items-center gap-2 text-body" style={semibold}>
-        {t('commentsHeading')}
-        {drafts.length > 0 ? (
-          <span className="text-muted-foreground tabular-nums">{drafts.length}</span>
-        ) : null}
-      </h3>
+    <section
+      aria-label={t('commentsHeading')}
+      data-testid="review-comments"
+      className={cn('flex flex-col gap-2', className)}
+    >
+      {headed ? (
+        <h3 className="m-0 flex items-center gap-2 text-body" style={semibold}>
+          {t('commentsHeading')}
+          {drafts.length > 0 ? (
+            <span className="text-muted-foreground tabular-nums">{drafts.length}</span>
+          ) : null}
+        </h3>
+      ) : null}
       {composer}
       {drafts.length > 0 || pending ? (
         <>
@@ -1580,10 +1588,12 @@ export function DecisionPanel({
   const pinned = barSlot !== undefined;
 
   // The decision: its state once made, and the actions. Once this comparison is approved the
-  // state says so, and approving again is not offered.
+  // state says so, and approving again is not offered. The two buttons name the decision; no
+  // heading stands over them, and the note on what it covers sits beside them.
   const bar = (
     <section
-      aria-labelledby="decision-heading"
+      aria-label={t('decisionHeading')}
+      data-testid="review-decision"
       className={
         pinned
           ? 'flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2'
@@ -1591,28 +1601,18 @@ export function DecisionPanel({
             'sticky top-0 z-10 -mt-3 flex flex-col gap-2 border-b border-border bg-background pt-3 pb-3'
       }
     >
-      <div className="flex min-w-0 items-center gap-1">
-        <h3 id="decision-heading" className="m-0 text-body" style={semibold}>
-          {t('decisionHeading')}
-        </h3>
-        <Tooltip content={t('decisionScope')}>
-          <Button variant="ghost" size="icon-compact" aria-label={t('decisionScope')}>
-            <Info aria-hidden />
-          </Button>
-        </Tooltip>
-        {latest ? (
-          <p className={cn('m-0 text-caption', !pinned && 'ml-auto')} data-testid="decision">
-            {t(`decisionState.${latest.decision}`)}
-            {earlier ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
-          </p>
-        ) : null}
-      </div>
+      {latest ? (
+        <p className="m-0 text-caption" data-testid="decision">
+          {t(`decisionState.${latest.decision}`)}
+          {earlier ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="m-0 text-caption text-destructive">
           {error}
         </p>
       ) : null}
-      <div className={cn('flex flex-wrap gap-2', pinned && 'ml-auto')}>
+      <div className={cn('flex flex-wrap items-center gap-2', pinned && 'ml-auto')}>
         {settled ? null : (
           <Button
             variant={primary ? 'primary' : 'tertiary'}
@@ -1632,6 +1632,11 @@ export function DecisionPanel({
         >
           {t('requestChanges')}
         </Button>
+        <Tooltip content={t('decisionScope')}>
+          <Button variant="ghost" size="icon-compact" aria-label={t('decisionScope')}>
+            <Info aria-hidden />
+          </Button>
+        </Tooltip>
       </div>
     </section>
   );

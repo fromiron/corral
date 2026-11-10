@@ -8,7 +8,7 @@ import type {
 } from '@corral/contracts';
 import { Button, Input, Switch } from '@corral/react/design-kit';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { DocumentStore } from './documents/store.ts';
 import { EditProposals } from './EditProposalReview.tsx';
@@ -56,6 +56,17 @@ export function ContentSearch({
   const current = useRef(scope);
   current.current = scope;
   const scroll = useRef<HTMLElement>(null);
+  // Search reads saved files; that it leaves drafts out matters only while this copy has one.
+  const hasDraft = useSyncExternalStore(
+    owner.subscribe,
+    () =>
+      Object.values(owner.getState().documents).some(
+        (entry) =>
+          targetKey(entry.target) === targetKey(target) &&
+          (entry.dirty || entry.saving || entry.pendingSave),
+      ),
+    () => false,
+  );
   const rows = useVirtualizer({
     count: result?.matches.length ?? 0,
     getScrollElement: () => scroll.current,
@@ -275,7 +286,7 @@ export function ContentSearch({
           ) : null}
         </div>
       </form>
-      <p className="text-caption text-muted-foreground">{t('diskOnly')}</p>
+      {hasDraft ? <p className="text-caption text-muted-foreground">{t('diskOnly')}</p> : null}
       {error ? (
         <p role="alert" className="text-caption text-danger">
           {error}

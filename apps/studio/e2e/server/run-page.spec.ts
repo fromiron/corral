@@ -2,7 +2,7 @@ import definition from '../../../../examples/research-brief.corral.json' with { 
 import approvalDefinition from '../../../../examples/research-team.corral.json' with {
   type: 'json',
 };
-import { openResult, panelTab, requestBox } from '../workbench.ts';
+import { newConversation, openResult, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function startRun(
@@ -100,10 +100,12 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect
     .poll(() => corral.server.coordinator.getSnapshot(nextRunId).projection.status)
     .toBe('succeeded');
-  await expect(page.getByTestId('composer-status-pills')).toContainText('Run #2');
+  // The composer says it is the last run; the turn's link carries its number.
+  await expect(page.getByTestId('composer-status-pills')).toContainText('Last run');
+  await expect(page.getByTestId('turn-run').last()).toHaveText('Run #2');
   await expect(graph).toBeHidden();
   await panelTab(page, 'Runs');
-  await expect(page.getByRole('banner').getByRole('button', { name: /#2 · / })).toBeVisible();
+  await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
   await expect(graph).toBeVisible();
   await expect
     .poll(() =>
@@ -382,12 +384,13 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
       .locator('[data-agent-id="helper"]')
       .getByRole('button'),
   ).toHaveAttribute('aria-pressed', 'true');
+  // The side shows the chosen execution again. It has finished, so it offers no instruction:
+  // what was sent to it is read in its call conversation (execution-monitor.md: "지시하기는 끝나지
+  // 않은 실행에만 제공하며, 끝난 실행에 보냈던 지시와 전달 여부는 그 실행의 호출 대화에서 본다").
   const side = page.getByTestId('run-side');
-  await side.getByRole('button', { name: 'Reins', exact: true }).click();
-  const reins = page.getByTestId('run-instructions');
-  await expect(reins).toContainText('Research Helper');
-  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
-  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await expect(side).toContainText('Research Helper');
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(
     page
@@ -511,9 +514,10 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
   const action = page.getByTestId('dock-open-active-run');
-  await expect(action).toContainText('Respond');
+  await expect(action).toContainText('Waiting for you');
+  await expect(action).not.toContainText('Respond');
   await action.click();
-  // The waiting pill asks to respond: the response area opens and takes focus by itself.
+  // The waiting pill leads to the response area, which opens and takes focus by itself.
   const response = page.locator('[data-run-response]');
   await expect(response).toBeFocused();
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
@@ -563,7 +567,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),
     ).toHaveCount(1);
-    await expect(action).toContainText('Respond');
+    await expect(action).toContainText('Waiting for you');
     await expect(input).toHaveValue('Keep typing while the run continues');
     await expect(input).toBeFocused();
   } finally {
@@ -723,7 +727,7 @@ test.describe('cancel recovery', () => {
     corral,
   }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     holdLifecycleReplies = true;
     await requestBox(page).fill('Retry this cancelled request');
     await page.getByRole('button', { name: 'Send', exact: true }).click();

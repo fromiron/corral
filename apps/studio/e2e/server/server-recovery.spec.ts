@@ -12,5 +12,8 @@ test('an expired server session explains reconnection and recovers with the curr
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('the previous connection has expired');
   await corral.open('/');
-  await expect(page.getByRole('link', { name: 'Project home', exact: true })).toBeVisible();
+  // The start link opens the project workspace again.
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'My project', exact: true }),
+  ).toBeVisible();
 });

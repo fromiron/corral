@@ -4,7 +4,8 @@ import { useTranslations } from 'use-intl';
 /**
  * Recorded diagnostics remain available without becoming the primary user explanation. `open`
  * leads with the recorded reason instead: its sentence with the recorded text shown beneath it,
- * or, when the cause has no sentence, the recorded text itself.
+ * or, when the cause has no sentence, the recorded text verbatim under a localized label. The
+ * server's own words are never made the headline.
  */
 export function FailureNotice({
   message,
@@ -37,7 +38,8 @@ export function FailureNotice({
   if (open && !known)
     return (
       <div className="w-full text-caption">
-        <p className="select-text text-danger wrap-anywhere">
+        <p className="text-danger">{t('recorded')}</p>
+        <p className="mt-1 select-text text-foreground wrap-anywhere">
           {code ? `${code}: ` : ''}
           {message}
         </p>

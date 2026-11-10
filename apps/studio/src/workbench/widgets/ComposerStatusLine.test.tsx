@@ -327,6 +327,20 @@ it('keeps the lead and note without a run', async () => {
   expect(view.line()?.textContent).not.toContain('Overview');
 });
 
+it('says an ended run is the last run without its number, which its turn already links', async () => {
+  const view = await mount(
+    model({ live: false, viewed: { latest: true, number: 1, total: 1 } }, { runStatus: 'failed' }),
+  );
+  const state = view.line()?.querySelector('a');
+  expect(state?.textContent).toBe(`${messages.Status.failed}${messages.Widgets.lastRun}`);
+  expect(state?.textContent).not.toContain('Run #1');
+  // An older run still names its place among the session's runs.
+  await view.update(
+    model({ live: false, viewed: { latest: false, number: 1, total: 2 } }, { runStatus: 'failed' }),
+  );
+  expect(view.line()?.querySelector('a')?.textContent).toContain('Run #1 of 2');
+});
+
 it('gives each end state its own mark, so a failure never looks like a success', async () => {
   const view = await mount(model({ live: false }, { runStatus: 'succeeded' }));
   const mark = () => view.line()?.querySelector('a svg');

@@ -1,6 +1,13 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { editorSettings, openTestRun, startTestRun, teamNode } from '../workbench.ts';
+import {
+  editorSettings,
+  openLibraryTeams,
+  openProject,
+  openTestRun,
+  startTestRun,
+  teamNode,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const modeLabels = {
@@ -19,8 +26,8 @@ async function chooseMode(page: Page, value: keyof typeof modeLabels) {
 }
 
 async function importTeam(page: Page, id: string) {
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openProject(page);
+  await openLibraryTeams(page);
   const definition = linearCorral(['writer'], id);
   definition.name = id;
   await page.locator('input[type=file]').setInputFiles({
@@ -83,7 +90,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
   await effort.click();
   await page.getByRole('option', { name: 'Low', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await page.reload();
   await teamNode(page, 'writer').click();
   await expect(effort).toContainText('Low');

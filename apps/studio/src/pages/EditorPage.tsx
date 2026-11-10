@@ -119,7 +119,11 @@ export function TeamDesign({ corralId }: { corralId: string }) {
       record={record}
       workingCopy={copy}
       inSession
-      toolbar={<span className="text-caption text-muted-foreground">{te('appliesNextRun')}</span>}
+      toolbar={
+        <KitBadge size="compact" color="gray">
+          {te('appliesNextRun')}
+        </KitBadge>
+      }
     />
   );
 }
@@ -332,22 +336,27 @@ function Editor({
               ← {t('backToSession')}
             </Button>
           ) : null}
-          <h1
-            className="min-w-0 truncate text-body text-foreground"
-            style={{ fontVariationSettings: fontWeights.semibold }}
-          >
-            {draft.definition.name}
-          </h1>
+          {/* The path bar names the team on screen (and the outline's team row); the heading
+              stays for the document outline. */}
+          <h1 className="sr-only">{draft.definition.name}</h1>
           <span className="text-caption text-muted-foreground" data-testid="revisions">
             {t('revisions', { definition: saved.record.definitionRevision })}
           </span>
           {fromSession ? (
-            <span className="text-caption text-muted-foreground">{t('appliesNextRun')}</span>
-          ) : null}
-          <span aria-live="polite">
-            <KitBadge size="compact" color={dirty ? 'amber' : 'gray'}>
-              {saving ? c('saving') : dirty ? c('unsaved') : c('saved')}
+            <KitBadge size="compact" color="gray">
+              {t('appliesNextRun')}
             </KitBadge>
+          ) : null}
+          {/* A disabled Save already says there is nothing to save; only unsaved work and a
+              save in progress show a badge. */}
+          <span aria-live="polite">
+            {saving || dirty ? (
+              <KitBadge size="compact" color="amber">
+                {saving ? c('saving') : c('unsaved')}
+              </KitBadge>
+            ) : (
+              <span className="sr-only">{c('saved')}</span>
+            )}
           </span>
           {message ? (
             <p
@@ -585,7 +594,6 @@ function RunSide({
         >
           {n('prepareExecution')}
         </summary>
-        <p className="my-2 text-caption text-muted-foreground">{n('runOverridesHint')}</p>
         <RunRoleOverrides
           roles={roles}
           profiles={profiles}

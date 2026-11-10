@@ -10,7 +10,7 @@ import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
-import { WorkFolderNotice } from '../WorkFolderNotice.tsx';
+import { useWorkingCopyMissing } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
 
@@ -62,6 +62,10 @@ export function WorkTab({
   const size = useSize();
   // Nothing asked and nothing run: the conversation is the kit home composition.
   const home = session.entries.length === 0 && loose.length === 0;
+  const copyMissing = useWorkingCopyMissing(
+    session.sessionId,
+    runs.map((run) => `${run.runId}:${run.status}`).join(','),
+  );
   return (
     <RunChecks.Provider value={runChecks}>
       <ChatView
@@ -70,18 +74,10 @@ export function WorkTab({
         sessionId={session.sessionId}
         messageId={messageId}
         header={
-          <>
-            <MeetingHandoffLinks
-              key={`handoffs:${session.sessionId}`}
-              sessionId={session.sessionId}
-            />
-            <WorkFolderNotice
-              key={`folder:${session.sessionId}`}
-              sessionId={session.sessionId}
-              revision={runs.map((run) => `${run.runId}:${run.status}`).join(',')}
-              onSetup={() => onPanel('changes')}
-            />
-          </>
+          <MeetingHandoffLinks
+            key={`handoffs:${session.sessionId}`}
+            sessionId={session.sessionId}
+          />
         }
         items={[
           ...session.entries
@@ -128,9 +124,11 @@ export function WorkTab({
             reference={reference}
             onReferenceUsed={onReferenceUsed}
             home={home}
-            {...(home && workspaces && binding === null
-              ? { onWorkFolder: () => onPanel('changes') }
-              : {})}
+            {...(copyMissing
+              ? { onSetUpWorkingCopy: () => onPanel('changes') }
+              : home && workspaces && binding === null
+                ? { onWorkFolder: () => onPanel('changes') }
+                : {})}
           />
         }
       >

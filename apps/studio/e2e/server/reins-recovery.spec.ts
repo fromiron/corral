@@ -1,5 +1,5 @@
 import { linearCorral } from '@corral/testkit';
-import { startTestRun } from '../workbench.ts';
+import { openLibraryTeams, startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ replyDelayMs: 1000 });
@@ -9,7 +9,7 @@ test('a lost command response recovers its receipt without submitting another di
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.locator('input[type="file"]').setInputFiles({
     name: 'receipt-recovery.corral.json',
     mimeType: 'application/json',

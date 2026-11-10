@@ -1,7 +1,7 @@
 import { fauxAssistantMessage } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox, selectSessionTeam } from '../workbench.ts';
+import { newConversation, openAllProjects, requestBox, selectSessionTeam } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // session chat starts the conversation lead with no auto choice request, so the
@@ -29,7 +29,7 @@ async function write(page: Page, path: string, method: string, body?: unknown) {
 
 async function autoSession(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   return new URL(page.url()).pathname.split('/').at(-1) ?? '';
@@ -96,7 +96,7 @@ for (const stop of ['cancel', 'navigate'] as const) {
     try {
       if (stop === 'cancel')
         await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
-      else await page.getByRole('link', { name: 'All projects', exact: true }).click();
+      else await openAllProjects(page);
       await expect
         .poll(() =>
           ['cancelling', 'cancelled'].includes(

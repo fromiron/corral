@@ -1,4 +1,9 @@
-import { requestBox } from '../workbench.ts';
+import {
+  newConversation,
+  openConversationDetails,
+  openSessionSearch,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('archived sessions run only after explicit sending and stay archived', async ({
@@ -6,7 +11,7 @@ test('archived sessions run only after explicit sending and stay archived', asyn
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(requestBox(page)).toBeVisible();
   const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
   const sidebarSession = page
@@ -34,9 +39,9 @@ test('search scopes lead to explicit private search and group matching entries b
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: /^Session details/ }).click();
-  await page.getByRole('textbox', { name: 'Session name' }).fill('Search fixture');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  const details = await openConversationDetails(page);
+  await details.getByRole('textbox', { name: 'Session name' }).fill('Search fixture');
+  await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(requestBox(page)).toBeVisible();
   const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
   await page.evaluate(async (id) => {
@@ -51,19 +56,26 @@ test('search scopes lead to explicit private search and group matching entries b
     }
   }, sessionId);
   await page.reload();
-  const sidebar = page.getByTestId('app-sidebar');
-  await sidebar.getByRole('searchbox', { name: 'Filter conversations' }).fill('moonstone');
-  await expect(sidebar.getByText('All projects · titles and purposes')).toBeVisible();
-  await expect(sidebar.getByRole('button', { name: 'Search messages and results' })).toBeVisible();
-  await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
-  await palette.getByRole('combobox').fill('moonstone');
-  await expect(
-    palette.getByText('Commands and current project session titles and purposes'),
-  ).toBeVisible();
-  await palette.getByRole('button', { name: 'Search messages and results' }).click();
+  // The sidebar's search field opens the palette on sessions: it finds titles and purposes in the
+  // scope it shows, and message and result text is a separate search at the end of its list.
+  const { palette, input } = await openSessionSearch(page);
+  await input.fill('moonstone');
+  const scope = palette.getByRole('group', { name: 'Find sessions in', exact: true });
+  await expect(scope.getByRole('button', { name: 'My project', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await scope.getByRole('button', { name: 'All projects', exact: true }).click();
+  await expect(scope.getByRole('button', { name: 'All projects', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await palette
+    .getByRole('option', { name: 'Search messages and results for “moonstone”', exact: true })
+    .click();
   const dialog = page.getByRole('dialog', { name: 'Search sessions and results' });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/^All projects · titles and purposes\./)).toBeVisible();
   await expect(
     dialog.getByRole('switch', { name: 'Include private messages and results' }),
   ).toHaveAttribute('aria-checked', 'false');
@@ -85,16 +97,13 @@ test('primary icon controls expose tooltips on hover and keyboard focus', async 
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(requestBox(page)).toBeVisible();
   const sidebar = page.getByTestId('app-sidebar');
+  // Session search is the sidebar's labelled search field now, not an icon control.
   const controls = [
-    [sidebar.locator('a[aria-label="New session"]'), 'New session'],
+    [sidebar.getByRole('link', { name: 'New conversation', exact: true }), 'New conversation'],
     [sidebar.getByRole('button', { name: 'Hide the sidebar' }), 'Hide the sidebar'],
-    [
-      sidebar.getByRole('button', { name: 'Search sessions and results' }),
-      'Search sessions and results',
-    ],
     [
       page.getByRole('banner').getByRole('button', { name: /Actions for/ }),
       'Actions for New session',

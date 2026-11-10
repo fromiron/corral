@@ -41,13 +41,12 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
       </summary>
       {plan ? (
         <>
-          <p className="my-2 text-caption text-muted-foreground">{t('scopeHint')}</p>
           {status.state === 'stale-criteria' || status.state === 'stale-attempt' ? (
-            <p role="status" className="text-warning">
+            <p role="status" className="mt-2 text-warning">
               {t(status.state === 'stale-attempt' ? 'staleAttempt' : 'staleCriteria')}
             </p>
           ) : null}
-          <ol className="flex flex-col gap-2">
+          <ol className="mt-2 flex flex-col gap-2">
             {plan.items.map((item) => (
               <li key={item.id} className="flex flex-wrap items-start gap-2">
                 <span

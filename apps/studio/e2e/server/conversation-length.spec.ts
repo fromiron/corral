@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { newConversation, openTextSearch } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('a long conversation restores the request anchor without mounting the whole history', async ({
@@ -8,7 +9,7 @@ test('a long conversation restores the request anchor without mounting the whole
 }) => {
   test.setTimeout(90_000);
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const sessionId = new URL(page.url()).pathname.split('/').at(-1)!;
   const require = createRequire(
@@ -70,14 +71,26 @@ test('a long conversation restores the request anchor without mounting the whole
     .toBeLessThan(4);
   await page.getByRole('button', { name: 'Jump to latest' }).click();
   await expect(timeline).toContainText('Request 999');
-  await page.getByRole('button', { name: 'Search sessions and results', exact: true }).click();
-  const search = page.getByRole('dialog');
+  // The sidebar's search field opens the palette, whose last entry searches message text.
+  const search = await openTextSearch(page);
   await search.getByRole('textbox', { name: 'Search text' }).fill('Request 123 한국어');
   await expect(search).toContainText('0 matches');
   await search.getByRole('switch', { name: 'Include private messages and results' }).check();
   await expect(search).toContainText('1 matches');
   await search.getByRole('link').filter({ hasText: 'request 123' }).click();
   await expect(timeline.locator('[data-chat-item="entry_fixture123"]')).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+// The session tab strip ('Session tabs', each tab returning to the exact URL it was left at)
+// was removed before the redesign (18bc4e25), while workbench.md (범위와 연속성) still names an
+// active session tab. Kept as the behavior to decide on.
+test.fixme('a session tab returns to the exact address it was left at', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await newConversation(page);
   const selectedUrl = page.url();
   const other = await page.evaluate(async () => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -96,8 +109,6 @@ test('a long conversation restores the request anchor without mounting the whole
   await expect(tabs.getByRole('link')).toHaveCount(2);
   await tabs.getByRole('link').first().click();
   await expect(page).toHaveURL(selectedUrl);
-  await expect(timeline.locator('[data-chat-item="entry_fixture123"]')).toBeVisible();
   await tabs.getByRole('button', { name: 'Close Second tab tab' }).click();
   await expect(tabs.getByRole('link')).toHaveCount(1);
-  expect(corral.errors).toEqual([]);
 });

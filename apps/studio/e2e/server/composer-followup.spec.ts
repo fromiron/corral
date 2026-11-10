@@ -77,7 +77,9 @@ test.describe('saved requests with a stale instruction draft', () => {
   }
 });
 
-test('same-name result references stay distinct after reload and deleting one', async ({
+// Needs a new scenario: once Run #2 succeeds, Run #1's results are released (api-contract.md
+// 산출물 본문 수명) and leave the @ menu, so two same-name results no longer come from two runs.
+test.fixme('same-name result references stay distinct after reload and deleting one', async ({
   page,
   corral,
 }) => {

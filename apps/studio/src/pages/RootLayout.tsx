@@ -352,7 +352,8 @@ function RootFrame() {
               >
                 {/* A title bar's double click is a pointer convenience; the window menu does the same. */}
                 <TopbarBar className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
-                  <h1 className="sr-only">{t('title')}</h1>
+                  {/* The outline's one h1: a list page's own title stands in for it (index.css). */}
+                  <h1 className="app-name sr-only">{t('title')}</h1>
                   <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
                     <Button
                       ref={sidebarTrigger}

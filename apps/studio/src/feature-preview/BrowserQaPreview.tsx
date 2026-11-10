@@ -99,10 +99,18 @@ function StepBody({ step, done }: { step: BrowserStep; done: boolean }) {
   }
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  hideLabel = false,
+  children,
+}: {
+  label: string;
+  hideLabel?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className="grid gap-1">
-      <span className="text-caption text-muted-foreground">{label}</span>
+      <span className={hideLabel ? 'sr-only' : 'text-caption text-muted-foreground'}>{label}</span>
       <div className="flex min-w-0 items-center gap-1.5 text-body text-foreground">{children}</div>
     </div>
   );
@@ -112,7 +120,7 @@ function OpenStep({ done }: { done: boolean }) {
   const t = useTranslations('FeaturePreview.browser');
   return (
     <>
-      <Field label={t('address')}>
+      <Field label={t('address')} hideLabel>
         <Globe aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         <code className="min-w-0 font-mono [overflow-wrap:anywhere]">{SAMPLE_BROWSER.url}</code>
       </Field>
