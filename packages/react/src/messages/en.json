@@ -1676,10 +1676,10 @@
       "explain": "Question about the result"
     },
     "intentHint": {
-      "next": "Starts a new run with the team. The latest result is passed along; earlier runs stay as they are.",
-      "queue": "Saved here and started only when you choose, after the current run ends.",
-      "steer": "Reaches the chosen execution at its next model request.",
-      "explain": "A separate one-agent run that answers from the latest result. It is recorded and counted like any run."
+      "next": "New run with the team, latest result passed along",
+      "queue": "Starts when you choose, after the current run",
+      "steer": "Delivered at the execution's next model request",
+      "explain": "Separate one-agent run, recorded and counted"
     },
     "state": {
       "started": "Started",
@@ -2376,9 +2376,9 @@
     "teamLabel": "Team",
     "teamNone": "No team",
     "teamAuto": "auto",
-    "teamNoneHint": "One assistant answers; it calls subagents only when you ask.",
-    "teamAutoHint": "The assistant leads planner, researcher, writer and reviewer agents when the work benefits.",
-    "teamCorralHint": "The assistant leads this Corral's roles, using its flow as guidance.",
+    "teamNoneHint": "One assistant; subagents only when asked",
+    "teamAutoHint": "Assistant leading planner, researcher, writer and reviewer",
+    "teamCorralHint": "Assistant leading its roles, flow as a guide",
     "teamCorralGroup": "Corral",
     "attachmentHash": "Content hash (SHA-256)"
   },
