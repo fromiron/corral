@@ -13,7 +13,7 @@
 | 한 프로젝트의 기본 작업 방식 | Project default work style / 프로젝트 기본 작업 방식 | `project-defaults`, scope `project` | Default work style(한정사 없이) |
 | 작업 방식이 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → 팀 역할 → 이번 실행 | `ScopeLadder` | 3단 설명 |
 | 실행 결과물 | Results / 결과 | 패널 `artifacts`, 슬래시 `/results` | Artifacts |
-| 실행이 쓰는 격리 사본 | Session working copy / 세션 작업 복사본 | `worktree`, scope `session` | 세션 복사본(축약) |
+| 실행이 쓰는 격리 사본 | Session working copy / 세션 작업 사본 | `worktree`, scope `session` | 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
 | 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
