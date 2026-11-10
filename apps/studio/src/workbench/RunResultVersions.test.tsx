@@ -35,18 +35,22 @@ async function render(status: RunProjection['status']) {
   return container;
 }
 
-// The run page's header already states that the run is still working, so the Results view adds
+// chat-widgets-contract.md 7.1: with no result the view shows the real pending or none state.
+// The run page's header already says the run is still working, so the state is a title only:
 // no sentence about results appearing later.
 it.each(['running', 'awaiting_user', 'paused'] as const)(
-  'says nothing while a %s run has no results yet',
+  'names the pending state, as a title only, while a %s run has no results yet',
   async (status) => {
     const container = await render(status);
-    expect(container.textContent).toBe('');
-    expect(container.querySelector('[role="status"]')).toBeNull();
+    const state = container.querySelector('[role="status"]');
+    expect(state?.textContent).toBe(messages.Results.kind.pending);
+    expect(state?.querySelector('p')).toBeNull();
   },
 );
 
-it('says that an ended run made no results', async () => {
+it('names an ended run that made no results, as a title only', async () => {
   const container = await render('cancelled');
-  expect(container.querySelector('[role="status"]')?.textContent).toBe(messages.Results.kind.none);
+  const state = container.querySelector('[role="status"]');
+  expect(state?.textContent).toBe(messages.Results.kind.none);
+  expect(state?.querySelector('p')).toBeNull();
 });

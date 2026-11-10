@@ -1544,7 +1544,8 @@
     "label": "Results",
     "kind": {
       "partial": "The run ended before its Output. These are partial results: what it made before it stopped.",
-      "none": "The run ended without results."
+      "none": "Ended without results",
+      "pending": "No results yet"
     },
     "final": "Final results",
     "intermediate": "Work in between",

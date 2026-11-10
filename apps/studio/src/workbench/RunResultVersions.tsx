@@ -2,6 +2,7 @@ import { canReadArtifactBody } from '@corral/core';
 import { type ResultItem, type RunSessionStore, runResults, useRunDisplay } from '@corral/react';
 import {
   Button,
+  EmptyState,
   SectionLabel,
   Table,
   TableBody,
@@ -58,12 +59,13 @@ export function RunResultVersions({
       final: false,
     },
   ].filter((section) => section.items.length > 0);
-  // A run still working says so in the run header; only an ended run's empty result is news.
+  // No results yet, or none at all once the run ended: the state as a title. The run header
+  // already says the run is still working, so no sentence promises results later.
   if (!sections.length)
-    return results.kind === 'pending' ? null : (
-      <p role="status" className="p-6 text-caption text-muted-foreground">
-        {t('kind.none')}
-      </p>
+    return (
+      <div role="status" className="mx-auto w-full max-w-[1040px] px-6 py-5">
+        <EmptyState title={t(results.kind === 'pending' ? 'kind.pending' : 'kind.none')} />
+      </div>
     );
   // Rows are numbered across the groups so the table's one hover highlight follows them all.
   let row = 0;
