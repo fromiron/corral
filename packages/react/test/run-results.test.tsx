@@ -236,6 +236,47 @@ describe('RunResults view', () => {
     expect(screen.queryByTestId('result-body')).toBeNull();
   });
 
+  it('opens a step result the run still keeps from its address, and never one it released', async () => {
+    // A finished run keeps its final result and each step's last submission (here the one a
+    // fork carried); its other versions are released.
+    const projection = projectionWith(
+      [
+        version('step', 'notes', 1, { submitted: true }),
+        version('gone', 'scratch', 1),
+        version('fin', 'report', 1, { submitted: true }),
+      ],
+      {
+        status: 'succeeded',
+        output: { nodeId: 'out', artifactVersionIds: ['fin'] },
+        forkedFrom: {
+          runId: 'run_0',
+          nodeId: 'notes_node',
+          carried: [{ nodeId: 'notes_node', artifactVersionIds: ['step'] }],
+        },
+      },
+    );
+    const texts = { step: 'kept step body', gone: 'released body', fin: 'final body' };
+    const session = sessionStore({ runId: 'run_1', projection, artifactTexts: texts });
+    const view = wrap(<RunResults session={session} selectedId="step" onSelect={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('result-body')).toHaveTextContent('kept step body'),
+    );
+    expect(screen.getByRole('heading', { name: 'notes v1' })).toBeInTheDocument();
+    // The list beside it stays the run's final results.
+    expect(
+      within(screen.getByRole('navigation', { name: 'Results' })).getAllByRole('button'),
+    ).toHaveLength(1);
+
+    view.rerender(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunResults session={session} selectedId="gone" onSelect={vi.fn()} />
+      </IntlProvider>,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('This result could not be loaded.');
+    expect(screen.queryByText('released body')).toBeNull();
+    expect(screen.queryByTestId('result-body')).toBeNull();
+  });
+
   it('shows the source and an isolated preview for an HTML document', async () => {
     const html = '<!doctype html><html><body><h1>Page</h1><script>alert(1)</script></body></html>';
     const session = sessionStore({

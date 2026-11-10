@@ -62,10 +62,24 @@ export function RunResults({
   const current = results.final.filter((item) =>
     canReadArtifactBody(currentProjection, item.artifactVersionId),
   );
+  // An address may name another version the run still keeps, such as a step result a search
+  // found (api-contract.md, 산출물 본문 수명); it opens here while the list stays the finals.
+  const kept =
+    selectedId === null
+      ? undefined
+      : results.intermediate
+          .flatMap((group) => group.versions)
+          .find(
+            (item) =>
+              item.artifactVersionId === selectedId &&
+              canReadArtifactBody(currentProjection, selectedId),
+          );
   const chosen =
     current.find(
       (item) => item.artifactVersionId === (selectedId ?? current[0]?.artifactVersionId),
-    ) ?? null;
+    ) ??
+    kept ??
+    null;
 
   return (
     // UX-03: one column until the results have room for a list beside the text, measured on
