@@ -3175,7 +3175,6 @@
     "openRunDetails": "Open execution details",
     "closeControls": "Close controls",
     "firstRequestHint": "Leave the team on Auto or choose one, then write your request in the session.",
-    "sessionDetails": "Session details (optional)",
     "sessionName": "Session name",
     "optionalPurposeHint": "A long-term purpose is optional. It is never sent automatically.",
     "addToWorkStyle": "Connect in Work styles",

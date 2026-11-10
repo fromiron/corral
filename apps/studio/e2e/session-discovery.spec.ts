@@ -25,15 +25,18 @@ test('saved details are shown again before a quick new conversation starts', asy
   await expect(page).not.toHaveURL(/\/sessions\//);
 });
 
-// workbench.md (세션 목록과 검색) says saved name, purpose and team are disclosed even while the
-// details are folded away; they now live in a dialog and nothing outside it says they exist.
-test.fixme('closed saved details still show that a name or purpose is saved', async ({ page }) => {
+// workbench.md (세션 목록과 검색): saved name, purpose and team are disclosed even while the details
+// are closed. They live in a dialog; the menu item that opens it again carries what is saved.
+test('closed saved details still show that a name or purpose is saved', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'More ways to start a conversation' }).click();
-  await page.getByRole('menuitem', { name: /^Set name, purpose and team first/ }).click();
+  const more = page.getByRole('button', { name: 'More ways to start a conversation' });
+  const details = page.getByRole('menuitem', { name: /^Set name, purpose and team first/ });
+  await more.click();
+  await details.click();
   await page.getByRole('textbox', { name: 'Session name' }).fill('Visible name');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('main')).toContainText('Visible name');
+  await more.click();
+  await expect(details).toContainText('Visible name');
 });
 
 test('archiving keeps the draft and explains that explicit sending keeps the archive', async ({

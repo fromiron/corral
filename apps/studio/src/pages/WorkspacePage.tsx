@@ -517,6 +517,13 @@ function NewConversation({
     available.some((c) => c.corralId === corralId) || isSuggested(corralId) ? corralId : '';
   const team = chooseTeam(corrals);
   const hasDetails = Boolean(title || objective || corralId);
+  // Saved details show on the way back to them while the form is closed: the name, else the
+  // start of the purpose, else the team chosen (workbench.md, 세션 목록과 검색).
+  const savedHint =
+    title.trim() ||
+    objective.trim().split('\n')[0]?.trim() ||
+    corrals.find((c) => c.corralId === team)?.name ||
+    (isSuggested(team) ? tw('suggestedTeam', { name: tw(`template.${team.slice(9)}.name`) }) : '');
   useEffect(() => {
     active.current = true;
     return () => {
@@ -604,7 +611,24 @@ function NewConversation({
             <ChevronDown />
           </MenuTrigger>
           <MenuPopup align="end">
-            <MenuItem onClick={() => setDetailsOpen(true)}>{tw('detailsFirst')}</MenuItem>
+            <MenuItem
+              label={savedHint ? `${tw('detailsFirst')} · ${savedHint}` : tw('detailsFirst')}
+              onClick={() => setDetailsOpen(true)}
+            >
+              {savedHint ? (
+                <span className="flex w-full min-w-0 items-center gap-3">
+                  <span className="shrink-0">{tw('detailsFirst')}</span>
+                  <span
+                    data-testid="new-conversation-draft"
+                    className="ml-auto max-w-48 truncate text-caption text-muted-foreground"
+                  >
+                    {savedHint}
+                  </span>
+                </span>
+              ) : (
+                tw('detailsFirst')
+              )}
+            </MenuItem>
           </MenuPopup>
         </Menu>
       </div>
