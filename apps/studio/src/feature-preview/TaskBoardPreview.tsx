@@ -132,7 +132,7 @@ export function TaskBoardPreview({ onOpenPull }: { onOpenPull: (number: number) 
 
 function NoTask() {
   const t = useTranslations('FeaturePreview.board');
-  return <EmptyState title={t('none')} text={t('noneText')} />;
+  return <EmptyState title={t('none')} />;
 }
 
 function TaskDetail({

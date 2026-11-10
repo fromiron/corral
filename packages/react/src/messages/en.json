@@ -22,7 +22,7 @@
     "title": "Commands",
     "history": "Command history",
     "refresh": "Refresh commands",
-    "empty": "Commands run in this working copy will appear here.",
+    "empty": "No commands yet",
     "unavailableCommand": "Command text unavailable",
     "service": "Run service",
     "foreground": "Command",
@@ -449,13 +449,11 @@
     "whenRuns": "Runs while this server is open. Missed times and overlapping runs are skipped and recorded. A repeated daylight-saving time runs once, at its earlier instant; nonexistent times are skipped.",
     "howRuns": "Requests use the normal Auto team, its model, and your selected permission mode. Approval requests wait in the session. Disabling or deleting a schedule does not cancel an already started run.",
     "localOnly": "Available with the local server",
-    "localOnlyText": "Schedules are kept and run by the local Corral server.",
     "needsSession": "Create an Auto session in a project first.",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "noUpcoming": "No upcoming run",
     "emptyTitle": "No schedules",
-    "emptyText": "Create a schedule to run a request in a session at set times.",
     "schedule": "Schedule",
     "state": "State",
     "nextRun": "Next run",
@@ -572,7 +570,6 @@
     "runsHeading": "Runs",
     "runsEmpty": "No runs yet.",
     "runStarted": "Started {time}",
-    "emptyHint": "A team saves the roles a conversation can start with.",
     "templatesHeading": "Start from a template",
     "useTemplate": "Edit this team",
     "saveCopyTitle": "Save a team copy",
@@ -626,7 +623,6 @@
       "changed": "{count, plural, =0 {None} one {# file} other {# files}}",
       "copyMissing": "Copy missing",
       "noCopies": "No session working copies",
-      "noCopiesText": "A session makes one when its work changes files.",
       "loading": "Loading…"
     },
     "previewBadge": "Preview"
@@ -1010,7 +1006,6 @@
     "backToList": "Back to list",
     "handled": "This item was handled.",
     "empty": "Nothing needs you",
-    "emptyText": "Approvals, questions and changes to review gather here.",
     "noSelection": "Nothing selected",
     "loading": "Loading…",
     "loadFailed": "Couldn't load {project}.",
@@ -1819,7 +1814,6 @@
     "startWithTeam": "Start with {team}",
     "runNumber": "Run #{number}",
     "emptyTitle": "No sessions yet",
-    "emptyText": "A session keeps one purpose across its requests and runs.",
     "connectModel": "Connect a model",
     "noMatches": "No sessions match this search.",
     "meeting": "Meeting"
@@ -2105,7 +2099,6 @@
     "idle": "No run working",
     "chooseRun": "Run",
     "noRuns": "No runs yet",
-    "noRunsText": "Runs that this conversation starts appear here.",
     "openConversation": "Go to conversation",
     "artifactsEmpty": "No results yet.",
     "openResults": "Open results",
@@ -3116,11 +3109,8 @@
     },
     "internalSkillName": "Internal skill name",
     "emptySkills": "No Skills yet",
-    "emptySkillsText": "Skills you write or import appear here.",
     "emptyHooks": "No hooks yet",
-    "emptyHooksText": "Hooks you create and extensions you import appear here.",
     "emptyMcp": "No MCP servers yet",
-    "emptyMcpText": "Servers you register for this project appear here with their connection.",
     "noArchived": "No archived items.",
     "onlyArchived": "Every item is archived. Show archived items to see them."
   },
@@ -3208,8 +3198,6 @@
         }
       },
       "emptyTitle": "No resources yet",
-      "emptyText": "Skills, hooks, packages and MCP servers you add appear here with their status.",
-      "localOnlyText": "Skills, hooks, packages and MCP servers are installed and checked by the local Corral server.",
       "addKinds": "Add resources"
     }
   },
@@ -3781,8 +3769,7 @@
       "branch": "Branch",
       "status": "Status",
       "moved": "Moved to {status}",
-      "none": "No task open",
-      "noneText": "Open a task in the list to see its details."
+      "none": "No task open"
     },
     "tasks": {
       "filterTasks": "Filter tasks",
@@ -3857,8 +3844,7 @@
       "post": "Post comment",
       "you": "You",
       "fixRequest": "Fix request",
-      "noComments": "No comments yet",
-      "noCommentsText": "Comments on this pull request appear here."
+      "noComments": "No comments yet"
     },
     "diff": {
       "added": "{count} added",

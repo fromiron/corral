@@ -346,7 +346,7 @@ function Comments({
           ))}
         </ol>
       ) : (
-        <EmptyState title={t('noComments')} text={t('noCommentsText')} />
+        <EmptyState title={t('noComments')} />
       )}
       <form
         className="grid gap-2"

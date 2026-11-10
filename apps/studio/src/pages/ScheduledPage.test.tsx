@@ -449,7 +449,8 @@ it('in the browser demo, the empty state gives the reason and there is no disabl
   const empty = container.querySelector<HTMLElement>('.border-dashed');
   expect(empty?.querySelector('b')?.textContent).toBe(messages.Schedules.localOnly);
   expect(container.textContent).not.toContain('No schedules');
-  expect(empty?.querySelector('p')?.textContent).toBe(messages.Schedules.localOnlyText);
+  // The title is the whole of it: no sentence explains the feature.
+  expect(empty?.querySelector('p')).toBeNull();
   expect(
     [...container.querySelectorAll('button')].some((item) => item.textContent === 'New schedule'),
   ).toBe(false);

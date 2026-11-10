@@ -44,7 +44,7 @@ export function RunPanel({
     return (
       <div className="grid h-full place-items-center p-6">
         <div className="grid justify-items-center gap-3">
-          <EmptyState title={tw('noRuns')} text={tw('noRunsText')} />
+          <EmptyState title={tw('noRuns')} />
           <Button
             variant="secondary"
             size="compact"

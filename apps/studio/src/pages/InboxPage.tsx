@@ -434,7 +434,7 @@ export function InboxPage() {
               </section>
             ))}
             {settled && entries.length === 0 && failures.length === 0 && !projectsFailed ? (
-              <EmptyState title={t('empty')} text={t('emptyText')} />
+              <EmptyState title={t('empty')} />
             ) : null}
             {!settled && !projectsFailed && entries.length === 0 ? (
               // Until the first read settles the list says so instead of standing empty.

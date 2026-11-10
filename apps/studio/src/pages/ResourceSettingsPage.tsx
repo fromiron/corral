@@ -162,10 +162,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       ) : null}
       <div className="flex flex-col gap-6">
         {none ? (
-          <EmptyState
-            title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')}
-            text={t(kind === 'skill' ? 'emptySkillsText' : 'emptyHooksText')}
-          />
+          <EmptyState title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')} />
         ) : (
           <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('library')}>
             {!loaded ? (

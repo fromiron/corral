@@ -22,7 +22,7 @@
     "title": "명령 실행",
     "history": "명령 실행 기록",
     "refresh": "명령 실행 새로고침",
-    "empty": "이 작업 사본에서 실행한 명령이 표시됩니다.",
+    "empty": "아직 명령이 없습니다",
     "unavailableCommand": "명령 내용을 확인할 수 없음",
     "service": "실행 중 유지하는 서비스",
     "foreground": "명령",
@@ -449,13 +449,11 @@
     "whenRuns": "서버가 켜져 있을 때 실행합니다. 놓친 시각과 이전 실행 중의 예약은 건너뛰고 기록합니다. 일광 절약 시간으로 시각이 반복되면 첫 시각에 한 번 실행하며, 존재하지 않는 시각은 건너뜁니다.",
     "howRuns": "일반 Auto 팀과 해당 모델, 선택한 권한 모드를 사용합니다. 승인이 필요하면 세션에서 기다립니다. 예약 비활성화·삭제는 이미 시작한 실행을 취소하지 않습니다.",
     "localOnly": "로컬 서버에서 사용",
-    "localOnlyText": "예약은 로컬 Corral 서버가 보관하고 실행합니다.",
     "needsSession": "프로젝트에서 Auto 세션을 먼저 만들어 주세요.",
     "enabled": "활성",
     "disabled": "비활성",
     "noUpcoming": "다음 실행 없음",
     "emptyTitle": "예약 없음",
-    "emptyText": "정해진 시각에 세션에서 요청을 실행하려면 예약을 만드세요.",
     "schedule": "일정",
     "state": "상태",
     "nextRun": "다음 실행",
@@ -572,7 +570,6 @@
     "runsHeading": "실행 목록",
     "runsEmpty": "아직 실행이 없습니다.",
     "runStarted": "{time} 시작",
-    "emptyHint": "팀은 대화를 시작할 때 쓸 역할을 저장합니다.",
     "templatesHeading": "템플릿으로 시작",
     "useTemplate": "팀 편집해서 쓰기",
     "saveCopyTitle": "팀 사본 저장",
@@ -626,7 +623,6 @@
       "changed": "{count, plural, =0 {없음} other {파일 #개}}",
       "copyMissing": "사본 없어짐",
       "noCopies": "세션 작업 사본 없음",
-      "noCopiesText": "파일을 바꾸는 작업을 하면 세션이 만듭니다.",
       "loading": "불러오는 중…"
     },
     "previewBadge": "미리보기"
@@ -1010,7 +1006,6 @@
     "backToList": "목록으로",
     "handled": "처리된 항목입니다.",
     "empty": "확인할 항목이 없습니다",
-    "emptyText": "승인·질문·검토할 변경이 여기에 모입니다.",
     "noSelection": "선택한 항목이 없습니다",
     "loading": "불러오는 중…",
     "loadFailed": "{project}의 항목을 불러오지 못했습니다.",
@@ -1819,7 +1814,6 @@
     "startWithTeam": "{team}(으)로 시작",
     "runNumber": "실행 #{number}",
     "emptyTitle": "아직 세션이 없습니다",
-    "emptyText": "세션은 한 목적을 여러 요청과 실행에 걸쳐 이어 갑니다.",
     "connectModel": "모델 연결하기",
     "noMatches": "검색 조건에 맞는 세션이 없습니다.",
     "meeting": "회의"
@@ -2105,7 +2099,6 @@
     "idle": "실행 중인 실행 없음",
     "chooseRun": "실행",
     "noRuns": "아직 실행이 없습니다",
-    "noRunsText": "이 대화에서 시작한 실행이 여기에 표시됩니다.",
     "openConversation": "대화로 이동",
     "artifactsEmpty": "아직 결과가 없습니다.",
     "openResults": "결과 보기",
@@ -3116,11 +3109,8 @@
     },
     "internalSkillName": "내부 스킬 이름",
     "emptySkills": "아직 Skill이 없습니다",
-    "emptySkillsText": "작성하거나 가져온 Skill이 여기에 보입니다.",
     "emptyHooks": "아직 Hook이 없습니다",
-    "emptyHooksText": "만든 Hook과 가져온 확장이 여기에 보입니다.",
     "emptyMcp": "아직 MCP 서버가 없습니다",
-    "emptyMcpText": "이 프로젝트에 등록한 서버가 연결 상태와 함께 여기에 보입니다.",
     "noArchived": "보관한 항목이 없습니다.",
     "onlyArchived": "모든 항목이 보관됐습니다. 보관한 항목을 보이면 나타납니다."
   },
@@ -3208,8 +3198,6 @@
         }
       },
       "emptyTitle": "아직 리소스가 없습니다",
-      "emptyText": "추가한 Skill·Hook·패키지·MCP 서버가 상태와 함께 여기에 보입니다.",
-      "localOnlyText": "Skill·Hook·패키지·MCP 서버는 로컬 Corral 서버가 설치하고 확인합니다.",
       "addKinds": "리소스 추가"
     }
   },
@@ -3781,8 +3769,7 @@
       "branch": "브랜치",
       "status": "상태",
       "moved": "{status}(으)로 바꿈",
-      "none": "열린 작업 없음",
-      "noneText": "목록에서 작업을 열면 상세가 보입니다."
+      "none": "열린 작업 없음"
     },
     "tasks": {
       "filterTasks": "작업 필터",
@@ -3857,8 +3844,7 @@
       "post": "댓글 달기",
       "you": "나",
       "fixRequest": "수정 요청",
-      "noComments": "아직 댓글 없음",
-      "noCommentsText": "이 PR의 댓글이 여기에 보입니다."
+      "noComments": "아직 댓글 없음"
     },
     "diff": {
       "added": "{count}줄 추가",

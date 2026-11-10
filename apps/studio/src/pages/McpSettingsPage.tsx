@@ -150,7 +150,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       ) : null}
       <div className="flex flex-col gap-6">
         {none ? (
-          <EmptyState title={t('emptyMcp')} text={t('emptyMcpText')} />
+          <EmptyState title={t('emptyMcp')} />
         ) : (
           <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('mcp')}>
             {!loaded ? (

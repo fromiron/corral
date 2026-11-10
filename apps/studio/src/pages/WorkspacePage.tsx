@@ -813,7 +813,7 @@ function EnvironmentPanel({
             {t('loading')}
           </p>
         ) : rows.length === 0 ? (
-          <EmptyState title={t('noCopies')} text={t('noCopiesText')} />
+          <EmptyState title={t('noCopies')} />
         ) : (
           <Table aria-label={t('copies')}>
             <TableHeader>
@@ -975,7 +975,7 @@ function SessionList({
       {none ? (
         <div className="grid justify-items-center gap-4">
           <div className="w-full">
-            <EmptyState title={t('emptyTitle')} text={t('emptyText')} />
+            <EmptyState title={t('emptyTitle')} />
           </div>
           {needsModel && !archived ? (
             <Button variant="tertiary" render={<Link {...navigation.link('models')} />}>

@@ -325,12 +325,13 @@ export function ScheduledPage() {
     return latest.runId ? runStatus(latest) : t(`occurrence.${latest.status}`);
   };
   // Without the local server the empty state's title is the reason, as in Library resources.
+  // Its one line is what New schedule waits for, while there is no session to run in.
   const empty =
     mode !== 'server'
-      ? { title: t('localOnly'), text: t('localOnlyText') }
+      ? { title: t('localOnly'), text: undefined }
       : {
           title: t('emptyTitle'),
-          text: loaded && !sessions.length ? t('needsSession') : t('emptyText'),
+          text: loaded && !sessions.length ? t('needsSession') : undefined,
         };
   /** The session's current name when it can be read, else the one listed when the page opened. */
   const targetSession = (sessionId: string) =>
