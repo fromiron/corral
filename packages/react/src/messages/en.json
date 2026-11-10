@@ -2075,7 +2075,7 @@
     "resizeSidebar": "Sidebar width",
     "resizePanel": "Panel width",
     "sessions": "Sessions",
-    "needsYou": "Pending actions ({count})",
+    "needsYou": "Needs you ({count})",
     "teamLibrary": "Team library",
     "allProjects": "All projects",
     "models": "Models",
