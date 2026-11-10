@@ -355,9 +355,17 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
         'Should we choose Kafka or SQS? Recommend one',
         'Redux와 Zustand 중 무엇을 쓸지 결정해 줘',
         '배포 도구로 GitHub Actions와 Jenkins 중 하나를 골라 줘',
+        // Two alternatives named by their endings (-ㄹ지 … -ㄹ지), with no word for "or".
+        '상태 관리를 Redux로 유지할지 Zustand로 바꿀지 결정해 줘',
       ],
     ],
   ];
+
+  it('one open question is not a choice between two options', () => {
+    // A single "-ㄹ지" asks how or whether, and a noun ending in 지 is not an alternative.
+    expect(shape('캐시를 어떻게 무효화할지 결정해 줘')).not.toBe('tech_decision');
+    expect(shape('현재 구조를 유지하는 방안을 추천해 줘')).not.toBe('tech_decision');
+  });
 
   it.each(table)('%s', (pattern, goals) => {
     for (const goal of goals) expect(shape(goal), goal).toBe(pattern);

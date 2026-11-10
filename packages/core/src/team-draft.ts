@@ -107,6 +107,15 @@ const DECISION =
   /\b(decid\w*|decisions?|choos\w*|chose|pick|select|which (one|option|is better)|should (we|i)|recommend\w*|trade-?offs?)\b|결정|선택|고를|고르|골라|할지|추천|권해|권하/i;
 const OPTIONS =
   /\b(between|or|vs\.?|versus|both|options?|alternatives?|either)\b|중\s*(에|에서)?\s*(무엇|어느|뭘|뭐|하나|어떤)|아니면|두\s*(안|가지|방안|옵션|후보)|둘\s*중|대신/i;
+/** Korean names two alternatives by their endings alone: "유지할지 바꿀지". */
+function twoAlternatives(brief: string) {
+  let count = 0;
+  for (const match of brief.matchAll(/([가-힣])지(?![가-힣])/g)) {
+    // A syllable that ends in ㄹ: its final-consonant index is 8.
+    if (((match[1]?.charCodeAt(0) ?? 0) - 0xac00) % 28 === 8) count += 1;
+  }
+  return count >= 2;
+}
 const IMPLEMENT =
   /\b(implement\w*|add|adds|adding|build|builds|building|develop|developing|introduce|integrat\w*|refactor\w*)\b|구현|추가|개발|도입|연동|리팩터|리팩토링/i;
 const PLAN_FIRST =
@@ -137,7 +146,8 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
     return 'parallel_review';
   // A security PR review is a recognized task of its own (docs/specs/features/canvas.md).
   if (isSecurityReview(brief)) return null;
-  if (DECISION.test(brief) && OPTIONS.test(brief)) return 'tech_decision';
+  if (DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
+    return 'tech_decision';
   const document = DOCUMENT.test(brief);
   if (document && WRITE.test(brief)) return null;
   // Fixing changes code; finding a cause without fixing it is research.
