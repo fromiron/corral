@@ -497,6 +497,75 @@ it('shows a failed project’s retry in its own place and keeps the other projec
   expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
+it('sums up a non-decision item in one line from the server and leads to its screen with one button', async () => {
+  const listed = [
+    checkD,
+    item('uncertain_write', 's_w', 'Unsure writes', { detail: '3' }),
+    item('unreviewed', 's_u', 'Fresh writes', { detail: '1' }),
+    item('lsp_proposal', 's_l', 'Rename proposals', { detail: '2400' }),
+    item('integration', 's_i', 'Apply conflict', { detail: 'conflict' }),
+    item('integration', 's_j', 'Apply oddity', { detail: 'not_a_state' }),
+    item('uncertain_write', 's_x', 'Garbled count', { detail: '2 files' }),
+    item('unreviewed', 's_z', 'Zero count', { detail: '0' }),
+    item('uncertain_terminal', 's_t', 'Shell owner', { terminalId: 'pty_1' }),
+    item('recipe_stopped', 's_r', 'Recipe review', { runId: 'run_r', detail: 'attempt_limit' }),
+    queuedC,
+  ];
+  const { container, rowButton, detail, click } = await mount({ inbox: async () => listed });
+  /** The body under the detail's header: its one line, if any, and its one link. */
+  const body = async (title: string) => {
+    await click(rowButton(title));
+    const header = detail()?.querySelector('header');
+    const lines = [...(detail()?.children ?? [])]
+      .filter((element) => element !== header && element.tagName === 'P')
+      .map((element) => element.textContent);
+    const links = [...(detail()?.querySelectorAll('a') ?? [])].map((link) => [
+      link.textContent,
+      link.getAttribute('href'),
+    ]);
+    return { lines, links };
+  };
+  // A failed check names the check and opens the session's Changes › Checks.
+  expect(await body('Tidy tests')).toEqual({
+    lines: ['Check failed: Types'],
+    links: [['Open checks', '/sessions/s_d?panel=checks']],
+  });
+  expect(await body('Unsure writes')).toEqual({
+    lines: ['3 file writes to check'],
+    links: [['Open changes', '/sessions/s_w/review']],
+  });
+  expect(await body('Fresh writes')).toEqual({
+    lines: ['1 file write to review'],
+    links: [['Open changes', '/sessions/s_u/review']],
+  });
+  expect(await body('Rename proposals')).toEqual({
+    lines: ['2,400 proposals to review'],
+    links: [['Open changes', '/sessions/s_l/review']],
+  });
+  expect(await body('Apply conflict')).toEqual({
+    lines: ['Not applied: conflicts'],
+    links: [['Open changes', '/sessions/s_i/review']],
+  });
+  // What the server says but the screen cannot name is left out rather than shown raw.
+  for (const title of ['Apply oddity', 'Garbled count', 'Zero count'])
+    expect((await body(title)).lines, title).toEqual([]);
+  expect(container.textContent).not.toContain('not_a_state');
+  expect(await body('Shell owner')).toEqual({
+    lines: [],
+    links: [['Open terminal', '/sessions/s_t?panel=terminal&terminal=pty_1']],
+  });
+  expect(await body('Recipe review')).toEqual({
+    lines: [],
+    links: [['Open run', '/sessions/s_r?panel=run&view=run&run=run_r']],
+  });
+  // A queued request's body is never shown, in the row or the detail.
+  expect(await body('Write docs')).toEqual({
+    lines: [],
+    links: [['Open session', '/sessions/s_c']],
+  });
+  expect(container.innerHTML).not.toContain('Private request body');
+});
+
 it('links a non-decision item to the exact screen a notification opens', async () => {
   const terminal = item('uncertain_terminal', 's_t', 'Shell owner', { terminalId: 'pty_1' });
   const stopped = item('recipe_stopped', 's_r', 'Recipe review', {

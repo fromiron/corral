@@ -30,9 +30,13 @@ it('a live notification opens its exact run or review, never the latest run', as
   expect(await notificationDestination(decision, source)).toBe(
     '/sessions/session_a?panel=run&view=run&run=run_a&respond=true',
   );
-  const review = { ...decision, kind: 'check_failed' as const, runId: null };
+  const review = { ...decision, kind: 'unreviewed' as const, runId: null };
   source.inbox.mockResolvedValue([review]);
   expect(await notificationDestination(review, source)).toBe('/sessions/session_a/review');
+  // A failed check opens that review's Checks view.
+  const check = { ...decision, kind: 'check_failed' as const, runId: null };
+  source.inbox.mockResolvedValue([check]);
+  expect(await notificationDestination(check, source)).toBe('/sessions/session_a?panel=checks');
 });
 
 it('deleted, archived, resolved or mismatched notification targets cannot navigate', async () => {

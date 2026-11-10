@@ -61,6 +61,7 @@ export function InboxPage() {
   const tp = useTranslations('Projects');
   const tw = useTranslations('Workbench');
   const tr = useTranslations('Recipe');
+  const tv = useTranslations('Review');
   const { repository, transport, workspaces } = useServices();
   const navigate = useNavigate();
   const returnTo = workHref(
@@ -254,6 +255,27 @@ export function InboxPage() {
   const joined = (...parts: (string | null)[]) => parts.filter(Boolean).join(' · ');
   /** Under the detail's title: the row's line and the project; the body says the rest. */
   const detailLine = (entry: InboxEntry) => joined(kindLine(entry), projectLabel(entry.projectId));
+  /**
+   * The server's one-line summary of a non-decision item: the failed check's name, how many writes
+   * or proposals wait, or the applying state. What this screen cannot name is left out, and a
+   * queued request's body is never shown.
+   */
+  const summaryLine = ({ item }: InboxEntry): string | null => {
+    const detail = item.detail;
+    if (!detail) return null;
+    if (item.kind === 'check_failed') return t('summary.check_failed', { name: detail });
+    if (
+      item.kind === 'uncertain_write' ||
+      item.kind === 'unreviewed' ||
+      item.kind === 'lsp_proposal'
+    ) {
+      const count = /^\d+$/.test(detail) ? Number(detail) : Number.NaN;
+      return Number.isSafeInteger(count) && count > 0 ? t(`summary.${item.kind}`, { count }) : null;
+    }
+    if (item.kind === 'integration' && tv.has(`integrationState.${detail}`))
+      return tv(`integrationState.${detail}`);
+    return null;
+  };
 
   const choose = (entry: InboxEntry) => {
     setSelectedKey(entry.key);
@@ -309,6 +331,7 @@ export function InboxPage() {
   const destination = current ? inboxDestination(current.item) : null;
   // A decision is answered here; every other kind is a link to its own screen.
   const respondsHere = current?.item.kind === 'decision' && current.item.runId !== null;
+  const summary = current && !respondsHere ? summaryLine(current) : null;
 
   return (
     <main ref={main} className="flex min-h-0 flex-1 flex-col">
@@ -487,14 +510,17 @@ export function InboxPage() {
                   onHandled={() => handled(current)}
                 />
               ) : destination ? (
-                <Button
-                  variant="secondary"
-                  size="compact"
-                  className="justify-self-start"
-                  render={destinationLink(destination)}
-                >
-                  {t(`open.${destinationKind(destination)}`)}
-                </Button>
+                // Every other kind: what the server says of it in one line, and the way to it.
+                <>
+                  {summary ? (
+                    <p className="m-0 text-body text-foreground [overflow-wrap:anywhere]">
+                      {summary}
+                    </p>
+                  ) : null}
+                  <Button className="justify-self-start" render={destinationLink(destination)}>
+                    {t(`open.${destinationKind(destination)}`)}
+                  </Button>
+                </>
               ) : null}
             </section>
           ) : entries.length > 0 ? (

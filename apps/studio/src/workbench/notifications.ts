@@ -24,15 +24,16 @@ export function inboxNotificationTargets(
 }
 
 /**
- * The exact screen an inbox item opens: its run's response area, the session's review, its queue
- * or the terminal's own controls. Desktop notifications and Needs you share it.
+ * The exact screen an inbox item opens: its run's response area, the session's review (a failed
+ * check: that review's Checks), its queue or the terminal's own controls. Desktop notifications
+ * and Needs you share it.
  */
 export type InboxDestination =
   | {
       to: '/sessions/$sessionId';
       params: { sessionId: string };
       search: {
-        panel?: 'run' | 'terminal';
+        panel?: 'run' | 'terminal' | 'checks';
         view?: 'run';
         run?: string;
         terminal?: string;
@@ -64,9 +65,11 @@ export function inboxDestination(target: NotificationTarget): InboxDestination |
       params,
       search: { panel: 'run', view: 'run', run: target.runId },
     };
-  return target.kind === 'queued'
-    ? { to: '/sessions/$sessionId', params, search: {} }
-    : { to: '/sessions/$sessionId/review', params, search: {} };
+  if (target.kind === 'queued') return { to: '/sessions/$sessionId', params, search: {} };
+  // A failed check opens the review's Checks view; other review items open the review.
+  if (target.kind === 'check_failed')
+    return { to: '/sessions/$sessionId', params, search: { panel: 'checks' } };
+  return { to: '/sessions/$sessionId/review', params, search: {} };
 }
 
 export function destinationHref(destination: InboxDestination): string {
