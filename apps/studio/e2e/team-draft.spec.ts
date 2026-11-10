@@ -25,6 +25,10 @@ test('a local security review suggestion has specific roles and a short name bef
   await expect(dialog.getByLabel('Name of role 3', { exact: true })).toHaveValue(
     'Independent verifier',
   );
+  // Even a goal that mentions approving gets no approval by default; the person can turn it on.
+  await expect(
+    dialog.getByRole('switch', { name: 'Ask me to approve the final result', exact: true }),
+  ).not.toBeChecked();
   await dialog.getByRole('button', { name: 'Open in editor', exact: true }).click();
   await expect(page).toHaveURL(/\/edit$/);
   // The editor names the team in its title; the name is edited in the team's settings.

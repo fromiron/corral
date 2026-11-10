@@ -94,7 +94,9 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
         : wording.roles[slot]),
     })),
     ...(pattern === 'single' ? {} : { reviewRounds: 2 }),
-    finalApproval: pattern !== 'single',
+    // Outputs are evidence for the agents, not homework: a person who wants an approval turns
+    // it on in the draft or the editor.
+    finalApproval: false,
   };
 }
 
