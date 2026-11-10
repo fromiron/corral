@@ -13,6 +13,7 @@ import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
 import { SkillQualityPanel } from '../workbench/harness/SkillQualityPanel.tsx';
 import { operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -47,6 +48,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
   const n = useTranslations('Navigation');
+  const p = useTranslations('Packages');
   const navigation = useSettingsNavigation();
   const confirmation = useManagementConfirmation();
   const [entries, setEntries] = useState<HarnessEntryView[]>([]),
@@ -113,7 +115,23 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
   const none = loaded && entries.length === 0;
   return (
     <main className="settings-content">
-      <section aria-label={t('library')} className="flex flex-wrap items-center gap-3">
+      {/* Package management lives below the hook library; with a library above it the top of the
+          page says so and lets the keyboard jump there (#82). An empty library leaves the
+          Packages heading right below, and the row would only repeat it. */}
+      {kind === 'extension' && entries.length > 0 ? (
+        <SectionIndex
+          sections={[
+            { id: 'resources-library', label: t('library') },
+            { id: 'resources-packages', label: p('title') },
+          ]}
+        />
+      ) : null}
+      <section
+        id="resources-library"
+        tabIndex={-1}
+        aria-label={t('library')}
+        className="flex flex-wrap items-center gap-3 outline-none"
+      >
         {none ? null : (
           <>
             <Input
@@ -327,7 +345,9 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       ) : null}
       {/* Below the hook library, named by its own heading. */}
       {kind === 'extension' ? (
-        <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
+        <div id="resources-packages" tabIndex={-1} className="outline-none">
+          <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
+        </div>
       ) : null}
       {confirmation.dialog}
     </main>
