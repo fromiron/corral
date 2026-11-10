@@ -100,9 +100,11 @@ export function MarkdownAgentImport({
   };
   return (
     <>
+      {/* A compact control like the rest of the team editor's head. */}
       <Button
         ref={trigger}
         variant="tertiary"
+        size="compact"
         onClick={() => {
           suffix.current = crypto.randomUUID();
           setConfirmed(false);
