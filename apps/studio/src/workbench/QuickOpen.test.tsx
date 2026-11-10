@@ -3,12 +3,12 @@ import type { WorkspaceTarget } from '@corral/contracts';
 import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { DockWorkbench, type DockWorkbenchHandle } from './docking/DockWorkbench.tsx';
 import { documentKey } from './documents/store.ts';
-import { openQuickOpen, QuickOpen } from './QuickOpen.tsx';
+import { openQuickOpen, QuickOpen, SEARCH_DELAY } from './QuickOpen.tsx';
 import { TopbarSlotContext } from './TopbarSlot.tsx';
 
 Element.prototype.getAnimations ??= () => [];
@@ -24,10 +24,12 @@ const fixture = vi.hoisted(() => ({
     removedAt: null,
   } as Record<string, unknown> | null,
   binding: { projectId: 'project' } as Record<string, unknown> | null,
-  search: vi.fn(async (_scope: unknown, _query: string, _limit?: number) => ({
-    items: [] as { path: string; kind: 'file' | 'folder' }[],
-    truncated: false,
-  })),
+  search: vi.fn(
+    async (_scope: unknown, _query: string, _limit?: number, _signal?: AbortSignal) => ({
+      items: [] as { path: string; kind: 'file' | 'folder' }[],
+      truncated: false,
+    }),
+  ),
   owner: null as unknown,
 }));
 vi.mock('../services.tsx', () => {
@@ -168,13 +170,18 @@ async function show() {
   });
   await settle();
 }
-async function type(value: string) {
+async function press(value: string) {
   await act(async () => {
     const field = input();
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
     set?.call(field, value);
     field?.dispatchEvent(new Event('input', { bubbles: true }));
   });
+}
+/** Types `value` and waits out the pause after which the search goes. */
+async function type(value: string) {
+  await press(value);
+  await act(async () => new Promise((resolve) => setTimeout(resolve, SEARCH_DELAY)));
   await settle();
 }
 const key = (name: string) =>
@@ -191,7 +198,12 @@ it('opens with Ctrl+P, names its target and announces the result count', async (
   expect(dialog()).not.toBeNull();
   expect(dialog()?.textContent).toContain(messages.Desktop.sessionCopy);
   await type('file');
-  expect(fixture.search).toHaveBeenLastCalledWith({ kind: 'session', id: 'session' }, 'file', 50);
+  expect(fixture.search).toHaveBeenLastCalledWith(
+    { kind: 'session', id: 'session' },
+    'file',
+    50,
+    expect.any(AbortSignal),
+  );
   expect(options()).toEqual(['src/file.ts']);
   const status = dialog()?.querySelector('[role="status"]');
   expect(status?.textContent).toBe('1 result');
@@ -260,7 +272,12 @@ it('drops an answer for the previous target and opens only what the current targ
   );
   await settle();
   expect(options()).not.toContain('copy-only.md');
-  expect(fixture.search).toHaveBeenLastCalledWith({ kind: 'project', id: 'project' }, 'notes', 50);
+  expect(fixture.search).toHaveBeenLastCalledWith(
+    { kind: 'project', id: 'project' },
+    'notes',
+    50,
+    expect.any(AbortSignal),
+  );
   await act(async () =>
     answers.at(-1)?.({ items: [{ path: 'docs/notes.md', kind: 'file' }], truncated: false }),
   );
@@ -380,6 +397,124 @@ it('Enter without a result opens nothing; the typed text is never a path', async
   expect(openDocument).not.toHaveBeenCalled();
   expect(showInFiles).not.toHaveBeenCalled();
   expect((fixture.owner as { open: ReturnType<typeof vi.fn> }).open).not.toHaveBeenCalled();
+});
+
+describe('searching while typing', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+  const queries = () => fixture.search.mock.calls.map(([, query]) => query);
+  async function begin() {
+    await mount();
+    await act(async () => {
+      const opener = document.querySelector<HTMLButtonElement>('[data-testid="opener"]');
+      opener?.focus();
+      opener?.click();
+    });
+    await wait(0);
+  }
+  const compose = (type: 'compositionstart' | 'compositionend') =>
+    act(async () => {
+      input()?.dispatchEvent(new CompositionEvent(type, { bubbles: true }));
+    });
+
+  it('searches at once on opening, then once for a burst of keys, for the text typed last', async () => {
+    await begin();
+    expect(queries()).toEqual(['']);
+    for (const text of ['s', 'sr', 'src']) {
+      await press(text);
+      await wait(SEARCH_DELAY / 3);
+    }
+    expect(queries()).toEqual(['']);
+    await wait(SEARCH_DELAY);
+    expect(queries()).toEqual(['', 'src']);
+    expect(options()).toEqual(['src/file.ts', 'src/other.ts']);
+  });
+
+  it('an emptied query searches at once', async () => {
+    await begin();
+    await press('src');
+    await wait(SEARCH_DELAY);
+    await press('');
+    await wait(0);
+    expect(queries()).toEqual(['', 'src', '']);
+  });
+
+  it('a newer query aborts the search on its way; closing drops the one still waiting', async () => {
+    const signals: AbortSignal[] = [];
+    fixture.search.mockImplementation((_scope, _query, _limit, signal) => {
+      if (signal) signals.push(signal);
+      return new Promise<Search>(() => {});
+    });
+    await begin();
+    await press('fi');
+    await wait(SEARCH_DELAY);
+    const sent = signals.at(-1);
+    expect(queries()).toEqual(['', 'fi']);
+    expect(sent?.aborted).toBe(false);
+    await press('fil');
+    expect(sent?.aborted).toBe(true);
+    await key('Escape');
+    // Past the search pause and the dialog's exit.
+    await wait(500);
+    expect(dialog()).toBeNull();
+    expect(queries()).toEqual(['', 'fi']);
+  });
+
+  it('closing aborts the search on its way', async () => {
+    const signals: AbortSignal[] = [];
+    fixture.search.mockImplementation((_scope, _query, _limit, signal) => {
+      if (signal) signals.push(signal);
+      return new Promise<Search>(() => {});
+    });
+    await begin();
+    await press('fi');
+    await wait(SEARCH_DELAY);
+    expect(signals.at(-1)?.aborted).toBe(false);
+    await key('Escape');
+    expect(signals.at(-1)?.aborted).toBe(true);
+  });
+
+  it('a late answer for an older query never shows', async () => {
+    const answers: { query: string; resolve: (value: Search) => void }[] = [];
+    fixture.search.mockImplementation(
+      (_scope, query) =>
+        new Promise<Search>((resolve) => {
+          answers.push({ query, resolve });
+        }),
+    );
+    await begin();
+    await press('a');
+    await wait(SEARCH_DELAY);
+    await press('ab');
+    await wait(SEARCH_DELAY);
+    expect(answers.map((answer) => answer.query)).toEqual(['', 'a', 'ab']);
+    await act(async () =>
+      answers[2]?.resolve({ items: [{ path: 'ab.ts', kind: 'file' }], truncated: false }),
+    );
+    await act(async () =>
+      answers[1]?.resolve({ items: [{ path: 'a-old.ts', kind: 'file' }], truncated: false }),
+    );
+    await wait(0);
+    expect(options()).toEqual(['ab.ts']);
+  });
+
+  it('text being composed is searched once it is committed', async () => {
+    await begin();
+    await compose('compositionstart');
+    for (const text of ['ㅍ', '파', '파이', '파일']) {
+      await press(text);
+      await wait(SEARCH_DELAY);
+    }
+    expect(queries()).toEqual(['']);
+    await compose('compositionend');
+    await wait(SEARCH_DELAY);
+    expect(queries()).toEqual(['', '파일']);
+  });
 });
 
 it('Escape closes it and returns focus to the control that opened it', async () => {

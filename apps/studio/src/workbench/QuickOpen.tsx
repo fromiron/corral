@@ -28,6 +28,8 @@ import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 const OPEN_QUICK_OPEN = 'corral:quick-open';
 const LIMIT = 50;
 const CHORD = { mod: true, key: 'p' } as const;
+/** How long typing pauses before the path search goes, so a burst of keys searches once. */
+export const SEARCH_DELAY = 100;
 
 /** Opens quick open from anywhere in the session, such as the Files tree head. */
 export function openQuickOpen() {
@@ -160,7 +162,11 @@ export function QuickOpen({
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const [targetTick, setTargetTick] = useState(0);
+  // Text an input method is still composing is not searched until it is committed.
+  const [composing, setComposing] = useState(false);
   const searches = useRef(0);
+  // The target the last search went out for: the first search for a target goes at once.
+  const searchedFor = useRef<string | null>(null);
   const opens = useRef(0);
   const statusId = useId();
   const targetId = useId();
@@ -170,7 +176,9 @@ export function QuickOpen({
     // A closed dialog keeps nothing in flight: late answers and opens are dropped, and the
     // target is read again on the next open.
     searches.current++;
+    searchedFor.current = null;
     opens.current++;
+    setComposing(false);
     setTarget(undefined);
     setQuery('');
     setFound(null);
@@ -247,22 +255,36 @@ export function QuickOpen({
     };
   }, [open, workspaces, sessionId, projectId, targetTick]);
 
+  // A new query, target or close supersedes the search: one still waiting never goes, and one
+  // on its way is aborted (its answer would be dropped anyway).
   useEffect(() => {
-    if (!open || !workspaces || !target) return;
+    if (!open || !workspaces || !target || composing) return;
     const id = ++searches.current;
-    void workspaces.searchFiles(target.scope, query, LIMIT).then(
-      (view) => {
-        if (searches.current !== id) return;
-        setFound({ key: target.key, query, view });
-        setError(null);
-      },
-      (failure: unknown) => {
-        if (searches.current !== id) return;
-        setFound(null);
-        setError(failure instanceof Error ? failure.message : String(failure));
-      },
-    );
-  }, [open, workspaces, target, query]);
+    const controller = new AbortController();
+    const search = () => {
+      searchedFor.current = target.key;
+      void workspaces.searchFiles(target.scope, query, LIMIT, controller.signal).then(
+        (view) => {
+          if (searches.current !== id) return;
+          setFound({ key: target.key, query, view });
+          setError(null);
+        },
+        (failure: unknown) => {
+          if (searches.current !== id || controller.signal.aborted) return;
+          setFound(null);
+          setError(failure instanceof Error ? failure.message : String(failure));
+        },
+      );
+    };
+    // The first search for a target and an emptied query go at once; typing waits for a pause.
+    const now = query === '' || searchedFor.current !== target.key;
+    const timer = now ? undefined : setTimeout(search, SEARCH_DELAY);
+    if (now) search();
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, workspaces, target, query, composing]);
 
   // An open that finishes after the target changed, or after quick open is gone, opens nothing.
   const targetKey = target?.key;
@@ -344,6 +366,8 @@ export function QuickOpen({
             aria-label={t('placeholder')}
             aria-describedby={`${targetId} ${statusId}`}
             aria-busy={opening || undefined}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
           />
           {targetLabel ? (
             <Badge id={targetId} variant="secondary" size="sm" className="shrink-0">

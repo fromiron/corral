@@ -2372,9 +2372,15 @@ export class WorkspacesApi {
     return this.send(`${this.browsePath(scope)}/files?${new URLSearchParams({ path })}`);
   }
   /** files and folders whose path matches `query`, best first; names only. */
-  searchFiles(scope: FileBrowseScope, query: string, limit = 20): Promise<PathSearchView> {
-    return this.send(
+  searchFiles(
+    scope: FileBrowseScope,
+    query: string,
+    limit = 20,
+    signal?: AbortSignal,
+  ): Promise<PathSearchView> {
+    return this.http.json(
       `${this.browsePath(scope)}/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
+      signal ? { signal } : {},
     );
   }
   searchContents(
