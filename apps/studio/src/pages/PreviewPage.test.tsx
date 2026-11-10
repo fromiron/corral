@@ -287,6 +287,16 @@ it('posts a comment and requests fixes on a pull request as a simulation, with n
   expectNoRequests();
 });
 
+/**
+ * Opens a step and waits until the step it left has gone. Base UI keeps a closing tab panel
+ * mounted until its exit has finished, which it checks on the next animation frame; jsdom runs
+ * animation frames on a 16 ms timer, so settling the 0 ms timers alone does not cover it.
+ */
+async function openStep(container: HTMLElement, control: HTMLElement) {
+  await click(control);
+  await vi.waitFor(() => expect(container.querySelectorAll('[role="tabpanel"]')).toHaveLength(1));
+}
+
 it('walks the browser QA steps by keyboard and attaches the screenshot only inside the preview', async () => {
   const { container } = await render('/preview/browser-qa');
   expect(banner(container)).toBeDefined();
@@ -299,7 +309,7 @@ it('walks the browser QA steps by keyboard and attaches the screenshot only insi
   ).toBeTruthy();
   await click(button(container, 'Open page'));
   expect(simulated(container).length).toBeGreaterThan(0);
-  await click(button(container, 'Next: Snapshot'));
+  await openStep(container, button(container, 'Next: Snapshot'));
   expect(snapshotTab?.getAttribute('aria-selected')).toBe('true');
   // Arrow keys move between the steps already reached.
   const openTab = byText(steps, '[role="tab"]', /Open/);
@@ -310,7 +320,7 @@ it('walks the browser QA steps by keyboard and attaches the screenshot only insi
   await settle();
   expect(document.activeElement).toBe(openTab);
 
-  await click(snapshotTab as HTMLElement);
+  await openStep(container, snapshotTab as HTMLElement);
   for (const [action, next] of [
     ['Take snapshot', 'Next: Act'],
     ['Run actions', 'Next: Console'],
@@ -320,16 +330,16 @@ it('walks the browser QA steps by keyboard and attaches the screenshot only insi
     // One mark per action's result: the step's summary, not again on every result row.
     const panel = container.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
     expect(panel?.querySelectorAll('[data-simulated]')).toHaveLength(1);
-    await click(button(container, next as string));
+    await openStep(container, button(container, next as string));
   }
   expect(byText(container, 'td', /TypeError/)).toBeUndefined();
   await click(button(container, 'Take screenshot'));
   expect(container.querySelector('svg[role="img"]')).not.toBeNull();
   expect(container.querySelector('img')).toBeNull();
-  await click(byText(steps, '[role="tab"]', /Console/) as HTMLElement);
+  await openStep(container, byText(steps, '[role="tab"]', /Console/) as HTMLElement);
   expect(byText(container, 'td', /TypeError/)).toBeDefined();
-  await click(byText(steps, '[role="tab"]', /Screenshot/) as HTMLElement);
-  await click(button(container, 'Next: Attach'));
+  await openStep(container, byText(steps, '[role="tab"]', /Screenshot/) as HTMLElement);
+  await openStep(container, button(container, 'Next: Attach'));
   await click(button(container, 'Attach to conversation'));
   expect(byText(container, '*', 'Attached (simulated)')).toBeDefined();
   expect(previewStore.getState().browser.progress).toBe(6);
