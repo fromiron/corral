@@ -11,8 +11,21 @@ import type { ChatWidgetModel } from './useChatWidgets.tsx';
 const fixture = vi.hoisted(() => ({ model: null as ChatWidgetModel | null }));
 vi.mock('./useChatWidgets.tsx', () => ({ useChatWidget: () => fixture.model }));
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children, className }: { children: ReactNode; className?: string }) => (
-    <a href="#run" className={className}>
+  Link: ({
+    children,
+    className,
+    search,
+  }: {
+    children: ReactNode;
+    className?: string;
+    search?: object | ((previous: object) => object);
+  }) => (
+    <a
+      href="#run"
+      className={className}
+      // The address the link would open, from an empty one.
+      data-search={JSON.stringify(typeof search === 'function' ? search({}) : (search ?? {}))}
+    >
       {children}
     </a>
   ),
@@ -229,6 +242,12 @@ it("names the waiting question in the notice and links to its run's response are
   expect(banner?.textContent).toContain('Question: Which layout should I keep? · 2 waiting');
   expect(banner?.textContent).not.toContain(messages.Widgets.actionQuestion);
   expect(banner?.querySelector('a')?.textContent).toBe(messages.Widgets.actionOpen);
+  // It asks the run page to open that response area, not just the run.
+  expect(JSON.parse(banner?.querySelector('a')?.dataset.search ?? '{}')).toMatchObject({
+    panel: 'run',
+    view: 'run',
+    respond: true,
+  });
   // No inline answer: the notice only leads to the run.
   expect(banner?.querySelectorAll('input, textarea, select, form')).toHaveLength(0);
   // An approval waiting beside it keeps the generic wording.
@@ -244,6 +263,22 @@ it("names the waiting question in the notice and links to its run's response are
   expect(
     view.container.querySelector('[data-testid="action-required"]')?.textContent,
   ).not.toContain('Which layout');
+  // A failed step is not something to answer: its link opens the step, not the response area.
+  await view.update(
+    model(
+      {
+        action: { ...noAction, visible: true, needsUser: false, count: 1, summary: 'mixed' },
+        failedExecutionId: 'exec_failed',
+      } as Partial<ChatWidgetModel>,
+      { runStatus: 'failed' },
+    ),
+  );
+  const failure = view.container.querySelector('[data-testid="action-required"] a');
+  expect(failure?.textContent).toBe(messages.Widgets.actionOpenFailure);
+  expect(JSON.parse(failure?.getAttribute('data-search') ?? '{}')).toMatchObject({
+    execution: 'exec_failed',
+  });
+  expect(JSON.parse(failure?.getAttribute('data-search') ?? '{}')).not.toHaveProperty('respond');
 });
 
 it('keeps the notice for a live waiting run while another result is open', async () => {

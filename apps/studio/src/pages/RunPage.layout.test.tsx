@@ -1673,6 +1673,116 @@ it('does not take over Run info or a narrow page for a new decision', async () =
   expect(side(narrow.container)?.hidden).toBe(true);
 });
 
+const frames = (count = 2) =>
+  act(async () => {
+    for (let i = 0; i < count; i++)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+const responseArea = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="run-side"] [data-run-response]');
+
+it('a request to respond opens the response area on a narrow page and focuses it, once', async () => {
+  // Narrow: a decision alone never takes the page over, but an explicit request does.
+  fixture.pending = 1;
+  const area = vi.mocked(RunResponseArea);
+  area.mockClear();
+  const arriving = await mount('inline_team', null, { view: 'run', respond: true });
+  await frames();
+  expect(side(arriving.container)?.hidden).toBe(false);
+  expect(arriving.container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(
+    true,
+  );
+  expect(document.activeElement).toBe(responseArea(arriving.container));
+  // Answering stays on the shared response area and its run store.
+  expect(area.mock.calls.some(([props]) => props.session === arriving.run)).toBe(true);
+  // The request is consumed in place, once, without a history entry of its own.
+  expect(arriving.navigations.filter(({ patch }) => 'respond' in patch)).toStrictEqual([
+    { patch: { respond: undefined }, options: { replace: true } },
+  ]);
+  // Closed by hand, the same decision does not bring it back.
+  await act(async () =>
+    side(arriving.container)
+      ?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')
+      ?.click(),
+  );
+  expect(side(arriving.container)?.hidden).toBe(true);
+  await waitFor(arriving.run, 1);
+  expect(side(arriving.container)?.hidden).toBe(true);
+});
+
+it('a request to respond reaches a run page that is already open, closing what is in the way', async () => {
+  fixture.pending = 1;
+  const { container, navigate, navigations } = await mount('inline_team', null, {
+    artifact: 'artv_evidence',
+  });
+  expect(side(container)?.hidden).toBe(true);
+  await navigate({ respond: true });
+  await frames();
+  expect(side(container)?.hidden).toBe(false);
+  expect(container.querySelector<HTMLElement>('[data-testid="run-document"]')?.hidden).toBe(true);
+  expect(document.activeElement).toBe(responseArea(container));
+  expect(navigations.filter(({ patch }) => 'respond' in patch)).toStrictEqual([
+    {
+      patch: { respond: undefined, artifact: undefined, result: undefined, view: undefined },
+      options: { replace: true },
+    },
+  ]);
+});
+
+it('a request to respond that finds nothing waiting leaves the page as it was', async () => {
+  const { container, run, navigate, navigations } = await mount('inline_team', null, {});
+  // Until the history is read, the request waits for what it may find.
+  await act(async () => run.setState({ initialLoadSeq: null }));
+  await navigate({ respond: true });
+  await frames();
+  expect(navigations).toEqual([]);
+  await act(async () => run.setState({ initialLoadSeq: undefined }));
+  await frames();
+  expect(side(container)?.hidden).toBe(true);
+  expect(navigations).toStrictEqual([
+    { patch: { respond: undefined }, options: { replace: true } },
+  ]);
+  // A decision arriving later on a narrow page follows the ordinary rule.
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+});
+
+it('a decision first seen behind a document opens the response area when the document closes', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigate } = await mount('inline_team', null, { result: 'artv_result' });
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+  await navigate({ result: undefined, view: undefined });
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Once opened for it, closing it by hand is final for that decision.
+  await act(async () =>
+    side(container)?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')?.click(),
+  );
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+});
+
+it('a response area opened by hand stays closed once closed, even after Run info was in the way', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await act(async () =>
+    [...container.querySelectorAll('button')].find((el) => el.textContent === 'Run info')?.click(),
+  );
+  await waitFor(run, 1);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]')?.click(),
+  );
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')?.closest('[hidden]')).toBe(
+    null,
+  );
+  await act(async () =>
+    side(container)?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')?.click(),
+  );
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+});
+
 const viewTab = (container: HTMLElement, name: string) =>
   [...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]')].find(
     (el) => el.textContent?.startsWith(name),

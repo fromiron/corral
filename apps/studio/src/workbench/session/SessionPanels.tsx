@@ -99,6 +99,7 @@ export function RunPanel({
                   artifact: search.artifact,
                   view: search.view ?? (search.result ? 'results' : 'run'),
                   result: search.result,
+                  respond: search.respond,
                 }
               : { view: 'run' }
           }

@@ -126,7 +126,8 @@ it('controls outside hidden panes retain and open the active run, not the histor
   expect(pill?.getAttribute('aria-label')).toContain('Run #1');
   expect(pill?.getAttribute('aria-label')).toContain('Summarize the report');
   await act(async () => pill?.click());
-  expect(view.onOpen).toHaveBeenCalledWith('active-run');
+  // Nothing waits: the pill opens the record, not the response area.
+  expect(view.onOpen).toHaveBeenCalledWith('active-run', false);
   // Opening is navigation: the pill is a plain button with no disclosure state, chevron or panel.
   expect(pill?.hasAttribute('aria-expanded')).toBe(false);
   expect(pill?.hasAttribute('aria-controls')).toBe(false);
@@ -162,7 +163,8 @@ it('a waiting run turns the pill into Check now, with the count from two, and op
   expect(view.pill()?.textContent).toContain('Check now');
   expect(view.pill()?.textContent).not.toContain('(1)');
   await act(async () => view.pill()?.click());
-  expect(view.onOpen).toHaveBeenCalledWith('active-run');
+  // A request to respond: the run view opens its response area, whatever its width.
+  expect(view.onOpen).toHaveBeenCalledWith('active-run', true);
 
   const two = running();
   pendingApproval(two, 'approval_a');
@@ -254,7 +256,7 @@ it('the pill then drops its clock, then its words, keeping the state and the run
   expect(short.pill()?.getAttribute('aria-label')).toContain('Running');
   expect(short.pill()?.getAttribute('aria-label')).toContain('Summarize the report');
   await act(async () => short.pill()?.click());
-  expect(short.onOpen).toHaveBeenCalledWith('active-run');
+  expect(short.onOpen).toHaveBeenCalledWith('active-run', false);
   await cleanup.splice(0)[0]?.();
 
   fixture.tier = 7;

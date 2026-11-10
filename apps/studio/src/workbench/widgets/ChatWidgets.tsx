@@ -454,10 +454,13 @@ export function EnvironmentDetail({ model }: { model: ChatWidgetModel }) {
 export function RunLink({
   model,
   executionId,
+  respond = false,
   ...props
 }: {
   model: ChatWidgetModel;
   executionId?: string;
+  /** A request to answer the run: its run page opens the response area. */
+  respond?: boolean;
 } & ComponentProps<'a'>) {
   return (
     <Link
@@ -471,6 +474,7 @@ export function RunLink({
         panel: 'run',
         run: model.runId ?? undefined,
         view: 'run',
+        respond: respond || undefined,
         ...(executionId
           ? { execution: executionId, artifact: undefined, result: undefined, atSeq: undefined }
           : {}),
@@ -687,6 +691,7 @@ export function ComposerDock({
               render={
                 <RunLink
                   model={run}
+                  respond={run.action.needsUser}
                   executionId={
                     run.action.needsUser ? undefined : (run.failedExecutionId ?? undefined)
                   }

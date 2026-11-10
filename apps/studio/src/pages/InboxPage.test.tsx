@@ -388,7 +388,7 @@ it('heads a decision’s response area with its session, run number and a link t
   expect(header?.querySelector('p')?.textContent).toBe('Run #2 · Alpha');
   const links = [...(detail()?.querySelectorAll('a') ?? [])];
   expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
-    ['Open run', '/sessions/s_a?panel=run&view=run&run=run_a'],
+    ['Open run', '/sessions/s_a?panel=run&view=run&run=run_a&respond=true'],
   ]);
   expect(header?.contains(links[0] ?? null)).toBe(true);
   const area = detail()?.querySelector('[data-testid="run-needs-you"]');

@@ -92,6 +92,7 @@ function WorkSessionPage() {
   useEffect(() => {
     const remembered = JSON.parse(viewKey);
     delete remembered.compose;
+    delete remembered.respond;
     rememberView(remembered);
   }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
@@ -134,7 +135,7 @@ function WorkSessionPage() {
     pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
   const setSearch = (patch: Partial<typeof search>, options?: { replace?: boolean }) => {
     const next = patchSessionSearch(search, patch);
-    rememberView({ ...next, compose: undefined });
+    rememberView({ ...next, compose: undefined, respond: undefined });
     void navigate({ search: () => next, replace: options?.replace });
   };
   const showPanel = (patch: Partial<typeof search>) => {
@@ -463,7 +464,7 @@ function WorkSessionPage() {
                           .find((entry) => entry.runId === active.runId)
                           ?.text.slice(0, 80)}
                         viewingOther={presentationRunId !== active.runId}
-                        onOpen={(run) =>
+                        onOpen={(run, respond) =>
                           showPanel({
                             panel: 'run',
                             run,
@@ -471,6 +472,7 @@ function WorkSessionPage() {
                             execution: undefined,
                             artifact: undefined,
                             result: undefined,
+                            respond: respond || undefined,
                           })
                         }
                       />

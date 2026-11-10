@@ -475,6 +475,28 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
 });
 
+test('the conversation’s request link opens the run’s response area, even in a narrow window', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const notice = page.getByTestId('action-required');
+  await expect(notice).toBeVisible({ timeout: 30_000 });
+  await notice.getByRole('link', { name: 'Go to the request', exact: true }).click();
+  const response = page.locator(`[data-run-response="${started.runId}"]`);
+  await expect(response).toBeVisible();
+  await expect(response).toBeFocused();
+  // The request is answered once: it does not stay in the address.
+  await expect(page).not.toHaveURL(/respond=/);
+  // Closed by hand, the same request does not come back.
+  await page.getByTestId('run-side').getByRole('button', { name: 'Close details' }).click();
+  await expect(response).toBeHidden();
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
 test('ACTION-01 opens one scoped response host and keeps later typing focus', async ({
   page,
   corral,
@@ -482,9 +504,9 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
   const action = page.getByTestId('dock-open-active-run');
-  await expect(action).toContainText('response needed');
+  await expect(action).toContainText('Check now');
   await action.click();
-  await page.getByTestId('run-respond').click();
+  // The waiting pill asks to respond: the response area opens and takes focus by itself.
   const response = page.locator('[data-run-response]');
   await expect(response).toBeFocused();
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
@@ -534,7 +556,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),
     ).toHaveCount(1);
-    await expect(action).toContainText('response needed');
+    await expect(action).toContainText('Check now');
     await expect(input).toHaveValue('Keep typing while the run continues');
     await expect(input).toBeFocused();
   } finally {

@@ -13,8 +13,20 @@ import type { ChatWidgetModel } from './useChatWidgets.tsx';
 const navigate = vi.hoisted(() => vi.fn());
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
-  Link: ({ children, ...props }: { children: ReactNode }) => (
-    <a href="#link" {...(props as object)}>
+  Link: ({
+    children,
+    search,
+    ...props
+  }: {
+    children: ReactNode;
+    search?: object | ((previous: object) => object);
+  }) => (
+    <a
+      href="#link"
+      // The address the link would open, from an empty one.
+      data-search={JSON.stringify(typeof search === 'function' ? search({}) : (search ?? {}))}
+      {...(props as object)}
+    >
       {children}
     </a>
   ),
@@ -191,6 +203,10 @@ it('keeps pending attention first and links to the same run without an approval 
   const attention = container.querySelector('[data-overview-widget="attention"]');
   expect(attention?.textContent).toContain('Approval needed');
   expect(attention?.querySelector('a')).not.toBeNull();
+  // The link asks the run page to open its response area.
+  expect(JSON.parse(attention?.querySelector('a')?.getAttribute('data-search') ?? '{}')).toEqual(
+    expect.objectContaining({ panel: 'run', run: 'run_overview', respond: true }),
+  );
   expect(attention?.textContent).not.toMatch(/Approve|Reject/);
 });
 

@@ -366,14 +366,74 @@ function RunWorkspace({
   useEffect(() => {
     if (panel === 'approval' && pending === 0) setPanel('closed');
   }, [panel, pending]);
-  // A new question or approval opens Needs your input once, only into free space on a wide page.
+  // A new question or approval opens the response area once, only into free space on a wide
+  // page. An item counts as announced only once the area has actually shown it, so one first seen
+  // behind a document, an inspector or a narrow page still opens it when the space frees up.
   const announced = useRef(new Set<string>());
   useEffect(() => {
-    const fresh = waitingKey.split('|').filter((id) => id && !announced.current.has(id));
-    for (const id of fresh) announced.current.add(id);
-    if (fresh.length && wide && panel === 'closed' && !documentOpen && !steeringOpen)
+    const waitingIds = waitingKey.split('|').filter(Boolean);
+    if (panel === 'approval' && sideShown) {
+      for (const id of waitingIds) announced.current.add(id);
+      return;
+    }
+    if (
+      waitingIds.some((id) => !announced.current.has(id)) &&
+      wide &&
+      panel === 'closed' &&
+      !documentOpen &&
+      !steeringOpen
+    )
       setPanel('approval');
-  }, [waitingKey, wide, panel, documentOpen, steeringOpen]);
+  }, [waitingKey, wide, panel, sideShown, documentOpen, steeringOpen]);
+  // An explicit request to respond opens the response area whatever the width and moves focus
+  // there. It waits until the history says whether anything waits, and is consumed once.
+  const historyRead = useStore(session, (s) => s.initialLoadSeq === undefined);
+  const focusResponse = useRef(false);
+  const [respondRequests, setRespondRequests] = useState(0);
+  const respondHandled = useRef(false);
+  useEffect(() => {
+    if (!search.respond) {
+      respondHandled.current = false;
+      return;
+    }
+    if (respondHandled.current || (pending === 0 && !historyRead)) return;
+    // Remembering the view can render the parent before the router commits this patch.
+    respondHandled.current = true;
+    if (pending > 0) {
+      trigger.current = null;
+      focusResponse.current = true;
+      setRespondRequests((count) => count + 1);
+      setSteeringOpen(false);
+      setPanel('approval');
+    }
+    setSearch(
+      {
+        respond: undefined,
+        ...(documentOpen ? { artifact: undefined, result: undefined, view: undefined } : {}),
+      },
+      { replace: true },
+    );
+  }, [search.respond, pending, historyRead, documentOpen, setSearch]);
+  useEffect(() => {
+    void respondRequests;
+    if (!focusResponse.current || panel !== 'approval' || !sideShown) return;
+    focusResponse.current = false;
+    let frame = 0;
+    let tries = 0;
+    // The run view may still be coming into view in its dock; focus once it can be seen.
+    const attempt = () => {
+      const target = response.current;
+      if (!target) return;
+      if (typeof target.checkVisibility === 'function' && !target.checkVisibility() && tries < 10) {
+        tries++;
+        frame = requestAnimationFrame(attempt);
+        return;
+      }
+      target.focus({ preventScroll: true });
+    };
+    attempt();
+    return () => cancelAnimationFrame(frame);
+  }, [panel, sideShown, respondRequests]);
   const activeElement = () =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const rememberTrigger = (origin = activeElement()) => {

@@ -141,7 +141,11 @@ function AttentionWidget({ model }: { model: ChatWidgetModel }) {
     <Banner status="warning" size="compact" role="note">
       <BannerTitle>{label}</BannerTitle>
       <BannerActions>
-        <Button variant="secondary" size="compact" render={<RunLink model={model} />}>
+        <Button
+          variant="secondary"
+          size="compact"
+          render={<RunLink model={model} respond={model.action.needsUser} />}
+        >
           {t('actionOpen')}
         </Button>
       </BannerActions>

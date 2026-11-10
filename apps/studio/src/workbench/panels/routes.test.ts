@@ -3,6 +3,7 @@ import {
   patchSessionSearch,
   resolveSessionSearch,
   reviewSessionSearch,
+  runSessionSearch,
   sessionPanelDescriptor,
   validateEditorSearch,
   validateReviewSearch,
@@ -283,4 +284,35 @@ it('a clean session URL never inherits a stored subview while a tab URL retains 
   expect(resolveSessionSearch({}, remembered)).toEqual({});
   expect(resolveSessionSearch({}, { panel: 'changes' })).toEqual({});
   expect(resolveSessionSearch(remembered, {})).toEqual(remembered);
+});
+
+it('a request to respond reaches the run history once and is never remembered or inherited', () => {
+  const respond = { panel: 'run', run: 'run_waiting', view: 'run', respond: true } as const;
+  expect(validateSessionSearch(respond)).toEqual(respond);
+  expect(validateRunSearch({ view: 'run', respond: true })).toEqual({ view: 'run', respond: true });
+  // Only the literal request counts, and only for run history.
+  expect(validateSessionSearch({ ...respond, respond: 'yes' })).not.toHaveProperty('respond');
+  expect(validateRunSearch({ respond: 1 })).toEqual({});
+  expect(validateSessionSearch({ panel: 'files', respond: true })).toEqual({ panel: 'files' });
+  // A run's own address carries it into its session's run history.
+  expect(runSessionSearch('run_waiting', { respond: true })).toEqual({
+    panel: 'run',
+    run: 'run_waiting',
+    respond: true,
+  });
+  // Any later change of the view drops it; only an explicit request keeps it.
+  expect(patchSessionSearch(respond, { execution: 'exec_a' })).toEqual({
+    panel: 'run',
+    run: 'run_waiting',
+    view: 'run',
+    execution: 'exec_a',
+  });
+  expect(patchSessionSearch(respond, { respond: undefined })).not.toHaveProperty('respond');
+  expect(patchSessionSearch({ panel: 'run', run: 'run_waiting' }, { respond: true })).toEqual({
+    panel: 'run',
+    run: 'run_waiting',
+    respond: true,
+  });
+  // A remembered request never answers a later visit.
+  expect(resolveSessionSearch({ panel: 'run' }, respond)).not.toHaveProperty('respond');
 });

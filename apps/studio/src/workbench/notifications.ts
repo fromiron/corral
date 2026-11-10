@@ -31,7 +31,13 @@ export type InboxDestination =
   | {
       to: '/sessions/$sessionId';
       params: { sessionId: string };
-      search: { panel?: 'run' | 'terminal'; view?: 'run'; run?: string; terminal?: string };
+      search: {
+        panel?: 'run' | 'terminal';
+        view?: 'run';
+        run?: string;
+        terminal?: string;
+        respond?: true;
+      };
     }
   | { to: '/sessions/$sessionId/review'; params: { sessionId: string }; search: object };
 
@@ -45,7 +51,14 @@ export function inboxDestination(target: NotificationTarget): InboxDestination |
           search: { panel: 'terminal', terminal: target.terminalId },
         }
       : null;
-  if ((target.kind === 'decision' || target.kind === 'recipe_stopped') && target.runId)
+  // A decision opens its run's response area; a stopped review opens the run's record.
+  if (target.kind === 'decision' && target.runId)
+    return {
+      to: '/sessions/$sessionId',
+      params,
+      search: { panel: 'run', view: 'run', run: target.runId, respond: true },
+    };
+  if (target.kind === 'recipe_stopped' && target.runId)
     return {
       to: '/sessions/$sessionId',
       params,

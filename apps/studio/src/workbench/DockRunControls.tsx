@@ -48,8 +48,11 @@ export function DockRunControls({
   request?: string;
   /** A different, finished run is on screen; the controls still act on this one. */
   viewingOther?: boolean;
-  /** Opens this run in the session's run view, where its record and response area are. */
-  onOpen: (runId: string) => void;
+  /**
+   * Opens this run in the session's run view, where its record and response area are; `respond`
+   * when the run waits for the person, so the view opens that response area.
+   */
+  onOpen: (runId: string, respond: boolean) => void;
 }) {
   const t = useTranslations('Docking');
   const tw = useTranslations('Workbench');
@@ -126,7 +129,7 @@ export function DockRunControls({
               announce={false}
               // The pill navigates, with no fold-out panel; no steps, progress or inline
               // approval are passed.
-              onActivate={() => onOpen(runId)}
+              onActivate={() => onOpen(runId, waiting > 0)}
               labels={{
                 paused: (value) => value,
                 toggle: ({ elapsed }) => accessibleName(elapsed),
@@ -139,7 +142,7 @@ export function DockRunControls({
           variant="ghost"
           size="compact"
           data-testid="dock-open-active-run"
-          onClick={() => onOpen(runId)}
+          onClick={() => onOpen(runId, false)}
         >
           {t('openActiveRun')}
         </Button>

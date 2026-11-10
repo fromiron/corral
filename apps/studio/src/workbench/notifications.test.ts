@@ -26,8 +26,9 @@ it('inbox targets exclude private text and detect equal-count replacements witho
 
 it('a live notification opens its exact run or review, never the latest run', async () => {
   const source = { getSession: vi.fn(async () => session), inbox: vi.fn(async () => [decision]) };
+  // A decision opens that run's response area, not just the run.
   expect(await notificationDestination(decision, source)).toBe(
-    '/sessions/session_a?panel=run&view=run&run=run_a',
+    '/sessions/session_a?panel=run&view=run&run=run_a&respond=true',
   );
   const review = { ...decision, kind: 'check_failed' as const, runId: null };
   source.inbox.mockResolvedValue([review]);
