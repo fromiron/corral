@@ -59,7 +59,6 @@ import type {
   LanguageStart,
   LanguageState,
   MeetingAdoptDecisionRequest,
-  MeetingConfig,
   MeetingDecisionVersion,
   MeetingDecisionWithdrawal,
   MeetingHandoffReceipt,
@@ -255,6 +254,7 @@ import type {
   CorralRepository,
   CorralSummary,
   MeetingResult,
+  NewSession,
   NewSessionEntry,
   ProjectChange,
   ProjectResult,
@@ -1274,14 +1274,7 @@ export class RestCorralRepository implements CorralRepository {
     return (await response.json()) as WorkSession;
   }
 
-  createSession(input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    meeting?: MeetingConfig;
-  }): Promise<SessionResult> {
+  createSession(input: NewSession): Promise<SessionResult> {
     return this.projectWrite('/sessions', 'POST', input) as Promise<SessionResult>;
   }
 

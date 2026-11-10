@@ -82,6 +82,7 @@ import {
   parseWorkspaceConfig,
   planRun,
   type SaveResult,
+  SessionCriteria,
   SessionEntryAuto,
   type SessionResult,
   ToolRefusal,
@@ -326,6 +327,7 @@ const CreateSession = z.strictObject({
   title: z.string().max(200),
   autoTitle: z.boolean().optional(),
   objective: z.string().max(20_000).optional(),
+  criteria: SessionCriteria.optional(),
   corralId: Identifier.nullable().optional(),
   /** creates a meeting with these participants. */
   meeting: MeetingConfig.optional(),
@@ -333,6 +335,7 @@ const CreateSession = z.strictObject({
 const UpdateSession = z.strictObject({
   title: z.string().max(200).optional(),
   objective: z.string().max(20_000).optional(),
+  criteria: SessionCriteria.optional(),
   corralId: Identifier.nullable().optional(),
   auto: AutoModelChoice.nullable().optional(),
   pinned: z.boolean().optional(),
@@ -1823,7 +1826,17 @@ async function createCorralServer(
     now: () => clock.nowIso(),
     id: () => `schedule_${crypto.randomUUID().replaceAll('-', '')}`,
     repository: corrals,
-    start: (request, signal) => autoStarter.start(request, { fileTools: false, signal }),
+    // a scheduled request is admitted like a typed one: with the session's current criteria.
+    start: async (request, signal) => {
+      const sessionCriteria = request.sessionId
+        ? (await corrals.getSession(request.sessionId))?.criteria
+        : undefined;
+      return autoStarter.start(request, {
+        fileTools: false,
+        signal,
+        ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+      });
+    },
     previous: recordedAuto,
     isRunActive: (id) => {
       const run = coordinator.listRuns().find((item) => item.runId === id);
@@ -1888,6 +1901,8 @@ async function createCorralServer(
     if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
       const resend = coordinator.hasStartCommand(body.commandId);
+      // A resend returns its first start, so the session is read for a new admission only.
+      let sessionCriteria: string[] | undefined;
       if (!resend) {
         const session = await corrals.getSession(body.sessionId);
         if (!session) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
@@ -1897,6 +1912,7 @@ async function createCorralServer(
             'CAPABILITY_DENIED',
             'A meeting starts answers through its rounds only.',
           );
+        sessionCriteria = session.criteria;
       }
       const work = autoStarter.start(
         {
@@ -1914,7 +1930,11 @@ async function createCorralServer(
           ...(body.team ? { team: body.team } : {}),
           ...(body.references ? { references: body.references } : {}),
         },
-        { fileTools: false, signal: dropped.signal },
+        {
+          fileTools: false,
+          signal: dropped.signal,
+          ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+        },
       );
       if (!autoRequests.has(body.commandId)) {
         const pending = { sessionId: body.sessionId, controller: dropped, work };
