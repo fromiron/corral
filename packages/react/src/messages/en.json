@@ -3318,6 +3318,7 @@
     "unknown": "Unknown",
     "lastRequest": "Last recorded request for this execution",
     "capacity": "Model context limit: {value} tokens",
+    "capacityUnreported": "Model context limit: No information",
     "estimateNote": "Pi message estimate, not a provider token count. Request overhead and model tokenization may differ. Other agents are not added to this context.",
     "connections": "Connections",
     "connectionNote": "Authentication and model identity at run start. This does not verify that the connection is still available.",

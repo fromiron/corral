@@ -9,10 +9,10 @@ export function ProfileContextDetails({
   runtime?: 'pi-sdk' | 'pi-core' | 'mock';
 }) {
   const t = useTranslations('ProfileContext');
-  if (!policy) return <p className="text-xs text-muted-foreground">{t('unknown')}</p>;
+  if (!policy) return <p className="text-caption text-muted-foreground">{t('unknown')}</p>;
   const fields = ['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const;
   return (
-    <div className="space-y-1 text-xs">
+    <div className="space-y-1 text-caption">
       <dl className="flex flex-wrap gap-x-4 gap-y-1">
         {fields.map((key) => (
           <div key={key}>

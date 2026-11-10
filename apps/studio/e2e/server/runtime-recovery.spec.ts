@@ -53,7 +53,10 @@ test.describe('runtime continuation', () => {
     await page.reload();
     const detail = page.getByTestId('run-monitor');
     await detail.getByRole('button', { name: 'Show side panel', exact: true }).click();
-    await detail.getByTestId('status-context').locator(':scope > summary').click();
+    await detail
+      .getByTestId('status-context')
+      .getByRole('button', { name: /^Context and cost/ })
+      .click();
     const recovery = detail.getByTestId('runtime-recovery');
     await expect(
       recovery.getByRole('button', { name: 'Continue in a new Run' }).first(),

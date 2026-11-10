@@ -839,7 +839,8 @@ function RunWorkspace({
                   </div>
                   <TabPanel value="overview" keepMounted className="space-y-3 pt-3">
                     <RunFacts session={session} definition={definition} request={request} />
-                    <Accordion>
+                    {/* Run info's parts open independently, as one kind of row. */}
+                    <Accordion type="multiple" className="w-full">
                       <AccordionItem value="tasks">
                         <AccordionTrigger>{t('tabs.tasks')}</AccordionTrigger>
                         <AccordionContent>
@@ -861,8 +862,8 @@ function RunWorkspace({
                         </AccordionContent>
                       </AccordionItem>
                       <RunStepOptions session={session} definition={definition} />
+                      <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
                     </Accordion>
-                    <RunStatusCards session={session} sessionId={sessionId} executionId={null} />
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3" data-run-usage>
                     <UsageInspector session={session} prices={prices} />

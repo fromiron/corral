@@ -152,7 +152,10 @@ test('attachments survive settings; the owned plan and question lead to one comp
     .click();
   for (const card of ['environment', 'context', 'connections', 'changes'])
     await expect(page.getByTestId(`status-${card}`)).toBeVisible();
-  await page.getByTestId('status-context').locator(':scope > summary').click();
+  await page
+    .getByTestId('status-context')
+    .getByRole('button', { name: /^Context and cost/ })
+    .click();
   await expect(page.getByTestId('status-context')).toContainText(/About [0-9,]+ message tokens/);
   await expect(page.getByTestId('status-context')).toContainText('Model context limit:');
   expect(corral.errors).toEqual([]);
