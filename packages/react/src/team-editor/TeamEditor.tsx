@@ -121,8 +121,12 @@ export function TeamEditor({
   const canRedo = useStore(editor, (s) => s.canRedo);
   const { definition } = draft;
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
-  // Once the host knows the model profiles, a role naming another one is a problem.
-  const knownModelProfiles = useMemo(() => profiles?.map((p) => p.profileId), [profiles]);
+  // Once the host knows the installed model profiles, a role naming another one is a problem.
+  // With none installed every role would be one, and the team is not where that is fixed.
+  const knownModelProfiles = useMemo(
+    () => (profiles?.length ? profiles.map((p) => p.profileId) : undefined),
+    [profiles],
+  );
   const diagnostics = useMemo(
     () =>
       compileDraft(draft, {

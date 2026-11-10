@@ -1,5 +1,5 @@
 import type { AgentRole } from '@corral/contracts';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -36,12 +36,15 @@ function chain(length: number): EditorDraft {
     ({ draft, nodeId } = ok(placeStep(draft, 'agent', { kind: 'after', nodeId })));
   return draft;
 }
-function renderEditor(draft: EditorDraft) {
+function renderEditor(
+  draft: EditorDraft,
+  profiles?: { profileId: string; label: string; available: boolean }[],
+) {
   const editor = createEditorStore(draft);
   render(
     <IntlProvider locale="en" messages={messages}>
       <StudioStoresProvider editor={editor} session={sessionStore()}>
-        <TeamEditor editor={editor} />
+        <TeamEditor editor={editor} {...(profiles ? { profiles } : {})} />
       </StudioStoresProvider>
     </IntlProvider>,
   );
@@ -84,6 +87,23 @@ describe('team editor', () => {
     expect(mark?.getAttribute('title')).toContain(
       `${reviewer.label} does not get the criteria, so its review cannot check them.`,
     );
+  });
+
+  it('reports a role whose model profile is not installed only while some profile is', () => {
+    // An agent wired to an output has no other problem; its role names the default profile.
+    const team = ok(placeStep(chain(1), 'output', { kind: 'after', nodeId: 'agent_1' })).draft;
+    const profile = team.definition.roles[0]?.modelProfile ?? '';
+    const problems = () => screen.getByRole('button', { name: /problems?$/ }).textContent;
+    // With no profile installed there is nothing to compare with, and the model is missing for
+    // every team alike: the team is not the place that says so.
+    renderEditor(team, []);
+    expect(problems()).toBe('No problems');
+    cleanup();
+    renderEditor(team, [{ profileId: profile, label: 'Installed', available: true }]);
+    expect(problems()).toBe('No problems');
+    cleanup();
+    renderEditor(team, [{ profileId: `${profile}-other`, label: 'Another', available: true }]);
+    expect(problems()).toBe('1 problem');
   });
 
   it('lists the problems and brings the chosen one into view', async () => {
