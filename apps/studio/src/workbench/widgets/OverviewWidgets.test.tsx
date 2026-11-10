@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { OverviewPopover, OverviewWidgets } from './OverviewWidgets.tsx';
 import { actionRequired, usageSummary } from './selectors.ts';
 import type { ChatWidgetModel } from './useChatWidgets.tsx';
@@ -114,6 +115,7 @@ function model(patch: Partial<ChatWidgetModel> = {}): ChatWidgetModel {
 async function render(
   value: ChatWidgetModel,
   view: (model: ChatWidgetModel) => ReactNode = (model) => <OverviewWidgets model={model} />,
+  locale: 'en' | 'ko' = 'en',
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
@@ -133,7 +135,7 @@ async function render(
   });
   await act(async () =>
     root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <IntlProvider locale={locale} messages={locale === 'ko' ? ko : messages} timeZone="UTC">
         {view(value)}
       </IntlProvider>,
     ),
@@ -296,6 +298,41 @@ it('before any measured request the context detail states its state once, with n
   expect(visible(detail)).not.toMatch(/appears after|No measured request/);
   // Nor is an empty note box left behind.
   expect(detail?.querySelector('.bg-subtle.rounded-lg')).toBeNull();
+});
+
+it('before any measured request the Korean context detail says 측정 전 once', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      context: {
+        ...base.context,
+        kind: 'empty',
+        tokens: null,
+        percent: null,
+        barPercent: null,
+        freeTokens: null,
+        windowTokens: null,
+        parts: [],
+        unmeasuredExecutions: 0,
+        coverage: null,
+        completeness: 'unmeasured',
+        measurementStage: null,
+      },
+    } as Partial<ChatWidgetModel>),
+    undefined,
+    'ko',
+  );
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('button[aria-label="컨텍스트 자세히 보기"]')
+      ?.click(),
+  );
+  const detail = container.querySelector('[data-testid="context-inspector"]');
+  expect(detail).not.toBeNull();
+  // The heading names the context and its badge the state; no line under them says both again.
+  const text = visible(detail);
+  expect(text.split(ko.Widgets.measurementPending)).toHaveLength(2);
+  expect(text).not.toContain(ko.Widgets.contextPending);
 });
 
 it('in the Overview popover Escape first leaves the detail, then closes the popover', async () => {

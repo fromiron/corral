@@ -146,12 +146,11 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </p>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-caption text-muted-foreground">
-            {t(measured ? 'estimatedInput' : 'contextPending')}
-          </p>
-          {context.tokens != null ? (
+      {/* Before a measured request the heading and its badge already say so; no line repeats it. */}
+      {context.tokens != null ? (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-caption text-muted-foreground">{t('estimatedInput')}</p>
             <p
               className="mt-1 text-title tabular-nums"
               style={{ fontVariationSettings: fontWeights.semibold }}
@@ -166,15 +165,15 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
                   : t('tokens')}
               </span>
             </p>
+          </div>
+          {context.percent != null ? (
+            <span className="flex items-center gap-2 text-body tabular-nums">
+              <ContextGauge percent={context.barPercent} size={28} />
+              {context.percent}%
+            </span>
           ) : null}
         </div>
-        {context.percent != null ? (
-          <span className="flex items-center gap-2 text-body tabular-nums">
-            <ContextGauge percent={context.barPercent} size={28} />
-            {context.percent}%
-          </span>
-        ) : null}
-      </div>
+      ) : null}
       <SegmentBar parts={context.parts} total={complete ? context.windowTokens : context.tokens} />
       <ul className="flex flex-col gap-2">
         {CATEGORIES.map((category) => {
