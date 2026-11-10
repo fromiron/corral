@@ -10,6 +10,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  useSize,
 } from '@corral/react/design-kit';
 import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
@@ -37,6 +38,8 @@ export function RunResultVersions({
   const current = useStore(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   const results = useMemo(() => (projection ? runResults(projection) : null), [projection]);
+  // A name is a compact button's label; one that cannot be opened is set the same way.
+  const label = useSize('compact').type;
   if (!projection || !results) return null;
   const source = (item: ResultItem) => {
     const execution = projection.executions[item.authorExecutionId];
@@ -46,6 +49,12 @@ export function RunResultVersions({
       : undefined;
     return [
       definition?.nodes.find((node) => node.id === execution.nodeId)?.label ?? execution.nodeId,
+      // Parallel runs of one agent make same-named versions in the same attempt; the run's
+      // execution number tells them apart, and the row starts as the result reader names the
+      // author.
+      ...(item.authorExecutionNumber
+        ? [t('authorExecution', { number: item.authorExecutionNumber })]
+        : []),
       ...(round ? [run('round', { no: round })] : []),
       run('attempt', { no: execution.attemptNo }),
     ].join(' · ');
@@ -106,12 +115,14 @@ export function RunResultVersions({
                     event.currentTarget.querySelector('button')?.click();
                   }}
                 >
+                  {/* Every name starts where the column's header does: the button's own inset
+                      is taken back, and a name that cannot be opened has none. */}
                   <TableCell className="py-1">
                     {readable ? (
                       <Button
                         variant="ghost"
                         size="compact"
-                        className="max-w-full justify-start text-foreground"
+                        className="-ml-3 max-w-full justify-start text-foreground"
                         aria-label={t('itemName', { name: item.name, version: item.version })}
                         onClick={(event) =>
                           (section.final ? onOpenResult : onOpenArtifact)(
@@ -123,9 +134,11 @@ export function RunResultVersions({
                         <span className="truncate">{item.name}</span>
                       </Button>
                     ) : (
-                      <span className="flex min-w-0 flex-col px-2.5">
-                        <span className="truncate text-foreground">{item.name}</span>
-                        <span className="text-caption">{m('notKept')}</span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className={`truncate text-foreground ${label.body}`}>
+                          {item.name}
+                        </span>
+                        <span className={label.caption}>{m('notKept')}</span>
                       </span>
                     )}
                   </TableCell>
