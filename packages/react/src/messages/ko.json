@@ -4336,7 +4336,7 @@
     "debug": "디버깅",
     "paneActions": "창 동작",
     "size": "크기",
-    "checkNow": "{count, plural, =1 {응답하기} other {응답하기 ({count})}}",
+    "waiting": "{count, plural, =1 {응답 대기} other {응답 대기 ({count})}}",
     "runElapsed": "경과 {time}"
   },
   "Context": {

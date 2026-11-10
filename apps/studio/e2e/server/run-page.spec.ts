@@ -512,9 +512,10 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
   const action = page.getByTestId('dock-open-active-run');
-  await expect(action).toContainText('Respond');
+  await expect(action).toContainText('Waiting for you');
+  await expect(action).not.toContainText('Respond');
   await action.click();
-  // The waiting pill asks to respond: the response area opens and takes focus by itself.
+  // The waiting pill leads to the response area, which opens and takes focus by itself.
   const response = page.locator('[data-run-response]');
   await expect(response).toBeFocused();
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
@@ -564,7 +565,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),
     ).toHaveCount(1);
-    await expect(action).toContainText('Respond');
+    await expect(action).toContainText('Waiting for you');
     await expect(input).toHaveValue('Keep typing while the run continues');
     await expect(input).toBeFocused();
   } finally {

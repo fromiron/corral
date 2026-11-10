@@ -4336,7 +4336,7 @@
     "debug": "Debugger",
     "paneActions": "Pane actions",
     "size": "Size",
-    "checkNow": "{count, plural, =1 {Respond} other {Respond ({count})}}",
+    "waiting": "{count, plural, =1 {Waiting for you} other {Waiting for you ({count})}}",
     "runElapsed": "Elapsed {time}"
   },
   "Context": {

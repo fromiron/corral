@@ -30,9 +30,10 @@ function pillState(status: RunStatus, waiting: boolean): AgentStatusPillState {
  * clock, opening its record (or its response area while it waits), and Pause/Resume/Cancel beside
  * it through the existing RunActions confirmation. It stays reachable while a historical result
  * or document has focus. The breadcrumb names the session; the request this run answers is the
- * pill's accessible name and tooltip (#72). As the bar narrows the buttons become icons, then
- * the pill drops its clock, then its words: the state mark and the run number stay, and a
- * waiting run keeps "Respond", which is the way in.
+ * pill's accessible name and tooltip (#72). A waiting run shows its state like any other and
+ * opens the response area; the notice above the composer is the one Respond. As the bar narrows
+ * the buttons become icons, then the pill drops its clock, then its words: the state mark and the
+ * run number stay.
  */
 export function DockRunControls({
   runId,
@@ -87,14 +88,14 @@ export function DockRunControls({
       ? ts(projection.status)
       : projection.status
     : '';
-  // While the run waits for the person, the pill is the way to its response area.
-  const label = waiting ? t('checkNow', { count: waiting }) : statusLabel;
+  // While the run waits for the person, the pill says so and leads to its response area.
+  const label = waiting ? t('waiting', { count: waiting }) : statusLabel;
   const accessibleName = (elapsed?: number) =>
     [
       runLabel ? `${label} · ${runLabel}` : label,
       target,
       elapsed === undefined ? null : t('runElapsed', { time: formatClock(elapsed) }),
-      waiting ? null : t('openActiveRun'),
+      t('openActiveRun'),
     ]
       .filter(Boolean)
       .join('. ');
@@ -119,7 +120,7 @@ export function DockRunControls({
               name={t('activeRun')}
               logo={Bot}
               state={pillState(projection.status, waiting > 0)}
-              label={brief && !waiting ? brief : label}
+              label={brief ?? label}
               detail={brief ? undefined : runLabel}
               startedAt={pill === 'full' && startedAt ? Date.parse(startedAt) : undefined}
               endedAt={
