@@ -107,13 +107,11 @@ export function HunkActions({
       }
     });
   return (
+    // The button names the part until it opens; no heading stands over that one control.
     <section
       className="flex flex-col gap-2 border-t border-border pt-3 text-caption"
       aria-label={t('heading')}
     >
-      <h3 className="m-0 text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
-        {t('heading')}
-      </h3>
       {!hunks ? (
         <Button
           size="compact"
@@ -127,7 +125,7 @@ export function HunkActions({
             })
           }
         >
-          {t('load')}
+          {t('heading')}
         </Button>
       ) : (
         <>

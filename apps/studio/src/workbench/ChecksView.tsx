@@ -189,6 +189,24 @@ export function Checks({
       if (mounted.current) setAttaching(false);
     }
   };
+  // A check runs from its newest row once it has one; the bar above keeps the others.
+  const rowOf = new Map<string, string>();
+  for (const r of results)
+    if (!rowOf.has(r.commandId) && commands.some((command) => command.id === r.commandId))
+      rowOf.set(r.commandId, r.verificationId);
+  const runButton = (command: { id: string; name: string }, onRow: boolean) => (
+    <Button
+      variant="tertiary"
+      size="compact"
+      key={command.id}
+      type="button"
+      disabled={running}
+      {...(onRow ? { 'aria-label': t('runCheck', { name: command.name }) } : {})}
+      onClick={() => workspaces && void checkAction(workspaces.verify(sessionId, command.id))}
+    >
+      {onRow ? t('run') : t('runCheck', { name: command.name })}
+    </Button>
+  );
   // Checks are registered with the project's folder, in its settings.
   const tools =
     mode === 'server' && projectId ? (
@@ -222,20 +240,9 @@ export function Checks({
         />
       ) : (
         <div className="flex flex-wrap items-center gap-1">
-          {commands.map((command) => (
-            <Button
-              variant="tertiary"
-              size="compact"
-              key={command.id}
-              type="button"
-              disabled={running}
-              onClick={() =>
-                workspaces && void checkAction(workspaces.verify(sessionId, command.id))
-              }
-            >
-              {t('runCheck', { name: command.name })}
-            </Button>
-          ))}
+          {commands
+            .filter((command) => !rowOf.has(command.id))
+            .map((command) => runButton(command, false))}
           <span className="ml-auto flex items-center gap-0.5">
             {mode !== 'browser' && commands.length ? (
               <Tooltip content={t('isolatedChecksNote')}>
@@ -269,12 +276,14 @@ export function Checks({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span style={{ fontVariationSettings: fontWeights.semibold }}>{r.name}</span>
               {/* The outcome carries the colour: a report's verdict, or the state of a record
-                  without one. How the run went ("Completed") is plain unless it erred. */}
+                  without one. How the run went is named only when it did not complete. */}
               {r.report ? (
                 <>
-                  <span className={r.report.state === 'error' ? 'text-destructive' : undefined}>
-                    {t(`checkReportState.${r.report.state}`)}
-                  </span>
+                  {r.report.state === 'completed' ? null : (
+                    <span className={r.report.state === 'error' ? 'text-destructive' : undefined}>
+                      {t(`checkReportState.${r.report.state}`)}
+                    </span>
+                  )}
                   <Outcome
                     tone={
                       r.report.verdict === 'pass'
@@ -324,26 +333,40 @@ export function Checks({
               {r.endedAt && !r.stale && !r.configChanged ? (
                 <span className="text-muted-foreground">{tk('current')}</span>
               ) : null}
-              {onAttach && workspaceId && projectId ? (
+              {rowOf.get(r.commandId) === r.verificationId ||
+              (onAttach && workspaceId && projectId) ? (
                 <span className="ml-auto flex flex-wrap gap-1">
-                  {canDraftFix(r) ? (
-                    <Button
-                      size="compact"
-                      variant="secondary"
-                      disabled={attaching}
-                      onClick={() => void attach(r, 'fix')}
-                    >
-                      {tk('draftFix')}
-                    </Button>
+                  {rowOf.get(r.commandId) === r.verificationId
+                    ? runButton(
+                        commands.find((command) => command.id === r.commandId) ?? {
+                          id: r.commandId,
+                          name: r.name,
+                        },
+                        true,
+                      )
+                    : null}
+                  {onAttach && workspaceId && projectId ? (
+                    <>
+                      {canDraftFix(r) ? (
+                        <Button
+                          size="compact"
+                          variant="secondary"
+                          disabled={attaching}
+                          onClick={() => void attach(r, 'fix')}
+                        >
+                          {tk('draftFix')}
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="compact"
+                        variant="tertiary"
+                        disabled={attaching || !canAttach(r)}
+                        onClick={() => void attach(r, 'output')}
+                      >
+                        {t('attachCheckOutput')}
+                      </Button>
+                    </>
                   ) : null}
-                  <Button
-                    size="compact"
-                    variant="tertiary"
-                    disabled={attaching || !canAttach(r)}
-                    onClick={() => void attach(r, 'output')}
-                  >
-                    {t('attachCheckOutput')}
-                  </Button>
                 </span>
               ) : null}
               {attached === r.verificationId ? <span role="status">{tc('attached')}</span> : null}

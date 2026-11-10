@@ -116,7 +116,6 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
 
   return (
     <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
-      <p className="text-body text-muted-foreground">{t('folderIntro')}</p>
       {mode === 'browser' ? <p className="text-body text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
         <form onSubmit={link} className="settings-row">
@@ -127,6 +126,8 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                 {path}
               </p>
             ) : null}
+            {/* What linking grants, beside the action that grants it. */}
+            <p>{t('linkObservesOnly')}</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
             {mode === 'server' && !desktop ? (

@@ -110,7 +110,6 @@ export function LspProposals({
           <RefreshCw />
         </Button>
       </div>
-      {items.length ? <p className="text-caption text-muted-foreground">{t('hint')}</p> : null}
       {items.map((item) => (
         <div key={item.proposalId} className="flex flex-col gap-1 border-b border-line pb-2">
           <Button variant="tertiary" size="compact" onClick={() => setSelected(item.proposalId)}>

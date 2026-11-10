@@ -1803,7 +1803,6 @@
   },
   "Files": {
     "folderHeading": "Project source folder",
-    "folderIntro": "Link the project source folder to compare and check changes. Linking only observes it: agents never read or change it directly.",
     "pathLabel": "Folder path on this computer",
     "link": "Link folder",
     "unlink": "Unlink",
@@ -1960,7 +1959,9 @@
     "results": "Results",
     "noResultFiles": "No files made by runs in this copy.",
     "resultsFailed": "The files runs made could not be read.",
-    "branch": "Branch {branch}"
+    "branch": "Branch {branch}",
+    "linkObservesOnly": "Linking only observes the folder: agents never read or change it directly.",
+    "run": "Run"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -2694,7 +2695,6 @@
   },
   "LspProposals": {
     "heading": "Language server proposals",
-    "hint": "Proposed changes are kept separately until you apply them.",
     "refresh": "Refresh proposals",
     "review": "Review {title}",
     "files": "{count, plural, one {# file} other {# files}}",
@@ -3215,7 +3215,7 @@
     "capture": "Save checkpoint",
     "refresh": "Refresh checkpoints",
     "prune": "Expire old unpinned checkpoints",
-    "retention": "Keeps the latest 50 and the last 30 days. Pinned checkpoints and restore history stay retained.",
+    "retention": "Keeps the latest 50 and the last 30 days.",
     "pin": "Keep",
     "preview": "Preview restore",
     "restoreExplain": "Restore {count, plural, one {# changed file} other {# changed files}} in the displayed target. A pinned copy is saved first. If files changed since this preview, restore is refused.",
@@ -3309,7 +3309,6 @@
   },
   "Hunks": {
     "heading": "Apply or revert a part",
-    "load": "Choose parts of this file",
     "part": "Part {number}",
     "line": "Line {line}",
     "lines": "Lines {start}–{end}",

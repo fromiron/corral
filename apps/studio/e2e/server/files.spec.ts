@@ -165,14 +165,15 @@ test('a session works in its own copy, and its changes are reviewed and checked'
       page.getByTestId('file-diff').locator('[data-line-type="change-addition"]').first(),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Run Notes exist' }).click();
+    // A completed run shows its verdict alone.
     await expect(
-      page.getByTestId('check-result').first().getByText('Completed', { exact: true }),
+      page.getByTestId('check-result').first().getByText('Pass', { exact: true }),
     ).toBeVisible({
       timeout: 20_000,
     });
     await expect(
-      page.getByTestId('check-result').first().getByText('Pass', { exact: true }),
-    ).toBeVisible();
+      page.getByTestId('check-result').first().getByText('Completed', { exact: true }),
+    ).toHaveCount(0);
 
     // The linked folder itself was never written by the run.
     expect(existsSync(join(original, 'notes'))).toBe(false);
@@ -233,7 +234,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(page.getByTestId('integration').first()).toContainText('Reverted');
     expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(false);
     const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
-    await parts.getByRole('button', { name: 'Choose parts of this file' }).click();
+    await parts.getByRole('button', { name: 'Apply or revert a part' }).click();
     await parts
       .getByRole('checkbox', { name: /^Lines? \d/ })
       .first()

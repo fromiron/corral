@@ -55,7 +55,10 @@ it('explicitly attaches only selected hunks with the frozen comparison, without 
         />,
       ),
     );
-    await act(async () => button('Hunks.load')?.click());
+    // The part names its own button; no heading stands over that one control.
+    expect(container.querySelector('h3')).toBeNull();
+    expect(container.querySelector('section')?.getAttribute('aria-label')).toBe('Hunks.heading');
+    await act(async () => button('Hunks.heading')?.click());
     const attach = button('Hunks.attachSelected');
     expect(attach).toBeDefined();
     expect(attach?.disabled).toBe(true);
@@ -137,7 +140,7 @@ it('names each part by the lines the diff shows for it, keeps its hash for suppo
     );
     await act(async () =>
       [...container.querySelectorAll('button')]
-        .find((item) => item.textContent === 'Hunks.load')
+        .find((item) => item.textContent === 'Hunks.heading')
         ?.click(),
     );
     const parts = [...container.querySelectorAll('li')];
