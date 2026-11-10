@@ -35,14 +35,20 @@ import {
   type RunAgentGraphNode,
   type RunAgentGraphRelation,
 } from '../run/agent-graph.ts';
-import { type AgentGraphPosition, layoutRunAgents } from '../run/agent-graph-layout.ts';
-import { type AgentGraphRoute, routeRelation } from '../run/agent-graph-routes.ts';
+import {
+  type AgentGraphPosition,
+  labelRect,
+  layoutRunAgents,
+  markRect,
+  TILE,
+} from '../run/agent-graph-layout.ts';
+import { type AgentGraphRoute, openMidpoint, routeRelation } from '../run/agent-graph-routes.ts';
 import { type ObservedAgentModel, observedAgentModels } from '../run/agent-models.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { NodeRunStatus } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { ArrowRight, X } from '../ui/icons.ts';
-import { type Bounds, useGraphViewport, ZoomControls } from './GraphViewport.tsx';
+import { type Bounds, type FitRule, useGraphViewport, ZoomControls } from './GraphViewport.tsx';
 import { type AgentPresentation, RunAgentList } from './RunAgentList.tsx';
 
 /**
@@ -59,8 +65,13 @@ const stateColors: Record<RelationState, string> = {
 };
 const relationStates: RelationState[] = ['call', 'data', 'ask', 'failed', 'settled'];
 
-// Node tile geometry from AgentGraphNode: a 160px column whose mark centre sits 28px down.
-const TILE = { halfWidth: 80, markCenter: 28, labelBottom: 100 } as const;
+/**
+ * A fit frames the agents with a margin and may enlarge a small run, so four agents read large
+ * while twenty still fit (down to the stage's smallest zoom).
+ */
+export const RUN_GRAPH_FIT: FitRule = { padding: 40, maxZoom: 1.5 };
+/** Room above a mark for its breathing halo and selected scale. */
+const HALO = 8;
 
 function kitStatus(status: NodeRunStatus): AgentStatus {
   if (['active', 'model', 'tool', 'finalizing'].includes(status)) return 'running';
@@ -96,7 +107,7 @@ function graphBounds(positions: Iterable<AgentGraphPosition>): Bounds | null {
   return {
     minX: Math.min(...points.map((p) => p.x)) - TILE.halfWidth,
     maxX: Math.max(...points.map((p) => p.x)) + TILE.halfWidth,
-    minY: Math.min(...points.map((p) => p.y)) - TILE.markCenter - 8,
+    minY: Math.min(...points.map((p) => p.y)) - TILE.markHalf - HALO,
     maxY: Math.max(...points.map((p) => p.y)) + TILE.labelBottom,
   };
 }
@@ -187,6 +198,9 @@ export function RunCanvas({
   const { pane, viewport, fit, zoomAt, paneHandlers } = useGraphViewport({
     bounds: () => graphBounds(placed.current.values()),
     ready: hasNodes && !readingInitialHistory,
+    fitRule: RUN_GRAPH_FIT,
+    // Fit on first display and on request only; new agents and a panel opening keep the view.
+    fitOnce: true,
     onMove: () => previewHandle.close(),
     // A press on the empty stage that did not pan dismisses the quick view.
     onTap: () => previewHandle.close(),
@@ -222,6 +236,8 @@ export function RunCanvas({
       groups.set(key, [...(groups.get(key) ?? []), relation]);
     }
     const leads = new Set(graph.nodes.filter((node) => node.lead).map((node) => node.id));
+    // A direction mark sits on a stretch of its line that no mark or label covers.
+    const covered = [...positions.values()].flatMap((at) => [markRect(at), labelRect(at)]);
     return [...groups].map(([id, relations]) => {
       const first = relations[0] as RunAgentGraphRelation;
       const description = relations
@@ -229,18 +245,20 @@ export function RunCanvas({
           t('relationCount', { kind: t(`relation.${relation.kind}`), count: relation.count }),
         )
         .join(' · ');
+      const route = routeRelation({
+        source: first.source,
+        target: first.target,
+        from: positions.get(first.source) ?? { x: 0, y: 0 },
+        to: positions.get(first.target) ?? { x: 0, y: 0 },
+        leads,
+        opposite: groups.has(JSON.stringify([first.target, first.source])),
+      });
+      const mark = openMidpoint(route, covered);
       return {
         id,
         source: first.source,
         target: first.target,
-        route: routeRelation({
-          source: first.source,
-          target: first.target,
-          from: positions.get(first.source) ?? { x: 0, y: 0 },
-          to: positions.get(first.target) ?? { x: 0, y: 0 },
-          leads,
-          opposite: groups.has(JSON.stringify([first.target, first.source])),
-        }),
+        route: { ...route, label: mark.point, angle: mark.angle },
         state: relationState(relations),
         description,
         label: t('relationship', {
@@ -323,7 +341,7 @@ export function RunCanvas({
             <motion.div
               data-run-status={summary.status}
               className="absolute"
-              style={{ left: -TILE.halfWidth, top: -TILE.markCenter }}
+              style={{ left: -TILE.halfWidth, top: -TILE.markHalf }}
               initial={reduce ? false : { opacity: 0, scale: 0.4 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ ...spring.moderate, delay: reduce ? 0 : Math.min(index, 8) * 0.07 }}
@@ -391,7 +409,7 @@ export function RunCanvas({
                 d={edge.route.d}
                 fill="none"
                 stroke={color}
-                strokeOpacity={settled ? 0.55 : 1}
+                strokeOpacity={settled ? 0.8 : 1}
                 strokeWidth={1.5}
                 strokeLinecap="round"
                 className={flowing ? cn('flow-dash', settled && 'flow-dash-slow') : undefined}

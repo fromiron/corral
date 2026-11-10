@@ -5,10 +5,47 @@ type Point = AgentGraphPosition;
 export interface AgentGraphRoute {
   /** SVG path drawn from source to target, so a flowing dash runs in the relation's direction. */
   d: string;
+  /** The route as straight stretches from source to target (corners unrounded), for hit tests. */
+  points: Point[];
   /** Midpoint of the route, where a direction mark sits. */
   label: Point;
   /** Direction of travel at the label, in degrees. */
   angle: number;
+}
+
+/** An axis-aligned area of the stage. */
+export interface StageRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+const inside = (point: Point, rect: StageRect) =>
+  point.x >= rect.x0 && point.x <= rect.x1 && point.y >= rect.y0 && point.y <= rect.y1;
+
+/**
+ * The middle of the stretch of a route that is in the open: outside the areas its own two agents
+ * cover, where the line runs under a mark or behind a label. Falls back to the plain midpoint.
+ */
+export function openMidpoint(
+  route: AgentGraphRoute,
+  covered: readonly StageRect[],
+): { point: Point; angle: number } {
+  const STEPS = 48;
+  let best: [number, number] | null = null;
+  let start: number | null = null;
+  for (let i = 0; i <= STEPS + 1; i++) {
+    const open =
+      i <= STEPS && !covered.some((rect) => inside(along(route.points, i / STEPS).point, rect));
+    if (open && start === null) start = i;
+    if (!open && start !== null) {
+      if (!best || i - 1 - start > best[1] - best[0]) best = [start, i - 1];
+      start = null;
+    }
+  }
+  if (!best) return { point: route.label, angle: route.angle };
+  return along(route.points, (best[0] + best[1]) / 2 / STEPS);
 }
 
 const CORNER = 8;
@@ -53,7 +90,7 @@ function straight(from: Point, to: Point, side: number, flip: boolean): AgentGra
     { x: to.x + nx, y: to.y + ny },
   ];
   const { point, angle } = along(points, 0.5);
-  return { d: polyline(points), label: point, angle };
+  return { d: polyline(points), points, label: point, angle };
 }
 
 /**
@@ -88,13 +125,18 @@ function elbow(lead: Point, other: Point, towardLead: boolean, inner: boolean): 
   };
   const d = `M${f(a.x)} ${f(a.y)}L${f(before.x)} ${f(before.y)}Q${f(b.x)} ${f(b.y)} ${f(after.x)} ${f(after.y)}L${f(c.x)} ${f(c.y)}`;
   const { point, angle } = along(points, 0.5);
-  return { d, label: point, angle };
+  return { d, points, label: point, angle };
 }
 
 /** A loop above and right of an agent, for relations between its own executions. */
 function loop(at: Point): AgentGraphRoute {
   return {
     d: `M${f(at.x + 10)} ${f(at.y - 20)}C${f(at.x + 70)} ${f(at.y - 40)} ${f(at.x + 40)} ${f(at.y - 90)} ${f(at.x)} ${f(at.y - 24)}`,
+    points: [
+      { x: at.x + 10, y: at.y - 20 },
+      { x: at.x + 46, y: at.y - 58 },
+      { x: at.x, y: at.y - 24 },
+    ],
     label: { x: at.x + 46, y: at.y - 58 },
     angle: 180,
   };

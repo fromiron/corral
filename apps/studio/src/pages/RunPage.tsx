@@ -45,6 +45,8 @@ import {
   AccordionItem,
   AccordionTrigger,
   Button,
+  cn,
+  fontWeights,
   formatClock,
   MetaDot,
   Switch,
@@ -55,7 +57,7 @@ import {
   ToolStack,
   useNow,
 } from '@corral/react/design-kit';
-import { Check, Copy, X } from '@corral/react/icons';
+import { Check, Copy, Info, X } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   Fragment,
@@ -448,23 +450,23 @@ function RunWorkspace({
           requestAnimationFrame(() => response.current?.focus({ preventScroll: true }));
         }}
         trailing={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              ref={detailsButton}
-              variant="ghost"
-              size="compact"
-              aria-pressed={panel === 'run' && sideShown}
-              onClick={() => {
-                rememberTrigger();
-                setSteeringOpen(false);
-                setSearch({ artifact: undefined, result: undefined, view: undefined });
-                setDetail('overview');
-                setPanel(panel === 'run' && sideShown ? 'closed' : 'run');
-              }}
-            >
-              {m('runInfo')}
-            </Button>
-          </div>
+          <Button
+            ref={detailsButton}
+            variant={panel === 'run' && sideShown ? 'secondary' : 'ghost'}
+            size="compact"
+            className="@max-[44rem]/run-head:w-7 @max-[44rem]/run-head:px-0"
+            aria-pressed={panel === 'run' && sideShown}
+            onClick={() => {
+              rememberTrigger();
+              setSteeringOpen(false);
+              setSearch({ artifact: undefined, result: undefined, view: undefined });
+              setDetail('overview');
+              setPanel(panel === 'run' && sideShown ? 'closed' : 'run');
+            }}
+          >
+            <Info aria-hidden="true" className="hidden @max-[44rem]/run-head:inline" />
+            <span className="@max-[44rem]/run-head:sr-only">{m('runInfo')}</span>
+          </Button>
         }
       />
       <div ref={body} className="flex min-h-0 flex-1">
@@ -912,48 +914,65 @@ function RunHeader({
   const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
   if (!projection) return null;
+  const title = runNumber
+    ? t('runName', { number: runNumber, name: request ?? definition.name })
+    : (request ?? definition.name);
   return (
     <section
       data-testid="run-header"
       aria-label={t('summary')}
-      className="max-h-[40%] shrink-0 overflow-auto border-b border-line px-4 py-3"
+      className="@container/run-head max-h-[40%] shrink-0 overflow-auto border-b border-line px-4 py-2"
     >
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="line-clamp-2 min-w-0 text-subtitle font-medium [overflow-wrap:anywhere]">
-            {runNumber
-              ? t('runName', { number: runNumber, name: request ?? definition.name })
-              : (request ?? definition.name)}
-          </h2>
-          <span aria-live="polite" data-testid="run-status">
-            {waiting > 0 && onRespond ? (
-              <Button
-                variant="warning-outline"
-                size="compact"
-                data-testid="run-respond"
-                onClick={onRespond}
-              >
-                {status.has(projection.status) ? status(projection.status) : projection.status} ·{' '}
-                {m('respond', { count: waiting })}
-              </Button>
-            ) : (
-              <AgentStatusText kind="run" status={projection.status} />
-            )}
-          </span>
-          <span className="text-caption text-muted-foreground tabular-nums">
-            <RunElapsed
-              startedAt={projection.startedAt}
-              endedAt={projection.endedAt}
-              live={!TERMINAL_RUN_STATUSES.has(projection.status)}
-            />
-          </span>
+      <div className="flex min-h-9 min-w-0 items-center gap-3">
+        <h2
+          title={title}
+          className="line-clamp-2 min-w-[16ch] shrink text-subtitle [overflow-wrap:anywhere]"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {title}
+        </h2>
+        <span aria-live="polite" data-testid="run-status" className="shrink-0">
+          {waiting > 0 && onRespond ? (
+            <Button
+              variant="warning-outline"
+              size="compact"
+              data-testid="run-respond"
+              onClick={onRespond}
+            >
+              {status.has(projection.status) ? status(projection.status) : projection.status} ·{' '}
+              {m('respond', { count: waiting })}
+            </Button>
+          ) : (
+            <AgentStatusText kind="run" status={projection.status} />
+          )}
+        </span>
+        <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
+          <RunElapsed
+            startedAt={projection.startedAt}
+            endedAt={projection.endedAt}
+            live={!TERMINAL_RUN_STATUSES.has(projection.status)}
+          />
+        </span>
+        <div className={cn('ml-auto flex shrink-0 items-center gap-1', NARROW_HEAD_ICONS)}>
+          <RunActions session={session} compact narrowIcons />
+          {trailing}
         </div>
-        {trailing}
       </div>
-      <RunActions session={session} compact />
     </section>
   );
 }
+
+/**
+ * In a narrow run header the whole-run controls give up their words before the title gives up
+ * its first sixteen characters: Pause/Resume and Cancel show the icons RunActions carries for a
+ * narrow window, and their words stay their accessible names.
+ */
+const NARROW_HEAD_ICONS = [
+  '@max-[44rem]/run-head:[&_[data-run-action-label]]:sr-only',
+  '@max-[44rem]/run-head:[&_button_svg]:inline',
+  '@max-[44rem]/run-head:[&_button:has([data-run-action-label])]:w-7',
+  '@max-[44rem]/run-head:[&_button:has([data-run-action-label])]:px-0',
+].join(' ');
 
 /** Diagnostics live in the run inspector, not in a second expanding workspace header. */
 function RunFacts({

@@ -27,16 +27,27 @@ export interface Bounds {
 }
 
 export const ZOOM = { min: 0.2, max: 2, step: 1.2 } as const;
-const FIT_PADDING = 48;
 
-/** The view that shows `bounds` whole and centred, never enlarged past 100%. */
-export function fitBounds(bounds: Bounds | null, width: number, height: number): Viewport {
+/** How a fit frames the content: the margin around it and the largest zoom it may choose. */
+export interface FitRule {
+  padding: number;
+  maxZoom: number;
+}
+const DEFAULT_FIT: FitRule = { padding: 48, maxZoom: 1 };
+
+/** The view that shows `bounds` whole and centred, never enlarged past the rule's zoom. */
+export function fitBounds(
+  bounds: Bounds | null,
+  width: number,
+  height: number,
+  rule: FitRule = DEFAULT_FIT,
+): Viewport {
   if (!bounds || !width || !height) return { x: 0, y: 0, k: 1 };
   const w = Math.max(1, bounds.maxX - bounds.minX);
   const h = Math.max(1, bounds.maxY - bounds.minY);
   const k = Math.min(
-    1,
-    Math.max(ZOOM.min, Math.min((width - FIT_PADDING * 2) / w, (height - FIT_PADDING * 2) / h)),
+    rule.maxZoom,
+    Math.max(ZOOM.min, Math.min((width - rule.padding * 2) / w, (height - rule.padding * 2) / h)),
   );
   return {
     x: (width - w * k) / 2 - bounds.minX * k,
@@ -56,33 +67,84 @@ export interface GraphViewportOptions {
   onTap?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   /** Return false to leave a press to the caller instead of panning. */
   canPan?: (event: ReactPointerEvent<HTMLDivElement>) => boolean;
+  /** How a fit frames the content. Omitted, a 48px margin and never past 100%. */
+  fitRule?: FitRule;
+  /**
+   * Fit only when first shown and on request. A later change of the pane's size keeps the zoom
+   * and the point at the pane's centre instead of fitting again. Omitted, the view refits with
+   * the pane until the person moves it.
+   */
+  fitOnce?: boolean;
 }
 
-export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: GraphViewportOptions) {
+export function useGraphViewport({
+  bounds,
+  ready,
+  onMove,
+  onTap,
+  canPan,
+  fitRule = DEFAULT_FIT,
+  fitOnce = false,
+}: GraphViewportOptions) {
   const pane = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  const read = useRef({ bounds, onMove, onTap, canPan });
-  read.current = { bounds, onMove, onTap, canPan };
+  const read = useRef({ bounds, onMove, onTap, canPan, fitRule });
+  read.current = { bounds, onMove, onTap, canPan, fitRule };
 
   // Until the person moves the view, it follows the pane: a panel opening beside it refits.
   const moved = useRef(false);
+  // With `fitOnce`: whether the first fit happened, and the pane's size when the view was last
+  // placed, so a later size change keeps the view's centre.
+  const fitted = useRef(false);
+  const size = useRef<{ width: number; height: number } | null>(null);
   const fit = useCallback(() => {
     const element = pane.current;
     if (!element) return;
     moved.current = false;
-    setViewport(fitBounds(read.current.bounds(), element.clientWidth, element.clientHeight));
+    size.current = { width: element.clientWidth, height: element.clientHeight };
+    setViewport(
+      fitBounds(
+        read.current.bounds(),
+        element.clientWidth,
+        element.clientHeight,
+        read.current.fitRule,
+      ),
+    );
   }, []);
   useLayoutEffect(() => {
     const element = pane.current;
     if (!ready || !element) return;
     const measure = () => {
-      if (!moved.current && element.clientWidth > 0 && element.clientHeight > 0) fit();
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      if (width <= 0 || height <= 0) return;
+      if (!fitOnce) {
+        if (!moved.current) fit();
+        return;
+      }
+      if (!fitted.current) {
+        fitted.current = true;
+        fit();
+        return;
+      }
+      const last = size.current;
+      size.current = { width, height };
+      if (!last || (last.width === width && last.height === height)) return;
+      setViewport((current) =>
+        current
+          ? {
+              ...current,
+              x: current.x + (width - last.width) / 2,
+              y: current.y + (height - last.height) / 2,
+            }
+          : current,
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [ready, fit]);
+  }, [ready, fit, fitOnce]);
   const moveTo = useCallback((next: SetStateAction<Viewport | null>) => {
     moved.current = true;
     setViewport(next);

@@ -277,7 +277,7 @@
   }
 }
 .flow-dash.flow-dash-slow {
-  stroke-dasharray: 2 8;
+  stroke-dasharray: 3 7;
   animation: flow-dash-slow 4.5s linear infinite;
 }
 /* Without motion the dashes stop, so a mark at each midpoint carries the direction. */
