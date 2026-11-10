@@ -307,8 +307,14 @@ export function ScheduledPage() {
     if (!latest) return t('notRun');
     return latest.runId ? runStatus(latest) : t(`occurrence.${latest.status}`);
   };
+  // Without the local server the empty state's title is the reason, as in Library resources.
   const empty =
-    mode !== 'server' ? t('serverOnly') : loaded && !sessions.length ? t('needsSession') : null;
+    mode !== 'server'
+      ? { title: t('localOnly'), text: t('localOnlyText') }
+      : {
+          title: t('emptyTitle'),
+          text: loaded && !sessions.length ? t('needsSession') : t('emptyText'),
+        };
   /** The session's current name when it can be read, else the one listed when the page opened. */
   const targetSession = (sessionId: string) =>
     target?.sessionId === sessionId
@@ -394,7 +400,7 @@ export function ScheduledPage() {
             </Table>
           </div>
         ) : editing ? null : (
-          <EmptyState title={t('emptyTitle')} text={empty ?? t('emptyText')} />
+          <EmptyState title={empty.title} text={empty.text} />
         )}
         {editing ? (
           <ScheduleEditor

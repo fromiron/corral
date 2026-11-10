@@ -413,8 +413,11 @@ it('says plainly when the target session cannot be found, without a link', async
 it('in the browser demo, the empty state gives the reason and there is no disabled New schedule', async () => {
   fixture.services.mode = 'browser';
   await page();
-  expect(container.textContent).toContain('No schedules');
-  expect(container.textContent).toContain('Available with the local server.');
+  // One condition, said once: the empty state's title is the reason, as in Library resources.
+  const empty = container.querySelector<HTMLElement>('.border-dashed');
+  expect(empty?.querySelector('b')?.textContent).toBe(messages.Schedules.localOnly);
+  expect(container.textContent).not.toContain('No schedules');
+  expect(empty?.querySelector('p')?.textContent).toBe(messages.Schedules.localOnlyText);
   expect(
     [...container.querySelectorAll('button')].some((item) => item.textContent === 'New schedule'),
   ).toBe(false);
