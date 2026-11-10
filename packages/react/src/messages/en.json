@@ -1594,7 +1594,7 @@
     "descriptionLabel": "Description (optional)",
     "create": "Create project",
     "intro": "A project keeps its teams and runs apart from other work. It is not a folder: nothing on your computer is read or changed.",
-    "counts": "{corrals, plural, =0 {no teams} one {# Corral} other {# teams}} · {runs, plural, =0 {no runs} one {# run} other {# runs}}",
+    "counts": "{corrals, plural, =0 {no teams} one {# team} other {# teams}} · {runs, plural, =0 {no runs} one {# run} other {# runs}}",
     "archived": "Archived",
     "archive": "Archive",
     "restore": "Restore",

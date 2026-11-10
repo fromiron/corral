@@ -535,7 +535,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
           <dt className="text-muted-foreground">{ko ? '셸' : 'Shell'}</dt>
           <dd>{shellNames[command.shellId]}</dd>
-          <dt className="text-muted-foreground">{ko ? '작업 폴더' : 'Working directory'}</dt>
+          <dt className="text-muted-foreground">{ko ? '작업 디렉터리' : 'Working directory'}</dt>
           <dd className="break-words font-mono">
             {command.cwd === '.'
               ? ko
