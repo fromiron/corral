@@ -733,9 +733,10 @@ export function FilePanel({
           {te('recoveryReadFailed')}
         </p>
       ) : null}
-      {/* The head in two rows: where the tree reads from with the tree's own controls, then
-          the filter (in contents mode, the content search takes the second row). */}
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {/* The head in two rows: where the tree reads from with the panel's own tools, then what
+          narrows the tree: the filter, how it matches and the Results filter (in contents
+          mode, which replaces the tree, the content search takes the second row). */}
+      <div className="flex min-w-0 items-center gap-2">
         {readOnly ? (
           <span className="min-w-0 truncate text-caption text-muted-foreground">
             {t('sourceFolder')}
@@ -755,16 +756,6 @@ export function FilePanel({
           />
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {resultsAvailable ? (
-            <Button
-              size="compact"
-              variant={results ? 'secondary' : 'ghost'}
-              aria-pressed={results}
-              onClick={() => setResultsOn(!resultsOn)}
-            >
-              {tf('results')}
-            </Button>
-          ) : null}
           {readOnly ? null : (
             <Tooltip content={tq('title')} shortcut={formatChord({ mod: true, key: 'p' })}>
               <Button
@@ -793,7 +784,8 @@ export function FilePanel({
         </div>
       </div>
       {readOnly || searchMode === 'names' ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        // One row in any width the panel takes: the field gives up its width, never its row.
+        <div className="flex min-w-0 items-center gap-2">
           {readOnly ? null : searchModeControl}
           <Input
             size="sm"
@@ -801,8 +793,19 @@ export function FilePanel({
             placeholder={t('filterFiles')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 max-w-full flex-[1_0_10rem]"
+            className="min-w-0 flex-1"
           />
+          {resultsAvailable ? (
+            <Button
+              size="compact"
+              variant={results ? 'secondary' : 'ghost'}
+              aria-pressed={results}
+              className="shrink-0"
+              onClick={() => setResultsOn(!resultsOn)}
+            >
+              {tf('results')}
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {!readOnly && searchMode === 'contents' ? (
