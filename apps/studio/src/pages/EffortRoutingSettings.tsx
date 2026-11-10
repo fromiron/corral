@@ -14,6 +14,7 @@ import {
   BannerTitle,
   Button,
   Checkbox,
+  fontWeights,
   Input,
   RadioGroup,
   RadioItem,
@@ -229,11 +230,15 @@ export function EffortRoutingSettings({
   if (!models) return null;
   return (
     <section aria-labelledby={heading} className="settings-surface flex flex-col gap-4">
-      <h3 id={heading} className="text-sm font-semibold">
+      <h3
+        id={heading}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
       {problem === 'loadFailed' ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {t('loadFailed')}
         </p>
       ) : null}
@@ -303,13 +308,13 @@ export function EffortRoutingSettings({
               {t('save')}
             </Button>
             {notice === 'saved' ? (
-              <p role="status" className="text-sm">
+              <p role="status" className="text-body">
                 {t('saved')}
               </p>
             ) : null}
           </div>
           {problem && problem !== 'loadFailed' ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {t(problem)}
             </p>
           ) : null}
@@ -364,13 +369,15 @@ function LocalEngine({
     <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-1">
-          <h4 className="font-medium">{local.model ?? t('engines.local')}</h4>
-          <p className="text-xs text-muted-foreground">{t('host', { host: local.host })}</p>
-          <p role="status" className="text-sm">
+          <h4 style={{ fontVariationSettings: fontWeights.semibold }}>
+            {local.model ?? t('engines.local')}
+          </h4>
+          <p className="text-caption text-muted-foreground">{t('host', { host: local.host })}</p>
+          <p role="status" className="text-body">
             {status}
           </p>
           {local.supported && local.error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {local.error}
             </p>
           ) : null}
@@ -401,7 +408,7 @@ function LocalEngine({
           className="w-fit min-w-32"
         />
       </Labeled>
-      <details className="text-sm">
+      <details className="text-body">
         <summary>{t('advanced')}</summary>
         <div className="mt-2 flex flex-wrap gap-4">
           <NumberField
@@ -438,7 +445,7 @@ function ApiEngine({
   const api = view.apis.find((entry) => entry.id === form.apiId && entry.keyConfigured);
   if (!view.apis.some((entry) => entry.keyConfigured))
     return (
-      <div className="flex flex-col items-start gap-2 rounded-lg border border-line p-3 text-sm">
+      <div className="flex flex-col items-start gap-2 rounded-lg border border-line p-3 text-body">
         <p>{t('noApi')}</p>
         <Button variant="tertiary" size="compact" render={<a href="#models-decision-apis" />}>
           {t('connectApi')}
@@ -476,7 +483,7 @@ function ApiEngine({
               <BannerTitle>{t('consentChanged')}</BannerTitle>
             </Banner>
           ) : null}
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <div className="flex flex-col gap-1 text-caption text-muted-foreground">
             <p>{t('sends')}</p>
             <p>{td(`data.${api.id}`)}</p>
           </div>
@@ -487,7 +494,7 @@ function ApiEngine({
               change({ consent: form.consent === api.noticeRevision ? null : api.noticeRevision })
             }
           />
-          <details className="text-sm">
+          <details className="text-body">
             <summary>{t('advanced')}</summary>
             <div className="mt-2">
               <NumberField
@@ -507,7 +514,7 @@ function ApiEngine({
 
 function Labeled({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 text-xs">
+    <div className="flex flex-col gap-1 text-caption">
       <span aria-hidden="true" className="text-muted-foreground">
         {label}
       </span>
@@ -534,7 +541,7 @@ function NumberField({
   const invalid = whole(value, min, max) === null;
   return (
     <div className="flex flex-col gap-1">
-      <label className="flex flex-col gap-1 text-xs">
+      <label className="flex flex-col gap-1 text-caption">
         {label}
         <Input
           type="number"
@@ -549,7 +556,7 @@ function NumberField({
         />
       </label>
       {invalid ? (
-        <p id={error} role="alert" className="text-xs text-danger">
+        <p id={error} role="alert" className="text-caption text-danger">
           {t('range', { min, max })}
         </p>
       ) : null}

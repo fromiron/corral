@@ -178,8 +178,10 @@ export function RunDetail({
   if (activeRunId !== runId || !definition) {
     return (
       <main className="flex flex-col items-start gap-3 p-6">
-        <h2 className="text-lg font-semibold">{t('heading', { runId })}</h2>
-        <p role="status" className="text-sm text-muted-foreground">
+        <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('heading', { runId })}
+        </h2>
+        <p role="status" className="text-body text-muted-foreground">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
         {activeRunId === runId ? <RunActions session={session} /> : null}
@@ -192,7 +194,7 @@ export function RunDetail({
             {t('retry')}
           </Button>
         ) : null}
-        <Link to="/" className="text-sm underline">
+        <Link to="/" className="text-body underline">
           ←
         </Link>
       </main>
@@ -1617,7 +1619,7 @@ function NodeExecutions({
                         {results('itemName', { name: latest.name, version: latest.version })}
                       </Button>
                     ) : (
-                      <div className="font-medium">
+                      <div style={{ fontVariationSettings: fontWeights.semibold }}>
                         {results('itemName', { name: latest.name, version: latest.version })}
                       </div>
                     )

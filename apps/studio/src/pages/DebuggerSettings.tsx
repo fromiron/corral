@@ -4,7 +4,7 @@ import {
   RegisteredDebugAdapter,
   RegisteredDebugConfiguration,
 } from '@corral/contracts';
-import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
@@ -144,7 +144,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
     group = 'configuration',
   ) => (
     <label
-      className="flex min-w-0 flex-col gap-1 text-sm"
+      className="flex min-w-0 flex-col gap-1 text-body"
       htmlFor={`debug-settings-${projectId}-${group}-${label}`}
     >
       {t(label)}
@@ -168,23 +168,27 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
   );
   return (
     <section className="flex flex-col gap-3" aria-label={t('title')}>
-      <h3 className="text-lg font-semibold">{t('title')}</h3>
-      <p className="text-xs text-muted-foreground">{t('hint')}</p>
+      <h3 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h3>
+      <p className="text-caption text-muted-foreground">{t('hint')}</p>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {notice}
         </p>
       ) : null}
       <details className="settings-surface" open={editingAdapter !== null || undefined}>
-        <summary className="cursor-pointer font-medium">{t('adapters')}</summary>
+        <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('adapters')}
+        </summary>
         <div className="flex flex-col gap-3 pt-3">
           {(config?.debugAdapters ?? []).map((item) => (
-            <div key={item.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <div key={item.id} className="flex flex-wrap items-center gap-2 text-body">
               <span>{item.name}</span>
               <Button
                 variant="tertiary"
@@ -222,7 +226,10 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
             </div>
           ))}
           <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3">
-            <legend className="mb-2 text-sm font-medium">
+            <legend
+              className="mb-2 text-subtitle"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
               {t(editingAdapter ? 'editAdapter' : 'addAdapter')}
             </legend>
             {field(
@@ -249,7 +256,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
               true,
               'adapter',
             )}
-            <p className="text-xs text-muted-foreground">{t('argvHint')}</p>
+            <p className="text-caption text-muted-foreground">{t('argvHint')}</p>
             {field(
               'timeout',
               adapter.seconds,
@@ -262,9 +269,9 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
         </div>
       </details>
       <div className="flex flex-col gap-2">
-        <h4 className="font-medium">{t('configurations')}</h4>
+        <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('configurations')}</h4>
         {(config?.debugConfigurations ?? []).map((item) => (
-          <div key={item.id} className="flex flex-wrap items-center gap-2 text-sm">
+          <div key={item.id} className="flex flex-wrap items-center gap-2 text-body">
             <span>
               {item.name} · {item.runtime} · {t(item.request)}
             </span>
@@ -318,7 +325,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
         ))}
       </div>
       <details className="settings-surface" open={editingConfiguration !== null || undefined}>
-        <summary className="cursor-pointer font-medium">
+        <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
           {t(editingConfiguration ? 'editConfiguration' : 'addConfiguration')}
         </summary>
         <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3 pt-3">
@@ -365,7 +372,7 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
           {field('cwd', configuration.cwd, (value) =>
             setConfiguration({ ...configuration, cwd: value }),
           )}
-          <p className="text-xs text-muted-foreground">{t('relativeHint')}</p>
+          <p className="text-caption text-muted-foreground">{t('relativeHint')}</p>
           {configuration.request === 'launch' ? (
             <>
               {configuration.runtime === 'node' ? (
@@ -394,10 +401,10 @@ export function DebuggerSettings({ api, projectId, config, onChange }: Props) {
                 false,
                 true,
               )}
-              <p className="text-xs text-muted-foreground">{t('envHint')}</p>
+              <p className="text-caption text-muted-foreground">{t('envHint')}</p>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground">{t('attachHint')}</p>
+            <p className="text-caption text-muted-foreground">{t('attachHint')}</p>
           )}
           <Switch
             label={t('sourceMaps')}

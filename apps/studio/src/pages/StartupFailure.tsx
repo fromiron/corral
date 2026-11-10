@@ -1,12 +1,14 @@
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 
 export function StartupFailure() {
   const t = useTranslations('Studio');
   return (
     <main className="flex min-h-dvh flex-col items-start justify-center gap-4 p-6">
-      <h1 className="text-base font-semibold">{t('title')}</h1>
-      <p role="alert" className="max-w-lg text-sm text-danger">
+      <h1 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h1>
+      <p role="alert" className="max-w-lg text-body text-danger">
         {t('connectionFailed')}
       </p>
       <Button onClick={() => window.location.reload()}>{t('retryConnection')}</Button>

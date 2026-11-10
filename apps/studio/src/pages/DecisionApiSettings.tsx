@@ -1,5 +1,5 @@
 import type { DecisionApiView } from '@corral/client';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -32,12 +32,16 @@ export function DecisionApiSettings({ onChange }: { onChange?: () => void } = {}
 
   return (
     <section aria-labelledby="decision-apis-heading" className="flex flex-col gap-2">
-      <h3 id="decision-apis-heading" className="text-sm font-semibold">
+      <h3
+        id="decision-apis-heading"
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
-      <p className="text-sm text-muted-foreground">{t('intro')}</p>
+      <p className="text-body text-muted-foreground">{t('intro')}</p>
       {loadFailed ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {t('loadFailed')}
         </p>
       ) : null}
@@ -92,8 +96,8 @@ function DecisionApiCard({
       data-decision-api={api.id}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-medium">
-          {name} <span className="font-mono text-xs text-muted-foreground">{api.model}</span>
+        <h4 style={{ fontVariationSettings: fontWeights.semibold }}>
+          {name} <span className="font-mono text-caption text-muted-foreground">{api.model}</span>
         </h4>
         {api.keyConfigured ? (
           <Button
@@ -107,10 +111,10 @@ function DecisionApiCard({
           </Button>
         ) : null}
       </div>
-      <p role="status" className="text-sm">
+      <p role="status" className="text-body">
         {api.keyConfigured ? t('keySaved') : t('noKey')}
       </p>
-      <p className="text-xs text-muted-foreground">{t(`data.${api.id}`)}</p>
+      <p className="text-caption text-muted-foreground">{t(`data.${api.id}`)}</p>
       {api.keyConfigured ? null : (
         <form onSubmit={saveKey} className="flex flex-col gap-1">
           <div className="flex items-end gap-2">
@@ -119,11 +123,11 @@ function DecisionApiCard({
               {t('saveKey')}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">{t('keyHint')}</p>
+          <p className="text-caption text-muted-foreground">{t('keyHint')}</p>
         </form>
       )}
       {failed ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {t('saveFailed')}
         </p>
       ) : null}

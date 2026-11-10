@@ -1,6 +1,6 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
-import { Checkbox } from '@corral/react/design-kit';
+import { Checkbox, fontWeights } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { McpConnection } from './McpConnection.tsx';
@@ -55,7 +55,9 @@ function ServerTools({
   const verified = probe?.configRevision === revision ? probe : null;
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-medium">{server.name}</h3>
+      <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {server.name}
+      </h3>
       <McpConnection
         api={api}
         projectId={projectId}
@@ -65,9 +67,14 @@ function ServerTools({
       />
       {verified ? (
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-sm font-medium">{t('selectTools')}</legend>
+          <legend
+            className="mb-2 text-subtitle"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {t('selectTools')}
+          </legend>
           {!verified.tools.length ? (
-            <p className="text-sm text-muted-foreground">{t('probeEmpty')}</p>
+            <p className="text-body text-muted-foreground">{t('probeEmpty')}</p>
           ) : null}
           {verified.tools.map((tool) => (
             <div key={tool.name} className="settings-row flex-col items-start gap-1">
@@ -82,10 +89,10 @@ function ServerTools({
                   )
                 }
               />
-              {tool.description ? <p className="text-xs">{tool.description}</p> : null}
+              {tool.description ? <p className="text-caption">{tool.description}</p> : null}
             </div>
           ))}
-          <p className="text-xs text-muted-foreground">{t('nextRun')}</p>
+          <p className="text-caption text-muted-foreground">{t('nextRun')}</p>
         </fieldset>
       ) : null}
     </section>

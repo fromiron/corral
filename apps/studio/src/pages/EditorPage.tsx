@@ -15,7 +15,7 @@ import {
   useSteerTarget,
   useStudioStores,
 } from '@corral/react';
-import { Button, KitBadge, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, KitBadge, Select } from '@corral/react/design-kit';
 import { Activity, Play, Redo2, Undo2 } from '@corral/react/icons';
 import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -102,10 +102,10 @@ export function TeamDesign({ corralId }: { corralId: string }) {
     () => (record ? editorWorkingCopy(repository, record) : null),
     [repository, record],
   );
-  if (record === undefined) return <p className="p-4 text-sm text-muted-foreground">…</p>;
+  if (record === undefined) return <p className="p-4 text-body text-muted-foreground">…</p>;
   if (!record || !copy)
     return (
-      <p role="status" className="p-4 text-sm text-muted-foreground">
+      <p role="status" className="p-4 text-body text-muted-foreground">
         {t('unknownPanel')}
       </p>
     );
@@ -119,7 +119,7 @@ export function TeamDesign({ corralId }: { corralId: string }) {
       record={record}
       workingCopy={copy}
       inSession
-      toolbar={<span className="text-xs text-muted-foreground">{te('appliesNextRun')}</span>}
+      toolbar={<span className="text-caption text-muted-foreground">{te('appliesNextRun')}</span>}
     />
   );
 }
@@ -155,7 +155,7 @@ function TemplatePicker({ current }: { current: DemoTemplateId }) {
   const t = useTranslations('Demo');
   const navigate = useNavigate();
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div className="flex items-center gap-2 text-caption">
       <span aria-hidden="true" className="text-muted-foreground">
         {t('template')}
       </span>
@@ -331,7 +331,10 @@ function Editor({
               ← {t('backToSession')}
             </Button>
           ) : null}
-          <h1 className="min-w-0 truncate text-body font-semibold text-foreground">
+          <h1
+            className="min-w-0 truncate text-body text-foreground"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
             {draft.definition.name}
           </h1>
           <span className="text-caption text-muted-foreground" data-testid="revisions">
@@ -531,14 +534,19 @@ function RunSide({
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       {guide?.(session, setChosen)}
-      <p className="text-xs text-muted-foreground">{n('directRunHint')}</p>
+      <p className="text-caption text-muted-foreground">{n('directRunHint')}</p>
       <details
         open={setupOpen}
         onToggle={(event) => setSetupOpen(event.currentTarget.open)}
         className="rounded-lg fill-group p-3"
       >
-        <summary className="cursor-pointer text-sm font-medium">{n('prepareExecution')}</summary>
-        <p className="my-2 text-xs text-muted-foreground">{n('runOverridesHint')}</p>
+        <summary
+          className="cursor-pointer text-subtitle"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {n('prepareExecution')}
+        </summary>
+        <p className="my-2 text-caption text-muted-foreground">{n('runOverridesHint')}</p>
         <RunRoleOverrides
           roles={roles}
           profiles={profiles}
@@ -597,7 +605,7 @@ function RunSide({
           params={{ runId }}
           // Keep the execution chosen here: the Run page opens on the same one.
           search={chosen ? { execution: chosen } : {}}
-          className="text-xs underline"
+          className="text-caption underline"
         >
           {t('openRun')}
         </Link>
