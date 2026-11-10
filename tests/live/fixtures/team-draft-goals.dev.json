@@ -1,0 +1,153 @@
+{
+  "split": "dev",
+  "note": "A goal and the team patterns a careful person would accept for it. Labels were written before any model run.",
+  "goals": [
+    {
+      "id": "dev-01",
+      "goal": "README의 오타를 고쳐 줘",
+      "accept": [
+        "single"
+      ]
+    },
+    {
+      "id": "dev-02",
+      "goal": "Rename the `fetchUser` helper to `loadUser` across the repo",
+      "accept": [
+        "single",
+        "implement_review"
+      ]
+    },
+    {
+      "id": "dev-03",
+      "goal": "신규 입사자를 위한 온보딩 안내문을 작성해 줘",
+      "accept": [
+        "write_review"
+      ]
+    },
+    {
+      "id": "dev-04",
+      "goal": "Write release notes for version 2.3 from the merged PR titles I paste below",
+      "accept": [
+        "write_review",
+        "single"
+      ]
+    },
+    {
+      "id": "dev-05",
+      "goal": "국내 전자책 구독 서비스 세 곳의 요금제를 조사해서 출처와 함께 비교 보고서를 써 줘",
+      "accept": [
+        "research_write_review"
+      ]
+    },
+    {
+      "id": "dev-06",
+      "goal": "Research how other open-source projects handle plugin sandboxing and write a summary with sources",
+      "accept": [
+        "research_write_review"
+      ]
+    },
+    {
+      "id": "dev-07",
+      "goal": "설정 화면에 다크 모드 토글을 추가해 줘",
+      "accept": [
+        "implement_review",
+        "plan_implement_review"
+      ]
+    },
+    {
+      "id": "dev-08",
+      "goal": "Add input validation to the signup form and make the tests pass",
+      "accept": [
+        "implement_review"
+      ]
+    },
+    {
+      "id": "dev-09",
+      "goal": "결제 모듈을 새 PG사 API로 옮겨야 해. 영향 범위를 먼저 정리하고 단계별로 구현해 줘",
+      "accept": [
+        "plan_implement_review"
+      ]
+    },
+    {
+      "id": "dev-10",
+      "goal": "Design and build an offline mode for the notes app: local cache, sync queue, conflict handling",
+      "accept": [
+        "plan_implement_review"
+      ]
+    },
+    {
+      "id": "dev-11",
+      "goal": "로그인 후 가끔 흰 화면이 뜨는 버그가 있어. 원인을 찾아서 고쳐 줘",
+      "accept": [
+        "bug_fix"
+      ]
+    },
+    {
+      "id": "dev-12",
+      "goal": "The nightly export job fails intermittently with a timeout; find out why and fix it",
+      "accept": [
+        "bug_fix"
+      ]
+    },
+    {
+      "id": "dev-13",
+      "goal": "이 PR을 정확성과 보안 관점에서 검토해 줘. 코드는 고치지 말고",
+      "accept": [
+        "parallel_review"
+      ]
+    },
+    {
+      "id": "dev-14",
+      "goal": "Review the auth middleware for correctness and security issues; report findings only",
+      "accept": [
+        "parallel_review"
+      ]
+    },
+    {
+      "id": "dev-15",
+      "goal": "상태 관리를 Redux로 유지할지 Zustand로 바꿀지 결정해야 해. 두 안을 조사해서 비교 문서를 만들어 줘",
+      "accept": [
+        "tech_decision"
+      ]
+    },
+    {
+      "id": "dev-16",
+      "goal": "Should we move our queue from Redis to Postgres? Compare both options and recommend one for approval",
+      "accept": [
+        "tech_decision"
+      ]
+    },
+    {
+      "id": "dev-17",
+      "goal": "이 함수에 주석을 달아 줘",
+      "accept": [
+        "single"
+      ]
+    },
+    {
+      "id": "dev-18",
+      "goal": "분기 실적 요약 이메일 초안을 써 줘",
+      "accept": [
+        "write_review",
+        "single"
+      ]
+    },
+    {
+      "id": "dev-19",
+      "goal": "Fix the failing unit test in cart.test.ts",
+      "accept": [
+        "bug_fix",
+        "implement_review",
+        "single"
+      ]
+    },
+    {
+      "id": "dev-20",
+      "goal": "API 응답 캐시를 추가하고 리뷰까지 받아 줘",
+      "accept": [
+        "implement_review",
+        "plan_implement_review"
+      ]
+    }
+  ]
+}
