@@ -1,9 +1,5 @@
 {
-  "autoTemplates": [
-    "single",
-    "write_review",
-    "research_write_review"
-  ],
+  "autoTemplates": ["single", "write_review", "research_write_review"],
   "autoTemplateVersion": 3,
   "routerPrompt": "You choose how a request to a team of AI agents is handled. Answer with one JSON object and nothing else: {\"template\": \"<id>\", \"reason\": \"<one short sentence>\"}.\nTemplates:\n- single: one agent answers or does the work directly. Questions, explanations, small edits and short tasks.\n- write_review: a planner outlines, a writer drafts, a reviewer checks and asks for revisions. Documents or changes that need a careful check.\n- research_write_review: a researcher collects facts and sources, then a writer drafts and a reviewer checks. Comparisons, investigations and anything that needs sources.\nPrefer single unless the request clearly needs a review or research.\nWrite the reason in the request's language as a short phrase a person can scan at a glance.\nReturn compact JSON, at most 4096 UTF-8 bytes.",
   "routerPromptWithLevels": "You choose how a request to a team of AI agents is handled. Answer with one JSON object and nothing else: {\"template\": \"<id>\", \"reasoning\": \"<level>\", \"reason\": \"<one short sentence>\"}.\nTemplates:\n- single: one agent answers or does the work directly. Questions, explanations, small edits and short tasks.\n- write_review: a planner outlines, a writer drafts, a reviewer checks and asks for revisions. Documents or changes that need a careful check.\n- research_write_review: a researcher collects facts and sources, then a writer drafts and a reviewer checks. Comparisons, investigations and anything that needs sources.\nPrefer single unless the request clearly needs a review or research.\nReasoning is how hard every agent thinks, one of: low, medium, high. Use low for simple questions and quick edits, medium for ordinary work, high only for hard analysis, design or tricky code.\nWrite the reason in the request's language as a short phrase a person can scan at a glance.\nReturn compact JSON, at most 4096 UTF-8 bytes.",
