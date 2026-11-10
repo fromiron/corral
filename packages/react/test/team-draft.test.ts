@@ -153,7 +153,7 @@ describe('planFromGoal, the local suggestion', () => {
       expect(suggested?.roles[0]?.name).not.toBe(messages.TeamDraft.wording.roles.researcher.name);
       expect(suggested?.roles[0]?.duty).toMatch(/security|보안/);
       expect(suggested?.criteria.join(' ')).toMatch(/evidence|근거/);
-      // The suggestion never turns the approval on; the person does, in the plan editor.
+      // Even a goal that mentions approving does not turn the approval on; the person can.
       expect(suggested?.finalApproval).toBe(false);
       expect(suggested && TeamPlan.safeParse(suggested).success).toBe(true);
       if (!suggested) throw new Error('Expected a security review plan');
@@ -166,6 +166,33 @@ describe('planFromGoal, the local suggestion', () => {
     expect(planFromGoal('Write a security awareness announcement', wording(en))?.pattern).toBe(
       'write_review',
     );
+  });
+
+  it('asks for no final approval in any pattern; a person who wants one turns it on', () => {
+    const goals = [
+      ['Translate this paragraph into French', en, 'single'],
+      ['Write a launch announcement for the new API', en, 'write_review'],
+      ['Compare SQLite and PostgreSQL for an internal tool', en, 'research_write_review'],
+      ['신규 API 출시 안내문 작성', ko, 'write_review'],
+      ['사내 도구용 SQLite와 PostgreSQL 비교 조사', ko, 'research_write_review'],
+    ] as const;
+    for (const [goal, messages, pattern] of goals) {
+      const suggested = planFromGoal(goal, wording(messages));
+      expect(suggested?.pattern).toBe(pattern);
+      expect(suggested?.finalApproval, goal).toBe(false);
+      if (!suggested) throw new Error(`Expected a plan for ${goal}`);
+      const { definition } = draftFromPlan(suggested, 'drafted_default');
+      expect(definition.nodes.find((n) => n.type === 'output')).toMatchObject({
+        requireApproval: false,
+      });
+      expect(definition.nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(
+        false,
+      );
+      const asked = draftFromPlan({ ...suggested, finalApproval: true }, 'drafted_asked');
+      expect(asked.definition.nodes.find((n) => n.type === 'output')).toMatchObject({
+        requireApproval: true,
+      });
+    }
   });
 
   it('keeps general team names short while retaining the goal in the brief', () => {

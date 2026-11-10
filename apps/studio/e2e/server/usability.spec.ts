@@ -1,6 +1,7 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { type DemoTemplate, templateForWorkspace } from '../../src/demo/templates.ts';
+import { approvalResearchTeam } from '../../src/demo/testing/approval-team.ts';
 import {
   newConversationFromSidebar,
   openConversationDetails,
@@ -349,7 +350,7 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   page,
   corral,
 }) => {
-  await graphSession(page, corral, templateForWorkspace('research-team', 'approval_team'));
+  await graphSession(page, corral, approvalResearchTeam('approval_team'));
   const sessionUrl = new URL(page.url()).pathname;
   // The conversation offers approval inline; opening history exposes only its own form.
   await expect(timeline(page).locator('[data-testid^="approval-"]')).toBeVisible({

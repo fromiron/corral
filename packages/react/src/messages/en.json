@@ -572,7 +572,7 @@
     "template": {
       "research-team": {
         "name": "Research team",
-        "body": "Research delegates to two helpers, the Writer asks a question, a reviewer sends one draft back, and you approve the result."
+        "body": "Research delegates to two helpers, the Writer asks a question, and a reviewer sends one draft back for revision."
       },
       "starter": {
         "name": "Single agent",
@@ -1123,7 +1123,7 @@
         "ask": "The Writer asks the Source Responder a question and gets an answer.",
         "revise": "The Reviewer asks for a revision, so the Writer runs a second round.",
         "steer": "Optional: steer the round 2 Writer. Your instruction reaches its next request, not the draft it already submitted.",
-        "finish": "Approve the reviewed draft, then the final output."
+        "finish": "The reviewed draft becomes the final output, and the run finishes."
       },
       "steerAction": "Steer the round 2 Writer",
       "pauseAtRound2": "Pause the run when the round 2 Writer starts"

@@ -388,3 +388,21 @@ describe('the plan editor’s patterns', () => {
     expect(document.body.textContent).not.toContain('Uses one model request');
   });
 });
+
+it('the suggestion leaves the final approval off, and the person can turn it on', async () => {
+  await mount();
+  await type(
+    field<HTMLTextAreaElement>(en.TeamDraft.goalLabel),
+    'Compare SQLite and PostgreSQL for an internal tool',
+  );
+  await press(button(en.TeamDraft.suggest));
+  const approval = () => document.querySelector<HTMLElement>('[role="switch"]');
+  expect(approval()?.getAttribute('aria-checked')).toBe('false');
+  await press(approval() as HTMLElement);
+  expect(approval()?.getAttribute('aria-checked')).toBe('true');
+  await press(button(en.TeamDraft.open));
+  const saved = fixture.saved[0]?.definition;
+  expect(saved?.nodes.find((node) => node.type === 'output')).toMatchObject({
+    requireApproval: true,
+  });
+});
