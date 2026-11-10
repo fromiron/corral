@@ -1430,6 +1430,9 @@
     "ask": "Ask the model",
     "asking": "Asking the model…",
     "askHint": "Uses one model request with your sign-in.",
+    "retry": "Try again",
+    "unusable": "The model did not give a usable team.",
+    "patternLabel": "Team shape",
     "patterns": {
       "single": "One agent",
       "write_review": "Plan, then write and review",
