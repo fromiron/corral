@@ -242,7 +242,8 @@ export function ResultReader({
 
   const html = text !== undefined && isHtmlDocument(text);
   const formats: Format[] = html ? ['preview', 'source'] : ['document', 'source'];
-  const format = chosenFormat && formats.includes(chosenFormat) ? chosenFormat : formats[0];
+  const format: Format =
+    chosenFormat && formats.includes(chosenFormat) ? chosenFormat : html ? 'preview' : 'document';
   const label = t('itemName', { name: item.name, version: item.version });
 
   const copy = async () => {
