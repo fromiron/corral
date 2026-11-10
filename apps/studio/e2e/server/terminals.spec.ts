@@ -30,7 +30,7 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
 async function expectReleaseHint(page: Page, panel: Locator) {
   await panel.getByRole('button', { name: 'About this terminal', exact: true }).click();
   const details = page.getByRole('dialog', { name: 'About this terminal', exact: true });
-  await expect(details).toContainText('Releasing input only disconnects this view’s keyboard');
+  await expect(details).toContainText('Stop it to free the copy; releasing input does not.');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
 }
@@ -137,8 +137,8 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   const panel = page.getByTestId('terminal-panel');
   await expect(panel).toBeVisible();
   await sidebar.getByRole('link', { name: 'Unvisited terminal project', exact: true }).click();
-  // The project counts the item; Needs you lists it (docs/specs/features/inbox.md).
-  const summary = page.getByRole('link', { name: '1 item needs you', exact: true });
+  // The project header counts the item; Needs you lists it (docs/specs/features/inbox.md).
+  const summary = page.getByRole('link', { name: '1 pending', exact: true });
   await expect(summary).toBeVisible();
   await page.getByRole('combobox', { name: 'Session status', exact: true }).click();
   await page.getByRole('option', { name: 'Needs attention', exact: true }).click();

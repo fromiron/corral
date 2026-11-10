@@ -82,7 +82,15 @@ for (const locale of ['en', 'ko'] as const) {
       definition,
     });
     await page.reload();
-    await page.getByRole('tab', { name: locale === 'en' ? /^Teams/ : /^팀/ }).click();
+    // Templates are a view of the sidebar's Library.
+    await page
+      .getByTestId('app-sidebar')
+      .getByRole('link', { name: locale === 'en' ? 'Library' : '라이브러리', exact: true })
+      .click();
+    await page
+      .getByRole('tablist', { name: locale === 'en' ? 'Library views' : '라이브러리 보기' })
+      .getByRole('tab', { name: locale === 'en' ? 'Templates' : '템플릿', exact: true })
+      .click();
     await page
       .getByRole('button', {
         name: locale === 'en' ? 'Edit this team' : '팀 편집해서 쓰기',
@@ -110,9 +118,10 @@ for (const locale of ['en', 'ko'] as const) {
       })
       .click();
     await expect(page).toHaveURL(/\/edit$/);
+    // The editor names the open team in its heading; the name field is in its settings.
     await expect(
-      page.getByRole('textbox', { name: locale === 'en' ? 'Team name' : '팀 이름', exact: true }),
-    ).toHaveValue(`${name} (2)`);
+      page.getByRole('heading', { level: 1, name: `${name} (2)`, exact: true }),
+    ).toBeVisible();
     const teams = await call(page, '/corrals', undefined, 'GET');
     expect(teams.map((team: { name: string }) => team.name)).toEqual(
       expect.arrayContaining([name, `${name} (2)`]),

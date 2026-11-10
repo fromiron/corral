@@ -2,7 +2,7 @@ import definition from '../../../../examples/research-brief.corral.json' with { 
 import approvalDefinition from '../../../../examples/research-team.corral.json' with {
   type: 'json',
 };
-import { openResult, panelTab, requestBox } from '../workbench.ts';
+import { newConversation, openResult, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function startRun(
@@ -382,12 +382,13 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
       .locator('[data-agent-id="helper"]')
       .getByRole('button'),
   ).toHaveAttribute('aria-pressed', 'true');
+  // The side shows the chosen execution again. It has finished, so it offers no instruction:
+  // what was sent to it is read in its call conversation (execution-monitor.md: "지시하기는 끝나지
+  // 않은 실행에만 제공하며, 끝난 실행에 보냈던 지시와 전달 여부는 그 실행의 호출 대화에서 본다").
   const side = page.getByTestId('run-side');
-  await side.getByRole('button', { name: 'Reins', exact: true }).click();
-  const reins = page.getByTestId('run-instructions');
-  await expect(reins).toContainText('Research Helper');
-  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
-  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await expect(side).toContainText('Research Helper');
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(
     page
@@ -723,7 +724,7 @@ test.describe('cancel recovery', () => {
     corral,
   }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     holdLifecycleReplies = true;
     await requestBox(page).fill('Retry this cancelled request');
     await page.getByRole('button', { name: 'Send', exact: true }).click();

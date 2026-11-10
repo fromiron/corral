@@ -1,13 +1,19 @@
+import { newConversation } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('save a disabled schedule, run through Auto, and reopen its persisted history', async ({
   page,
   corral,
 }) => {
+  // Schedules are the sidebar's Automation screen.
+  const automation = page
+    .getByTestId('app-sidebar')
+    .getByRole('link', { name: 'Automation', exact: true });
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await page.getByRole('link', { name: 'Schedules', exact: true }).click();
+  const sessionId = new URL(page.url()).pathname.split('/').at(-1);
+  await automation.click();
   await page.getByRole('button', { name: 'New schedule', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Project', exact: true })).toContainText(
     'My project',
@@ -25,10 +31,13 @@ test('save a disabled schedule, run through Auto, and reopen its persisted histo
   await expect(page.getByText('Scheduled run: Succeeded', { exact: true })).toBeVisible();
   await history.getByRole('link', { name: 'Open run', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_.*run=run_/);
-  await page.getByRole('link', { name: 'Schedules', exact: true }).click();
-  await page.getByRole('link', { name: 'Session', exact: true }).click();
+  await automation.click();
+  // The schedule's details name its target as project / session; the session is a link.
+  await page.getByRole('button', { name: /Daily project review/ }).click();
+  await page.getByRole('main').locator(`a[href="/sessions/${sessionId}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
   await expect(page.getByTestId('chat-timeline')).toContainText('Scheduled request');
-  await page.getByRole('link', { name: 'Schedules', exact: true }).click();
+  await automation.click();
   await page.getByRole('button', { name: /Daily project review/ }).click();
   await expect(page.getByLabel('Enable scheduled runs')).not.toBeChecked();
   await expect(

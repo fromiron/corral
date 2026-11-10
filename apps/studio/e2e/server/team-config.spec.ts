@@ -99,11 +99,13 @@ test('a saved-team conversation keeps its team name and revision after later edi
     (entry: { sessionId: string }) => entry.sessionId === made.session.sessionId,
   );
   await page.goto(`${corral.server.url}/runs/${run.runId}`);
-  await expect(
-    page.getByRole('heading', { name: 'Saved writing team · r1', exact: true }),
-  ).toBeVisible();
+  // The run's head names its request; the team and its revision are in Run info
+  // (execution-monitor.md: "팀·시작 시각·실행 ID·…·저장 팀 편집 링크·…는 실행 정보의 상세에 둔다").
+  const facts = page.getByTestId('run-facts');
+  await page.getByRole('button', { name: 'Run info', exact: true }).click();
+  await expect(facts).toContainText('Saved writing team · r1');
   await expect(page.getByText('Team composed for this run · not a saved team')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Edit team', exact: true })).toBeVisible();
+  await expect(facts.getByRole('link', { name: 'Edit team', exact: true })).toBeVisible();
   await page.evaluate(
     async ({ record }) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -123,9 +125,9 @@ test('a saved-team conversation keeps its team name and revision after later edi
     { record },
   );
   await page.reload();
-  await expect(
-    page.getByRole('heading', { name: 'Saved writing team · r1', exact: true }),
-  ).toBeVisible();
+  if (!(await facts.isVisible()))
+    await page.getByRole('button', { name: 'Run info', exact: true }).click();
+  await expect(facts).toContainText('Saved writing team · r1');
 });
 
 test.describe('saved team roles', () => {

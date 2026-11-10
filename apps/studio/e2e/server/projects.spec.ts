@@ -1,4 +1,13 @@
-import { addAgentAndOutput, startTestRun } from '../workbench.ts';
+import {
+  addAgentAndOutput,
+  chooseTeam,
+  newTeam,
+  openLibraryTeams,
+  openProject,
+  projectTab,
+  savedTeams,
+  startTestRun,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Projects against the local server: saved in the
@@ -13,39 +22,39 @@ test('a run stays in the project it started in when its Corral moves', async ({ 
   const projectPath = new URL(page.url()).pathname;
   const projectId = projectPath.split('/').at(-1) ?? '';
 
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team' }).click();
+  // Teams are kept per project in the library (library.md).
+  await openLibraryTeams(page, 'Client A');
+  await newTeam(page);
   await addAgentAndOutput(page);
   await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
+  await openProject(page, 'Client A');
   await expect(page).toHaveURL(new RegExp(`${projectPath}$`));
-  const tab = (name: string) => page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
   const runs = page.getByRole('region', { name: 'Runs' });
-  await tab('Runs');
+  await projectTab(page, 'Runs');
   await expect(runs.getByRole('listitem')).toHaveCount(1);
 
   // Move the Corral to the default project: it goes, its finished run stays.
-  await tab('Teams');
-  await page.getByRole('button', { name: 'Move to…', exact: true }).click();
+  await openLibraryTeams(page, 'Client A');
+  const detail = await chooseTeam(page, 'Untitled team');
+  await detail.getByRole('button', { name: 'Move to…', exact: true }).click();
   await page.getByRole('menuitem', { name: 'My project', exact: true }).click();
+  await expect(savedTeams(page)).toHaveCount(0);
   await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
+  await page.goto(`${corral.server.url}${projectPath}`);
   await page.reload();
-  await expect(page.getByRole('heading', { level: 2, name: 'Client A' })).toBeVisible();
-  await tab('Runs');
+  await expect(page.getByRole('heading', { level: 1, name: 'Client A' })).toBeVisible();
+  await projectTab(page, 'Runs');
   await expect(runs.getByRole('listitem')).toHaveCount(1);
-  await page
-    .getByTestId('app-sidebar')
-    .getByRole('link', { name: 'My project', exact: true })
-    .click();
-  await tab('Teams');
-  await expect(page.getByRole('list', { name: 'Teams' }).getByRole('listitem')).toHaveCount(1);
-  await tab('Runs');
+  await openLibraryTeams(page, 'My project');
+  await expect(savedTeams(page)).toHaveCount(1);
+  await openProject(page, 'My project');
+  await projectTab(page, 'Runs');
   await expect(page.getByText('No runs yet.')).toBeVisible();
 
   // The run's own page shows the project it started in.
   await page.goto(`${corral.server.url}${projectPath}`);
-  await tab('Runs');
+  await projectTab(page, 'Runs');
   await runs.getByRole('link').first().click();
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(
     'Client A',
