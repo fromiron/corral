@@ -7,6 +7,7 @@ import type {
 import {
   type AgentGraphPosition,
   crossesRect,
+  type LayoutWork,
   labelRect,
   layoutRunAgents,
   markRect,
@@ -82,6 +83,24 @@ function collisions(graph: RunAgentGraph, positions: Map<string, AgentGraphPosit
         if (!ends && crossesRect(a, b, markRect(at))) found.push(`${source}>${target} mark ${id}`);
         if ((!ends || !stem) && crossesRect(a, b, labelRect(at)))
           found.push(`${source}>${target} label ${id}`);
+      }
+    }
+  }
+  return found;
+}
+
+/** Lines that run over the mark or label of an agent other than their own two. */
+function overOthers(graph: RunAgentGraph, positions: Map<string, AgentGraphPosition>) {
+  const found: string[] = [];
+  for (const { source, target, route } of routes(graph, positions)) {
+    const points = route.points;
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1] as AgentGraphPosition;
+      const b = points[i] as AgentGraphPosition;
+      for (const [id, at] of positions) {
+        if (id === source || id === target) continue;
+        if (crossesRect(a, b, markRect(at))) found.push(`${source}>${target} mark ${id}`);
+        if (crossesRect(a, b, labelRect(at))) found.push(`${source}>${target} label ${id}`);
       }
     }
   }
@@ -192,6 +211,77 @@ describe('observed agent layout keeps lines off labels', () => {
     for (const id of ['lead', 'a', 'b']) expect(after.get(id)).toEqual(before.get(id));
     expect(collisions(grown, after)).toEqual([]);
     expect(touching(after)).toEqual([]);
+  });
+});
+
+/** A lead that delegates to every agent, a chain through them, and a skip four back. */
+function busyRun(count: number): RunAgentGraph {
+  const agents = Array.from({ length: count }, (_, i) => `a${i}`);
+  const back = (step: number) =>
+    agents.slice(step).map((id, i) => [agents[i] as string, id] as [string, string]);
+  return graphOf(['lead'], agents, [
+    ...agents.map((id) => ['lead', id] as [string, string]),
+    ...back(1),
+    ...back(4),
+  ]);
+}
+
+describe('a busy run lays out with bounded work', () => {
+  const laid = new Map<number, { positions: Map<string, AgentGraphPosition>; work: LayoutWork }>();
+  const layout = (count: number) => {
+    const known = laid.get(count);
+    if (known) return known;
+    const work: LayoutWork = { evaluations: 0 };
+    const result = { positions: layoutRunAgents(busyRun(count), new Map(), work), work };
+    laid.set(count, result);
+    return result;
+  };
+
+  // Places weighed, counted rather than timed so the bound holds on any machine.
+  it.each([
+    [20, 16_000],
+    [40, 30_000],
+    [80, 60_000],
+    [150, 100_000],
+  ])('%i agents weigh at most %i places', (count, most) => {
+    const { positions, work } = layout(count);
+    expect(positions.size).toBe(count + 1);
+    expect(work.evaluations).toBeGreaterThan(0);
+    expect(work.evaluations).toBeLessThanOrEqual(most);
+  });
+
+  it.each([40, 80])(
+    '%i agents: no line crosses another agent, no tiles touch, lead lines elbow',
+    (count) => {
+      const { positions } = layout(count);
+      expect(overOthers(busyRun(count), positions)).toEqual([]);
+      expect(touching(positions)).toEqual([]);
+      const lead = positions.get('lead') as AgentGraphPosition;
+      for (const [id, at] of positions) {
+        if (id === 'lead') continue;
+        expect(at.x).not.toBe(lead.x);
+        expect(at.y).not.toBe(lead.y);
+      }
+    },
+  );
+
+  it('lays the same run out the same way every time', () => {
+    expect(layoutRunAgents(busyRun(40))).toEqual(layout(40).positions);
+  });
+
+  it('past its work limit, the agents left take clear places off the lead lines', () => {
+    const work: LayoutWork = { evaluations: 0, limit: 1_000 };
+    const positions = layoutRunAgents(busyRun(40), new Map(), work);
+    expect(positions.size).toBe(41);
+    expect(work.evaluations).toBeGreaterThan(0);
+    expect(work.evaluations).toBeLessThanOrEqual(1_000);
+    expect(touching(positions)).toEqual([]);
+    const lead = positions.get('lead') as AgentGraphPosition;
+    for (const [id, at] of positions) {
+      if (id === 'lead') continue;
+      expect(at.x).not.toBe(lead.x);
+      expect(at.y).not.toBe(lead.y);
+    }
   });
 });
 
