@@ -733,7 +733,8 @@ export function FilePanel({
           {te('recoveryReadFailed')}
         </p>
       ) : null}
-      {/* One head: where the tree reads from, its filter, then the tree's own controls. */}
+      {/* The head in two rows: where the tree reads from with the tree's own controls, then
+          the filter (in contents mode, the content search takes the second row). */}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {readOnly ? (
           <span className="min-w-0 truncate text-caption text-muted-foreground">
@@ -753,19 +754,6 @@ export function FilePanel({
             ]}
           />
         )}
-        {readOnly || searchMode === 'names' ? (
-          <div className="flex min-w-0 flex-[1_0_14rem] items-center gap-2">
-            {readOnly ? null : searchModeControl}
-            <Input
-              size="sm"
-              aria-label={t('filterFiles')}
-              placeholder={t('filterFiles')}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="min-w-0 flex-1"
-            />
-          </div>
-        ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {resultsAvailable ? (
             <Button
@@ -804,6 +792,19 @@ export function FilePanel({
           </Tooltip>
         </div>
       </div>
+      {readOnly || searchMode === 'names' ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {readOnly ? null : searchModeControl}
+          <Input
+            size="sm"
+            aria-label={t('filterFiles')}
+            placeholder={t('filterFiles')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="min-w-0 max-w-full flex-[1_0_10rem]"
+          />
+        </div>
+      ) : null}
       {!readOnly && searchMode === 'contents' ? (
         searchTarget && workspaces && owner && onOpenDocument ? (
           <ContentSearch
