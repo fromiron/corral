@@ -4,7 +4,6 @@ import {
   CorralDefinition,
   CorralDefinitionDraft,
   canonicalJson,
-  type MeetingConfig,
 } from '@corral/contracts';
 import {
   type CorralRecord,
@@ -12,6 +11,7 @@ import {
   type CorralSummary,
   DEFAULT_PROJECT_ID,
   type DefinitionSource,
+  type NewSession,
   type NewSessionEntry,
   type ProjectChange,
   type ProjectResult,
@@ -112,20 +112,24 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       moveCorral: db.prepare('UPDATE corrals SET project_id = ?, updated_at = ? WHERE id = ?'),
       sessions: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
-           updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json FROM work_sessions WHERE project_id = ?`,
+           updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json, criteria_json
+           FROM work_sessions WHERE project_id = ?`,
       ),
       session: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
-           updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json FROM work_sessions WHERE id = ?`,
+           updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json, criteria_json
+           FROM work_sessions WHERE id = ?`,
       ),
       upsertSession: db.prepare(
         `INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision,
-           created_at, updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json)
+           created_at, updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json,
+           criteria_json)
          VALUES (@sessionId, @projectId, @corralId, @title, @objective, @pinned, @revision,
-           @createdAt, @updatedAt, @archivedAt, @entries, @auto, @autoTitle, @meetingJson)
+           @createdAt, @updatedAt, @archivedAt, @entries, @auto, @autoTitle, @meetingJson,
+           @criteriaJson)
          ON CONFLICT (id) DO UPDATE SET corral_id = excluded.corral_id, title = excluded.title,
            auto_json = excluded.auto_json, auto_title = excluded.auto_title,
-           meeting_json = excluded.meeting_json,
+           meeting_json = excluded.meeting_json, criteria_json = excluded.criteria_json,
            objective = excluded.objective, pinned = excluded.pinned,
            revision = excluded.revision, updated_at = excluded.updated_at,
            archived_at = excluded.archived_at, entries_json = excluded.entries_json`,
@@ -278,14 +282,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
     return this.session(sessionId);
   }
 
-  async createSession(input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    meeting?: MeetingConfig;
-  }): Promise<SessionResult> {
+  async createSession(input: NewSession): Promise<SessionResult> {
     return this.db.transaction((): SessionResult => {
       const refused = projectRefusal(this.project(input.projectId), input.projectId);
       if (refused && !refused.ok)
@@ -348,6 +345,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       entries: JSON.stringify(s.entries),
       auto: s.auto ? JSON.stringify(s.auto) : null,
       meetingJson: s.meeting ? JSON.stringify(s.meeting) : null,
+      criteriaJson: JSON.stringify(s.criteria ?? []),
     });
     return result;
   }
@@ -450,6 +448,7 @@ interface SessionRow {
   auto_json: string | null;
   auto_title: number;
   meeting_json: string | null;
+  criteria_json: string;
 }
 
 function sessionFromRow(row: SessionRow): WorkSession {
@@ -460,6 +459,7 @@ function sessionFromRow(row: SessionRow): WorkSession {
     title: row.title,
     autoTitle: row.auto_title === 1,
     objective: row.objective,
+    criteria: readJson(row.criteria_json, row.id),
     pinned: row.pinned === 1,
     revision: row.revision,
     createdAt: row.created_at,
