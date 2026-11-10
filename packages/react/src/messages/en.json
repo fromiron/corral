@@ -374,7 +374,6 @@
     "scope": "Scope",
     "scopeValue": "this execution only",
     "instruction": "Instruction",
-    "instructionHint": "Enter sends, Shift+Enter adds a line.",
     "send": "Send",
     "sending": "Sending…",
     "history": "Instructions for this execution",

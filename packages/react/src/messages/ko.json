@@ -374,7 +374,6 @@
     "scope": "범위",
     "scopeValue": "이 실행만",
     "instruction": "지시",
-    "instructionHint": "Enter는 보내기, Shift+Enter는 줄바꿈.",
     "send": "보내기",
     "sending": "보내는 중…",
     "history": "이 실행에 보낸 지시",

@@ -2,7 +2,7 @@ import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { type KeyboardEvent, useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, fontWeights, Textarea } from '../design-kit/index.ts';
+import { Button, fontWeights, KitBadge, Textarea } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
 import { ExecutionSteering } from './ExecutionSteering.tsx';
@@ -31,7 +31,6 @@ export function ReinsPanel({
 }) {
   const t = useTranslations('Reins');
   const inputId = useId();
-  const hintId = useId();
   const [draft, setDraft] = useState<{
     runId: string | null;
     executionId: string;
@@ -140,16 +139,12 @@ export function ReinsPanel({
   const compose =
     !target.finished || draft ? (
       <div className="mt-2.5 flex flex-col gap-1 border-t border-border py-2.5 pr-3 pl-3.5">
-        <label
-          htmlFor={inputId}
-          className="text-caption"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
+        {/* The heading above already says what this field is; the label stays its name. */}
+        <label htmlFor={inputId} className="sr-only">
           {t('instruction')}
         </label>
         <Textarea
           id={inputId}
-          aria-describedby={hintId}
           value={text}
           onChange={(event) =>
             setDraft(
@@ -166,9 +161,6 @@ export function ReinsPanel({
           onKeyDown={onKeyDown}
           rows={3}
         />
-        <p id={hintId} className="text-caption text-muted-foreground">
-          {t('instructionHint')}
-        </p>
         {!draftMatches && draft ? (
           <>
             <p role="status" className="text-caption text-warning">
@@ -208,28 +200,45 @@ export function ReinsPanel({
       </div>
     ) : null;
 
+  const heading = (
+    <h2
+      id={`${inputId}-heading`}
+      className="text-subtitle"
+      style={{ fontVariationSettings: fontWeights.semibold }}
+    >
+      {t('heading')} · <span>{target.nodeLabel}</span>
+    </h2>
+  );
   return (
     <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3">
-      <h2
-        id={`${inputId}-heading`}
-        className="text-subtitle"
-        style={{ fontVariationSettings: fontWeights.semibold }}
-      >
-        {t('heading')} · <span>{target.nodeLabel}</span>
-      </h2>
+      {compact ? (
+        // When the instruction arrives and what it reaches sit beside the heading as chips.
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {heading}
+          {(
+            [
+              ['delivery', 'deliveryValue'],
+              ['scope', 'scopeValue'],
+            ] as const
+          ).map(([name, value]) => (
+            <KitBadge key={name} size="compact" data-reins-chip>
+              <span className="sr-only">{t(name)}: </span>
+              {t(value)}
+            </KitBadge>
+          ))}
+        </div>
+      ) : (
+        heading
+      )}
       {compact ? (
         <>
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body">
-            <span>
-              {projection?.executionOrder.includes(target.executionId)
-                ? t('executionNumber', {
-                    number: projection.executionOrder.indexOf(target.executionId) + 1,
-                  })
-                : target.executionId}
-            </span>
-            <span className="text-muted-foreground">{t('deliveryValue')}</span>
-            <span className="text-muted-foreground">{t('scopeValue')}</span>
-          </div>
+          <p className="text-body">
+            {projection?.executionOrder.includes(target.executionId)
+              ? t('executionNumber', {
+                  number: projection.executionOrder.indexOf(target.executionId) + 1,
+                })
+              : target.executionId}
+          </p>
           {compose}
           {target.finished ? (
             <p className="text-body text-muted-foreground">{t('finished')}</p>
