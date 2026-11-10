@@ -574,7 +574,7 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect(commandApproval).toContainText('node command-write.mjs');
   expect(existsSync(join(first.worktree, 'command.txt'))).toBe(false);
   await commandApproval.getByRole('button', { name: 'Allow once', exact: true }).click();
-  // The turn names the waiting question; the composer's notice goes to it.
+  // The composer's notice names the waiting question and goes to it.
   await page
     .getByTestId('action-required')
     .getByRole('link', { name: 'Respond', exact: true })
@@ -638,6 +638,8 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect.poll(() => status('C'), { timeout: 30000 }).toBe('cancelled');
   expect(status('A')).toBe('awaiting_user');
   await page.goto(`${capability.server.url}/sessions/${first.sessionId}?run=${a}`);
-  await expect(page.getByTestId(`run-card-${a}`).getByTestId('run-required-action')).toBeVisible();
+  // A's question still waits: the composer's notice names it (the turn does not repeat it).
+  await expect(page.getByTestId(`run-card-${a}`)).toBeVisible();
+  await expect(page.getByTestId('action-required')).toContainText('Fixture A is waiting');
   expect(capability.errors).toEqual([]);
 });
