@@ -93,6 +93,26 @@ describe('ReinsPanel', () => {
     expect(box).not.toHaveAttribute('aria-describedby');
     expect(screen.queryByText(/Enter sends/)).not.toBeInTheDocument();
   });
+  it.each([true, false])(
+    'sets the instruction field flush with the heading only in the compact form (compact %s)',
+    (compact) => {
+      const { container } = render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <ReinsPanel
+            session={fakeSession()}
+            target={{ executionId: 'exec_writer', nodeLabel: 'Writer', finished: false }}
+            compact={compact}
+          />
+        </IntlProvider>,
+      );
+      const compose = container.querySelector<HTMLElement>('[data-reins-compose]');
+      expect(compose?.contains(screen.getByLabelText('Instruction'))).toBe(true);
+      // The compact form stands in the page beside its heading, "Agent execution" line and
+      // Cancel button, so its field takes no inset of its own; the full panel's card keeps one.
+      const inset = /(^|\s)(p[lrx]|ps|pe)-/.test(compose?.className ?? '');
+      expect(inset).toBe(!compact);
+    },
+  );
   it('a missing compact instruction target never exposes run-wide settings as a substitute', () => {
     const session = fakeSession();
     session.setState({
