@@ -19,6 +19,7 @@ import {
   AgentStatusLabel,
   AgentSteeringPlan,
   cn,
+  fontWeights,
   formatClock,
 } from '@corral/react/design-kit';
 import { ChevronRight } from '@corral/react/icons';
@@ -202,7 +203,12 @@ export function RunActivity({
               >
                 {index + 1}
               </span>
-              <span className="min-w-0 truncate font-medium">{label}</span>
+              <span
+                className="min-w-0 truncate"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
+                {label}
+              </span>
               <span className="shrink-0 text-caption text-muted-foreground">
                 {[
                   round ? t('iteration', { number: round }) : null,

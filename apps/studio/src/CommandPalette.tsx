@@ -1,5 +1,5 @@
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { Button, Kbd } from '@corral/react/design-kit';
+import { Button, fontWeights, Kbd } from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
@@ -692,7 +692,7 @@ export function Palette({
           setActive(0);
         }}
         onKeyDown={onKeyDown}
-        className="w-full rounded-t-lg border-b border-line bg-transparent px-3 py-2.5 text-sm outline-none"
+        className="w-full rounded-t-lg border-b border-line bg-transparent px-3 py-2.5 text-body outline-none"
       />
       <fieldset
         aria-label={t('scope')}
@@ -724,12 +724,17 @@ export function Palette({
         className="max-h-80 overflow-auto p-1"
       >
         {shown.length === 0 ? (
-          <p className="px-2 py-1.5 text-sm text-muted-foreground">{t('none')}</p>
+          <p className="px-2 py-1.5 text-body text-muted-foreground">{t('none')}</p>
         ) : null}
         {[...grouped].map(([group, list]) => (
           // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
           <div key={group} role="group" aria-label={group}>
-            <p className="px-2 pt-2 pb-1 text-2xs font-medium text-muted-foreground">{group}</p>
+            <p
+              className="px-2 pt-2 pb-1 text-2xs text-muted-foreground"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
+              {group}
+            </p>
             {list.map((command) => {
               const index = shown.indexOf(command);
               const run = runDetails[command.id];
@@ -760,7 +765,7 @@ export function Palette({
                       </span>
                     ) : null}
                     {run ? (
-                      <span className="block text-xs text-muted-foreground">
+                      <span className="block text-caption text-muted-foreground">
                         {status(run.status)} ·{' '}
                         {format.dateTime(new Date(run.startedAt), {
                           dateStyle: 'short',
@@ -786,7 +791,7 @@ export function Palette({
       {selectedRun ? (
         <details
           key={selectedRun.runId}
-          className="border-t border-line px-3 py-2 text-xs text-muted-foreground"
+          className="border-t border-line px-3 py-2 text-caption text-muted-foreground"
         >
           <summary>{ti('details')}</summary>
           <code className="select-text break-all">{selectedRun.runId}</code>
@@ -803,9 +808,9 @@ function ShortcutHelp({ onClose }: { onClose: () => void }) {
   useEffect(() => closeRef.current?.focus({ preventScroll: true }), []);
   return (
     <Modal label={t('label')} onClose={onClose}>
-      <div className="flex max-h-[70vh] flex-col text-sm">
+      <div className="flex max-h-[70vh] flex-col text-body">
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-3">
-          <h2 className="font-semibold">{t('label')}</h2>
+          <h2 style={{ fontVariationSettings: fontWeights.semibold }}>{t('label')}</h2>
           <Button ref={closeRef} variant="ghost" size="compact" onClick={onClose}>
             {t('closeButton')}
           </Button>
@@ -929,7 +934,12 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
       ) : null}
       {groups.map((group) => (
         <section key={group.id}>
-          <h3 className="mb-2 text-sm font-semibold">{t(`groups.${group.id}`)}</h3>
+          <h3
+            className="mb-2 text-subtitle"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {t(`groups.${group.id}`)}
+          </h3>
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1.5">
             {group.rows.map(([what, keys, id]) => (
               <div key={what} className="contents">

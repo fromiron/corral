@@ -167,7 +167,7 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
       ) : descriptor.kind === 'graph' && renderer?.renderGraph ? (
         <GraphView api={api}>{renderer.renderGraph(descriptor, api.id)}</GraphView>
       ) : (
-        <p role="status" className="p-4 text-sm text-muted-foreground">
+        <p role="status" className="p-4 text-body text-muted-foreground">
           {t('unknownPanel')} {descriptor.kind === 'unknown' ? descriptor.label : ''}
         </p>
       )}
@@ -277,7 +277,7 @@ function DockHeaderActions({
           <MenuSub>
             <MenuSubTrigger>
               {t('preset')}
-              <span className="ml-auto truncate pl-3 text-xs text-muted-foreground">
+              <span className="ml-auto truncate pl-3 text-caption text-muted-foreground">
                 {actions.preset ? t(actions.preset) : t('savedLayout')}
               </span>
             </MenuSubTrigger>
@@ -335,7 +335,7 @@ function DockHeaderActions({
           <MenuItem onClick={() => actions.step('previous')}>{t('previousPane')}</MenuItem>
           <MenuItem onClick={() => actions.step('next')}>{t('nextPane')}</MenuItem>
           <MenuSeparator />
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('savedWhere')}</p>
+          <p className="px-2 py-1.5 text-caption text-muted-foreground">{t('savedWhere')}</p>
         </MenuPopup>
       </Menu>
       {close}
@@ -1079,7 +1079,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
               }}
             />
             {message ? (
-              <p role="status" className="px-3 py-1 text-xs text-muted-foreground">
+              <p role="status" className="px-3 py-1 text-caption text-muted-foreground">
                 {t(message)}
               </p>
             ) : null}

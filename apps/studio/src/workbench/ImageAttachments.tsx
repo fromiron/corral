@@ -43,7 +43,7 @@ export function ImageAttachmentList({
     <ul aria-label={t('imageAttachments')} className="flex flex-wrap gap-2">
       {images.map((image) => (
         <li key={image.imageId}>
-          <details className="rounded fill-group p-2 text-xs">
+          <details className="rounded fill-group p-2 text-caption">
             <summary className="cursor-pointer">
               {image.name} · {image.width}×{image.height} · {image.sha256.slice(0, 12)}
             </summary>
@@ -157,7 +157,7 @@ export function ImageAttachmentPicker({
         </Button>
       ))}
       {error ? (
-        <p role="alert" className="w-full text-xs text-danger">
+        <p role="alert" className="w-full text-caption text-danger">
           {error}
         </p>
       ) : null}

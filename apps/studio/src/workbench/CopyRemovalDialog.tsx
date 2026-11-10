@@ -104,7 +104,7 @@ export function CopyRemovalDialog({
         <DialogDescription>{t('removeConfirm')}</DialogDescription>
         {!seen && !error ? <p role="status">{t('removalLoading')}</p> : null}
         {seen && plan ? (
-          <ul className="flex flex-col gap-1.5 text-sm" data-testid="removal-plan">
+          <ul className="flex flex-col gap-1.5 text-body" data-testid="removal-plan">
             {held ? (
               <li className="text-danger">
                 {t('removalHeld', { what: [...new Set(plan.owners.map(owner))].join(', ') })}
@@ -113,13 +113,13 @@ export function CopyRemovalDialog({
             {seen.unsaved.length ? (
               <li className="text-warning">
                 {t('removalUnsaved', { count: seen.unsaved.length })}
-                <span className="block font-mono text-xs">{seen.unsaved.join(', ')}</span>
+                <span className="block font-mono text-caption">{seen.unsaved.join(', ')}</span>
               </li>
             ) : null}
             {seen.recoveries.length ? (
               <li className="text-warning">
                 {t('removalRecovery', { count: seen.recoveries.length })}
-                <span className="block font-mono text-xs">{seen.recoveries.join(', ')}</span>
+                <span className="block font-mono text-caption">{seen.recoveries.join(', ')}</span>
               </li>
             ) : null}
             {git === null ? (
@@ -150,7 +150,7 @@ export function CopyRemovalDialog({
           </ul>
         ) : null}
         {error ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         ) : null}

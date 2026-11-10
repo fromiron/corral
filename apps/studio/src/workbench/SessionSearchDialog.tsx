@@ -7,6 +7,7 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Input,
   Switch,
 } from '@corral/react/design-kit';
@@ -111,13 +112,13 @@ function SearchResult({
   );
   const content = (
     <>
-      <span className="block text-xs text-muted-foreground">
+      <span className="block text-caption text-muted-foreground">
         {hit.runNumber ? `${tw('runNumber', { number: hit.runNumber })} · ` : ''}
         {[...new Set(sources.map((source) => t(`kind.${source.kind}`)))].join(' · ')}
         {hit.archived ? ` · ${t('archived')}` : ''}
         {sources.length > 1 ? ` · ${t('sourceCount', { count: sources.length })}` : ''}
       </span>
-      <span className="block whitespace-pre-wrap break-words text-xs">
+      <span className="block whitespace-pre-wrap break-words text-caption">
         <SearchExcerpt text={hit.excerpt} query={query} matches={hit.excerptMatches} />
       </span>
     </>
@@ -213,7 +214,7 @@ export function SessionSearchDialog({
               setOffset(0);
             }}
           />
-          <div className="flex flex-wrap gap-3 text-sm">
+          <div className="flex flex-wrap gap-3 text-body">
             <Switch
               label={t('private')}
               checked={privateText}
@@ -232,7 +233,7 @@ export function SessionSearchDialog({
             />
           </div>
           {result ? (
-            <p role="status" className="text-xs text-muted-foreground">
+            <p role="status" className="text-caption text-muted-foreground">
               {t(result.scope)} · {t('count', { count: result.total })}
             </p>
           ) : null}
@@ -244,7 +245,10 @@ export function SessionSearchDialog({
           <ul className="max-h-[50vh] space-y-3 overflow-y-auto">
             {groupSearchHits(result?.hits ?? []).map((group) => (
               <li key={group.sessionId}>
-                <h3 className="text-sm font-medium">
+                <h3
+                  className="text-subtitle"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
                   <SearchExcerpt text={group.title} query={query} />
                 </h3>
                 <ul className="space-y-1">

@@ -49,7 +49,7 @@ export function AttachmentSource({ source }: { source: TextAttachmentProvenance 
       label = `${t('checkSource')} · ${source.commandId} · ${source.tree.slice(0, 8)}`;
       break;
   }
-  return <p className="break-all text-xs text-muted-foreground">{label}</p>;
+  return <p className="break-all text-caption text-muted-foreground">{label}</p>;
 }
 
 /** Only an explicit replacement can change the frozen capture; inspection is presentation state. */
@@ -187,7 +187,7 @@ function CaptureRow({
             if (event.currentTarget.open) void check();
           }}
         >
-          <summary className="flex cursor-pointer list-none items-center gap-1 rounded py-1 text-xs [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-1 rounded py-1 text-caption [&::-webkit-details-marker]:hidden">
             <ChevronRight className="size-3 shrink-0 group-open:rotate-90" />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex min-w-0 items-center gap-1">
@@ -211,7 +211,7 @@ function CaptureRow({
             <div className="mt-1 flex min-w-0 flex-col gap-1">
               <AttachmentSource source={item.provenance} />
               {'reason' in status && status.reason ? (
-                <p className="break-words text-xs text-muted-foreground">{status.reason}</p>
+                <p className="break-words text-caption text-muted-foreground">{status.reason}</p>
               ) : null}
               <div className="flex flex-wrap gap-1">
                 <Button
@@ -225,7 +225,7 @@ function CaptureRow({
                   {t('openSource')}
                 </Button>
                 {item.provenance.kind === 'preview' ? (
-                  <p className="text-xs text-muted-foreground">{t('previewRecapture')}</p>
+                  <p className="text-caption text-muted-foreground">{t('previewRecapture')}</p>
                 ) : (
                   <Button
                     type="button"
@@ -241,8 +241,8 @@ function CaptureRow({
               </div>
             </div>
           ) : null}
-          <p className="mt-1 text-xs text-muted-foreground">{t('preview')}</p>
-          <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded p-1 text-xs">
+          <p className="mt-1 text-caption text-muted-foreground">{t('preview')}</p>
+          <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded p-1 text-caption">
             {item.text}
           </pre>
         </details>
@@ -258,7 +258,7 @@ function CaptureRow({
         </Button>
       </div>
       {failed ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('replacementFailed')}
         </p>
       ) : null}

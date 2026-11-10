@@ -32,7 +32,7 @@ function ContextStrip({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="composer-context-strip"
       className={cn(
-        'relative mx-auto flex w-[calc(100%-2rem)] items-center gap-2 rounded-b-xl bg-raised px-3 py-1.5 text-xs text-muted-foreground',
+        'relative mx-auto flex w-[calc(100%-2rem)] items-center gap-2 rounded-b-xl bg-raised px-3 py-1.5 text-caption text-muted-foreground',
         className,
       )}
       {...props}

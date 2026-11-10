@@ -1,5 +1,5 @@
 import type { WorkspacePreview } from '@corral/client';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -50,10 +50,12 @@ export function PreviewLeases({
   if (!leases.length) return null;
   return (
     <section aria-label={t('opened')} className="flex flex-col gap-2 border-b border-line pb-2">
-      <h3 className="text-xs font-medium">{t('opened')}</h3>
+      <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('opened')}
+      </h3>
       <ul className="flex flex-col gap-2">
         {leases.map((lease) => (
-          <li key={lease.leaseId} className="flex flex-col gap-1 text-xs">
+          <li key={lease.leaseId} className="flex flex-col gap-1 text-caption">
             <div className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 flex-1 truncate" title={lease.path}>
                 {lease.kind === 'service' ? `${t('service')} · ` : ''}
@@ -128,7 +130,7 @@ export function PreviewLeases({
         ))}
       </ul>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}

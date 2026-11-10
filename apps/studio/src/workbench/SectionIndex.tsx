@@ -8,7 +8,7 @@ import { useTranslations } from 'use-intl';
 export function SectionIndex({ sections }: { sections: { id: string; label: string }[] }) {
   const t = useTranslations('Navigation');
   return (
-    <nav aria-label={t('onThisPage')} className="flex flex-wrap items-center gap-1 text-xs">
+    <nav aria-label={t('onThisPage')} className="flex flex-wrap items-center gap-1 text-caption">
       <span className="mr-1 text-muted-foreground">{t('onThisPage')}</span>
       {sections.map((section) => (
         <Button

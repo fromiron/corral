@@ -5,6 +5,7 @@ import {
   AccordionItem,
   AccordionTrigger,
   Button,
+  fontWeights,
 } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -262,9 +263,9 @@ export function ExecutionContext({
     !TERMINAL_RUN_STATUSES.has(projection.status);
   if (!estimate && !open) return null;
   return (
-    <section data-testid="execution-context" className="grid gap-1 text-xs">
+    <section data-testid="execution-context" className="grid gap-1 text-caption">
       <p>
-        <span className="font-medium">{t('contextOnly')}</span> ·{' '}
+        <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('contextOnly')}</span> ·{' '}
         {estimate ? t('estimate', { count: estimate.tokens }) : noInformation}
       </p>
       {open ? (

@@ -368,18 +368,18 @@ function ProposalReview({
           <DialogTitle>{detail?.title ?? t('history')}</DialogTitle>
           <DialogDescription>{t('hint')}</DialogDescription>
           {error || operation?.result.error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {error || operation?.result.error?.message}
             </p>
           ) : null}
           {busy ? (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p role="status" className="text-body text-muted-foreground">
               {t('busy')}
             </p>
           ) : null}
           {detail ? (
             <>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
                 <span role="status">{t(`states.${state}`)}</span>
                 <span>{t(`sources.${detail.source.kind}`)}</span>
                 <span className="font-mono" title={detail.hash}>
@@ -410,7 +410,9 @@ function ProposalReview({
                 ))}
               </ul>
               {file ? (
-                <Suspense fallback={<p className="text-xs text-muted-foreground">{t('busy')}</p>}>
+                <Suspense
+                  fallback={<p className="text-caption text-muted-foreground">{t('busy')}</p>}
+                >
                   <FileDiff
                     path={file.path}
                     loadKey={`${detail.hash}:${file.path}`}
@@ -422,12 +424,12 @@ function ProposalReview({
                 </Suspense>
               ) : null}
               {blocked ? (
-                <p role="alert" className="text-sm text-warning">
+                <p role="alert" className="text-body text-warning">
                   {t('drafts')}
                 </p>
               ) : null}
               {partial || operation?.state === 'uncertain' ? (
-                <p className="text-sm text-warning">{t('partial')}</p>
+                <p className="text-body text-warning">{t('partial')}</p>
               ) : null}
               <div className="flex flex-wrap gap-2">
                 {!operationId && !detail.dismissed ? (
@@ -482,7 +484,7 @@ function ProposalReview({
                     >
                       {value.title}
                     </Button>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-caption text-muted-foreground">
                       {t(
                         value.dismissed
                           ? 'states.dismissed'
@@ -495,7 +497,7 @@ function ProposalReview({
                   </li>
                 ))
               ) : (
-                <li className="text-sm text-muted-foreground">{t('empty')}</li>
+                <li className="text-body text-muted-foreground">{t('empty')}</li>
               )}
             </ul>
           ) : null}

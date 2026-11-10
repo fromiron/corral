@@ -598,7 +598,7 @@ export const Sidebar = memo(function Sidebar({
         </div>
       </SidebarHeader>
       {model.error ? (
-        <p role="alert" className="px-4 py-1 text-xs text-danger">
+        <p role="alert" className="px-4 py-1 text-caption text-danger">
           {model.error}
         </p>
       ) : null}
@@ -940,7 +940,7 @@ export const Sidebar = memo(function Sidebar({
         </SidebarContent>
       </nav>
       {error && !editing ? (
-        <p role="alert" className="px-3 text-xs text-danger">
+        <p role="alert" className="px-3 text-caption text-danger">
           {error}
         </p>
       ) : null}

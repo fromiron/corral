@@ -9,7 +9,7 @@ import type {
   SkillKey,
   SkillUpdatePreview,
 } from '@corral/contracts';
-import { Button, Checkbox, Select, Textarea } from '@corral/react/design-kit';
+import { Button, Checkbox, fontWeights, Select, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -232,17 +232,19 @@ export function SkillQualityPanel({
   );
   return (
     <details className="settings-surface" data-testid="skill-quality">
-      <summary className="cursor-pointer font-semibold">{t('title')}</summary>
+      <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </summary>
       <div className="mt-4 flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">{t('intro')}</p>
+        <p className="text-body text-muted-foreground">{t('intro')}</p>
         {restoredDraft && draftDirty ? (
-          <p role="status" className="text-xs text-muted-foreground">
+          <p role="status" className="text-caption text-muted-foreground">
             {t('draftKept')}
           </p>
         ) : null}
-        {!entry.resource.trustedAt ? <p className="text-sm">{t('trustFirst')}</p> : null}
+        {!entry.resource.trustedAt ? <p className="text-body">{t('trustFirst')}</p> : null}
         {error ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         ) : null}
@@ -262,11 +264,11 @@ export function SkillQualityPanel({
           {preview ? (
             <details>
               <summary>{t('changes', { count: preview.changes.length })}</summary>
-              <p className="text-sm">
+              <p className="text-body">
                 {preview.sourceChanged ? t('sourceChanged') : t('sourceSame')} ·{' '}
                 {preview.licenseChanged ? t('licenseChanged') : t('licenseSame')}
               </p>
-              <ul className="mt-2 max-h-48 overflow-auto text-xs">
+              <ul className="mt-2 max-h-48 overflow-auto text-caption">
                 {preview.changes.map((change) => (
                   <li key={change.path} className="break-all">
                     <SkillFileReview
@@ -282,8 +284,13 @@ export function SkillQualityPanel({
           ) : null}
           {fixtures.map((fixture, index) => (
             <fieldset key={fixture.id} className="flex flex-col gap-2 border-t border-line pt-3">
-              <legend className="text-sm font-medium">{t('fixture', { number: index + 1 })}</legend>
-              <label className="text-sm">
+              <legend
+                className="text-subtitle"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
+                {t('fixture', { number: index + 1 })}
+              </legend>
+              <label className="text-body">
                 {t('request')}
                 <Textarea
                   className="mt-1 w-full"
@@ -300,7 +307,7 @@ export function SkillQualityPanel({
                   }
                 />
               </label>
-              <label className="text-sm">
+              <label className="text-body">
                 {t('expected')}
                 <Textarea
                   className="mt-1 w-full"
@@ -401,7 +408,7 @@ export function SkillQualityPanel({
             }
             onValueChange={(value) => edit(() => setModel(value))}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {mode === 'mock' ? t('mockHint') : t('liveHint', { calls: fixtures.length * 8 })}
           </p>
           <Button
@@ -469,10 +476,10 @@ export function SkillQualityPanel({
               {view.request.fixtures.length * 2}
             </p>
             {view.request.mode === 'mock' ? (
-              <p className="text-xs text-muted-foreground">{t('mockHint')}</p>
+              <p className="text-caption text-muted-foreground">{t('mockHint')}</p>
             ) : null}
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="w-full text-left text-body">
                 <thead>
                   <tr>
                     <th>{t('variant')}</th>
@@ -491,7 +498,7 @@ export function SkillQualityPanel({
                         ) + 1}
                         <details>
                           <summary>{t('output')}</summary>
-                          <pre className="max-w-md whitespace-pre-wrap break-words text-xs">
+                          <pre className="max-w-md whitespace-pre-wrap break-words text-caption">
                             {result.output ?? t('unknown')}
                             {result.outputTruncated ? '…' : ''}
                           </pre>
@@ -538,7 +545,7 @@ export function SkillQualityPanel({
         {!target?.binding ? (
           // The chosen scope's own defaults screen, not the shared work style editor (#79).
           <Link
-            className="text-sm underline"
+            className="text-body underline"
             {...(scope.startsWith('project:')
               ? navigation.link('project-defaults', scope.slice('project:'.length))
               : navigation.link('defaults'))}
@@ -546,7 +553,7 @@ export function SkillQualityPanel({
             {t('configureDefaults')}
           </Link>
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {t('targetVersion', { revision: target.binding.revision })}
           </p>
         )}
@@ -663,7 +670,7 @@ function SkillFileReview({
         <div className="grid gap-3 py-2 lg:grid-cols-2">
           {(['before', 'after'] as const).map((side) => (
             <section key={side} aria-label={t(side)}>
-              <h4 className="font-semibold">{t(side)}</h4>
+              <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t(side)}</h4>
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words">
                 {comparison[side]?.text ?? t(comparison[side] ? 'binaryFile' : 'absentFile')}
               </pre>

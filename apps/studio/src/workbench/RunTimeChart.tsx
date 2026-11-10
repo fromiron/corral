@@ -214,7 +214,7 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
     return { start, end, agents, handoffs };
   }, [rows, tools, created, authors, events, projection, definition, live, t, status]);
 
-  if (!board) return <p className="p-3 text-sm text-muted-foreground">{t('noIntervals')}</p>;
+  if (!board) return <p className="p-3 text-body text-muted-foreground">{t('noIntervals')}</p>;
   const calls = rows.find((row) => row.executionId === selected)?.calls ?? [];
   const longest = Math.max(1, ...calls.map((call) => call.durationMs));
   // Model calls go by their order in the execution, tools by name; identifiers stay out.

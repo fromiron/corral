@@ -99,7 +99,7 @@ export function RunTaskTimeline({
     return { steps, startedAt, lastAt, attempts };
   }, [events, projection, definition, live, status]);
   if (!board?.steps.length)
-    return <p className="p-3 text-sm text-muted-foreground">{t('empty')}</p>;
+    return <p className="p-3 text-body text-muted-foreground">{t('empty')}</p>;
   return (
     <section aria-label={t('title')} className="flex flex-col gap-3 p-3">
       <PlanVsActual

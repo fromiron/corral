@@ -1,6 +1,6 @@
 import type { RoleRunOverrides } from '@corral/contracts';
 import { ReasoningSelect } from '@corral/react';
-import { Select } from '@corral/react/design-kit';
+import { fontWeights, Select } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { ProfileInfo, RoleModel } from './useModels.ts';
@@ -22,11 +22,13 @@ export function RunRoleOverrides({
   if (!roles.length) return null;
   return (
     <details
-      className="rounded fill-group p-2 text-xs"
+      className="rounded fill-group p-2 text-caption"
       data-testid="run-role-overrides"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary className="cursor-pointer font-medium">{t('runOverrides')}</summary>
+      <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('runOverrides')}
+      </summary>
       {open ? (
         <div className="mt-2 flex flex-col gap-3">
           {roles.map((role) => {
@@ -42,7 +44,7 @@ export function RunRoleOverrides({
             };
             return (
               <fieldset key={role.roleId} className="flex flex-col gap-1">
-                <legend className="font-semibold">{role.name}</legend>
+                <legend style={{ fontVariationSettings: fontWeights.semibold }}>{role.name}</legend>
                 <Select
                   label={`${role.name} · ${t('model')}`}
                   value={override.modelProfile ?? ''}

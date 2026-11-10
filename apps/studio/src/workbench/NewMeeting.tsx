@@ -5,6 +5,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Input,
   Select,
   Textarea,
@@ -49,7 +50,7 @@ export function StartMeeting({ projectId }: { projectId: string }) {
         <Users size={14} aria-hidden />
         {t('new')}
       </Button>
-      <p className="text-sm text-muted-foreground">{t('startDescription')}</p>
+      <p className="text-body text-muted-foreground">{t('startDescription')}</p>
       {open ? <NewMeetingDialog projectId={projectId} onClose={() => setOpen(false)} /> : null}
     </div>
   );
@@ -194,7 +195,7 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
       <DialogPopup className="flex max-h-[90dvh] w-[min(95vw,720px)] flex-col gap-4 overflow-auto p-6">
         <DialogTitle>{t('newTitle')}</DialogTitle>
         <DialogDescription>{t('newHint')}</DialogDescription>
-        <form id={formId} className="flex flex-col gap-4 text-sm" onSubmit={create}>
+        <form id={formId} className="flex flex-col gap-4 text-body" onSubmit={create}>
           <label className="flex flex-col gap-1">
             {t('title')}
             <Input
@@ -204,7 +205,9 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
             />
           </label>
           <fieldset className="flex flex-col gap-3">
-            <legend className="mb-1 font-medium">{t('participants')}</legend>
+            <legend className="mb-1" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {t('participants')}
+            </legend>
             <p id={`${formId}-aliases`} className="text-muted-foreground">
               {t('participantAliasesHint')}
             </p>

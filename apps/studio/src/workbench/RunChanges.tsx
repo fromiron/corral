@@ -36,7 +36,7 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
   const unknown =
     changes?.files.filter((file) => file.additions === null || file.deletions === null).length ?? 0;
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs">
+    <div className="flex flex-wrap items-center gap-2 text-caption">
       <Button
         variant="tertiary"
         size="compact"

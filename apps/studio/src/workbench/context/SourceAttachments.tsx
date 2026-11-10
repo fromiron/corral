@@ -126,7 +126,7 @@ export function SourceAttachments(props: {
                 <AttachmentSource source={preview.item.provenance} />
               ) : null}
               {preview.state ? (
-                <p role="status" className="text-xs text-muted-foreground">
+                <p role="status" className="text-caption text-muted-foreground">
                   {t(
                     preview.item.provenance?.kind === 'preview' && preview.state === 'current'
                       ? 'previewCurrent'
@@ -135,7 +135,7 @@ export function SourceAttachments(props: {
                 </p>
               ) : null}
               <section aria-label={t('preview')}>
-                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-3 text-xs">
+                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-3 text-caption">
                   {preview.item.text}
                 </pre>
               </section>

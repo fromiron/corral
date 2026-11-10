@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Input,
   Select,
   Textarea,
@@ -170,7 +171,7 @@ export function ResourceEditor({
         >
           <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
             {!entry ? (
-              <div className="flex flex-col gap-1 text-sm">
+              <div className="flex flex-col gap-1 text-body">
                 {t('addMethod')}
                 <Select
                   className="h-9 w-full justify-between"
@@ -198,7 +199,7 @@ export function ResourceEditor({
               </div>
             ) : null}
             {mode === 'file' ? (
-              <label className="flex flex-col gap-1 text-sm">
+              <label className="flex flex-col gap-1 text-body">
                 {t('chooseFile')}
                 <input
                   type="file"
@@ -230,7 +231,7 @@ export function ResourceEditor({
                       });
                   }}
                 />
-                <span className="text-xs text-muted-foreground">{t('fileHint')}</span>
+                <span className="text-caption text-muted-foreground">{t('fileHint')}</span>
               </label>
             ) : null}
             {['local', 'package'].includes(mode) ? (
@@ -247,7 +248,7 @@ export function ResourceEditor({
                     ]}
                   />
                 ) : null}
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-body">
                   {t(mode === 'local' ? 'folderPath' : 'packageSource')}
                   <Input
                     required
@@ -269,7 +270,7 @@ export function ResourceEditor({
                   </Button>
                 ) : null}
                 {mode === 'package' ? (
-                  <label className="flex flex-col gap-1 text-sm">
+                  <label className="flex flex-col gap-1 text-body">
                     {t(packageKind === 'npm' ? 'exactVersion' : 'exactCommit')}
                     <Input
                       required
@@ -278,11 +279,11 @@ export function ResourceEditor({
                     />
                   </label>
                 ) : (
-                  <p className="text-xs text-muted-foreground">{t('folderHint')}</p>
+                  <p className="text-caption text-muted-foreground">{t('folderHint')}</p>
                 )}
               </>
             ) : mode === 'builtin' ? (
-              <div className="flex flex-col gap-2 text-sm">
+              <div className="flex flex-col gap-2 text-body">
                 <Select
                   label={t('builtin')}
                   value={builtin}
@@ -292,15 +293,15 @@ export function ResourceEditor({
                     label: t(`builtinPacks.${value}`),
                   }))}
                 />
-                <p className="text-xs text-muted-foreground">{t('builtinHint')}</p>
+                <p className="text-caption text-muted-foreground">{t('builtinHint')}</p>
               </div>
             ) : mode === 'pi-home' ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-body text-muted-foreground">
                 {h('piHomeHint', { folder: '~/.pi/agent' })}
               </p>
             ) : (
               <>
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-body">
                   {t('displayName')}
                   <Input
                     required
@@ -311,7 +312,7 @@ export function ResourceEditor({
                 </label>
                 {hook ? (
                   <>
-                    <div className="flex flex-col gap-1 text-sm">
+                    <div className="flex flex-col gap-1 text-body">
                       {t('hookTemplate')}
                       <Select
                         className="h-9 w-full justify-between"
@@ -328,7 +329,7 @@ export function ResourceEditor({
                         ]}
                       />
                     </div>
-                    <label className="flex flex-col gap-1 text-sm">
+                    <label className="flex flex-col gap-1 text-body">
                       {t('hookTitle')}
                       <Input
                         required
@@ -337,7 +338,7 @@ export function ResourceEditor({
                         onChange={(e) => change(() => setHook({ ...hook, title: e.target.value }))}
                       />
                     </label>
-                    <label className="flex flex-col gap-1 text-sm">
+                    <label className="flex flex-col gap-1 text-body">
                       {t('hookMessage')}
                       <Textarea
                         rows={4}
@@ -347,7 +348,7 @@ export function ResourceEditor({
                         }
                       />
                     </label>
-                    <p className="text-xs text-muted-foreground">{t('managedHookHint')}</p>
+                    <p className="text-caption text-muted-foreground">{t('managedHookHint')}</p>
                     <Button
                       type="button"
                       variant="ghost"
@@ -364,7 +365,7 @@ export function ResourceEditor({
                 ) : (
                   <>
                     {mode === 'new' && kind === 'skill' ? (
-                      <label className="flex flex-col gap-1 text-sm">
+                      <label className="flex flex-col gap-1 text-body">
                         {t('description')}
                         <Input
                           required
@@ -373,7 +374,7 @@ export function ResourceEditor({
                         />
                       </label>
                     ) : null}
-                    <label className="flex flex-col gap-1 text-sm">
+                    <label className="flex flex-col gap-1 text-body">
                       {t(mode === 'new' && kind === 'skill' ? 'instructions' : 'sourceCode')}
                       <Textarea
                         className="min-h-48 font-mono"
@@ -384,7 +385,7 @@ export function ResourceEditor({
                         onChange={(e) => change(() => setContent(e.target.value))}
                       />
                     </label>
-                    <p className="text-xs text-muted-foreground">{t('rawHint')}</p>
+                    <p className="text-caption text-muted-foreground">{t('rawHint')}</p>
                   </>
                 )}
               </>
@@ -395,13 +396,13 @@ export function ResourceEditor({
               </Banner>
             ) : null}
             {error ? (
-              <p role="alert" className="text-sm text-danger">
+              <p role="alert" className="text-body text-danger">
                 {error}
               </p>
             ) : null}
             {review ? (
-              <section className="rounded-lg bg-surface p-3 text-sm" aria-label={h('review')}>
-                <p className="font-medium">{t('reviewReady')}</p>
+              <section className="rounded-lg bg-surface p-3 text-body" aria-label={h('review')}>
+                <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('reviewReady')}</p>
                 <ul className="mt-2 list-inside list-disc">
                   {review.resource.skills.map((skill) => (
                     <li key={skill.entry}>
@@ -413,16 +414,16 @@ export function ResourceEditor({
                     <li key={path}>{path === reviewedEntry ? name.trim() : path}</li>
                   ))}
                 </ul>
-                <p className="mt-2 text-xs text-muted-foreground">{t('reviewHint')}</p>
+                <p className="mt-2 text-caption text-muted-foreground">{t('reviewHint')}</p>
                 <details className="mt-2">
                   <summary>{h('files', { count: review.resource.files.length })}</summary>
                   {reviewedSkill && reviewedSkill.name !== name.trim() ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-caption text-muted-foreground">
                       {t('internalSkillName')}:{' '}
                       <code className="select-text break-all">{reviewedSkill.name}</code>
                     </p>
                   ) : null}
-                  <ul className="max-h-32 overflow-auto text-xs">
+                  <ul className="max-h-32 overflow-auto text-caption">
                     {review.resource.files.map((file) => (
                       <li key={file.path}>
                         {file.path} · {file.bytes} B
