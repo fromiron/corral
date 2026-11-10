@@ -515,7 +515,10 @@ it('sums up a non-decision item in one line from the server and leads to its scr
     queuedC,
   ];
   const { container, rowButton, detail, click } = await mount({ inbox: async () => listed });
-  /** The body under the detail's header: its one line, if any, and its one link. */
+  /**
+   * Under the detail's title: its header line, the body's one line if any, and its one link.
+   * The item is named once: by the server's summary when there is one, else by its kind.
+   */
   const body = async (title: string) => {
     await click(rowButton(title));
     const header = detail()?.querySelector('header');
@@ -526,43 +529,62 @@ it('sums up a non-decision item in one line from the server and leads to its scr
       link.textContent,
       link.getAttribute('href'),
     ]);
-    return { lines, links };
+    return { header: header?.querySelector('p')?.textContent, lines, links };
   };
   // A failed check names the check and opens the session's Changes › Checks.
   expect(await body('Tidy tests')).toEqual({
+    header: 'Alpha',
     lines: ['Check failed: Types'],
     links: [['Open checks', '/sessions/s_d?panel=checks']],
   });
   expect(await body('Unsure writes')).toEqual({
-    lines: ['3 file writes to check'],
+    header: 'Alpha',
+    lines: ['3 file writes with unknown outcomes'],
     links: [['Open changes', '/sessions/s_w/review']],
   });
   expect(await body('Fresh writes')).toEqual({
-    lines: ['1 file write to review'],
+    header: 'Alpha',
+    lines: ['1 unreviewed file write'],
     links: [['Open changes', '/sessions/s_u/review']],
   });
   expect(await body('Rename proposals')).toEqual({
-    lines: ['2,400 proposals to review'],
+    header: 'Alpha',
+    lines: ['2,400 language server proposals'],
     links: [['Open changes', '/sessions/s_l/review']],
   });
   expect(await body('Apply conflict')).toEqual({
+    header: 'Alpha',
     lines: ['Not applied: conflicts'],
     links: [['Open changes', '/sessions/s_i/review']],
   });
-  // What the server says but the screen cannot name is left out rather than shown raw.
-  for (const title of ['Apply oddity', 'Garbled count', 'Zero count'])
-    expect((await body(title)).lines, title).toEqual([]);
+  // What the server says but the screen cannot name is left out rather than shown raw; the
+  // header then names the kind.
+  expect(await body('Apply oddity')).toMatchObject({
+    header: 'Applying did not finish cleanly · Alpha',
+    lines: [],
+  });
+  expect(await body('Garbled count')).toMatchObject({
+    header: 'File writes with unknown outcome · Alpha',
+    lines: [],
+  });
+  expect(await body('Zero count')).toMatchObject({
+    header: 'Unreviewed file writes · Alpha',
+    lines: [],
+  });
   expect(container.textContent).not.toContain('not_a_state');
   expect(await body('Shell owner')).toEqual({
+    header: 'Terminal exit needs checking · Alpha',
     lines: [],
     links: [['Open terminal', '/sessions/s_t?panel=terminal&terminal=pty_1']],
   });
   expect(await body('Recipe review')).toEqual({
+    header: 'Review stopped: Generation attempt limit reached · Alpha',
     lines: [],
     links: [['Open run', '/sessions/s_r?panel=run&view=run&run=run_r']],
   });
   // A queued request's body is never shown, in the row or the detail.
   expect(await body('Write docs')).toEqual({
+    header: 'Queued request · Alpha',
     lines: [],
     links: [['Open session', '/sessions/s_c']],
   });

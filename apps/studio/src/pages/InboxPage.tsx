@@ -253,8 +253,15 @@ export function InboxPage() {
     return run ? `${kind} · ${run}` : kind;
   };
   const joined = (...parts: (string | null)[]) => parts.filter(Boolean).join(' · ');
-  /** Under the detail's title: the row's line and the project; the body says the rest. */
-  const detailLine = (entry: InboxEntry) => joined(kindLine(entry), projectLabel(entry.projectId));
+  /**
+   * Under the detail's title: the row's line and the project. The item is named once: when the
+   * body's summary names it more precisely, this line keeps only the run and the project.
+   */
+  const detailLine = (entry: InboxEntry) => {
+    if (!summaryLine(entry)) return joined(kindLine(entry), projectLabel(entry.projectId));
+    const number = runNumber(entry.item.runId);
+    return joined(number ? tw('runNumber', { number }) : null, projectLabel(entry.projectId));
+  };
   /**
    * The server's one-line summary of a non-decision item: the failed check's name, how many writes
    * or proposals wait, or the applying state. What this screen cannot name is left out, and a

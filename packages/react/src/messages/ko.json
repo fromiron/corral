@@ -988,9 +988,9 @@
     },
     "summary": {
       "check_failed": "검사 실패: {name}",
-      "uncertain_write": "{count, plural, other {확인할 파일 쓰기 #개}}",
-      "unreviewed": "{count, plural, other {검토할 파일 쓰기 #개}}",
-      "lsp_proposal": "{count, plural, other {검토할 제안 #개}}"
+      "uncertain_write": "{count, plural, other {결과를 모르는 파일 쓰기 #개}}",
+      "unreviewed": "{count, plural, other {확인하지 않은 파일 쓰기 #개}}",
+      "lsp_proposal": "{count, plural, other {언어 서버 제안 #개}}"
     },
     "close": "닫기",
     "backToList": "목록으로",

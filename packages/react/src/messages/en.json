@@ -988,9 +988,9 @@
     },
     "summary": {
       "check_failed": "Check failed: {name}",
-      "uncertain_write": "{count, plural, one {# file write to check} other {# file writes to check}}",
-      "unreviewed": "{count, plural, one {# file write to review} other {# file writes to review}}",
-      "lsp_proposal": "{count, plural, one {# proposal to review} other {# proposals to review}}"
+      "uncertain_write": "{count, plural, one {# file write with an unknown outcome} other {# file writes with unknown outcomes}}",
+      "unreviewed": "{count, plural, one {# unreviewed file write} other {# unreviewed file writes}}",
+      "lsp_proposal": "{count, plural, one {# language server proposal} other {# language server proposals}}"
     },
     "close": "Close",
     "backToList": "Back to list",
