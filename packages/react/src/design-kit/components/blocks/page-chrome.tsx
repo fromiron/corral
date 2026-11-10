@@ -66,20 +66,21 @@ export function PathBar({
   );
 }
 
+/**
+ * A list page: its toolbar row, then the content at the wide or narrow measure. The path bar is
+ * where a screen is named, so the title is the page's heading for the document outline only.
+ */
 export function Page({
   title,
-  description,
   toolbar,
   children,
   width = 'wide',
 }: {
   title: string;
-  description?: string;
   toolbar?: ReactNode;
   children: ReactNode;
   width?: 'wide' | 'narrow';
 }) {
-  const size = useSize();
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div
@@ -88,17 +89,9 @@ export function Page({
           width === 'narrow' ? 'mx-auto w-full max-w-[720px]' : 'mx-auto w-full max-w-5xl',
         )}
       >
-        <header className="grid gap-1">
-          <h1
-            className={cn(size.type.display, 'm-0 text-foreground')}
-            style={{ fontVariationSettings: fontWeights.bold }}
-          >
-            {title}
-          </h1>
-          {description && (
-            <p className={cn(size.type.body, 'm-0 text-muted-foreground')}>{description}</p>
-          )}
-        </header>
+        <h1 data-slot="page-title" className="sr-only">
+          {title}
+        </h1>
         {toolbar}
         {children}
       </div>
@@ -119,7 +112,8 @@ export function SectionLabel({ children, count }: { children: ReactNode; count?:
   );
 }
 
-export function EmptyState({ title, text }: { title: string; text: string }) {
+/** An empty list or view: its title says what belongs there; a line under it is optional. */
+export function EmptyState({ title, text }: { title: string; text?: string | undefined }) {
   const size = useSize();
   const shape = useShape();
   return (
@@ -135,7 +129,9 @@ export function EmptyState({ title, text }: { title: string; text: string }) {
       >
         {title}
       </b>
-      <p className={cn(size.type.caption, 'm-0 max-w-sm text-muted-foreground')}>{text}</p>
+      {text ? (
+        <p className={cn(size.type.caption, 'm-0 max-w-sm text-muted-foreground')}>{text}</p>
+      ) : null}
     </div>
   );
 }

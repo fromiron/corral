@@ -130,7 +130,6 @@ export function WorkspacePage() {
         <main className="flex min-h-0 flex-1 flex-col">
           <Page
             title={shown}
-            {...(project.description ? { description: project.description } : {})}
             toolbar={
               <div className="flex flex-col gap-3">
                 {/* State on the left, the ways to start and the project's menu on the right. */}
