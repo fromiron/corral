@@ -64,7 +64,7 @@ async function openTestRun(page: Page) {
 test('steps dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
   await newCorral(page, '?delay=50');
-  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Demo');
 
   await buildAgentToOutput(page);
   const brief = 'Compare notebook formats for field notes.';

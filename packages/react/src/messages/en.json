@@ -82,7 +82,6 @@
     "language": "Language",
     "serverShort": "Local · simulated",
     "demoShort": "Demo · simulated",
-    "liveNoModel": "Connect a model",
     "connectionFailed": "Corral could not connect to this server. Check the connection, then try again.",
     "retryConnection": "Try again",
     "retry": "Try again"
@@ -108,8 +107,7 @@
     "stateDemo": "Demo",
     "stateSimulated": "Simulated",
     "stateNoModel": "No model",
-    "noModelBody": "Live requests are blocked until you connect one.",
-    "simulatedBody": "Agents are simulated. Nothing is sent to a model."
+    "openModelSettings": "No model: open model settings"
   },
   "Canvas": {
     "ports": {

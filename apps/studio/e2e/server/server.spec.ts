@@ -20,7 +20,7 @@ test('a run on the local server saves first, finishes, and survives a reload', a
   corral,
 }) => {
   await corral.open('/');
-  await expect(page.getByText('Local · simulated', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Simulated');
   await agentToOutput(page);
   for (const returnBeforeResponse of [false, true]) {
     await renameTeam(page, `Saved team ${returnBeforeResponse}`);

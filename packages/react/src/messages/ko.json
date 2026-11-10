@@ -82,7 +82,6 @@
     "language": "언어",
     "serverShort": "로컬 · 시뮬레이션",
     "demoShort": "데모 · 시뮬레이션",
-    "liveNoModel": "모델 연결 필요",
     "connectionFailed": "서버에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.",
     "retryConnection": "다시 시도",
     "retry": "다시 시도"
@@ -108,8 +107,7 @@
     "stateDemo": "데모",
     "stateSimulated": "시뮬레이션",
     "stateNoModel": "모델 없음",
-    "noModelBody": "모델을 연결하기 전까지 실제 요청은 차단됩니다.",
-    "simulatedBody": "에이전트는 시뮬레이션이며 모델로 아무것도 보내지 않습니다."
+    "openModelSettings": "모델 없음: 모델 설정 열기"
   },
   "Canvas": {
     "ports": {
