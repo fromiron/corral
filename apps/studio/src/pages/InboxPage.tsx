@@ -34,11 +34,17 @@ import { runIdentity } from '../workbench/runIdentity.ts';
 
 export interface InboxSearch {
   returnTo?: string;
+  /** The selected item's key (InboxEntry.key), so Back from its target opens it again. */
+  item?: string;
 }
+
+const itemKey = (value: unknown) =>
+  typeof value === 'string' && value.length > 0 && value.length <= 2048 ? value : undefined;
 
 export function validateInboxSearch(search: Record<string, unknown>): InboxSearch {
   const returnTo = workHref(search.returnTo);
-  return returnTo ? { returnTo } : {};
+  const item = itemKey(search.item);
+  return { ...(returnTo ? { returnTo } : {}), ...(item ? { item } : {}) };
 }
 
 /** One project's last answer; a failed read keeps what it showed before. */
@@ -62,13 +68,23 @@ export function InboxPage() {
       select: (state) => (state.location.search as Record<string, unknown>).returnTo,
     }),
   );
+  const addressed = itemKey(
+    useRouterState({
+      select: (state) => (state.location.search as Record<string, unknown>).item,
+    }),
+  );
   const id = useId();
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [projectsFailed, setProjectsFailed] = useState(false);
   const [inboxes, setInboxes] = useState<Record<string, ProjectInbox>>({});
   const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [selected, setSelected] = useState<InboxEntry | null>(null);
+  // The selection lives in the address (`item`); this copy answers a click at once.
+  const [selectedKey, setSelectedKey] = useState<string | null>(addressed ?? null);
+  // The selected item as last listed, so its notice can still name it once it is gone.
+  const [lastSeen, setLastSeen] = useState<InboxEntry | null>(null);
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
+  // What this page wrote to the address and the router has not shown yet: not new selections.
+  const written = useRef<(string | undefined)[]>([]);
   // A read per project: only the newest one may change what that project shows.
   const generations = useRef(new Map<string, number>());
   const listGeneration = useRef(0);
@@ -151,7 +167,39 @@ export function InboxPage() {
         (project) => inboxes[project.projectId]?.loaded || inboxes[project.projectId]?.failed,
       ));
   // The detail follows the chosen key only; a refresh never turns it into another run.
-  const current = selected ? entries.find((entry) => entry.key === selected.key) : undefined;
+  const current = selectedKey ? entries.find((entry) => entry.key === selectedKey) : undefined;
+  if (current && lastSeen !== current) setLastSeen(current);
+  const seen = lastSeen?.key === selectedKey ? lastSeen : null;
+  // Whether a key missing from the list is really gone, not just unread.
+  const conclusive = settled && !projectsFailed && failures.length === 0;
+
+  /** Selection changes replace the address; arriving from elsewhere keeps its own entry. */
+  const writeAddress = useCallback(
+    (item: string | undefined) => {
+      if (item === addressed) return;
+      written.current.push(item);
+      void navigate({
+        to: '/inbox',
+        search: { ...(returnTo ? { returnTo } : {}), ...(item ? { item } : {}) },
+        replace: true,
+      });
+    },
+    [navigate, returnTo, addressed],
+  );
+  // Back, forward or a link to another item moves the selection; the page's own writes do not.
+  useEffect(() => {
+    const own = written.current.indexOf(addressed);
+    if (own >= 0) {
+      written.current = written.current.slice(own + 1);
+      return;
+    }
+    written.current = [];
+    setSelectedKey(addressed ?? null);
+  }, [addressed]);
+  // An unknown or handled key leaves the address quietly; the detail says it was handled.
+  useEffect(() => {
+    if (conclusive && selectedKey && !current && addressed === selectedKey) writeAddress(undefined);
+  }, [conclusive, selectedKey, current, addressed, writeAddress]);
 
   useEffect(() => {
     if (!focusTarget) return;
@@ -206,13 +254,15 @@ export function InboxPage() {
   };
 
   const choose = (entry: InboxEntry) => {
-    setSelected(entry);
+    setSelectedKey(entry.key);
+    writeAddress(entry.key);
     setFocusTarget({ kind: 'detail' });
   };
   // Closing is not an answer: nothing is sent, and focus returns to the row.
   const close = () => {
-    const key = selected?.key;
-    setSelected(null);
+    const key = selectedKey;
+    setSelectedKey(null);
+    writeAddress(undefined);
     setFocusTarget(
       key && entries.some((entry) => entry.key === key)
         ? { kind: 'row', key }
@@ -251,7 +301,9 @@ export function InboxPage() {
     close();
   };
 
-  const shown = current ?? selected;
+  // The chosen item, or, once it is gone, the notice that it was handled.
+  const shown = current ?? seen;
+  const open = Boolean(selectedKey && (current || seen || conclusive));
   const destination = current ? inboxDestination(current.item) : null;
   // A decision is answered here; every other kind is a link to its own screen.
   const respondsHere = current?.item.kind === 'decision' && current.item.runId !== null;
@@ -307,7 +359,7 @@ export function InboxPage() {
         <div
           className={cn(
             'grid items-start gap-6',
-            (shown || entries.length > 0) && 'lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]',
+            (open || entries.length > 0) && 'lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]',
           )}
         >
           <div className={cn('grid min-w-0 content-start gap-6', current && 'max-lg:hidden')}>
@@ -325,7 +377,7 @@ export function InboxPage() {
                         key={entry.key}
                         role="listitem"
                         data-inbox-row={entry.key}
-                        selected={selected?.key === entry.key}
+                        selected={selectedKey === entry.key}
                         label={`${entry.item.sessionTitle} · ${line} · ${project}`}
                         onClick={() => choose(entry)}
                       >
@@ -350,8 +402,14 @@ export function InboxPage() {
             {settled && entries.length === 0 && failures.length === 0 && !projectsFailed ? (
               <EmptyState title={t('empty')} text={t('emptyText')} />
             ) : null}
+            {!settled && !projectsFailed && entries.length === 0 ? (
+              // Until the first read settles the list says so instead of standing empty.
+              <p role="status" className="m-0 text-body text-muted-foreground">
+                {t('loading')}
+              </p>
+            ) : null}
           </div>
-          {shown ? (
+          {open ? (
             <section
               ref={detail}
               data-testid="inbox-detail"
@@ -373,18 +431,29 @@ export function InboxPage() {
                 </Button>
               ) : null}
               <header className="flex items-start justify-between gap-3">
-                <div className="grid min-w-0 gap-0.5">
-                  <h2
+                {shown ? (
+                  <div className="grid min-w-0 gap-0.5">
+                    <h2
+                      id={`${id}-detail`}
+                      className="m-0 text-title text-foreground [overflow-wrap:anywhere]"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
+                      {shown.item.sessionTitle}
+                    </h2>
+                    <p className="m-0 text-caption text-muted-foreground [overflow-wrap:anywhere]">
+                      {detailLine(shown)}
+                    </p>
+                  </div>
+                ) : (
+                  // An item known only by its address: the notice is all there is to say.
+                  <p
                     id={`${id}-detail`}
-                    className="m-0 text-title text-foreground [overflow-wrap:anywhere]"
-                    style={{ fontVariationSettings: fontWeights.semibold }}
+                    role="status"
+                    className="m-0 min-h-7 content-center text-body text-muted-foreground"
                   >
-                    {shown.item.sessionTitle}
-                  </h2>
-                  <p className="m-0 text-caption text-muted-foreground [overflow-wrap:anywhere]">
-                    {detailLine(shown)}
+                    {t('handled')}
                   </p>
-                </div>
+                )}
                 <div className="flex shrink-0 items-center gap-1">
                   {destination && respondsHere ? (
                     <Button variant="tertiary" size="compact" render={destinationLink(destination)}>
@@ -403,9 +472,11 @@ export function InboxPage() {
                 </div>
               </header>
               {!current ? (
-                <p role="status" className="m-0 text-body text-muted-foreground">
-                  {t('handled')}
-                </p>
+                shown ? (
+                  <p role="status" className="m-0 text-body text-muted-foreground">
+                    {t('handled')}
+                  </p>
+                ) : null
               ) : respondsHere && current.item.runId ? (
                 <DecisionResponse
                   key={current.key}

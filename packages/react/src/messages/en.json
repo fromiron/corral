@@ -992,6 +992,7 @@
     "emptyText": "Approvals, questions and changes to review gather here.",
     "noSelection": "Nothing selected",
     "noSelectionText": "Select an item to open it here.",
+    "loading": "Loading…",
     "loadFailed": "Couldn't load {project}.",
     "retry": "Try again",
     "projectsFailed": "Couldn't load projects.",

@@ -14,6 +14,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { inboxEntries } from '../workbench/inbox.ts';
 import { notificationDestination } from '../workbench/notifications.ts';
 import { InboxPage, validateInboxSearch } from './InboxPage.tsx';
 
@@ -518,6 +519,109 @@ it('says a selected item was handled when a refresh drops it, without choosing a
   expect(rowButton('Write docs')).toBeUndefined();
   expect(detail()?.textContent).toContain('This item was handled.');
   expect(container.querySelector('[role="listitem"] button[aria-pressed="true"]')).toBeNull();
+});
+
+/** The address key of one listed item, as the page writes it. */
+const keyOf = (projectId: string, items: InboxItemView[], index = 0) =>
+  inboxEntries(projectId, items)[index]?.key ?? '';
+/** A navigate that moves the address the page reads on its next render, as the router does. */
+const addressNavigate = () =>
+  vi.fn((options: { search?: Record<string, unknown> }) => {
+    fixture.search = options.search ?? {};
+  });
+
+it('keeps the selected item in the address, replacing it as the selection changes', async () => {
+  const navigate = addressNavigate();
+  fixture.navigate = navigate as (...args: unknown[]) => void;
+  fixture.search = { returnTo: '/sessions/s_a?panel=files' };
+  const listed = [decisionA, queuedC];
+  const { rowButton, detail, click, buttonIn } = await mount({ inbox: async () => listed });
+  await click(rowButton('Write docs'));
+  expect(navigate).toHaveBeenLastCalledWith({
+    to: '/inbox',
+    search: { returnTo: '/sessions/s_a?panel=files', item: keyOf('alpha', listed, 1) },
+    replace: true,
+  });
+  await click(rowButton('Fix login'));
+  expect(navigate).toHaveBeenLastCalledWith({
+    to: '/inbox',
+    search: { returnTo: '/sessions/s_a?panel=files', item: keyOf('alpha', listed, 0) },
+    replace: true,
+  });
+  await click(buttonIn(detail(), 'Close'));
+  expect(navigate).toHaveBeenLastCalledWith({
+    to: '/inbox',
+    search: { returnTo: '/sessions/s_a?panel=files' },
+    replace: true,
+  });
+  // The key is a plain string in the address; anything else is dropped.
+  const key = keyOf('alpha', listed, 1);
+  expect(validateInboxSearch({ item: key })).toEqual({ item: key });
+  expect(validateInboxSearch({ item: ['x'] })).toEqual({});
+  expect(validateInboxSearch({ item: '' })).toEqual({});
+});
+
+it('opens the item the address names, as when coming Back from its target screen', async () => {
+  const listed = [decisionA, queuedC];
+  fixture.search = { item: keyOf('alpha', listed, 1) };
+  const navigate = vi.fn();
+  fixture.navigate = navigate;
+  const { container, detail } = await mount({ inbox: async () => listed });
+  expect(detail()?.querySelector('h2')?.textContent).toBe('Write docs');
+  expect(
+    container
+      .querySelector('[role="listitem"] [aria-pressed="true"]')
+      ?.getAttribute('aria-label')
+      ?.startsWith('Write docs'),
+  ).toBe(true);
+  // Opening it from the address writes nothing back.
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+it('clears an unknown or handled item from the address quietly and says it was handled', async () => {
+  const navigate = addressNavigate();
+  fixture.navigate = navigate as (...args: unknown[]) => void;
+  fixture.search = { item: keyOf('alpha', [item('queued', 's_gone', 'Gone')]) };
+  const replies: Deferred<InboxItemView[]>[] = [];
+  const { container, detail } = await mount({
+    inbox: () => {
+      const reply = deferred<InboxItemView[]>();
+      replies.push(reply);
+      return reply.promise;
+    },
+  });
+  // Nothing is decided before the list is read.
+  expect(navigate).not.toHaveBeenCalled();
+  await act(async () => replies[0]?.resolve([checkD]));
+  await flush();
+  expect(navigate).toHaveBeenCalledExactlyOnceWith({ to: '/inbox', search: {}, replace: true });
+  expect(detail()?.textContent).toContain('This item was handled.');
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('[role="listitem"] [aria-pressed="true"]')).toBeNull();
+});
+
+it('says the list is loading until the first read settles, and not on later reads', async () => {
+  const replies: Deferred<InboxItemView[]>[] = [];
+  const { container, refocus } = await mount({
+    inbox: () => {
+      const reply = deferred<InboxItemView[]>();
+      replies.push(reply);
+      return reply.promise;
+    },
+  });
+  const loading = () =>
+    [...container.querySelectorAll<HTMLElement>('[role="status"]')].find(
+      (element) => element.textContent === 'Loading…',
+    );
+  expect(loading()).toBeDefined();
+  expect(container.textContent).not.toContain('Nothing needs you');
+  await act(async () => replies[0]?.resolve([]));
+  await flush();
+  expect(loading()).toBeUndefined();
+  expect(container.textContent).toContain('Nothing needs you');
+  await refocus();
+  expect(replies).toHaveLength(2);
+  expect(loading()).toBeUndefined();
 });
 
 it('shows the empty state and asks again only when the window regains focus', async () => {
