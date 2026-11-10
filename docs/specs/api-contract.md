@@ -48,7 +48,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`). secret 없음 |
+| GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`), `pathEngine: {engine: 'fff'｜'builtIn', reason?: 'loadFailed'｜'noBinary'｜'indexCap'｜'callFailed'｜'timeBudget'}`([파일 경로 검색](features/file-search.md)). secret·경로 없음 |
 | POST /session | `{token}` | 서버 실행 중 유효한 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 잘못된 token은 401 |
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트), sessionId. `POST /runs`는 `sessionId?`를 받고 팀 프로젝트의 세션이 아니면 `TARGET_NOT_FOUND` |
