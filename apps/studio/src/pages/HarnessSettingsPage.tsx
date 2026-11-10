@@ -343,14 +343,10 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     selected !== null &&
     JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
   return (
-    <SettingsLayout active="harness">
+    <SettingsLayout active="harness" {...(api ? { description: t('intro') } : {})}>
       <main className="settings-content">
-        <div>
-          <h2 className="text-2xl font-semibold">{t('heading')}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{t('intro')}</p>
-        </div>
         {!api ? (
-          <p>{t('localOnly')}</p>
+          <p className="text-body text-muted-foreground">{t('localOnly')}</p>
         ) : (
           <>
             {error ? (

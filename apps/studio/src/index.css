@@ -51,7 +51,8 @@
   margin-inline: auto;
   flex-direction: column;
   gap: 24px;
-  padding: 20px 24px 24px;
+  /* The frame's heading above holds the top space (SettingsLayout). */
+  padding: 0 24px 24px;
 }
 .settings-row {
   display: flex;

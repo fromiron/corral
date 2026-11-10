@@ -1,19 +1,13 @@
-import type {
-  InboxItemView,
-  VerifyCommand,
-  WorkspaceBindingView,
-  WorktreeView,
-} from '@corral/client';
+import type { VerifyCommand, WorkspaceBindingView, WorktreeView } from '@corral/client';
 import { Button, Input, Switch, Textarea } from '@corral/react/design-kit';
-import { ArrowRight } from '@corral/react/icons';
-import { Link, useRouterState } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
-import { useSettingsNavigation, workHref } from '../workbench/navigation.ts';
+import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
@@ -399,56 +393,5 @@ export function WorkingCopyPanel({
         </p>
       ) : null}
     </section>
-  );
-}
-
-/**
- * How many things wait on a person in this project, as one line into Needs you. The count is
- * every inbox item of the project's unarchived sessions; it empties as they are handled.
- */
-export function InboxSection({
-  projectId,
-  onItems,
-}: {
-  projectId: string;
-  onItems?: (items: InboxItemView[]) => void;
-}) {
-  const t = useTranslations('Inbox');
-  const { workspaces } = useServices();
-  const returnTo = workHref(useRouterState({ select: (state) => state.location.href }));
-  const [items, setItems] = useState<InboxItemView[]>([]);
-  useEffect(() => {
-    setItems([]);
-    onItems?.([]);
-    if (!workspaces) return;
-    let live = true;
-    const load = () =>
-      workspaces.inbox(projectId).then(
-        (list) => {
-          if (!live) return;
-          setItems(list);
-          onItems?.(list);
-        },
-        () => {},
-      );
-    void load();
-    const timer = setInterval(load, 5000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [workspaces, projectId, onItems]);
-  if (items.length === 0) return null;
-  // The items themselves are listed and answered in Needs you, which can lead back here.
-  return (
-    <Button
-      variant="ghost"
-      size="compact"
-      className="self-start"
-      render={<Link to="/inbox" search={returnTo ? { returnTo } : {}} />}
-    >
-      {t('projectSummary', { count: items.length })}
-      <ArrowRight aria-hidden />
-    </Button>
   );
 }

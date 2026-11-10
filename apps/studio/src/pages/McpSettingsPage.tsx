@@ -1,6 +1,6 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
-import { Button, Input, Switch } from '@corral/react/design-kit';
+import { Button, EmptyState, fontWeights, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -18,12 +18,15 @@ export function McpSettingsPage() {
   const { harnesses } = useServices(),
     { projectId } = useSettingsNavigation();
   const t = useTranslations('Harness');
+  const r = useTranslations('Resources');
   return (
-    <SettingsLayout active="mcp">
+    <SettingsLayout active="mcp" {...(harnesses ? { description: r('mcpIntro') } : {})}>
       {harnesses && projectId ? (
         <McpManager key={projectId} api={harnesses} projectId={projectId} />
       ) : !harnesses ? (
-        <p className="p-8">{t('localOnly')}</p>
+        <main className="settings-content">
+          <p className="text-body text-muted-foreground">{t('localOnly')}</p>
+        </main>
       ) : null}
     </SettingsLayout>
   );
@@ -113,35 +116,31 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       }
     }
   }
+  const servers = config?.mcpServers ?? [];
+  const shownServers = servers.filter((server) =>
+    server.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
+  );
+  // No server registered: one empty state under the Add action.
+  const none = loaded && servers.length === 0;
   return (
     <main className="settings-content">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{t('mcp')}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{t('mcpIntro')}</p>
-      </div>
-      <section className="settings-row">
-        <div>
-          <h3>{t('add')}</h3>
-        </div>
-        <Button ref={add} disabled={!loaded} onClick={() => setEditor({})}>
+      <section aria-label={t('mcp')} className="flex flex-wrap items-center gap-3">
+        {none ? null : (
+          <Input
+            className="min-w-0 flex-1 sm:max-w-72"
+            aria-label={t('search')}
+            placeholder={t('search')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        )}
+        <Button ref={add} className="ml-auto" disabled={!loaded} onClick={() => setEditor({})}>
           <Plus size={16} />
           {t('add')}
         </Button>
       </section>
-      <section className="settings-row">
-        <div>
-          <h3>{t('search')}</h3>
-        </div>
-        <Input
-          className="sm:w-72"
-          aria-label={t('search')}
-          placeholder={t('search')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </section>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}{' '}
           <Link {...navigation.link('workspace')} className="text-primary">
             {h('manageChecks')}
@@ -149,20 +148,19 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
         </p>
       ) : null}
       <div className="flex flex-col gap-6">
-        <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('mcp')}>
-          {!loaded ? (
-            <p role="status" className="p-5 text-sm">
-              {h('busy')}
-            </p>
-          ) : !config?.mcpServers?.length ? (
-            <p className="p-5 text-sm text-muted-foreground">{t('noServers')}</p>
-          ) : (
-            <ul className="flex flex-col">
-              {config.mcpServers
-                .filter((server) =>
-                  server.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-                )
-                .map((server) => (
+        {none ? (
+          <EmptyState title={t('emptyMcp')} text={t('emptyMcpText')} />
+        ) : (
+          <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('mcp')}>
+            {!loaded ? (
+              <p role="status" className="p-5 text-body text-muted-foreground">
+                {h('busy')}
+              </p>
+            ) : !shownServers.length ? (
+              <p className="p-5 text-body text-muted-foreground">{t('noMatches')}</p>
+            ) : (
+              <ul className="flex flex-col">
+                {shownServers.map((server) => (
                   <li key={server.id}>
                     <Button
                       variant={selection === server.id ? 'secondary' : 'ghost'}
@@ -172,17 +170,20 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                       }}
                       className="h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left"
                     >
-                      <span className="font-medium">{server.name}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span style={{ fontVariationSettings: fontWeights.semibold }}>
+                        {server.name}
+                      </span>
+                      <span className="text-caption text-muted-foreground">
                         {server.transport === 'http' ? 'HTTP' : h('mcpStdio')} ·{' '}
                         {t(server.enabled === false ? 'disabled' : 'enabled')}
                       </span>
                     </Button>
                   </li>
                 ))}
-            </ul>
-          )}
-        </section>
+              </ul>
+            )}
+          </section>
+        )}
         {selected && config ? (
           <section className="flex flex-col gap-6" aria-label={t('details')}>
             <section className="settings-row">
@@ -281,9 +282,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
               </Button>
             </section>
           </section>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t('selectItem')}</p>
-        )}
+        ) : null}
       </div>
       {history.length ? (
         <section className="flex flex-col gap-3">

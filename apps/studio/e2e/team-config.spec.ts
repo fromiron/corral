@@ -10,7 +10,7 @@ test('opening a template waits for an explicit named copy and cancel leaves no t
     const dialog = page.getByRole('dialog', { name: 'Save a team copy' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(page.getByText('No teams yet.')).toBeVisible();
+    await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
   }
   await page.getByRole('button', { name: 'Edit this team' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Save a team copy' });

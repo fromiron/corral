@@ -1,4 +1,4 @@
-import { Button, KitSwitch, ScrollArea, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, KitSwitch, ScrollArea, Select } from '@corral/react/design-kit';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { ShortcutTable } from '../CommandPalette.tsx';
@@ -6,31 +6,58 @@ import { DesktopAbout, DesktopWorkspace, desktop } from '../desktop.tsx';
 import { LOCALES, useLocale } from '../locale.tsx';
 import { useServices } from '../services.tsx';
 import { formatChord, sendKeyLabel } from '../shortcuts.ts';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { type SettingsSection, useSettingsNavigation } from '../workbench/navigation.ts';
 import { changePreferences, usePreferences } from '../workbench/preferences.ts';
+import { useSettingsSectionLabel } from '../workbench/SettingsNavigation.tsx';
 import { WorkFolderSection } from './FilesViews.tsx';
 import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
 
-export function SettingsLayout({ children, active }: { children: ReactNode; active: string }) {
+/**
+ * The settings dialog's content frame: one heading named after the section, an optional line for
+ * a fact the controls cannot show, then the section's own scrolling content. Pages never draw
+ * their own title (the kit's settings panel: title, description, scrolling body).
+ */
+export function SettingsLayout({
+  children,
+  active,
+  description,
+  descriptionId,
+}: {
+  children: ReactNode;
+  active: SettingsSection;
+  /** One line, only where it says something the controls cannot. */
+  description?: ReactNode;
+  /** A test or link target for the description line. */
+  descriptionId?: string;
+}) {
   const { projectId } = useSettingsNavigation();
   const n = useTranslations('Navigation');
-  const r = useTranslations('Resources');
+  const label = useSettingsSectionLabel();
   const projectSection = ['workspace', 'mcp', 'project-defaults'].includes(active);
+  const needsProject = projectSection && !projectId;
   return (
     <div className="settings-layout flex h-full min-h-0 flex-col" data-settings-section={active}>
+      {/* Narrow screens name the section in the dialog's own selector above. */}
+      <header
+        data-settings-header
+        className="flex shrink-0 flex-col gap-1 px-6 pt-5 pr-12 pb-4 max-sm:pt-0"
+      >
+        <h2
+          className="text-title text-foreground max-sm:sr-only"
+          style={{ fontVariationSettings: fontWeights.normal }}
+        >
+          {label(active)}
+        </h2>
+        {needsProject ? (
+          <p className="text-body text-muted-foreground">{n('projectRequired')}</p>
+        ) : description ? (
+          <p data-testid={descriptionId} className="text-body text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
+      </header>
       <ScrollArea className="min-h-0 flex-1" radius="none">
-        {projectSection && !projectId ? (
-          <main className="settings-content">
-            <h2 className="text-title">
-              {active === 'mcp'
-                ? r('mcp')
-                : n(active === 'workspace' ? 'projectFolder' : 'projectDefaults')}
-            </h2>
-            <p className="text-sm text-muted-foreground">{n('projectRequired')}</p>
-          </main>
-        ) : (
-          children
-        )}
+        {needsProject ? null : children}
       </ScrollArea>
     </div>
   );
@@ -48,15 +75,14 @@ export function SettingsPage({
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
   return (
-    <SettingsLayout active={section}>
+    <SettingsLayout
+      active={section}
+      // How this form saves, said where it applies (#81 SET-S10).
+      {...(section === 'general' || section === 'shortcuts'
+        ? { description: t('savesAutomatically'), descriptionId: 'settings-save-mode' }
+        : {})}
+    >
       <main className="settings-content">
-        <h2 className="text-title">{t(section)}</h2>
-        {/* How this form saves, said where it applies (#81 SET-S10). */}
-        {section === 'general' || section === 'shortcuts' ? (
-          <p data-testid="settings-save-mode" className="text-sm text-muted-foreground">
-            {t('savesAutomatically')}
-          </p>
-        ) : null}
         {section === 'general' ? (
           <div className="flex flex-col">
             <section className="settings-row">
@@ -161,7 +187,7 @@ export function SettingsPage({
           </section>
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">{t('aboutText')}</p>
+            <p className="text-body text-muted-foreground">{t('aboutText')}</p>
             <DesktopAbout serverVersion={serverVersion} />
             <Button
               variant="tertiary"

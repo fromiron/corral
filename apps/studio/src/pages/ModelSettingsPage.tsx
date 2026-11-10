@@ -46,11 +46,8 @@ export function ModelSettingsPage() {
         aria-labelledby="providers-heading"
         className="flex flex-col gap-2 outline-none"
       >
-        <h3
-          id="providers-heading"
-          className="text-subtitle"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
+        {/* The Sign-in tab already says it; the heading still names the region. */}
+        <h3 id="providers-heading" className="sr-only">
           {t('providers')}
         </h3>
         {providers.map((provider) => (
@@ -115,11 +112,12 @@ export function ModelSettingsPage() {
 
   return (
     <ModelSettingsRefresh value={refresh}>
-      <SettingsLayout active="models">
+      <SettingsLayout
+        active="models"
+        // Where sign-in is kept is a fact the controls cannot show.
+        {...(mode === 'server' && models && live ? { description: t('intro') } : {})}
+      >
         <main className="settings-content">
-          <h2 className="text-2xl" style={{ fontVariationSettings: fontWeights.semibold }}>
-            {t('heading')}
-          </h2>
           {error ? (
             <p role="alert" className="text-danger">
               {t('loadFailed')}{' '}
@@ -128,12 +126,11 @@ export function ModelSettingsPage() {
           ) : null}
           {loading ? <p role="status">{t('loading')}</p> : null}
           {mode !== 'server' || !models ? (
-            <p className="text-sm text-muted-foreground">{t('browserOnly')}</p>
+            <p className="text-body text-muted-foreground">{t('browserOnly')}</p>
           ) : !live ? (
-            <p className="text-sm text-muted-foreground">{t('noLive')}</p>
+            <p className="text-body text-muted-foreground">{t('noLive')}</p>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground">{t('intro')}</p>
               <TabsSubtle
                 idPrefix={idPrefix}
                 selectedIndex={tab}

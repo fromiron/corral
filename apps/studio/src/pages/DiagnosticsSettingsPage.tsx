@@ -183,7 +183,6 @@ export function DiagnosticsSettingsPage() {
   return (
     <SettingsLayout active="diagnostics">
       <main className="settings-content">
-        <h2 className="text-title">{t('title')}</h2>
         <div className="flex flex-col">
           {rows.map((row) => (
             <section

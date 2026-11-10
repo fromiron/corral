@@ -28,7 +28,7 @@ test('a run stays in the project it started in when its Corral moves', async ({ 
   await tab('Teams');
   await page.getByRole('combobox', { name: 'Move Untitled team to another project' }).click();
   await page.getByRole('option', { name: 'My project', exact: true }).click();
-  await expect(page.getByText('No teams yet.')).toBeVisible();
+  await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { level: 2, name: 'Client A' })).toBeVisible();
   await tab('Runs');

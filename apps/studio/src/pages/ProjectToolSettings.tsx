@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/contracts';
-import { Button, Input, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Textarea } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -85,7 +85,11 @@ export function ProjectToolSettings({
   }
   return (
     <section className="flex flex-col gap-4" aria-labelledby={heading}>
-      <h3 id={heading} className="text-lg font-semibold">
+      <h3
+        id={heading}
+        className="text-subtitle text-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('projectTools')}
       </h3>
       <p className="text-xs text-muted-foreground">{t('checkTrustHint')}</p>
@@ -106,7 +110,9 @@ export function ProjectToolSettings({
         ] as const
       ).map(([kind, tools]) => (
         <div key={kind} className="flex flex-col gap-3">
-          <h4 className="font-medium">{t(kind === 'check' ? 'projectChecks' : 'projectLsp')}</h4>
+          <h4 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t(kind === 'check' ? 'projectChecks' : 'projectLsp')}
+          </h4>
           {kind === 'lsp' ? (
             <p className="text-xs text-muted-foreground">{t('lspSetupHint')}</p>
           ) : null}

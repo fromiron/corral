@@ -39,16 +39,24 @@ import {
   TabsList,
   Textarea,
 } from '@corral/react/design-kit';
-import { ChevronDown, Ellipsis, Users } from '@corral/react/icons';
+import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  type Ref,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
 import { NewMeetingDialog } from '../workbench/NewMeeting.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { useSettingsNavigation, workHref } from '../workbench/navigation.ts';
 import { newSessionDraftKey } from '../workbench/newSessionDraft.ts';
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
@@ -59,10 +67,9 @@ import {
   sessionListState,
   uncertainSessionTerminal,
 } from '../workbench/sessionList.ts';
+import { useModelProfiles } from '../workbench/useModels.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
-import { InboxSection } from './FilesViews.tsx';
-import { GettingStarted } from './GettingStarted.tsx';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
 // A project's workspace (docs/specs/workbench.md#전역-셸과-화면-틀): the kit page frame with the
@@ -94,6 +101,9 @@ export function WorkspacePage() {
   const { newSession } = workspaceRoute.useSearch();
   const [meeting, setMeeting] = useState(false);
   const shown = projectName(project, tp('defaultName'));
+  // The empty Sessions tab starts a conversation through the header's own control.
+  const starter = useRef<ConversationStarter>(null);
+  const inboxReturn = workHref(href);
 
   const runsPanel = (
     <section aria-labelledby="runs-heading" className="flex flex-col gap-2">
@@ -131,9 +141,9 @@ export function WorkspacePage() {
             {...(project.description ? { description: project.description } : {})}
             toolbar={
               <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <ProjectMenu project={project} onError={(message) => setErrors([message])} />
+                {/* State on the left, the ways to start and the project's menu on the right. */}
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-2">
                     {archived ? (
                       <KitBadge variant="dot" size="compact" color="gray">
                         {tp('archived')}
@@ -141,8 +151,15 @@ export function WorkspacePage() {
                     ) : null}
                     <FolderBadge folder={folder} />
                     {inboxItems.length > 0 ? (
-                      <Button variant="ghost" size="compact" render={<Link to="/inbox" />}>
+                      <Button
+                        variant="ghost"
+                        size="compact"
+                        render={
+                          <Link to="/inbox" search={inboxReturn ? { returnTo: inboxReturn } : {}} />
+                        }
+                      >
                         {t('pending', { count: inboxItems.length })}
+                        <ArrowRight aria-hidden />
                       </Button>
                     ) : null}
                   </div>
@@ -151,6 +168,7 @@ export function WorkspacePage() {
                       <>
                         <NewConversation
                           key={`${projectId}:${newSession ? 'new' : 'start'}`}
+                          handle={starter}
                           focus={Boolean(newSession)}
                           projectId={projectId}
                           corrals={corrals}
@@ -161,18 +179,11 @@ export function WorkspacePage() {
                         </Button>
                       </>
                     )}
-                    <Button
-                      variant="ghost"
-                      render={
-                        <Link
-                          to="/preview/$feature"
-                          params={{ feature: 'task-board' }}
-                          search={{ returnTo: href }}
-                        />
-                      }
-                    >
-                      {t('taskBoardPreview')}
-                    </Button>
+                    <ProjectMenu
+                      project={project}
+                      returnTo={href}
+                      onError={(message) => setErrors([message])}
+                    />
                   </div>
                 </div>
                 {project.archivedAt ? (
@@ -194,11 +205,12 @@ export function WorkspacePage() {
               projectId={projectId}
               counts={{ sessions: sessions.filter((x) => !x.archivedAt).length, runs: runs.length }}
               sessions={
-                <div className="flex flex-col gap-4">
-                  {archived ? null : <GettingStarted runs={runs.length} projectId={projectId} />}
-                  <InboxSection projectId={projectId} />
-                  <SessionList sessions={sessions} runs={runs} attention={inboxItems} />
-                </div>
+                <SessionList
+                  sessions={sessions}
+                  runs={runs}
+                  attention={inboxItems}
+                  {...(archived ? {} : { onStart: () => starter.current?.start() })}
+                />
               }
               runs={runsPanel}
               environment={
@@ -340,15 +352,21 @@ function ProjectTabs({
   );
 }
 
-/** Name, rename, archive or restore, and the way to all projects. */
+/**
+ * The project's "more" menu: rename, archive or restore, the way to all projects, and the task
+ * board preview, which shows sample data and comes back here (docs/specs/features/feature-preview.md).
+ */
 function ProjectMenu({
   project,
+  returnTo,
   onError,
 }: {
   project: ProjectSummary;
+  returnTo: string;
   onError: (message: string) => void;
 }) {
   const t = useTranslations('Projects');
+  const tw = useTranslations('Workspace');
   const { repository } = useServices();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -375,17 +393,11 @@ function ProjectMenu({
     <>
       <Menu>
         <MenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-compact"
-              aria-label={t('actions', { name: shown })}
-            />
-          }
+          render={<Button variant="ghost" size="icon" aria-label={t('actions', { name: shown })} />}
         >
           <Ellipsis />
         </MenuTrigger>
-        <MenuPopup align="start">
+        <MenuPopup align="end" className="min-w-52">
           <MenuItem
             onClick={() => {
               setName(shown);
@@ -402,6 +414,21 @@ function ProjectMenu({
           )}
           <MenuSeparator />
           <MenuItem render={<Link to="/projects" />}>{t('allProjects')}</MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            render={
+              <Link
+                to="/preview/$feature"
+                params={{ feature: 'task-board' }}
+                search={{ returnTo }}
+              />
+            }
+          >
+            {tw('taskBoardPreview')}
+            <KitBadge size="compact" color="gray" className="ml-auto">
+              {tw('previewBadge')}
+            </KitBadge>
+          </MenuItem>
         </MenuPopup>
       </Menu>
       <Dialog open={editing} onOpenChange={(open) => !open && setEditing(false)}>
@@ -444,15 +471,23 @@ function ProjectMenu({
   );
 }
 
+/** What other parts of the page may ask of the header's New conversation. */
+interface ConversationStarter {
+  /** The same start as the button: saved details are shown first, never sent silently. */
+  start(): void;
+}
+
 /**
  * Starts a conversation at once. Its menu opens the name, purpose and team first; those details
  * are remembered for the project and nothing runs until the first request is sent.
  */
 function NewConversation({
+  handle,
   focus,
   projectId,
   corrals,
 }: {
+  handle: Ref<ConversationStarter>;
   focus: boolean;
   projectId: string;
   corrals: CorralSummary[];
@@ -549,6 +584,7 @@ function NewConversation({
     if (hasDetails) setDetailsOpen(true);
     else void create();
   };
+  useImperativeHandle(handle, () => ({ start }));
 
   // The explicit new-session link opens the composer once; it never starts a Run.
   // biome-ignore lint/correctness/useExhaustiveDependencies: later form edits must not create another session
@@ -836,19 +872,34 @@ function EnvironmentPanel({
   );
 }
 
-/** The project's work sessions: pinned first, searchable. */
+/**
+ * The project's work sessions and meetings: pinned first, searchable. Without any, one empty
+ * state names what a session is and starts the first; a missing model is the one other step.
+ */
 function SessionList({
   sessions,
   runs,
   attention,
+  onStart,
 }: {
   sessions: WorkSession[];
   runs: RunSummary[];
   attention: InboxItemView[];
+  /** Absent for an archived project, which starts nothing. */
+  onStart?: () => void;
 }) {
   const status = useTranslations('Status');
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
+  const navigation = useSettingsNavigation();
+  const { mode, live, models } = useServices();
+  const profiles = useModelProfiles();
+  const needsModel =
+    mode === 'server' &&
+    live &&
+    models !== null &&
+    profiles !== null &&
+    !profiles.some((profile) => profile.available);
   const ago = useSessionAge();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -878,6 +929,7 @@ function SessionList({
   };
   const needle = query.trim().toLowerCase();
   const archivedCount = sessions.filter((x) => x.archivedAt).length;
+  const none = sessions.length === archivedCount && !showArchived;
   const shown = sessions
     .filter(
       (x) =>
@@ -891,7 +943,7 @@ function SessionList({
       <h2 id="sessions-heading" className="sr-only">
         {t('heading')}
       </h2>
-      {sessions.length > 0 ? (
+      {!none ? (
         <div className="flex flex-wrap items-center gap-2">
           <InputGroup className="max-w-64">
             <InputField
@@ -929,39 +981,62 @@ function SessionList({
           {error}
         </p>
       ) : null}
-      {sessions.length === 0 ? (
-        <p className="text-body text-muted-foreground">{t('empty')}</p>
+      {none ? (
+        <div className="grid justify-items-center gap-4">
+          <div className="w-full">
+            <EmptyState title={t('emptyTitle')} text={t('emptyText')} />
+          </div>
+          {onStart ? (
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={onStart}>{t('start')}</Button>
+              {needsModel ? (
+                <Button variant="tertiary" render={<Link {...navigation.link('models')} />}>
+                  {t('connectModel')}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : shown.length === 0 ? (
+        <p className="px-2 py-2 text-body text-muted-foreground">{t('noMatches')}</p>
       ) : (
         <ul aria-label={t('heading')} className="flex flex-col">
           {shown.map((x) => {
             const latest = latestSessionRun(x, runs);
             const terminal = uncertainSessionTerminal(x.sessionId, attention);
+            const Icon = x.meeting ? Users : MessageCircle;
             return (
               <li key={x.sessionId} className="flex items-center gap-2">
                 <Link
                   to="/sessions/$sessionId"
                   params={{ sessionId: x.sessionId }}
                   search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
-                  className="flex min-w-0 flex-1 items-baseline justify-between gap-3 rounded-md px-2 py-2 hover:bg-hover"
+                  data-session-kind={x.meeting ? 'meeting' : 'session'}
+                  className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-hover"
                 >
-                  <span className="min-w-0 truncate text-body text-foreground">{x.title}</span>
-                  <span className="min-w-0 text-right text-caption text-muted-foreground">
-                    {[
-                      x.pinned ? t('pinned') : null,
-                      x.archivedAt ? t('archived') : null,
-                      terminal ? t('terminalNeedsAttention') : null,
-                      latest
-                        ? status(latest.status)
-                        : terminal
-                          ? null
-                          : t(`listState.${sessionListState(x, runs)}`),
-                      t('runCount', {
-                        count: runs.filter((r) => r.sessionId === x.sessionId).length,
-                      }),
-                      tw('updated', { time: ago(x.updatedAt) }),
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+                  <Icon aria-hidden size={16} className="shrink-0 text-muted-foreground" />
+                  {x.meeting ? <span className="sr-only">{t('meeting')}</span> : null}
+                  {/* Narrow: the state and time take a second line under the title. */}
+                  <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                    <span className="min-w-0 truncate text-body text-foreground">{x.title}</span>
+                    <span className="min-w-0 text-caption text-muted-foreground sm:shrink-0 sm:text-right">
+                      {[
+                        x.pinned ? t('pinned') : null,
+                        x.archivedAt ? t('archived') : null,
+                        terminal ? t('terminalNeedsAttention') : null,
+                        latest
+                          ? status(latest.status)
+                          : terminal
+                            ? null
+                            : t(`listState.${sessionListState(x, runs)}`),
+                        t('runCount', {
+                          count: runs.filter((r) => r.sessionId === x.sessionId).length,
+                        }),
+                        tw('updated', { time: ago(x.updatedAt) }),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
                   </span>
                 </Link>
                 {x.archivedAt || sessionListState(x, runs, attention) === 'empty' ? (

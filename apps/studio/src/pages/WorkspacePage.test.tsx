@@ -66,7 +66,7 @@ const pending = (sessionId: string): InboxItemView => ({
   sessionId,
   sessionTitle: 'Fix the build',
   runId: null,
-  detail: null,
+  detail: 'Private request body',
 });
 const binding: WorkspaceBindingView = {
   bindingId: 'binding_1',
@@ -217,7 +217,11 @@ it('heads the project with its name, folder state, pending count and actions', a
   const count = [...container.querySelectorAll('a')].find(
     (link) => link.textContent === '2 pending',
   );
-  expect(count?.getAttribute('href')).toBe('/inbox');
+  // Every inbox item of the project, leading to Needs you and back here.
+  const inbox = new URL(count?.getAttribute('href') ?? '', 'http://x');
+  expect(inbox.pathname).toBe('/inbox');
+  expect(inbox.searchParams.get('returnTo')).toBe('/projects/alpha');
+  expect(container.textContent).not.toContain('Private request body');
   expect(container.textContent).toContain('Folder linked');
   const buttons = [...container.querySelectorAll('button')].map((button) => button.textContent);
   expect(buttons).toContain('New conversation');
@@ -225,12 +229,84 @@ it('heads the project with its name, folder state, pending count and actions', a
   expect(
     container.querySelector('button[aria-label="More ways to start a conversation"]'),
   ).toBeTruthy();
-  const preview = [...container.querySelectorAll('a')].find(
-    (link) => link.textContent === 'Task board preview',
+  // The sample-data preview is not a header action of its own.
+  expect(
+    [...container.querySelectorAll('a')].some((link) => link.textContent === 'Task board preview'),
+  ).toBe(false);
+});
+
+it('keeps rename, archive, all projects and the task board preview in one more menu', async () => {
+  const { container } = await render();
+  const more = container.querySelector<HTMLButtonElement>('button[aria-label="Actions for Alpha"]');
+  expect(more).toBeTruthy();
+  // The menu follows the start actions at the row's end, after New meeting.
+  const order = [...container.querySelectorAll('button')].map(
+    (button) => button.getAttribute('aria-label') ?? button.textContent,
   );
+  expect(order.indexOf('Actions for Alpha')).toBeGreaterThan(
+    order.findIndex((text) => text?.includes('New meeting')),
+  );
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  await act(async () => more?.click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  const menu = document.querySelector<HTMLElement>('[role="menu"]');
+  expect(menu).toBeTruthy();
+  const items = [...(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  // The kit item repeats its label for layout; each row is read by what it starts with.
+  const expected = ['Rename', 'Archive', 'All projects…', 'Task board preview'];
+  expect(items).toHaveLength(expected.length);
+  for (const [index, item] of items.entries())
+    expect(item.textContent).toMatch(new RegExp(`^${expected[index]}`));
+  // The preview says it shows sample data.
+  expect(items.at(-1)?.textContent).toContain('Preview');
+  const preview = items.at(-1)?.closest('a') ?? items.at(-1);
   const href = new URL(preview?.getAttribute('href') ?? '', 'http://x');
   expect(href.pathname).toBe('/preview/task-board');
   expect(href.searchParams.get('returnTo')).toBe('/projects/alpha');
+});
+
+it('says the pending count once, in the header', async () => {
+  const { container } = await render();
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]');
+  expect(panel?.textContent).not.toMatch(/need(s)? you/);
+  expect(container.textContent?.match(/2 pending/g)).toHaveLength(1);
+});
+
+it('shows one empty state that starts a conversation when the project has no sessions', async () => {
+  fixture.data = { ...fixture.data, sessions: [] };
+  const createSession = vi.fn(async () => ({ ok: true, session: session('session_9', 'New') }));
+  fixture.services = {
+    ...fixture.services,
+    repository: { listSessions: vi.fn(async () => []), createSession },
+    workspaces: { ...(fixture.services.workspaces as object), inbox: vi.fn(async () => []) },
+  };
+  const { container, router } = await render();
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
+  expect(panel.textContent).toContain(messages.Sessions.emptyTitle);
+  // The old getting-started card and its separate sentence are gone.
+  expect(container.textContent).not.toContain('Getting started');
+  expect(panel.querySelectorAll('p').length).toBeLessThanOrEqual(1);
+  const start = [...panel.querySelectorAll('button')].find(
+    (button) => button.textContent === messages.Sessions.start,
+  );
+  expect(start).toBeTruthy();
+  // Its name differs from the header's New conversation, so neither is ambiguous.
+  expect(
+    [...container.querySelectorAll('button')].filter(
+      (button) => button.textContent === 'New conversation',
+    ),
+  ).toHaveLength(1);
+  // It is the header's own start: one session, then the conversation opens.
+  await act(async () => start?.click());
+  await settle();
+  expect(createSession).toHaveBeenCalledTimes(1);
+  expect(router.state.location.pathname).toBe('/sessions/session_9');
 });
 
 it('shows the source folder and each working copy, saying where nothing is known', async () => {

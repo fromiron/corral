@@ -70,7 +70,7 @@ test('a project keeps its Corrals and runs apart, and / returns to it', async ({
   await tab(page, 'Runs');
   await expect(page.getByText('No runs yet.')).toBeVisible();
   await tab(page, 'Teams');
-  await expect(page.getByText('No teams yet.')).toBeVisible();
+  await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
 
   // `/` opens the project worked in last.
   await openProject(page, 'Docs');

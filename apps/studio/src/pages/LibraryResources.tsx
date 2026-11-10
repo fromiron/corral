@@ -6,6 +6,7 @@ import type {
 } from '@corral/contracts';
 import {
   Button,
+  EmptyState,
   KitBadge,
   SectionLabel,
   Table,
@@ -15,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@corral/react/design-kit';
+import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type DependencyList, useCallback, useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -158,6 +160,7 @@ function map<T, U>(loaded: Loaded<T>, rows: (value: T) => U): Loaded<U> {
 }
 
 export function LibraryResources({ projectId }: { projectId: string }) {
+  const t = useTranslations('Library.resources');
   const { harnesses } = useServices();
   const [entries, retryEntries] = useLoaded(harnesses ? () => harnesses.entries() : null, [
     harnesses,
@@ -179,9 +182,31 @@ export function LibraryResources({ projectId }: { projectId: string }) {
     packages: { rows: map(packages, packageRows), retry: retryPackages },
     mcp: { rows: map(mcp, mcpRows), retry: retryMcp },
   };
+  // Without the local server every group is the same one state, said once.
+  if (!harnesses) return <EmptyState title={t('localOnly')} text={t('localOnlyText')} />;
+  const rowsOf = (group: ResourceGroup) => groups[group].rows;
+  // A group is listed when it has rows or failed to load; a failure is never "none".
+  const listed = RESOURCE_GROUPS.filter((group) => {
+    const rows = rowsOf(group);
+    return rows.state === 'failed' || (rows.state === 'ready' && rows.value.length > 0);
+  });
+  const empty = RESOURCE_GROUPS.filter((group) => {
+    const rows = rowsOf(group);
+    return rows.state === 'ready' && rows.value.length === 0;
+  });
+  const loading = RESOURCE_GROUPS.some((group) => rowsOf(group).state === 'loading');
+  if (!loading && listed.length === 0)
+    return (
+      <div className="grid justify-items-center gap-4">
+        <div className="w-full">
+          <EmptyState title={t('emptyTitle')} text={t('emptyText')} />
+        </div>
+        <AddResources groups={empty} projectId={projectId} />
+      </div>
+    );
   return (
     <div className="flex flex-col gap-8">
-      {RESOURCE_GROUPS.map((group) => (
+      {listed.map((group) => (
         <ResourceSection
           key={group}
           group={group}
@@ -190,7 +215,37 @@ export function LibraryResources({ projectId }: { projectId: string }) {
           onRetry={groups[group].retry}
         />
       ))}
+      {loading ? (
+        <p role="status" className="text-body text-muted-foreground">
+          {t('loading')}
+        </p>
+      ) : (
+        <AddResources groups={empty} projectId={projectId} />
+      )}
     </div>
+  );
+}
+
+/** The empty groups' way into settings, so adding the first of a kind stays one click away. */
+function AddResources({ groups, projectId }: { groups: ResourceGroup[]; projectId: string }) {
+  const t = useTranslations('Library.resources');
+  const navigation = useSettingsNavigation();
+  if (groups.length === 0) return null;
+  return (
+    <nav aria-label={t('addKinds')} className="flex flex-wrap items-center gap-1">
+      {groups.map((group) => (
+        <Button
+          key={group}
+          variant="ghost"
+          size="compact"
+          aria-label={t('manageNamed', { name: t(`group.${group}`) })}
+          render={<Link {...navigation.link(SECTION[group], projectId)} />}
+        >
+          <Plus aria-hidden />
+          {t(`group.${group}`)}
+        </Button>
+      ))}
+    </nav>
   );
 }
 
@@ -215,24 +270,16 @@ function ResourceSection({
           {name}
         </SectionLabel>
       </div>
-      {rows.state === 'local' ? (
-        <p className="text-body text-muted-foreground">{t('localOnly')}</p>
-      ) : rows.state === 'loading' ? (
-        <p role="status" className="text-body text-muted-foreground">
-          {t('loading')}
-        </p>
-      ) : rows.state === 'failed' ? (
+      {rows.state === 'failed' ? (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-body text-destructive">
           <span>{t('loadFailed', { group: name })}</span>
           <Button variant="tertiary" size="compact" onClick={onRetry}>
             {t('retry')}
           </Button>
         </div>
-      ) : rows.value.length === 0 ? (
-        <p className="text-body text-muted-foreground">{t('none')}</p>
-      ) : (
+      ) : rows.state === 'ready' ? (
         <ResourceTable group={group} projectId={projectId} rows={rows.value} />
-      )}
+      ) : null}
     </section>
   );
 }

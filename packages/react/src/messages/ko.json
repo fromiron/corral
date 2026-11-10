@@ -552,7 +552,7 @@
     "import": "JSON 가져오기",
     "importHint": ".corral.json 파일을 고르세요.",
     "importFailed": "가져오기 실패:",
-    "empty": "아직 팀이 없습니다.",
+    "empty": "아직 팀이 없습니다",
     "storedLocally": "팀은 이 브라우저에만 저장되며 실행 기록은 새로고침할 때 사라집니다.",
     "notPersistent": "이 브라우저에서는 저장할 수 없습니다. 탭을 닫으면 팀이 사라집니다.",
     "revisions": "버전 {definition} · {nodes, plural, =0 {노드 없음} one {노드 #개} other {노드 #개}}",
@@ -567,7 +567,7 @@
     "runsHeading": "실행 목록",
     "runsEmpty": "아직 실행이 없습니다.",
     "runStarted": "{time} 시작",
-    "emptyHint": "아래 템플릿에서 시작하거나 빈 팀을 만들거나 JSON 파일을 가져오세요.",
+    "emptyHint": "팀은 대화를 시작할 때 쓸 역할을 저장합니다.",
     "templatesHeading": "템플릿으로 시작",
     "useTemplate": "팀 편집해서 쓰기",
     "saveCopyTitle": "팀 사본 저장",
@@ -623,7 +623,8 @@
       "noCopies": "세션 작업 사본 없음",
       "noCopiesText": "파일을 바꾸는 작업을 하면 세션이 만듭니다.",
       "loading": "불러오는 중…"
-    }
+    },
+    "previewBadge": "미리보기"
   },
   "Editor": {
     "name": "팀 이름",
@@ -737,7 +738,6 @@
   "Models": {
     "loadFailed": "모델 설정을 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.",
     "loading": "모델 설정을 불러오는 중…",
-    "heading": "모델",
     "tabs": {
       "label": "모델 설정",
       "signIn": "로그인",
@@ -746,7 +746,7 @@
       "images": "이미지",
       "usage": "사용량"
     },
-    "intro": "Corral은 공급자의 로그인 페이지로 로그인합니다. 로그인 정보는 작업 공간 밖, 이 컴퓨터에 보관합니다. Corral은 토큰을 보여 주거나 기록하거나 내보내지 않습니다.",
+    "intro": "로그인 정보는 작업 공간 밖, 이 컴퓨터에 남습니다. Corral은 토큰을 보여 주거나 기록하거나 내보내지 않습니다.",
     "browserOnly": "모델 설정은 로컬 서버가 필요합니다. 브라우저 데모는 항상 시뮬레이션 에이전트를 씁니다.",
     "noLive": "이 서버는 시뮬레이션 에이전트만 실행합니다.",
     "providers": "로그인",
@@ -994,8 +994,7 @@
     "runLoading": "실행을 여는 중…",
     "runFailed": "이 실행을 열지 못했어요.",
     "runMissing": "이 실행을 더 이상 찾을 수 없어요.",
-    "nothingWaiting": "지금 이 실행에서 기다리는 응답이 없어요.",
-    "projectSummary": "확인 필요 항목 {count}개"
+    "nothingWaiting": "지금 이 실행에서 기다리는 응답이 없어요."
   },
   "Usage": {
     "heading": "사용량",
@@ -1536,22 +1535,6 @@
     "chooseRunsHint": "프로젝트의 실행 목록에서 비교할 실행 두 개를 선택하세요.",
     "unnamedRun": "실행"
   },
-  "GettingStarted": {
-    "heading": "시작하기",
-    "hide": "숨기기",
-    "done": "완료",
-    "model": "모델 연결",
-    "modelAction": "모델 연결하기",
-    "corral": "팀 고르기",
-    "corralAction": "목표에서 시작하기",
-    "corralOr": "또는 위 상자에서 추천 팀 고르기",
-    "run": "첫 요청 보내기",
-    "runAction": "위에서 대화를 시작한 뒤 원하는 일을 알려주세요.",
-    "review": "결과 읽기",
-    "reviewAction": "대화에서 결과를 펼치세요",
-    "optionalCorral": "팀을 만들지 않아도 바로 대화할 수 있습니다.",
-    "customizeCorral": "Corral 구성하기 (선택)"
-  },
   "Results": {
     "noCurrentResult": "현재 열 수 있는 최종 결과가 없습니다.",
     "label": "결과",
@@ -1654,7 +1637,6 @@
     "teamLabel": "Corral",
     "noTeam": "팀 없음",
     "create": "세션 만들기",
-    "empty": "아직 세션이 없습니다. 세션은 한 목적을 여러 실행에 걸쳐 이어 갑니다.",
     "search": "이 프로젝트의 세션 검색",
     "pinned": "고정됨",
     "pin": "고정",
@@ -1806,7 +1788,13 @@
     "collapse": "접기",
     "startSuggestions": "시작 제안",
     "startWithTeam": "{team}(으)로 시작",
-    "runNumber": "실행 #{number}"
+    "runNumber": "실행 #{number}",
+    "emptyTitle": "아직 세션이 없습니다",
+    "emptyText": "세션은 한 목적을 여러 요청과 실행에 걸쳐 이어 갑니다.",
+    "connectModel": "모델 연결하기",
+    "noMatches": "검색 조건에 맞는 세션이 없습니다.",
+    "meeting": "회의",
+    "start": "대화 시작"
   },
   "Files": {
     "folderHeading": "프로젝트 폴더",
@@ -2431,7 +2419,7 @@
   },
   "Harness": {
     "heading": "작업 방식",
-    "intro": "스킬·확장·도구 선택을 버전으로 저장합니다. 기본값에 반영하거나 역할에서 새 버전을 선택하세요.",
+    "intro": "저장할 때마다 새 버전이 생기고, 기본값과 역할이 실행할 버전을 고릅니다.",
     "sharedScope": "공용 작업 방식: 저장하면 이 방식을 고른 모든 기본값과 역할에 쓰일 새 리비전이 됩니다. 설정 대상 프로젝트는 도구 목록과 미리보기만 제공합니다.",
     "localOnly": "작업 방식은 로컬 Corral 서버에서 사용할 수 있습니다.",
     "resources": "리소스",
@@ -2938,8 +2926,8 @@
     "skills": "스킬",
     "hooks": "Hook·확장",
     "mcp": "MCP 서버",
-    "skillsIntro": "지침을 작성하거나 가져와 작업 방식에 연결하세요. 내용과 실행에 사용할 버전을 따로 관리합니다.",
-    "hooksIntro": "시작 알림·확인 Hook을 만들거나 Pi 확장을 가져오세요. 코드는 내용을 신뢰하고 작업 방식에서 선택한 뒤 실행됩니다.",
+    "skillsIntro": "Skill은 작업 방식에서 선택한 뒤에만 쓰입니다.",
+    "hooksIntro": "Hook과 확장은 신뢰하고 작업 방식에서 선택한 뒤에만 실행됩니다.",
     "add": "추가",
     "addSkill": "스킬 추가",
     "addHook": "Hook·확장 추가",
@@ -2995,10 +2983,8 @@
     "archived": "보관됨",
     "showArchived": "보관한 항목 보기",
     "noMatches": "검색 결과가 없습니다.",
-    "empty": "아직 항목이 없습니다. 추가 버튼으로 시작하세요.",
     "profileCount": "작업 방식 {count}개에서 참조",
     "details": "항목 상세",
-    "selectItem": "목록에서 항목을 선택하면 내용과 사용처가 표시됩니다.",
     "loadingContent": "내용을 불러오는 중…",
     "useInProfile": "{name}에서 사용",
     "inherited": "상위 기본 설정에서 선택했습니다. 해당 기본 작업 방식에서 변경하세요.",
@@ -3024,7 +3010,7 @@
     "profileSearch": "작업 방식 검색",
     "archivedSelected": "보관된 항목을 계속 참조 중",
     "profileOlder": "현재 역할은 이전 revision을 사용합니다. 변경하려면 새 revision을 선택하세요.",
-    "mcpIntro": "프로젝트에 사용할 도구 서버를 등록하고 인증·연결을 확인하세요. 서버 사용 허용과 역할의 도구 선택은 별개입니다.",
+    "mcpIntro": "서버는 이 프로젝트에 속합니다. 서버 사용 허용과 역할의 도구 선택은 별개입니다.",
     "addMcp": "MCP 서버 추가",
     "editMcp": "MCP 서버 편집",
     "serverName": "서버 이름",
@@ -3057,7 +3043,6 @@
     "allowTools": "선택한 도구와 서버 사용",
     "toolDiscoveryHint": "도구 선택은 허용 목록을 바꿉니다. 상위 설정의 제한과 실행 시 승인은 유지됩니다.",
     "mcpUsageEmpty": "현재 기본값·팀 역할에서 선택하지 않았습니다.",
-    "noServers": "등록한 MCP 서버가 없습니다.",
     "refresh": "새로고침",
     "replaceVersion": "이 작업 방식의 이전 버전 {count}개를 새 사본으로 교체할까요? 이전 실행과 다른 작업 방식은 유지됩니다.",
     "connectionOptions": "고급 연결 설정",
@@ -3095,7 +3080,15 @@
       "protocol": "MCP 서버가 요청을 거부했어요. 접속 주소와 전송 방식을 확인하세요.",
       "unknown": "MCP 연결 확인에 실패했어요. 서버, 전송 방식, 실행 설정을 확인한 뒤 다시 연결하세요."
     },
-    "internalSkillName": "내부 스킬 이름"
+    "internalSkillName": "내부 스킬 이름",
+    "emptySkills": "아직 Skill이 없습니다",
+    "emptySkillsText": "작성하거나 가져온 Skill이 여기에 보입니다.",
+    "emptyHooks": "아직 Hook이 없습니다",
+    "emptyHooksText": "만든 Hook과 가져온 확장이 여기에 보입니다.",
+    "emptyMcp": "아직 MCP 서버가 없습니다",
+    "emptyMcpText": "이 프로젝트에 등록한 서버가 연결 상태와 함께 여기에 보입니다.",
+    "noArchived": "보관한 항목이 없습니다.",
+    "onlyArchived": "모든 항목이 보관됐습니다. 보관한 항목을 보이면 나타납니다."
   },
   "Library": {
     "title": "라이브러리",
@@ -3116,7 +3109,9 @@
       "updated": "저장",
       "detail": "팀 상세",
       "newConversation": "이 팀으로 새 대화",
-      "edit": "편집"
+      "edit": "편집",
+      "browseTemplates": "템플릿 보기",
+      "storage": "팀 저장 위치"
     },
     "resources": {
       "group": {
@@ -3152,7 +3147,6 @@
       "loadFailed": "{group} 목록을 불러오지 못했습니다.",
       "retry": "다시 시도",
       "localOnly": "로컬 서버에서 사용",
-      "none": "없음",
       "issue": {
         "package_limit": {
           "cause": "설치 거부: 패키지가 크기 또는 파일 수 한도를 넘었습니다.",
@@ -3178,7 +3172,11 @@
           "cause": "이 리소스로 에이전트 런타임을 시작하지 못했습니다.",
           "next": "진단을 확인한 뒤 다시 실행하세요."
         }
-      }
+      },
+      "emptyTitle": "아직 리소스가 없습니다",
+      "emptyText": "추가한 Skill·Hook·패키지·MCP 서버가 상태와 함께 여기에 보입니다.",
+      "localOnlyText": "Skill·Hook·패키지·MCP 서버는 로컬 Corral 서버가 설치하고 확인합니다.",
+      "addKinds": "리소스 추가"
     }
   },
   "Navigation": {
@@ -3973,7 +3971,7 @@
   },
   "Vault": {
     "heading": "설정 금고",
-    "intro": "이동 가능한 설정을 암호화해 파일로 저장하거나 S3에 동기화합니다. 대화·프로젝트 원본·Run·산출물은 포함하지 않습니다.",
+    "intro": "이동 가능한 설정을 암호화해 파일이나 S3로 옮깁니다. 대화·프로젝트 원본·Run·산출물은 넣지 않습니다.",
     "password": "금고 암호",
     "passwordHint": "12자 이상입니다. 암호는 저장하지 않습니다. 파일 해독과 중단된 복구에 필요하니 따로 보관하세요.",
     "scope": "내보낼 설정",

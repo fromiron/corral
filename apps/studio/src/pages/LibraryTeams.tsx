@@ -7,6 +7,7 @@ import {
   CardFooter,
   CardHeader,
   EmptyState,
+  fontWeights,
   KitCardTitle,
   SectionLabel,
   Select,
@@ -18,6 +19,7 @@ import {
   TableRow,
   Tooltip,
 } from '@corral/react/design-kit';
+import { Info } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type ChangeEvent, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -53,12 +55,15 @@ export function LibraryTeams({
   projects,
   corrals,
   onChanged,
+  onBrowseTemplates,
 }: {
   projectId: string;
   project: ProjectSummary | undefined;
   projects: ProjectSummary[];
   corrals: CorralSummary[];
   onChanged: () => void;
+  /** Switches the library to its Templates tab. */
+  onBrowseTemplates: () => void;
 }) {
   const t = useTranslations('Workspace');
   const tl = useTranslations('Library');
@@ -168,39 +173,56 @@ export function LibraryTeams({
       });
     });
 
+  const storage =
+    mode === 'server' ? t('storedOnServer') : persistent ? t('storedLocally') : t('notPersistent');
+  const importButton = (
+    <>
+      <Tooltip content={t('importHint')} className="max-w-xs">
+        <Button
+          variant={teams.length ? 'tertiary' : 'ghost'}
+          size={teams.length ? 'compact' : 'default'}
+          disabled={busy}
+          onClick={() => importInput.current?.click()}
+          aria-description={t('importHint')}
+        >
+          {t('import')}
+        </Button>
+      </Tooltip>
+      <input
+        ref={importInput}
+        type="file"
+        accept=".json,application/json"
+        onChange={onImport}
+        aria-label={t('import')}
+        aria-description={t('importHint')}
+        tabIndex={-1}
+        className="hidden"
+      />
+    </>
+  );
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionLabel count={teams.length}>{tl('teams.list')}</SectionLabel>
-        {archived ? null : (
-          <div className="flex flex-wrap items-center gap-2">
-            <Tooltip content={t('importHint')} className="max-w-xs">
-              <Button
-                variant="tertiary"
-                size="compact"
-                disabled={busy}
-                onClick={() => importInput.current?.click()}
-                aria-description={t('importHint')}
-              >
-                {t('import')}
+      {teams.length ? (
+        <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <SectionLabel count={teams.length}>{tl('teams.list')}</SectionLabel>
+            {/* Where teams are kept is worth knowing once, not a line under the list. */}
+            <Tooltip content={storage} className="max-w-xs">
+              <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
+                <Info aria-hidden />
               </Button>
             </Tooltip>
-            <input
-              ref={importInput}
-              type="file"
-              accept=".json,application/json"
-              onChange={onImport}
-              aria-label={t('import')}
-              aria-description={t('importHint')}
-              tabIndex={-1}
-              className="hidden"
-            />
-            <Button size="compact" disabled={busy} onClick={() => void openNew()}>
-              {t('new')}
-            </Button>
           </div>
-        )}
-      </div>
+          {archived ? null : (
+            <div className="flex flex-wrap items-center gap-2">
+              {importButton}
+              <Button size="compact" disabled={busy} onClick={() => void openNew()}>
+                {t('new')}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : null}
       {archived ? (
         <p role="note" className="text-body text-warning">
           {tp('archivedNote')}
@@ -208,7 +230,22 @@ export function LibraryTeams({
       ) : null}
       <Errors errors={errors} />
       {teams.length === 0 ? (
-        <EmptyState title={t('empty')} text={t('emptyHint')} />
+        <div className="grid justify-items-center gap-4">
+          <div className="w-full">
+            <EmptyState title={t('empty')} text={t('emptyHint')} />
+          </div>
+          {archived ? null : (
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button disabled={busy} onClick={() => void openNew()}>
+                {t('new')}
+              </Button>
+              <Button variant="tertiary" onClick={onBrowseTemplates}>
+                {tl('teams.browseTemplates')}
+              </Button>
+              {importButton}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <Table aria-label={tl('teams.list')}>
@@ -223,17 +260,23 @@ export function LibraryTeams({
               {teams.map((corral, index) => {
                 const chosen = corral.corralId === selected?.corralId;
                 return (
-                  <TableRow key={corral.corralId} index={index}>
-                    <TableCell>
-                      <Button
-                        variant={chosen ? 'secondary' : 'ghost'}
-                        size="compact"
+                  <TableRow
+                    key={corral.corralId}
+                    index={index}
+                    data-selected={chosen}
+                    className={chosen ? 'bg-secondary [&>td]:text-foreground' : undefined}
+                  >
+                    <TableCell className="max-w-0 w-1/2">
+                      {/* The row's one control; it stretches over the row for the pointer. */}
+                      <button
+                        type="button"
                         aria-pressed={chosen}
                         onClick={() => select(corral.corralId)}
-                        className="max-w-full justify-start text-foreground"
+                        className="block w-full truncate rounded-sm text-left text-foreground after:absolute after:inset-0 after:content-['']"
+                        style={chosen ? { fontVariationSettings: fontWeights.semibold } : undefined}
                       >
-                        <span className="truncate">{corral.name}</span>
-                      </Button>
+                        {corral.name}
+                      </button>
                     </TableCell>
                     <TableCell>
                       {t('revisions', {
@@ -315,13 +358,6 @@ export function LibraryTeams({
           ) : null}
         </div>
       )}
-      <p className="text-caption text-muted-foreground">
-        {mode === 'server'
-          ? t('storedOnServer')
-          : persistent
-            ? t('storedLocally')
-            : t('notPersistent')}
-      </p>
     </div>
   );
 }

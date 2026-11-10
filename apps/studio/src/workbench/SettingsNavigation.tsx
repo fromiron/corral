@@ -1,6 +1,7 @@
 import {
   cn,
   DialogTitle,
+  fontWeights,
   Select,
   Sidebar,
   SidebarContent,
@@ -29,6 +30,7 @@ import {
   Users,
 } from '@corral/react/icons';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
+import { useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName } from '../projects.ts';
 import {
@@ -75,9 +77,22 @@ export function SettingsNavigation({
   const location = useRouterState({ select: (state) => state.location });
   const active = navigation.section ?? settingsSection(location.pathname, location.search.section);
   const label = useSettingsSectionLabel();
+  const nav = useRef<HTMLElement>(null);
+  // The list scrolls on its own (its edges fade); the current section is always in view.
+  useEffect(() => {
+    void active;
+    nav.current
+      ?.querySelector<HTMLElement>('[data-sidebar="menu-button"][data-active="true"]')
+      ?.scrollIntoView?.({ block: 'nearest' });
+  }, [active]);
   // `/settings/*` replaces into the dialog (#88), so the header holds only the title.
   const sidebar = (
-    <nav data-testid="settings-sidebar" aria-label={td('settings')} className="h-full min-h-0">
+    <nav
+      ref={nav}
+      data-testid="settings-sidebar"
+      aria-label={td('settings')}
+      className="h-full min-h-0"
+    >
       <Sidebar
         collapsible="none"
         rail={false}
@@ -86,9 +101,17 @@ export function SettingsNavigation({
       >
         <SidebarHeader className="gap-3 px-4 pt-5 pb-2">
           {navigation.overlay ? (
-            <DialogTitle className="text-title font-normal">{td('settings')}</DialogTitle>
+            // Normal weight, as the kit's, so the title does not out-shout the sections.
+            <DialogTitle
+              className="text-title"
+              style={{ fontVariationSettings: fontWeights.normal }}
+            >
+              {td('settings')}
+            </DialogTitle>
           ) : (
-            <h2 className="text-title">{td('settings')}</h2>
+            <h2 className="text-title" style={{ fontVariationSettings: fontWeights.normal }}>
+              {td('settings')}
+            </h2>
           )}
         </SidebarHeader>
         <SidebarContent>

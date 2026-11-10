@@ -63,7 +63,7 @@ export function SettingsDialog({
       <DialogPopup
         data-settings-dialog
         aria-label={t('title')}
-        className="settings-dialog flex h-[min(640px,calc(100dvh-4rem))] w-full max-w-[880px] flex-col overflow-hidden p-0 max-sm:h-[100dvh] max-sm:rounded-none"
+        className="settings-dialog flex h-[min(820px,90dvh)] w-[min(1120px,94vw)] max-w-none flex-col overflow-hidden p-0 max-sm:h-[100dvh] max-sm:w-full max-sm:rounded-none"
         bottomStickOnMobile={false}
         showCloseButton={false}
         initialFocus={() => {
@@ -83,7 +83,8 @@ export function SettingsDialog({
               ) ?? false)
         }
       >
-        <SidebarProvider persist={false} shortcut={null} width="13rem" className="h-full min-h-0">
+        {/* Wide enough that no section name is cut, in English or Korean. */}
+        <SidebarProvider persist={false} shortcut={null} width="15.5rem" className="h-full min-h-0">
           <div className="hidden h-full shrink-0 sm:block">
             <SettingsNavigation inbox={inbox} currentProject={currentProject} />
           </div>

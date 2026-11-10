@@ -177,14 +177,12 @@ export function VaultSettingsPage() {
   const canAct = Boolean(vault && password.length >= 12 && !busy);
   const pending = status && !['idle', 'committed', 'rolled_back'].includes(status.status);
   return (
-    <SettingsLayout active="vault">
+    <SettingsLayout active="vault" {...(vault ? { description: t('intro') } : {})}>
       <main className="settings-content">
-        <h2 className="text-2xl font-semibold">{t('heading')}</h2>
         {!vault ? (
-          <p className="text-sm text-muted-foreground">{t('serverOnly')}</p>
+          <p className="text-body text-muted-foreground">{t('serverOnly')}</p>
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">{t('intro')}</p>
             <label className="flex flex-col gap-1 text-sm">
               {t('password')}
               <Input

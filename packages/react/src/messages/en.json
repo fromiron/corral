@@ -552,7 +552,7 @@
     "import": "Import JSON",
     "importHint": "Choose a .corral.json file.",
     "importFailed": "Import failed:",
-    "empty": "No teams yet.",
+    "empty": "No teams yet",
     "storedLocally": "Teams are saved in this browser only, and executions last until you reload.",
     "notPersistent": "This browser does not allow saving. Teams last until you close this tab.",
     "revisions": "Version {definition} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
@@ -567,7 +567,7 @@
     "runsHeading": "Runs",
     "runsEmpty": "No runs yet.",
     "runStarted": "Started {time}",
-    "emptyHint": "Start from a template below, create an empty team or import a JSON file.",
+    "emptyHint": "A team saves the roles a conversation can start with.",
     "templatesHeading": "Start from a template",
     "useTemplate": "Edit this team",
     "saveCopyTitle": "Save a team copy",
@@ -623,7 +623,8 @@
       "noCopies": "No session working copies",
       "noCopiesText": "A session makes one when its work changes files.",
       "loading": "Loading…"
-    }
+    },
+    "previewBadge": "Preview"
   },
   "Editor": {
     "name": "Team name",
@@ -737,7 +738,6 @@
   "Models": {
     "loadFailed": "Could not load model settings. Check the connection and try again.",
     "loading": "Loading model settings…",
-    "heading": "Models",
     "tabs": {
       "label": "Model settings",
       "signIn": "Sign-in",
@@ -746,7 +746,7 @@
       "images": "Images",
       "usage": "Usage"
     },
-    "intro": "Corral signs in through the provider’s own page. Your sign-in is kept on this computer, outside the workspace. Corral never shows, logs or exports the token.",
+    "intro": "Your sign-in stays on this computer, outside the workspace. Corral never shows, logs or exports the token.",
     "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",
     "noLive": "This server runs simulated agents only.",
     "providers": "Sign-in",
@@ -994,8 +994,7 @@
     "runLoading": "Opening the run…",
     "runFailed": "Couldn't open this run.",
     "runMissing": "This run is no longer available.",
-    "nothingWaiting": "Nothing waits on this run now.",
-    "projectSummary": "{count, plural, one {# item needs you} other {# items need you}}"
+    "nothingWaiting": "Nothing waits on this run now."
   },
   "Usage": {
     "heading": "Usage",
@@ -1536,22 +1535,6 @@
     "chooseRunsHint": "Choose two runs from the project’s Runs list to compare their results.",
     "unnamedRun": "Run"
   },
-  "GettingStarted": {
-    "heading": "Getting started",
-    "hide": "Hide this",
-    "done": "done",
-    "model": "Connect a model",
-    "modelAction": "Connect a model",
-    "corral": "Pick a team",
-    "corralAction": "Start from a goal",
-    "corralOr": "or choose a suggested team in the box above",
-    "run": "Send the first request",
-    "runAction": "Start a chat above, then describe what you need.",
-    "review": "Read the result",
-    "reviewAction": "Open the result in the conversation",
-    "optionalCorral": "You can chat without setting up a team.",
-    "customizeCorral": "Customize a Corral (optional)"
-  },
   "Results": {
     "noCurrentResult": "No current final result is available.",
     "label": "Results",
@@ -1654,7 +1637,6 @@
     "teamLabel": "Corral",
     "noTeam": "No team yet",
     "create": "Start session",
-    "empty": "No sessions yet. A session keeps one purpose across several runs.",
     "search": "Search this project’s sessions",
     "pinned": "Pinned",
     "pin": "Pin",
@@ -1806,7 +1788,13 @@
     "collapse": "Collapse",
     "startSuggestions": "Start suggestions",
     "startWithTeam": "Start with {team}",
-    "runNumber": "Run #{number}"
+    "runNumber": "Run #{number}",
+    "emptyTitle": "No sessions yet",
+    "emptyText": "A session keeps one purpose across its requests and runs.",
+    "connectModel": "Connect a model",
+    "noMatches": "No sessions match this search.",
+    "meeting": "Meeting",
+    "start": "Start a conversation"
   },
   "Files": {
     "folderHeading": "Project folder",
@@ -2431,7 +2419,7 @@
   },
   "Harness": {
     "heading": "Work styles",
-    "intro": "Save skill, extension and tool selections as a revision. Apply it to a default or choose the new revision on a role.",
+    "intro": "Each save makes a new revision; defaults and roles choose the one that runs.",
     "sharedScope": "Shared work style: saving makes a new revision for every default and role that chooses it. The project in Settings for only supplies tools and the preview.",
     "localOnly": "Work styles need the local Corral server.",
     "resources": "Resources",
@@ -2938,8 +2926,8 @@
     "skills": "Skills",
     "hooks": "Hooks & extensions",
     "mcp": "MCP servers",
-    "skillsIntro": "Write or import instructions, then select them in a work style. Content and execution versions stay separate.",
-    "hooksIntro": "Create a startup notification or confirmation hook, or import a Pi extension. Execution requires content trust and selection in a work style.",
+    "skillsIntro": "A Skill is used only after you select it in a work style.",
+    "hooksIntro": "Hooks and extensions run only after you trust them and select them in a work style.",
     "add": "Add",
     "addSkill": "Add skill",
     "addHook": "Add hook or extension",
@@ -2995,10 +2983,8 @@
     "archived": "Archived",
     "showArchived": "Show archived items",
     "noMatches": "No matching items.",
-    "empty": "No items yet. Use Add to get started.",
     "profileCount": "Referenced by {count} work styles",
     "details": "Item details",
-    "selectItem": "Select an item to see its content and usage.",
     "loadingContent": "Loading content…",
     "useInProfile": "Use in {name}",
     "inherited": "Selected by a parent default. Edit that default work style to change it.",
@@ -3024,7 +3010,7 @@
     "profileSearch": "Search work styles",
     "archivedSelected": "Still references an archived item",
     "profileOlder": "This role uses an older revision. Select the new revision to apply changes.",
-    "mcpIntro": "Register tool servers for this project, then check authentication and connectivity. Enabling a server and allowing role tools are separate.",
+    "mcpIntro": "Servers belong to this project. Enabling one and allowing its tools on a role are separate.",
     "addMcp": "Add MCP server",
     "editMcp": "Edit MCP server",
     "serverName": "Server name",
@@ -3057,7 +3043,6 @@
     "allowTools": "Use selected tools and server",
     "toolDiscoveryHint": "Selection updates the allowlist. Parent restrictions and execution-time approvals still apply.",
     "mcpUsageEmpty": "Not selected by a current default or team role.",
-    "noServers": "No MCP servers registered.",
     "refresh": "Refresh",
     "replaceVersion": "Replace {count} previous versions in this work style with this copy? Previous runs and other work styles stay unchanged.",
     "connectionOptions": "Advanced connection settings",
@@ -3095,7 +3080,15 @@
       "protocol": "The MCP server rejected the request. Check the endpoint address and transport.",
       "unknown": "The MCP connection test failed. Check the server, transport, and launch settings, then test again."
     },
-    "internalSkillName": "Internal skill name"
+    "internalSkillName": "Internal skill name",
+    "emptySkills": "No Skills yet",
+    "emptySkillsText": "Skills you write or import appear here.",
+    "emptyHooks": "No hooks yet",
+    "emptyHooksText": "Hooks you create and extensions you import appear here.",
+    "emptyMcp": "No MCP servers yet",
+    "emptyMcpText": "Servers you register for this project appear here with their connection.",
+    "noArchived": "No archived items.",
+    "onlyArchived": "Every item is archived. Show archived items to see them."
   },
   "Library": {
     "title": "Library",
@@ -3116,7 +3109,9 @@
       "updated": "Saved",
       "detail": "Team details",
       "newConversation": "New conversation with this team",
-      "edit": "Edit"
+      "edit": "Edit",
+      "browseTemplates": "Browse templates",
+      "storage": "Where teams are saved"
     },
     "resources": {
       "group": {
@@ -3152,7 +3147,6 @@
       "loadFailed": "Could not load {group}.",
       "retry": "Try again",
       "localOnly": "Available with the local server",
-      "none": "None",
       "issue": {
         "package_limit": {
           "cause": "Install refused: the package is over the size or file-count limit.",
@@ -3178,7 +3172,11 @@
           "cause": "The agent runtime could not start with this resource.",
           "next": "Check Diagnostics, then run again."
         }
-      }
+      },
+      "emptyTitle": "No resources yet",
+      "emptyText": "Skills, hooks, packages and MCP servers you add appear here with their status.",
+      "localOnlyText": "Skills, hooks, packages and MCP servers are installed and checked by the local Corral server.",
+      "addKinds": "Add resources"
     }
   },
   "Navigation": {
@@ -3973,7 +3971,7 @@
   },
   "Vault": {
     "heading": "Settings vault",
-    "intro": "Encrypt portable settings before saving a file or syncing to your S3 object. Conversations, project files, Runs and artifacts are excluded.",
+    "intro": "Encrypts portable settings for a file or S3 sync. Conversations, project files, Runs and artifacts stay out.",
     "password": "Vault password",
     "passwordHint": "At least 12 characters. This password is not saved. Keep it to decrypt files and recover interrupted imports.",
     "scope": "Settings to export",

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from './harness.ts';
 
 // Settings layout regressions from the workbench audit (#75 onwards) that need the server.
@@ -26,12 +29,38 @@ test.describe('model profiles', () => {
 });
 
 test('#75 the archived resources filter is named by its visible text', async ({ page, corral }) => {
-  await corral.open('/settings/skills');
-  const filter = page.getByRole('switch', { name: 'Show archived items', exact: true });
-  await expect(filter).toBeVisible();
-  await page.getByText('Show archived items', { exact: true }).click();
-  await expect(filter).toBeChecked();
-  expect(corral.errors).toEqual([]);
+  // An empty library shows one empty state; the filter appears once a Skill exists.
+  const source = mkdtempSync(join(tmpdir(), 'corral-archived-filter-'));
+  try {
+    mkdirSync(join(source, 'skills', 'writing'), { recursive: true });
+    writeFileSync(
+      join(source, 'package.json'),
+      JSON.stringify({
+        name: 'writing-pack',
+        version: '1.0.0',
+        license: 'MIT',
+        pi: { skills: ['./skills'] },
+      }),
+    );
+    writeFileSync(
+      join(source, 'skills', 'writing', 'SKILL.md'),
+      '---\nname: writing\ndescription: Write with sources.\n---\nAlways cite the source.',
+    );
+    await corral.open('/settings/skills');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Add method', exact: true }).click();
+    await page.getByRole('option', { name: 'Import folder', exact: true }).click();
+    await page.getByLabel('Resource folder', { exact: true }).fill(source);
+    await page.getByRole('button', { name: 'Review source', exact: true }).click();
+    await page.getByRole('button', { name: 'Save to library', exact: true }).click();
+    const filter = page.getByRole('switch', { name: 'Show archived items', exact: true });
+    await expect(filter).toBeVisible();
+    await page.getByText('Show archived items', { exact: true }).click();
+    await expect(filter).toBeChecked();
+    expect(corral.errors).toEqual([]);
+  } finally {
+    rmSync(source, { recursive: true, force: true });
+  }
 });
 
 test('#79 without a default, adoption points to the chosen scope defaults screen', async ({
@@ -199,7 +228,7 @@ test('#88 both default screens show the same four-step ladder and mark which ste
     .click();
   await expect(
     page
-      .getByRole('main')
+      .locator('[data-settings-header]')
       .getByRole('heading', { name: 'Personal default work style', exact: true }),
   ).toBeVisible();
   expect(corral.errors).toEqual([]);
@@ -213,9 +242,7 @@ test('#88 a settings address opens the same settings dialog over work, and closi
   // Entering by address shows the dialog form, not a separate page with its own back rules.
   await expect(page).toHaveURL(/\/projects\?(?:.*&)?settings=skills/);
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-  await expect(
-    dialog.getByRole('switch', { name: 'Show archived items', exact: true }),
-  ).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).not.toHaveURL(/settings/);

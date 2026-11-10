@@ -440,15 +440,85 @@ it('says when a package with a root SKILL.md was read as one Skill', async () =>
   expect(row?.textContent).toContain('move SKILL.md into a skills folder');
 });
 
-it('shows server-only groups as available with the local server in the browser demo', async () => {
+it('shows the browser demo one empty state that says resources need the local server', async () => {
   fixture.services = { ...fixture.services, mode: 'browser', harnesses: null };
   const { container } = await render('/library/resources');
-  for (const group of ['skills', 'hooks', 'extensions', 'packages', 'mcp']) {
-    const section = groupOf(container, group);
-    expect(section?.textContent).toContain('Available with the local server');
-    expect(section?.textContent).not.toContain('None');
-    expect(section?.querySelector('[role="alert"]')).toBeNull();
-  }
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
+  expect(panel.textContent?.match(/Available with the local server/g)).toHaveLength(1);
+  for (const group of ['skills', 'hooks', 'extensions', 'packages', 'mcp'])
+    expect(groupOf(container, group)).toBeNull();
+  expect(panel.textContent).not.toContain('None');
+  expect(panel.querySelector('[role="alert"]')).toBeNull();
+});
+
+it('shows one empty state with a way to add each kind when nothing is installed', async () => {
+  fixture.services = {
+    ...fixture.services,
+    harnesses: harnesses({
+      entries: vi.fn(async () => []),
+      packages: vi.fn(async () => []),
+      projectTools: vi.fn(async () => ({ ...mcp, mcpServers: [] })),
+    }),
+  };
+  const { container } = await render('/library/resources?project=project_1');
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
+  expect(panel.textContent).not.toContain('None');
+  for (const group of ['skills', 'hooks', 'extensions', 'packages', 'mcp'])
+    expect(groupOf(container, group)).toBeNull();
+  const sections = [...panel.querySelectorAll<HTMLAnchorElement>('a[aria-label^="Manage "]')].map(
+    (link) => new URL(link.href, 'http://x').searchParams.get('settings'),
+  );
+  expect(new Set(sections)).toEqual(new Set(['skills', 'hooks', 'mcp']));
+});
+
+it('lists only the groups that have items or failed, and keeps the others one click away', async () => {
+  const packages = vi.fn().mockRejectedValue(new Error('offline'));
+  fixture.services = {
+    ...fixture.services,
+    harnesses: harnesses({
+      entries: vi.fn(async () => [entry('skill', 'Code review', 'Created in Corral', 1)]),
+      packages,
+      projectTools: vi.fn(async () => ({ ...mcp, mcpServers: [] })),
+    }),
+  };
+  const { container } = await render('/library/resources?project=project_1');
+  expect(groupOf(container, 'skills')?.textContent).toContain('Code review');
+  expect(groupOf(container, 'packages')?.textContent).toContain('Could not load Packages.');
+  for (const group of ['hooks', 'extensions', 'mcp']) expect(groupOf(container, group)).toBeNull();
+  expect(container.textContent).not.toContain('None');
+  const mcpManage = container.querySelector<HTMLAnchorElement>(
+    'a[aria-label="Manage MCP servers"]',
+  );
+  expect(new URL(mcpManage?.href ?? '', 'http://x').searchParams.get('settings')).toBe('mcp');
+  const hooksManage = container.querySelector<HTMLAnchorElement>('a[aria-label="Manage Hooks"]');
+  expect(new URL(hooksManage?.href ?? '', 'http://x').searchParams.get('settings')).toBe('hooks');
+});
+
+it('offers New team and Browse templates when the project has no teams', async () => {
+  const { container, router } = await render('/library/teams?project=project_1');
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
+  // No pointer to templates "below": they are on their own tab.
+  expect(panel.textContent).not.toMatch(/below/i);
+  expect(byText(panel, 'button', 'New team')).toBeTruthy();
+  // The storage note is not a sentence under the list.
+  expect(panel.textContent).not.toContain('saved in this app data folder');
+  await act(async () => byText(panel, 'button', 'Browse templates')?.click());
+  await settle();
+  expect(router.state.location.pathname).toBe('/library/templates');
+  expect(router.state.location.search).toMatchObject({ project: 'project_1' });
+});
+
+it('selects a team by its whole row', async () => {
+  await team(repository, 'Alpha reviewers', 'project_1');
+  await team(repository, 'Alpha writers', 'project_1');
+  const { container } = await render('/library/teams?project=project_1');
+  const rows = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+  expect(rows.map((row) => row.dataset.selected)).toEqual(['true', 'false']);
+  await act(async () => byText(container, 'button', 'Alpha writers')?.click());
+  expect(rows.map((row) => row.dataset.selected)).toEqual(['false', 'true']);
 });
 
 it('never shows local paths or tokens in resource rows', async () => {

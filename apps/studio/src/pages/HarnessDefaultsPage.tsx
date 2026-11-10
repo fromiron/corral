@@ -14,14 +14,14 @@ const bindingKey = (value: HarnessDefault) =>
 
 export function HarnessDefaultsPage({ scope }: { scope: 'personal' | 'project' }) {
   const navigation = useSettingsNavigation();
-  const n = useTranslations('Navigation');
+  const t = useTranslations('Harness');
   const scopeId = scope === 'personal' ? 'default' : navigation.projectId;
   return (
-    <SettingsLayout active={scope === 'personal' ? 'defaults' : 'project-defaults'}>
+    <SettingsLayout
+      active={scope === 'personal' ? 'defaults' : 'project-defaults'}
+      description={t(scope === 'personal' ? 'personalDefaultHint' : 'projectDefaultHint')}
+    >
       <main className="settings-content">
-        <h2 className="text-2xl font-semibold">
-          {n(scope === 'personal' ? 'personalDefaults' : 'projectDefaults')}
-        </h2>
         <ScopeLadder current={scope} />
         {scopeId ? (
           <DefaultsEditor key={`${scope}:${scopeId}`} scope={scope} scopeId={scopeId} />
@@ -94,9 +94,6 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
   }
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        {t(scope === 'personal' ? 'personalDefaultHint' : 'projectDefaultHint')}
-      </p>
       {!api ? (
         <p>{t('localOnly')}</p>
       ) : (
