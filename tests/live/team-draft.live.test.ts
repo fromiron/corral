@@ -101,6 +101,8 @@ interface GoalResult {
   code?: string;
   /** Provider attempts behind the one draft request (managed retries included). */
   attempts: number;
+  /** Each attempt's recorded failure kind and HTTP status; never a message. */
+  failures: { code: string; status: number | null }[];
   outputTokens: number | null;
   reasoningTokens: number | null;
 }
@@ -240,6 +242,9 @@ async function measure(
         latencyMs,
         ...(code ? { code } : {}),
         attempts: page.items.length,
+        failures: page.items.flatMap((attempt) =>
+          attempt.failure ? [{ code: attempt.failure.code, status: attempt.failure.status }] : [],
+        ),
         outputTokens: reported.length
           ? reported.reduce((sum, attempt) => sum + (attempt.usage.outputTokens ?? 0), 0)
           : null,
@@ -250,7 +255,13 @@ async function measure(
       result.goals.push(goal);
       if (goal.accepted) result.accepted += 1;
       if (pattern === 'invalid') result.invalid += 1;
-      if (pattern === 'error') result.errors += 1;
+      if (pattern === 'error') {
+        result.errors += 1;
+        // No answer at all (sign-in, quota, refused model or request shape): stop this model
+        // rather than spend the rest of the set on the same failure.
+        result.stoppedBecause = `no answer from the model (${code})`;
+        return result;
+      }
     }
     return result;
   } finally {
