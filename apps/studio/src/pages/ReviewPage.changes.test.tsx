@@ -198,6 +198,8 @@ async function mount({
     return added;
   });
   const startAuto = vi.fn();
+  // What the copy holds now; a test changes it as a run would.
+  const copy = { files, to };
   fixture.services = {
     mode: 'server',
     live: false,
@@ -212,9 +214,9 @@ async function mount({
       comments: async () => comments,
       changes: vi.fn(async () => ({
         from,
-        to,
+        to: copy.to,
         unavailable: null,
-        files: files.map((path) => file(path, provenance[path])),
+        files: copy.files.map((path) => file(path, provenance[path])),
       })),
       fileVersions: vi.fn(async (_s: string, _f: string, _t: string, path: string) => ({
         path,
@@ -228,8 +230,12 @@ async function mount({
     },
   };
   const searches: Partial<ReviewSearch>[] = [];
+  type Host = { shown: boolean; copyChanged?: string };
+  let setHost: (host: Host) => void = () => {};
   function Embedded() {
     const [search, setSearch] = useState<ReviewSearch>(initial);
+    const [host, setHostState] = useState<Host>({ shown: true });
+    setHost = setHostState;
     return (
       <ReviewContent
         session={session}
@@ -239,6 +245,8 @@ async function mount({
           setSearch((previous) => ({ ...previous, ...patch }));
         }}
         embedded
+        shown={host.shown}
+        copyChanged={host.copyChanged}
       />
     );
   }
@@ -266,7 +274,24 @@ async function mount({
     if (!target) throw new Error(`Missing button ${text}`);
     await act(async () => target.click());
   };
-  return { container, writes, addComment, startAuto, searches, fileButton, scope, button, click };
+  const host = async (next: Host) => {
+    await act(async () => setHost(next));
+    await act(async () => {});
+  };
+  return {
+    container,
+    writes,
+    addComment,
+    startAuto,
+    searches,
+    fileButton,
+    scope,
+    button,
+    click,
+    copy,
+    host,
+    changes: fixture.services.workspaces as { changes: ReturnType<typeof vi.fn> },
+  };
 }
 
 it('picking lines in the changes opens the comment form on that range and saves a draft for it', async () => {
@@ -537,6 +562,47 @@ it('shows the shared empty view where there is no diff to read', async () => {
   const empty = none.container.querySelector('[data-testid="no-changes"]');
   expect(empty?.getAttribute('data-slot')).toBe('empty-view');
   expect(empty?.textContent).toContain('Files.nothingChanged');
+});
+
+it('reads the changes again when shown again or when a run moves, keeping the place when nothing changed', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const reads = () => view.changes.changes.mock.calls.length;
+  // A comment being written on the selected file, and the file's row as it is now.
+  await view.click('pick line 1');
+  const note = view.container.querySelector<HTMLTextAreaElement>('form textarea');
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Keep this draft.'));
+  const row = view.fileButton('README.md');
+
+  // Hidden and shown again with nothing changed: read again, and nothing moves.
+  const before = reads();
+  await view.host({ shown: false });
+  expect(reads()).toBe(before);
+  await view.host({ shown: true });
+  expect(reads()).toBe(before + 1);
+  expect(view.fileButton('README.md')).toBe(row);
+  expect(view.container.querySelector<HTMLTextAreaElement>('form textarea')?.value).toBe(
+    'Keep this draft.',
+  );
+  // Any other refresh (a working copy event) keeps the draft too.
+  await act(async () => window.dispatchEvent(new Event('corral:workspace-changed')));
+  await act(async () => {});
+  expect(view.container.querySelector<HTMLTextAreaElement>('form textarea')?.value).toBe(
+    'Keep this draft.',
+  );
+
+  // A run of the session changes the copy while the view is open: the list follows.
+  view.copy.files = ['README.md', 'notes.md'];
+  view.copy.to = 'd'.repeat(40);
+  await view.host({ shown: true, copyChanged: 'run_1:succeeded' });
+  expect(view.fileButton('notes.md')).toBeDefined();
+
+  // Changed while hidden: showing the view again lists it.
+  await view.host({ shown: false, copyChanged: 'run_1:succeeded' });
+  view.copy.files = ['README.md', 'notes.md', 'later.md'];
+  view.copy.to = 'c'.repeat(40);
+  await view.host({ shown: true, copyChanged: 'run_1:succeeded' });
+  expect(view.fileButton('later.md')).toBeDefined();
 });
 
 it('a replacement suggestion is only a comment: it never writes a file or applies anything', async () => {
