@@ -717,7 +717,7 @@
     "sessionLookupFailed": "이 실행이 속한 세션을 확인하지 못해 단독 화면으로 엽니다."
   },
   "Timeline": {
-    "heading": "타임라인",
+    "heading": "이벤트",
     "count": "전체 {total, number}개 중 {shown, plural, one {#개} other {#개}}",
     "actor": "주체",
     "kind": "종류",
@@ -2078,7 +2078,9 @@
     "copyFrom": "복사본: {commit}",
     "idle": "실행 중인 실행 없음",
     "chooseRun": "실행",
-    "noRuns": "이 세션에는 아직 실행이 없습니다.",
+    "noRuns": "아직 실행이 없습니다",
+    "noRunsText": "이 대화에서 시작한 실행이 여기에 표시됩니다.",
+    "openConversation": "대화로 이동",
     "artifactsEmpty": "아직 결과가 없습니다.",
     "openResults": "결과 보기",
     "expandReview": "검토 화면으로 확대",

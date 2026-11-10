@@ -136,7 +136,7 @@ it('names every column above the list', () => {
 
 it('gives the list the full width until an event is chosen', async () => {
   renderEvents(true);
-  const section = screen.getByRole('region', { name: 'Timeline' });
+  const section = screen.getByRole('region', { name: 'Events' });
   expect(section.className).not.toContain('grid-cols-');
   const row = screen.getAllByTestId('timeline-row')[0] as HTMLElement;
   await act(async () => fireEvent.click(within(row).getByRole('button')));

@@ -717,7 +717,7 @@
     "sessionLookupFailed": "Could not check which session this run belongs to, so it opens on its own page."
   },
   "Timeline": {
-    "heading": "Timeline",
+    "heading": "Events",
     "count": "{shown, plural, one {# event} other {# events}} of {total, number}",
     "actor": "Actor",
     "kind": "Kind",
@@ -2078,7 +2078,9 @@
     "copyFrom": "Copy from {commit}",
     "idle": "No run working",
     "chooseRun": "Run",
-    "noRuns": "No runs in this session yet.",
+    "noRuns": "No runs yet",
+    "noRunsText": "Runs that this conversation starts appear here.",
+    "openConversation": "Go to conversation",
     "artifactsEmpty": "No results yet.",
     "openResults": "Open results",
     "expandReview": "Open the review screen",

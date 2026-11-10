@@ -1,6 +1,6 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -311,6 +311,18 @@ export function ExecutionTree({
   const definition = useStore(session, (s) => s.definition);
   const streams = useRunDisplay(session, (s) => s.streams);
   const own = useRoundInspection(projection, selectedExecutionId);
+  // The tree's own width sets how wide its cards can be.
+  const [treeElement, treeRef] = useState<HTMLDivElement | null>(null);
+  const [treeWidth, setTreeWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!treeElement) return;
+    const measure = () => setTreeWidth(treeElement.clientWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(treeElement);
+    return () => observer.disconnect();
+  }, [treeElement]);
   const { selected: selectedIterations, choose } = rounds ?? own;
   const intervals = useMemo(
     () => new Map(executionIntervals(events).map((row) => [row.executionId, row])),
@@ -559,17 +571,40 @@ export function ExecutionTree({
   };
   return (
     <AgentTree
+      ref={treeRef}
       root={root}
       title={tree('title')}
       selectedId={selectedExecutionId}
       onSelect={(agent) => onSteer(agent.id)}
       labels={labels}
       size="compact"
+      cardWidth={fittedCardWidth(root, treeWidth)}
       // The column shrinks to the panel; cards truncate instead of widening it.
       className="grid-cols-[minmax(0,1fr)]"
       {...(now === undefined ? {} : { now })}
     />
   );
+}
+
+/** The kit AgentTree's card width, gap between branches and indent per level. */
+const TREE = { card: 216, widest: 320, gap: 8, indent: 32 } as const;
+
+/**
+ * Cards as wide as the tree's columns allow, so names read whole on a wide page: the first
+ * level's branches share the width, each taking its indents, between the kit's card width and a
+ * readable maximum. Too narrow for the kit's width, the tree stacks as before.
+ */
+function fittedCardWidth(root: AgentTreeNode, width: number): number {
+  const depth = (node: AgentTreeNode): number =>
+    Math.max(0, ...(node.children ?? []).map((child) => depth(child) + 1));
+  const branches = root.children ?? [];
+  if (!width || !branches.length) return TREE.card;
+  const indents = branches.reduce(
+    (sum, branch) => sum + TREE.indent * Math.max(1, depth(branch)),
+    0,
+  );
+  const share = (width - TREE.gap * (branches.length - 1) - indents) / branches.length;
+  return Math.round(Math.min(TREE.widest, Math.max(TREE.card, share)));
 }
 
 /** What a card adds under its summary: wait targets, the error and a streaming response. */

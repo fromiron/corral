@@ -74,6 +74,12 @@ export function RunResultVersions({
                 key={item.artifactVersionId}
                 index={index}
                 data-result-version={item.artifactVersionId}
+                className={readable ? 'cursor-pointer' : undefined}
+                // The whole row opens a version; its name stays the keyboard's way in.
+                onClick={(event) => {
+                  if (!readable || (event.target as Element).closest('button')) return;
+                  event.currentTarget.querySelector('button')?.click();
+                }}
               >
                 <TableCell className="py-1">
                   {readable ? (
@@ -98,7 +104,9 @@ export function RunResultVersions({
                     </span>
                   )}
                 </TableCell>
-                <TableCell>{source(item)}</TableCell>
+                <TableCell className="truncate" title={source(item)}>
+                  {source(item)}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {m('versionNumber', { version: item.version })}
                 </TableCell>
@@ -124,7 +132,13 @@ function ResultSection({
   return (
     <section aria-label={heading} className="grid gap-2">
       <SectionLabel count={count}>{heading}</SectionLabel>
-      <Table aria-label={heading}>
+      {/* Both tables share one set of column widths, so their columns line up. */}
+      <Table aria-label={heading} className="table-fixed">
+        <colgroup>
+          <col className="w-1/2" />
+          <col className="w-1/3" />
+          <col />
+        </colgroup>
         <TableHeader>
           <TableRow>
             <TableHead>{m('name')}</TableHead>

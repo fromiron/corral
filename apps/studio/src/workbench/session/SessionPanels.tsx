@@ -3,7 +3,7 @@ import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { runResults } from '@corral/react';
-import { Button } from '@corral/react/design-kit';
+import { Button, EmptyState } from '@corral/react/design-kit';
 import { FileText } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -40,7 +40,21 @@ export function RunPanel({
   const tw = useTranslations('Workbench');
   const runId = panelRunId(runs, search.run, listed);
   const names = useRunNames(runs, entries);
-  if (!runId) return <p className="p-4 text-sm text-muted-foreground">{tw('noRuns')}</p>;
+  if (!runId)
+    return (
+      <div className="grid h-full place-items-center p-6">
+        <div className="grid justify-items-center gap-3">
+          <EmptyState title={tw('noRuns')} text={tw('noRunsText')} />
+          <Button
+            variant="secondary"
+            size="compact"
+            onClick={() => setSearch({ panel: undefined })}
+          >
+            {tw('openConversation')}
+          </Button>
+        </div>
+      </div>
+    );
   // A fallback run must not inherit the selection made inside the run that has gone.
   const own = search.run === undefined || search.run === runId;
   return (
