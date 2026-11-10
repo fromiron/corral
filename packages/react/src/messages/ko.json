@@ -899,7 +899,7 @@
     "approve": "승인",
     "reject": "반려",
     "refused": "적용 안 됨: {message}",
-    "done": "✓ {step} 승인함 ({subject})",
+    "done": "{step} 승인함 ({subject})",
     "then": {
       "user_action": "승인하면 이 버전으로 실행을 계속하고, 반려하면 실행을 멈춥니다.",
       "final_output": "승인하면 이 버전이 실행의 최종 결과가 됩니다. 반려하면 최종 결과 없이 끝납니다.",

@@ -899,7 +899,7 @@
     "approve": "Approve",
     "reject": "Reject",
     "refused": "Not applied: {message}",
-    "done": "✓ {step} approved ({subject})",
+    "done": "{step} approved ({subject})",
     "then": {
       "user_action": "Approving continues the run with these versions; rejecting stops it.",
       "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
