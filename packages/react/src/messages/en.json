@@ -961,7 +961,22 @@
     "approveTool": "Allow once",
     "rejectTool": "Deny",
     "toolIdentity": "Tool identity and call fingerprint",
-    "toolPolicyRevision": "Policy revision {revision}"
+    "toolPolicyRevision": "Policy revision {revision}",
+    "toolSummary": {
+      "proposedFileContent": "Proposed file content",
+      "requestedReplacements": "Requested replacements",
+      "before": "Before",
+      "after": "After",
+      "runCommand": "Run command",
+      "shell": "Shell",
+      "workingDirectory": "Working directory",
+      "workingCopyRoot": "Session working-copy root",
+      "mode": "Mode",
+      "service": "Service",
+      "foreground": "Foreground",
+      "timeout": "Timeout",
+      "editFile": "Edit file"
+    }
   },
   "Inbox": {
     "title": "Needs you",

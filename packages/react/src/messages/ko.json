@@ -961,7 +961,22 @@
     "approveTool": "이번 호출 허용",
     "rejectTool": "거절",
     "toolIdentity": "도구 식별 정보와 호출 지문",
-    "toolPolicyRevision": "정책 revision {revision}"
+    "toolPolicyRevision": "정책 revision {revision}",
+    "toolSummary": {
+      "proposedFileContent": "쓸 파일 내용",
+      "requestedReplacements": "요청한 교체 내용",
+      "before": "교체 전",
+      "after": "교체 후",
+      "runCommand": "명령 실행",
+      "shell": "셸",
+      "workingDirectory": "작업 디렉터리",
+      "workingCopyRoot": "세션 작업 사본의 루트",
+      "mode": "실행 방식",
+      "service": "서비스",
+      "foreground": "완료까지 실행",
+      "timeout": "시간 제한",
+      "editFile": "파일 변경"
+    }
   },
   "Inbox": {
     "title": "확인 필요",

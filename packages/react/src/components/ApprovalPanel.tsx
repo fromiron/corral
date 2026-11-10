@@ -10,7 +10,7 @@ import {
 } from '@corral/contracts';
 import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
 import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
   Accordion,
@@ -421,14 +421,13 @@ export function ApprovalPanel({
 
 function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefined }) {
   const t = useTranslations('Approvals');
-  const ko = useLocale().startsWith('ko');
   if (!plan)
     return (
       <p role={plan === null ? 'alert' : 'status'}>
         {t(plan === null ? 'checkUnavailable' : 'checkLoading')}
       </p>
     );
-  const summary = permissionSummary(plan, ko);
+  const summary = permissionSummary(plan, t);
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {summary ?? (
@@ -477,7 +476,10 @@ const shellNames = {
 };
 
 /** Summaries only change presentation. The verified body/fingerprint still authorizes the exact call. */
-function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
+function permissionSummary(
+  plan: ToolPermissionPlan,
+  t: ReturnType<typeof useTranslations<'Approvals'>>,
+) {
   if (plan.descriptor.source !== 'corral') return null;
   if (plan.descriptor.name === 'write_file' || plan.descriptor.name === 'write') {
     const args = plan.arguments;
@@ -493,7 +495,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     return (
       <div className="flex min-w-0 flex-col gap-2">
         <p style={{ fontVariationSettings: fontWeights.semibold }}>
-          {ko ? '쓸 파일 내용' : 'Proposed file content'}
+          {t('toolSummary.proposedFileContent')}
         </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre
@@ -511,18 +513,18 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     return (
       <div className="flex min-w-0 flex-col gap-2">
         <p style={{ fontVariationSettings: fontWeights.semibold }}>
-          {ko ? '요청한 교체 내용' : 'Requested replacements'}
+          {t('toolSummary.requestedReplacements')}
         </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <ol className="max-h-80 space-y-3 overflow-auto">
           {parsed.data.edits.map((edit, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the fingerprint fixes this immutable ordered edit list.
             <li key={`${plan.fingerprint}:${index}`}>
-              <p className="text-muted-foreground">{ko ? '교체 전' : 'Before'}</p>
+              <p className="text-muted-foreground">{t('toolSummary.before')}</p>
               <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.oldText}
               </pre>
-              <p className="text-muted-foreground">{ko ? '교체 후' : 'After'}</p>
+              <p className="text-muted-foreground">{t('toolSummary.after')}</p>
               <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.newText}
               </pre>
@@ -540,34 +542,22 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!source) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="command-approval-summary">
-        <p style={{ fontVariationSettings: fontWeights.semibold }}>
-          {ko ? '명령 실행' : 'Run command'}
-        </p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('toolSummary.runCommand')}</p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {source}
         </pre>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <dt className="text-muted-foreground">{ko ? '셸' : 'Shell'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.shell')}</dt>
           <dd>{shellNames[command.shellId]}</dd>
-          <dt className="text-muted-foreground">{ko ? '작업 디렉터리' : 'Working directory'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.workingDirectory')}</dt>
           <dd className="break-words font-mono">
-            {command.cwd === '.'
-              ? ko
-                ? '세션 작업 사본의 루트'
-                : 'Session working-copy root'
-              : command.cwd}
+            {command.cwd === '.' ? t('toolSummary.workingCopyRoot') : command.cwd}
           </dd>
-          <dt className="text-muted-foreground">{ko ? '실행 방식' : 'Mode'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.mode')}</dt>
           <dd>
-            {command.mode === 'service'
-              ? ko
-                ? '서비스'
-                : 'Service'
-              : ko
-                ? '완료까지 실행'
-                : 'Foreground'}
+            {t(command.mode === 'service' ? 'toolSummary.service' : 'toolSummary.foreground')}
           </dd>
-          <dt className="text-muted-foreground">{ko ? '시간 제한' : 'Timeout'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.timeout')}</dt>
           <dd>{command.timeoutMs / 1000} s</dd>
         </dl>
       </div>
@@ -578,9 +568,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="hashline-approval-summary">
-        <p style={{ fontVariationSettings: fontWeights.semibold }}>
-          {ko ? '파일 변경' : 'Edit file'}
-        </p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('toolSummary.editFile')}</p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {parsed.data.ops}
