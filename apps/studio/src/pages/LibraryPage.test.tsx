@@ -545,6 +545,76 @@ it('offers New team and Browse templates when the project has no teams', async (
   expect(router.state.location.search).toMatchObject({ project: 'project_1' });
 });
 
+it('shows the eight templates in order with their roles, and marks the ones that change nothing', async () => {
+  const { container } = await render('/library/templates?project=project_1');
+  const cards = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')];
+  const title = (card: HTMLElement) =>
+    card.querySelector('h3 [data-slot="card-title"] > span:last-child')?.textContent;
+  expect(cards.map(title)).toEqual([
+    'Single agent',
+    'Implement and review',
+    'Plan, implement and review',
+    'Bug fix',
+    'Parallel code review',
+    'Technical decision',
+    'Research team',
+    'Empty',
+  ]);
+  const roles = (card: HTMLElement) =>
+    [...card.querySelectorAll('ol[aria-label="Roles"] > li')].map((step) => step.textContent);
+  expect(cards.map(roles)).toEqual([
+    ['Agent 1'],
+    ['Implementation', 'Review'],
+    ['Plan', 'Implementation', 'Review'],
+    ['Cause investigation', 'Fix', 'Review'],
+    ['Scope', 'Correctness review and Security review', 'Synthesis'],
+    ['Framing', 'Option A research and Option B research', 'Comparison'],
+    ['Researcher', 'Writer', 'Reviewer'],
+    [],
+  ]);
+  const readOnly = (card: HTMLElement) =>
+    [...card.querySelectorAll('[data-slot="card-action"]')].some(
+      (mark) => mark.textContent === 'Read-only',
+    );
+  expect(cards.map(readOnly)).toEqual([true, false, false, false, true, true, true, false]);
+  // Every card offers a copy to edit; the empty canvas has no conversation to start.
+  const actions = (card: HTMLElement) =>
+    [...card.querySelectorAll('button')].map((button) => button.textContent);
+  expect(cards.map(actions)).toEqual([
+    ...Array(7).fill(['Start a session with this team', 'Edit this team']),
+    ['Edit this team'],
+  ]);
+});
+
+it('saves a copy of a new template as a separate team and opens it in the editor', async () => {
+  // The copy dialog follows the person's reduced-motion setting.
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+  }));
+  const { container, router } = await render('/library/templates?project=project_1');
+  for (const expected of ['Parallel code review', 'Parallel code review (2)']) {
+    const card = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')].find(
+      (article) => article.textContent?.includes('Parallel code review'),
+    ) as HTMLElement;
+    await act(async () => byText(card, 'button', 'Edit this team')?.click());
+    await settle();
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
+    await act(async () => byText(dialog, 'button', 'Save copy and edit')?.click());
+    await settle();
+    expect(router.state.location.pathname).toMatch(/^\/corrals\/corral_\d+\/edit$/);
+    const corralId = router.state.location.pathname.split('/')[2] as string;
+    const saved = await repository.get(corralId);
+    expect(saved?.name).toBe(expected);
+    expect(saved?.projectId).toBe('project_1');
+    await act(async () => router.history.back());
+    await settle();
+  }
+});
+
 it('selects a team by its whole row', async () => {
   await team(repository, 'Alpha reviewers', 'project_1');
   await team(repository, 'Alpha writers', 'project_1');
