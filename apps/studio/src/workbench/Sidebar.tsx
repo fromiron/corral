@@ -447,10 +447,10 @@ export const Sidebar = memo(function Sidebar({
     }
   };
 
-  // One reading of whether requests reach a real model, said once: the header's word. Its full
-  // form is only the Corral menu's accessible name.
-  const blocked = mode === 'server' && live;
-  const noModel = blocked && !connected;
+  // One reading of whether requests reach a real model, said once: the header's word, which
+  // only no model, the demo and simulation have; a normal connection shows none. The full form
+  // is only the Corral menu's accessible name.
+  const noModel = mode === 'server' && live && !connected;
   const connection =
     mode !== 'server'
       ? studio('demoShort')
@@ -465,9 +465,8 @@ export const Sidebar = memo(function Sidebar({
       : !live
         ? shell('stateSimulated')
         : connected
-          ? shell('connected')
+          ? null
           : shell('stateNoModel');
-  const connectionDot = blocked ? (connected ? 'bg-success' : 'bg-warning') : 'bg-muted-foreground';
   // The word always shows whole: the name before it is what gives way in a narrow sidebar.
   const word = 'shrink-0 whitespace-nowrap text-muted-foreground';
   const newShortcut = shortcutLabel('session.new');
@@ -503,7 +502,7 @@ export const Sidebar = memo(function Sidebar({
               name={
                 <span className="flex min-w-0 gap-x-1.5">
                   <span className="min-w-0 truncate">Corral</span>
-                  {noModel ? null : (
+                  {noModel || !connectionWord ? null : (
                     <span
                       data-testid="sidebar-connection"
                       className={word}
@@ -514,14 +513,7 @@ export const Sidebar = memo(function Sidebar({
                   )}
                 </span>
               }
-              tile={
-                <span className="relative flex">
-                  <WorkspaceTile>c</WorkspaceTile>
-                  <span
-                    className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar ${connectionDot}`}
-                  />
-                </span>
-              }
+              tile={<WorkspaceTile>c</WorkspaceTile>}
               labels={{
                 menu: shell('workspace'),
                 switchWorkspace: shell('workspaceMenuState', { state: connection }),

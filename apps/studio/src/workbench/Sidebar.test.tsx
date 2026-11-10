@@ -466,13 +466,6 @@ it.each([
     'Local · simulated',
     'Simulated',
   ],
-  [
-    'a live server with a model',
-    { mode: 'server', live: true },
-    [{ available: true }],
-    'Connected',
-    'Connected',
-  ],
 ] as const)(
   'names the connection state of %s once, as the header’s word',
   async (_name, services, profiles, state, word) => {
@@ -487,12 +480,14 @@ it.each([
     // The word keeps its width; the name before it gives way first.
     expect(mark?.className).toContain('shrink-0');
     expect(menu.getAttribute('aria-label')).toContain(state);
-    // No card, tooltip or menu line says it again.
+    // No card, tooltip, menu line or second mark on the tile says it again.
     expect(container.querySelector('[data-testid="sidebar-status"]')).toBeNull();
+    expect(menu.querySelector('.rounded-full')).toBeNull();
     const read = await hover(menu);
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
     expect(occurrences(read, word)).toBe(1);
-    if (state !== word) expect(read).not.toContain(state);
+    // The full state is longer than the word, and only the button's name holds it.
+    expect(read).not.toContain(state);
     await act(async () => menu.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
     const popup = document.querySelector('[role="menu"]');
@@ -505,6 +500,26 @@ it.each([
     });
   },
 );
+
+// workbench.md: the sidebar does not keep a badge for a normal model connection; the header's
+// word is only for no model, the demo and simulation.
+it('shows no state word or mark for a live server with a model', async () => {
+  fixture.services = { repository: {}, mode: 'server', live: true };
+  fixture.profiles = [{ available: true }];
+  const container = await mount();
+  const menu = corralMenu(container);
+  expect(visibleText(menu)).toBe('Corral');
+  expect(container.querySelector('[data-testid="sidebar-connection"]')).toBeNull();
+  expect(menu.querySelector('.rounded-full')).toBeNull();
+  expect(document.body.textContent).not.toContain(messages.Shell.connected);
+  // The menu's name keeps the state for screen readers, as it does for the other states.
+  expect(menu.getAttribute('aria-label')).toBe(
+    messages.Shell.workspaceMenuState.replace('{state}', messages.Shell.connected),
+  );
+  const read = await hover(menu);
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(read).not.toContain(messages.Shell.connected);
+});
 
 it('without a model, the header word is the one control that opens model settings', async () => {
   fixture.services = { repository: {}, mode: 'server', live: true };
