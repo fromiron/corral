@@ -226,3 +226,21 @@ it('leaves the dialog closed when the projects page opens without the hash', asy
   await show('');
   expect(form()).toBeNull();
 });
+
+it('says when each project was saved in the studio relative time, "Just now" under a minute', async () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  fixture.data = {
+    ...fixture.data,
+    projects: [
+      project('default', 'My project', { updatedAt: ago(3_000) }),
+      project('project_b', 'Billing service', { updatedAt: ago(0) }),
+      project('project_d', 'Release notes', { updatedAt: ago(2 * 3_600_000) }),
+    ],
+  };
+  const container = await show();
+  const saved = [...container.querySelectorAll('tbody tr')].map(
+    (row) => row.querySelectorAll('td')[2]?.textContent,
+  );
+  // One wording for "just saved" across the studio, never "3 seconds ago" beside "now".
+  expect(saved).toEqual([messages.Sessions.justNow, messages.Sessions.justNow, '2 hours ago']);
+});
