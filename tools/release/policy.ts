@@ -44,7 +44,8 @@ const REVIEWED = new Set([
   'WTFPL OR ISC',
   'WTFPL',
   '(WTFPL OR MIT)',
-  // The bundled Inter variable font (@fontsource-variable/inter); shipped with the app, not sold alone.
+  // The bundled Inter and Pretendard variable fonts (@fontsource-variable/inter, pretendard);
+  // shipped with the app, not sold alone.
   'OFL-1.1',
 ]);
 

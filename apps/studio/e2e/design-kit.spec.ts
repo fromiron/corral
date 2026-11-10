@@ -50,6 +50,53 @@ test('the bundled Inter variable font renders the kit weights from the studio or
   expect(fontRequests.every((url) => new URL(url).origin === origin)).toBe(true);
 });
 
+test('Hangul takes the kit weights from a bundled variable face after Inter', async ({ page }) => {
+  const fontRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fontRequests.push(request.url());
+  });
+  await page.goto('/projects');
+  await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeVisible();
+  const stack = await page.evaluate(() =>
+    getComputedStyle(document.body)
+      .fontFamily.split(',')
+      .map((family) => family.trim().replaceAll('"', '')),
+  );
+  expect(stack.slice(0, 2)).toEqual(['Inter', 'Pretendard Variable']);
+  const faces = await page.evaluate(() =>
+    [...document.fonts]
+      .filter((face) => face.family.replaceAll('"', '') === 'Pretendard Variable')
+      .map((face) => ({ weight: face.weight, unicodeRange: face.unicodeRange })),
+  );
+  expect(faces).toHaveLength(1);
+  const [face] = faces as [(typeof faces)[number]];
+  const [lightest = Number.NaN, heaviest = lightest] = face.weight.split(' ').map(Number);
+  expect(lightest).toBeLessThanOrEqual(400);
+  expect(heaviest).toBeGreaterThanOrEqual(700);
+  const ranges = face.unicodeRange.split(',').map((range) => {
+    const [from = '', to = from] = range.trim().replace(/^U\+/i, '').split('-');
+    return [Number.parseInt(from, 16), Number.parseInt(to, 16)] as const;
+  });
+  const covers = (from: number, to: number) =>
+    ranges.some(([start, end]) => start <= from && to <= end);
+  // Hangul syllables, Jamo and compatibility Jamo; Latin, digits and punctuation stay with Inter.
+  expect(covers(0xac00, 0xd7a3)).toBe(true);
+  expect(covers(0x1100, 0x11ff)).toBe(true);
+  expect(covers(0x3131, 0x318e)).toBe(true);
+  for (const character of 'Aa0,.·…') {
+    const code = character.codePointAt(0) as number;
+    expect(covers(code, code), character).toBe(false);
+  }
+  const hangul = await page.evaluate(async () => {
+    const loaded = await document.fonts.load('550 14px "Pretendard Variable"', '판정');
+    return loaded.map((loadedFace) => loadedFace.status);
+  });
+  expect(hangul).toEqual(['loaded']);
+  const origin = new URL(page.url()).origin;
+  expect(fontRequests.some((url) => /pretendard/i.test(url))).toBe(true);
+  expect(fontRequests.every((url) => new URL(url).origin === origin)).toBe(true);
+});
+
 test('narrow forms retain names, keyboard focus and reduced motion', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
