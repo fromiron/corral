@@ -87,3 +87,39 @@ it('says why a checkpoint whose text was released cannot be continued', async ()
     expect(container.textContent).not.toContain('RuntimeRecovery.blockers');
   }
 });
+
+it('writes the checkpoint time in the chosen language, not the browser’s', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const createdAt = '2026-11-10T16:08:27Z';
+  const checkpoint = {
+    checkpointId: 'checkpoint_1',
+    contextHash: 'a'.repeat(64),
+    tree: null,
+    runtime: 'pi-core',
+    createdAt,
+    ready: true,
+    blockers: [],
+  } as unknown as RuntimeCheckpointView;
+  fixture.services = { workspaces: { runtimeCheckpoints: async () => [checkpoint] } };
+  for (const [locale, messages] of [
+    ['en', en],
+    ['ko', ko],
+  ] as const) {
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    cleanups.push(async () => act(async () => root.unmount()));
+    await act(async () =>
+      root.render(
+        <IntlProvider locale={locale} messages={messages} timeZone="UTC">
+          <RuntimeRecovery runId="run_1" sessionId={null} />
+        </IntlProvider>,
+      ),
+    );
+    const expected = new Intl.DateTimeFormat(locale, {
+      dateStyle: 'short',
+      timeStyle: 'medium',
+      timeZone: 'UTC',
+    }).format(new Date(createdAt));
+    expect(container.textContent).toContain(`pi-core · ${expected} ·`);
+  }
+});

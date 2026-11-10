@@ -2,12 +2,13 @@ import type { RuntimeCheckpointView } from '@corral/contracts';
 import { Button, fontWeights } from '@corral/react/design-kit';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 
 export function RuntimeRecovery({ runId, sessionId }: { runId: string; sessionId: string | null }) {
   const t = useTranslations('RuntimeRecovery');
+  const format = useFormatter();
   const { workspaces } = useServices();
   const navigate = useNavigate();
   const router = useRouter();
@@ -37,8 +38,9 @@ export function RuntimeRecovery({ runId, sessionId }: { runId: string; sessionId
       {items?.map((item) => (
         <div key={item.checkpointId} className="space-y-1">
           <p>
-            {item.runtime} · {new Date(item.createdAt).toLocaleString()} ·{' '}
-            <code>{item.contextHash.slice(0, 12)}</code>
+            {item.runtime} ·{' '}
+            {format.dateTime(new Date(item.createdAt), { dateStyle: 'short', timeStyle: 'medium' })}{' '}
+            · <code>{item.contextHash.slice(0, 12)}</code>
           </p>
           <p>{t('tree', { tree: item.tree?.slice(0, 12) ?? t('noFiles') })}</p>
           {item.blockers.map((blocker) => (
