@@ -19,12 +19,12 @@ themes:
     focus: "#6B97FF"
 typography:
   body-md:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Inter, Pretendard Variable, system-ui, sans-serif"
     fontSize: 13px
     lineHeight: 20px
     fontWeight: 400
   body-compact:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Inter, Pretendard Variable, system-ui, sans-serif"
     fontSize: 12px
     lineHeight: 18px
     fontWeight: 400
@@ -95,7 +95,7 @@ Theme choice supports light, dark and system. `light-dark()` resolves the palett
 
 ## Typography
 
-Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font and serves it from its own origin; the system font is the fallback while it loads. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
+Use the kit's six semantic roles. Font family is `Inter, "Pretendard Variable", system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font for Latin and the Pretendard Variable font for Hangul only (by `unicode-range`), and serves both from its own origin; the system font is the fallback while they load. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
 
 | Role | Size / line height | Typical use |
 |---|---|---|
@@ -106,7 +106,7 @@ Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`.
 | `caption` | 12 / 16px | Secondary labels and metadata |
 | `micro` | 11 / 14px | Sparse status annotations |
 
-Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs. Because Inter is bundled, the kit's `font-variation-settings` weights render on every machine. Korean interface text uses one register: statements end in the 합니다 form ("저장했습니다", "세션이 없습니다"), and instructions use the 하세요 form ("모델을 연결하세요"). The 해요 form ("없어요", "열려요") is not used. Numbers are written in full with grouping (2,400, not 2.4천).
+Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs. Because Inter and Pretendard Variable are bundled, the kit's `font-variation-settings` weights render on every machine, in Korean as well as Latin. Korean interface text uses one register: statements end in the 합니다 form ("저장했습니다", "세션이 없습니다"), and instructions use the 하세요 form ("모델을 연결하세요"). The 해요 form ("없어요", "열려요") is not used. Numbers are written in full with grouping (2,400, not 2.4천).
 
 Editable fields use the 16px `--fs-field-touch` size on coarse pointers to prevent iOS focus zoom, preserving their existing line height.
 
