@@ -1,4 +1,10 @@
-import type { Schedule, ScheduleDraft, ScheduledOccurrence, ScheduleRule } from '@corral/contracts';
+import {
+  type Schedule,
+  type ScheduleDraft,
+  type ScheduledOccurrence,
+  type ScheduleRule,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { StatusBadge } from '@corral/react';
 import {
@@ -27,7 +33,7 @@ import { useServices } from '../services.tsx';
 import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { watchRefresh } from '../workbench/refresh.ts';
 import { watchRunList } from '../workbench/runList.ts';
-import { scheduleHistoryStatus } from '../workbench/scheduledRuns.ts';
+import { automationShownRuns, scheduleHistoryStatus } from '../workbench/scheduledRuns.ts';
 
 /** Sunday first, as the rule's weekday numbers count them. */
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -318,6 +324,31 @@ export function ScheduledPage() {
     if (!latest) return t('notRun');
     return latest.runId ? runStatus(latest) : t(`occurrence.${latest.status}`);
   };
+  // The settled runs whose status this page shows now: each schedule's last result, and the
+  // shown schedule's history. Their banners are dismissed (ScheduledRunNotifications); while the
+  // schedules or the runs cannot be read, what is on screen may be stale, so none is reported.
+  const settled = (runId: string) => {
+    const status = runs?.find((run) => run.runId === runId)?.status;
+    return status !== undefined && TERMINAL_RUN_STATUSES.has(status);
+  };
+  const shownRunKey =
+    readError || !runs
+      ? ''
+      : [
+          ...new Set([
+            ...schedules.flatMap((schedule) => histories[schedule.id]?.[0]?.runId ?? []),
+            ...(shown && !editing
+              ? (histories[shown.id] ?? []).flatMap((entry) => entry.runId ?? [])
+              : []),
+          ]),
+        ]
+          .filter(settled)
+          .sort()
+          .join(',');
+  useEffect(() => {
+    automationShownRuns.setState({ runIds: shownRunKey ? shownRunKey.split(',') : [] });
+  }, [shownRunKey]);
+  useEffect(() => () => automationShownRuns.setState({ runIds: [] }), []);
   // Without the local server the empty state's title is the reason, as in Library resources.
   // Its one line is what New schedule waits for, while there is no session to run in.
   const empty =
