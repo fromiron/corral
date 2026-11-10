@@ -1229,6 +1229,8 @@ it('Stop ends the answering and waiting turns through the meeting command while 
 it('renames and pins a meeting with a revision read just before the change', async () => {
   const f = await mount(view({ revision: 12 }));
   const repository = services.current.repository as any;
+  // A meeting has no completion criteria: its menus offer none.
+  expect(registeredCommands().some((command) => command.id === 'session:criteria')).toBe(false);
   const pin = registeredCommands().find((command) => command.id === 'session:pin');
   expect(pin?.title).toBe('pin');
   await act(async () => pin?.run());

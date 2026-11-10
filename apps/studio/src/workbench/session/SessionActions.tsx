@@ -16,7 +16,7 @@ import {
 } from '@corral/react/design-kit';
 import { Ellipsis, FileDiff, PanelRight, Terminal } from '@corral/react/icons';
 import { useNavigate, useRouter } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type AppCommand, useRegisterCommands } from '../../commandRegistry.ts';
 import { WORKSPACE_CHANGED } from '../../pages/FilesViews.tsx';
@@ -28,6 +28,23 @@ import { ChatDensityMenu } from '../ChatView.tsx';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { TopbarActions, useTopbarLayout } from '../TopbarSlot.tsx';
+import { SessionCriteriaDialog } from './SessionCriteriaDialog.tsx';
+
+/**
+ * The control a dialog was opened from: for a menu item (this menu's, the path's or another's),
+ * the trigger of its menu, which stays when the item is gone; else whatever had focus.
+ */
+function focusOrigin(): HTMLElement | null {
+  const active = document.activeElement;
+  const focused = active instanceof HTMLElement && active !== document.body ? active : null;
+  const menu = focused ? focused.closest('[role="menu"]') : document.querySelector('[role="menu"]');
+  if (!menu?.id) return focused;
+  return (
+    [...document.querySelectorAll<HTMLElement>('[aria-controls]')].find(
+      (control) => control.getAttribute('aria-controls') === menu.id,
+    ) ?? focused
+  );
+}
 
 /**
  * The session's own actions, in the top bar: changes, the side panel, and a menu. In the bar's
@@ -64,6 +81,14 @@ export function SessionActions({
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  // The saved lines and the revision they were read at, while the criteria dialog is open; the
+  // control it was opened from outlasts it, to take focus back.
+  const [criteria, setCriteria] = useState<{ lines: string[]; revision: number } | null>(null);
+  const criteriaOpener = useRef<HTMLElement | null>(null);
+  const editCriteria = () => {
+    criteriaOpener.current = focusOrigin();
+    setCriteria({ lines: session.criteria ?? [], revision: session.revision });
+  };
   const folded = useTopbarLayout().tools === 'menu';
   const update = async (change: {
     corralId?: string | null;
@@ -83,6 +108,18 @@ export function SessionActions({
     projectsChanged();
     await router.invalidate();
     return true;
+  };
+  // Saved against the revision the dialog opened with: a change made elsewhere since is refused,
+  // never overwritten. A run already started keeps the criteria it started with.
+  const saveCriteria = async (lines: string[], expectedRevision: number) => {
+    const result = await repository.updateSession(session.sessionId, {
+      criteria: lines,
+      expectedRevision,
+    });
+    if (!result.ok) return t('failed', { message: result.message });
+    projectsChanged();
+    await router.invalidate();
+    return null;
   };
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
@@ -165,6 +202,12 @@ export function SessionActions({
       group: sessionGroup,
       slash: 'rename',
       run: () => setRenaming(session.title),
+    },
+    {
+      id: 'session:criteria',
+      title: t('criteria.label'),
+      group: sessionGroup,
+      run: editCriteria,
     },
     {
       id: 'session:pin',
@@ -263,6 +306,7 @@ export function SessionActions({
             </>
           ) : null}
           <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
+          <MenuItem onClick={editCriteria}>{t('criteria.label')}</MenuItem>
           <MenuSub>
             <MenuSubTrigger>
               {t('chooseTeam')}
@@ -322,6 +366,14 @@ export function SessionActions({
         title={renaming}
         onSave={(title) => update({ title })}
         onClose={() => setRenaming(null)}
+      />
+      <SessionCriteriaDialog
+        criteria={criteria?.lines ?? null}
+        opener={criteriaOpener}
+        onSave={(lines) =>
+          criteria ? saveCriteria(lines, criteria.revision) : Promise.resolve(null)
+        }
+        onClose={() => setCriteria(null)}
       />
     </TopbarActions>
   );
