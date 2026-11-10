@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import {
   addAgentAndOutput,
+  expectTeamSaved,
   openLibraryTeams,
   openResult,
   renameTeam,
@@ -20,6 +21,7 @@ test('a run on the local server saves first, finishes, and survives a reload', a
   corral,
 }) => {
   await corral.open('/');
+  // workbench.md (사이드바는 정상 모델 연결 배지를 상시 표시하지 않는다): the header's one word marks simulation.
   await expect(page.getByTestId('sidebar-connection')).toHaveText('Simulated');
   await agentToOutput(page);
   for (const returnBeforeResponse of [false, true]) {
@@ -59,15 +61,15 @@ test('a run on the local server saves first, finishes, and survives a reload', a
     await finished;
     if (!returnBeforeResponse)
       await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    await expectTeamSaved(page);
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    await expectTeamSaved(page);
   }
   await startTestRun(page);
   // The run started from a saved revision: nothing is left unsaved.
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expectTeamSaved(page);
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
 
   await page.getByRole('link', { name: 'Open execution page' }).click();

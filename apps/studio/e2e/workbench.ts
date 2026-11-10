@@ -418,6 +418,18 @@ export async function renameTeam(page: Page, name: string) {
   await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
 }
 
+/**
+ * The team editor after a save, as its head says it: Save is disabled, the screen-reader status
+ * reads Saved, and no Unsaved changes mark shows; with `version`, the head names that version.
+ */
+export async function expectTeamSaved(page: Page, version?: number) {
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect(page.getByText('Saved', { exact: true })).toBeAttached();
+  await expect(page.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
+  if (version !== undefined)
+    await expect(page.getByTestId('revisions')).toHaveText(`Version ${version}`);
+}
+
 /** Opens the editor's test-run panel, which may already be open, and returns it. */
 export async function openTestRun(page: Page) {
   const open = page.getByRole('button', { name: 'Test run', exact: true });
