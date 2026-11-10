@@ -302,7 +302,7 @@ it('shows one empty state when the project has no sessions; the header alone sta
   expect(router.state.location.pathname).toBe('/sessions/session_9');
 });
 
-it('lists a session without a run by its state once, not also as "no runs"', async () => {
+it('lets the group name a session without a run; its row says neither that nor "no runs"', async () => {
   fixture.services = {
     ...fixture.services,
     workspaces: { ...(fixture.services.workspaces as object), inbox: vi.fn(async () => []) },
@@ -311,7 +311,10 @@ it('lists a session without a run by its state once, not also as "no runs"', asy
   const rows = [...container.querySelectorAll<HTMLElement>('[role="tabpanel"] li')];
   expect(rows).toHaveLength(2);
   for (const row of rows) {
-    expect(row.textContent).toContain(messages.Sessions.listState.empty);
+    expect(row.closest('details')?.querySelector('summary')?.textContent).toBe(
+      `${messages.Sessions.listState.empty}2`,
+    );
+    expect(row.textContent).not.toContain(messages.Sessions.listState.empty);
     expect(row.textContent).not.toMatch(/no runs/);
   }
 });
@@ -462,9 +465,14 @@ it('groups the sessions by state, in order, each headed by its name and count', 
     ['Cancelled', ['X']],
     ['Empty session', ['Y']],
   ]);
-  // The header is the group's name and its number of sessions, as Needs you heads its groups.
+  // The header is the group's name and its number of sessions, as Needs you heads its groups,
+  // one level under the tab's own Sessions heading.
+  const tabHeadings = container.querySelectorAll('[role="tabpanel"] h2');
+  expect([...tabHeadings].map((heading) => heading.textContent)).toEqual([
+    messages.Sessions.heading,
+  ]);
   for (const group of groups(container)) {
-    const heading = group.details.querySelector('summary h2');
+    const heading = group.details.querySelector('summary h3');
     expect(heading?.textContent).toBe(`${group.name}${group.rows.length}`);
   }
   // No status filter: the groups are the states.
@@ -553,13 +561,16 @@ it('groups by run state alone when the first inbox read fails, says so once and 
     ['Empty session', ['Y']],
   ]);
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
-  const failure = messages.Inbox.loadFailed.replace('{project}', 'Alpha');
+  // Its own words: not the Needs you line, which here would read as the project failing.
+  const failure = messages.Sessions.reviewLoadFailed;
+  expect(failure).toBe("Couldn't load items to review.");
   expect(panel.textContent?.split(failure)).toHaveLength(2);
+  expect(panel.textContent).not.toContain(messages.Inbox.loadFailed.replace('{project}', 'Alpha'));
   // A failed read is not "nothing to review".
   expect(container.textContent).not.toContain(messages.Inbox.empty);
   expect(container.textContent).not.toMatch(/nothing (to review|needs you)/i);
   const retry = [...panel.querySelectorAll('button')].filter(
-    (button) => button.textContent === messages.Inbox.retry,
+    (button) => button.textContent === messages.Sessions.retry,
   );
   expect(retry).toHaveLength(1);
   fail = false;
@@ -568,4 +579,76 @@ it('groups by run state alone when the first inbox read fails, says so once and 
   expect(read).toHaveBeenCalledTimes(2);
   expect(panel.textContent).not.toContain(failure);
   expect(groups(container).find((group) => group.name === 'Review')?.rows).toEqual(['B']);
+});
+
+it('keeps the last items and says so when a later inbox read fails', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    let fail = false;
+    const read = stateFixture(async () => {
+      if (fail) throw new Error('inbox unavailable');
+      return reviewItems();
+    });
+    const { container } = await render();
+    expect(groups(container).find((group) => group.name === 'Review')?.rows).toEqual(['B']);
+    fail = true;
+    await act(async () => vi.advanceTimersByTime(5000));
+    await settle();
+    expect(read).toHaveBeenCalledTimes(2);
+    const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+    expect(panel.textContent?.split(messages.Sessions.reviewLoadFailed)).toHaveLength(2);
+    expect(groups(container).find((group) => group.name === 'Review')?.rows).toEqual(['B']);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A row's text: its title, then its facts joined by " · ", ending with when it last changed. */
+function rowText(title: string, ...facts: string[]) {
+  const saved = escaped(messages.Workspace.updated).replace(escaped('{time}'), '[^·]+');
+  const shown = facts.map((fact) => `${escaped(fact)} · `).join('');
+  return new RegExp(`^${escaped(title)}${shown}${saved}$`);
+}
+
+it('says on each row only what its group does not', async () => {
+  stateFixture(async () => [...reviewItems(), inboxItem('uncertain_write', 'F')]);
+  const data = fixture.data as { sessions: WorkSession[] };
+  data.sessions = [
+    ...data.sessions.map((item) => (item.sessionId === 'E' ? { ...item, pinned: true } : item)),
+    { ...session('F', 'Fix the upload'), updatedAt: at(8) },
+  ];
+  const { container } = await render();
+  const row = (id: string) =>
+    container.querySelector<HTMLAnchorElement>(`[role="tabpanel"] a[href^="/sessions/${id}?"]`);
+  const oneRun = '1 run';
+  // Needs attention: why it is there. A session without a run never says it is empty.
+  expect(row('A')?.textContent).toMatch(
+    rowText('Answer the question', messages.Status.awaiting_user, oneRun),
+  );
+  expect(row('F')?.textContent).toMatch(
+    rowText('Fix the upload', messages.Inbox.kind.uncertain_write),
+  );
+  // Review: the kinds only, not the run's "Succeeded".
+  expect(row('B')?.textContent).toMatch(
+    rowText(
+      'Build the report',
+      messages.Inbox.kind.unreviewed,
+      messages.Inbox.kind.check_failed,
+      oneRun,
+    ),
+  );
+  // Every other group: no state word.
+  expect(row('C')?.textContent).toMatch(rowText('Crunch the numbers', oneRun));
+  expect(row('D')?.textContent).toMatch(rowText('Draft the plan'));
+  expect(row('E')?.textContent).toMatch(rowText('Edit the notes', oneRun));
+  expect(row('X')?.textContent).toMatch(rowText('Cancelled export', oneRun));
+  expect(row('Y')?.textContent).toMatch(rowText('Blank page'));
+  // Pinned is the sidebar's pin icon with its name, not a word.
+  const pin = row('E')?.querySelector('svg[role="img"]');
+  expect(pin?.getAttribute('aria-label')).toBe(messages.Sessions.pinned);
+  expect(row('C')?.querySelector('svg[role="img"]')).toBeNull();
+  expect(container.querySelector('[role="tabpanel"]')?.textContent).not.toContain(
+    messages.Sessions.pinned,
+  );
 });

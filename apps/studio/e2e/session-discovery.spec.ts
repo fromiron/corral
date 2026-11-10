@@ -46,7 +46,8 @@ test('project session list distinguishes and archives empty sessions', async ({ 
   await empty.getByRole('button', { name: /Archive empty session/ }).click();
   await expect(page.getByRole('button', { name: /Archive empty session/ })).toHaveCount(0);
   await page.getByRole('button', { name: /Show archived/ }).click();
-  await expect(empty).toContainText('Archived');
+  // The archived row is the one that can be restored; it repeats no state word.
+  await expect(empty.getByRole('button', { name: /^Restore session: / })).toBeVisible();
 });
 
 test('sidebar session links remain keyboard reachable and row menu returns focus', async ({

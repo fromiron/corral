@@ -20,6 +20,7 @@ import {
   DialogPopup,
   DialogTitle,
   EmptyState,
+  fontWeights,
   InputField,
   InputGroup,
   KitBadge,
@@ -44,7 +45,7 @@ import {
   Textarea,
   useSize,
 } from '@corral/react/design-kit';
-import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Users } from '@corral/react/icons';
+import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Pin, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -60,11 +61,10 @@ import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { RunList } from '../workbench/RunList.tsx';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import {
-  latestSessionRun,
+  type AttentionReason,
   type SessionGroupId,
   type SessionGroupRow,
   sessionGroups,
-  sessionListState,
   uncertainSessionTerminal,
 } from '../workbench/sessionList.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
@@ -199,13 +199,7 @@ export function WorkspacePage() {
               projectId={projectId}
               counts={{ sessions: sessions.filter((x) => !x.archivedAt).length, runs: runs.length }}
               sessions={
-                <SessionList
-                  sessions={sessions}
-                  runs={runs}
-                  inbox={inbox}
-                  projectName={shown}
-                  archived={archived}
-                />
+                <SessionList sessions={sessions} runs={runs} inbox={inbox} archived={archived} />
               }
               runs={runsPanel}
               environment={
@@ -881,18 +875,15 @@ function SessionList({
   sessions,
   runs,
   inbox,
-  projectName,
   archived,
 }: {
   sessions: WorkSession[];
   runs: RunSummary[];
   inbox: ProjectInbox;
-  projectName: string;
   /** An archived project starts nothing. */
   archived: boolean;
 }) {
   const t = useTranslations('Sessions');
-  const ti = useTranslations('Inbox');
   const navigation = useSettingsNavigation();
   const { mode, live, models } = useServices();
   const profiles = useModelProfiles();
@@ -964,6 +955,8 @@ function SessionList({
     runs,
     inbox.items,
   );
+  // Rows keep room for the pin when any is shown, so pinned or not their meta ends together.
+  const pinSlot = groups.some((group) => group.rows.some((row) => row.session.pinned));
   return (
     <section aria-labelledby="sessions-heading" className="flex flex-col gap-2">
       <h2 id="sessions-heading" className="sr-only">
@@ -985,12 +978,13 @@ function SessionList({
         </div>
       ) : null}
       {inbox.failed ? (
-        // The groups below are then by run state alone: no review group is not "nothing to review".
+        // The groups below are then by run state, or the last items read: no review group is not
+        // "nothing to review".
         <Banner status="error" size="compact">
-          <BannerTitle>{ti('loadFailed', { project: projectName })}</BannerTitle>
+          <BannerTitle>{t('reviewLoadFailed')}</BannerTitle>
           <BannerActions>
             <Button variant="tertiary" size="compact" onClick={inbox.retry}>
-              {ti('retry')}
+              {t('retry')}
             </Button>
           </BannerActions>
         </Banner>
@@ -1014,24 +1008,28 @@ function SessionList({
       ) : groups.length === 0 ? (
         <p className="px-2 py-2 text-body text-muted-foreground">{t('noMatches')}</p>
       ) : (
-        <div className="flex flex-col gap-4">
+        // One column for the rows and one for their action, shared by every row of every group
+        // (subgrid through each disclosure's content), so the meta's right edge is the same
+        // whether or not a row, or its group, can be archived. Narrow rows keep their own.
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-4">
           {groups.map((group) => (
             <details
               key={group.id}
               open={!closed.has(group.id)}
               onToggle={(event) => toggled(group.id, event.currentTarget.open)}
+              className="col-span-full grid grid-cols-subgrid details-content:col-span-full details-content:grid details-content:grid-cols-subgrid"
             >
               {/* Headed like the Needs you groups; the row's inset lines the name up with them. */}
               <SessionGroupSummary>
-                <SectionLabel count={group.rows.length}>
-                  <span id={`${id}-${group.id}`}>{t(`listState.${group.id}`)}</span>
-                </SectionLabel>
+                <SessionGroupHeading
+                  id={`${id}-${group.id}`}
+                  name={t(`listState.${group.id}`)}
+                  count={group.rows.length}
+                />
               </SessionGroupSummary>
-              {/* One column for the rows and one for their action, shared by the group's rows
-                  (subgrid), so the meta's right edge lines up whether or not a row can be archived. */}
               <ul
                 aria-labelledby={`${id}-${group.id}`}
-                className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] gap-x-2"
+                className="col-span-full mt-1 grid grid-cols-subgrid"
               >
                 {group.rows.map((row) => (
                   <SessionRow
@@ -1039,6 +1037,7 @@ function SessionList({
                     row={row}
                     runs={runs}
                     attention={inbox.items}
+                    pinSlot={pinSlot}
                     archivable={Boolean(row.session.archivedAt) || group.id === 'empty'}
                     archiving={archiving !== null}
                     onArchive={(session) => void setArchived(session, !session.archivedAt)}
@@ -1068,20 +1067,44 @@ function SessionList({
 function SessionGroupSummary({ children }: { children: React.ReactNode }) {
   const size = useSize();
   return (
-    <summary className={size.variant === 'compact' ? 'min-h-6 px-1.5' : 'min-h-7 px-2'}>
+    <summary
+      className={cn(
+        'col-span-full',
+        size.variant === 'compact' ? 'min-h-6 px-1.5' : 'min-h-7 px-2',
+      )}
+    >
       {children}
     </summary>
   );
 }
 
 /**
- * One session: its title, then what it is waiting on and the latest run's actual state, its runs
- * and when it last changed. A row in the review group names the kinds it has to review.
+ * The kit SectionLabel's look one level under the tab's Sessions heading: the kit copy draws an
+ * h2 only.
+ */
+function SessionGroupHeading({ id, name, count }: { id: string; name: string; count: number }) {
+  const size = useSize();
+  return (
+    <h3
+      className={cn(size.type.caption, 'm-0 flex items-center gap-2 text-muted-foreground')}
+      style={{ fontVariationSettings: fontWeights.semibold }}
+    >
+      <span id={id}>{name}</span>
+      <span className="tabular-nums">{count}</span>
+    </h3>
+  );
+}
+
+/**
+ * One session: its title, then only what its group does not already say (docs/specs/workbench.md
+ * #세션-목록의-상태와-처리할-항목): why it needs attention, or what there is to review; then its
+ * runs and when it last changed. Pinned is the sidebar's pin, at the row's end.
  */
 function SessionRow({
-  row: { session: x, review },
+  row: { session: x, attention: reasons, review },
   runs,
   attention,
+  pinSlot,
   archivable,
   archiving,
   onArchive,
@@ -1089,6 +1112,8 @@ function SessionRow({
   row: SessionGroupRow;
   runs: RunSummary[];
   attention: InboxItemView[];
+  /** Some listed row is pinned: every row keeps the pin's room. */
+  pinSlot: boolean;
   archivable: boolean;
   archiving: boolean;
   onArchive: (session: WorkSession) => void;
@@ -1099,26 +1124,32 @@ function SessionRow({
   const tw = useTranslations('Workspace');
   const ago = useSessionAge();
   const size = useSize();
-  const latest = latestSessionRun(x, runs);
   const terminal = uncertainSessionTerminal(x.sessionId, attention);
   const Icon = x.meeting ? Users : MessageCircle;
   const runCount = runs.filter((r) => r.sessionId === x.sessionId).length;
+  const reason = (value: AttentionReason) =>
+    value === 'uncertain_terminal'
+      ? t('terminalNeedsAttention')
+      : value === 'uncertain_write'
+        ? ti('kind.uncertain_write')
+        : status(value);
   return (
-    <li className="col-span-2 grid grid-cols-subgrid items-center">
+    // Narrow, the meta sits under the title, so only the row's own action takes room from it.
+    <li className="col-span-full flex items-center gap-2 sm:grid sm:grid-cols-subgrid">
       <Link
         to="/sessions/$sessionId"
         params={{ sessionId: x.sessionId }}
         search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
         data-session-kind={x.meeting ? 'meeting' : 'session'}
         className={cn(
-          'flex min-w-0 items-center rounded-md transition-colors hover:bg-hover',
+          'flex min-w-0 flex-1 items-center rounded-md transition-colors hover:bg-hover',
           // The row takes the density's control height, as sidebar and table rows do.
           size.variant === 'compact' ? 'min-h-7 gap-2 px-1.5 py-1' : 'min-h-9 gap-2.5 px-2 py-1.5',
         )}
       >
         <Icon aria-hidden size={size.icon} className="shrink-0 text-muted-foreground" />
         {x.meeting ? <span className="sr-only">{t('meeting')}</span> : null}
-        {/* Narrow: the state and time take a second line under the title. */}
+        {/* Narrow: the facts and time take a second line under the title. */}
         <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <span className={cn('min-w-0 truncate text-foreground', size.type.body)}>{x.title}</span>
           <span
@@ -1128,17 +1159,9 @@ function SessionRow({
             )}
           >
             {[
-              x.pinned ? t('pinned') : null,
-              x.archivedAt ? t('archived') : null,
-              terminal ? t('terminalNeedsAttention') : null,
+              ...reasons.map(reason),
               // What there is to review, by kind: never a count or a request's text.
               ...review.map((kind) => ti(`kind.${kind}`)),
-              latest
-                ? status(latest.status)
-                : terminal
-                  ? null
-                  : t(`listState.${sessionListState(x, runs)}`),
-              // Without a run the state above already says so.
               runCount ? t('runCount', { count: runCount }) : null,
               tw('updated', { time: ago(x.updatedAt) }),
             ]
@@ -1146,6 +1169,18 @@ function SessionRow({
               .join(' · ')}
           </span>
         </span>
+        {pinSlot ? (
+          <span className="flex w-3 shrink-0 justify-center">
+            {x.pinned ? (
+              <Pin
+                role="img"
+                aria-label={t('pinned')}
+                size={12}
+                className="shrink-0 text-muted-foreground"
+              />
+            ) : null}
+          </span>
+        ) : null}
       </Link>
       {archivable ? (
         <Button

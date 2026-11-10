@@ -1934,6 +1934,7 @@
     "delivery": "Delivery: {status}",
     "connectionLost": "The server cannot be reached, so run states are unknown. They are not assumed finished or cancelled.",
     "retry": "Try again",
+    "reviewLoadFailed": "Couldn't load items to review.",
     "checked": "Checked: {name} {state}",
     "notChecked": "Not checked",
     "intentShort": {
