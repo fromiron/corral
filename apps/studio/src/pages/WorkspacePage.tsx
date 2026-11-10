@@ -934,7 +934,9 @@ function SessionList({
   const [collapsed, setCollapsed] = useState<ReadonlySet<SessionGroupId>>(
     () => new Set(START_COLLAPSED),
   );
-  const [closedInSearch, setClosedInSearch] = useState<ReadonlySet<SessionGroupId>>(new Set());
+  const [closedInSearch, setClosedInSearch] = useState<ReadonlySet<SessionGroupId>>(
+    () => new Set(),
+  );
   const [wasSearching, setWasSearching] = useState(searching);
   if (wasSearching !== searching) {
     setWasSearching(searching);
