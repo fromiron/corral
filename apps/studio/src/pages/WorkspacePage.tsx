@@ -610,7 +610,8 @@ function NewConversation({
           >
             <ChevronDown />
           </MenuTrigger>
-          <MenuPopup align="end">
+          {/* Wider while it carries saved details, so they read beside the label. */}
+          <MenuPopup align="end" className={savedHint ? 'w-96' : undefined}>
             <MenuItem
               label={savedHint ? `${tw('detailsFirst')} · ${savedHint}` : tw('detailsFirst')}
               onClick={() => setDetailsOpen(true)}
