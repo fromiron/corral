@@ -30,13 +30,22 @@ import { describe, expect, it } from 'vitest';
 //   CORRAL_DRAFT_OUT=/path/outside/the/repo/result.json \
 //   pnpm test:live team-draft.live.test.ts
 //
+// A model on another provider (a keyed OpenAI-compatible endpoint, with its key already saved in
+// Corral's own credential store) is measured by naming the provider and giving its definition:
+//
+//   CORRAL_DRAFT_PROVIDER=hive \
+//   CORRAL_DRAFT_PROVIDER_FILE=/path/to/provider.json \   (one `modelProviders` entry, no key)
+//   CORRAL_DRAFT_MODELS=deepseek-ai/deepseek-v4.1-flash-1017
+//
 // The result keeps the chosen pattern, acceptance, latency and request counts. It never keeps
 // or prints the answer text, the goal's draft, credentials or local paths.
 
 const enabled = process.env.CORRAL_DRAFT_LIVE === '1';
 /** A run's whole budget: two models over a 20-goal set is 40. */
 const REQUEST_CAP = 60;
-const PROVIDER = 'openai';
+const PROVIDER = process.env.CORRAL_DRAFT_PROVIDER ?? 'openai';
+/** The provider's definition for the temporary workspace; the built-in OpenAI needs none. */
+const PROVIDER_FILE = process.env.CORRAL_DRAFT_PROVIDER_FILE;
 
 interface GoalEntry {
   id: string;
@@ -141,6 +150,9 @@ async function signedInServer(modelId: string) {
     JSON.stringify({
       schemaVersion: '0.1',
       // The draft request uses the first profile; this workspace has only the measured model.
+      ...(PROVIDER_FILE
+        ? { modelProviders: [JSON.parse(readFileSync(resolve(PROVIDER_FILE), 'utf8'))] }
+        : {}),
       modelProfiles: [{ id: 'draft-live', provider: PROVIDER, model: modelId }],
     }),
   );
