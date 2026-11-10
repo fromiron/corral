@@ -31,7 +31,8 @@ function pillState(status: RunStatus, waiting: boolean): AgentStatusPillState {
  * it through the existing RunActions confirmation. It stays reachable while a historical result
  * or document has focus. The breadcrumb names the session; the request this run answers is the
  * pill's accessible name and tooltip (#72). A waiting run shows its state like any other and
- * opens the response area; the notice above the composer is the one Respond. As the bar narrows
+ * opens the response area; the notice above the composer is the one Respond, and an approval
+ * alone has none, being decided in its turn's card. As the bar narrows
  * the buttons become icons, then the pill drops its clock, then its words: the state mark and the
  * run number stay.
  */

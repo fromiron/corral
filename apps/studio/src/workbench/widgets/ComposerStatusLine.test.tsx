@@ -350,6 +350,37 @@ it("names the waiting question in the notice and links to its run's response are
   expect(JSON.parse(unclear?.getAttribute('data-search') ?? '{}')).not.toHaveProperty('respond');
 });
 
+it("leaves an approval to its turn's card and the top bar's pill, and still announces it", async () => {
+  const approval = { ...noAction, visible: true, needsUser: true, count: 1, summary: 'approval' };
+  const view = await mount(
+    model({ action: approval } as Partial<ChatWidgetModel>, { runStatus: 'awaiting_user' }),
+  );
+  // No visible notice and no second way to the same decision.
+  expect(view.container.querySelector('[data-testid="action-required"]')).toBeNull();
+  expect(view.container.querySelector('[data-slot="banner"]')).toBeNull();
+  // The screen reader still hears that an approval is needed.
+  const live = view.container.querySelector('[aria-live="polite"]');
+  expect(live?.classList.contains('sr-only')).toBe(true);
+  expect(live?.textContent).toContain(messages.Widgets.actionApproval);
+  // Two approvals are still approvals only.
+  await view.update(
+    model({ action: { ...approval, count: 2 } } as Partial<ChatWidgetModel>, {
+      runStatus: 'awaiting_user',
+    }),
+  );
+  expect(view.container.querySelector('[data-testid="action-required"]')).toBeNull();
+  // An approval beside a question, a failure or an unclear result keeps the notice.
+  for (const action of [
+    { ...approval, count: 2, summary: 'mixed' },
+    { ...approval, hasFailure: true, count: 2, summary: 'mixed' },
+  ]) {
+    await view.update(
+      model({ action } as Partial<ChatWidgetModel>, { runStatus: 'awaiting_user' }),
+    );
+    expect(view.container.querySelector('[data-testid="action-required"]')).not.toBeNull();
+  }
+});
+
 it('keeps the notice for a live waiting run while another result is open', async () => {
   // The line leaves a live run's state to the top bar's pill; the notice still shows its need
   // while the person reads another result.

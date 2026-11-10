@@ -457,7 +457,8 @@ function RunStateIcon({ status, failed }: { status: string | null; failed: boole
  * with the step in progress (its toggle expands the Todo, `planId`), the change summary, the
  * current tool, the host's "applies to a new request only" note and the Overview opener. A live
  * run's state and controls belong to the top bar's pill, so the line never repeats them. One
- * announcement and a scoped entry to the existing approval/interaction host follow it.
+ * announcement and a scoped entry to the existing approval/interaction host follow it; approvals
+ * alone are announced only, since their turn's card in the conversation decides them.
  */
 export function ComposerDock({
   lead,
@@ -497,9 +498,12 @@ export function ComposerDock({
       : null;
   // A failed run is told by its turn's card when that card is the latest turn; the notice
   // stays while another run or result is on screen, so the failure stays discoverable. A run
-  // that completed with failed steps keeps it: the notice is the way to those steps.
+  // that completed with failed steps keeps it: the notice is the way to those steps. Approvals
+  // alone are decided in their turn's card, and the top bar's pill says the run waits, so the
+  // notice would only repeat them; the live region below still announces them.
   const notice =
     run?.action.visible &&
+    run.action.summary !== 'approval' &&
     !(run.action.summary === 'failure' && !run.action.completedWithFailures && run.viewed?.latest);
   // Waiting questions alone name the first one, as the conversation's notice does.
   const actionLabel = run
