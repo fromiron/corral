@@ -11,6 +11,7 @@ import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
 import { assertOutsideWorkspace } from '../src/models/index.ts';
+import { DRAFT_SYSTEM_PROMPT } from '../src/models/team-draft.ts';
 import { FAKE_PROFILES, FAKE_REDIRECT_BAD, FAKE_REDIRECT_OK, fakeOpenAI } from '../src/testing.ts';
 import { expectPrivatePermissions } from './fixtures/private-permissions.ts';
 
@@ -592,6 +593,13 @@ describe('team drafts from a goal', () => {
   };
   const draft = (json: Awaited<ReturnType<typeof start>>['json'], goal: string) =>
     json('/team-drafts', { method: 'POST', body: JSON.stringify({ goal }) });
+
+  it('tells the model to ask for a final approval only when the goal asks for one', () => {
+    const line = DRAFT_SYSTEM_PROMPT.split('\n').find((l) => l.startsWith('- finalApproval:'));
+    expect(line).toBe(
+      '- finalApproval: true only when the goal asks for a person to approve the final result, otherwise false',
+    );
+  });
 
   it('asks the first profile’s model once, with an output cap, and returns the checked plan', async () => {
     const fake = makeFake();

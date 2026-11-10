@@ -19,7 +19,7 @@ Fields:
 - criteria: 1 to 6 short checks the result must pass
 - roles: one entry per role of the pattern: {"slot": role, "name": a short job title, "duty": what this role does, in one or two sentences}
 - reviewRounds: 1 to 3 for the patterns with review; leave it out for "single"
-- finalApproval: true when a person should approve the final result
+- finalApproval: true only when the goal asks for a person to approve the final result, otherwise false
 
 Pick the smallest pattern that fits. Write in the language of the goal.`;
 
