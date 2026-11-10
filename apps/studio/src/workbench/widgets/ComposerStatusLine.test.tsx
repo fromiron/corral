@@ -279,6 +279,26 @@ it("names the waiting question in the notice and links to its run's response are
     execution: 'exec_failed',
   });
   expect(JSON.parse(failure?.getAttribute('data-search') ?? '{}')).not.toHaveProperty('respond');
+  // An unconfirmed outcome is not something to answer either: its link opens the run and says so.
+  await view.update(
+    model(
+      {
+        action: {
+          ...noAction,
+          visible: true,
+          needsUser: false,
+          count: 1,
+          summary: 'unclear',
+          unclearCauses: ['effect'],
+        },
+      } as Partial<ChatWidgetModel>,
+      { runStatus: 'succeeded' },
+    ),
+  );
+  const unclear = view.container.querySelector('[data-testid="action-required"] a');
+  expect(unclear?.textContent).toBe(messages.Widgets.actionOpenRun);
+  expect(unclear?.textContent).not.toBe(messages.Widgets.actionOpen);
+  expect(JSON.parse(unclear?.getAttribute('data-search') ?? '{}')).not.toHaveProperty('respond');
 });
 
 it('keeps the notice for a live waiting run while another result is open', async () => {

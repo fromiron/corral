@@ -699,7 +699,11 @@ export function ComposerDock({
               }
             >
               {t(
-                !run.action.needsUser && run.failedExecutionId ? 'actionOpenFailure' : 'actionOpen',
+                run.action.needsUser
+                  ? 'actionOpen'
+                  : run.failedExecutionId
+                    ? 'actionOpenFailure'
+                    : 'actionOpenRun',
               )}
             </Button>
           </BannerActions>

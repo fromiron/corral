@@ -32,7 +32,7 @@ function pillState(status: RunStatus, waiting: boolean): AgentStatusPillState {
  * or document has focus. The breadcrumb names the session; the request this run answers is the
  * pill's accessible name and tooltip (#72). As the bar narrows the buttons become icons, then
  * the pill drops its clock, then its words: the state mark and the run number stay, and a
- * waiting run keeps "Check now", which is the way in.
+ * waiting run keeps "Respond", which is the way in.
  */
 export function DockRunControls({
   runId,

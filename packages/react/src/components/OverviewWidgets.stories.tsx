@@ -160,7 +160,7 @@ export const PendingAttention: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText('Approval needed')).toBeVisible();
-    await expect(canvas.getByRole('link', { name: 'Go to the request' })).toBeVisible();
+    await expect(canvas.getByRole('link', { name: 'Respond' })).toBeVisible();
     await expect(canvas.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   },
 };

@@ -155,12 +155,12 @@ it('shows the run in the kit status pill without steps, progress or inline appro
   expect(root?.querySelector('[aria-live]')).toBeNull();
 });
 
-it('a waiting run turns the pill into Check now, with the count from two, and opens the response area', async () => {
+it('a waiting run turns the pill into Respond, with the count from two, and opens the response area', async () => {
   const projection = running();
   pendingApproval(projection, 'approval_a');
   const session = sessionStore({ runId: 'active-run', projection });
   const view = await mount({ session });
-  expect(view.pill()?.textContent).toContain('Check now');
+  expect(view.pill()?.textContent).toContain('Respond');
   expect(view.pill()?.textContent).not.toContain('(1)');
   await act(async () => view.pill()?.click());
   // A request to respond: the run view opens its response area, whatever its width.
@@ -170,7 +170,7 @@ it('a waiting run turns the pill into Check now, with the count from two, and op
   pendingApproval(two, 'approval_a');
   pendingApproval(two, 'approval_b');
   await act(async () => session.setState({ projection: two }));
-  expect(view.pill()?.textContent).toContain('Check now (2)');
+  expect(view.pill()?.textContent).toContain('Respond (2)');
 });
 
 it('names the active run by its number while another run is on screen', async () => {
@@ -265,7 +265,7 @@ it('the pill then drops its clock, then its words, keeping the state and the run
   expect(number.pill()?.getAttribute('aria-label')).toContain('Run #1');
 });
 
-it('a waiting run keeps Check now at every tier', async () => {
+it('a waiting run keeps Respond at every tier', async () => {
   const projection = running();
   pendingApproval(projection, 'approval_a');
   pendingApproval(projection, 'approval_b');
@@ -273,7 +273,7 @@ it('a waiting run keeps Check now at every tier', async () => {
   for (const tier of [3, 5, 7]) {
     fixture.tier = tier;
     const view = await mount({ session });
-    expect(view.pill()?.textContent).toBe('Check now (2)');
+    expect(view.pill()?.textContent).toBe('Respond (2)');
     expect(view.pill()?.getAttribute('aria-label')).toContain('Run #1');
     await cleanup.splice(0)[0]?.();
   }
