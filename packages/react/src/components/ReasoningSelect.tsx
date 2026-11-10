@@ -4,7 +4,7 @@ import {
   type ReasoningPolicy,
 } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
-import { Select } from '../design-kit/index.ts';
+import { fontWeights, Select } from '../design-kit/index.ts';
 
 export function ReasoningSelect({
   value,
@@ -22,8 +22,8 @@ export function ReasoningSelect({
   const levels = capabilities?.levels ?? ReasoningLevel.options;
   const unsupported = value?.mode === 'fixed' && !levels.includes(value.level);
   return (
-    <div className="flex flex-col gap-1 text-xs">
-      <span className="font-medium">{t('label')}</span>
+    <div className="flex flex-col gap-1 text-caption">
+      <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('label')}</span>
       <Select
         label={t('label')}
         value={selected}

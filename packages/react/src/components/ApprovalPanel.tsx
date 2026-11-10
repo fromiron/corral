@@ -22,6 +22,7 @@ import {
   Banner,
   BannerTitle,
   Button,
+  fontWeights,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { InteractionPanel } from './InteractionPanel.tsx';
@@ -254,7 +255,11 @@ export function ApprovalPanel({
         className={`flex flex-col gap-2 ${className ?? ''}`}
       >
         {headed ? (
-          <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
+          <h3
+            id={headingId}
+            className={compact ? 'sr-only' : 'text-ui'}
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
             {t('heading')}
           </h3>
         ) : null}
@@ -294,7 +299,10 @@ export function ApprovalPanel({
                 className={compact ? undefined : 'mt-0.5 self-start'}
               />
               <div className="grid min-w-0 flex-1">
-                <p className="text-body font-medium text-foreground [overflow-wrap:anywhere]">
+                <p
+                  className="text-body text-foreground [overflow-wrap:anywhere]"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
                   {approval.tool
                     ? t(
                         approval.tool.purpose === 'tool'
@@ -425,7 +433,7 @@ function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefin
     <div className="flex min-w-0 flex-col gap-2">
       {summary ?? (
         <>
-          <p className="font-medium">
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>
             {plan.descriptor.name} · {plan.descriptor.source}
           </p>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2">
@@ -484,7 +492,9 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="font-medium">{ko ? '쓸 파일 내용' : 'Proposed file content'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {ko ? '쓸 파일 내용' : 'Proposed file content'}
+        </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre
           data-testid="file-approval-content"
@@ -500,7 +510,9 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="font-medium">{ko ? '요청한 교체 내용' : 'Requested replacements'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {ko ? '요청한 교체 내용' : 'Requested replacements'}
+        </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <ol className="max-h-80 space-y-3 overflow-auto">
           {parsed.data.edits.map((edit, index) => (
@@ -528,7 +540,9 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!source) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="command-approval-summary">
-        <p className="font-medium">{ko ? '명령 실행' : 'Run command'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {ko ? '명령 실행' : 'Run command'}
+        </p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {source}
         </pre>
@@ -564,7 +578,9 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="hashline-approval-summary">
-        <p className="font-medium">{ko ? '파일 변경' : 'Edit file'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {ko ? '파일 변경' : 'Edit file'}
+        </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {parsed.data.ops}

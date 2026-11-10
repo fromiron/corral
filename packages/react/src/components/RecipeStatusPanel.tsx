@@ -1,6 +1,6 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button } from '../design-kit/index.ts';
+import { Button, fontWeights } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 
 export function RecipeStatusPanel({
@@ -20,9 +20,9 @@ export function RecipeStatusPanel({
     <section
       data-testid="recipe-status"
       aria-label={t('heading')}
-      className="flex flex-col gap-2 rounded fill-group p-3 text-xs"
+      className="flex flex-col gap-2 rounded fill-group p-3 text-caption"
     >
-      <h3 className="font-semibold">{t('heading')}</h3>
+      <h3 style={{ fontVariationSettings: fontWeights.semibold }}>{t('heading')}</h3>
       {stopped ? (
         <p role="status" className="text-warning">
           {t(`reasons.${stopped.payload.reason}`)}

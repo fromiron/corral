@@ -100,7 +100,7 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
           <p
             key={event.eventId}
             role="status"
-            className={`text-xs ${notice.level === 'info' ? 'text-muted-foreground' : 'text-warning'}`}
+            className={`text-caption ${notice.level === 'info' ? 'text-muted-foreground' : 'text-warning'}`}
           >
             {t('extensionNotice')} · {notice.text}
           </p>
@@ -159,11 +159,16 @@ function ExtensionPrompt({
   }
   return (
     <article
-      className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/5 p-3 text-sm"
+      className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
       data-testid={`extension-ui-${event.payload.requestId}`}
     >
-      <p className="text-xs font-medium text-muted-foreground">{t('extensionUi')}</p>
-      <h3 className="font-medium">
+      <p
+        className="text-caption text-muted-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
+        {t('extensionUi')}
+      </p>
+      <h3 style={{ fontVariationSettings: fontWeights.semibold }}>
         {request?.title ??
           t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')}
       </h3>
@@ -177,7 +182,7 @@ function ExtensionPrompt({
         executionId={event.payload.executionId}
         attemptNo={event.payload.attemptNo}
       />
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         {t('expires', {
           time: format.dateTime(new Date(event.payload.deadline), {
             hour: '2-digit',
@@ -240,7 +245,7 @@ function ExtensionPrompt({
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
@@ -334,7 +339,7 @@ function UserQuestionPrompt({
     const value = values[q.id] ?? { questionId: q.id };
     return (
       <fieldset key={q.id} disabled={busy} hidden={hidden} className="flex flex-col gap-2">
-        <legend className="font-medium">{q.prompt}</legend>
+        <legend style={{ fontVariationSettings: fontWeights.semibold }}>{q.prompt}</legend>
         {q.description ? (
           <p className="whitespace-pre-wrap break-words text-muted-foreground">{q.description}</p>
         ) : null}
@@ -364,7 +369,9 @@ function UserQuestionPrompt({
               {option.label}
               {option.recommended ? ` (${t('recommended')})` : ''}
               {option.description ? (
-                <span className="block text-xs text-muted-foreground">{option.description}</span>
+                <span className="block text-caption text-muted-foreground">
+                  {option.description}
+                </span>
               ) : null}
             </span>
           </label>
@@ -406,7 +413,7 @@ function UserQuestionPrompt({
         if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
           event.preventDefault();
       }}
-      className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 p-3 text-sm"
+      className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
       onSubmit={(e) => {
         e.preventDefault();
         // A question step's submit (Next, or Enter in a text answer) only moves on.
@@ -415,7 +422,11 @@ function UserQuestionPrompt({
       }}
       aria-label={t('userQuestions')}
     >
-      <p role="status" className="text-xs font-medium text-muted-foreground">
+      <p
+        role="status"
+        className="text-caption text-muted-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('userQuestions')}
       </p>
       <ExecutionLine
@@ -436,7 +447,7 @@ function UserQuestionPrompt({
             ref={stepHeading}
             id={headingId}
             tabIndex={-1}
-            className="text-xs text-muted-foreground tabular-nums outline-none"
+            className="text-caption text-muted-foreground tabular-nums outline-none"
           >
             {reviewing
               ? t('reviewAnswers')
@@ -493,7 +504,7 @@ function UserQuestionPrompt({
         </Button>
       ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
