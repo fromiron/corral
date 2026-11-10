@@ -1,17 +1,22 @@
 import { expect, type Locator, test } from '@playwright/test';
+import { openLibrary } from './workbench.ts';
 
 test('opening a template waits for an explicit named copy and cancel leaves no team', async ({
   page,
 }) => {
   await page.goto('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  // Templates and the saved teams are two views of the library.
   for (let attempt = 0; attempt < 2; attempt++) {
+    await openLibrary(page, 'Templates');
     await page.getByRole('button', { name: 'Edit this team' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Save a team copy' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await openLibrary(page, 'Teams');
     await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
   }
+  await openLibrary(page, 'Templates');
   await page.getByRole('button', { name: 'Edit this team' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Save a team copy' });
   await dialog.getByRole('textbox', { name: 'Team name' }).fill('Research copy');
@@ -41,7 +46,7 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
   };
   for (let team = 1; team <= 2; team++) {
     await page.goto(projectUrl);
-    await page.getByRole('tab', { name: /^Teams/ }).click();
+    await openLibrary(page, 'Templates');
     await page.getByRole('button', { name: 'Edit this team' }).first().click();
     await page.getByRole('button', { name: 'Save copy and edit' }).click();
     await expect(page).toHaveURL(/\/edit$/);

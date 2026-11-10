@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { editorSettings, startTestRun } from './workbench.ts';
+import { editorSettings, openLibrary, openProject, startTestRun } from './workbench.ts';
 
 // Roadmap 16: two runs of a Corral side by side, picked from the workspace's run list.
 
@@ -7,7 +7,7 @@ test('compares runs with readable narrow figures and accessible identities', asy
   await page.goto('/compare?delay=50');
   await page.getByRole('link', { name: 'Choose two runs', exact: true }).click();
   await expect(page.getByRole('tab', { name: /^Runs/ })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibrary(page, 'Templates');
   await page
     .getByRole('region', { name: 'Start from a template' })
     .getByRole('article')
@@ -27,7 +27,7 @@ test('compares runs with readable narrow figures and accessible identities', asy
   // In-app navigation (in the browser runtime, runs last until a reload), after saving the
   // edited brief so the editor lets the page go.
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
+  await openProject(page);
   await page.getByRole('tab', { name: /^Runs/ }).click();
   const runs = page.getByRole('region', { name: 'Runs' });
   await expect(runs.getByRole('link', { name: 'Compare two pens.', exact: true })).toBeVisible();

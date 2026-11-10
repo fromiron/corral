@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { openLibrary } from './workbench.ts';
 
 test('a local security review suggestion has specific roles and a short name before saving', async ({
   page,
 }) => {
   await page.goto('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibrary(page, 'Templates');
   await page.getByRole('button', { name: 'Draft from a goal' }).click();
   const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
   const goal =
@@ -22,10 +23,11 @@ test('a local security review suggestion has specific roles and a short name bef
   );
   await dialog.getByRole('button', { name: 'Open in editor', exact: true }).click();
   await expect(page).toHaveURL(/\/edit$/);
-  await expect(page.getByRole('textbox', { name: 'Team name', exact: true })).toHaveValue(
-    'Security PR review',
-  );
-  await expect(page.getByRole('application', { name: 'Corral canvas' })).toContainText(
+  // The editor names the team in its title; the name is edited in the team's settings.
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Security PR review', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('application', { name: 'Team graph' })).toContainText(
     'Security reviewer',
   );
 });
