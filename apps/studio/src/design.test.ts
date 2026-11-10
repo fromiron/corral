@@ -217,6 +217,16 @@ describe('design guard (Workbench polish P0)', () => {
     );
     expect(found).toEqual([]);
   });
+
+  it('fades the cut edge of every tab list that scrolls, so a narrow strip shows there is more', () => {
+    const found = [...text].flatMap(([path, body]) =>
+      [...body.matchAll(/<TabsList\b((?:[^>{]|\{[^}]*\})*)>/g)]
+        .filter((m) => /\boverflow-x-auto\b/.test(m[1] as string))
+        .filter((m) => !/\bscroll-fade-x\b/.test(m[1] as string))
+        .map(() => where(path)),
+    );
+    expect(found).toEqual([]);
+  });
 });
 
 // The kit's six type roles and its variable-font weights replace Tailwind's default steps, and

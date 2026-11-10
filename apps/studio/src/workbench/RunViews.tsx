@@ -32,8 +32,13 @@ export function RunViews({ views, visible }: { views: RunWorkspaceView[]; visibl
   }, [visible, selected]);
   return (
     <Tabs value={selected} onValueChange={setSelected} className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 overflow-x-auto border-b border-line px-4 py-2">
-        <TabsList aria-label={t('views')}>
+      <div className="shrink-0 border-b border-line px-4 py-2">
+        {/* Narrow, the strip scrolls inside itself, by touch and as arrow keys move focus,
+            and the kit's edge fade shows there is more beyond the cut. */}
+        <TabsList
+          aria-label={t('views')}
+          className="scroll-fade-x scrollbar-hide max-w-full overflow-x-auto"
+        >
           {views.map((view) => (
             <TabItem
               key={view.id}

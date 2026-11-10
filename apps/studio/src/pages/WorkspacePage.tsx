@@ -335,10 +335,11 @@ function ProjectTabs({
       onValueChange={(value) => chooseTab(value as ProjectTab)}
       className="flex min-w-0 flex-col gap-4"
     >
-      {/* The strip hugs its tabs and scrolls inside itself when the page is narrower. */}
+      {/* The strip hugs its tabs and scrolls inside itself when the page is narrower; the
+          kit's edge fade shows there is more beyond the cut. */}
       <TabsList
         aria-label={t('tabsLabel')}
-        className="scrollbar-hide max-w-full self-start overflow-x-auto"
+        className="scroll-fade-x scrollbar-hide max-w-full self-start overflow-x-auto"
       >
         {TABS.map((value) => (
           <TabItem key={value} value={value} label={label(value)} />
