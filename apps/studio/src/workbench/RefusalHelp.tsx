@@ -62,7 +62,7 @@ export function RefusalHelp({
       role="alert"
       data-testid="refusal"
       data-kind={kind}
-      className="flex flex-col gap-1.5 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs"
+      className="flex flex-col gap-1.5 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-caption"
     >
       <p className="text-danger">{t(kind)}</p>
       {kind === 'terminal' ||

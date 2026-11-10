@@ -73,7 +73,8 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
     }
   };
   if (!workspaces) return null;
-  if (mode === 'browser') return <p className="text-xs text-muted-foreground">{t('localOnly')}</p>;
+  if (mode === 'browser')
+    return <p className="text-caption text-muted-foreground">{t('localOnly')}</p>;
   const unchanged = unchangedCheckpoints(items);
   const visible = items.filter((item) => item.state !== 'expired');
   // The preview plans a restore and shows what it would change; restoring is its own button.
@@ -120,7 +121,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
     if (item?.state === 'ready' && !busy) void preview(item);
   };
   return (
-    <section aria-labelledby={id} className="@container flex flex-col gap-2 text-xs">
+    <section aria-labelledby={id} className="@container flex flex-col gap-2 text-caption">
       <h4 id={id} className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('heading')}
       </h4>
@@ -244,7 +245,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
       </div>
       {plan ? (
         <section aria-label={t('preview')} className="rounded fill-group p-2">
-          <p className="font-medium">
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>
             {t(plan.target === 'original' ? 'original' : 'workingCopy')}
           </p>
           <p>{t('restoreExplain', { count: plan.files.length })}</p>

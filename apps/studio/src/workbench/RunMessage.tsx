@@ -648,7 +648,7 @@ export function TurnActions({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="turn-actions"
-      className="turn-actions -ml-1.5 flex min-h-7 flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-160 ease-[var(--ease-out-soft)] motion-reduce:transition-none"
+      className="turn-actions -ml-1.5 flex min-h-7 flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none"
     >
       {children}
     </div>

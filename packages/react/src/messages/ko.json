@@ -449,7 +449,6 @@
     "new": "새 예약",
     "whenRuns": "서버가 켜져 있을 때 실행합니다. 놓친 시각과 이전 실행 중의 예약은 건너뛰고 기록합니다. 일광 절약 시간으로 시각이 반복되면 첫 시각에 한 번 실행하며, 존재하지 않는 시각은 건너뜁니다.",
     "howRuns": "일반 Auto 팀과 해당 모델, 선택한 권한 모드를 사용합니다. 승인이 필요하면 세션에서 기다립니다. 예약 비활성화·삭제는 이미 시작한 실행을 취소하지 않습니다.",
-    "serverOnly": "로컬 서버에서 사용할 수 있습니다.",
     "localOnly": "로컬 서버에서 사용",
     "localOnlyText": "예약은 로컬 Corral 서버가 보관하고 실행합니다.",
     "needsSession": "프로젝트에서 Auto 세션을 먼저 만들어 주세요.",
@@ -776,7 +775,6 @@
     "showKey": "API 키 표시",
     "hideKey": "API 키 숨기기",
     "saveKey": "키 저장",
-    "keyHint": "작업 공간 밖 이 컴퓨터에 보관하며 이 공급자에만 씁니다. Corral은 키를 다시 보여 주지 않습니다.",
     "signInInstead": "Corral에 직접 로그인",
     "cancel": "취소",
     "openSignIn": "로그인 페이지 열기",
@@ -961,7 +959,22 @@
     "approveTool": "이번 호출 허용",
     "rejectTool": "거절",
     "toolIdentity": "도구 식별 정보와 호출 지문",
-    "toolPolicyRevision": "정책 revision {revision}"
+    "toolPolicyRevision": "정책 revision {revision}",
+    "toolSummary": {
+      "proposedFileContent": "쓸 파일 내용",
+      "requestedReplacements": "요청한 교체 내용",
+      "before": "교체 전",
+      "after": "교체 후",
+      "runCommand": "명령 실행",
+      "shell": "셸",
+      "workingDirectory": "작업 디렉터리",
+      "workingCopyRoot": "세션 작업 사본의 루트",
+      "mode": "실행 방식",
+      "service": "서비스",
+      "foreground": "완료까지 실행",
+      "timeout": "시간 제한",
+      "editFile": "파일 변경"
+    }
   },
   "Inbox": {
     "title": "확인 필요",
@@ -1595,7 +1608,6 @@
     "nameLabel": "이름",
     "descriptionLabel": "설명(선택)",
     "create": "프로젝트 만들기",
-    "intro": "프로젝트는 Corral과 실행을 다른 일과 나눠 둡니다. 폴더가 아니므로 컴퓨터의 파일을 읽거나 바꾸지 않습니다.",
     "counts": "팀 {corrals, plural, other {#개}} · 실행 {runs, plural, other {#개}}",
     "archived": "보관됨",
     "archive": "보관",
@@ -1615,7 +1627,6 @@
     "openAll": "모든 프로젝트 열기",
     "current": "현재",
     "folderOptional": "연결할 폴더(선택)",
-    "folderHint": "연결은 폴더를 관측만 합니다. 나중에 연결해도 됩니다.",
     "chooseFolder": "폴더 선택…",
     "linkExample": "예시 폴더 연결",
     "exampleFolder": "예시 폴더",
@@ -2441,7 +2452,6 @@
   },
   "Harness": {
     "heading": "작업 방식",
-    "intro": "저장할 때마다 새 버전이 생기고, 기본값과 역할이 실행할 버전을 고릅니다.",
     "sharedScope": "공용 작업 방식: 저장하면 이 방식을 고른 모든 기본값과 역할에 쓰일 새 리비전이 됩니다. 설정 대상 프로젝트는 도구 목록과 미리보기만 제공합니다.",
     "localOnly": "작업 방식은 로컬 Corral 서버에서 사용할 수 있습니다.",
     "resources": "리소스",

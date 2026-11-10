@@ -9,6 +9,7 @@ import {
   KitBadge as Badge,
   KitButton as Button,
   KitChatMessage as ChatMessage,
+  fontWeights,
   type ToolCall,
   ToolCallCard,
   ToolCallGroup,
@@ -298,7 +299,7 @@ function Entry({
     case 'instruction':
       return (
         <ChatMessage from="user" data-testid={`transcript-instruction-${entry.directiveId}`}>
-          <p className="font-medium">{t('you')}</p>
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('you')}</p>
           <p className="whitespace-pre-wrap">{entry.text}</p>
           <p className="text-muted-foreground">{t(`instruction.${entry.status}`)}</p>
         </ChatMessage>
@@ -342,7 +343,9 @@ function Entry({
     case 'question':
       return (
         <ChatMessage from="assistant">
-          <p className="font-medium">{t('asked', { target: labelOf(entry.targetNodeId) })}</p>
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('asked', { target: labelOf(entry.targetNodeId) })}
+          </p>
           <p className="whitespace-pre-wrap">{entry.body}</p>
           {entry.answer ? (
             <div className="mt-4 space-y-2">

@@ -1,6 +1,6 @@
 import type { ToolDescriptor, ToolPermissionPolicy } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button, Input, Select, Switch } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select, Switch } from '@corral/react/design-kit';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -26,8 +26,10 @@ export function PermissionPolicyEditor({
   };
   return (
     <fieldset className="settings-surface flex flex-col gap-3">
-      <legend className="text-sm font-medium">{t('permissionPolicy')}</legend>
-      <p className="text-xs text-muted-foreground">{t('permissionPolicyHint')}</p>
+      <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('permissionPolicy')}
+      </legend>
+      <p className="text-caption text-muted-foreground">{t('permissionPolicyHint')}</p>
       <Switch
         label={t('permissionEnabled')}
         checked={Boolean(value)}
@@ -35,7 +37,7 @@ export function PermissionPolicyEditor({
       />
       {value ? (
         <>
-          <div className="flex flex-col gap-1 text-sm">
+          <div className="flex flex-col gap-1 text-body">
             <span>{t('permissionDefault')}</span>
             <Select
               label={t('permissionDefault')}
@@ -53,9 +55,9 @@ export function PermissionPolicyEditor({
               key={index}
               className="flex flex-col gap-2 rounded-lg bg-surface p-3"
             >
-              <legend className="text-xs">{t('permissionRule', { number: index + 1 })}</legend>
+              <legend className="text-caption">{t('permissionRule', { number: index + 1 })}</legend>
               <div className="grid gap-2 sm:grid-cols-2">
-                <div className="text-xs">
+                <div className="text-caption">
                   <p>{t('permissionTool')}</p>
                   <Select
                     label={t('permissionTool')}
@@ -73,7 +75,7 @@ export function PermissionPolicyEditor({
                     }}
                   />
                 </div>
-                <div className="text-xs">
+                <div className="text-caption">
                   <p>{t('permissionAction')}</p>
                   <Select
                     label={t('permissionAction')}
@@ -88,7 +90,7 @@ export function PermissionPolicyEditor({
                 </div>
               </div>
               <label
-                className="flex flex-col gap-1 text-xs"
+                className="flex flex-col gap-1 text-caption"
                 htmlFor={`${formId}-${index}-descriptor`}
               >
                 {t('permissionDescriptor')}
@@ -112,7 +114,7 @@ export function PermissionPolicyEditor({
               />
               {item.path ? (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <label className="text-xs" htmlFor={`${formId}-${index}-path-argument`}>
+                  <label className="text-caption" htmlFor={`${formId}-${index}-path-argument`}>
                     {t('permissionArgument')}
                     <Input
                       id={`${formId}-${index}-path-argument`}
@@ -125,7 +127,7 @@ export function PermissionPolicyEditor({
                       }
                     />
                   </label>
-                  <label className="text-xs" htmlFor={`${formId}-${index}-prefix`}>
+                  <label className="text-caption" htmlFor={`${formId}-${index}-prefix`}>
                     {t('permissionPrefix')}
                     <Input
                       id={`${formId}-${index}-prefix`}
@@ -143,7 +145,7 @@ export function PermissionPolicyEditor({
               {Object.entries(item.arguments ?? {}).map(([key, expected]) => (
                 <div key={key} className="flex flex-wrap items-end gap-2">
                   <label
-                    className="text-xs"
+                    className="text-caption"
                     htmlFor={`${formId}-${index}-condition-argument${key}`}
                   >
                     {t('permissionArgument')}
@@ -168,7 +170,7 @@ export function PermissionPolicyEditor({
                       }}
                     />
                   </label>
-                  <label className="text-xs" htmlFor={`${formId}-${index}-equals${key}`}>
+                  <label className="text-caption" htmlFor={`${formId}-${index}-equals${key}`}>
                     {t('permissionEquals')}
                     <Input
                       id={`${formId}-${index}-equals${key}`}

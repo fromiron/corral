@@ -55,7 +55,7 @@ export function RenameSessionDialog({
           />
         </DialogPanel>
         {error ? (
-          <p role="alert" className="px-6 text-sm text-danger">
+          <p role="alert" className="px-6 text-body text-danger">
             {error}
           </p>
         ) : null}

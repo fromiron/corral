@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button } from '../design-kit/index.ts';
+import { Button, fontWeights } from '../design-kit/index.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { useWorkPlanSnapshot, type WorkPlanRef } from '../run/work-plan-snapshot.ts';
@@ -35,13 +35,13 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
   const label = useStore(session, (s) => s.definition?.nodes.find((n) => n.id === nodeId)?.label);
   const owner = view.scope === 'team' ? t('team') : (label ?? nodeId ?? t('execution'));
   return (
-    <details open className="rounded-lg fill-group p-3 text-sm">
-      <summary className="cursor-pointer font-medium">
+    <details open className="rounded-lg fill-group p-3 text-body">
+      <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
         {owner} · v{view.revision}
       </summary>
       {plan ? (
         <>
-          <p className="my-2 text-xs text-muted-foreground">{t('scopeHint')}</p>
+          <p className="my-2 text-caption text-muted-foreground">{t('scopeHint')}</p>
           {status.state === 'stale-criteria' || status.state === 'stale-attempt' ? (
             <p role="status" className="text-warning">
               {t(status.state === 'stale-attempt' ? 'staleAttempt' : 'staleCriteria')}
@@ -51,16 +51,21 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
             {plan.items.map((item) => (
               <li key={item.id} className="flex flex-wrap items-start gap-2">
                 <span
-                  className={item.status === 'completed' ? 'text-muted-foreground' : 'font-medium'}
+                  className={item.status === 'completed' ? 'text-muted-foreground' : undefined}
+                  style={
+                    item.status === 'completed'
+                      ? undefined
+                      : { fontVariationSettings: fontWeights.semibold }
+                  }
                 >
                   {t(item.status)}
                 </span>
                 <span className="min-w-0 flex-1 break-words">{item.title}</span>
                 {item.requiresVerification ? (
-                  <span className="text-xs text-muted-foreground">{t('verification')}</span>
+                  <span className="text-caption text-muted-foreground">{t('verification')}</span>
                 ) : null}
                 {item.evidenceRefs?.length ? (
-                  <details className="w-full text-xs">
+                  <details className="w-full text-caption">
                     <summary className="cursor-pointer">
                       {t('evidence', { count: item.evidenceRefs.length })}
                     </summary>
@@ -96,7 +101,7 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
                           </pre>
                         ) : null}
                         {failedEvidence === ref ? (
-                          <p role="alert" className="text-xs text-danger">
+                          <p role="alert" className="text-caption text-danger">
                             {t('unavailable')}
                           </p>
                         ) : null}

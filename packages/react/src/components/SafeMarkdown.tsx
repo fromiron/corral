@@ -71,7 +71,7 @@ export function SafeMarkdown({
               }
             })();
             return (
-              <span className="rounded fill-control px-1 text-xs text-muted-foreground">
+              <span className="rounded fill-control px-1 text-caption text-muted-foreground">
                 {t('imageNotLoaded', { alt: alt || t('image'), host: host || '—' })}
               </span>
             );

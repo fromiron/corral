@@ -144,7 +144,7 @@ it('says once that a work style is shared, as the section description', async ()
     expect(description?.getAttribute('data-testid')).toBe('shared-scope');
     // No grey notice restating it, and no second line saying a save makes a revision.
     expect(container.textContent?.split('Shared work style')).toHaveLength(2);
-    expect(container.textContent).not.toContain(messages.Harness.intro);
+    expect(container.textContent).not.toContain('Each save makes a new revision');
   } finally {
     await act(async () => root.unmount());
     container.remove();

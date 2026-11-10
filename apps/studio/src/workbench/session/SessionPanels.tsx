@@ -244,13 +244,13 @@ export function ArtifactsPanel({
   }, [transport, key, retry, tr]);
   if (loading)
     return (
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="text-caption text-muted-foreground">
         {ta('loading')}
       </p>
     );
   if (failed)
     return (
-      <div role="alert" className="space-y-2 text-xs text-danger">
+      <div role="alert" className="space-y-2 text-caption text-danger">
         <p>{td('resultUnavailable')}</p>
         <Button variant="tertiary" size="compact" onClick={() => setRetry((value) => value + 1)}>
           {td('retryResult')}
@@ -260,7 +260,7 @@ export function ArtifactsPanel({
   return (
     <div className="space-y-3">
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{tw('artifactsEmpty')}</p>
+        <p className="text-caption text-muted-foreground">{tw('artifactsEmpty')}</p>
       ) : (
         <ul aria-label={tk('artifacts')} className="flex flex-col gap-0.5">
           {items.map((item) => (
@@ -286,7 +286,7 @@ export function ArtifactsPanel({
                       .join(' · ')}
                   </span>
                 </span>
-                <span className="shrink-0 text-xs text-muted-foreground">{tr(item.kind)}</span>
+                <span className="shrink-0 text-caption text-muted-foreground">{tr(item.kind)}</span>
               </Button>
             </li>
           ))}
@@ -312,7 +312,7 @@ export function ChecksPanel({
   const tw = useTranslations('Workbench');
   const { workspaces } = useServices();
   const { binding } = useBinding(session.projectId);
-  if (!workspaces) return <p className="text-xs text-muted-foreground">{tw('serverOnly')}</p>;
+  if (!workspaces) return <p className="text-caption text-muted-foreground">{tw('serverOnly')}</p>;
   return (
     <>
       <Checks

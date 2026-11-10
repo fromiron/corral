@@ -2,7 +2,7 @@ import type { FileChangeView } from '@corral/client';
 import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES, type TextAttachmentProvenance } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
@@ -229,7 +229,7 @@ function WorkSessionPage() {
           {lost ? (
             <div
               role="alert"
-              className="flex items-center gap-2 bg-danger/5 px-4 py-2 text-xs text-danger"
+              className="flex items-center gap-2 bg-danger/5 px-4 py-2 text-caption text-danger"
             >
               {ts('connectionLost')}
               <Button variant="tertiary" size="compact" onClick={refresh}>
@@ -488,7 +488,12 @@ function WorkSessionPage() {
                 className="min-h-0 w-96 max-w-full shrink-0 overflow-auto border-l border-line p-3 max-lg:w-full"
               >
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-medium">{tdock('fileViewer')}</h2>
+                  <h2
+                    className="text-subtitle"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {tdock('fileViewer')}
+                  </h2>
                   <Button
                     variant="ghost"
                     size="icon-compact"

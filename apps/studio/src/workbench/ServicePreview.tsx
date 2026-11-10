@@ -1,5 +1,5 @@
 import type { UserTaskView, WorkspacePreview, WorktreeCommandView } from '@corral/client';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -106,7 +106,9 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
   const selected = commands.find((item) => item.id === operationId)?.id ?? commands[0]?.id ?? '';
   return (
     <section aria-label={t('service')} className="flex flex-col gap-2 border-b border-line pb-2">
-      <h3 className="text-xs font-medium">{t('service')}</h3>
+      <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('service')}
+      </h3>
       <Select
         label={t('operation')}
         size="xs"
@@ -115,7 +117,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
         disabled={pending}
         options={commands.map((item) => ({ value: item.id, label: item.label }))}
       />
-      <label htmlFor={portId} className="flex items-center gap-2 text-xs">
+      <label htmlFor={portId} className="flex items-center gap-2 text-caption">
         {t('port')}
         <Input
           id={portId}
@@ -173,7 +175,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
           {t('openInteractive')}
         </Button>
       ) : (
-        <p className="text-xs text-muted-foreground">{t('desktopOnly')}</p>
+        <p className="text-caption text-muted-foreground">{t('desktopOnly')}</p>
       )}
       {lease ? (
         <Button
@@ -203,7 +205,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
         />
       ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}

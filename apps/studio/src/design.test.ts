@@ -196,3 +196,112 @@ describe('design guard (Workbench polish P0)', () => {
     expect(cn('text-xs text-ui')).toBe('text-ui');
   });
 });
+
+// The kit's six type roles and its variable-font weights replace Tailwind's default steps, and
+// transitions use the kit's motion tokens (DESIGN.md Typography, Motion and Accessibility).
+// The vendored kit, tests, stories and message catalogs are not product call sites.
+const callSites = [...text].filter(
+  ([path]) => /\.tsx?$/.test(path) && !path.includes('/src/design-kit/'),
+);
+
+// Highlighted code is set in the monospace family, which has no variable weight axis, and a
+// keyword's weight is its only highlight. Only this exact declaration is exempt.
+const codeKeyword = (path: string, line: string) =>
+  path === 'packages/react/src/components/CodeBlock.tsx' &&
+  line.trim().endsWith("color = 'font-semibold text-primary';");
+
+/** `path:line: class` for each class `find` reports on a line of a call site. */
+function report(find: (line: string) => string[]): string[] {
+  return callSites.flatMap(([path, body]) =>
+    body
+      .split('\n')
+      .flatMap((line, index) =>
+        codeKeyword(where(path), line)
+          ? []
+          : find(line).map((name) => `${where(path)}:${index + 1}: ${name}`),
+      ),
+  );
+}
+
+/** Tailwind's default font-size and font-weight utilities, with any variant or modifier. */
+function defaultTypeClasses(source: string): string[] {
+  return [
+    ...source.matchAll(
+      /(?<![\w-])(text-(?:xs|sm|base|lg|[2-9]?xl)|font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black))(?![\w-])/g,
+    ),
+  ].map((match) => match[1] as string);
+}
+
+const kitTokens = readFileSync(join(root, 'packages/react/src/design-kit/tokens.css'), 'utf8');
+const kitMotion = new Set(
+  [...kitTokens.matchAll(/^\s*(--(?:duration|ease)-[a-z-]+)\s*:/gm)].map((m) => m[1] as string),
+);
+
+/** Transition durations and easings that do not name one of the kit's motion tokens. */
+function handWrittenMotion(source: string): string[] {
+  return [
+    ...source.matchAll(
+      /(?<![\w-])((?:duration|ease)-(?:\d+|\[[^\]\s]*\]|\(([^)\s]*)\)|in|out|in-out))(?![\w-])/g,
+    ),
+  ]
+    .filter((match) => match[1] !== 'duration-0' && !kitMotion.has(match[2] ?? ''))
+    .map((match) => match[1] as string);
+}
+
+describe('design guard (kit type roles and motion)', () => {
+  it('sets type with the kit roles and weights, never Tailwind default sizes or weights', () => {
+    expect(report(defaultTypeClasses)).toEqual([]);
+  });
+
+  it('times transitions with the kit motion tokens, never hand-written durations or easings', () => {
+    expect(report(handWrittenMotion)).toEqual([]);
+  });
+
+  it('recognizes default type classes behind variants and modifiers, and spares the kit roles', () => {
+    expect(
+      defaultTypeClasses(
+        "cn('sm:text-sm !text-xs text-lg/6 [&_p]:font-medium group-hover:font-semibold', `text-2xl`)",
+      ),
+    ).toEqual(['text-sm', 'text-xs', 'text-lg', 'font-medium', 'font-semibold', 'text-2xl']);
+    expect(
+      defaultTypeClasses(
+        'text-body text-caption text-subtitle text-2xs text-ui font-mono font-sans text-sm-wide --text-sm',
+      ),
+    ).toEqual([]);
+  });
+
+  it("exempts only the code highlighter's keyword weight", () => {
+    const line = "      if (KEYWORDS.has(word)) color = 'font-semibold text-primary';";
+    expect(codeKeyword('packages/react/src/components/CodeBlock.tsx', line)).toBe(true);
+    expect(codeKeyword('packages/react/src/components/Other.tsx', line)).toBe(false);
+    expect(
+      codeKeyword('packages/react/src/components/CodeBlock.tsx', "color = 'font-medium';"),
+    ).toBe(false);
+  });
+
+  it('accepts only the kit motion tokens by name', () => {
+    expect([...kitMotion].sort()).toEqual([
+      '--duration-fast',
+      '--duration-moderate',
+      '--duration-slow',
+      '--ease-out-soft',
+    ]);
+    expect(
+      handWrittenMotion(
+        'duration-(--duration-fast) md:duration-(--duration-slow) ease-(--ease-out-soft) motion-reduce:duration-0',
+      ),
+    ).toEqual([]);
+    expect(
+      handWrittenMotion(
+        'duration-80 duration-[240ms] ease-[var(--ease-out-soft)] ease-out duration-(--duration-quick) ease-(--ease-snappy)',
+      ),
+    ).toEqual([
+      'duration-80',
+      'duration-[240ms]',
+      'ease-[var(--ease-out-soft)]',
+      'ease-out',
+      'duration-(--duration-quick)',
+      'ease-(--ease-snappy)',
+    ]);
+  });
+});

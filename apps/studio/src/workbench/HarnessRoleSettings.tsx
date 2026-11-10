@@ -1,7 +1,7 @@
 import type { HarnessPreview } from '@corral/client';
 import type { AgentRole, HarnessProfileView } from '@corral/contracts';
 import { useStudioStores } from '@corral/react';
-import { Button, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -60,7 +60,10 @@ export function HarnessRoleSettings({
   if (!api) return null;
   return (
     <section className="flex flex-col gap-2 border-y border-line py-3">
-      <div className="flex flex-col gap-1 text-xs font-medium">
+      <div
+        className="flex flex-col gap-1 text-caption"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         <span>{t('heading')}</span>
         <Select
           label={t('heading')}
@@ -99,12 +102,15 @@ export function HarnessRoleSettings({
           }}
         />
       </div>
-      <Link {...navigation.link('harness', projectId)} className="text-xs text-primary underline">
+      <Link
+        {...navigation.link('harness', projectId)}
+        className="text-caption text-primary underline"
+      >
         {t('manage')}
       </Link>
       {role.harness ? (
         <>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {t('pinned', { revision: role.harness.revision })}
           </p>
           {profiles.some(
@@ -112,7 +118,7 @@ export function HarnessRoleSettings({
               profile.profileId === role.harness?.profileId &&
               profile.revision > role.harness.revision,
           ) ? (
-            <p className="text-xs text-warning">{r('profileOlder')}</p>
+            <p className="text-caption text-warning">{r('profileOlder')}</p>
           ) : null}
           <Button
             variant="tertiary"
@@ -143,13 +149,13 @@ export function HarnessRoleSettings({
         </>
       ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
       {preview ? (
         <>
-          <p className="text-xs text-warning">
+          <p className="text-caption text-warning">
             {preview.snapshot.policy === 'trusted-native' ? t('nativeWarning') : ''}
           </p>
           <HarnessPreviewView preview={preview} />

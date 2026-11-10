@@ -137,7 +137,7 @@ export function DesktopAbout({ serverVersion }: { serverVersion?: string }) {
         </section>
       ) : null}
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {t('desktopUnavailable')}
         </p>
       ) : null}

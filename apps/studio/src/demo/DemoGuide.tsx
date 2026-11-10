@@ -1,5 +1,5 @@
 import type { RunSessionStore } from '@corral/react';
-import { Button, Switch } from '@corral/react/design-kit';
+import { Button, fontWeights, Switch } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -14,10 +14,14 @@ const MARK: Record<GuideStepState, string> = {
 
 const TONE: Record<GuideStepState, string> = {
   done: 'text-success',
-  current: 'font-medium text-text',
+  current: 'text-text',
   pending: 'text-muted-foreground',
   missed: 'text-muted-foreground line-through decoration-muted/60',
 };
+
+/** The current step reads as the emphasized one. */
+const weight = (state: GuideStepState) =>
+  state === 'current' ? { fontVariationSettings: fontWeights.semibold } : undefined;
 
 /**
  * What to look for in the demo team's run. Steps follow the committed projection of
@@ -54,10 +58,17 @@ export function DemoGuide({
       .catch(() => undefined);
   }, [armed, target, status, session, onSteer]);
   return (
-    <section aria-labelledby="demo-guide-heading" className="rounded-md fill-group p-3 text-xs">
+    <section
+      aria-labelledby="demo-guide-heading"
+      className="rounded-md fill-group p-3 text-caption"
+    >
       <details open>
         <summary className="cursor-pointer">
-          <h2 id="demo-guide-heading" className="inline text-sm font-semibold">
+          <h2
+            id="demo-guide-heading"
+            className="inline text-subtitle"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
             {t('heading')}
           </h2>
         </summary>
@@ -71,11 +82,17 @@ export function DemoGuide({
               aria-current={step.state === 'current' ? 'step' : undefined}
               className="flex gap-2"
             >
-              <span aria-hidden="true" className={`w-3 shrink-0 ${TONE[step.state]}`}>
+              <span
+                aria-hidden="true"
+                className={`w-3 shrink-0 ${TONE[step.state]}`}
+                style={weight(step.state)}
+              >
                 {MARK[step.state]}
               </span>
               <span className="flex flex-col gap-1">
-                <span className={TONE[step.state]}>{t(`steps.${step.id}`)}</span>
+                <span className={TONE[step.state]} style={weight(step.state)}>
+                  {t(`steps.${step.id}`)}
+                </span>
                 <span className="text-muted-foreground">{t(`state.${step.state}`)}</span>
                 {step.id === 'steer' &&
                 (step.state === 'pending' ||

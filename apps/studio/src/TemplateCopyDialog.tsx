@@ -73,12 +73,12 @@ export function TemplateCopyDialog({
             }}
           />
           {adjustedName ? (
-            <p id={nameHintId} role="status" className="text-sm text-muted-foreground">
+            <p id={nameHintId} role="status" className="text-body text-muted-foreground">
               {t('copyNameAdjusted', { name: savedName })}
             </p>
           ) : null}
           {error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {error}
             </p>
           ) : null}

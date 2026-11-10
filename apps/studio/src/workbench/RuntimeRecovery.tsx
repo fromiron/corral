@@ -1,5 +1,5 @@
 import type { RuntimeCheckpointView } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -31,7 +31,7 @@ export function RuntimeRecovery({ runId, sessionId }: { runId: string; sessionId
   }, [runId, workspaces, t]);
   return (
     <div data-testid="runtime-recovery" className="space-y-2 border-t border-line pt-2">
-      <p className="font-medium">{t('title')}</p>
+      <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('title')}</p>
       <p className="text-muted-foreground">{t('scope')}</p>
       {items?.length === 0 ? <p>{t('empty')}</p> : null}
       {items?.map((item) => (

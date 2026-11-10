@@ -7,7 +7,7 @@ import {
 } from '@corral/client';
 import { SCHEMA_VERSION } from '@corral/contracts';
 import { parseWorkspaceConfig } from '@corral/core';
-import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { X } from '@corral/react/icons';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -179,17 +179,23 @@ export function ModelConfigEditor({
   useSettingsForm({ dirty, pending: saving, save });
   return (
     <section aria-labelledby={headingId} className="settings-surface flex flex-col gap-4">
-      <h3 id={headingId} className="text-sm font-semibold">
+      <h3
+        id={headingId}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
       {config.usingDefaults ? (
-        <p className="text-xs text-muted-foreground">{t('usingDefaults')}</p>
+        <p className="text-caption text-muted-foreground">{t('usingDefaults')}</p>
       ) : null}
 
       <fieldset disabled={saving} className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">{t('profiles')}</legend>
-        <p className="text-xs text-muted-foreground">{t('profilesHint')}</p>
-        <p className="text-xs text-muted-foreground">{t('isolationHint')}</p>
+        <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('profiles')}
+        </legend>
+        <p className="text-caption text-muted-foreground">{t('profilesHint')}</p>
+        <p className="text-caption text-muted-foreground">{t('isolationHint')}</p>
         {profiles.map((profile, index) => {
           const provider = choices.find((c) => c.id === profile.provider);
           const known = provider?.models.some((m) => m.id === profile.model);
@@ -273,7 +279,7 @@ export function ModelConfigEditor({
               </Button>
               <div className="grid w-full gap-2 sm:grid-cols-3">
                 {(['contextWindow', 'reserveTokens', 'keepRecentTokens'] as const).map((key) => (
-                  <label key={key} className="flex min-w-0 flex-col gap-1 text-xs">
+                  <label key={key} className="flex min-w-0 flex-col gap-1 text-caption">
                     <span>{t(key, { profile: label })}</span>
                     <Input
                       inputMode="numeric"
@@ -291,11 +297,11 @@ export function ModelConfigEditor({
                   <>
                     <ProfileContextDetails policy={preview[profile.id]!.policy} />
                     {preview[profile.id]!.errors.length ? (
-                      <p className="text-xs text-danger">{t('invalidRelation')}</p>
+                      <p className="text-caption text-danger">{t('invalidRelation')}</p>
                     ) : null}
                   </>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-caption text-muted-foreground">
                     {previewError ?? t('previewPending')}
                   </p>
                 )}
@@ -328,13 +334,15 @@ export function ModelConfigEditor({
       </fieldset>
 
       <fieldset disabled={saving} className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">{t('endpoints')}</legend>
-        <p className="text-xs text-muted-foreground">{t('endpointsHint')}</p>
+        <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('endpoints')}
+        </legend>
+        <p className="text-caption text-muted-foreground">{t('endpointsHint')}</p>
         {endpoints.map((endpoint, index) => {
           const n = index + 1;
           return (
             <div key={endpoint.uid} className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1 text-caption">
                 <span>{t('endpointId', { n })}</span>
                 <Input
                   aria-label={t('endpointId', { n })}
@@ -345,7 +353,7 @@ export function ModelConfigEditor({
                 />
                 <span className="text-muted-foreground">{t('endpointIdHint')}</span>
               </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1 text-caption">
                 <span>{t('endpointName', { n })}</span>
                 <Input
                   aria-label={t('endpointName', { n })}
@@ -355,7 +363,7 @@ export function ModelConfigEditor({
                 />
                 <span className="text-muted-foreground">{t('endpointNameHint')}</span>
               </label>
-              <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+              <label className="flex flex-col gap-1 text-caption sm:col-span-2">
                 <span>{t('endpointAddress', { n })}</span>
                 <Input
                   aria-label={t('endpointAddress', { n })}
@@ -365,7 +373,7 @@ export function ModelConfigEditor({
                   className="font-mono sm:col-span-2"
                 />
               </label>
-              <div className="flex flex-col gap-1 text-xs">
+              <div className="flex flex-col gap-1 text-caption">
                 <span>{t('endpointAccess', { n })}</span>
                 <Select
                   label={t('endpointAccess', { n })}
@@ -421,10 +429,10 @@ export function ModelConfigEditor({
                       setEndpointKeys((keys) => ({ ...keys, [endpoint.uid]: value }))
                     }
                   />
-                  <p className="text-xs text-muted-foreground">{t('endpointKeyHint')}</p>
+                  <p className="text-caption text-muted-foreground">{t('endpointKeyHint')}</p>
                 </div>
               ) : null}
-              <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+              <label className="flex flex-col gap-1 text-caption sm:col-span-2">
                 <span>{t('endpointModels', { n })}</span>
                 <Textarea
                   value={endpoint.models}
@@ -459,14 +467,14 @@ export function ModelConfigEditor({
           {t('addEndpoint')}
         </Button>
         {changedOrigins.length > 0 ? (
-          <p className="text-xs text-warning">
+          <p className="text-caption text-warning">
             {t('originChanged', { names: changedOrigins.map((e) => e.name || e.id).join(', ') })}
           </p>
         ) : null}
       </fieldset>
 
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}

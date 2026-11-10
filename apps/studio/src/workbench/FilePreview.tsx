@@ -49,7 +49,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
   return (
     <section aria-label={t('title')} className="flex min-h-0 flex-col gap-2">
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-xs" title={path}>
+        <span className="min-w-0 flex-1 truncate text-caption" title={path}>
           {path}
         </span>
         {desktop && lease ? (
@@ -99,7 +99,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : lease ? (
@@ -113,7 +113,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           data-testid="file-preview-frame"
         />
       ) : (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
         </p>
       )}

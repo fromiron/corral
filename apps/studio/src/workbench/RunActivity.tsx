@@ -19,6 +19,7 @@ import {
   AgentStatusLabel,
   AgentSteeringPlan,
   cn,
+  fontWeights,
   formatClock,
 } from '@corral/react/design-kit';
 import { ChevronRight } from '@corral/react/icons';
@@ -191,7 +192,7 @@ export function RunActivity({
               aria-pressed={active}
               onClick={() => onSelect(execution.executionId)}
               className={cn(
-                'flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 text-left text-body transition-colors duration-80 hover:bg-hover',
+                'flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 text-left text-body transition-colors duration-(--duration-fast) hover:bg-hover',
                 'focus-visible:outline-2 focus-visible:outline-[color:var(--focus-ring)] focus-visible:outline-offset-2',
                 active && 'bg-active',
               )}
@@ -202,7 +203,12 @@ export function RunActivity({
               >
                 {index + 1}
               </span>
-              <span className="min-w-0 truncate font-medium">{label}</span>
+              <span
+                className="min-w-0 truncate"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
+                {label}
+              </span>
               <span className="shrink-0 text-caption text-muted-foreground">
                 {[
                   round ? t('iteration', { number: round }) : null,

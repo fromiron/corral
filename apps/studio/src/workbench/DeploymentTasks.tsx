@@ -6,7 +6,7 @@ import type {
 } from '@corral/client';
 import { ApiError } from '@corral/client';
 import { DeploymentReadback } from '@corral/contracts';
-import { Button, Checkbox, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, fontWeights, Select } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { WorkspacesClient } from '../demo/workspaces-client.ts';
@@ -234,7 +234,7 @@ function Tasks({
     });
   if (!list)
     return error ? (
-      <p role="alert" className="text-xs text-danger">
+      <p role="alert" className="text-caption text-danger">
         {error}
       </p>
     ) : null;
@@ -249,7 +249,9 @@ function Tasks({
       className="flex min-w-0 flex-col gap-2 border-b border-line pb-3"
       data-testid="deployment-tasks"
     >
-      <h3 className="text-xs font-medium">{t('title')}</h3>
+      <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h3>
       {list.profiles.length ? (
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Select
@@ -276,15 +278,15 @@ function Tasks({
           </Button>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">{t('empty')}</p>
+        <p className="text-caption text-muted-foreground">{t('empty')}</p>
       )}
       {unsaved ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('unsaved')}
         </p>
       ) : null}
       {selectedPlan ? (
-        <div className="flex min-w-0 flex-col gap-2 text-xs">
+        <div className="flex min-w-0 flex-col gap-2 text-caption">
           <p>
             {selectedPlan.profile.name} · {selectedPlan.profile.environment}
           </p>
@@ -332,7 +334,7 @@ function Tasks({
         </div>
       ) : null}
       {attempt ? (
-        <div className="flex flex-col gap-2 text-xs">
+        <div className="flex flex-col gap-2 text-caption">
           <p role="status">{receipt ? t(`state.${receipt.state}`) : t('lost')}</p>
           {receipt?.exitCode !== null && receipt?.exitCode !== undefined ? (
             <p>{t('exitCode', { code: receipt.exitCode })}</p>
@@ -421,7 +423,9 @@ function Tasks({
       ) : null}
       {list.deployments.length > 1 ? (
         <details>
-          <summary className="cursor-pointer text-xs text-muted-foreground">{t('history')}</summary>
+          <summary className="cursor-pointer text-caption text-muted-foreground">
+            {t('history')}
+          </summary>
           <ul className="mt-1 flex max-h-36 flex-col gap-1 overflow-auto">
             {list.deployments.map((item) => (
               <li key={item.operationId}>
@@ -443,12 +447,12 @@ function Tasks({
         </details>
       ) : null}
       {busy ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('processing')}
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="break-words text-xs text-danger">
+        <p role="alert" className="break-words text-caption text-danger">
           {error}
         </p>
       ) : null}

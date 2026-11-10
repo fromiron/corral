@@ -1,6 +1,6 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button } from '../design-kit/index.ts';
+import { Button, fontWeights } from '../design-kit/index.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
@@ -28,7 +28,11 @@ export function QuestionsPanel({
 
   return (
     <section aria-labelledby="questions-heading" className="flex flex-col gap-1">
-      <h3 id="questions-heading" className="text-xs font-semibold">
+      <h3
+        id="questions-heading"
+        className="text-caption"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
       <ul className="flex flex-col gap-2">
@@ -55,22 +59,29 @@ export function QuestionsPanel({
             <li
               key={question.questionId}
               data-testid={`question-${question.questionId}`}
-              className="flex flex-col gap-2 border-b border-border py-3 text-xs last:border-0"
+              className="flex flex-col gap-2 border-b border-border py-3 text-caption last:border-0"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <a
                   href={`#execution-${question.senderExecutionId}`}
-                  className="font-medium underline"
+                  className="underline"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
                 >
                   {labelOf(asker?.nodeId ?? '')}
                 </a>
                 <span aria-hidden="true">→</span>
                 {responderId ? (
-                  <a href={`#execution-${responderId}`} className="font-medium underline">
+                  <a
+                    href={`#execution-${responderId}`}
+                    className="underline"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
                     {labelOf(question.targetNodeId)}
                   </a>
                 ) : (
-                  <span className="font-medium">{labelOf(question.targetNodeId)}</span>
+                  <span style={{ fontVariationSettings: fontWeights.semibold }}>
+                    {labelOf(question.targetNodeId)}
+                  </span>
                 )}
                 <StatusBadge status={question.status} />
               </div>

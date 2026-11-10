@@ -274,7 +274,7 @@ export function PreviewFeedback({
     <section
       data-testid="preview-feedback"
       aria-label={t('title')}
-      className="flex min-w-0 flex-col gap-2 text-xs"
+      className="flex min-w-0 flex-col gap-2 text-caption"
     >
       <div className="flex flex-wrap items-center gap-3">
         <Switch
@@ -334,8 +334,8 @@ export function PreviewFeedback({
           <DialogDescription>{t('reviewHint')}</DialogDescription>
           {review ? (
             <>
-              <p className="max-h-24 overflow-auto whitespace-pre-wrap break-words text-sm">
-                <span className="mr-2 font-mono text-xs text-muted-foreground">
+              <p className="max-h-24 overflow-auto whitespace-pre-wrap break-words text-body">
+                <span className="mr-2 font-mono text-caption text-muted-foreground">
                   {review.observation.element.tag}
                 </span>
                 {review.observation.element.text}
@@ -347,7 +347,7 @@ export function PreviewFeedback({
                   className="max-h-48 max-w-full self-start rounded object-contain"
                 />
               ) : null}
-              <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
                 <dt>URL</dt>
                 <dd className="break-all">{review.observation.url}</dd>
                 <dt>{t('captured')}</dt>
@@ -355,10 +355,10 @@ export function PreviewFeedback({
                 <dt>{t('sourceRevision')}</dt>
                 <dd>{t('unknown')}</dd>
               </dl>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 {t(consoleMessages ? 'consoleScope' : 'consoleExcluded')}
               </p>
-              <details className="min-w-0 text-xs">
+              <details className="min-w-0 text-caption">
                 <summary className="cursor-pointer rounded py-1 text-muted-foreground">
                   {t('details')}
                 </summary>
@@ -367,7 +367,7 @@ export function PreviewFeedback({
                 </pre>
               </details>
               {error ? (
-                <p role="alert" className="text-xs text-danger">
+                <p role="alert" className="text-caption text-danger">
                   {error}
                 </p>
               ) : null}

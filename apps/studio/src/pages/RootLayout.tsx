@@ -8,6 +8,7 @@ import {
   Dialog,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   SidebarProvider,
   type SidebarRailProps,
   Tooltip,
@@ -342,7 +343,7 @@ function RootFrame() {
                   'app-main relative overflow-hidden bg-background',
                   'peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:peer-data-[side=left]:ml-0',
                   'peer-data-[variant=inset]:peer-data-[state=collapsed]:peer-data-[side=left]:ml-2',
-                  'transition-[margin] duration-80',
+                  'transition-[margin] duration-(--duration-fast)',
                   shape.bgRadius >= 20
                     ? 'peer-data-[variant=inset]:rounded-3xl'
                     : 'peer-data-[variant=inset]:rounded-xl',
@@ -445,7 +446,9 @@ export function NotFoundView() {
   const t = useTranslations('Studio');
   return (
     <main className="flex flex-col items-start gap-3 p-6">
-      <h2 className="text-lg font-semibold">{t('notFound')}</h2>
+      <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('notFound')}
+      </h2>
       <Button variant="ghost" size="compact" render={<Link to="/" />}>
         {t('backToCorrals')}
       </Button>
@@ -459,7 +462,7 @@ export function ErrorView({ error }: ErrorComponentProps) {
   if (error instanceof ApiError && error.code === 'SESSION_INVALID') return <SessionMissingView />;
   return (
     <main role="alert" className="flex flex-col items-start gap-3 p-6">
-      <h2 className="text-lg font-semibold">
+      <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('error', { message: error instanceof Error ? error.message : String(error) })}
       </h2>
       <div className="flex gap-2">
@@ -480,8 +483,10 @@ export function SessionMissingView() {
   const t = useTranslations('Studio');
   return (
     <main className="flex flex-col items-start gap-3 p-6">
-      <h1 className="text-base font-semibold">{t('title')}</h1>
-      <p role="alert" className="text-sm text-danger">
+      <h1 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h1>
+      <p role="alert" className="text-body text-danger">
         {t('sessionMissing')}
       </p>
       <Button variant="secondary" onClick={() => window.location.reload()}>

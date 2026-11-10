@@ -99,7 +99,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
       ) : (
         <>
           {error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {error}
             </p>
           ) : null}
@@ -152,7 +152,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
               {r('cancel')}
             </Button>
           </div>
-          <p role="status" className="text-sm">
+          <p role="status" className="text-body">
             {busy ? t('busy') : notice}
           </p>
         </>

@@ -1,7 +1,7 @@
 import { ApiError } from '@corral/client';
 import { TEAM_SLOTS, TeamPlan } from '@corral/contracts';
 import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/react';
-import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useMessages, useTranslations } from 'use-intl';
@@ -101,10 +101,16 @@ export function TeamDraftDialog({
   return (
     <Modal label={t('title')} onClose={onClose}>
       <div className="flex max-h-[76vh] flex-col gap-3 overflow-y-auto p-4">
-        <h2 className="text-base font-semibold">{t('title')}</h2>
+        <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('title')}
+        </h2>
         {!plan ? (
           <>
-            <label htmlFor={goalId} className="text-sm font-medium">
+            <label
+              htmlFor={goalId}
+              className="text-subtitle"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
               {t('goalLabel')}
             </label>
             <Textarea
@@ -132,7 +138,7 @@ export function TeamDraftDialog({
                 >
                   {t('suggest')}
                 </Button>
-                <span className="text-xs text-muted-foreground">{t('suggestHint')}</span>
+                <span className="text-caption text-muted-foreground">{t('suggestHint')}</span>
               </div>
               {live && models ? (
                 <div className="flex flex-col gap-1">
@@ -146,7 +152,7 @@ export function TeamDraftDialog({
                   >
                     {busy ? t('asking') : t('ask')}
                   </Button>
-                  <span className="text-xs text-muted-foreground">{t('askHint')}</span>
+                  <span className="text-caption text-muted-foreground">{t('askHint')}</span>
                 </div>
               ) : null}
             </div>
@@ -155,11 +161,13 @@ export function TeamDraftDialog({
           <PlanEditor plan={plan} onChange={setPlan} />
         )}
         {error ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         ) : null}
-        {checked && !checked.success ? <p className="text-xs text-danger">{t('invalid')}</p> : null}
+        {checked && !checked.success ? (
+          <p className="text-caption text-danger">{t('invalid')}</p>
+        ) : null}
         <div className="flex justify-end gap-2 border-t border-line pt-3">
           {plan ? (
             <Button
@@ -208,12 +216,15 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
     });
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm">
-        <span className="rounded bg-surface px-2 py-0.5 font-medium">
+      <p className="text-body">
+        <span
+          className="rounded bg-surface px-2 py-0.5"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
           {t(`patterns.${plan.pattern}`)}
         </span>
       </p>
-      <label htmlFor={`${id}-name`} className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-name`} className="flex flex-col gap-1 text-body">
         {t('nameLabel')}
         <Input
           id={`${id}-name`}
@@ -222,7 +233,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           onChange={(e) => onChange({ ...plan, name: e.target.value })}
         />
       </label>
-      <label htmlFor={`${id}-brief`} className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-brief`} className="flex flex-col gap-1 text-body">
         {t('briefLabel')}
         <Textarea
           id={`${id}-brief`}
@@ -233,7 +244,9 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
         />
       </label>
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">{t('rolesLabel')}</legend>
+        <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('rolesLabel')}
+        </legend>
         {ordered.map((role, index) =>
           role ? (
             <div key={role.slot} className="flex flex-col gap-1 rounded fill-group p-2">
@@ -245,7 +258,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
                 value={role.name}
                 maxLength={40}
                 onChange={(e) => setRole(index, { name: e.target.value })}
-                className="font-medium"
+                style={{ fontVariationSettings: fontWeights.semibold }}
               />
               <label htmlFor={`${id}-duty-${index}`} className="sr-only">
                 {t('roleDuty', { n: index + 1 })}
@@ -261,7 +274,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           ) : null,
         )}
       </fieldset>
-      <label htmlFor={`${id}-criteria`} className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-criteria`} className="flex flex-col gap-1 text-body">
         {t('criteriaLabel')}
         <Textarea
           id={`${id}-criteria`}
@@ -279,7 +292,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           }}
         />
       </label>
-      <div className="flex flex-wrap items-center gap-4 text-sm">
+      <div className="flex flex-wrap items-center gap-4 text-body">
         {plan.pattern !== 'single' ? (
           <div className="flex items-center gap-2">
             <span>{t('rounds')}</span>

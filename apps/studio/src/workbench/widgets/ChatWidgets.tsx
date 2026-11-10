@@ -661,7 +661,7 @@ export function ComposerDock({
             <ChevronDown
               size={12}
               aria-hidden="true"
-              className={`shrink-0 transition-[rotate] duration-160 ease-[var(--ease-out-soft)] motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+              className={`shrink-0 transition-[rotate] duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
             />
           </Button>
         ) : null}
@@ -910,7 +910,7 @@ export function ComposerPlan({
           >
             <ChevronDown
               size={14}
-              className={`shrink-0 text-muted-foreground transition-[rotate] duration-160 ease-[var(--ease-out-soft)] motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
+              className={`shrink-0 text-muted-foreground transition-[rotate] duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
             />
             <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('planHeading')}</span>
             {selection && model.plan.multiple ? (

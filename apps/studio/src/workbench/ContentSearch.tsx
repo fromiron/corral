@@ -275,13 +275,13 @@ export function ContentSearch({
           ) : null}
         </div>
       </form>
-      <p className="text-xs text-muted-foreground">{t('diskOnly')}</p>
+      <p className="text-caption text-muted-foreground">{t('diskOnly')}</p>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="text-caption text-muted-foreground">
         {phase === 'preparing'
           ? te('previewing')
           : phase === 'searching'
@@ -297,13 +297,13 @@ export function ContentSearch({
                 : null}
       </p>
       {result?.truncated ? (
-        <p role="note" className="text-xs text-warning">
+        <p role="note" className="text-caption text-warning">
           {t('truncated')}
         </p>
       ) : null}
       {edits?.previewFileEdits && result?.matches.length ? (
         <div className="flex flex-col gap-2 rounded fill-group p-2">
-          <label htmlFor={replacementId} className="flex flex-col gap-1 text-xs">
+          <label htmlFor={replacementId} className="flex flex-col gap-1 text-caption">
             {te('replacement')}
             <Input
               size="sm"
@@ -319,7 +319,7 @@ export function ContentSearch({
               }}
             />
           </label>
-          <p className="text-xs text-muted-foreground">{te('savedOnly')}</p>
+          <p className="text-caption text-muted-foreground">{te('savedOnly')}</p>
           <Button
             size="compact"
             variant="tertiary"
@@ -358,7 +358,7 @@ export function ContentSearch({
                     width: '100%',
                     height: row.size,
                   }}
-                  className="flex min-w-0 flex-col justify-center gap-1 rounded px-2 text-left text-xs hover:bg-raised"
+                  className="flex min-w-0 flex-col justify-center gap-1 rounded px-2 text-left text-caption hover:bg-raised"
                 >
                   <span className="w-full truncate">
                     {match.path}:{match.range.startLine}:{match.range.startColumn}
@@ -371,7 +371,7 @@ export function ContentSearch({
             })}
           </div>
           {!result.matches.length ? (
-            <p className="p-2 text-xs text-muted-foreground">{t('empty')}</p>
+            <p className="p-2 text-caption text-muted-foreground">{t('empty')}</p>
           ) : null}
         </section>
       ) : null}

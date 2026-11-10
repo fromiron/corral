@@ -1,7 +1,7 @@
 import { type LoopNode, type RegisteredCheck, ReviewRecipeRevision } from '@corral/contracts';
 import { reviewCriteriaHash } from '@corral/core';
 import { useStudioStores } from '@corral/react';
-import { Button, Checkbox, Input, Select, Textarea } from '@corral/react/design-kit';
+import { Button, Checkbox, fontWeights, Input, Select, Textarea } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -92,14 +92,16 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
   }
   return (
     <fieldset disabled={busy} className="flex flex-col gap-2 border-y border-line py-3">
-      <legend className="text-sm font-semibold">{t('heading')}</legend>
-      <p className="text-xs text-muted-foreground">{t('setupHint')}</p>
+      <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('heading')}
+      </legend>
+      <p className="text-caption text-muted-foreground">{t('setupHint')}</p>
       {node.reviewRecipe ? (
-        <p role="status" className="text-xs">
+        <p role="status" className="text-caption">
           {t('pinned', { revision: node.reviewRecipe.revision })}
         </p>
       ) : null}
-      <div className="flex flex-col gap-1 text-xs">
+      <div className="flex flex-col gap-1 text-caption">
         <span>{t('candidate')}</span>
         <Select
           label={t('candidate')}
@@ -112,7 +114,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
           onValueChange={(candidateNodeId) => setValues((value) => ({ ...value, candidateNodeId }))}
         />
       </div>
-      <div className="flex flex-col gap-1 text-xs">
+      <div className="flex flex-col gap-1 text-caption">
         <span>{t('evaluator')}</span>
         <Select
           label={t('evaluator')}
@@ -125,15 +127,17 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
           onValueChange={(evaluatorRoleId) => setValues((value) => ({ ...value, evaluatorRoleId }))}
         />
       </div>
-      <p className="text-xs font-medium">{t('criteria')}</p>
-      <ul className="list-disc pl-4 text-xs">
+      <p className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('criteria')}
+      </p>
+      <ul className="list-disc pl-4 text-caption">
         {definition.input.criteria.map((criterion) => (
           <li key={criterion}>{criterion}</li>
         ))}
       </ul>
       {node.reviewRecipe &&
       node.reviewRecipe.criteriaHash !== reviewCriteriaHash(definition.input.criteria) ? (
-        <p role="alert" className="text-xs text-warning">
+        <p role="alert" className="text-caption text-warning">
           {t('criteriaChanged')}
         </p>
       ) : null}
@@ -143,7 +147,7 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
           ['maxRepairs', 0, 9],
         ] as const
       ).map(([key, min, max]) => (
-        <label key={key} className="flex flex-col gap-1 text-xs">
+        <label key={key} className="flex flex-col gap-1 text-caption">
           {t(key)}
           <Input
             type="number"
@@ -156,8 +160,10 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
           />
         </label>
       ))}
-      <p className="text-xs text-muted-foreground">{t('limitsHint')}</p>
-      <p className="text-xs font-medium">{t('checks')}</p>
+      <p className="text-caption text-muted-foreground">{t('limitsHint')}</p>
+      <p className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('checks')}
+      </p>
       {checks.map((check) => (
         <Checkbox
           key={check.id}
@@ -188,14 +194,14 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
             }
           />
         ))}
-      <p className="text-xs text-muted-foreground">{t('checksHint')}</p>
-      <label className="flex flex-col gap-1 text-xs">
+      <p className="text-caption text-muted-foreground">{t('checksHint')}</p>
+      <label className="flex flex-col gap-1 text-caption">
         {t('files')}
         <Textarea rows={2} value={paths} onChange={(event) => setPaths(event.target.value)} />
       </label>
-      <p className="text-xs text-muted-foreground">{t('filesHint')}</p>
+      <p className="text-caption text-muted-foreground">{t('filesHint')}</p>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}

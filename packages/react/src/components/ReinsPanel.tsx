@@ -2,7 +2,7 @@ import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { type KeyboardEvent, useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, Textarea } from '../design-kit/index.ts';
+import { Button, fontWeights, Textarea } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
 import { ExecutionSteering } from './ExecutionSteering.tsx';
@@ -61,10 +61,14 @@ export function ReinsPanel({
   if (!target) {
     return (
       <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-2">
-        <h2 id={`${inputId}-heading`} className="text-sm font-semibold">
+        <h2
+          id={`${inputId}-heading`}
+          className="text-subtitle"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
           {t('heading')}
         </h2>
-        <p className="text-sm text-muted-foreground">{t('noTarget')}</p>
+        <p className="text-body text-muted-foreground">{t('noTarget')}</p>
         {compact ? null : <SettingsPatchPanel key={projection?.runId} session={session} />}
       </section>
     );
@@ -136,7 +140,11 @@ export function ReinsPanel({
   const compose =
     !target.finished || draft ? (
       <div className="mt-2.5 flex flex-col gap-1 border-t border-border py-2.5 pr-3 pl-3.5">
-        <label htmlFor={inputId} className="text-xs font-medium">
+        <label
+          htmlFor={inputId}
+          className="text-caption"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
           {t('instruction')}
         </label>
         <Textarea
@@ -158,12 +166,12 @@ export function ReinsPanel({
           onKeyDown={onKeyDown}
           rows={3}
         />
-        <p id={hintId} className="text-xs text-muted-foreground">
+        <p id={hintId} className="text-caption text-muted-foreground">
           {t('instructionHint')}
         </p>
         {!draftMatches && draft ? (
           <>
-            <p role="status" className="text-xs text-warning">
+            <p role="status" className="text-caption text-warning">
               {t('draftTargetChanged', {
                 target: `${draft.nodeLabel} · ${draft.executionId}`,
               })}
@@ -202,12 +210,16 @@ export function ReinsPanel({
 
   return (
     <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3">
-      <h2 id={`${inputId}-heading`} className="text-sm font-semibold">
+      <h2
+        id={`${inputId}-heading`}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')} · <span>{target.nodeLabel}</span>
       </h2>
       {compact ? (
         <>
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body">
             <span>
               {projection?.executionOrder.includes(target.executionId)
                 ? t('executionNumber', {
@@ -220,7 +232,7 @@ export function ReinsPanel({
           </div>
           {compose}
           {target.finished ? (
-            <p className="text-sm text-muted-foreground">{t('finished')}</p>
+            <p className="text-body text-muted-foreground">{t('finished')}</p>
           ) : null}
           {(projection?.directiveOrder ?? []).some(
             (id) => projection?.directives[id]?.targetExecutionId === target.executionId,
@@ -234,7 +246,7 @@ export function ReinsPanel({
       ) : (
         <ExecutionSteering session={session} target={target} compose={compose}>
           <div className="px-3.5 pb-3">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
               <dt className="text-muted-foreground">{t('target')}</dt>
               <dd>
                 {target.nodeLabel} · execution {target.executionId}
@@ -246,7 +258,7 @@ export function ReinsPanel({
             </dl>
 
             {target.finished ? (
-              <p className="text-xs text-muted-foreground">{t('finished')}</p>
+              <p className="text-caption text-muted-foreground">{t('finished')}</p>
             ) : null}
           </div>
         </ExecutionSteering>
@@ -267,7 +279,7 @@ export function ReinsPanel({
       {cancelTarget?.runId === runId &&
       cancelTarget.executionId === target.executionId &&
       !target.finished ? (
-        <div className="flex flex-col gap-2 rounded border border-danger p-2 text-xs">
+        <div className="flex flex-col gap-2 rounded border border-danger p-2 text-caption">
           <p>{t('cancelExecutionExplain', { executionId: target.executionId })}</p>
           <Button
             type="button"
@@ -300,7 +312,7 @@ export function ReinsPanel({
         </div>
       ) : null}
       {canRestart && execution && projection ? (
-        <div className="flex flex-col gap-2 text-xs">
+        <div className="flex flex-col gap-2 text-caption">
           <p className="text-muted-foreground">{t('restartExplain')}</p>
           {paused ? <p className="text-warning">{t('resumeBeforeRestart')}</p> : null}
           <label htmlFor={`${inputId}-restart`}>{t('restartInstruction')}</label>

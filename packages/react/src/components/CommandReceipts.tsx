@@ -1,7 +1,7 @@
 import type { ReceiptStatus } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button } from '../design-kit/index.ts';
+import { Button, fontWeights } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
@@ -31,13 +31,15 @@ export function CommandReceipts({
       (!openOnly || !SETTLED.has(receipt.status) || receipt.error !== undefined),
   );
   return (
-    <div className="flex flex-col gap-1 text-xs" aria-live="polite">
+    <div className="flex flex-col gap-1 text-caption" aria-live="polite">
       {error ? (
         <p role="alert" className="text-danger">
           {t('connectionUnknown', { message: error })}
         </p>
       ) : null}
-      {matching.length > 0 ? <h3 className="font-semibold">{t('receipts')}</h3> : null}
+      {matching.length > 0 ? (
+        <h3 style={{ fontVariationSettings: fontWeights.semibold }}>{t('receipts')}</h3>
+      ) : null}
       {Object.values(unknown)
         .filter(({ command }) => target === `run:${command.runId}`)
         .map(({ command, error }) => (

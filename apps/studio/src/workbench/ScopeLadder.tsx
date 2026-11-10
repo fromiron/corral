@@ -1,3 +1,4 @@
+import { fontWeights } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
@@ -22,7 +23,11 @@ export function ScopeLadder({ current }: { current: 'personal' | 'project' }) {
         : null;
   return (
     <section className="flex flex-col gap-2">
-      <h3 id={title} className="text-sm font-semibold">
+      <h3
+        id={title}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('ladderTitle')}
       </h3>
       <ol aria-labelledby={title} className="grid gap-2 sm:grid-cols-4">
@@ -33,10 +38,10 @@ export function ScopeLadder({ current }: { current: 'personal' | 'project' }) {
             <li
               key={step}
               aria-current={here ? 'step' : undefined}
-              className={`flex flex-col gap-1 rounded-lg p-3 text-xs ${here ? 'bg-raised shadow-sm' : 'fill-group'}`}
+              className={`flex flex-col gap-1 rounded-lg p-3 text-caption ${here ? 'bg-raised shadow-sm' : 'fill-group'}`}
             >
               <span className="text-2xs text-muted-foreground">{index + 1}</span>
-              <h4 className="text-sm font-medium">
+              <h4 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
                 {target ? (
                   <Link {...target} className="text-primary underline">
                     {t(`ladder.${step}`)}
@@ -50,7 +55,7 @@ export function ScopeLadder({ current }: { current: 'personal' | 'project' }) {
           );
         })}
       </ol>
-      <p className="text-xs text-muted-foreground">{t('ladderRule')}</p>
+      <p className="text-caption text-muted-foreground">{t('ladderRule')}</p>
     </section>
   );
 }

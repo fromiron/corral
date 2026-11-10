@@ -1,6 +1,6 @@
 import type { VerifyCommand, WorkspaceBindingView, WorktreeView } from '@corral/client';
 import { EmptyView, type EmptyViewAction } from '@corral/react';
-import { Button, Input, Switch, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -116,8 +116,8 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
 
   return (
     <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
-      <p className="text-sm text-muted-foreground">{t('folderIntro')}</p>
-      {mode === 'browser' ? <p className="text-sm text-warning">{t('demoFolder')}</p> : null}
+      <p className="text-body text-muted-foreground">{t('folderIntro')}</p>
+      {mode === 'browser' ? <p className="text-body text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
         <form onSubmit={link} className="settings-row">
           <div>
@@ -210,14 +210,19 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                   void act(() => workspaces.configure(projectId, { trusted: !binding.trusted }))
                 }
               />
-              <p className="text-xs">{t('trustHint')}</p>
+              <p className="text-caption">{t('trustHint')}</p>
             </div>
           ) : null}
           {binding.trusted ? (
             <section className="settings-surface flex flex-col gap-3">
               <div>
-                <h3 className="text-sm font-medium">{t('checksHeading')}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">{t('checksHint')}</p>
+                <h3
+                  className="text-subtitle"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
+                  {t('checksHeading')}
+                </h3>
+                <p className="mt-1 text-caption text-muted-foreground">{t('checksHint')}</p>
               </div>
               <Textarea
                 rows={3}
@@ -250,7 +255,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
         </>
       )}
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
@@ -331,13 +336,17 @@ export function WorkingCopyPanel({
   return (
     <section
       aria-labelledby="copy-heading"
-      className="flex flex-col gap-2 rounded-md fill-group p-3 text-sm"
+      className="flex flex-col gap-2 rounded-md fill-group p-3 text-body"
     >
-      <h3 id="copy-heading" className="text-sm font-semibold">
+      <h3
+        id="copy-heading"
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('copyHeading')}
       </h3>
       {worktree?.missing ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('copyMissing')}
         </p>
       ) : null}
@@ -374,7 +383,7 @@ export function WorkingCopyPanel({
         />
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}

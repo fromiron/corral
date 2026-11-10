@@ -8,6 +8,7 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Switch,
   Tooltip,
 } from '@corral/react/design-kit';
@@ -106,7 +107,7 @@ export function MessageBranch({
               {t(requestStart ? 'requestDescription' : 'description')}
             </DialogDescription>
           </DialogHeader>
-          <DialogPanel className="space-y-3 text-sm">
+          <DialogPanel className="space-y-3 text-body">
             <Switch
               label={t('contextOnly')}
               checked={contextOnly}
@@ -169,7 +170,7 @@ export function MessageBranch({
             ) : null}
             {siblings.length ? (
               <div>
-                <p className="font-medium">{t('siblings')}</p>
+                <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('siblings')}</p>
                 <ul>
                   {siblings.map((item) => (
                     <li key={item.sessionId}>

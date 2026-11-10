@@ -134,7 +134,7 @@ export function TextAttachmentPicker({
           ))}
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('attachmentError')}
         </p>
       ) : null}
@@ -145,7 +145,7 @@ export function TextAttachmentPicker({
 export function TextAttachmentList({ attachments }: { attachments: TextAttachment[] }) {
   const t = useTranslations('Composer');
   return (
-    <ul aria-label={t('attachments')} className="mt-2 flex flex-col gap-1 text-xs">
+    <ul aria-label={t('attachments')} className="mt-2 flex flex-col gap-1 text-caption">
       {attachments.map((item) => (
         <li key={textAttachmentKey(item)}>
           <details>

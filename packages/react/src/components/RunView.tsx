@@ -9,6 +9,7 @@ import {
   type AgentTreeLabels,
   type AgentTreeNode,
   Button,
+  fontWeights,
   formatClock,
   Select,
 } from '../design-kit/index.ts';
@@ -60,12 +61,12 @@ export function RunView({
   return (
     <div className="flex flex-col gap-3">
       {startError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('rejected', { message: startError.message })}
         </p>
       ) : null}
       {definitionError ? (
-        <p role="alert" className="text-xs text-warning">
+        <p role="alert" className="text-caption text-warning">
           {t('definitionUnavailable')}{' '}
           <Button
             type="button"
@@ -81,7 +82,7 @@ export function RunView({
         </p>
       ) : null}
       {streamError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('streamError', { message: streamError })}
         </p>
       ) : null}
@@ -89,18 +90,18 @@ export function RunView({
         <>
           <RunActions key={projection.runId} session={session} />
           {simulatedHarness ? (
-            <p className="text-xs text-muted-foreground">{t('harnessSimulation')}</p>
+            <p className="text-caption text-muted-foreground">{t('harnessSimulation')}</p>
           ) : null}
           <UsageInspector session={session} prices={prices} />
           <HarnessDetails session={session} />
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-caption">
             <span className="text-muted-foreground">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">
               <StatusBadge status={projection.status} />
             </span>
           </div>
           {projection.statusReason ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {t('reasonPrefix')}{' '}
               <RunReason
                 code={projection.statusReason}
@@ -148,9 +149,13 @@ export function RunOutput({
   );
   return (
     <div className="flex flex-col gap-1">
-      {heading ? <h3 className="text-xs font-semibold">{t('output')}</h3> : null}
+      {heading ? (
+        <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('output')}
+        </h3>
+      ) : null}
       {onOpenResults && finals.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-caption">
           {finals.length > 1 ? (
             <span className="text-muted-foreground">
               {tr('finalCount', { count: finals.length })}
@@ -174,7 +179,7 @@ export function RunOutput({
         </div>
       ) : null}
       {outputText === null ? (
-        <p className="text-xs text-muted-foreground">{t('outputPending')}</p>
+        <p className="text-caption text-muted-foreground">{t('outputPending')}</p>
       ) : (
         <div
           data-testid="run-output"
@@ -665,7 +670,9 @@ function ExecutionDetail({
         <FailureNotice message={execution.error} cancelled={execution.status === 'cancelled'} />
       ) : null}
       {!compact && live?.completed ? (
-        <p className="mt-1 font-medium">{t('completedResponse')}</p>
+        <p className="mt-1" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('completedResponse')}
+        </p>
       ) : null}
       {!compact && live?.text ? (
         <p

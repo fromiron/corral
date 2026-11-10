@@ -154,7 +154,7 @@ export function SettingsLeavePrompt() {
         <DialogTitle>{t('unsaved')}</DialogTitle>
         <DialogDescription>{t(canSave ? 'unsavedHint' : 'explicitHint')}</DialogDescription>
         {failed ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {t('saveFailed')}
           </p>
         ) : null}
@@ -206,7 +206,7 @@ function OperationStatus({ tasks }: { tasks: ReturnType<typeof createSettingsTas
   if (!operations.length) return null;
   return (
     <div
-      className="flex max-h-28 shrink-0 flex-col gap-1 overflow-auto border-b border-line bg-surface px-4 py-2 text-xs"
+      className="flex max-h-28 shrink-0 flex-col gap-1 overflow-auto border-b border-line bg-surface px-4 py-2 text-caption"
       aria-live="polite"
       data-testid="settings-operations"
     >

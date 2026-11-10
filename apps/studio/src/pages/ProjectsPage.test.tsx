@@ -130,7 +130,7 @@ it('lists the projects first, as a table, with one New project action and no for
   const container = await show();
   expect(container.querySelector('h1')?.textContent).toBe(messages.Projects.heading);
   expect(form()).toBeNull();
-  expect(container.textContent).not.toContain(messages.Projects.intro);
+  expect(container.textContent).not.toContain('A project keeps its teams and runs apart');
   const rows = [...container.querySelectorAll('table tbody tr')];
   expect(rows.map((row) => row.querySelector('a')?.textContent)).toEqual([
     'My project',
