@@ -2272,7 +2272,8 @@
     "blocked": {
       "target": "The {name} execution has ended and no longer takes instructions. Choose another execution, or send this another way.",
       "run": "This run has ended, so the instruction cannot be delivered. Send it another way.",
-      "intent": "This {intent} cannot be sent while another run works. Send it another way."
+      "intent": "This {intent} cannot be sent while another run works. Send it another way.",
+      "queueEnded": "The run has ended, so there is nothing to queue this behind. Send it another way."
     },
     "switchTo": {
       "next": "Send as a follow-up",

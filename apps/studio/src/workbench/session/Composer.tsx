@@ -84,7 +84,7 @@ import {
 } from '../autoChoice.ts';
 import { ComposerInput } from '../ComposerInput.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
-import { type IntentLock, resolveIntent } from '../composerIntent.ts';
+import { blockedReason, type IntentLock, resolveIntent } from '../composerIntent.ts';
 import {
   type MentionItem,
   mentionLabel,
@@ -1269,6 +1269,19 @@ export function Composer({
     profiles !== null &&
     autoNotReady(autoChoice, profiles, runMode);
   const autoProfile = profiles?.find((p) => p.profileId === autoChoice.modelProfile);
+  // The connect notice leaves once its model is connected. Focus that settings handed back to
+  // its Connect button goes on to the request box instead of falling to the page.
+  const connectNotice = notReady.length > 0 || autoBlocked;
+  const hadConnectNotice = useRef(connectNotice);
+  useEffect(() => {
+    const left = hadConnectNotice.current && !connectNotice;
+    hadConnectNotice.current = connectNotice;
+    if (!left) return;
+    const frame = requestAnimationFrame(() => {
+      if (document.activeElement === document.body) input.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [connectNotice]);
   const reasoningBlocked =
     isAuto && intent === 'next' && autoReasoningUnsupported(autoChoice, profiles, runMode);
   const liveUnavailable =
@@ -1443,11 +1456,10 @@ export function Composer({
           {resolved.blocked ? (
             <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
               <BannerTitle>
-                {resolved.blocked === 'target'
-                  ? tc('blocked.target', { name: targetName(steerTarget) })
-                  : resolved.blocked === 'run'
-                    ? tc('blocked.run')
-                    : tc('blocked.intent', { intent: t(`intentShort.${intent}`) })}
+                {tc(`blocked.${blockedReason(resolved.blocked, intent)}`, {
+                  name: targetName(steerTarget),
+                  intent: t(`intentShort.${intent}`),
+                })}
               </BannerTitle>
               <BannerActions>
                 {allowed

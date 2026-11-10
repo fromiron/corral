@@ -56,3 +56,15 @@ export function resolveIntent({
     chosenTarget && targets.includes(chosenTarget) ? chosenTarget : (targets[0] ?? null);
   return { intent, target, blocked: target ? null : 'target' };
 }
+
+/**
+ * Which sentence explains a blocked send. A queued request is blocked because its run has ended
+ * (there is nothing left to queue behind); any other request, because a run is still working.
+ */
+export function blockedReason(
+  blocked: Exclude<Blocked, null>,
+  intent: SessionIntent,
+): 'target' | 'run' | 'queueEnded' | 'intent' {
+  if (blocked !== 'intent') return blocked;
+  return intent === 'queue' ? 'queueEnded' : 'intent';
+}

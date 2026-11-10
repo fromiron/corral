@@ -399,6 +399,19 @@ function RunWorkspace({
   useEffect(() => {
     if (panel === 'approval' && !responding) setPanel('closed');
   }, [panel, responding]);
+  // The response area leaves with the last answer; focus that was in it goes to the run's title
+  // instead of falling to the page.
+  const wasResponding = useRef(responding);
+  useEffect(() => {
+    const left = wasResponding.current && !responding;
+    wasResponding.current = responding;
+    if (!left) return;
+    const frame = requestAnimationFrame(() => {
+      if (document.activeElement === document.body)
+        document.querySelector<HTMLElement>('[data-run-title]')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [responding]);
   // A new question or approval opens the response area once, only into free space on a wide
   // page. An item counts as announced only once the area has actually shown it, so one first seen
   // behind a document, an inspector or a narrow page still opens it when the space frees up.
@@ -1093,7 +1106,9 @@ function RunHeader({
         <div className="flex items-center gap-3 @max-[44rem]/run-head:basis-full">
           <h2
             title={title}
-            className="line-clamp-2 min-w-[16ch] shrink text-subtitle [overflow-wrap:anywhere]"
+            tabIndex={-1}
+            data-run-title
+            className="line-clamp-2 min-w-[16ch] shrink text-subtitle outline-none [overflow-wrap:anywhere]"
             style={{ fontVariationSettings: fontWeights.semibold }}
           >
             {title}
