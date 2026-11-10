@@ -154,7 +154,6 @@
       "waiting_children": "Waiting for child tasks",
       "waiting_message": "Waiting for a reply",
       "waiting_approval": "Waiting for approval",
-      "waiting_answer": "Waiting for your answer",
       "pausing": "Pause requested",
       "paused": "Paused",
       "cancelling": "Cancelling",

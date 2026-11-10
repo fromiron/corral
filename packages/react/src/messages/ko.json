@@ -154,7 +154,6 @@
       "waiting_children": "하위 작업 대기",
       "waiting_message": "답변 대기",
       "waiting_approval": "승인 대기",
-      "waiting_answer": "내 답변 대기",
       "pausing": "정지 요청 중",
       "paused": "일시정지",
       "cancelling": "취소 중",

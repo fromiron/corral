@@ -73,8 +73,9 @@ export const RUN_GRAPH_FIT: FitRule = { padding: 40, maxZoom: 1.25 };
 /** Room above a mark for its breathing halo and selected scale. */
 const HALO = 8;
 
+/** An answer owed reads as the glossary's Waiting for you, short enough for a node's line. */
 const waitingWords = {
-  answer: 'waiting_answer',
+  answer: 'waiting',
   approval: 'waiting_approval',
   you: 'waiting',
 } as const satisfies Record<Awaited, string>;
