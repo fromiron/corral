@@ -576,6 +576,105 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(id))?.auto).toEqual({ modelProfile: 'model-a' });
       });
 
+      it('a work session keeps trimmed completion criteria under its revision', async () => {
+        const repo = makeRepository();
+        const plain = await repo.createSession({ projectId: 'default', title: 'Plain' });
+        if (!plain.ok) throw new Error(plain.message);
+        expect(plain.session.criteria).toEqual([]);
+        const created = await repo.createSession({
+          projectId: 'default',
+          title: 'Report',
+          criteria: ['  The report names its sources ', 'Tables have units'],
+        });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect(created.session.criteria).toEqual([
+          'The report names its sources',
+          'Tables have units',
+        ]);
+        expect((await repo.getSession(id))?.criteria).toEqual([
+          'The report names its sources',
+          'Tables have units',
+        ]);
+        const changed = await repo.updateSession(id, {
+          criteria: ['Only one line'],
+          expectedRevision: 1,
+        });
+        expect(changed).toMatchObject({ ok: true, session: { revision: 2 } });
+        expect(
+          await repo.updateSession(id, { criteria: ['Stale'], expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        expect((await repo.getSession(id))?.criteria).toEqual(['Only one line']);
+        const cleared = await repo.updateSession(id, { criteria: [], expectedRevision: 2 });
+        expect(cleared.ok && cleared.session.criteria).toEqual([]);
+        const renamed = await repo.updateSession(id, { title: 'Renamed', expectedRevision: 3 });
+        expect(renamed.ok && renamed.session.criteria).toEqual([]);
+      });
+
+      it('criteria outside 0 to 20 lines of 1 to 200 characters save nothing', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({
+          projectId: 'default',
+          title: 'S',
+          criteria: ['Keep me'],
+        });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const bad = [
+          Array.from({ length: 21 }, (_, i) => `Line ${i + 1}`),
+          ['First', ''],
+          ['First', '   '],
+          ['x'.repeat(201)],
+        ];
+        for (const criteria of bad) {
+          expect(await repo.updateSession(id, { criteria, expectedRevision: 1 })).toMatchObject({
+            ok: false,
+            error: 'invalid',
+          });
+          expect(
+            await repo.createSession({ projectId: 'default', title: 'Bad', criteria }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        }
+        expect(await repo.getSession(id)).toMatchObject({ revision: 1, criteria: ['Keep me'] });
+        const edge = await repo.updateSession(id, {
+          criteria: [...Array.from({ length: 19 }, (_, i) => `Line ${i + 1}`), 'y'.repeat(200)],
+          expectedRevision: 1,
+        });
+        expect(edge.ok && edge.session.criteria).toHaveLength(20);
+      });
+
+      it('a meeting has no completion criteria', async () => {
+        const repo = makeRepository();
+        const meeting = {
+          version: 1 as const,
+          participants: [
+            { participantId: 'a', name: 'A', prompt: 'One view.', modelProfile: 'model-a' },
+            { participantId: 'b', name: 'B', prompt: 'Another view.', modelProfile: 'model-b' },
+          ],
+          secretary: { modelProfile: 'model-a' },
+        };
+        expect(
+          await repo.createSession({
+            projectId: 'default',
+            title: 'Meet',
+            meeting,
+            criteria: ['Agree on scope'],
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        const made = await repo.createSession({ projectId: 'default', title: 'Meet', meeting });
+        if (!made.ok) throw new Error(made.message);
+        expect(
+          await repo.updateSession(made.session.sessionId, {
+            criteria: ['Agree on scope'],
+            expectedRevision: 1,
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        expect(await repo.getSession(made.session.sessionId)).toMatchObject({
+          revision: 1,
+          criteria: [],
+        });
+      });
+
       it('an auto session can let the start model choose the reasoning', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'S' });
