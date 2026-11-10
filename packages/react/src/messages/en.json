@@ -2059,7 +2059,10 @@
       "unmodifiedLines": "{count, plural, one {# unmodified line} other {# unmodified lines}}",
       "moreContext": "More unchanged lines may be above or below",
       "expandAll": "Expand all",
-      "noNewline": "No newline at end of file"
+      "noNewline": "No newline at end of file",
+      "expandUp": "Expand lines above",
+      "expandDown": "Expand lines below",
+      "expandBoth": "Expand unmodified lines"
     }
   },
   "Workbench": {

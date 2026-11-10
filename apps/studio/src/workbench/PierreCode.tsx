@@ -126,6 +126,9 @@ export function DiffCode({
     moreContext: td('moreContext'),
     expandAll: td('expandAll'),
     noNewline: td('noNewline'),
+    expandUp: td('expandUp'),
+    expandDown: td('expandDown'),
+    expandBoth: td('expandBoth'),
   };
   const viewer = useRef<CodeViewHandle<ReviewCommentView, undefined>>(null);
   const annotations = useMemo(

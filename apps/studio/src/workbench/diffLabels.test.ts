@@ -34,6 +34,9 @@ function labels(locale: 'en' | 'ko'): DiffLabels {
     moreContext: t('moreContext'),
     expandAll: t('expandAll'),
     noNewline: t('noNewline'),
+    expandUp: t('expandUp'),
+    expandDown: t('expandDown'),
+    expandBoth: t('expandBoth'),
   };
 }
 
@@ -79,6 +82,47 @@ it('says the diff viewer’s own words in Korean, counted', () => {
   const once = root.innerHTML;
   localizeDiffLabels(root, labels('ko'));
   expect(root.innerHTML).toBe(once);
+});
+
+it('names every icon-only expand control from the catalog, in both languages', () => {
+  for (const [locale, messages] of [
+    ['en', en],
+    ['ko', ko],
+  ] as const) {
+    const root = renderedDiff();
+    // Between two hunks without chunking the renderer draws one control that expands both ways.
+    root.append(
+      dom(
+        createSeparator({
+          type: 'line-info',
+          content: '3 unmodified lines',
+          expandIndex: 2,
+          chunked: false,
+          isFirstHunk: false,
+          isLastHunk: false,
+        }) as Hast,
+      ),
+    );
+    localizeDiffLabels(root, labels(locale));
+    const controls = [...root.querySelectorAll('[role="button"][data-expand-button]')];
+    // Each one has a name: the icon ones from the catalog, Expand all from its own text.
+    expect(
+      controls.map((control) => control.getAttribute('aria-label') ?? control.textContent),
+    ).toEqual([
+      ...Array(3)
+        .fill([
+          messages.Review.diff.expandUp,
+          messages.Review.diff.expandDown,
+          messages.Review.diff.expandAll,
+        ])
+        .flat(),
+      messages.Review.diff.expandBoth,
+    ]);
+    // A second pass changes nothing.
+    const once = root.innerHTML;
+    localizeDiffLabels(root, labels(locale));
+    expect(root.innerHTML).toBe(once);
+  }
 });
 
 it('keeps English singular and plural', () => {
