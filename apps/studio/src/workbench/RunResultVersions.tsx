@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@corral/react/design-kit';
-import { type ReactNode, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 
@@ -30,6 +30,7 @@ export function RunResultVersions({
 }) {
   const t = useTranslations('Results');
   const m = useTranslations('RunMonitor.resultVersions');
+  const monitor = useTranslations('RunMonitor');
   const run = useTranslations('Run');
   const projection = useRunDisplay(session, (s) => s.projection);
   const current = useStore(session, (s) => s.projection);
@@ -63,77 +64,11 @@ export function RunResultVersions({
         {results.kind === 'pending' ? t('kind.pending') : t('kind.none')}
       </p>
     );
+  // Rows are numbered across the groups so the table's one hover highlight follows them all.
+  let row = 0;
   return (
-    <div className="mx-auto grid w-full max-w-[1040px] gap-6 px-6 py-5">
-      {sections.map((section) => (
-        <ResultSection key={section.id} heading={section.heading} count={section.items.length}>
-          {section.items.map((item, index) => {
-            const readable = canReadArtifactBody(current, item.artifactVersionId);
-            return (
-              <TableRow
-                key={item.artifactVersionId}
-                index={index}
-                data-result-version={item.artifactVersionId}
-                className={readable ? 'cursor-pointer' : undefined}
-                // The whole row opens a version; its name stays the keyboard's way in.
-                onClick={(event) => {
-                  if (!readable || (event.target as Element).closest('button')) return;
-                  event.currentTarget.querySelector('button')?.click();
-                }}
-              >
-                <TableCell className="py-1">
-                  {readable ? (
-                    <Button
-                      variant="ghost"
-                      size="compact"
-                      className="max-w-full justify-start text-foreground"
-                      aria-label={t('itemName', { name: item.name, version: item.version })}
-                      onClick={(event) =>
-                        (section.final ? onOpenResult : onOpenArtifact)(
-                          item.artifactVersionId,
-                          event.currentTarget,
-                        )
-                      }
-                    >
-                      <span className="truncate">{item.name}</span>
-                    </Button>
-                  ) : (
-                    <span className="flex min-w-0 flex-col px-2.5">
-                      <span className="truncate text-foreground">{item.name}</span>
-                      <span className="text-caption">{m('notKept')}</span>
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="truncate" title={source(item)}>
-                  {source(item)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {m('versionNumber', { version: item.version })}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </ResultSection>
-      ))}
-    </div>
-  );
-}
-
-function ResultSection({
-  heading,
-  count,
-  children,
-}: {
-  heading: string;
-  count: number;
-  children: ReactNode;
-}) {
-  const m = useTranslations('RunMonitor.resultVersions');
-  return (
-    <section aria-label={heading} className="grid gap-2">
-      <SectionLabel count={count}>{heading}</SectionLabel>
-      {/* Both tables share one set of column widths, so their columns line up. */}
-      <Table aria-label={heading} className="table-fixed">
+    <div className="mx-auto w-full max-w-[1040px] px-6 py-5">
+      <Table aria-label={monitor('results')} className="table-fixed">
         <colgroup>
           <col className="w-1/2" />
           <col className="w-1/3" />
@@ -146,8 +81,63 @@ function ResultSection({
             <TableHead className="text-right">{m('version')}</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>{children}</TableBody>
+        {sections.map((section) => (
+          <TableBody key={section.id} aria-label={section.heading}>
+            {/* Each kind of result is a labelled group of rows under the one header. */}
+            <TableRow>
+              <TableHead scope="rowgroup" colSpan={3} className="pt-4">
+                <SectionLabel count={section.items.length}>{section.heading}</SectionLabel>
+              </TableHead>
+            </TableRow>
+            {section.items.map((item) => {
+              const readable = canReadArtifactBody(current, item.artifactVersionId);
+              return (
+                <TableRow
+                  key={item.artifactVersionId}
+                  index={row++}
+                  data-result-version={item.artifactVersionId}
+                  className={readable ? 'cursor-pointer' : undefined}
+                  // The whole row opens a version; its name stays the keyboard's way in.
+                  onClick={(event) => {
+                    if (!readable || (event.target as Element).closest('button')) return;
+                    event.currentTarget.querySelector('button')?.click();
+                  }}
+                >
+                  <TableCell className="py-1">
+                    {readable ? (
+                      <Button
+                        variant="ghost"
+                        size="compact"
+                        className="max-w-full justify-start text-foreground"
+                        aria-label={t('itemName', { name: item.name, version: item.version })}
+                        onClick={(event) =>
+                          (section.final ? onOpenResult : onOpenArtifact)(
+                            item.artifactVersionId,
+                            event.currentTarget,
+                          )
+                        }
+                      >
+                        <span className="truncate">{item.name}</span>
+                      </Button>
+                    ) : (
+                      <span className="flex min-w-0 flex-col px-2.5">
+                        <span className="truncate text-foreground">{item.name}</span>
+                        <span className="text-caption">{m('notKept')}</span>
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="truncate" title={source(item)}>
+                    {source(item)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {m('versionNumber', { version: item.version })}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        ))}
       </Table>
-    </section>
+    </div>
   );
 }

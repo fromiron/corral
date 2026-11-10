@@ -378,7 +378,7 @@ export async function showResults(page: Page) {
  */
 export async function openResult(page: Page, name?: RegExp) {
   const view = await showResults(page);
-  const final = view.getByRole('region', { name: 'Final results', exact: true });
+  const final = view.getByRole('rowgroup', { name: 'Final results', exact: true });
   await (name ? final.getByRole('button', { name }) : final.getByRole('button').first()).click();
   await expect(page.getByTestId('run-document').getByTestId('run-results')).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();

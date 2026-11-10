@@ -2086,6 +2086,15 @@ it('lists every result version with its source execution and opens it in the cen
     'artv_draft_2',
     'artv_draft_1',
   ]);
+  // One table: the column header shows once and each kind of result is a labelled group of rows.
+  expect(view?.querySelectorAll('table')).toHaveLength(1);
+  expect(view?.querySelectorAll('thead tr')).toHaveLength(1);
+  const groups = [...(view?.querySelectorAll('tbody') ?? [])];
+  expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+    'Final results',
+    'Work in between',
+  ]);
+  expect(groups[0]?.querySelector('th[scope="rowgroup"]')?.textContent).toBe('Final results1');
   for (const row of rows) {
     expect(row.textContent).toContain('worker · Round 2 · Attempt 1');
     expect(row.textContent).not.toMatch(/token|cost|\$/i);
