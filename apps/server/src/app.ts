@@ -2995,6 +2995,12 @@ async function createCorralServer(
       coordinator.listRuns(),
     );
   });
+  app.get<ProjectParams>(
+    '/api/v1/projects/:projectId/session-evidence',
+    async (request, reply) =>
+      review.sessionEvidence(request.params.projectId) ??
+      fail(reply, 'TARGET_NOT_FOUND', 'no such project'),
+  );
 
   // ── Work sessions ───────────────────────────────────────────────────
   const sessionReply = (reply: FastifyReply, result: SessionResult, created: boolean) => {
