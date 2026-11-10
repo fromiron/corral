@@ -575,6 +575,8 @@
     "runStarted": "Started {time}",
     "emptyHint": "A team saves the roles a conversation can start with.",
     "templatesHeading": "Start from a template",
+    "readOnly": "Read-only",
+    "templateRoles": "Roles",
     "useTemplate": "Edit this team",
     "saveCopyTitle": "Save a team copy",
     "copyName": "Team name",
@@ -588,6 +590,26 @@
       "starter": {
         "name": "Single agent",
         "body": "One agent answers the brief. The smallest Corral that runs."
+      },
+      "implement-review": {
+        "name": "Implement and review",
+        "body": "Makes the change, then fixes it until the review passes, for up to two rounds."
+      },
+      "plan-implement-review": {
+        "name": "Plan, implement and review",
+        "body": "Plans the change first, then implements it until the review passes, for up to two rounds."
+      },
+      "bug-fix": {
+        "name": "Bug fix",
+        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds."
+      },
+      "parallel-review": {
+        "name": "Parallel code review",
+        "body": "Reviews correctness and security at the same time, then merges the findings."
+      },
+      "tech-decision": {
+        "name": "Technical decision",
+        "body": "Researches two options at the same time and writes a comparison for you to approve."
       },
       "blank": {
         "name": "Empty",
@@ -1316,6 +1338,11 @@
     "templates": {
       "research-team": "Research team",
       "starter": "Single agent",
+      "implement-review": "Implement and review",
+      "plan-implement-review": "Plan, implement and review",
+      "bug-fix": "Bug fix",
+      "parallel-review": "Parallel code review",
+      "tech-decision": "Technical decision",
       "blank": "Empty"
     },
     "goCorrals": "Go to project home",
@@ -1474,6 +1501,120 @@
           "evidence": "Tie each security finding to specific code and evidence; state when code or context is missing.",
           "verification": "Independently verify the findings and distinguish confirmed issues from unverified concerns.",
           "approval": "Provide a concise summary and suggested fixes for the user to approve."
+        }
+      }
+    }
+  },
+  "TeamTemplates": {
+    "presets": {
+      "implement": {
+        "name": "Implementation",
+        "duty": "Make the change the brief asks for in the working copy. In a later round, fix what the review asked for."
+      },
+      "plan": {
+        "name": "Plan",
+        "duty": "Read the brief and the code it touches, then write a short plan: the steps, the files to change and how the result will be checked."
+      },
+      "review": {
+        "name": "Review",
+        "duty": "Check the change against the brief and the criteria. Pass it, or say exactly what to fix and why."
+      },
+      "investigate": {
+        "name": "Cause investigation",
+        "duty": "Find the cause of the problem in the brief: reproduce it, trace it to the code and note the evidence. Do not fix it yet."
+      },
+      "correctness_review": {
+        "name": "Correctness review",
+        "duty": "Check the change for logic errors, missed edge cases and missing tests. Tie each finding to specific code."
+      },
+      "security_review": {
+        "name": "Security review",
+        "duty": "Check the change for security problems. Record the affected code, evidence, impact and uncertainty of each finding."
+      },
+      "research": {
+        "name": "Research",
+        "duty": "Collect the facts and sources the question needs, noting where each one came from."
+      },
+      "write": {
+        "name": "Writing",
+        "duty": "Write the result from the inputs you were given, keeping each claim tied to its source."
+      }
+    },
+    "labels": {
+      "loop": "Review loop",
+      "decision": "Review decision",
+      "join": "Join",
+      "output": "Output"
+    },
+    "templates": {
+      "implement-review": {
+        "brief": "Add input validation to the sign-up form.",
+        "criteria": {
+          "request": "Do what the brief asks, and nothing it does not.",
+          "checked": "Say what changed and how it was checked."
+        }
+      },
+      "plan-implement-review": {
+        "brief": "Add a CSV export to the reports page.",
+        "criteria": {
+          "plan": "Follow the plan, or say where and why the work left it.",
+          "request": "Do what the brief asks, and nothing it does not.",
+          "checked": "Say what changed and how it was checked."
+        }
+      },
+      "bug-fix": {
+        "brief": "The settings dialog loses unsaved changes when the window is resized.",
+        "criteria": {
+          "cause": "Name the cause and its evidence before changing code.",
+          "fix": "Fix the cause, not only the symptom, and say how the fix was checked."
+        },
+        "roles": {
+          "fix": {
+            "name": "Fix",
+            "duty": "Fix the cause the investigation found, in the working copy. In a later round, fix what the review asked for."
+          }
+        }
+      },
+      "parallel-review": {
+        "brief": "Review the changes on the current branch.",
+        "criteria": {
+          "evidence": "Tie each finding to specific code and evidence.",
+          "certainty": "Separate confirmed problems from unverified concerns."
+        },
+        "roles": {
+          "scope": {
+            "name": "Scope",
+            "duty": "Read the change and list what the reviewers must look at: the files, the behavior that changed and the risky parts."
+          },
+          "synthesis": {
+            "name": "Synthesis",
+            "duty": "Merge the two reviews into one report: remove duplicates, keep the evidence of each finding and order them by severity."
+          }
+        }
+      },
+      "tech-decision": {
+        "brief": "Choose between SQLite and PostgreSQL for the team's internal tool.",
+        "criteria": {
+          "same": "Compare the options on the same points, with sources.",
+          "recommend": "Recommend one option and say what would change the choice."
+        },
+        "roles": {
+          "frame": {
+            "name": "Framing",
+            "duty": "Frame the decision: the question, the two options to compare (A and B) and what matters in choosing."
+          },
+          "research_a": {
+            "name": "Option A research",
+            "duty": "Research option A from the framing: what it does well, its limits and its costs, with sources."
+          },
+          "research_b": {
+            "name": "Option B research",
+            "duty": "Research option B from the framing: what it does well, its limits and its costs, with sources."
+          },
+          "compare": {
+            "name": "Comparison",
+            "duty": "Compare the two options point by point from the research, and end with a recommendation."
+          }
         }
       }
     }

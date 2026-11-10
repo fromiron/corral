@@ -48,7 +48,7 @@ import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
-import { createFromTemplate, WORKSPACE_TEMPLATES } from '../templates.ts';
+import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from '../templates.ts';
 import { NewMeetingDialog } from '../workbench/NewMeeting.tsx';
 import { useSettingsNavigation, workHref } from '../workbench/navigation.ts';
 import { newSessionDraftKey } from '../workbench/newSessionDraft.ts';
@@ -484,6 +484,7 @@ function NewConversation({
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
   const n = useTranslations('Navigation');
+  const templateText = useTemplateText();
   const { repository } = useServices();
   const { sendKey } = usePreferences();
   const navigate = useNavigate();
@@ -537,7 +538,7 @@ function NewConversation({
       if (!active.current) return;
       if (isSuggested(teamId)) {
         const id = teamId.slice(9) as (typeof suggested)[number];
-        const made = await createFromTemplate(repository, id, tw(`template.${id}.name`), projectId);
+        const made = await createFromTemplate(repository, id, templateText, projectId);
         if (!made.ok) return setError(made.message);
         teamId = made.corralId;
       }

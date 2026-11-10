@@ -12,7 +12,12 @@ import {
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from './services.tsx';
-import { createFromTemplate, templateCopyName, type WorkspaceTemplateId } from './templates.ts';
+import {
+  createFromTemplate,
+  templateCopyName,
+  useTemplateText,
+  type WorkspaceTemplateId,
+} from './templates.ts';
 
 export function TemplateCopyDialog({
   template,
@@ -29,6 +34,7 @@ export function TemplateCopyDialog({
 }) {
   const t = useTranslations('Workspace');
   const { repository } = useServices();
+  const text = useTemplateText();
   const [name, setName] = useState(
     t(template === 'blank' ? 'newName' : `template.${template}.name`),
   );
@@ -42,7 +48,7 @@ export function TemplateCopyDialog({
     setBusy(true);
     setError('');
     try {
-      const result = await createFromTemplate(repository, template, t('newName'), projectId, name);
+      const result = await createFromTemplate(repository, template, text, projectId, name);
       if (!result.ok) {
         setError(result.message);
         return;

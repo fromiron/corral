@@ -26,7 +26,7 @@ import { desktop } from '../desktop.tsx';
 import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../projects.ts';
 import { projectsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
-import { createDemoExamples } from '../templates.ts';
+import { createDemoExamples, useTemplateText } from '../templates.ts';
 import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { type GitCloneDraft, GitCloneFolder } from '../workbench/GitCloneFolder.tsx';
 
@@ -38,7 +38,7 @@ const NO_CLONE: GitCloneDraft = { source: '', destination: '' };
  */
 export function ProjectsPage() {
   const t = useTranslations('Projects');
-  const tw = useTranslations('Workspace');
+  const templates = useTemplateText();
   const format = useFormatter();
   const now = useNow({ updateInterval: 60_000 });
   const { projects, corrals, runs } = projectsRoute.useLoaderData();
@@ -111,7 +111,7 @@ export function ProjectsPage() {
         t('exampleSession5'),
         t('exampleSession6'),
       ],
-      teamName: tw('newName'),
+      templates,
     });
     projectsChanged();
     if (first) await navigate({ to: '/projects/$projectId', params: { projectId: first } });
