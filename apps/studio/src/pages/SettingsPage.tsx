@@ -82,13 +82,7 @@ export function SettingsPage({
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
   return (
-    <SettingsLayout
-      active={section}
-      // How this form saves, said where it applies (#81 SET-S10).
-      {...(section === 'general' || section === 'shortcuts'
-        ? { description: t('savesAutomatically'), descriptionId: 'settings-save-mode' }
-        : {})}
-    >
+    <SettingsLayout active={section}>
       <main className="settings-content">
         {section === 'general' ? (
           <div className="flex flex-col">

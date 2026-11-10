@@ -32,12 +32,8 @@ export function HookSettingsPage() {
 function ResourceSettingsPage({ kind }: { kind: 'skill' | 'extension' }) {
   const { harnesses } = useServices();
   const t = useTranslations('Harness');
-  const r = useTranslations('Resources');
   return (
-    <SettingsLayout
-      active={kind === 'skill' ? 'skills' : 'hooks'}
-      {...(harnesses ? { description: r(kind === 'skill' ? 'skillsIntro' : 'hooksIntro') } : {})}
-    >
+    <SettingsLayout active={kind === 'skill' ? 'skills' : 'hooks'}>
       {harnesses ? (
         <ResourceManager key={kind} api={harnesses} kind={kind} />
       ) : (

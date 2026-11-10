@@ -112,13 +112,7 @@ export function ModelSettingsPage() {
 
   return (
     <ModelSettingsRefresh value={refresh}>
-      <SettingsLayout
-        active="models"
-        // Where sign-in is kept is a fact the controls cannot show; it is said once, on Sign-in.
-        {...(mode === 'server' && models && live && MODEL_TABS[tab] === 'signIn'
-          ? { description: t('intro') }
-          : {})}
-      >
+      <SettingsLayout active="models">
         <main className="settings-content">
           {error ? (
             <p role="alert" className="text-danger">

@@ -739,7 +739,6 @@
       "images": "Images",
       "usage": "Usage"
     },
-    "intro": "Your sign-in stays on this computer, outside the workspace. Corral never shows, logs or exports the token.",
     "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",
     "noLive": "This server runs simulated agents only.",
     "providers": "Sign-in",
@@ -2117,7 +2116,6 @@
     "save": "Save",
     "settings": "Settings",
     "general": "General",
-    "savesAutomatically": "Changes on this page apply and save right away.",
     "nativeHeading": "Desktop app options",
     "nativeHint": "Close to tray and keep awake are in the app menu under Background; remote hosts and update backups under File; updates under Help. They follow the language chosen here.",
     "workspace": "Folders & tools",
@@ -2655,8 +2653,6 @@
     "skillDelivery": "Complete skill bodies found in the provider payload",
     "noSkillsDelivered": "None",
     "skillDeliveryUnknown": "Not measured",
-    "personalDefaultHint": "Applies to future runs across projects on this server.",
-    "projectDefaultHint": "Applies to future runs in the selected project.",
     "ladderTitle": "Which work style a run uses",
     "ladder": {
       "personal": "Personal default",
@@ -2943,8 +2939,6 @@
     "skills": "Skills",
     "hooks": "Hooks & extensions",
     "mcp": "MCP servers",
-    "skillsIntro": "A Skill is used only after you select it in a work style.",
-    "hooksIntro": "Hooks and extensions run only after you trust them and select them in a work style.",
     "add": "Add",
     "addSkill": "Add skill",
     "addHook": "Add hook or extension",
@@ -3027,7 +3021,6 @@
     "profileSearch": "Search work styles",
     "archivedSelected": "Still references an archived item",
     "profileOlder": "This role uses an older revision. Select the new revision to apply changes.",
-    "mcpIntro": "Servers belong to this project. Enabling one and allowing its tools on a role are separate.",
     "addMcp": "Add MCP server",
     "editMcp": "Edit MCP server",
     "serverName": "Server name",
@@ -3972,7 +3965,6 @@
   },
   "Vault": {
     "heading": "Settings vault",
-    "intro": "Encrypts portable settings for a file or S3 sync. Conversations, project files, Runs and results stay out.",
     "password": "Vault password",
     "passwordHint": "At least 12 characters. This password is not saved. Keep it to decrypt files and recover interrupted imports.",
     "scope": "Settings to export",
@@ -4025,7 +4017,8 @@
     "remoteRevision": "Remote revision: {revision}",
     "serverOnly": "Open Corral through its local server to use the settings vault.",
     "loadFailed": "Could not load vault settings.",
-    "failed": "The vault operation failed."
+    "failed": "The vault operation failed.",
+    "excluded": "Conversations, project files, Runs and results stay out."
   },
   "SkillQuality": {
     "title": "Evaluate, adopt and roll back",

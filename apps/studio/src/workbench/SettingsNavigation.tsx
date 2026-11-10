@@ -194,8 +194,9 @@ export function useSettingsSectionLabel() {
 }
 
 /**
- * "Settings for: <project>". This changes the settings target, not the current work location,
- * and it is the only project choice in settings.
+ * The settings target ("Settings for", its accessible name; the Project group above names it on
+ * screen). This changes the settings target, not the current work location, and it is the only
+ * project choice in settings.
  */
 export function SettingsProjectPicker({ className }: { className?: string }) {
   const t = useTranslations('Navigation');
@@ -203,11 +204,7 @@ export function SettingsProjectPicker({ className }: { className?: string }) {
   const navigation = useSettingsNavigation();
   const navigate = useNavigate();
   return (
-    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
-      {/* Full-contrast text: the tinted settings sidebar leaves muted text below 4.5:1. */}
-      <span aria-hidden="true" className="text-caption text-foreground">
-        {t('settingsFor')}
-      </span>
+    <div className={cn('flex min-w-0 flex-col', className)}>
       <Select
         label={t('settingsFor')}
         value={navigation.projectId ?? ''}

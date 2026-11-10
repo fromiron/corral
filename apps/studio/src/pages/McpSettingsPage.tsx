@@ -19,9 +19,8 @@ export function McpSettingsPage() {
   const { harnesses } = useServices(),
     { projectId } = useSettingsNavigation();
   const t = useTranslations('Harness');
-  const r = useTranslations('Resources');
   return (
-    <SettingsLayout active="mcp" {...(harnesses ? { description: r('mcpIntro') } : {})}>
+    <SettingsLayout active="mcp">
       {harnesses && projectId ? (
         <McpManager key={projectId} api={harnesses} projectId={projectId} />
       ) : !harnesses ? (

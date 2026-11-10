@@ -739,7 +739,6 @@
       "images": "이미지",
       "usage": "사용량"
     },
-    "intro": "로그인 정보는 작업 공간 밖, 이 컴퓨터에 남습니다. Corral은 토큰을 보여 주거나 기록하거나 내보내지 않습니다.",
     "browserOnly": "모델 설정은 로컬 서버가 필요합니다. 브라우저 데모는 항상 시뮬레이션 에이전트를 씁니다.",
     "noLive": "이 서버는 시뮬레이션 에이전트만 실행합니다.",
     "providers": "로그인",
@@ -2117,7 +2116,6 @@
     "save": "저장",
     "settings": "설정",
     "general": "일반",
-    "savesAutomatically": "이 화면의 변경은 바로 적용되고 저장됩니다.",
     "nativeHeading": "데스크톱 앱 옵션",
     "nativeHint": "트레이로 닫기·절전 방지는 앱 메뉴의 백그라운드에, 원격 호스트·업데이트 백업은 파일에, 업데이트는 도움말에 있습니다. 여기서 고른 언어로 표시됩니다.",
     "workspace": "폴더 및 도구",
@@ -2655,8 +2653,6 @@
     "skillDelivery": "제공자 요청에서 확인한 전체 지침 본문",
     "noSkillsDelivered": "없음",
     "skillDeliveryUnknown": "측정하지 않음",
-    "personalDefaultHint": "이 서버의 모든 프로젝트에서 다음 실행에 적용합니다.",
-    "projectDefaultHint": "선택한 프로젝트의 다음 실행에 적용합니다.",
     "ladderTitle": "실행이 쓰는 작업 방식",
     "ladder": {
       "personal": "개인 기본값",
@@ -2943,8 +2939,6 @@
     "skills": "스킬",
     "hooks": "Hook·확장",
     "mcp": "MCP 서버",
-    "skillsIntro": "Skill은 작업 방식에서 선택한 뒤에만 쓰입니다.",
-    "hooksIntro": "Hook과 확장은 신뢰하고 작업 방식에서 선택한 뒤에만 실행됩니다.",
     "add": "추가",
     "addSkill": "스킬 추가",
     "addHook": "Hook·확장 추가",
@@ -3027,7 +3021,6 @@
     "profileSearch": "작업 방식 검색",
     "archivedSelected": "보관된 항목을 계속 참조 중",
     "profileOlder": "현재 역할은 이전 revision을 사용합니다. 변경하려면 새 revision을 선택하세요.",
-    "mcpIntro": "서버는 이 프로젝트에 속합니다. 서버 사용 허용과 역할의 도구 선택은 별개입니다.",
     "addMcp": "MCP 서버 추가",
     "editMcp": "MCP 서버 편집",
     "serverName": "서버 이름",
@@ -3972,7 +3965,6 @@
   },
   "Vault": {
     "heading": "설정 금고",
-    "intro": "이동 가능한 설정을 암호화해 파일이나 S3로 옮깁니다. 대화·프로젝트 파일·실행·결과는 넣지 않습니다.",
     "password": "금고 암호",
     "passwordHint": "12자 이상입니다. 암호는 저장하지 않습니다. 파일 해독과 중단된 복구에 필요하니 따로 보관하세요.",
     "scope": "내보낼 설정",
@@ -4025,7 +4017,8 @@
     "remoteRevision": "원격 버전: {revision}",
     "serverOnly": "로컬 서버로 Corral을 열면 설정 금고를 사용할 수 있습니다.",
     "loadFailed": "금고 설정을 불러오지 못했습니다.",
-    "failed": "금고 작업을 완료하지 못했습니다."
+    "failed": "금고 작업을 완료하지 못했습니다.",
+    "excluded": "대화·프로젝트 파일·실행·결과는 넣지 않습니다."
   },
   "SkillQuality": {
     "title": "평가·채택·롤백",
