@@ -1003,36 +1003,40 @@ function RunHeader({
       aria-label={t('summary')}
       className="@container/run-head max-h-[40%] shrink-0 overflow-auto border-b border-line px-4 py-2"
     >
-      <div className="flex min-h-9 min-w-0 items-center gap-3">
-        <h2
-          title={title}
-          className="line-clamp-2 min-w-[16ch] shrink text-subtitle [overflow-wrap:anywhere]"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {title}
-        </h2>
-        <span aria-live="polite" data-testid="run-status" className="shrink-0">
-          {waiting > 0 && onRespond ? (
-            <Button
-              variant="warning-outline"
-              size="compact"
-              data-testid="run-respond"
-              onClick={onRespond}
-            >
-              {status.has(projection.status) ? status(projection.status) : projection.status} ·{' '}
-              {m('respond', { count: waiting })}
-            </Button>
-          ) : (
-            <AgentStatusText kind="run" status={projection.status} />
-          )}
-        </span>
-        <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
-          <RunElapsed
-            startedAt={projection.startedAt}
-            endedAt={projection.endedAt}
-            live={!TERMINAL_RUN_STATUSES.has(projection.status)}
-          />
-        </span>
+      {/* One line on a wide header. On a narrow one the title, its state and clock keep the
+          first line and the controls take the next, instead of leaving the screen. */}
+      <div className="flex min-h-9 min-w-0 items-center gap-x-3 gap-y-1 @max-[44rem]/run-head:flex-wrap">
+        <div className="flex items-center gap-3 @max-[44rem]/run-head:basis-full">
+          <h2
+            title={title}
+            className="line-clamp-2 min-w-[16ch] shrink text-subtitle [overflow-wrap:anywhere]"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {title}
+          </h2>
+          <span aria-live="polite" data-testid="run-status" className="shrink-0">
+            {waiting > 0 && onRespond ? (
+              <Button
+                variant="warning-outline"
+                size="compact"
+                data-testid="run-respond"
+                onClick={onRespond}
+              >
+                {status.has(projection.status) ? status(projection.status) : projection.status} ·{' '}
+                {m('respond', { count: waiting })}
+              </Button>
+            ) : (
+              <AgentStatusText kind="run" status={projection.status} />
+            )}
+          </span>
+          <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
+            <RunElapsed
+              startedAt={projection.startedAt}
+              endedAt={projection.endedAt}
+              live={!TERMINAL_RUN_STATUSES.has(projection.status)}
+            />
+          </span>
+        </div>
         <div className={cn('ml-auto flex shrink-0 items-center gap-1', HEAD_ACTIONS)}>
           <RunActions session={session} compact narrowIcons />
           {trailing}
