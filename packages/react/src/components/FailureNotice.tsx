@@ -20,21 +20,21 @@ export function FailureNotice({
     /^the model request failed: (?:HTTP [1-5]\d{2} \()?((?:AUTH|QUOTA|RATE_LIMIT|CONTEXT_OVERFLOW|SERVER|TRANSPORT|CANCELLED))(?:\))?$/.exec(
       message,
     )?.[1];
+  // A failure of unknown cause adds no sentence: its Diagnostics hold the recorded reason.
+  const known = cancelled
+    ? 'cancelled'
+    : provider
+      ? `provider.${provider}`
+      : reasonCode && t.has(`code.${reasonCode}`)
+        ? `code.${reasonCode}`
+        : null;
   return (
-    <div className="w-full text-xs">
-      <p className={cancelled ? 'text-muted-foreground' : 'text-danger'}>
-        {t(
-          cancelled
-            ? 'cancelled'
-            : provider
-              ? `provider.${provider}`
-              : reasonCode && t.has(`code.${reasonCode}`)
-                ? `code.${reasonCode}`
-                : 'unknown',
-        )}
-      </p>
+    <div className="w-full text-caption">
+      {known ? (
+        <p className={cancelled ? 'text-muted-foreground' : 'text-danger'}>{t(known)}</p>
+      ) : null}
       {provider ? <p className="mt-1 text-muted-foreground">{t(`recovery.${provider}`)}</p> : null}
-      <details className="mt-1 text-muted-foreground">
+      <details className={`text-muted-foreground ${known ? 'mt-1' : ''}`}>
         <summary className="cursor-pointer">{t('diagnostics')}</summary>
         <code className="select-text whitespace-pre-wrap break-words">
           {code ? `${code}: ` : ''}

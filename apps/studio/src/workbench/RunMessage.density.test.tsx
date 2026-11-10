@@ -215,11 +215,16 @@ it.each(['en', 'ko'] as const)(
     const failed = labels.find((label) => label.textContent === 'failed_tool')?.closest('li');
     expect(cancelled?.textContent).toContain(text.Desktop.toolPhase.cancelled);
     expect(cancelled?.textContent).toContain(text.Failure.cancelled);
-    expect(cancelled?.textContent).not.toContain(text.Failure.unknown);
     expect(cancelled?.querySelector<HTMLDetailsElement>('details')?.open).toBe(false);
     expect(cancelled?.querySelector('details code')?.textContent).toBe('scope cancelled');
     expect(failed?.textContent).toContain(text.Desktop.toolPhase.failed);
-    expect(failed?.textContent).toContain(text.Failure.unknown);
+    // A failure of unknown cause adds no sentence: its closed Diagnostics hold the reason.
+    expect(failed?.querySelectorAll('p')).toHaveLength(0);
+    expect(failed?.querySelector('details summary')?.textContent).toBe(text.Failure.diagnostics);
+    expect(failed?.querySelector<HTMLDetailsElement>('details')?.open).toBe(false);
+    expect(failed?.querySelector('details code')?.textContent).toBe(
+      'Actual failure before cancellation',
+    );
     expect(failed?.textContent).not.toContain(text.Failure.cancelled);
     expect(f.sendCommand).not.toHaveBeenCalled();
   },

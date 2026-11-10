@@ -62,12 +62,24 @@ vi.mock('../workbench/useModels.ts', () => ({
 }));
 vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
 vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
-  // The one-line status keeps the composer's own intent chips (lead) and held-items note.
-  ComposerDock: ({ lead, note }: { lead?: ReactNode; note?: ReactNode }) => (
-    <div data-testid="composer-status-pills">
-      {lead}
-      {note}
-    </div>
+  // The one-line status keeps the composer's own intent chips (lead) and held-items note;
+  // the plan it expands sits under it.
+  ComposerDock: ({
+    lead,
+    note,
+    plan,
+  }: {
+    lead?: ReactNode;
+    note?: ReactNode;
+    plan?: ReactNode;
+  }) => (
+    <>
+      <div data-testid="composer-status-pills">
+        {lead}
+        {note}
+      </div>
+      {plan}
+    </>
   ),
   ComposerPlan: () => <div data-testid="composer-plan-fixture">Work plan</div>,
 }));
@@ -1116,12 +1128,31 @@ it('editing a queued request puts its text back in the composer and dismisses th
   expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
 });
 
-it('keeps the send intent visible while idle', async () => {
+it('shows the send mode only when there is more than one to choose', async () => {
+  const intentChoice = (container: HTMLElement) =>
+    [...container.querySelectorAll('button')].find(
+      (node) => node.getAttribute('aria-label') === messages.Sessions.intentLabel,
+    );
   const sessionId = 'idle_intent';
   const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
   const f = await mount(sessionId, null, [], [finished]);
   const line = f.container.querySelector('[data-testid="composer-status-pills"]');
-  expect(line?.textContent).toContain(messages.Sessions.intentShort.next);
+  // Idle, a follow-up is the only mode: nothing names it.
+  expect(line?.textContent).not.toContain(messages.Sessions.intentShort.next);
+  expect(intentChoice(f.container)).toBeUndefined();
+  // A running target adds the instruction, so the choice appears.
+  const running = await mount('two_modes', { ...active, sessionId: 'two_modes' });
+  expect(intentChoice(running.container)).toBeDefined();
+});
+
+it("the team chip's popup names the selected saved team's revision", async () => {
+  const f = await mount('team_revision', null);
+  await f.click(messages.Composer.teamLabel);
+  const selected = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (option) => option.getAttribute('aria-selected') === 'true',
+  );
+  expect(selected?.textContent).toContain('Team');
+  expect(selected?.textContent).toContain('r1');
 });
 
 it("the team picker's Create or manage opens the library's teams for this project and comes back", async () => {
@@ -1159,29 +1190,46 @@ it('a new run in this session has no visible destination line; the input describ
   expect(describedBy(f.container)).toContain(line?.id);
 });
 
-it.each(['queue', 'steer'] as const)(
-  'a %s destination shows above the input and still describes it',
-  async (intent) => {
-    const sessionId = `shown_destination_${intent}`;
-    const current = { ...active, sessionId };
-    writeComposerDraft(sessionId, {
-      text: 'Later',
-      intent,
-      target: intent === 'steer' ? 'execution' : null,
-      targetLabel: intent === 'steer' ? 'Writer' : null,
-      references: [],
-    });
-    const f = await mount(sessionId, current, [], [current]);
-    const line = destination(f.container);
-    const input = f.container.querySelector('textarea[aria-label="Request"]');
-    expect(line?.textContent).toContain(intent === 'queue' ? 'queue' : 'instruction');
-    expect(line?.classList.contains('sr-only')).toBe(false);
-    expect(
-      line && input ? line.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING : 0,
-    ).toBeTruthy();
-    expect(describedBy(f.container)).toContain(line?.id);
-  },
-);
+it('an instruction destination shows above the input and still describes it', async () => {
+  const sessionId = 'shown_destination_steer';
+  const current = { ...active, sessionId };
+  writeComposerDraft(sessionId, {
+    text: 'Later',
+    intent: 'steer',
+    target: 'execution',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [current]);
+  const line = destination(f.container);
+  const input = f.container.querySelector('textarea[aria-label="Request"]');
+  expect(line?.textContent).toContain('instruction');
+  expect(line?.classList.contains('sr-only')).toBe(false);
+  expect(
+    line && input ? line.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING : 0,
+  ).toBeTruthy();
+  expect(describedBy(f.container)).toContain(line?.id);
+});
+
+it('a queue destination is said by the send mode choice; the input still describes it', async () => {
+  const sessionId = 'quiet_destination_queue';
+  const current = { ...active, sessionId };
+  writeComposerDraft(sessionId, {
+    text: 'Later',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [current]);
+  const line = destination(f.container);
+  expect(line?.textContent).toContain('queue');
+  expect(line?.classList.contains('sr-only')).toBe(true);
+  expect(describedBy(f.container)).toContain(line?.id);
+  expect(f.container.querySelector('[data-testid="composer-status-pills"]')?.textContent).toContain(
+    messages.Sessions.intentShort.queue,
+  );
+});
 
 it('an instruction whose target ended shows that it cannot be delivered', async () => {
   const sessionId = 'unavailable_destination';

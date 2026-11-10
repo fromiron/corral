@@ -178,17 +178,10 @@ export function SessionActions({
     },
   ]);
   return (
+    // The selected team is read from the composer's chip and this menu's team line, not the bar.
     <TopbarActions>
-      {team ? (
-        <span
-          className="max-w-48 truncate text-xs text-muted-foreground"
-          title={`${team.name} · r${team.definitionRevision}`}
-        >
-          {team.name} · r{team.definitionRevision}
-        </span>
-      ) : null}
       {error ? (
-        <p role="alert" className="max-w-64 truncate text-xs text-danger" title={error}>
+        <p role="alert" className="max-w-64 truncate text-caption text-danger" title={error}>
           {error}
         </p>
       ) : null}
@@ -252,8 +245,12 @@ export function SessionActions({
           <MenuSub>
             <MenuSubTrigger>
               {t('chooseTeam')}
-              <span className="ml-auto max-w-28 truncate pl-3 text-xs text-muted-foreground">
-                {team?.name ?? (session.corralId ? t('selectedTeamUnavailable') : t('autoTeam'))}
+              <span className="ml-auto max-w-40 truncate pl-3 text-caption text-muted-foreground">
+                {team
+                  ? `${team.name} · r${team.definitionRevision}`
+                  : session.corralId
+                    ? t('selectedTeamUnavailable')
+                    : t('autoTeam')}
               </span>
             </MenuSubTrigger>
             <MenuSubPopup>

@@ -268,6 +268,16 @@ function SessionTerminals({
     !list?.available ||
     !list.target ||
     !shellId;
+  // Why New terminal cannot be used, in the order the checks above hold it back.
+  const createHeldBy = pending
+    ? 'createPending'
+    : hasWriter
+      ? 'createHeld'
+      : runActive
+        ? 'runActive'
+        : session?.loading
+          ? 'loading'
+          : 'unavailable';
   const create = (id: string) =>
     run(async () => {
       const created = await store.create(sessionId, id);
@@ -332,26 +342,17 @@ function SessionTerminals({
                   <Info />
                 </PopoverTrigger>
               </Tooltip>
+              {/* At most two short lines: what holds the copy and how to free it. */}
               <PopoverPopup width="md" aria-label={t('details')}>
-                <div className="flex flex-col gap-2 text-caption text-muted-foreground">
-                  <p className="text-foreground">
-                    {stateText} · {t(`connection.${entry.connection}`)}
-                  </p>
-                  {mayControl ? (
-                    <p>
-                      {t(
-                        entry.controlling
-                          ? 'controlling'
-                          : current.controller
-                            ? 'otherController'
-                            : 'readOnly',
-                      )}
-                    </p>
-                  ) : null}
-                  <p>{t('scopeHint')}</p>
-                  {hasWriter ? <p>{t('writerHint')}</p> : null}
-                  {hasWriter ? <p>{t('releaseHint')}</p> : null}
-                  <p>{t('keyboardHint')}</p>
+                <div className="flex flex-col gap-1 text-caption text-muted-foreground">
+                  {hasWriter ? (
+                    <>
+                      <p>{t('writerHint')}</p>
+                      <p>{t('releaseHint')}</p>
+                    </>
+                  ) : (
+                    <p>{t('scopeHint')}</p>
+                  )}
                 </div>
               </PopoverPopup>
             </Popover>
@@ -369,14 +370,17 @@ function SessionTerminals({
                 {t('release')}
               </Button>
             ) : (
-              <Button
-                size="compact"
-                variant="tertiary"
-                disabled={entry.busy}
-                onClick={() => run(() => store.claim(selectedId, Boolean(current.controller)))}
-              >
-                {t(current.controller ? 'takeover' : 'claim')}
-              </Button>
+              // Who holds input is read here, where it is taken.
+              <Tooltip content={t(current.controller ? 'otherController' : 'readOnly')}>
+                <Button
+                  size="compact"
+                  variant="tertiary"
+                  disabled={entry.busy}
+                  onClick={() => run(() => store.claim(selectedId, Boolean(current.controller)))}
+                >
+                  {t(current.controller ? 'takeover' : 'claim')}
+                </Button>
+              </Tooltip>
             )
           ) : null}
           {entry && (entry.connection === 'disconnected' || entry.connection === 'idle') ? (
@@ -456,22 +460,29 @@ function SessionTerminals({
           </Tooltip>
           <Tooltip
             content={
-              <span className="flex flex-col">
-                <span>{shellLabel ? `${t('create')} · ${shellLabel}` : t('create')}</span>
-                <span>{t('scopeHint')}</span>
-              </span>
+              createDisabled ? (
+                t(createHeldBy)
+              ) : (
+                <span className="flex flex-col">
+                  <span>{shellLabel ? `${t('create')} · ${shellLabel}` : t('create')}</span>
+                  <span>{t('scopeHint')}</span>
+                </span>
+              )
             }
           >
-            <Button
-              size="compact"
-              variant={items.length || createDisabled ? 'ghost' : 'primary'}
-              aria-label={t('create')}
-              disabled={createDisabled}
-              onClick={() => create(shellId)}
-            >
-              <Plus aria-hidden />
-              <span className="@max-md/term:sr-only">{t('create')}</span>
-            </Button>
+            {/* The wrapper keeps the reason reachable by pointer while the button is disabled. */}
+            <span className="inline-flex">
+              <Button
+                size="compact"
+                variant={items.length || createDisabled ? 'ghost' : 'primary'}
+                aria-label={t('create')}
+                disabled={createDisabled}
+                onClick={() => create(shellId)}
+              >
+                <Plus aria-hidden />
+                <span className="@max-md/term:sr-only">{t('create')}</span>
+              </Button>
+            </span>
           </Tooltip>
           {(list?.shells.length ?? 0) > 1 ? (
             <Menu>
@@ -706,7 +717,7 @@ function SessionTerminals({
           />
         </Suspense>
       ) : null}
-      {/* The terminal's keyboard escape, read with it; the details popover shows it too. */}
+      {/* The terminal's keyboard escape, read with it. */}
       <p id={hintId} className="sr-only">
         {t('keyboardHint')}
       </p>

@@ -277,6 +277,23 @@ async function interactive(
       return document.querySelector('[role="dialog"][aria-label="About this terminal"]')
         ?.textContent;
     },
+    /** What the tooltip of the control whose name or text is `name` says on hover. */
+    async hover(name: string) {
+      const control = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+        (node) => node.getAttribute('aria-label') === name || node.textContent?.trim() === name,
+      );
+      assert(control);
+      // A disabled control is hovered through the wrapper that holds its tooltip.
+      const trigger = control.disabled ? (control.parentElement ?? control) : control;
+      await act(async () => {
+        trigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+        trigger.dispatchEvent(new MouseEvent('mouseenter'));
+        trigger.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+        trigger.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+      });
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+      return document.body.textContent ?? '';
+    },
     async close() {
       await act(async () => root.unmount());
       container.remove();
@@ -291,9 +308,9 @@ it('another controller is read-only until an explicit takeover', async () => {
     const head = view.container.textContent;
     expect(head).toContain('Take over input');
     expect(head).not.toContain('Release input');
-    // Who holds input is read from the status help, not a standing paragraph.
+    // Who holds input is read from the takeover's tooltip, not a standing paragraph.
     expect(head).not.toContain('Another view controls input');
-    expect(await view.details()).toContain('Another view controls input');
+    expect(await view.hover('Take over input')).toContain('Another view controls input');
   } finally {
     await view.close();
   }
@@ -303,10 +320,19 @@ it('distinguishes input control release from the protected working copy', async 
   const view = await interactive({ ...terminal, controller: null });
   try {
     expect(view.container.querySelector('[aria-label="Stop terminal"]')).not.toBeNull();
-    expect(view.container.textContent).not.toContain('Releasing input only disconnects');
-    const details = await view.details();
-    expect(details).toContain('Releasing input only disconnects this view’s keyboard');
-    expect(details).toContain('file saves and Runs that write to this copy are blocked');
+    expect(view.container.textContent).not.toContain(messages.Terminals.releaseHint);
+    const popup = async () => {
+      await view.details();
+      return document.querySelector('[role="dialog"][aria-label="About this terminal"]');
+    };
+    const details = await popup();
+    // Two short lines: what holds the copy, and how to free it.
+    expect(details?.querySelectorAll('p')).toHaveLength(2);
+    expect(details?.textContent).toContain(messages.Terminals.writerHint);
+    expect(details?.textContent).toContain(messages.Terminals.releaseHint);
+    expect(details?.textContent).not.toContain(messages.Terminals.keyboardHint);
+    for (const line of [messages.Terminals.writerHint, messages.Terminals.releaseHint])
+      expect(line.length).toBeLessThanOrEqual(60);
   } finally {
     await view.close();
   }
@@ -315,9 +341,9 @@ it('distinguishes input control release from the protected working copy', async 
 it('keeps the writer explanation out of the pane until a save is actually waiting', () => {
   const html = render({ ...terminal, controller: null });
   for (const standing of [
-    'Commands run in this session',
-    'While this terminal is active',
-    'Releasing input only',
+    messages.Terminals.scopeHint,
+    messages.Terminals.writerHint,
+    messages.Terminals.releaseHint,
     'This view is read-only until',
   ])
     expect(html).not.toContain(standing);
@@ -566,4 +592,17 @@ it('does not tell an already stopped terminal to stop again when replay is unava
   expect(html).toContain('Output replay is unavailable');
   expect(html).not.toContain('Stop this terminal before creating another');
   expect(html).not.toContain('retained history limit was reached');
+});
+
+it('a New terminal that cannot be used says why on hover', async () => {
+  const view = await interactive({ ...terminal, controller: null });
+  try {
+    const create = [...view.container.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === messages.Terminals.create,
+    );
+    expect(create?.disabled).toBe(true);
+    expect(await view.hover(messages.Terminals.create)).toContain(messages.Terminals.createHeld);
+  } finally {
+    await view.close();
+  }
 });

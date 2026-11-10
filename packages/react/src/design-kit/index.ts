@@ -325,6 +325,7 @@ export { useControllable } from './hooks/use-controllable.ts';
 export { useNow } from './hooks/use-now.ts';
 export { formatClock, formatCost, formatTimeOfDay } from './lib/agent-format.ts';
 export { Elevated } from './lib/elevated.tsx';
+export { focusRing } from './lib/focus.ts';
 export { fontWeights } from './lib/font-weight.ts';
 export { useShape } from './lib/shape-context.tsx';
 export { useSize } from './lib/size-context.tsx';

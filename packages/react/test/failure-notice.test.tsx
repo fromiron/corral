@@ -73,10 +73,14 @@ it('keeps a Korean recovery action visible while retaining the safe diagnostic i
 });
 
 it('does not treat arbitrary diagnostic text as a trusted provider classification', () => {
-  render(
+  const { container } = render(
     <IntlProvider locale="en" messages={en}>
       <FailureNotice message="raw response AUTH HTTP 401" />
     </IntlProvider>,
   );
-  expect(screen.getByText(en.Failure.unknown)).toBeVisible();
+  expect(screen.queryByText(en.Failure.provider.AUTH)).toBeNull();
+  // A cause it cannot name adds no sentence; the closed diagnostics hold the recorded text.
+  expect(container.querySelector('p')).toBeNull();
+  expect(container.querySelector('details')).not.toHaveAttribute('open');
+  expect(container.querySelector('details code')).toHaveTextContent('raw response AUTH HTTP 401');
 });

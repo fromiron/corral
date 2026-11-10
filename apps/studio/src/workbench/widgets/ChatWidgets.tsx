@@ -10,6 +10,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  focusRing,
   fontWeights,
   Popover,
   PopoverPopup,
@@ -59,8 +60,7 @@ const CATEGORY_FILL: Record<string, string> = {
   instructions: 'bg-text/75',
   other: 'bg-text/45',
 };
-export const chipClass =
-  'inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground outline-none transition-colors hover:bg-subtle hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring';
+export const chipClass = `inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground transition-colors hover:bg-subtle hover:text-foreground ${focusRing}`;
 const number = (value: number) => value.toLocaleString();
 /** "Last run" only for the newest finished run; an older one names its position (#72). */
 function viewedLabel(
@@ -166,7 +166,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </p>
           {context.tokens != null ? (
             <p
-              className="mt-1 text-lg tabular-nums"
+              className="mt-1 text-title tabular-nums"
               style={{ fontVariationSettings: fontWeights.semibold }}
             >
               {number(context.tokens)}
@@ -259,9 +259,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       context.providerCacheRead != null ||
       context.providerOutput != null ? (
         <details className="text-caption text-muted-foreground">
-          <summary className="cursor-pointer rounded-sm py-1 focus-visible:ring-2 focus-visible:ring-ring">
-            {t('providerUsage')}
-          </summary>
+          <summary className="cursor-pointer rounded-sm py-1">{t('providerUsage')}</summary>
           <p className="mt-1">{t('providerSeparate')}</p>
           <p className="mt-1 tabular-nums">
             {t('providerNumbers', {
@@ -527,6 +525,7 @@ export function ComposerDock({
   note,
   summary,
   planId,
+  plan: planRegion,
 }: {
   /** The next request's intent and target chips. */
   lead?: ReactNode;
@@ -536,6 +535,8 @@ export function ComposerDock({
   summary?: ReactNode;
   /** The id of the Todo the plan toggle expands. */
   planId?: string;
+  /** The Todo the plan toggle expands, directly under the line. */
+  plan?: ReactNode;
 }) {
   const model = useChatWidget();
   const t = useTranslations('Widgets');
@@ -555,6 +556,12 @@ export function ComposerDock({
     run?.live && run.plan.runStatus === 'running' && !run.action.visible
       ? (run.tools.find((row) => row.tone === 'running')?.name ?? null)
       : null;
+  // A failed run is told by its turn's card when that card is the latest turn; the notice
+  // stays while another run or result is on screen, so the failure stays discoverable. A run
+  // that completed with failed steps keeps it: the notice is the way to those steps.
+  const notice =
+    run?.action.visible &&
+    !(run.action.summary === 'failure' && !run.action.completedWithFailures && run.viewed?.latest);
   // Waiting questions alone name the first one, as the conversation's notice does.
   const actionLabel = run
     ? (run.action.summary === 'question' && run.questionNotice) ||
@@ -661,7 +668,8 @@ export function ComposerDock({
         {note}
         {run ? summary : null}
       </div>
-      {run?.action.visible ? (
+      {run ? planRegion : null}
+      {run && notice ? (
         // The live region below announces it; the banner itself stays a note.
         <Banner
           data-testid="action-required"
@@ -839,7 +847,7 @@ export function ComposerPlan({
         {model.plan.open ? (
           <div
             data-testid="work-plan-items"
-            className="work-plan-items max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain border-b border-line/50 px-4 pt-2 pb-2"
+            className="work-plan-items mb-2 max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain px-2.5"
           >
             {body}
           </div>

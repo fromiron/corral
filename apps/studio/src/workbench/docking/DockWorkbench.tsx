@@ -56,12 +56,15 @@ import {
   type DockPreset,
   documentTabLabel,
   INITIAL_PANELS,
+  initialLayout,
   isEditorPanel,
   layoutStorageKey,
   MAX_DOCUMENTS,
   parseLayout,
   presetPanels,
   serializeLayout,
+  TREE_GROUP,
+  TREE_WIDTH,
 } from './layout.ts';
 import 'dockview-react/dist/styles/dockview.css';
 import './docking.css';
@@ -445,13 +448,22 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       );
     }
     /** The central group to add an editor tab to, created when every one was closed. */
-    function editorGroup(api: DockviewApi) {
+    function editorGroup(api: DockviewApi, kind: 'document' | 'graph' = 'document') {
       const group =
         mainGroups(api).find((item) => item.id === api.activeGroup?.id) ?? mainGroups(api)[0];
       if (group) return group;
+      // A wide new dock's tree keeps its narrow column and documents open to its right; a team
+      // design keeps the dock's width as a tab with the tree.
+      const tree = api.groups.find((item) => item.id === TREE_GROUP);
+      if (tree && kind === 'graph') return tree;
       if (api.groups.length >= 4) {
         setMessage('splitLimit');
         return null;
+      }
+      if (tree) {
+        const created = api.addGroup({ id: 'main1', direction: 'right', referenceGroup: tree });
+        tree.api.setSize({ width: TREE_WIDTH });
+        return created;
       }
       return api.addGroup({
         id: 'main1',
@@ -604,7 +616,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         setMessage('invalidTarget');
         return false;
       }
-      const group = editorGroup(api);
+      const group = editorGroup(api, 'graph');
       if (!group) return false;
       const panel = api.addPanel({
         id,
@@ -816,10 +828,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       try {
         api.fromJSON(
           loaded?.layout ??
-            createPresetLayout(
-              'conversation',
-              loaded?.panels.length ? loaded.panels : INITIAL_PANELS,
-            ),
+            (loaded?.panels.length
+              ? createPresetLayout('conversation', loaded.panels)
+              : initialLayout(host.current?.getBoundingClientRect().width ?? 0)),
           { reuseExistingPanels: true },
         );
       } catch {

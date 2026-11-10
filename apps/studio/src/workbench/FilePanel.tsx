@@ -6,6 +6,7 @@ import {
   BannerActions,
   BannerTitle,
   Button,
+  fontWeights,
   Input,
   Menu,
   MenuItem,
@@ -529,7 +530,9 @@ export function FilePanel({
         className="flex min-w-0 flex-col gap-2 rounded fill-group p-3"
         aria-label={te('recovery')}
       >
-        <p className="text-sm font-medium">{te('recovery')}</p>
+        <p className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {te('recovery')}
+        </p>
         {candidates.map((candidate) => {
           const sameCopy = Boolean(
             copy &&
@@ -539,8 +542,11 @@ export function FilePanel({
               candidate.target.copyGeneration === copy.copyGeneration,
           );
           return (
-            <details key={candidate.id} className="min-w-0 text-xs">
-              <summary className="cursor-pointer break-all py-2 font-medium">
+            <details key={candidate.id} className="min-w-0 text-caption">
+              <summary
+                className="cursor-pointer break-all py-2"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
                 {candidate.path}
               </summary>
               <p className="mb-2 text-muted-foreground">
@@ -550,7 +556,7 @@ export function FilePanel({
                 readOnly
                 aria-label={te('draftContent')}
                 value={candidate.text}
-                className="font-mono text-xs"
+                className="font-mono text-caption"
               />
               <div className="mt-2 flex flex-wrap gap-2">
                 {sameCopy ? (
@@ -589,8 +595,10 @@ export function FilePanel({
         className="flex min-w-0 flex-col gap-2 rounded fill-group p-3"
         aria-label={te(scope ? 'previousCopy' : 'preservedDrafts')}
       >
-        <p className="text-sm font-medium">{te(scope ? 'previousCopy' : 'preservedDrafts')}</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {te(scope ? 'previousCopy' : 'preservedDrafts')}
+        </p>
+        <p className="text-caption text-muted-foreground">
           {te(scope ? 'previousCopyHint' : 'unavailableDraftHint')}
         </p>
         {retained.map((entry) => (
@@ -649,7 +657,7 @@ export function FilePanel({
     ) : null;
   if (!scope && !loading)
     return (
-      <div ref={panel} className="space-y-2 p-3 text-xs text-muted-foreground">
+      <div ref={panel} className="space-y-2 p-3 text-caption text-muted-foreground">
         {retainedDrafts}
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
@@ -721,7 +729,7 @@ export function FilePanel({
       {retainedDrafts}
       {recoveryCandidates}
       {recoveryReadError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {te('recoveryReadFailed')}
         </p>
       ) : null}
@@ -819,7 +827,7 @@ export function FilePanel({
                 className="min-w-0 max-w-full flex-[1_0_10rem]"
               />
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {ts(hasCopy ? 'needsCopy' : 'needsCopyPreparation')}
             </p>
             {hasCopy && scopeKind === 'project' ? (
@@ -881,7 +889,7 @@ export function FilePanel({
         </>
       ) : null}
       {tabMessage ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {tabMessage}
         </p>
       ) : null}

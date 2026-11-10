@@ -12,7 +12,7 @@ import { ComposerStats } from '../widgets/ComposerStats.tsx';
 
 /**
  * The one-line status's lead: cancelling the pre-run auto choice, and what the request is and
- * for whom. The intent stays visible while idle, except on an empty session's home.
+ * for whom. The send mode shows only when there is more than one to choose.
  */
 export function ComposerHeader({
   choosingAuto,
@@ -26,7 +26,6 @@ export function ComposerHeader({
   targetName,
   onChooseTarget,
   about = null,
-  quiet = false,
 }: {
   choosingAuto: boolean;
   onCancelAuto: () => void;
@@ -40,8 +39,6 @@ export function ComposerHeader({
   onChooseTarget: (value: string) => void;
   /** The result a question starts from. */
   about?: string | null;
-  /** An empty session has nothing to follow up yet. */
-  quiet?: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
@@ -71,13 +68,6 @@ export function ComposerHeader({
             hint: t(`intentHint.${value}`),
           }))}
         />
-      ) : intent !== 'next' || blocked || !quiet ? (
-        <span
-          title={t(`intentHint.${intent}`)}
-          className="shrink-0 px-2 text-ui text-muted-foreground"
-        >
-          {t(`intentShort.${intent}`)}
-        </span>
       ) : null}
       {intent === 'explain' && about ? (
         <span

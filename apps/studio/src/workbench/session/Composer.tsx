@@ -1303,8 +1303,10 @@ export function Composer({
           })
         : tc('destination.steerUnavailable', { name: targetName(steerTarget) })
       : tc(`destination.${intent}`);
-  // A new run in this session is the default: the input's description says it, with no line.
-  const quietDestination = intent === 'next' && !resolved.blocked;
+  // Only an instruction to a running target, or a target that cannot be used, shows a line;
+  // a new run is the default and the send mode choice says a queue. The input's description
+  // says the destination in every case.
+  const quietDestination = intent !== 'steer' && !resolved.blocked;
   // What Send does now, said where it is pressed (#89).
   const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
   // Items this intent does not carry share one notice and one wording (#89).
@@ -1411,11 +1413,6 @@ export function Composer({
       )}
       contentSlot={
         <>
-          <ComposerPlan
-            id={planRegion}
-            showAllKey={planAllKey}
-            onShowAllKeyChange={setPlanAllKey}
-          />
           {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
           {viewingOtherRun ? (
             <Banner data-testid="viewed-run-warning" status="warning" size="compact">
@@ -1761,10 +1758,11 @@ export function Composer({
                   hint: tc('teamAutoHint'),
                   group: tc('teamCorralGroup'),
                 },
+                // Each saved team names its revision, so the selected one says which it runs.
                 ...corrals.map((corral) => ({
                   value: `corral:${corral.corralId}`,
                   label: corral.name,
-                  hint: tc('teamCorralHint'),
+                  hint: `r${corral.definitionRevision} · ${tc('teamCorralHint')}`,
                   group: tc('teamCorralGroup'),
                 })),
                 // Creating or editing a Corral happens in the library.
@@ -1833,9 +1831,17 @@ export function Composer({
   );
   return (
     <ComposerSurface.Shell>
-      {/* One line above the input: intent, an ended run, plan, changes, activity, held items, Overview. */}
+      {/* One line above the input: intent, an ended run, plan, changes, activity, held items,
+          Overview; the Todo it expands sits directly under it. */}
       <ComposerDock
         planId={planRegion}
+        plan={
+          <ComposerPlan
+            id={planRegion}
+            showAllKey={planAllKey}
+            onShowAllKeyChange={setPlanAllKey}
+          />
+        }
         lead={
           <ComposerHeader
             choosingAuto={choosingAuto}
@@ -1849,7 +1855,6 @@ export function Composer({
             targetName={targetName}
             onChooseTarget={chooseTarget}
             about={latest?.label ?? null}
-            quiet={home}
           />
         }
         note={

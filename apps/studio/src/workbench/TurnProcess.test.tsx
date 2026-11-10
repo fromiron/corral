@@ -70,10 +70,10 @@ it.each(['en', 'ko'] as const)(
     const text = container.textContent ?? '';
     expect(text).toContain(locale === 'en' ? 'Read' : '읽기');
     expect(text).toContain(
-      locale === 'en' ? 'Security report · v2 · failed' : 'Security report · 버전 2 · 실패',
+      locale === 'en' ? 'Security report · v2 · Failed' : 'Security report · 버전 2 · 실패',
     );
-    expect(text).not.toContain(locale === 'en' ? 'artv_report · failed' : 'artv_report · 실패');
-    expect(text).toContain(locale === 'en' ? 'artv_missing · failed' : 'artv_missing · 실패');
+    expect(text).not.toContain(locale === 'en' ? 'artv_report · Failed' : 'artv_report · 실패');
+    expect(text).toContain(locale === 'en' ? 'artv_missing · Failed' : 'artv_missing · 실패');
   },
 );
 
@@ -162,3 +162,71 @@ it('shows a judged request on its row and keeps other reasoning in the request d
   expect(judged?.closest('.turn-process-row')?.textContent).not.toContain('Request details');
   expect(off?.closest('.turn-process-row')?.textContent).toContain('Request details');
 });
+
+it.each(['en', 'ko'] as const)(
+  'a pending ask waits for the person, and status words read as words (%s)',
+  (locale) => {
+    const projection = emptyProjection('run_ask');
+    projection.status = 'awaiting_user';
+    projection.executionOrder = ['lead'];
+    projection.executions.lead = {
+      executionId: 'lead',
+      nodeId: 'lead',
+      status: 'waiting_approval',
+      attemptNo: 1,
+    } as (typeof projection.executions)[string];
+    const tool = (toolCallId: string, name: string) => ({
+      type: 'tool.requested',
+      actor: { kind: 'agent', id: 'lead' },
+      payload: { executionId: 'lead', toolCallId, name, validatedArgs: {} },
+    });
+    const events = [
+      tool('plan', 'update_plan'),
+      {
+        type: 'tool.finished',
+        actor: { kind: 'agent', id: 'lead' },
+        payload: { executionId: 'lead', toolCallId: 'plan' },
+      },
+      tool('ask', 'ask_user'),
+      {
+        type: 'tool.allowed',
+        actor: { kind: 'runtime', id: 'runtime' },
+        payload: { executionId: 'lead', toolCallId: 'ask' },
+      },
+      {
+        type: 'user_input.requested',
+        actor: { kind: 'runtime', id: 'runtime' },
+        payload: {
+          requestId: 'question',
+          executionId: 'lead',
+          attemptNo: 1,
+          bodyRef: 'body_question',
+          schemaHash: 'b'.repeat(64),
+          deadline: '2026-11-10T00:01:00.000Z',
+        },
+      },
+    ] as unknown as RunEvent[];
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(
+      <IntlProvider locale={locale} messages={locale === 'en' ? en : ko}>
+        <TurnProcess
+          events={events}
+          projection={projection}
+          streams={{}}
+          label={(id) => id}
+          open
+          onOpenChange={() => {}}
+        />
+      </IntlProvider>,
+    );
+    const rows = [...container.querySelectorAll('.turn-process-row')].map(
+      (row) => row.textContent ?? '',
+    );
+    const messages = locale === 'en' ? en : ko;
+    const ask = rows.find((row) => row.includes(messages.Turn.tool.ask_user));
+    const plan = rows.find((row) => row.includes(messages.Turn.tool.update_plan));
+    expect(ask).toContain(locale === 'en' ? 'Waiting for your answer' : '답을 기다리는 중');
+    expect(ask).not.toContain(messages.Transcript.tool.allowed);
+    expect(plan).toContain(locale === 'en' ? 'Done' : '완료');
+  },
+);

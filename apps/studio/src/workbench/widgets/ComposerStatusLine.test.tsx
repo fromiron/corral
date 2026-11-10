@@ -120,9 +120,10 @@ async function mount(initial: ChatWidgetModel) {
           lead={<span data-testid="lead">Queue</span>}
           note={<span data-testid="note">Applies to a new request only: references</span>}
           summary={<button type="button">Overview</button>}
+          plan={<ComposerPlan id={planId} />}
         />
+        <div data-testid="queue">Queued request</div>
         <div data-testid="input-surface">
-          <ComposerPlan id={planId} />
           <textarea aria-label="Request" />
         </div>
       </>
@@ -184,9 +185,13 @@ it('renders the plan Todo only when the line is expanded, and only once', async 
   expect(view.rows()).toHaveLength(5);
   expect(view.container.querySelectorAll('[data-testid="composer-work-plan"]')).toHaveLength(1);
   expect(view.container.querySelectorAll('ol')).toHaveLength(1);
-  // The Todo sits with the input, and the line no longer repeats the open step.
+  // The Todo sits right under its line, outside the input, and the line no longer repeats
+  // the open step.
   const surface = view.container.querySelector('[data-testid="input-surface"]');
-  expect(surface?.querySelectorAll('[data-plan-item]')).toHaveLength(5);
+  expect(surface?.querySelectorAll('[data-plan-item]')).toHaveLength(0);
+  const plan = view.container.querySelector('[data-testid="composer-work-plan"]');
+  expect(plan?.id).toBe(view.toggle()?.getAttribute('aria-controls'));
+  expect(plan?.querySelectorAll('[data-plan-item]')).toHaveLength(5);
   expect(view.toggle()?.textContent).not.toContain('Plan item 2');
   // Read only: no checkbox completes an item.
   expect(view.container.querySelector('input[type="checkbox"], [role="checkbox"]')).toBeNull();
@@ -282,4 +287,87 @@ it('gives each end state its own mark, so a failure never looks like a success',
   // A run whose state cannot be read is marked as a problem, never as done.
   await view.update(model({ live: false, readState: 'error' }, { runStatus: 'succeeded' }));
   expect(mark()?.getAttribute('data-state')).toBe('failed');
+});
+
+it('reads status line, plan, notice, queue and input from top to bottom', async () => {
+  const view = await mount(
+    model(
+      {
+        action: { ...noAction, visible: true, needsUser: true, count: 1, summary: 'question' },
+      } as Partial<ChatWidgetModel>,
+      { open: true, runStatus: 'awaiting_user' },
+    ),
+  );
+  const order = [
+    view.line(),
+    view.container.querySelector('[data-testid="composer-work-plan"]'),
+    view.container.querySelector('[data-testid="action-required"]'),
+    view.container.querySelector('[data-testid="queue"]'),
+    view.container.querySelector('[data-testid="input-surface"]'),
+  ];
+  expect(order.every(Boolean)).toBe(true);
+  for (const [index, node] of order.entries()) {
+    const next = order[index + 1];
+    if (node && next)
+      expect(node.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+});
+
+const failure = {
+  ...noAction,
+  visible: true,
+  hasFailure: true,
+  count: 1,
+  summary: 'failure',
+} as ChatWidgetModel['action'];
+
+it("leaves a failure to its turn's card when that card is the latest turn", async () => {
+  const view = await mount(
+    model(
+      { live: false, action: failure, viewed: { latest: true, number: 2, total: 2 } },
+      {
+        runStatus: 'failed',
+      },
+    ),
+  );
+  expect(view.container.querySelector('[data-testid="action-required"]')).toBeNull();
+  // The ended run still keeps its one state on the line.
+  expect(view.line()?.querySelector('a')?.textContent).toContain(messages.Status.failed);
+});
+
+it('keeps the failed-steps notice for a run that completed, whose card has no way to them', async () => {
+  const view = await mount(
+    model(
+      {
+        live: false,
+        action: { ...failure, completedWithFailures: true },
+        failedExecutionId: 'exec_failed',
+        viewed: { latest: true, number: 1, total: 1 },
+      },
+      { runStatus: 'succeeded' },
+    ),
+  );
+  const banner = view.container.querySelector('[data-testid="action-required"]');
+  expect(banner?.textContent).toContain(messages.Widgets.actionOpenFailure);
+});
+
+it('keeps a failure notice while another run or result is on screen', async () => {
+  const view = await mount(
+    model(
+      { live: false, action: failure, viewed: { latest: false, number: 1, total: 2 } },
+      {
+        runStatus: 'failed',
+      },
+    ),
+  );
+  const banner = view.container.querySelector('[data-testid="action-required"]');
+  expect(banner?.textContent).toContain(messages.Widgets.actionFailure);
+  expect(banner?.querySelector('a')).not.toBeNull();
+  // A question on the latest live turn keeps the notice: it carries the only action.
+  await view.update(
+    model({
+      action: { ...noAction, visible: true, needsUser: true, count: 1, summary: 'question' },
+    } as Partial<ChatWidgetModel>),
+  );
+  expect(view.container.querySelector('[data-testid="action-required"]')).not.toBeNull();
 });

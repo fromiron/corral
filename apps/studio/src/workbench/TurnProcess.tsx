@@ -1,5 +1,5 @@
 import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   buildTurnProcess,
   ExecutionToolGroup,
@@ -42,6 +42,7 @@ const ICONS: Record<string, IconName> = {
   spawn_subagents: 'users',
   await_tasks: 'users',
 };
+const ASKS = new Set(['ask_user', 'ask']);
 function useElapsed(from: string | null, to: string | null, active: boolean) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -106,6 +107,15 @@ export function TurnProcess({
     [given, events, projection, label],
   );
   const summary = events.length ? process : { ...process, ...turnSummary(projection) };
+  // The lead's open ask waits on the person, not on the tool: its row says so.
+  const lead = projection.executionOrder[0];
+  const asking = useMemo(
+    () =>
+      pendingInteractions(events, projection).some(
+        (item) => item.kind !== 'approval' && item.event.payload.executionId === lead,
+      ),
+    [events, projection, lead],
+  );
   const seconds = useElapsed(summary.startedAt, summary.endedAt, summary.active);
   const time =
     seconds === null
@@ -224,7 +234,11 @@ export function TurnProcess({
                 label={t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name}
                 description={[
                   row.artifact ? t('artifactTarget', row.artifact) : row.target,
-                  tt(`tool.${row.status}`),
+                  asking &&
+                  ASKS.has(row.name) &&
+                  (row.status === 'requested' || row.status === 'allowed')
+                    ? t('waitingForAnswer')
+                    : tt(`tool.${row.status}`),
                 ]
                   .filter(Boolean)
                   .join(' · ')}

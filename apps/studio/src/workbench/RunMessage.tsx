@@ -338,26 +338,15 @@ export function RunMessage({
         </TurnLine>
       ) : null}
       {sessionId && questions.length ? (
-        // The composer's live region announces it and its notice carries the emphasis; this
-        // one stays a quiet note in the turn it belongs to.
-        <Banner data-testid="run-required-action" status="warning" size="compact" role="note">
-          <BannerTitle>{requiredLabel}</BannerTitle>
-          <BannerActions>
-            <Button
-              size="compact"
-              variant="secondary"
-              render={
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId }}
-                  search={{ panel: 'run', run: runId, view: 'run' }}
-                />
-              }
-            >
-              {tw('actionOpen')}
-            </Button>
-          </BannerActions>
-        </Banner>
+        // The composer's notice announces it and carries the way to the answer; the turn it
+        // belongs to keeps one quiet line naming the question.
+        <p
+          data-testid="run-required-action"
+          role="note"
+          className="text-caption text-muted-foreground"
+        >
+          {requiredLabel}
+        </p>
       ) : null}
       {working && !sessionId ? <RunActions session={store} compact /> : null}
       <ApprovalPanel
@@ -659,7 +648,7 @@ export function TurnActions({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="turn-actions"
-      className="turn-actions -ml-1.5 flex min-h-7 flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-160 motion-reduce:transition-none"
+      className="turn-actions -ml-1.5 flex min-h-7 flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-160 ease-[var(--ease-out-soft)] motion-reduce:transition-none"
     >
       {children}
     </div>

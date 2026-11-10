@@ -120,7 +120,7 @@ function waitingRun(): RunProjection {
   return projection;
 }
 
-it('names the first waiting question and links to the exact run without answering it', async () => {
+it('names the first waiting question in one quiet line; the composer notice carries the action', async () => {
   const sendCommand = vi.fn();
   const loadArtifact = vi.fn(async () => {});
   fixture.store = sessionStore({
@@ -132,14 +132,18 @@ it('names the first waiting question and links to the exact run without answerin
     loadArtifact,
   });
   const container = await show();
-  const banner = container.querySelector('[data-testid="run-required-action"]');
-  expect(banner?.textContent).toContain('Which layout should I keep?');
-  expect(banner?.textContent).not.toContain(messages.Widgets.actionQuestion);
-  expect(banner?.textContent).toContain(messages.Widgets.actionOpen);
-  // No inline answering: the banner holds a link only.
-  expect(banner?.querySelectorAll('input, textarea, select, [role="radio"]')).toHaveLength(0);
+  const note = container.querySelector('[data-testid="run-required-action"]');
+  expect(note?.textContent).toContain('Which layout should I keep?');
+  expect(note?.textContent).not.toContain(messages.Widgets.actionQuestion);
+  // One caption line: no second banner, no button or link repeating the composer's notice.
+  expect(note?.tagName).toBe('P');
+  expect(note?.textContent).not.toContain(messages.Widgets.actionOpen);
+  expect(note?.querySelectorAll('a, button')).toHaveLength(0);
+  expect(container.querySelector('[data-slot="banner"]')).toBeNull();
+  // No inline answering.
+  expect(container.querySelectorAll('input, textarea, select, [role="radio"]')).toHaveLength(0);
   expect(container.querySelector('[role="form"], form')).toBeNull();
-  expect(fixture.links).toContainEqual({ panel: 'run', run: 'run_chat', view: 'run' });
+  expect(fixture.links).not.toContainEqual({ panel: 'run', run: 'run_chat', view: 'run' });
   expect(sendCommand).not.toHaveBeenCalled();
 });
 

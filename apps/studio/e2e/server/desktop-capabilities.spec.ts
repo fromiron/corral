@@ -557,9 +557,9 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect(commandApproval).toContainText('node command-write.mjs');
   expect(existsSync(join(first.worktree, 'command.txt'))).toBe(false);
   await commandApproval.getByRole('button', { name: 'Allow once', exact: true }).click();
+  // The turn names the waiting question; the composer's notice goes to it.
   await page
-    .getByTestId('chat-timeline')
-    .getByTestId('run-required-action')
+    .getByTestId('action-required')
     .getByRole('link', { name: 'Go to the request', exact: true })
     .click();
   await expect(page.getByTestId('run-monitor')).toContainText(

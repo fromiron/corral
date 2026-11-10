@@ -254,6 +254,41 @@ export function createPresetLayout(
   };
 }
 
+/** The file tree's own group in a wide new dock, and the column it keeps. */
+export const TREE_GROUP = 'tree';
+export const TREE_WIDTH = 260;
+/** From this dock width a new dock opens documents in a group beside the tree. */
+export const TREE_BESIDE_DOCUMENTS = 960;
+
+/**
+ * A new dock's first arrangement. From 960px the file tree stands alone in its own group, so
+ * the first document opens in a group to its right; a narrower dock keeps one group, where a
+ * document opens as a tab beside the tree. A saved arrangement is never replaced by this.
+ */
+export function initialLayout(width: number): SerializedDockview {
+  if (width < TREE_BESIDE_DOCUMENTS) return createPresetLayout('conversation', INITIAL_PANELS);
+  return {
+    grid: {
+      root: {
+        type: 'branch',
+        size: 1200,
+        data: [
+          leaf(
+            TREE_GROUP,
+            INITIAL_PANELS.map((panel) => panel.id),
+            800,
+          ),
+        ],
+      },
+      width: 1200,
+      height: 800,
+      orientation: 'VERTICAL' as SerializedDockview['grid']['orientation'],
+    },
+    panels: serializedPanels(INITIAL_PANELS),
+    activeGroup: TREE_GROUP,
+  };
+}
+
 export interface ParsedLayout {
   layout: SerializedDockview | null;
   panels: DockPanel[];

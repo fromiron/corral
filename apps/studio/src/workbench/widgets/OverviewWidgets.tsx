@@ -14,6 +14,8 @@ import {
   CardGroup,
   CardHeader,
   CardMedia,
+  focusRing,
+  fontWeights,
   KitCardTitle,
   Meter,
   Popover,
@@ -183,8 +185,7 @@ function Frame({
 }
 
 // The trigger wraps a kit card: Card keeps `onClick` for its own stretched overlay.
-const triggerClass =
-  'min-w-0 cursor-pointer rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
+const triggerClass = `min-w-0 cursor-pointer rounded-xl text-left ${focusRing}`;
 
 /** The widget opens its detail in place; focus returns to the widget when the detail closes. */
 function DetailWidget({
@@ -220,7 +221,12 @@ function DetailWidget({
 function Figure({ value, unit }: { value: ReactNode; unit?: ReactNode }) {
   return (
     <p className="flex items-baseline gap-1.5">
-      <span className="text-body font-medium tabular-nums text-foreground">{value}</span>
+      <span
+        className="text-body tabular-nums text-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
+        {value}
+      </span>
       {unit ? <span className="text-caption text-muted-foreground">{unit}</span> : null}
     </p>
   );
@@ -366,7 +372,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
   ];
   return (
     <div data-testid="usage-detail" className="flex flex-col gap-3 text-body">
-      <p className="font-medium">{t('usage')}</p>
+      <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('usage')}</p>
       <p className="text-caption text-muted-foreground">{t('usageDefinition')}</p>
       <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
         {rows.map(([name, value]) => (
@@ -476,10 +482,16 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
               <span className="flex flex-wrap items-baseline gap-x-2">
                 {counted ? (
                   <>
-                    <span className="font-medium tabular-nums text-success">
+                    <span
+                      className="tabular-nums text-success"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
                       +{format.number(model.changeAdditions ?? 0)}
                     </span>
-                    <span className="font-medium tabular-nums text-destructive">
+                    <span
+                      className="tabular-nums text-destructive"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
                       −{format.number(model.changeDeletions ?? 0)}
                     </span>
                   </>

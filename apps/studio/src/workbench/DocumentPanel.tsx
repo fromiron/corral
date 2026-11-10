@@ -334,7 +334,8 @@ export function DocumentPanel({
       ) : null}
       <Button
         size="compact"
-        variant={canSave ? 'primary' : 'ghost'}
+        // While another writer holds the copy, the banner's own actions lead and Save steps back.
+        variant={entry.writerBusy ? 'secondary' : canSave ? 'primary' : 'ghost'}
         disabled={!canSave}
         onClick={() => perform(save)}
       >

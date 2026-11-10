@@ -1168,12 +1168,12 @@
     "streaming": "Still streaming. Not final until the request finishes.",
     "gap": "Part of the stream was lost; the final reply replaces it.",
     "tool": {
-      "requested": "requested",
-      "allowed": "running",
-      "blocked": "refused",
-      "finished": "done",
-      "failed": "failed",
-      "cancelled": "cancelled"
+      "requested": "Requested",
+      "allowed": "Running",
+      "blocked": "Refused",
+      "finished": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     },
     "asked": "Asked {target}",
     "answer": "Answer",
@@ -2157,7 +2157,7 @@
     "toLine": "To line",
     "referenceLines": "Reference lines",
     "fileContent": "File content",
-    "referencePermission": "A reference adds a path and line range to your request. It does not grant file access.",
+    "referencePermission": "Adds the path and line range to your request.",
     "fileUnavailable": "The file is unavailable.",
     "commentSide": "Comparison side",
     "windowControls": "Window controls",
@@ -4214,7 +4214,7 @@
       "unavailable": "Output unavailable"
     },
     "exitCode": "Exit code {code}",
-    "writerHint": "While this terminal is active, file saves and Runs that write to this copy are blocked. Stop the terminal or use another copy. Hiding this panel does not stop it.",
+    "writerHint": "This terminal holds the working copy while it runs.",
     "replayUnavailable": "Output replay is unavailable. An existing connected view may continue; a new view cannot reconstruct the screen. Stop this terminal before creating another.",
     "replayUnavailableEnded": "Output replay is unavailable. This terminal has ended; you can create a new terminal.",
     "runningTab": "Terminal running",
@@ -4251,7 +4251,7 @@
     "stopped": "Stopped",
     "stopUnconfirmed": "Stop was attempted, but termination could not be verified. The working copy remains protected. Check the host process and diagnostic details; do not delete the working copy to bypass this protection.",
     "writerBusy": "Another operation is using this working copy. Stop it or wait for it to finish before creating a terminal.",
-    "releaseHint": "Releasing input only disconnects this view’s keyboard. The terminal still holds the working copy until its process stops.",
+    "releaseHint": "Stop it to free the copy; releasing input does not.",
     "uncertainTab": "Terminal termination needs confirmation",
     "writerNotice": "A terminal is holding this working copy. Stop it before sending a request that writes files.",
     "writerUncertainNotice": "Terminal termination has not been confirmed. The working copy stays reserved until the process is confirmed stopped.",
@@ -4272,7 +4272,8 @@
     "diagnosticEnded": "Review the diagnostic details before creating another terminal.",
     "details": "About this terminal",
     "chooseShell": "New terminal with another shell",
-    "blockingSave": "A file save is waiting for this terminal. Stop it to save."
+    "blockingSave": "A file save is waiting for this terminal. Stop it to save.",
+    "createHeld": "A terminal already holds this copy. Stop it first."
   },
   "Docking": {
     "fileViewer": "File viewer",
@@ -5222,6 +5223,7 @@
     "requestFinished": "Response complete",
     "requestUnconfirmed": "Response completion not recorded",
     "requestDetails": "Request details",
+    "waitingForAnswer": "Waiting for your answer",
     "toolDetails": "Tool details",
     "agentDetails": "Agent activity"
   },
@@ -5319,7 +5321,6 @@
   },
   "Failure": {
     "cancelled": "This step was cancelled.",
-    "unknown": "This step failed. Open diagnostics for the recorded reason.",
     "diagnostics": "Diagnostics",
     "code": {
       "TARGET_NOT_FOUND": "The requested file, folder, or target is unavailable.",

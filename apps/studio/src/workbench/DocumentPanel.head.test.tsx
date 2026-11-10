@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import type { FileEditProposalSummary, TextRange, WorkspaceTarget } from '@corral/contracts';
+import { Button } from '@corral/react/design-kit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { DocumentPanel } from './DocumentPanel.tsx';
 import type { DocumentBuffer, DocumentStore } from './documents/store.ts';
 import type { FileEditClient } from './EditProposalReview.tsx';
@@ -217,6 +220,44 @@ it('Save follows the unsaved state', async () => {
   );
   await act(async () => save?.click());
   expect(dirty.owner.save).toHaveBeenCalledWith('document');
+});
+
+/** The class a kit Button of this variant draws, to tell variants apart without fixing classes. */
+function variantClass(variant: 'primary' | 'secondary') {
+  const host = document.createElement('div');
+  host.innerHTML = renderToStaticMarkup(
+    <Button size="compact" variant={variant}>
+      {messages.Documents.save}
+    </Button>,
+  );
+  return host.querySelector('button')?.className;
+}
+
+it('a save held by another writer is one warning banner, and Save steps back', async () => {
+  const view = await mount(buffer({ dirty: true, text: 'one\ntwo!', writerBusy: true }));
+  const banner = view.container.querySelector('[data-slot="banner"][data-status="warning"]');
+  expect(banner?.textContent).toContain(messages.Documents.writerHeld);
+  // Said once: no second line repeats it outside the banner.
+  const mentions = [...view.container.querySelectorAll('[role="alert"], p, span')].filter(
+    (node) => node.textContent === messages.Documents.writerHeld && !banner?.contains(node),
+  );
+  expect(mentions).toHaveLength(0);
+  expect(view.button('Save')?.className).toBe(variantClass('secondary'));
+  // Without a held copy, an unsaved document keeps the primary Save.
+  const free = await mount(buffer({ dirty: true, text: 'one\ntwo!' }));
+  expect(free.button('Save')?.className).toBe(variantClass('primary'));
+});
+
+it('the reference popover keeps one short hint line', async () => {
+  const view = await mount(buffer(), { onReference: vi.fn() });
+  await view.choose(messages.Documents.referenceLinesMenu);
+  const notes = view.popover(messages.Desktop.referenceLines)?.querySelectorAll('p');
+  expect(notes).toHaveLength(1);
+  expect(notes?.[0]?.textContent).toBe(messages.Desktop.referencePermission);
+  for (const hint of [messages.Desktop.referencePermission, ko.Desktop.referencePermission]) {
+    expect(hint.length).toBeLessThanOrEqual(48);
+    expect(hint.trim().split(/[.!?。] /)).toHaveLength(1);
+  }
 });
 
 it('every moved action is a named row of the more menu and calls its handler', async () => {

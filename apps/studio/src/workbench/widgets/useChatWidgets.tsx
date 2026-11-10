@@ -1,5 +1,10 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
+import {
+  canReadArtifactBody,
+  canReleaseArtifactBodies,
+  pendingInteractions,
+  type RunProjection,
+} from '@corral/core';
 import {
   estimateRunCost,
   type RunCostEstimate,
@@ -96,6 +101,11 @@ export interface ChatWidgetModel {
   };
   notice: string;
 }
+
+type PlanProgressStatus = Extract<
+  ReturnType<typeof useWorkPlanSnapshot>['status'],
+  { plan: unknown }
+>;
 
 const ChatWidgetContext = createContext<ChatWidgetModel | null>(null);
 const NO_TEXTS: Readonly<Record<string, string>> = {};
@@ -311,7 +321,7 @@ function useChatWidgetState(
     },
     [presentationRunId, usingLive, session, transport],
   );
-  const { status: planStatus, retry: retryPlan } = useWorkPlanSnapshot({
+  const { status: readPlan, retry: retryPlan } = useWorkPlanSnapshot({
     runId: presentationRunId,
     ref,
     currentCriteriaVersionId: projection?.currentCriteriaVersionId ?? null,
@@ -321,6 +331,39 @@ function useChatWidgetState(
     cacheScope: usingLive ? session : transport,
     text,
   });
+  // A settled run releases its plan body. The chip keeps the count it last read for this plan
+  // revision, or is not shown; a released body is never a load error.
+  const planKey =
+    presentationRunId && ref
+      ? [
+          presentationRunId,
+          ref.scope,
+          ref.executionId,
+          ref.attemptNo,
+          ref.revision,
+          ref.bodyHash,
+        ].join('|')
+      : null;
+  const [lastPlan, setLastPlan] = useState<{ key: string; status: PlanProgressStatus } | null>(
+    null,
+  );
+  if (
+    planKey &&
+    'plan' in readPlan &&
+    (lastPlan?.key !== planKey ||
+      lastPlan.status.plan !== readPlan.plan ||
+      lastPlan.status.state !== readPlan.state)
+  ) {
+    setLastPlan({ key: planKey, status: readPlan });
+  }
+  const planStatus: ReturnType<typeof useWorkPlanSnapshot>['status'] =
+    projection &&
+    (readPlan.state === 'loading' || readPlan.state === 'error') &&
+    canReleaseArtifactBodies(projection)
+      ? lastPlan && lastPlan.key === planKey
+        ? { ...lastPlan.status, runFinished: true }
+        : { state: 'hidden' }
+      : readPlan;
   // Loading and error details must remain expandable so their scoped Retry is reachable.
   const open = Boolean(ref) && workPlanOpen(preference);
   const calls = useMemo(

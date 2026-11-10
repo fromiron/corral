@@ -29,13 +29,13 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
     return () => clearInterval(interval);
   }, [running, refresh]);
   return (
-    <details className="rounded fill-group p-3 text-sm">
+    <details className="rounded fill-group p-3 text-body">
       <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('title')}
       </summary>
       <div className="mt-3 flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">{t('intro')}</p>
-        <label className="flex flex-col gap-1 text-xs">
+        <p className="text-caption text-muted-foreground">{t('intro')}</p>
+        <label className="flex flex-col gap-1 text-caption">
           {t('source')}
           <Input
             value={source}
@@ -44,7 +44,7 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
             spellCheck={false}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs">
+        <label className="flex flex-col gap-1 text-caption">
           {t('destination')}
           <Input
             value={destination}
@@ -85,7 +85,7 @@ export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
                 key={op.id}
                 className="flex flex-wrap items-center gap-2 border-t border-line pt-2"
               >
-                <div className="min-w-0 flex-1 text-xs">
+                <div className="min-w-0 flex-1 text-caption">
                   <div className="truncate" title={op.destination}>
                     {op.destination}
                   </div>
