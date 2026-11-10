@@ -334,8 +334,6 @@ function DockHeaderActions({
           <MenuSeparator />
           <MenuItem onClick={() => actions.step('previous')}>{t('previousPane')}</MenuItem>
           <MenuItem onClick={() => actions.step('next')}>{t('nextPane')}</MenuItem>
-          <MenuSeparator />
-          <p className="px-2 py-1.5 text-caption text-muted-foreground">{t('savedWhere')}</p>
         </MenuPopup>
       </Menu>
       {close}

@@ -34,7 +34,7 @@ import { useServices } from '../services.tsx';
 import { formatChord } from '../shortcuts.ts';
 import { ContentSearch } from './ContentSearch.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
-import { DocumentHeader } from './DocumentHeader.tsx';
+import { DocumentHeader, publishTreeSource } from './DocumentHeader.tsx';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { DocumentCloseDialog } from './documents/DocumentCloseDialog.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
@@ -332,6 +332,14 @@ export function FilePanel({
   };
   const scopeKind = scope?.kind;
   const scopeId = scope?.id;
+  // The tree's select names its source; a document head beside it then names only another one.
+  useEffect(
+    () =>
+      scopeKind
+        ? publishTreeSource(sessionId, scopeKind === 'session' ? 'copy' : 'source')
+        : undefined,
+    [sessionId, scopeKind],
+  );
   const currentCopy = (entry: DocumentBuffer | undefined) =>
     Boolean(
       entry &&
@@ -928,6 +936,7 @@ export function FilePanel({
             <>
               <DocumentHeader
                 path={active}
+                treeSource={scopeKind === 'session' ? 'copy' : 'source'}
                 target={
                   scopeKind === 'session' && searchTarget
                     ? { kind: 'copy', target: searchTarget }

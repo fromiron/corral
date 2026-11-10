@@ -3408,7 +3408,6 @@
   },
   "SessionSearch": {
     "title": "Search sessions and results",
-    "privacy": "Search stays in this local workspace. Private messages are included only when selected.",
     "query": "Search text",
     "private": "Include private messages and results",
     "archived": "Include archived",
@@ -3426,7 +3425,6 @@
       "response": "Model response",
       "interaction": "Interaction"
     },
-    "dialogScope": "All projects · titles and purposes. Enable private messages and results to search their text.",
     "privateEmpty": "No title or purpose matches. Enable private messages and results to search their text.",
     "sourceCount": "{count, plural, one {# source} other {# sources}}",
     "sourceNumber": "Source {number}"
@@ -4259,7 +4257,6 @@
     "previousPane": "Previous pane",
     "nextPane": "Next pane",
     "layoutRecovered": "Some saved panes could not be restored. Your document drafts are preserved.",
-    "savedWhere": "This arrangement is saved for this project in this browser. Moving or hiding panes never closes documents or terminals.",
     "dropDocumentsOnly": "Only documents can be split into a new area.",
     "dropDocumentMain": "Documents stay in the main areas.",
     "dropAreaLimit": "At most two main areas and four areas in all.",
@@ -4407,7 +4404,7 @@
   },
   "Materials": {
     "heading": "Instructions & memory",
-    "hint": "Only entries you pick in the composer are attached to a request. Editing or archiving an entry keeps what earlier requests received.",
+    "hint": "Only entries you pick in the composer are attached to a request.",
     "name": "Name",
     "kind": "Kind",
     "instructions": "Instructions",
