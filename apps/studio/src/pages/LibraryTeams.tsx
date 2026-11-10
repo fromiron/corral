@@ -9,8 +9,11 @@ import {
   EmptyState,
   fontWeights,
   KitCardTitle,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
   SectionLabel,
-  Select,
   Table,
   TableBody,
   TableCell,
@@ -385,18 +388,18 @@ function MoveCorral({
   const t = useTranslations('Projects');
   const targets = projects.filter((p) => p.projectId !== current && !p.archivedAt);
   if (targets.length === 0) return null;
+  // A button beside Edit and Duplicate; its menu lists where the team can go.
   return (
-    <Select
-      label={t('moveTo', { name })}
-      value=""
-      variant="ghost"
-      size="xs"
-      onValueChange={(value) => value && onMove(value)}
-      options={[
-        { value: '', label: t('moveChoose') },
-        ...targets.map((p) => ({ value: p.projectId, label: projectName(p, t('defaultName')) })),
-      ]}
-    />
+    <Menu>
+      <MenuTrigger render={<Button variant="tertiary" />}>{t('moveChoose')}</MenuTrigger>
+      <MenuPopup align="start" aria-label={t('moveTo', { name })} className="min-w-52">
+        {targets.map((p) => (
+          <MenuItem key={p.projectId} onClick={() => onMove(p.projectId)}>
+            {projectName(p, t('defaultName'))}
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
   );
 }
 

@@ -360,6 +360,40 @@ it('opens a team detail with a conversation, the editor and a duplicate', async 
   expect((await repository.getSession('session_1'))?.corralId).toBe(id);
 });
 
+it('moves a team from its Move to… button and menu of projects, beside Edit and Duplicate', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  Element.prototype.getAnimations ??= () => [];
+  const id = await team(repository, 'Alpha reviewers', 'project_1');
+  const { container } = await render('/library/teams?project=project_1');
+  const detail = container.querySelector<HTMLElement>('[aria-label="Team details"]');
+  // A button like Edit and Duplicate, never a select showing its placeholder.
+  expect(detail?.querySelector('[data-slot="select-trigger"]')).toBeNull();
+  expect(detail?.textContent).not.toContain('Select…');
+  const move = byText(detail as HTMLElement, 'button', messages.Projects.moveChoose);
+  expect(move).toBeTruthy();
+  await act(async () => {
+    move?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    move?.click();
+  });
+  await settle();
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  // Other active projects only; the team's own project is not a destination.
+  expect(items.map((item) => item.getAttribute('aria-label') ?? item.textContent)).toEqual([
+    'My project',
+    'Beta',
+  ]);
+  await act(async () => items[1]?.click());
+  await settle();
+  expect((await repository.list()).find((item) => item.corralId === id)?.projectId).toBe(
+    'project_2',
+  );
+});
+
 it('adds the settings dialog to the current library address from Manage', async () => {
   const { container, router } = await render(
     '/library/resources?project=project_1&returnTo=%2Fsessions%2Fsession_a',

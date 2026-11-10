@@ -95,8 +95,8 @@ test('two projects may share a name; a Corral moves; an archived project is hidd
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/projects/${second}$`));
   await tab(page, 'Teams');
-  await page.getByRole('combobox', { name: 'Move Untitled team to another project' }).click();
-  await page.getByRole('option', { name: 'Same', exact: true }).click();
+  await page.getByRole('button', { name: 'Move to…', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Same', exact: true }).click();
   await expect(corralList(page)).toHaveCount(0);
   await page.goto(`/projects/${first}`);
   await tab(page, 'Teams');
