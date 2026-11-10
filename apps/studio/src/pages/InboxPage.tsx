@@ -524,8 +524,12 @@ export function InboxPage() {
               ) : null}
             </section>
           ) : entries.length > 0 ? (
-            <div data-testid="inbox-no-selection" className="max-lg:hidden lg:sticky lg:top-6">
-              <EmptyState title={t('noSelection')} text={t('noSelectionText')} />
+            // One quiet line, centred in what is visible of the column below the page title.
+            <div
+              data-testid="inbox-no-selection"
+              className="max-lg:hidden lg:sticky lg:top-6 lg:grid lg:min-h-[calc(100dvh-11rem)] lg:place-items-center"
+            >
+              <p className="m-0 text-body text-muted-foreground">{t('noSelection')}</p>
             </div>
           ) : null}
         </div>

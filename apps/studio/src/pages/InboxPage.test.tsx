@@ -426,7 +426,10 @@ it('keeps a quiet placeholder where the detail opens, and none once everything i
   const placeholder = (container: HTMLElement) =>
     container.querySelector<HTMLElement>('[data-testid="inbox-no-selection"]');
   const listed = await mount({ inbox: async () => [queuedC] });
-  expect(placeholder(listed.container)?.textContent).toContain('Nothing selected');
+  // One quiet line, with no box and no second sentence.
+  expect(placeholder(listed.container)?.textContent).toBe('Nothing selected');
+  expect(placeholder(listed.container)?.querySelectorAll('p')).toHaveLength(1);
+  expect(placeholder(listed.container)?.querySelector('b, h2, h3, [class*="border"]')).toBeNull();
   expect(listed.detail()).toBeNull();
   await listed.click(listed.rowButton('Write docs'));
   expect(placeholder(listed.container)).toBeNull();
