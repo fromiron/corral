@@ -4,7 +4,7 @@
 
 | 개념 | 화면 이름 (EN / KO) | 코드·URL 이름 | 화면에 쓰지 않는 이름 |
 |---|---|---|---|
-| 요청과 그 실행을 담는 작업 단위 | Conversation / 대화 | `session`, `/sessions/$id` | 채팅방 |
+| 요청과 그 실행을 담는 작업 단위 | Conversation / 대화 | `session`, `/sessions/$id` | 채팅방, 작업 보드, Task board, 백로그 |
 | 요청 하나로 시작한 처리 | Run / 실행 | `run`, `/runs/$id` | 작업, 잡 |
 | 실행 안의 역할별 처리 | Execution / 실행 단위 | `execution` | — |
 | 저장한 역할 구성 | Corral(팀) / Corral(팀) | `corral`, `team` | 워크플로 |
@@ -23,6 +23,7 @@
 | 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 실행 조작 알약, 대화 안내, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
 | 다시 쓰는 팀·템플릿·리소스 모음 | Library / 라이브러리 | `/library`, `features/library.md` | 자료실 |
 | 예약 실행 화면 | Automation / 자동화 | `/schedules`, `ScheduledPage` | 스케줄러 |
+| 프로젝트 세션 탭의 상태별 배치 | Needs attention / 확인 필요, Review / 검토, In progress / 진행 중, No run yet / 실행 전, Completed / 완료, Cancelled / 취소됨, Empty session / 빈 세션 | `sessionGroups` | Task status, To do, In review, Done |
 | 샘플 데이터로 보이는 미구현 흐름 | Feature preview / 기능 미리보기 | `/preview`, `feature-preview` | 데모(시뮬레이션 실행과 구분) |
 | 프로젝트의 원본 폴더·작업 사본 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
 | 경로로 파일 찾아 열기 | Quick open / 빠른 열기 | `quickOpen` | 파일 검색(내용 검색과 구분) |
