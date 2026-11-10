@@ -210,6 +210,32 @@ it('renders the plan Todo only when the line is expanded, and only once', async 
   expect(view.container.querySelector('input[type="checkbox"], [role="checkbox"]')).toBeNull();
 });
 
+it.each(['running', 'pausing', 'paused', 'awaiting_user'] as const)(
+  'a %s run puts no state word on the line; the top bar says it',
+  async (runStatus) => {
+    const view = await mount(
+      model(
+        runStatus === 'awaiting_user'
+          ? {
+              action: {
+                ...noAction,
+                visible: true,
+                needsUser: true,
+                count: 1,
+                summary: 'question',
+              },
+            }
+          : {},
+        { runStatus },
+      ),
+    );
+    const line = view.line()?.textContent ?? '';
+    for (const state of ['running', 'pausing', 'paused', 'awaiting_user'] as const)
+      expect(line).not.toContain(messages.Status[state]);
+    expect(view.line()?.querySelector('a')).toBeNull();
+  },
+);
+
 it('marks the step in progress as the current step, with the kit plan rows', async () => {
   const view = await mount(model({}, { open: true }));
   const rows = [...view.rows()];

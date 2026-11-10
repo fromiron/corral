@@ -1726,7 +1726,7 @@
     "notChecked": "검사 안 함",
     "intentShort": {
       "next": "후속 작업",
-      "queue": "대기",
+      "queue": "대기열",
       "steer": "지시",
       "explain": "질문"
     },
