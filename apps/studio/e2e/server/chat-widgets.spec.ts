@@ -262,7 +262,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     ).toHaveLength(2);
     expect(liveBody.items[2].status).toBe('in_progress');
     ask.release();
-    const question = page.getByRole('form', { name: 'Waiting for your answer' });
+    const question = page.getByRole('form', { name: 'Waiting for you' });
     await expect(page.getByTestId('action-required')).toBeVisible();
     // Faux responses do not serialize a provider request or invoke onPayload.
     // Their assembled context must not be promoted to a complete measurement.
@@ -386,7 +386,7 @@ test.describe('serialized provider context', () => {
     await closeOverview(page);
     await page.getByTestId('action-required').getByRole('link').click();
     await page.getByTestId('run-respond').click();
-    const question = page.getByRole('form', { name: 'Waiting for your answer' });
+    const question = page.getByRole('form', { name: 'Waiting for you' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();
     await panelTab(page, 'Conversation');

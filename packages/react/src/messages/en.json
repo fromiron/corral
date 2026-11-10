@@ -892,7 +892,7 @@
     "explain": {
       "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
       "loop_cap": "The Loop reached its round limit. Approve to run one more round, or reject to stop the run.",
-      "user_action": "The run waits for you. Approve to continue with these versions, or reject to stop.",
+      "user_action": "Approve to continue with these versions, or reject to stop.",
       "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run.",
       "route": "The router could not choose where the work goes next. Pick a route to continue, or stop the run.",
       "check": "The checks did not pass or fail: one errored, timed out, was stopped, or ran on a changed working copy. Approve to run them again, or reject to stop the run.",
@@ -2631,7 +2631,7 @@
       "external": "External process or service",
       "unknown": "Side effects not classified"
     },
-    "userQuestions": "Waiting for your answer",
+    "userQuestions": "Waiting for you",
     "questionUnavailable": "The question could not be loaded. Try again or cancel the run.",
     "recommended": "Recommended",
     "yourAnswer": "Your answer",

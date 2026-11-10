@@ -113,7 +113,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   // §4.1), so the step in progress has no aria-current. Soft, so the journey below still runs.
   await expect.soft(planItem).toHaveAttribute('aria-current', 'step');
   await page.getByTestId('action-required').getByRole('link').click();
-  const question = page.getByRole('form', { name: 'Waiting for your answer' });
+  const question = page.getByRole('form', { name: 'Waiting for you' });
   await expect(question).toHaveCount(1);
   const answer = question.getByRole('textbox', { name: 'Your answer' });
   await answer.fill('A table');

@@ -1765,8 +1765,11 @@ it('opens the response area once when a new decision arrives and the side is fre
   const focused = document.activeElement;
   await waitFor(run, 1);
   expect(side(container)?.hidden).toBe(false);
-  // The panel is titled with the state's own name, as the run's status says it.
-  expect(side(container)?.querySelector('h2')?.textContent).toBe(messages.Status.awaiting_user);
+  // The header's status already says it: the panel's heading keeps the state's name for the
+  // outline but shows no title of its own.
+  const heading = side(container)?.querySelector('h2');
+  expect(heading?.textContent).toBe(messages.Status.awaiting_user);
+  expect(heading?.classList.contains('sr-only')).toBe(true);
   expect(
     side(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
   ).toBe(messages.Status.awaiting_user);

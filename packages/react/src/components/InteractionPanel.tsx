@@ -381,7 +381,8 @@ function UserQuestionPrompt({
             className="flex flex-col gap-1"
             htmlFor={`${event.payload.requestId}-${q.id}-text`}
           >
-            {t('yourAnswer')}
+            {/* A lone text field sits right under its prompt; beside options it names itself. */}
+            <span className={q.options?.length ? undefined : 'sr-only'}>{t('yourAnswer')}</span>
             <Input
               id={`${event.payload.requestId}-${q.id}-text`}
               nativeInput
@@ -422,13 +423,6 @@ function UserQuestionPrompt({
       }}
       aria-label={t('userQuestions')}
     >
-      <p
-        role="status"
-        className="text-caption text-muted-foreground"
-        style={{ fontVariationSettings: fontWeights.semibold }}
-      >
-        {t('userQuestions')}
-      </p>
       <ExecutionLine
         session={session}
         executionId={event.payload.executionId}

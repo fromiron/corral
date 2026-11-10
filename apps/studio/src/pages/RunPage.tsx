@@ -773,8 +773,9 @@ function RunWorkspace({
           <div className="grid grid-cols-1 gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
+                {/* The response area's state is the header's status: its heading stays unseen. */}
                 <h2
-                  className="truncate text-subtitle"
+                  className={panel === 'approval' ? 'sr-only' : 'truncate text-subtitle'}
                   style={{ fontVariationSettings: fontWeights.semibold }}
                 >
                   {panel === 'approval'
