@@ -328,6 +328,11 @@ it('names the project on each row only when the list spans more than one', async
     'Alpha',
     'Beta',
   ]);
+  // Narrow, the chosen item stands in the list's place and names its project as its row did.
+  await two.click(two.rowButton('Write docs'));
+  expect(two.detail()?.querySelector('header p.lg\\:hidden')?.textContent).toBe(
+    'Queued request · Beta',
+  );
 });
 
 it('opens one run store for the selected decision only and releases it when the selection moves', async () => {
@@ -422,9 +427,15 @@ it('heads a decision’s response area with its session and a link to that run, 
   await click(rowButton('Fix login'));
   const header = detail()?.querySelector('header');
   expect(header?.querySelector('h2')?.textContent).toBe('Fix login');
-  // The chosen row stays beside it with the run number; the heading does not say it again.
-  expect(rowButton('Fix login')?.closest('[role="listitem"]')?.textContent).toContain('Run #2');
-  expect(header?.querySelector('p')).toBeNull();
+  // Wide, the chosen row stays beside it with the run number and the heading does not say it
+  // again. Narrow, the item stands in the list's place, so only there it carries the row's line.
+  const row = rowButton('Fix login')?.closest('[role="listitem"]');
+  expect(row?.textContent).toContain('Run #2');
+  expect(row?.closest('section')?.parentElement?.className).toContain('max-lg:hidden');
+  const narrow = header?.querySelector('p');
+  expect(narrow?.textContent).toBe('Run #2');
+  expect(narrow?.className).toContain('lg:hidden');
+  narrow?.remove();
   expect(detail()?.textContent).not.toContain('Run #2');
   const links = [...(detail()?.querySelectorAll('a') ?? [])];
   expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
@@ -536,13 +547,18 @@ it('names a non-decision item fully on its row, and its detail is only the way t
   /**
    * The row's line under its title, and the chosen item's detail: its header and what else it
    * holds. The item is named once, on its row: by the server's summary when there is one, else
-   * by its kind. The detail is its title and its one link, nothing the row already says.
+   * by its kind. The detail is its title and its one link, nothing the row already says; only
+   * narrow, where it stands in the list's place, its header carries the row's line.
    */
   const shown = async (title: string) => {
     const row = rowButton(title)?.closest('[role="listitem"]');
     const line = row?.querySelector('[data-slot="card-description"]')?.textContent;
     await click(rowButton(title));
     const header = detail()?.querySelector('header');
+    const narrow = [...(header?.querySelectorAll('p') ?? [])];
+    expect(narrow.map((p) => [p.textContent, p.classList.contains('lg:hidden')])).toEqual([
+      [line, true],
+    ]);
     const rest = [...(detail()?.children ?? [])]
       .filter((element) => element !== header && element.tagName !== 'BUTTON')
       .filter((element) => element.tagName !== 'A')
@@ -560,7 +576,6 @@ it('names a non-decision item fully on its row, and its detail is only the way t
     rest: [],
     links: [['Open checks', '/sessions/s_d?panel=checks']],
   });
-  expect(detail()?.querySelector('header p')).toBeNull();
   expect(await shown('Unsure writes')).toMatchObject({
     line: '3 file writes with unknown outcomes',
     rest: [],

@@ -335,6 +335,10 @@ export function InboxPage() {
   const destination = current ? inboxDestination(current.item) : null;
   // A decision is answered here; every other kind is a link to its own screen.
   const respondsHere = current?.item.kind === 'decision' && current.item.runId !== null;
+  // The chosen row's line, for the narrow layout where the row is not on screen.
+  const narrowLine = current
+    ? joined(kindLine(current), manyProjects ? projectLabel(current.projectId) : null)
+    : '';
 
   return (
     <main ref={main} className="flex min-h-0 flex-1 flex-col">
@@ -464,14 +468,22 @@ export function InboxPage() {
               ) : null}
               <header className="flex items-start justify-between gap-3">
                 {shown ? (
-                  // The item's name heads it; its kind, run and project are on its row.
-                  <h2
-                    id={`${id}-detail`}
-                    className="m-0 min-w-0 text-title text-foreground [overflow-wrap:anywhere]"
-                    style={{ fontVariationSettings: fontWeights.semibold }}
-                  >
-                    {shown.item.sessionTitle}
-                  </h2>
+                  // The item's name heads it; its kind, run and project are on its row. Narrow,
+                  // the item stands in the list's place, so only there it carries the row's line.
+                  <div className="grid min-w-0 gap-1">
+                    <h2
+                      id={`${id}-detail`}
+                      className="m-0 min-w-0 text-title text-foreground [overflow-wrap:anywhere]"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
+                      {shown.item.sessionTitle}
+                    </h2>
+                    {narrowLine ? (
+                      <p className="m-0 text-caption text-muted-foreground lg:hidden">
+                        {narrowLine}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : (
                   // An item known only by its address: the notice is all there is to say.
                   <p

@@ -78,7 +78,7 @@ test('answers a waiting run in Needs you and moves focus to the next item after 
   await page.keyboard.press('Enter');
   await expect(detail(title)).toBeFocused();
   // The heading names the session and links to the run; the row beside it keeps the run number.
-  await expect(detail(title)).not.toContainText('Run #1');
+  await expect(detail(title).getByText('Run #1', { exact: true })).toBeHidden();
   await expect(detail(title).getByRole('link', { name: 'Open run', exact: true })).toHaveAttribute(
     'href',
     /^\/sessions\/[^/?]+\?panel=run&view=run&run=/,
@@ -126,6 +126,8 @@ test('a narrow window shows the chosen item in the list’s place and leads back
 
   await row(title).click();
   await expect(detail(title)).toBeFocused();
+  // In the list's place, the item carries its row's run number.
+  await expect(detail(title).getByText('Run #1', { exact: true })).toBeVisible();
   await expect(response).toBeHidden();
   await expect(detail(title).getByRole('button', { name: 'Close', exact: true })).toBeHidden();
   expect(await sideways()).toBe(0);
