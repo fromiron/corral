@@ -2288,7 +2288,7 @@
       "mockNote": "Simulated agents are chosen: no model is called. With live models, each role would call the model below.",
       "settings": "Model settings",
       "noTeam": "Choose a team to see its models.",
-      "notReady": "Not connected: {roles}. Connect the model, or send with simulated agents.",
+      "notReady": "Not connected: {roles}",
       "connect": "Connect a model",
       "useSimulated": "Use simulated agents",
       "state": {
