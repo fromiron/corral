@@ -1019,7 +1019,12 @@ function RunHeader({
   // one agent, "{agent} failed" only restates the state chip, so it is left out.
   const failed = projection.status === 'failed';
   const failedExecution = failed ? failedExecutionId(projection) : null;
-  const soleAgent = definition.nodes.filter((node) => node.type === 'agent').length <= 1;
+  // The run's agents: those it schedules, and any callable helper that actually ran.
+  const ran = new Set(Object.values(projection.executions).map((execution) => execution.nodeId));
+  const soleAgent =
+    definition.nodes.filter(
+      (node) => node.type === 'agent' && (node.invocation !== 'callable' || ran.has(node.id)),
+    ).length <= 1;
   const endReason =
     projection.statusReason &&
     !(soleAgent && projection.statusReason.split(': ')[0] === 'execution_failed')

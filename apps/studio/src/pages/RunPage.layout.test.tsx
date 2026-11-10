@@ -1051,7 +1051,25 @@ it('a failed team run names which agent failed beside its state and opens the fa
 
 it('a failed one-agent run does not restate its state as that agent failing', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
-  const { container, run } = await mount('inline_team', null, {});
+  // The assistant can call a helper, but the helper never ran: the run had one agent.
+  const base = linearCorral(['worker', 'helper'], 'inline_team');
+  const definition = {
+    ...base,
+    nodes: base.nodes.map((node) =>
+      node.id === 'helper' && node.type === 'agent'
+        ? { ...node, invocation: 'callable' as const }
+        : node,
+    ),
+  };
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    {},
+    undefined,
+    false,
+    undefined,
+    definition,
+  );
   await failRun(run, {
     reason: 'execution_failed: worker',
     error: 'the model request failed: HTTP 500 (SERVER)',
