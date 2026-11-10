@@ -380,20 +380,20 @@ function EntryContent({ api, entry }: { api: HarnessApi; entry: HarnessEntryView
   return (
     <>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
       {entry.kind === 'extension' ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t(value?.hook ? 'managedHook' : 'externalExtension')}
         </p>
       ) : null}
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-subtle p-4 font-mono text-xs">
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-subtle p-4 font-mono text-caption">
         {value?.content ?? t('loadingContent')}
       </pre>
       <details
-        className="text-xs text-muted-foreground"
+        className="text-caption text-muted-foreground"
         onToggle={(e) => setFilesOpen(e.currentTarget.open)}
       >
         <summary className="cursor-pointer">

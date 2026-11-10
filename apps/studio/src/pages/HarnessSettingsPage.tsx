@@ -9,7 +9,16 @@ import type {
 } from '@corral/contracts';
 import { canonicalJson, WorkTool } from '@corral/contracts';
 import { toolDescriptorHash } from '@corral/core';
-import { Button, Checkbox, cn, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import {
+  Button,
+  Checkbox,
+  cn,
+  fontWeights,
+  Input,
+  Select,
+  Switch,
+  Textarea,
+} from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -61,31 +70,33 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
   const t = useTranslations('Harness');
   return (
     <section data-testid="harness-preview" className="settings-surface flex flex-col gap-3">
-      <h3 className="font-semibold">{t('previewHeading')}</h3>
-      <p className="text-sm">{t(preview.snapshot.policy)}</p>
-      <dl className="text-xs">
-        <dt className="font-medium">{t('layers')}</dt>
+      <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('previewHeading')}
+      </h3>
+      <p className="text-body">{t(preview.snapshot.policy)}</p>
+      <dl className="text-caption">
+        <dt style={{ fontVariationSettings: fontWeights.semibold }}>{t('layers')}</dt>
         {(preview.snapshot.layers ?? []).map((layer) => (
           <dd key={layer.scope}>
             {t(layer.scope)} · {layer.binding.profileId} · r{layer.binding.revision}
           </dd>
         ))}
       </dl>
-      <p className="break-words text-xs text-muted-foreground">
+      <p className="break-words text-caption text-muted-foreground">
         {preview.snapshot.allowedTools.join(', ') || t('noTools')}
       </p>
       {preview.snapshot.tools.length ? (
         <details>
-          <summary className="cursor-pointer text-sm">
+          <summary className="cursor-pointer text-body">
             {t('staticTools', { count: preview.snapshot.tools.length })}
           </summary>
-          <p className="my-2 text-xs text-muted-foreground">{t('staticToolsHint')}</p>
-          <ul className="flex flex-col gap-2 text-xs">
+          <p className="my-2 text-caption text-muted-foreground">{t('staticToolsHint')}</p>
+          <ul className="flex flex-col gap-2 text-caption">
             {preview.snapshot.tools.map((tool) => (
               <li key={tool.name}>
                 <span className="font-mono">{tool.name}</span> · {tool.source} ·{' '}
                 {t(`toolEffects.${tool.sideEffect}`)}
-                <p className="break-all font-mono text-2xs text-muted-foreground">
+                <p className="break-all font-mono text-micro text-muted-foreground">
                   {t('toolSchema', { hash: tool.schemaHash })}
                   <br />
                   {t('permissionDescriptor')}: {toolDescriptorHash(tool)}
@@ -96,29 +107,29 @@ export function HarnessPreviewView({ preview }: { preview: HarnessPreview }) {
         </details>
       ) : null}
       {preview.snapshot.resources.map((resource) => (
-        <p key={`${resource.hash}:${resource.entry}`} className="text-xs">
+        <p key={`${resource.hash}:${resource.entry}`} className="text-caption">
           {resource.skillName ?? resource.name} · {resource.version} ·{' '}
           {resource.skillMode ? t(resource.skillMode) : resource.kind}
         </p>
       ))}
-      {preview.dynamic ? <p className="text-sm text-muted-foreground">{t('dynamic')}</p> : null}
+      {preview.dynamic ? <p className="text-body text-muted-foreground">{t('dynamic')}</p> : null}
       {preview.sections.length ? (
         preview.sections.map((section) => (
           <details key={section.name} open>
-            <summary className="cursor-pointer text-sm">{section.name}</summary>
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-3 text-xs">
+            <summary className="cursor-pointer text-body">{section.name}</summary>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-3 text-caption">
               {section.text}
             </pre>
           </details>
         ))
       ) : (
-        <p className="text-sm text-muted-foreground">{t('noSections')}</p>
+        <p className="text-body text-muted-foreground">{t('noSections')}</p>
       )}
-      <p className="break-all font-mono text-2xs text-muted-foreground">
+      <p className="break-all font-mono text-micro text-muted-foreground">
         SHA-256 {preview.snapshot.snapshotHash}
       </p>
       {preview.snapshot.projectTools ? (
-        <p className="text-xs">
+        <p className="text-caption">
           {t('selectedChecks', {
             revision: preview.snapshot.projectTools.revision,
             ids: preview.snapshot.projectTools.checkIds.join(', ') || '—',
@@ -355,15 +366,15 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
         ) : (
           <>
             {error ? (
-              <p role="alert" className="text-sm text-danger">
+              <p role="alert" className="text-body text-danger">
                 {error}
               </p>
             ) : null}
-            <p data-testid="harness-status" role="status" aria-live="polite" className="text-sm">
+            <p data-testid="harness-status" role="status" aria-live="polite" className="text-body">
               {busy ? t('busy') : notice}
             </p>
             {refreshFailed ? (
-              <div role="alert" className="flex items-center gap-3 text-sm">
+              <div role="alert" className="flex items-center gap-3 text-body">
                 <span>{r('savedListFailed')}</span>
                 <Button
                   variant="tertiary"
@@ -466,7 +477,10 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                     </Button>
                   </div>
                   {meta?.usages.length ? (
-                    <section aria-label={r('usages')} className="text-xs text-muted-foreground">
+                    <section
+                      aria-label={r('usages')}
+                      className="text-caption text-muted-foreground"
+                    >
                       <p>{r('usages')}</p>
                       {meta.usages.map((usage) => (
                         <div key={usage.id}>
@@ -504,7 +518,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 </Button>
               </div>
               {selected && !canPreview && projectId ? (
-                <p className="text-xs text-muted-foreground">{t('saveBeforePreview')}</p>
+                <p className="text-caption text-muted-foreground">{t('saveBeforePreview')}</p>
               ) : null}
               {preview && canPreview ? <HarnessPreviewView preview={preview} /> : null}
               <section className="settings-row">
@@ -538,7 +552,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 />
               </section>
               {profile.policy === 'trusted-native' ? (
-                <p className="text-sm text-warning">{t('nativeWarning')}</p>
+                <p className="text-body text-warning">{t('nativeWarning')}</p>
               ) : null}
               <nav className="flex flex-wrap gap-2">
                 <Button variant="tertiary" render={<Link {...navigation.link('skills')} />}>
@@ -559,7 +573,10 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 )
                 .map((resource) => (
                   <div key={resource.hash} className="flex flex-col gap-3">
-                    <p className="text-sm font-medium">
+                    <p
+                      className="text-body"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
                       {resource.skills.length + resource.extensions.length === 1
                         ? (entries.find((value) => value.resourceHash === resource.hash)?.name ??
                           resource.name)
@@ -605,11 +622,11 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                                   )
                                 }
                               />
-                              <p className="text-xs">{skill.description}</p>
+                              <p className="text-caption">{skill.description}</p>
                               {entries.find(
                                 (e) => e.resourceHash === resource.hash && e.entry === skill.entry,
                               )?.archivedAt ? (
-                                <p className="text-xs text-warning">{r('archivedSelected')}</p>
+                                <p className="text-caption text-warning">{r('archivedSelected')}</p>
                               ) : null}
                             </div>
                             {selection ? (
@@ -675,7 +692,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                               {entries.find(
                                 (e) => e.resourceHash === resource.hash && e.entry === entry,
                               )?.archivedAt ? (
-                                <p className="text-xs text-warning">{r('archivedSelected')}</p>
+                                <p className="text-caption text-warning">{r('archivedSelected')}</p>
                               ) : null}
                             </div>
                             {selection ? (
@@ -704,7 +721,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                       })}
                   </div>
                 ))}
-              <p className="text-xs text-muted-foreground">{t('skillScripts')}</p>
+              <p className="text-caption text-muted-foreground">{t('skillScripts')}</p>
               {(
                 [
                   {
@@ -744,8 +761,13 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                       uses none, a list chooses. */}
                   <div className="settings-row">
                     <span>
-                      <span className="text-sm font-medium">{t(group.select)}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
+                      <span
+                        className="text-body"
+                        style={{ fontVariationSettings: fontWeights.semibold }}
+                      >
+                        {t(group.select)}
+                      </span>
+                      <span className="mt-1 block text-caption text-muted-foreground">
                         {t(group.hint)}
                       </span>
                     </span>
@@ -812,7 +834,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                           </div>
                         ))}
                       {!group.items.length ? (
-                        <p className="text-xs text-muted-foreground">{t(group.empty)}</p>
+                        <p className="text-caption text-muted-foreground">{t(group.empty)}</p>
                       ) : null}
                     </div>
                   ) : null}
@@ -854,11 +876,13 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                     )
                   }
                 />
-                <p className="text-xs">{t('codemodeHint')}</p>
+                <p className="text-caption">{t('codemodeHint')}</p>
               </div>
               <section className="settings-surface flex flex-col gap-2">
-                <h3 className="text-sm font-medium">{t('allowedTools')}</h3>
-                <p className="text-xs text-muted-foreground">{t('toolsHint')}</p>
+                <h3 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+                  {t('allowedTools')}
+                </h3>
+                <p className="text-caption text-muted-foreground">{t('toolsHint')}</p>
                 <Textarea
                   aria-label={t('allowedTools')}
                   value={toolNames}
@@ -867,8 +891,10 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                 />
               </section>
               <section className="settings-surface flex flex-col gap-2">
-                <h3 className="text-sm font-medium">{t('commands')}</h3>
-                <p className="text-xs text-muted-foreground">{t('commandsHint')}</p>
+                <h3 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+                  {t('commands')}
+                </h3>
+                <p className="text-caption text-muted-foreground">{t('commandsHint')}</p>
                 <Textarea
                   aria-label={t('commands')}
                   value={commands}

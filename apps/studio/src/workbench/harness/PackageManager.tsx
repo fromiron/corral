@@ -1,5 +1,5 @@
 import type { HarnessApi } from '@corral/client';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -129,8 +129,10 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
   return (
     <section className="flex flex-col gap-4 border-t border-line pt-6" aria-label={t('title')}>
       <div>
-        <h3 className="text-lg font-semibold">{t('title')}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{t('intro')}</p>
+        <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('title')}
+        </h3>
+        <p className="mt-1 text-body text-muted-foreground">{t('intro')}</p>
       </div>
       <form
         className="flex flex-col gap-3"
@@ -156,7 +158,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
               { value: 'package', label: t('package') },
             ]}
           />
-          <label htmlFor={sourceId} className="flex min-w-52 flex-1 flex-col gap-1 text-sm">
+          <label htmlFor={sourceId} className="flex min-w-52 flex-1 flex-col gap-1 text-body">
             {t('source')}
             <Input
               id={sourceId}
@@ -189,21 +191,23 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
       </form>
       {review ? (
         <section className="settings-surface flex flex-col gap-3" aria-label={t('reviewed')}>
-          <h4 className="font-medium">
+          <h4 style={{ fontVariationSettings: fontWeights.semibold }}>
             {t('reviewed')} · {review.resource.name} · {review.resource.version}
           </h4>
           {review.previous ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {t('compare')}: {review.previous.name} · {review.previous.version}
             </p>
           ) : null}
           <PackageMetadata resource={review.resource} manifest={review.manifest} />
           {review.changes ? (
-            <div className="flex flex-col gap-2 text-xs">
+            <div className="flex flex-col gap-2 text-caption">
               {(['added', 'changed', 'removed'] as const).map((kind) =>
                 review.changes?.[kind].length ? (
                   <div key={kind}>
-                    <h5 className="font-medium">{t(kind === 'removed' ? 'deleted' : kind)}</h5>
+                    <h5 style={{ fontVariationSettings: fontWeights.semibold }}>
+                      {t(kind === 'removed' ? 'deleted' : kind)}
+                    </h5>
                     <ul className="max-h-40 overflow-auto font-mono">
                       {review.changes[kind].map((path) => (
                         <li key={path} className="break-all">
@@ -252,21 +256,21 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
         </section>
       ) : null}
       <section aria-label={t('installed')} className="flex flex-col gap-3">
-        <h4 className="font-medium">{t('installed')}</h4>
-        <p className="text-xs text-muted-foreground">{t('nextRun')}</p>
+        <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('installed')}</h4>
+        <p className="text-caption text-muted-foreground">{t('nextRun')}</p>
         {packages === null ? (
           <p role="status">{t('busy')}</p>
         ) : packages.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('empty')}</p>
+          <p className="text-body text-muted-foreground">{t('empty')}</p>
         ) : (
           <ul className="settings-list divide-y divide-line">
             {packages.map((item) => (
               <li key={item.resource.hash} className="flex flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">
+                  <span style={{ fontVariationSettings: fontWeights.semibold }}>
                     {item.resource.name} · {item.resource.version}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-caption text-muted-foreground">
                     {t(item.status)} · {t(item.resource.trustedAt ? 'trusted' : 'untrusted')}
                   </span>
                   <div className="ml-auto flex flex-wrap gap-1">
@@ -322,10 +326,10 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                   </div>
                 </div>
                 {item.resource.extensions.length && !item.resource.trustedAt ? (
-                  <p className="text-xs text-muted-foreground">{h('nativeWarning')}</p>
+                  <p className="text-caption text-muted-foreground">{h('nativeWarning')}</p>
                 ) : null}
                 <details>
-                  <summary className="cursor-pointer text-xs">{t('declarations')}</summary>
+                  <summary className="cursor-pointer text-caption">{t('declarations')}</summary>
                   <div className="mt-2">
                     <PackageMetadata
                       resource={item.resource}
@@ -334,10 +338,12 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
                       registerDisabled={busy || item.status !== 'enabled' || !navigation.projectId}
                     />
                     {item.manifest?.mcpServers.length && !navigation.projectId ? (
-                      <p className="mt-2 text-xs text-muted-foreground">{t('chooseProject')}</p>
+                      <p className="mt-2 text-caption text-muted-foreground">
+                        {t('chooseProject')}
+                      </p>
                     ) : null}
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="mt-2 text-caption text-muted-foreground">
                     {t('profiles')}:{' '}
                     {item.profiles.length
                       ? item.profiles
@@ -359,7 +365,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
         {n('addToWorkStyle')}
       </Button>
       {notice ? (
-        <p role="status" className="text-sm">
+        <p role="status" className="text-body">
           {notice}{' '}
           <Link {...navigation.link('mcp')} className="underline">
             {t('mcpSettings')}
@@ -367,7 +373,7 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
@@ -390,7 +396,7 @@ function PackageMetadata({
   const t = useTranslations('Packages');
   return (
     <div className="flex flex-col gap-3">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
         <dt className="text-muted-foreground">{t('license')}</dt>
         <dd>{resource.license ?? t('unknown')}</dd>
         <dt className="text-muted-foreground">{t('skills')}</dt>
@@ -403,8 +409,8 @@ function PackageMetadata({
         </dd>
       </dl>
       {manifest?.mcpServers.length ? (
-        <section aria-label={t('mcp')} className="text-xs">
-          <h5 className="font-medium">{t('mcp')}</h5>
+        <section aria-label={t('mcp')} className="text-caption">
+          <h5 style={{ fontVariationSettings: fontWeights.semibold }}>{t('mcp')}</h5>
           <ul className="mt-1 flex flex-col gap-1">
             {manifest.mcpServers.map((server) => (
               <li key={server.id}>
@@ -429,8 +435,8 @@ function PackageMetadata({
         </section>
       ) : null}
       {manifest?.ui.map((detail) => (
-        <section key={detail.id} className="text-xs">
-          <h5 className="font-medium">{detail.title}</h5>
+        <section key={detail.id} className="text-caption">
+          <h5 style={{ fontVariationSettings: fontWeights.semibold }}>{detail.title}</h5>
           <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
             {detail.body}
           </p>

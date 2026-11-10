@@ -235,7 +235,7 @@ function ProviderCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{provider.name}</h4>
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 text-caption">
           {(provider.method === 'oauth' && !borrowed) || ownKey ? (
             <Button
               variant="tertiary"
@@ -265,7 +265,7 @@ function ProviderCard({
           ) : null}
         </div>
       </div>
-      <p role="status" className="text-sm" data-testid="auth-status">
+      <p role="status" className="text-body" data-testid="auth-status">
         {borrowed
           ? t('signedInCodex')
           : provider.method === 'oauth'
@@ -279,12 +279,12 @@ function ProviderCard({
                 : t('notSignedIn')}
       </p>
       {provider.endpoint ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t('endpoint', { host: provider.endpoint })}
         </p>
       ) : null}
       {provider.endpoint ? (
-        <div className="flex flex-col items-start gap-2 text-xs">
+        <div className="flex flex-col items-start gap-2 text-caption">
           <p className="text-muted-foreground">{t('connectionTestHint')}</p>
           <Button
             variant="tertiary"
@@ -313,12 +313,12 @@ function ProviderCard({
         </div>
       ) : null}
       {provider.endpointChanged ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('endpointChanged')}
         </p>
       ) : null}
       {provider.expiresAt && provider.method === 'oauth' ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t('expires', {
             time: format.dateTime(new Date(provider.expiresAt), {
               dateStyle: 'medium',
@@ -327,9 +327,9 @@ function ProviderCard({
           })}
         </p>
       ) : null}
-      {borrowed ? <p className="text-xs text-muted-foreground">{t('codexHint')}</p> : null}
+      {borrowed ? <p className="text-caption text-muted-foreground">{t('codexHint')}</p> : null}
       {borrowed && !provider.permissionsOk ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('codexPermissions')}
         </p>
       ) : null}
@@ -346,13 +346,13 @@ function ProviderCard({
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
 
       {login && login.state !== 'failed' ? (
-        <div className="flex flex-col gap-2 rounded-lg bg-surface p-3 text-sm">
+        <div className="flex flex-col gap-2 rounded-lg bg-surface p-3 text-body">
           {login.authUrl ? (
             <Button
               className="self-start"
@@ -361,13 +361,13 @@ function ProviderCard({
               {t('openSignIn')}
             </Button>
           ) : null}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {login.state === 'exchanging' ? t('exchanging') : t('openHint')}
           </p>
           <form onSubmit={submitRedirect} className="flex flex-col gap-1">
             <label
               htmlFor={`redirect-${provider.providerId}`}
-              className="text-xs text-muted-foreground"
+              className="text-caption text-muted-foreground"
             >
               {t('pasteLabel')}
             </label>
@@ -407,7 +407,7 @@ function ProviderCard({
         </div>
       ) : null}
       {login?.state === 'failed' ? (
-        <div role="alert" className="flex items-center gap-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 text-body text-danger">
           {t('failed', { message: login.error ?? '' })}
           <Button
             variant="tertiary"

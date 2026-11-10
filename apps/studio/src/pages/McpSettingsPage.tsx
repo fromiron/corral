@@ -232,7 +232,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                   );
                 }}
               />
-              <p className="text-xs">{t('mcpEnableHint')}</p>
+              <p className="text-caption">{t('mcpEnableHint')}</p>
             </div>
             <McpConnection
               key={`${config.revision}:${selected.id}`}
@@ -244,25 +244,25 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
             />
             {verified ? (
               <section className="settings-surface flex flex-col gap-3">
-                <h3 className="text-sm font-medium">
+                <h3 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
                   {t('probeObserved', {
                     time: new Date(verified.observedAt).toLocaleTimeString(),
                     count: verified.tools.length,
                   })}
                 </h3>
                 {!verified.tools.length ? (
-                  <p className="text-sm text-muted-foreground">{t('probeEmpty')}</p>
+                  <p className="text-body text-muted-foreground">{t('probeEmpty')}</p>
                 ) : (
-                  <ul className="flex flex-col gap-2 text-sm">
+                  <ul className="flex flex-col gap-2 text-body">
                     {verified.tools.map((tool) => (
                       <li key={tool.name}>
                         {tool.title}
-                        <p className="text-xs text-muted-foreground">{tool.description}</p>
+                        <p className="text-caption text-muted-foreground">{tool.description}</p>
                       </li>
                     ))}
                   </ul>
                 )}
-                <p className="text-xs text-muted-foreground">{t('toolDiscoveryHint')}</p>
+                <p className="text-caption text-muted-foreground">{t('toolDiscoveryHint')}</p>
               </section>
             ) : null}
             <section className="settings-row">
@@ -291,8 +291,10 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       {history.length ? (
         <section className="flex flex-col gap-3">
           <div>
-            <h3 className="text-sm font-medium">{t('removedServers')}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{t('mcpRestored')}</p>
+            <h3 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {t('removedServers')}
+            </h3>
+            <p className="mt-1 text-caption text-muted-foreground">{t('mcpRestored')}</p>
           </div>
           <ul className="flex flex-col gap-3">
             {history.map((item) => (
@@ -300,7 +302,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 key={`${item.server.id}:${item.configRevision}`}
                 className="flex flex-wrap items-center justify-between gap-3 py-3"
               >
-                <span className="text-sm">
+                <span className="text-body">
                   {item.server.name} · r{item.configRevision}
                 </span>
                 <div className="flex gap-2">
