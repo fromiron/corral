@@ -419,15 +419,61 @@ it('a failed session record cannot turn an accepted follow-up into another run',
   );
 });
 
+it('with one destination there is no destination choice; the send button says what happens', async () => {
+  const view = await mount();
+  expect(view.container.querySelector('select[aria-label="Review.sendTo"]')).toBeNull();
+  await view.clickSend();
+  expect(view.startAuto).toHaveBeenCalledTimes(1);
+});
+
+it('with two running executions the destination is chosen before sending', async () => {
+  const view = await mount();
+  view.getSnapshot.mockImplementation(async () => ({
+    projection: {
+      output: null,
+      artifacts: {},
+      executionOrder: ['execution', 'reviewer_execution'],
+      executions: {
+        execution: { status: 'running', nodeId: 'writer' },
+        reviewer_execution: { status: 'running', nodeId: 'reviewer' },
+      },
+    },
+  }));
+  await view.render([run('active', 'running')]);
+  await act(async () => {});
+  const select = view.container.querySelector<HTMLSelectElement>(
+    'select[aria-label="Review.sendTo"]',
+  );
+  if (!select) throw new Error('missing feedback destination');
+  expect([...select.options].map((option) => option.value)).toEqual([
+    'execution',
+    'reviewer_execution',
+  ]);
+  const send = [...view.container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Review.sendReview',
+  );
+  expect(send?.disabled).toBe(true);
+  await act(async () => {
+    select.value = 'reviewer_execution';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await view.clickSend();
+  expect(view.startAuto).not.toHaveBeenCalled();
+  expect(view.sendCommand).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'steer',
+      runId: 'active',
+      payload: expect.objectContaining({ targetExecutionId: 'reviewer_execution' }),
+    }),
+  );
+});
+
 it('active execution feedback keeps the Reins path', async () => {
   const view = await mount();
   await view.render([run('active', 'running')]);
-  const select = view.container.querySelector('select');
-  if (!select) throw new Error('missing feedback destination');
-  await act(async () => {
-    select.value = 'execution';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await act(async () => {});
+  // The running execution is the only destination, so it is the one sending goes to.
+  expect(view.container.querySelector('select[aria-label="Review.sendTo"]')).toBeNull();
   await view.clickSend();
   expect(view.startAuto).not.toHaveBeenCalled();
   expect(view.sendCommand).toHaveBeenCalledWith(
@@ -500,11 +546,13 @@ it('keeps review run state current so the next comment follows the reply just co
   });
   await view.clickSend();
   expect(view.listRuns).toHaveBeenCalledTimes(2);
-  const recipient = view.container.querySelector<HTMLSelectElement>(
-    `select[aria-label="${messages.Review.sendTo}"]`,
+  // While the reply runs, a new run is not a destination: the reply's one execution is, so
+  // there is nothing to choose, and sending is ready to go there.
+  expect(view.container.querySelector(`select[aria-label="${messages.Review.sendTo}"]`)).toBeNull();
+  const steer = [...view.container.querySelectorAll('button')].find(
+    (button) => button.textContent === messages.Review.sendReview,
   );
-  if (!recipient) throw new Error('Missing review recipient');
-  expect([...recipient.options].some((option) => option.value === 'next')).toBe(false);
+  expect(steer?.disabled).toBe(false);
   view.setListedRuns([run('followup'), run('latest'), run('older')]);
   view.listRuns.mockRejectedValueOnce(new Error('offline'));
   await act(async () => vi.advanceTimersByTimeAsync(1500));
@@ -536,11 +584,17 @@ it('ignores late Reins targets from the run just left', async () => {
       },
     } as unknown as Awaited<ReturnType<typeof view.getSnapshot>>),
   );
-  const recipient = view.container.querySelector<HTMLSelectElement>(
-    'select[aria-label="Review.sendTo"]',
+  // The new run's one execution stays the only destination: no choice appears, and sending
+  // goes there rather than to the execution the late answer named.
+  expect(view.container.querySelector('select[aria-label="Review.sendTo"]')).toBeNull();
+  await view.clickSend();
+  expect(view.sendCommand).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'steer',
+      runId: 'new-active',
+      payload: expect.objectContaining({ targetExecutionId: 'execution' }),
+    }),
   );
-  if (!recipient) throw new Error('Missing review recipient');
-  expect([...recipient.options].map((option) => option.value)).toEqual(['execution']);
 });
 
 it('notifies the embedded session owner after feedback is recorded, not on initial render', async () => {

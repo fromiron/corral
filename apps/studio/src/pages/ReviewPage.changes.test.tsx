@@ -107,14 +107,35 @@ const session: WorkSession = {
   archivedAt: null,
   entries: [],
 };
-const file = (path: string) => ({
+const file = (path: string, provenance = 'managed_agent') => ({
   path,
   status: 'modified',
   additions: 1,
   deletions: 1,
   binary: false,
-  provenance: 'managed_agent',
+  provenance,
 });
+
+/** Reports this review width to whatever the view observes. */
+function reviewWidth(width: number) {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      readonly report: ResizeObserverCallback;
+      constructor(report: ResizeObserverCallback) {
+        this.report = report;
+      }
+      observe(target: Element) {
+        this.report(
+          [{ target, contentRect: { width } } as unknown as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+}
 const run = (runId: string, startedAt: string): RunSummary => ({
   runId,
   status: 'succeeded',
@@ -145,6 +166,7 @@ function setValue(field: HTMLTextAreaElement | HTMLInputElement, value: string) 
 async function mount({
   search: initial = {},
   files = ['README.md'],
+  provenance = {} as Record<string, string>,
   reviewed = false,
   runs = [] as RunSummary[],
 } = {}) {
@@ -186,7 +208,12 @@ async function mount({
       addComment,
       worktree: async () => ({ missing: false, reviewed }),
       comments: async () => comments,
-      changes: vi.fn(async () => ({ from, to, unavailable: null, files: files.map(file) })),
+      changes: vi.fn(async () => ({
+        from,
+        to,
+        unavailable: null,
+        files: files.map((path) => file(path, provenance[path])),
+      })),
       fileVersions: vi.fn(async (_s: string, _f: string, _t: string, path: string) => ({
         path,
         before: { kind: 'text', text: 'old line\n' },
@@ -329,6 +356,102 @@ it('keeps the decision in the decision area, recorded on the exact comparison', 
   expect(view.startAuto).not.toHaveBeenCalled();
 });
 
+it('leads the decision area with the decision, so opening a comment never moves it', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  const decision = area.querySelector('#decision-heading');
+  const comments = area.querySelector('#comments-heading');
+  if (!decision || !comments) throw new Error('Missing a heading');
+  // The decision comes first and holds the top of the area; the comments follow it.
+  expect(area.firstElementChild?.contains(decision)).toBe(true);
+  expect(decision.compareDocumentPosition(comments) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  const approve = view.button('Review.approve', area);
+  expect(approve).toBeDefined();
+  await view.click('pick line 1');
+  const form = area.querySelector('form');
+  expect(form).not.toBeNull();
+  expect(approve?.compareDocumentPosition(form as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(area.firstElementChild?.contains(approve as Node)).toBe(true);
+  // A long path keeps its file name: the form cuts it at the start.
+  expect(form?.querySelector('[dir="rtl"]')?.textContent).toBe('README.md');
+  // Three columns: nothing is pinned under the review.
+  expect(view.container.querySelector('[data-testid="review-actions"]')).toBeNull();
+});
+
+it.each([
+  [700, 'below three columns'],
+  [1200, 'in three columns'],
+])('at %ipx (%s) the decision and sending stay in reach', async (width) => {
+  reviewWidth(width);
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  await view.click('pick line 1');
+  const note = area.querySelector<HTMLTextAreaElement>('form textarea');
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Name the run.'));
+  await view.click('Review.addComment', area);
+  const pinned = view.container.querySelector<HTMLElement>('[data-testid="review-actions"]');
+  const actions = ['Review.approve', 'Review.requestChanges', 'Review.sendReview'];
+  if (width < 880) {
+    // Under the changes, the primary actions sit in a row at the bottom of the review.
+    if (!pinned) throw new Error('Missing the pinned actions');
+    expect(area.contains(pinned)).toBe(false);
+    for (const label of actions) {
+      expect(view.button(label, pinned)).toBeDefined();
+      expect(view.button(label, area)).toBeUndefined();
+    }
+  } else {
+    expect(pinned).toBeNull();
+    for (const label of actions) expect(view.button(label, area)).toBeDefined();
+  }
+  // Each action exists once.
+  for (const label of actions)
+    expect(
+      [...view.container.querySelectorAll('button')].filter((item) => item.textContent === label),
+    ).toHaveLength(1);
+});
+
+it('marks only files written outside Corral, with a badge whose tooltip names the source', async () => {
+  const view = await mount({
+    search: { scope: 'session' },
+    files: ['corral.ts', 'outside.ts', 'mixed.ts'],
+    provenance: { 'outside.ts': 'external_observed', 'mixed.ts': 'mixed' },
+  });
+  const badge = (path: string) =>
+    [...(view.fileButton(path)?.querySelectorAll<HTMLElement>('[title]') ?? [])].find(
+      (node) => node.textContent === 'Files.externalBadge',
+    );
+  expect(badge('corral.ts')).toBeUndefined();
+  expect(badge('outside.ts')?.getAttribute('title')).toBe('Files.provenance.external_observed');
+  expect(badge('mixed.ts')?.getAttribute('title')).toBe('Files.provenance.mixed');
+  // The badge sits under the name instead of taking the name's width beside the counts.
+  const counts = [...(view.fileButton('outside.ts')?.querySelectorAll('span') ?? [])].find(
+    (node) => node.textContent === '+1',
+  );
+  expect(counts?.parentElement?.contains(badge('outside.ts') ?? null)).toBe(false);
+  // No icon stands for where a change came from.
+  for (const path of ['corral.ts', 'outside.ts', 'mixed.ts'])
+    expect(view.fileButton(path)?.querySelector('svg')).toBeNull();
+  // Screen readers still hear every file's source.
+  expect(view.fileButton('corral.ts')?.textContent).toContain('Files.provenance.managed_agent');
+});
+
+it('shows the shared empty view where there is no diff to read', async () => {
+  const chosen = await mount({ search: { scope: 'session' }, files: ['a.ts'] });
+  const choose = chosen.container.querySelector('[data-slot="empty-view"]');
+  expect(choose?.textContent).toContain('Files.chooseFile');
+  expect(choose?.closest('section')?.getAttribute('aria-label')).toBe('Files.chooseFile');
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+  const none = await mount({ search: { scope: 'session' }, files: [] });
+  const empty = none.container.querySelector('[data-testid="no-changes"]');
+  expect(empty?.getAttribute('data-slot')).toBe('empty-view');
+  expect(empty?.textContent).toContain('Files.nothingChanged');
+});
+
 it('a replacement suggestion is only a comment: it never writes a file or applies anything', async () => {
   const view = await mount({ search: { scope: 'session', file: 'README.md' } });
   await view.click('pick line 1');
@@ -404,8 +527,13 @@ it('offers "since last read" only once the copy has been marked read', async () 
   ]);
 });
 
-it('moves between files with the visible buttons and the brace keys, stopping at the ends', async () => {
+it('moves between files with the list and the brace keys, stopping at the ends', async () => {
   const view = await mount({ search: { scope: 'session' }, files: ['a.ts', 'b.ts', 'c.ts'] });
+  // The list is the way between files; its head has no previous/next file arrows of its own.
+  const arrows = [...view.container.querySelectorAll('nav button')].filter((button) =>
+    ['Review.nextFile', 'Review.previousFile'].includes(button.getAttribute('aria-label') ?? ''),
+  );
+  expect(arrows).toHaveLength(0);
   const press = async (key: string, target: Element) =>
     act(async () => {
       target.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey: true, bubbles: true }));
@@ -418,13 +546,9 @@ it('moves between files with the visible buttons and the brace keys, stopping at
   await press('}', document.activeElement as Element);
   expect(view.searches.at(-1)).toEqual({ file: 'b.ts' });
   expect(document.activeElement).toBe(view.fileButton('b.ts'));
-  const next = [...view.container.querySelectorAll('button')].find(
-    (button) => button.getAttribute('aria-label') === 'Review.nextFile',
-  );
-  expect(next?.getAttribute('aria-keyshortcuts')).toBe('Shift+]');
-  await act(async () => next?.click());
+  await press('}', document.activeElement as Element);
   expect(view.searches.at(-1)).toEqual({ file: 'c.ts' });
-  expect(next?.disabled).toBe(true);
+  expect(document.activeElement).toBe(view.fileButton('c.ts'));
   const count = view.searches.length;
   await press('}', document.activeElement as Element);
   expect(view.searches).toHaveLength(count);

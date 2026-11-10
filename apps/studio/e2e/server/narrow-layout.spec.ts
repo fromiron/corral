@@ -140,9 +140,12 @@ test('review file choices and expanded original preview remain reachable at narr
   await readme.click();
   const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
   await parts.getByRole('button', { name: 'Choose parts of this file', exact: true }).click();
-  await parts.getByRole('checkbox', { name: /Part 1/ }).check();
-  await parts.getByRole('button', { name: 'Preview original-folder changes', exact: true }).click();
-  const apply = parts.getByRole('button', { name: 'Approve and apply to original', exact: true });
+  await parts
+    .getByRole('checkbox', { name: /^Lines? \d/ })
+    .first()
+    .check();
+  await parts.getByRole('button', { name: 'Preview applying to the folder', exact: true }).click();
+  const apply = parts.getByRole('button', { name: 'Approve and apply to the folder', exact: true });
   for (const width of [967, 1179, 636, 1600]) {
     await page.setViewportSize({ width, height: 757 });
     for (const colorScheme of ['light', 'dark'] as const) {

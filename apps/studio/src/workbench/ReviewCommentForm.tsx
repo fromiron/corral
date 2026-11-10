@@ -93,15 +93,18 @@ export function ReviewCommentForm({
       {/* What the comment is about, and what kind it is. Three kinds fit one compact choice at
           any width and in either language. */}
       <div className="flex min-w-0 items-center gap-2">
+        {/* A long path keeps its file name: it is cut at the start. */}
         <p
           id={`${id}-range`}
-          className="m-0 min-w-0 flex-1 truncate font-mono text-caption text-muted-foreground"
+          dir={path ? 'rtl' : undefined}
+          className="m-0 min-w-0 flex-1 truncate text-left font-mono text-caption text-muted-foreground"
           title={path}
         >
-          {path ??
-            (anchor
-              ? `${anchor.side === 'before' ? tf('before') : tf('after')} · ${anchor.startLine}–${anchor.endLine}`
-              : null)}
+          {path ? (
+            <bdi>{path}</bdi>
+          ) : anchor ? (
+            `${anchor.side === 'before' ? tf('before') : tf('after')} · ${anchor.startLine}–${anchor.endLine}`
+          ) : null}
         </p>
         <Select
           variant="chip"

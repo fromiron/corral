@@ -11,7 +11,9 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
+import { EmptyView } from '@corral/react';
 import {
+  Badge,
   Button,
   cn,
   Dialog,
@@ -30,20 +32,7 @@ import {
   Select,
   Tooltip,
 } from '@corral/react/design-kit';
-import {
-  ArrowDown,
-  ArrowUp,
-  Bot,
-  Check,
-  ChevronDown,
-  Eye,
-  GitMerge,
-  Info,
-  ListFilter,
-  Pencil,
-  Plus,
-  Trash2,
-} from '@corral/react/icons';
+import { Check, ChevronDown, Eye, Info, ListFilter, Plus, Trash2 } from '@corral/react/icons';
 import type { FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
@@ -54,6 +43,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -85,12 +75,7 @@ import type { ReviewSearch } from '../workbench/panels/routes.ts';
 import { CommentBody, ReviewCommentForm } from '../workbench/ReviewCommentForm.tsx';
 import { rangeChanged, sideText } from '../workbench/reviewComments.ts';
 import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
-import {
-  REVIEW_MOVE_KEYS,
-  reveal,
-  reviewMoveFor,
-  stepIndex,
-} from '../workbench/reviewNavigation.ts';
+import { reveal, reviewMoveFor, stepIndex } from '../workbench/reviewNavigation.ts';
 import { reviewSelection } from '../workbench/reviewSelection.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
@@ -100,15 +85,34 @@ import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
 // Reviewing a session's file changes: a fixed comparison range, then three columns. The files
 // the range changed (with where each change came from), the selected file's changes, and the
-// decision area: comments, the decision and applying. Below the three-column width the file
-// list folds into its head and the decision area follows the changes.
+// decision area: the decision at its top, then comments and applying. Below the three-column
+// width the file list folds into its head, the decision area follows the changes, and its
+// primary actions (the decision, and sending drafts) stay in a row at the bottom of the review.
 
 const DiffCode = lazy(() =>
   import('../workbench/PierreCode.tsx').then((module) => ({ default: module.DiffCode })),
 );
 
 const semibold = { fontVariationSettings: fontWeights.semibold };
-// The three columns sit side by side from a 1100px review width (`@min-[1100px]/review`).
+// The three columns sit side by side from an 880px review width (`@min-[880px]/review`).
+const THREE_COLUMNS = 880;
+
+/**
+ * Whether the review is wide enough for three columns, measured as its container query
+ * measures it. Without a way to measure (no ResizeObserver) the review counts as wide.
+ */
+function useThreeColumns(element: HTMLElement | null) {
+  const [wide, setWide] = useState(true);
+  useLayoutEffect(() => {
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setWide(entry.contentRect.width >= THREE_COLUMNS);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return wide;
+}
 
 // Git state has one home, the Git pane; an old `scope=git` address is redirected there (#91).
 type ReviewScope = ChangeScopeQuery;
@@ -338,12 +342,10 @@ export function ReviewContent({
     />
   );
 
-  // Next/previous file follows the list as shown (its filters and folded group); the brace keys
-  // do the same from anywhere in this view, and the bracket keys move between changes.
+  // The brace keys move to the next/previous file of the list as shown (its filters and folded
+  // group) from anywhere in this view, and the bracket keys move between changes.
   const fileNav = useRef<HTMLElement>(null);
   const hunkNav = useRef<HunkNavigation | null>(null);
-  const order = changes ? reviewOrder(changes.files) : [];
-  const position = selected ? order.indexOf(selected) : -1;
   const moveFile = (direction: 1 | -1) => {
     const rows = [
       ...(fileNav.current?.querySelectorAll<HTMLButtonElement>('button[data-review-file]') ?? []),
@@ -376,12 +378,17 @@ export function ReviewContent({
   }, [root]);
   // The comment form is opened from the diff and shown in the decision area.
   const [commentSlot, setCommentSlot] = useState<HTMLElement | null>(null);
+  // Below three columns the decision and the send button move to the row pinned under the
+  // review; in three columns they stay in the decision area (`undefined`).
+  const wide = useThreeColumns(root);
+  const [decisionSlot, setDecisionSlot] = useState<HTMLElement | null>(null);
+  const [sendSlot, setSendSlot] = useState<HTMLElement | null>(null);
   const active = runs.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
   const drafts = comments.filter((comment) => comment.state === 'draft').length;
-  // One line where the changes would be, whenever there is no diff to show.
+  // The empty view where the changes would be, whenever there is no diff to show.
   const noFiles = Boolean(changes) && (Boolean(changes?.unavailable) || !changes?.files.length);
   const idle = !changes
-    ? t('preparing')
+    ? null
     : changes.unavailable
       ? t('noBaseline')
       : changes.files.length === 0
@@ -507,8 +514,8 @@ export function ReviewContent({
               noCopy || error ? 'hidden' : 'grid',
               // Stacked, each part keeps its own height and the view scrolls as one.
               'min-h-0 flex-1 auto-rows-max grid-cols-1 content-start overflow-auto',
-              `@min-[1100px]/review:grid-cols-[clamp(14.5rem,20cqi,17rem)_minmax(0,1fr)_clamp(19rem,26cqi,22rem)]`,
-              `@min-[1100px]/review:grid-rows-[minmax(0,1fr)] @min-[1100px]/review:content-stretch @min-[1100px]/review:overflow-hidden`,
+              '@min-[880px]/review:grid-cols-[13rem_minmax(0,1fr)_17.5rem]',
+              '@min-[880px]/review:grid-rows-[minmax(0,1fr)] @min-[880px]/review:content-stretch @min-[880px]/review:overflow-hidden',
             )}
           >
             <nav
@@ -516,7 +523,7 @@ export function ReviewContent({
               aria-label={t('reviewHeading')}
               className={cn(
                 'flex min-h-0 min-w-0 flex-col border-b border-border',
-                `@min-[1100px]/review:border-r @min-[1100px]/review:border-b-0`,
+                '@min-[880px]/review:border-r @min-[880px]/review:border-b-0',
               )}
             >
               <FileList
@@ -525,17 +532,11 @@ export function ReviewContent({
                 reviewed={reviewed}
                 onChoose={choose}
                 sinceRead={scope.kind === 'review'}
-                position={position}
-                total={order.length}
-                onMove={moveFile}
               />
             </nav>
             <section
               aria-label={selected ?? t('chooseFile')}
-              className={cn(
-                'flex min-h-0 min-w-0 flex-col',
-                `@min-[1100px]/review:overflow-hidden`,
-              )}
+              className={cn('flex min-h-0 min-w-0 flex-col', '@min-[880px]/review:overflow-hidden')}
             >
               {selected && changes?.from && changes.to ? (
                 <FileDiff
@@ -569,25 +570,44 @@ export function ReviewContent({
                     await reloadComments();
                   }}
                 />
-              ) : (
-                <p
+              ) : idle ? (
+                <EmptyView
                   {...(noFiles ? { 'data-testid': 'no-changes' } : {})}
-                  className="m-auto max-w-xs px-6 py-10 text-center text-caption text-muted-foreground"
-                >
-                  {idle}
+                  title={idle}
+                  className="m-3"
+                />
+              ) : (
+                <p className="m-auto px-6 py-10 text-center text-caption text-muted-foreground">
+                  {t('preparing')}
                 </p>
               )}
             </section>
             <aside
               aria-label={tr('decisionArea')}
-              // Under the changes it is one column, then comments beside the decision once
-              // there is room for both; beside the changes it is one column again.
+              // Beside the changes it is one column led by the decision, which holds the top
+              // while the rest scrolls. Under the changes the decision is in the pinned row, and
+              // the comments sit beside the other parts once there is room for both.
               className={cn(
                 'flex min-w-0 flex-col gap-3 border-t border-border p-3',
                 '@min-[640px]/review:grid @min-[640px]/review:grid-cols-2 @min-[640px]/review:items-start @min-[640px]/review:gap-x-6',
-                '@min-[1100px]/review:flex @min-[1100px]/review:items-stretch @min-[1100px]/review:overflow-auto @min-[1100px]/review:border-t-0 @min-[1100px]/review:border-l',
+                '@min-[880px]/review:flex @min-[880px]/review:items-stretch @min-[880px]/review:overflow-auto @min-[880px]/review:border-t-0 @min-[880px]/review:border-l',
               )}
             >
+              {scope.kind === 'session' && changes?.from && changes.to ? (
+                <DecisionPanel
+                  key={`decision:${session.sessionId}`}
+                  sessionId={session.sessionId}
+                  from={changes.from}
+                  to={changes.to}
+                  changed={version}
+                  linked={Boolean(binding)}
+                  active={active}
+                  // Draft comments make sending them the next step; approving waits its turn.
+                  primary={drafts === 0}
+                  barSlot={wide ? undefined : decisionSlot}
+                  detailsClassName="@min-[640px]/review:col-start-2"
+                />
+              ) : null}
               <CommentsPanel
                 key={`comments:${session.sessionId}`}
                 session={session}
@@ -596,35 +616,23 @@ export function ReviewContent({
                 comments={comments}
                 current={changes}
                 composer={<div ref={setCommentSlot} className="empty:hidden" />}
+                sendSlot={wide ? undefined : sendSlot}
+                className="@min-[640px]/review:col-start-1 @min-[640px]/review:row-span-2 @min-[640px]/review:row-start-1"
                 onChange={async () => {
                   refreshRuns();
                   await reloadComments();
                   await onSessionChange?.();
                 }}
               />
-              {/* Each part below rules itself off from the one above; the first one is ruled
-                  off from the comments only while it sits under them. */}
+              {/* Each part below rules itself off from the one above; the first one is not ruled
+                  off while it heads its own column beside the comments. */}
               <div
                 className={cn(
-                  'flex min-w-0 flex-col gap-3 border-t border-border pt-3 empty:hidden',
-                  '[&>*:first-child]:border-t-0 [&>*:first-child]:pt-0',
-                  '@min-[640px]/review:border-t-0 @min-[640px]/review:pt-0',
-                  '@min-[1100px]/review:border-t @min-[1100px]/review:pt-3',
+                  'flex min-w-0 flex-col gap-3 empty:hidden @min-[640px]/review:col-start-2',
+                  '@min-[640px]/review:[&>*:first-child]:border-t-0 @min-[640px]/review:[&>*:first-child]:pt-0',
+                  '@min-[880px]/review:[&>*:first-child]:border-t @min-[880px]/review:[&>*:first-child]:pt-3',
                 )}
               >
-                {scope.kind === 'session' && changes?.from && changes.to ? (
-                  <DecisionPanel
-                    key={`decision:${session.sessionId}`}
-                    sessionId={session.sessionId}
-                    from={changes.from}
-                    to={changes.to}
-                    changed={version}
-                    linked={Boolean(binding)}
-                    active={active}
-                    // Draft comments make sending them the next step; approving waits its turn.
-                    primary={drafts === 0}
-                  />
-                ) : null}
                 {selected && changes?.from && changes.to ? (
                   <HunkActions
                     key={`${session.sessionId}:${selected}:${changes.from}:${changes.to}`}
@@ -677,6 +685,17 @@ export function ReviewContent({
               </div>
             </aside>
           </div>
+          {/* Below three columns the decision area sits under the changes, so its primary
+              actions stay here, under the scrolling review, always in view. */}
+          {!wide && !noCopy && !error ? (
+            <div
+              data-testid="review-actions"
+              className="hidden shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-t border-border bg-background px-3 py-2 has-[button]:flex"
+            >
+              <div ref={setDecisionSlot} className="contents" />
+              <div ref={setSendSlot} className="contents" />
+            </div>
+          ) : null}
         </Container>
       }
     />
@@ -969,7 +988,7 @@ export function FileDiff({
                 selection={picked?.open ? picked.range : null}
                 className={
                   fill
-                    ? `max-h-[min(70dvh,40rem)] @min-[1100px]/review:max-h-none @min-[1100px]/review:min-h-0 @min-[1100px]/review:flex-1`
+                    ? 'max-h-[min(70dvh,40rem)] @min-[880px]/review:max-h-none @min-[880px]/review:min-h-0 @min-[880px]/review:flex-1'
                     : 'max-h-[min(65vh,600px)] rounded fill-group'
                 }
                 {...(commentable
@@ -1157,6 +1176,8 @@ export function CommentsPanel({
   comments,
   current,
   composer,
+  sendSlot,
+  className,
   onChange,
 }: {
   session: WorkSession;
@@ -1166,6 +1187,9 @@ export function CommentsPanel({
   current: ChangeSetView | null;
   /** The new-comment form's place, at the head of the list. */
   composer?: ReactNode;
+  /** Where the send button shows (the pinned row); under the drafts without one. */
+  sendSlot?: HTMLElement | null | undefined;
+  className?: string;
   onChange: () => Promise<void>;
 }) {
   const t = useTranslations('Review');
@@ -1215,7 +1239,19 @@ export function CommentsPanel({
     (c) => !current || c.from !== current.from || c.to !== current.to,
   );
   const movedRanges = useMovedRanges(session.sessionId, current, comments);
-  const steerTo = targets.find((x) => x.id === target);
+  // Where the drafts can go: a new run, or a running execution while a run is active. With one
+  // destination it is the one sending uses, and there is nothing to choose.
+  const steering = Boolean(active) && !pending;
+  const destinations = [
+    ...(steering ? [] : [{ value: 'next', label: t('sendNext') }]),
+    ...targets.map((x) => ({ value: x.id, label: t('sendSteer', { label: x.label }) })),
+  ];
+  const destination = !steering
+    ? 'next'
+    : destinations.length === 1
+      ? (destinations[0]?.value ?? target)
+      : target;
+  const steerTo = targets.find((x) => x.id === destination);
   const choice = autoChoiceFor(session.auto, profiles);
   const mode = sessionRunMode(services.mode, services.live);
   const modelBlocked = !pending && !active && autoNotReady(choice, profiles, mode);
@@ -1300,8 +1336,21 @@ export function CommentsPanel({
     }
   };
 
+  const sendButton = (
+    <Button
+      variant="primary"
+      size="compact"
+      type="button"
+      disabled={busy || startBlocked || (!pending && Boolean(active) && !steerTo)}
+      onClick={() => void send()}
+      className={sendSlot === undefined ? 'self-start' : undefined}
+    >
+      {t(pending ? 'retrySend' : 'sendReview')}
+    </Button>
+  );
+
   return (
-    <section aria-labelledby="comments-heading" className="flex flex-col gap-2">
+    <section aria-labelledby="comments-heading" className={cn('flex flex-col gap-2', className)}>
       <h3 id="comments-heading" className="m-0 flex items-center gap-2 text-body" style={semibold}>
         {t('commentsHeading')}
         {drafts.length > 0 ? (
@@ -1339,33 +1388,23 @@ export function CommentsPanel({
               </li>
             ))}
           </ul>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-32 flex-1">
-              <Select
-                label={t('sendTo')}
-                size="xs"
-                value={active && !pending ? target : 'next'}
-                disabled={busy || Boolean(pending) || !runsReady}
-                onValueChange={setTarget}
-                options={[
-                  ...(active && !pending ? [] : [{ value: 'next', label: t('sendNext') }]),
-                  ...targets.map((x) => ({
-                    value: x.id,
-                    label: t('sendSteer', { label: x.label }),
-                  })),
-                ]}
-              />
-            </div>
-            <Button
-              variant="primary"
-              size="compact"
-              type="button"
-              disabled={busy || startBlocked || (!pending && Boolean(active) && !steerTo)}
-              onClick={() => void send()}
-            >
-              {t(pending ? 'retrySend' : 'sendReview')}
-            </Button>
-          </div>
+          {/* A choice only when there is one to make; it takes the column's width so its
+              longest option reads in full, and the send button follows it. */}
+          {destinations.length > 1 ? (
+            <Select
+              label={t('sendTo')}
+              size="xs"
+              value={destination}
+              disabled={busy || Boolean(pending) || !runsReady}
+              onValueChange={setTarget}
+              options={destinations}
+            />
+          ) : null}
+          {sendSlot === undefined
+            ? sendButton
+            : sendSlot
+              ? createPortal(sendButton, sendSlot)
+              : null}
         </>
       ) : null}
       {!runsReady && !pending && drafts.length > 0 ? (
@@ -1453,7 +1492,9 @@ export function CommentsPanel({
 
 /**
  * Approve or ask for changes to exactly these two trees; applying follows an approval. A decision
- * made on another comparison, even one ending in the same tree, is shown as earlier.
+ * made on another comparison, even one ending in the same tree, is shown as earlier. The decision
+ * itself (its state and the two actions) holds the top of the decision area; applying and its
+ * results follow it.
  */
 export function DecisionPanel({
   sessionId,
@@ -1463,6 +1504,8 @@ export function DecisionPanel({
   linked,
   active,
   primary = true,
+  barSlot,
+  detailsClassName,
 }: {
   sessionId: string;
   from: string;
@@ -1472,6 +1515,9 @@ export function DecisionPanel({
   active: boolean;
   /** False while another step leads the review (draft comments waiting to be sent). */
   primary?: boolean;
+  /** Where the decision shows (the pinned row); at the top of the area without one. */
+  barSlot?: HTMLElement | null | undefined;
+  detailsClassName?: string;
 }) {
   const t = useTranslations('Review');
   const { workspaces } = useServices();
@@ -1516,13 +1562,21 @@ export function DecisionPanel({
     await reload();
   };
   const applying = plan?.filter((f) => f.outcome === 'apply').length ?? 0;
+  const pinned = barSlot !== undefined;
 
-  return (
+  // The decision: its state once made, and the actions. Once this comparison is approved the
+  // state says so, and approving again is not offered.
+  const bar = (
     <section
       aria-labelledby="decision-heading"
-      className="flex flex-col gap-2 border-t border-border pt-3"
+      className={
+        pinned
+          ? 'flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2'
+          : // Holds the top of the decision area while the rest scrolls under it.
+            'sticky top-0 z-10 -mt-3 flex flex-col gap-2 border-b border-border bg-background pt-3 pb-3'
+      }
     >
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1">
         <h3 id="decision-heading" className="m-0 text-body" style={semibold}>
           {t('decisionHeading')}
         </h3>
@@ -1532,7 +1586,7 @@ export function DecisionPanel({
           </Button>
         </Tooltip>
         {latest ? (
-          <p className="m-0 ml-auto text-caption" data-testid="decision">
+          <p className={cn('m-0 text-caption', !pinned && 'ml-auto')} data-testid="decision">
             {t(`decisionState.${latest.decision}`)}
             {earlier ? <span className="text-warning"> · {t('staleDecision')}</span> : null}
           </p>
@@ -1543,17 +1597,18 @@ export function DecisionPanel({
           {error}
         </p>
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant={primary && !settled ? 'primary' : 'tertiary'}
-          size="compact"
-          type="button"
-          disabled={busy || settled}
-          onClick={() => void act(() => decide('approved'))}
-        >
-          {settled ? <Check aria-hidden /> : null}
-          {t(settled ? 'decisionState.approved' : 'approve')}
-        </Button>
+      <div className={cn('flex flex-wrap gap-2', pinned && 'ml-auto')}>
+        {settled ? null : (
+          <Button
+            variant={primary ? 'primary' : 'tertiary'}
+            size="compact"
+            type="button"
+            disabled={busy}
+            onClick={() => void act(() => decide('approved'))}
+          >
+            {t('approve')}
+          </Button>
+        )}
         <Button
           variant="tertiary"
           size="compact"
@@ -1563,96 +1618,110 @@ export function DecisionPanel({
           {t('requestChanges')}
         </Button>
       </div>
-      {approved && linked ? (
-        <div className="flex flex-col gap-2 fill-group p-3 text-caption">
-          <div className="flex items-center gap-1">
-            <h4 className="m-0" style={semibold}>
-              {t('integrateHeading')}
-            </h4>
-            <Tooltip content={t('integrateNote')}>
-              <Button variant="ghost" size="icon-compact" aria-label={t('integrateNote')}>
-                <Info aria-hidden />
-              </Button>
-            </Tooltip>
+    </section>
+  );
+
+  return (
+    <>
+      {pinned ? (barSlot ? createPortal(bar, barSlot) : null) : bar}
+      <div className={cn('flex min-w-0 flex-col gap-2 empty:hidden', detailsClassName)}>
+        {approved && linked ? (
+          <div className="flex flex-col gap-2 fill-group p-3 text-caption">
+            <div className="flex items-center gap-1">
+              <h4 className="m-0" style={semibold}>
+                {t('integrateHeading')}
+              </h4>
+              <Tooltip content={t('integrateNote')}>
+                <Button variant="ghost" size="icon-compact" aria-label={t('integrateNote')}>
+                  <Info aria-hidden />
+                </Button>
+              </Tooltip>
+            </div>
+            <Button
+              variant={plan ? 'tertiary' : 'secondary'}
+              size="compact"
+              onClick={() =>
+                void act(async () => {
+                  if (workspaces)
+                    setPlan(await workspaces.integrationPlan(sessionId, approved.decisionId));
+                })
+              }
+              className="self-start"
+            >
+              {t('plan')}
+            </Button>
+            {plan ? (
+              <>
+                <ul
+                  data-testid="integration-plan"
+                  className="m-0 flex list-none flex-col gap-0.5 p-0"
+                >
+                  {plan.map((f) => (
+                    <li
+                      key={f.path}
+                      className={cn(
+                        'flex min-w-0 gap-1',
+                        f.outcome === 'conflict' && 'text-warning',
+                      )}
+                    >
+                      <FilePath path={f.path} />
+                      <span className="shrink-0">{` · ${t(`planOutcome.${f.outcome}`)}`}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  variant="primary"
+                  size="compact"
+                  type="button"
+                  disabled={busy || active || applying === 0}
+                  onClick={() => {
+                    void act(async () => {
+                      await workspaces?.integrate(sessionId, approved.decisionId);
+                      setPlan(null);
+                      await reload();
+                    });
+                  }}
+                  className="self-start"
+                >
+                  {t('apply', { count: applying })}
+                </Button>
+              </>
+            ) : null}
           </div>
-          <Button
-            variant={plan ? 'tertiary' : 'secondary'}
-            size="compact"
-            onClick={() =>
-              void act(async () => {
-                if (workspaces)
-                  setPlan(await workspaces.integrationPlan(sessionId, approved.decisionId));
-              })
-            }
-            className="self-start"
+        ) : null}
+        {integrations.map((integration) => (
+          <div
+            key={integration.integrationId}
+            data-testid="integration"
+            className="flex flex-col gap-1.5 fill-group p-3 text-caption"
           >
-            {t('plan')}
-          </Button>
-          {plan ? (
-            <>
-              <ul
-                data-testid="integration-plan"
-                className="m-0 flex list-none flex-col gap-0.5 p-0"
-              >
-                {plan.map((f) => (
-                  <li key={f.path} className={f.outcome === 'conflict' ? 'text-warning' : ''}>
-                    <span className="font-mono wrap-anywhere">{f.path}</span> ·{' '}
-                    {t(`planOutcome.${f.outcome}`)}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                variant="primary"
-                size="compact"
-                type="button"
-                disabled={busy || active || applying === 0}
-                onClick={() => {
-                  void act(async () => {
-                    await workspaces?.integrate(sessionId, approved.decisionId);
-                    setPlan(null);
-                    await reload();
-                  });
-                }}
-                className="self-start"
-              >
-                {t('apply', { count: applying })}
-              </Button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-      {integrations.map((integration) => (
-        <div
-          key={integration.integrationId}
-          data-testid="integration"
-          className="flex flex-col gap-1.5 fill-group p-3 text-caption"
-        >
-          <span style={semibold}>
-            {t(`integrationState.${integrationDisplayState(integration)}`)}
-          </span>
-          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
-            {integration.files.map((f) => (
-              <li key={f.path}>
-                <span className="font-mono wrap-anywhere">{f.path}</span> ·{' '}
-                {t(`fileOutcome.${f.outcome}`)}
-              </li>
-            ))}
-          </ul>
-          {integration.files.some((f) => f.outcome === 'applied') ? (
-            <Tooltip content={t('revertNote')}>
-              <Button
-                variant="tertiary"
-                size="compact"
-                disabled={busy || active}
-                onClick={() => setRevertTarget({ sessionId, integration })}
-                className="self-start"
-              >
-                {t('revert')}
-              </Button>
-            </Tooltip>
-          ) : null}
-        </div>
-      ))}
+            <span style={semibold}>
+              {t(`integrationState.${integrationDisplayState(integration)}`)}
+            </span>
+            <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+              {integration.files.map((f) => (
+                <li key={f.path} className="flex min-w-0 gap-1">
+                  <FilePath path={f.path} />
+                  <span className="shrink-0">{` · ${t(`fileOutcome.${f.outcome}`)}`}</span>
+                </li>
+              ))}
+            </ul>
+            {integration.files.some((f) => f.outcome === 'applied') ? (
+              <Tooltip content={t('revertNote')}>
+                <Button
+                  variant="tertiary"
+                  size="compact"
+                  disabled={busy || active}
+                  onClick={() => setRevertTarget({ sessionId, integration })}
+                  className="self-start"
+                >
+                  {t('revert')}
+                </Button>
+              </Tooltip>
+            ) : null}
+          </div>
+        ))}
+      </div>
       <Dialog
         open={revertTarget?.sessionId === sessionId}
         onOpenChange={(open) => {
@@ -1691,7 +1760,16 @@ export function DecisionPanel({
           </div>
         </DialogPopup>
       </Dialog>
-    </section>
+    </>
+  );
+}
+
+/** A path on one line that keeps its file name: a long one is cut at the start. */
+function FilePath({ path }: { path: string }) {
+  return (
+    <span dir="rtl" title={path} className="min-w-0 truncate text-left font-mono">
+      <bdi>{path}</bdi>
+    </span>
   );
 }
 
@@ -1702,17 +1780,6 @@ const GENERATED =
   /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Cargo\.lock|poetry\.lock|go\.sum|composer\.lock|Gemfile\.lock)$|(^|\/)(dist|build|generated|__generated__)\/|\.min\.(js|css)$/;
 const foldedFile = (file: FileChangeView) => GENERATED.test(file.path) && file.status !== 'deleted';
 
-/** The file list's order: ordinary files, then the folded generated ones. */
-function reviewOrder(files: FileChangeView[]) {
-  return [...files.filter((f) => !foldedFile(f)), ...files.filter(foldedFile)].map((f) => f.path);
-}
-
-/** Who last wrote the file: Corral, Corral and then someone else, or not Corral at all. */
-const PROVENANCE_ICONS = {
-  managed_agent: Bot,
-  mixed: GitMerge,
-  external_observed: Pencil,
-} as const;
 /** Git's one-letter status for what is not a plain modification. */
 const STATUS_MARKS: Partial<Record<FileChangeView['status'], { letter: string; tone: string }>> = {
   added: { letter: 'A', tone: 'text-success' },
@@ -1722,8 +1789,9 @@ const STATUS_MARKS: Partial<Record<FileChangeView['status'], { letter: string; t
 
 /**
  * The files of the range, one line each: its review or read mark, name and folder, what changed
- * and who wrote it. The head carries the count and the previous/next file moves; below the
- * three-column width it also folds the list away once a file is chosen.
+ * and, when it was not Corral's own write, an "External" badge. The head carries the count;
+ * below the three-column width it also folds the list away once a file is chosen. Moving
+ * between files is the list itself, or Shift+] and Shift+[ from anywhere in the review.
  */
 function FileList({
   changes,
@@ -1731,9 +1799,6 @@ function FileList({
   reviewed,
   onChoose,
   sinceRead = false,
-  position,
-  total,
-  onMove,
 }: {
   changes: ChangeSetView | null;
   selected: string | null;
@@ -1741,12 +1806,8 @@ function FileList({
   onChoose: (path: string) => void;
   /** The range lists only what changed since the copy was marked read. */
   sinceRead?: boolean;
-  position: number;
-  total: number;
-  onMove(direction: 1 | -1): boolean;
 }) {
   const t = useTranslations('Files');
-  const tr = useTranslations('Review');
   const listId = useId();
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | FileChangeView['status']>('all');
@@ -1775,20 +1836,69 @@ function FileList({
     const isReviewed = reviewed.changeReviewed(file);
     const isRead = !isReviewed && reviewed.contentRead(file);
     const status = STATUS_MARKS[file.status];
-    const Provenance = PROVENANCE_ICONS[file.provenance];
     const counts =
       file.additions !== null ? `+${file.additions} −${file.deletions ?? 0}` : undefined;
     return (
       <li key={file.path}>
         <Button
           variant={selected === file.path ? 'secondary' : 'ghost'}
-          size="compact"
+          size="sm-multiline"
           aria-current={selected === file.path ? 'true' : undefined}
           data-review-file={file.path}
           title={file.path}
           onClick={() => onChoose(file.path)}
-          className="w-full justify-start gap-1.5 px-2 text-left"
+          className="w-full justify-start px-2 py-1 text-left"
         >
+          <span
+            aria-hidden
+            className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-0.5"
+          >
+            <span
+              className="grid size-3.5 shrink-0 place-items-center"
+              title={isReviewed ? t('reviewedFile') : isRead ? t('readElsewhere') : undefined}
+            >
+              {isReviewed ? (
+                <Check className="text-success" />
+              ) : isRead ? (
+                <Eye className="text-muted-foreground" />
+              ) : null}
+            </span>
+            <span className="min-w-0 truncate font-mono">
+              {file.path.slice(cut)}
+              {cut > 0 ? (
+                <span className="text-muted-foreground"> {file.path.slice(0, cut - 1)}</span>
+              ) : null}
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+              {status ? (
+                <span className={status.tone} title={t(`status.${file.status}`)}>
+                  {status.letter}
+                </span>
+              ) : null}
+              {file.binary ? <span className="text-muted-foreground">bin</span> : null}
+              {file.additions !== null ? (
+                <>
+                  {file.additions > 0 || !file.deletions ? (
+                    <span className="text-success">+{file.additions}</span>
+                  ) : null}
+                  {file.deletions ? (
+                    <span className="text-destructive">−{file.deletions}</span>
+                  ) : null}
+                </>
+              ) : null}
+            </span>
+            {/* Corral's own writes are the usual case and carry nothing; anything written
+                elsewhere says so under the name, so the name keeps the row's width, and
+                names where on hover. */}
+            {file.provenance !== 'managed_agent' ? (
+              <span className="col-start-2 flex">
+                <Badge size="sm" variant="secondary" title={t(`provenance.${file.provenance}`)}>
+                  {t('externalBadge')}
+                </Badge>
+              </span>
+            ) : null}
+          </span>
+          {/* Last, so the kit's label rule for a trailing span leaves the row layout alone. */}
           <span className="sr-only">
             {[
               file.path,
@@ -1801,47 +1911,6 @@ function FileList({
               .filter(Boolean)
               .join(' · ')}
           </span>
-          <span
-            aria-hidden
-            className="grid size-3.5 shrink-0 place-items-center"
-            title={isReviewed ? t('reviewedFile') : isRead ? t('readElsewhere') : undefined}
-          >
-            {isReviewed ? (
-              <Check className="text-success" />
-            ) : isRead ? (
-              <Eye className="text-muted-foreground" />
-            ) : null}
-          </span>
-          <span aria-hidden className="min-w-0 flex-1 truncate font-mono">
-            {file.path.slice(cut)}
-            {cut > 0 ? (
-              <span className="text-muted-foreground"> {file.path.slice(0, cut - 1)}</span>
-            ) : null}
-          </span>
-          <span aria-hidden className="flex shrink-0 items-center gap-1.5 tabular-nums">
-            {status ? (
-              <span className={status.tone} title={t(`status.${file.status}`)}>
-                {status.letter}
-              </span>
-            ) : null}
-            {file.binary ? <span className="text-muted-foreground">bin</span> : null}
-            {file.additions !== null ? (
-              <>
-                {file.additions > 0 || !file.deletions ? (
-                  <span className="text-success">+{file.additions}</span>
-                ) : null}
-                {file.deletions ? (
-                  <span className="text-destructive">−{file.deletions}</span>
-                ) : null}
-              </>
-            ) : null}
-            <span
-              className="grid size-3.5 place-items-center text-muted-foreground"
-              title={t(`provenance.${file.provenance}`)}
-            >
-              <Provenance />
-            </span>
-          </span>
         </Button>
       </li>
     );
@@ -1850,10 +1919,7 @@ function FileList({
     <>
       <div className="flex h-10 shrink-0 items-center gap-0.5 pr-2 pl-3">
         <h3
-          className={cn(
-            'm-0 hidden text-caption text-muted-foreground',
-            `@min-[1100px]/review:block`,
-          )}
+          className="m-0 hidden text-caption text-muted-foreground @min-[880px]/review:block"
           style={semibold}
         >
           {count}
@@ -1865,7 +1931,7 @@ function FileList({
           aria-controls={listId}
           disabled={files.length === 0}
           onClick={() => setFold({ file: selected, collapsed: !collapsed })}
-          className={cn('-ml-2', `@min-[1100px]/review:hidden`)}
+          className="-ml-2 @min-[880px]/review:hidden"
         >
           {count}
           <ChevronDown
@@ -1883,40 +1949,14 @@ function FileList({
             </Button>
           </Tooltip>
         ) : null}
-        <span className="ml-auto flex items-center gap-0.5">
-          <Tooltip content={tr('previousFile')} shortcut={REVIEW_MOVE_KEYS.previousFile}>
-            <Button
-              variant="ghost"
-              size="icon-compact"
-              aria-label={tr('previousFile')}
-              aria-keyshortcuts={REVIEW_MOVE_KEYS.previousFile}
-              disabled={total === 0 || position === 0}
-              onClick={() => onMove(-1)}
-            >
-              <ArrowUp aria-hidden />
-            </Button>
-          </Tooltip>
-          <Tooltip content={tr('nextFile')} shortcut={REVIEW_MOVE_KEYS.nextFile}>
-            <Button
-              variant="ghost"
-              size="icon-compact"
-              aria-label={tr('nextFile')}
-              aria-keyshortcuts={REVIEW_MOVE_KEYS.nextFile}
-              disabled={total === 0 || position === total - 1}
-              onClick={() => onMove(1)}
-            >
-              <ArrowDown aria-hidden />
-            </Button>
-          </Tooltip>
-        </span>
       </div>
       <div
         id={listId}
         className={cn(
           'max-h-64 min-h-0 flex-col gap-2 overflow-auto px-2 pb-2',
           files.length === 0 || collapsed ? 'hidden' : 'flex',
-          files.length > 0 && `@min-[1100px]/review:flex`,
-          `@min-[1100px]/review:max-h-none @min-[1100px]/review:flex-1`,
+          files.length > 0 && '@min-[880px]/review:flex',
+          '@min-[880px]/review:max-h-none @min-[880px]/review:flex-1',
         )}
       >
         <div className="flex items-center gap-1">

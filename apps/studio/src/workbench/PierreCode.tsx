@@ -15,13 +15,25 @@ const highlighterOptions = {
   preferredHighlighter: 'shiki-js' as const,
   theme: { dark: 'github-dark', light: 'github-light' },
 };
+// The code sits on the app's own surface in both themes, not on the highlighting theme's
+// (GitHub's slate in dark): its background is the app background, its separators the quiet
+// fill, and the added/removed tints are mixed from that background. The text uses the kit code
+// type (the caption role), on the kit diff's 20px rows. App tokens reach the renderer's shadow
+// root by inheritance.
+const surfaceCSS = `:host {
+  --diffs-light-bg: var(--background);
+  --diffs-dark-bg: var(--background);
+  --diffs-bg-separator-override: var(--muted);
+  --diffs-font-size: var(--fs-caption);
+  --diffs-line-height: var(--lh-body);
+}`;
 const codeOptions = {
   theme: highlighterOptions.theme,
   preferredHighlighter: 'shiki-js' as const,
   disableFileHeader: true,
   overflow: 'scroll' as const,
   // GitHub's diff gutter red/green fails 4.5:1; text color keeps every line number readable.
-  unsafeCSS: '[data-line-number-content] { color: var(--diffs-fg); }',
+  unsafeCSS: `${surfaceCSS}\n[data-line-number-content] { color: var(--diffs-fg); }`,
 };
 
 const viewerClass = 'h-[min(65vh,600px)] min-h-48 overflow-auto rounded fill-group';
@@ -55,7 +67,6 @@ export function SourceCode({
     <CodeFrame>
       <CodeView
         className={viewerClass}
-        style={{ fontSize: 12, lineHeight: '20px' }}
         items={items}
         options={{ ...codeOptions, themeType: theme, enableLineSelection: true }}
         onSelectedLinesChange={(selection) => {
@@ -151,7 +162,6 @@ export function DiffCode({
       <CodeView
         ref={viewer}
         className={cn('min-h-24 overflow-auto', className ?? 'max-h-[min(65vh,600px)] rounded')}
-        style={{ fontSize: 12, lineHeight: '20px' }}
         items={items}
         selectedLines={selection ? { id: 'comparison', range: selection } : null}
         onSelectedLinesChange={(next) => {

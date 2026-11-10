@@ -219,10 +219,13 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     expect(existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(false);
     const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
     await parts.getByRole('button', { name: 'Choose parts of this file' }).click();
-    await parts.getByRole('checkbox', { name: /Part 1/ }).check();
-    await parts.getByRole('button', { name: 'Preview original-folder changes' }).click();
+    await parts
+      .getByRole('checkbox', { name: /^Lines? \d/ })
+      .first()
+      .check();
+    await parts.getByRole('button', { name: 'Preview applying to the folder' }).click();
     await expect(parts).toContainText('Target: original folder');
-    await parts.getByRole('button', { name: 'Approve and apply to original' }).click();
+    await parts.getByRole('button', { name: 'Approve and apply to the folder' }).click();
     await expect.poll(() => existsSync(join(original, 'notes', 'team_writer_role.md'))).toBe(true);
     await page.getByRole('button', { name: 'Back to Git changes', exact: true }).click();
     await expect(page).toHaveURL(new URL(`${sessionPath}?panel=changes`, corral.server.url).href);

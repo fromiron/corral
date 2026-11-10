@@ -1,10 +1,11 @@
 import type { VerificationResultView, WorkspaceBindingView } from '@corral/client';
 import type { TextAttachment } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Button, cn, fontWeights, Tooltip, useShape } from '@corral/react/design-kit';
-import { Info, Settings } from '@corral/react/icons';
+import { EmptyView } from '@corral/react';
+import { Button, cn, fontWeights, Tooltip } from '@corral/react/design-kit';
+import { Check, Info, Settings, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { fixRequestName, fixRequestText } from './checkFixRequest.ts';
@@ -17,6 +18,29 @@ const failed = (result: VerificationResultView) =>
   result.state === 'error' ||
   result.timedOut ||
   result.report?.verdict === 'fail';
+
+/** A check's outcome: success or failure in its colour with a matching mark, anything else plain. */
+function Outcome({
+  tone,
+  children,
+}: {
+  tone: 'success' | 'destructive' | null;
+  children: ReactNode;
+}) {
+  if (!tone) return <span>{children}</span>;
+  const Mark = tone === 'success' ? Check : X;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1',
+        tone === 'success' ? 'text-success' : 'text-destructive',
+      )}
+    >
+      <Mark aria-hidden className="size-3.5 shrink-0" />
+      {children}
+    </span>
+  );
+}
 
 /** Date and time in the interface language (the app sets `<html lang>`). */
 function checkTime(iso: string) {
@@ -53,7 +77,6 @@ export function Checks({
   const tk = useTranslations('Checks');
   const tc = useTranslations('Context');
   const navigation = useSettingsNavigation();
-  const shape = useShape();
   const { workspaces, mode, workspaceId } = useServices();
   const source = useMemo(
     () => ({ workspaces, workspaceId, projectId, sessionId }),
@@ -191,29 +214,12 @@ export function Checks({
         </p>
       ) : null}
       {commands.length === 0 && results.length === 0 ? (
-        <div
+        <EmptyView
           data-testid="checks-empty"
-          className={cn(
-            shape.container,
-            'grid justify-items-center gap-3 border border-dashed border-border px-6 py-10 text-center',
-          )}
-        >
-          <div className="grid justify-items-center gap-1">
-            <b className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
-              {t('noChecks')}
-            </b>
-            {mode === 'browser' ? (
-              <p className="m-0 max-w-sm text-caption text-muted-foreground">
-                {t('checksServerOnly')}
-              </p>
-            ) : null}
-          </div>
-          {tools ? (
-            <Button variant="secondary" size="compact" render={tools}>
-              {tk('openProjectTools')}
-            </Button>
-          ) : null}
-        </div>
+          title={t('noChecks')}
+          text={mode === 'browser' ? t('checksServerOnly') : undefined}
+          action={tools ? { label: tk('openProjectTools'), render: tools } : undefined}
+        />
       ) : (
         <div className="flex flex-wrap items-center gap-1">
           {commands.map((command) => (
@@ -262,18 +268,34 @@ export function Checks({
           >
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span style={{ fontVariationSettings: fontWeights.semibold }}>{r.name}</span>
-              <span
-                className={
-                  r.state === 'passed'
-                    ? 'text-success'
-                    : r.state === 'running'
-                      ? ''
-                      : 'text-destructive'
-                }
-              >
-                {r.report ? t(`checkReportState.${r.report.state}`) : t(`checkState.${r.state}`)}
-              </span>
-              {r.report ? <span>{t(`checkVerdict.${r.report.verdict}`)}</span> : null}
+              {/* The outcome carries the colour: a report's verdict, or the state of a record
+                  without one. How the run went ("Completed") is plain unless it erred. */}
+              {r.report ? (
+                <>
+                  <span className={r.report.state === 'error' ? 'text-destructive' : undefined}>
+                    {t(`checkReportState.${r.report.state}`)}
+                  </span>
+                  <Outcome
+                    tone={
+                      r.report.verdict === 'pass'
+                        ? 'success'
+                        : r.report.verdict === 'fail'
+                          ? 'destructive'
+                          : null
+                    }
+                  >
+                    {t(`checkVerdict.${r.report.verdict}`)}
+                  </Outcome>
+                </>
+              ) : (
+                <Outcome
+                  tone={
+                    r.state === 'passed' ? 'success' : r.state === 'running' ? null : 'destructive'
+                  }
+                >
+                  {t(`checkState.${r.state}`)}
+                </Outcome>
+              )}
               {r.state === 'running' && r.report?.owner.kind === 'manual' ? (
                 <Button
                   size="compact"

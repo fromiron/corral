@@ -1,4 +1,5 @@
 import type { VerifyCommand, WorkspaceBindingView, WorktreeView } from '@corral/client';
+import { EmptyView, type EmptyViewAction } from '@corral/react';
 import { Button, Input, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
@@ -300,6 +301,33 @@ export function WorkingCopyPanel({
       setBusy(false);
     }
   };
+  // Without a copy this is an empty view with its one next step: link the folder, trust it,
+  // or make the copy.
+  if (!worktree) {
+    const folderSettings = <Link {...navigation.link('workspace', projectId)} />;
+    const next: { text: string; action: EmptyViewAction } = !binding
+      ? { text: t('noFolder'), action: { label: t('openFolderSettings'), render: folderSettings } }
+      : !binding.trusted
+        ? { text: t('notTrusted'), action: { label: t('openTrust'), render: folderSettings } }
+        : {
+            text: `${t('copyIntro')} ${t('createHint', { changed: binding.status?.changed ?? 0 })}`,
+            action: {
+              label: t('create', { head: binding.status?.head ?? 'HEAD' }),
+              disabled: busy,
+              onClick: () => void act(() => workspaces.createWorktree(sessionId)),
+            },
+          };
+    return (
+      <section aria-label={t('copyHeading')} className="flex flex-col gap-2">
+        <EmptyView title={t('noCopyTitle')} text={next.text} action={next.action} />
+        {error ? (
+          <p role="alert" className="m-0 text-center text-caption text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </section>
+    );
+  }
   return (
     <section
       aria-labelledby="copy-heading"
@@ -313,80 +341,38 @@ export function WorkingCopyPanel({
           {t('copyMissing')}
         </p>
       ) : null}
-      {worktree && !worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
-      {worktree ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {t('ready', { commit: worktree.baseCommit.slice(0, 8) })}
-          </span>
-          <Button
-            variant="primary"
-            size="compact"
-            render={<Link to="/sessions/$sessionId/review" params={{ sessionId }} />}
-          >
-            {t('review')}
-          </Button>
-          <Button
-            type="button"
-            variant="tertiary"
-            size="compact"
-            disabled={busy}
-            onClick={() => setRemoving(true)}
-          >
-            {t('remove')}
-          </Button>
-          <CopyRemovalDialog
-            open={removing}
-            sessionId={sessionId}
-            projectId={projectId}
-            onClose={() => setRemoving(false)}
-            onRemoved={() => {
-              setRemoving(false);
-              void act(async () => {});
-            }}
-          />
-        </div>
-      ) : !binding ? (
-        <div className="flex flex-col items-start gap-1.5">
-          <p className="text-xs text-muted-foreground">{t('noFolder')}</p>
-          <Button
-            variant="tertiary"
-            size="compact"
-            render={<Link {...navigation.link('workspace', projectId)} />}
-          >
-            {t('openFolderSettings')}
-          </Button>
-        </div>
-      ) : !binding.trusted ? (
-        // The next step is an action, not a note: trust lives with the project's folder settings.
-        <div className="flex flex-col items-start gap-1.5">
-          <p className="text-xs text-warning">{t('notTrusted')}</p>
-          <Button
-            variant="tertiary"
-            size="compact"
-            render={<Link {...navigation.link('workspace', projectId)} />}
-          >
-            {t('openTrust')}
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <p className="text-xs text-muted-foreground">{t('copyIntro')}</p>
-          <p className="text-xs text-warning">
-            {t('createHint', { changed: binding.status?.changed ?? 0 })}
-          </p>
-          <Button
-            variant="tertiary"
-            size="compact"
-            type="button"
-            disabled={busy}
-            onClick={() => void act(() => workspaces.createWorktree(sessionId))}
-            className="self-start"
-          >
-            {t('create', { head: binding.status?.head ?? 'HEAD' })}
-          </Button>
-        </div>
-      )}
+      {!worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-caption text-muted-foreground">
+          {t('ready', { commit: worktree.baseCommit.slice(0, 8) })}
+        </span>
+        <Button
+          variant="primary"
+          size="compact"
+          render={<Link to="/sessions/$sessionId/review" params={{ sessionId }} />}
+        >
+          {t('review')}
+        </Button>
+        <Button
+          type="button"
+          variant="tertiary"
+          size="compact"
+          disabled={busy}
+          onClick={() => setRemoving(true)}
+        >
+          {t('remove')}
+        </Button>
+        <CopyRemovalDialog
+          open={removing}
+          sessionId={sessionId}
+          projectId={projectId}
+          onClose={() => setRemoving(false)}
+          onRemoved={() => {
+            setRemoving(false);
+            void act(async () => {});
+          }}
+        />
+      </div>
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}

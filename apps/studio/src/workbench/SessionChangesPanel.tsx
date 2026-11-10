@@ -244,10 +244,9 @@ export function SessionChangesPanel({
         </div>
       </div>
       {missing ? (
+        // The copy's setup: the shared empty view, laid out as the sub-views lay out theirs.
         <div className="shrink-0 p-3">
-          <div className="max-w-2xl">
-            <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
-          </div>
+          <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
         </div>
       ) : null}
       <TabPanel value="review" keepMounted className="min-h-0 flex-1">
