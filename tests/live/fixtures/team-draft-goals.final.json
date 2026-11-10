@@ -1,0 +1,153 @@
+{
+  "split": "final",
+  "note": "A goal and the team patterns a careful person would accept for it. Labels were written before any model run.",
+  "goals": [
+    {
+      "id": "final-01",
+      "goal": "package.json의 버전을 1.4.0으로 올려 줘",
+      "accept": [
+        "single"
+      ]
+    },
+    {
+      "id": "final-02",
+      "goal": "Convert this JSON sample to a TypeScript interface",
+      "accept": [
+        "single"
+      ]
+    },
+    {
+      "id": "final-03",
+      "goal": "서비스 장애 공지문을 작성해 줘. 정중하고 간결하게",
+      "accept": [
+        "write_review",
+        "single"
+      ]
+    },
+    {
+      "id": "final-04",
+      "goal": "Draft a blog post announcing our new pricing, then tighten it",
+      "accept": [
+        "write_review"
+      ]
+    },
+    {
+      "id": "final-05",
+      "goal": "원격 근무 생산성에 대한 최근 연구를 조사해서 근거와 함께 정리해 줘",
+      "accept": [
+        "research_write_review"
+      ]
+    },
+    {
+      "id": "final-06",
+      "goal": "Compare the licensing terms of three charting libraries and cite the sources",
+      "accept": [
+        "research_write_review",
+        "tech_decision"
+      ]
+    },
+    {
+      "id": "final-07",
+      "goal": "목록 화면에 정렬 버튼을 추가해 줘",
+      "accept": [
+        "implement_review",
+        "single"
+      ]
+    },
+    {
+      "id": "final-08",
+      "goal": "Implement pagination for the orders endpoint with tests",
+      "accept": [
+        "implement_review",
+        "plan_implement_review"
+      ]
+    },
+    {
+      "id": "final-09",
+      "goal": "모놀리식 서버에서 알림 기능을 별도 서비스로 분리해야 해. 계획을 세우고 구현해 줘",
+      "accept": [
+        "plan_implement_review"
+      ]
+    },
+    {
+      "id": "final-10",
+      "goal": "Plan and implement role-based access control across the admin pages",
+      "accept": [
+        "plan_implement_review"
+      ]
+    },
+    {
+      "id": "final-11",
+      "goal": "특정 사용자만 파일 업로드가 실패해. 원인을 조사하고 수정해 줘",
+      "accept": [
+        "bug_fix"
+      ]
+    },
+    {
+      "id": "final-12",
+      "goal": "Memory usage keeps growing in the worker process; track down the leak and fix it",
+      "accept": [
+        "bug_fix"
+      ]
+    },
+    {
+      "id": "final-13",
+      "goal": "이번 릴리스 브랜치의 변경을 버그와 보안 취약점 관점에서 따로 검토하고 결과를 합쳐 줘",
+      "accept": [
+        "parallel_review"
+      ]
+    },
+    {
+      "id": "final-14",
+      "goal": "Audit the file upload handler for security and correctness problems without changing code",
+      "accept": [
+        "parallel_review"
+      ]
+    },
+    {
+      "id": "final-15",
+      "goal": "모바일 앱을 React Native로 만들지 Flutter로 만들지 정해야 해. 장단점을 비교해서 결정안을 올려 줘",
+      "accept": [
+        "tech_decision"
+      ]
+    },
+    {
+      "id": "final-16",
+      "goal": "Evaluate GraphQL versus REST for our public API and write a decision document for sign-off",
+      "accept": [
+        "tech_decision"
+      ]
+    },
+    {
+      "id": "final-17",
+      "goal": "CSV 내보내기에서 한글이 깨져. 고쳐 줘",
+      "accept": [
+        "bug_fix",
+        "implement_review"
+      ]
+    },
+    {
+      "id": "final-18",
+      "goal": "Summarize this meeting transcript into action items",
+      "accept": [
+        "single",
+        "write_review"
+      ]
+    },
+    {
+      "id": "final-19",
+      "goal": "검색 기능을 Elasticsearch로 옮기는 작업을 설계부터 구현까지 진행해 줘",
+      "accept": [
+        "plan_implement_review"
+      ]
+    },
+    {
+      "id": "final-20",
+      "goal": "Check this SQL migration for mistakes before we run it",
+      "accept": [
+        "parallel_review",
+        "single"
+      ]
+    }
+  ]
+}
