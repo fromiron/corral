@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { DockDocumentPanel } from './DockDocumentPanel.tsx';
-import { DocumentHeader } from './DocumentHeader.tsx';
+import { DocumentHeader, publishTreeSource } from './DocumentHeader.tsx';
 import { type DocumentBuffer, type DocumentStore, documentKey } from './documents/store.ts';
 
 const target: WorkspaceTarget = {
@@ -115,4 +115,29 @@ it('a source-folder file says so and claims neither a branch nor a draft', async
   expect(head?.textContent).toContain('README.md');
   expect(head?.textContent).not.toContain(messages.Documents.dirty);
   expect(fixture.gitStatus).not.toHaveBeenCalled();
+});
+
+it('names where a document opened from only when the file tree beside it shows another source', async () => {
+  fixture.gitStatus.mockResolvedValue(status(1, null));
+  // The tree shows the session working copy too: its select already says so.
+  const same = publishTreeSource('session', 'copy');
+  const container = await mounted(
+    <DockDocumentPanel owner={owner(buffer(false))} target={target} path="note.txt" viewId="tab" />,
+  );
+  expect(header(container)?.textContent).not.toContain(messages.Desktop.sessionCopy);
+  // The tree switches to the project source folder: the document's own source shows again.
+  let other = () => {};
+  await act(async () => {
+    same();
+    other = publishTreeSource('session', 'source');
+  });
+  expect(header(container)?.textContent).toContain(messages.Desktop.sessionCopy);
+  await act(async () => other());
+});
+
+it('a preview in the file panel does not repeat the source its tree already names', async () => {
+  const container = await mounted(
+    <DocumentHeader path="README.md" target={{ kind: 'source' }} treeSource="source" />,
+  );
+  expect(header(container)?.textContent).not.toContain(messages.Desktop.sourceFolder);
 });

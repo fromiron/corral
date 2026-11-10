@@ -310,16 +310,12 @@ export function RunCard({
       data-testid={`run-card-${run.runId}`}
       className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-4'}`}
     >
-      {/* In a conversation the turn speaks through its process line, notice and answer. */}
-      {nested ? (
-        <span className="sr-only">
-          <StatusBadge status={run.status} />
-        </span>
-      ) : (
-        <div className="flex min-h-7 items-center">
-          <StatusBadge status={run.status} />
-        </div>
-      )}
+      {/* In a conversation the turn speaks through its process line, notice and answer; the
+          line above the composer is where a finished run's status shows. A run no request
+          names (started elsewhere) is a turn like any other. */}
+      <span className="sr-only">
+        <StatusBadge status={run.status} />
+      </span>
       <span className="sr-only">{run.runId}</span>
       <RunMessage
         runId={run.runId}

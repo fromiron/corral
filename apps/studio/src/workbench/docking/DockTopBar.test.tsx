@@ -172,3 +172,16 @@ it('keeps the tabs where no top bar hosts them, however narrow', async () => {
   expect(container.querySelector('[role="combobox"]')).toBeNull();
   expect(container.querySelector('[role="tablist"]')?.closest('[hidden]')).toBeNull();
 });
+
+it('a narrow pane switcher reads Panes, not the open file its tab already names', async () => {
+  await mount({
+    sessionView: 'files',
+    compact: true,
+    active: 'document:readme',
+    panels: [{ id: 'document:readme', title: 'README.md' }],
+  });
+  const toolbar = document.querySelector('[data-testid="dock-toolbar"]');
+  const switcher = toolbar?.querySelector<HTMLElement>('[role="combobox"]');
+  expect(switcher?.getAttribute('aria-label')).toBe('Panes');
+  expect(visibleText(switcher)).toBe('Panes');
+});

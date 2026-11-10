@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { OverviewWidgets } from './OverviewWidgets.tsx';
+import { OverviewPopover, OverviewWidgets } from './OverviewWidgets.tsx';
 import { actionRequired, usageSummary } from './selectors.ts';
 import type { ChatWidgetModel } from './useChatWidgets.tsx';
 
@@ -111,7 +111,10 @@ function model(patch: Partial<ChatWidgetModel> = {}): ChatWidgetModel {
   } as unknown as ChatWidgetModel;
 }
 
-async function render(value: ChatWidgetModel) {
+async function render(
+  value: ChatWidgetModel,
+  view: (model: ChatWidgetModel) => ReactNode = (model) => <OverviewWidgets model={model} />,
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
     'ResizeObserver',
@@ -131,7 +134,7 @@ async function render(value: ChatWidgetModel) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <OverviewWidgets model={value} />
+        {view(value)}
       </IntlProvider>,
     ),
   );
@@ -178,13 +181,114 @@ it('shows the run in kit widgets whose details open in place', async () => {
   expect(navigate).toHaveBeenCalledWith(
     expect.objectContaining({ search: { scope: 'run', runId: 'run_overview' } }),
   );
-  // The widget is the popover's trigger, so focus returns to it on close.
-  const trigger = usage?.querySelector<HTMLElement>('[role="button"]');
-  expect(trigger?.querySelector('[data-slot="card"]')).not.toBeNull();
-  expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+  // The whole card is the kit's clickable card; it opens its detail in the same place.
+  const trigger = usage?.querySelector<HTMLElement>('button[aria-label="Open Usage details"]');
+  expect(trigger?.closest('[data-slot="card"]')).not.toBeNull();
   await act(async () => trigger?.click());
-  expect(document.querySelector('[data-testid="usage-detail"]')?.textContent).toContain('930');
-  expect(trigger?.getAttribute('aria-expanded')).toBe('true');
+  expect(container.querySelector('[data-testid="usage-detail"]')?.textContent).toContain('930');
+});
+
+const press = (key: string) =>
+  act(async () => {
+    (document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true }),
+    );
+  });
+const openButton = (root: ParentNode, name: string) =>
+  root.querySelector<HTMLButtonElement>(`button[aria-label="Open ${name} details"]`);
+
+it('a detail takes the widgets’ place, and Back or Escape returns to the widget that opened it', async () => {
+  const container = await render(model());
+  await act(async () => openButton(container, 'Usage')?.click());
+  // One surface: the widgets give way to the detail instead of sitting beside it.
+  expect(widgets(container)).toEqual([]);
+  expect(container.querySelector('[data-testid="usage-detail"]')?.textContent).toContain('930');
+  const back = container.querySelector<HTMLButtonElement>('button[aria-label="Back to Overview"]');
+  expect(back).not.toBeNull();
+  expect(document.activeElement).toBe(back);
+  await act(async () => back?.click());
+  expect(container.querySelector('[data-testid="usage-detail"]')).toBeNull();
+  expect(widgets(container)).toEqual(['results', 'changes', 'context', 'usage']);
+  expect(document.activeElement).toBe(openButton(container, 'Usage'));
+
+  await act(async () => openButton(container, 'Context')?.click());
+  expect(container.querySelector('[data-testid="context-inspector"]')).not.toBeNull();
+  await press('Escape');
+  expect(container.querySelector('[data-testid="context-inspector"]')).toBeNull();
+  expect(document.activeElement).toBe(openButton(container, 'Context'));
+});
+
+/** Text a sighted reader sees: screen-reader-only words left out. */
+const visible = (node: Element | null | undefined) => {
+  const copy = node?.cloneNode(true) as Element | undefined;
+  for (const hidden of copy?.querySelectorAll('.sr-only') ?? []) hidden.remove();
+  return copy?.textContent ?? '';
+};
+
+it('the context detail says each measurement once and states only what is measured', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      reserveTokens: 16_384,
+      context: {
+        ...base.context,
+        kind: 'highest',
+        tokens: 2_399,
+        windowTokens: 128_000,
+        percent: null,
+        barPercent: null,
+        coverage: 'request',
+        completeness: 'partial',
+        measurementStage: 'assembled',
+        providerInput: 2_000,
+        providerCacheRead: null,
+        providerOutput: 44,
+        parts: [
+          { category: 'messages', tokens: 457 },
+          { category: 'system_prompt', tokens: 0 },
+        ],
+      },
+    } as Partial<ChatWidgetModel>),
+  );
+  await act(async () => openButton(container, 'Context')?.click());
+  const detail = container.querySelector('[data-testid="context-inspector"]');
+  expect(visible(detail)).toContain('Partial measurement');
+  const rows = [...(detail?.querySelectorAll('li') ?? [])];
+  const row = (label: string) => rows.find((item) => item.textContent?.startsWith(label));
+  // A measured zero stays a zero; an unmeasured part is a dash named "Not measured".
+  expect(visible(row('System prompt'))).toBe('System prompt0');
+  expect(visible(row('Skills'))).toBe('Skills—');
+  expect(row('Skills')?.textContent).toContain('Not measured');
+  expect(visible(detail)).not.toContain('Not measured');
+  expect(visible(detail)).toContain('16,384 reserved for output');
+  expect(visible(detail)).not.toContain('separate from input usage');
+  expect(visible(detail)).not.toContain('Request assembled');
+  expect(visible(detail)).not.toContain('The highest known ratio');
+  expect(visible(detail)).not.toContain('stay separate from this estimate');
+  // An unreported provider number is a dash, never 0.
+  expect(visible(detail)).toContain('Input 2,000 · cached — · output 44');
+});
+
+it('in the Overview popover Escape first leaves the detail, then closes the popover', async () => {
+  const container = await render(model(), (value) => <OverviewPopover model={value} />);
+  const trigger = container.querySelector<HTMLElement>('[data-testid="session-summary-trigger"]');
+  await act(async () => trigger?.click());
+  const popup = () => document.querySelector<HTMLElement>('[data-testid="session-summary-popup"]');
+  expect(popup()).not.toBeNull();
+  await act(async () => openButton(popup() as HTMLElement, 'Context')?.click());
+  // The detail opens inside the Overview popup, not as a second popup beside it.
+  expect(document.querySelectorAll('[data-slot="popover-popup"]')).toHaveLength(1);
+  expect(popup()?.querySelector('[data-testid="context-inspector"]')).not.toBeNull();
+  expect(popup()?.querySelector('[data-overview-widget]')).toBeNull();
+  await press('Escape');
+  expect(popup()).not.toBeNull();
+  expect(popup()?.querySelector('[data-testid="context-inspector"]')).toBeNull();
+  expect(document.activeElement).toBe(openButton(popup() as HTMLElement, 'Context'));
+  await press('Escape');
+  expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+  // The popup leaves after its exit frame, then hands focus back to Overview's button.
+  await vi.waitFor(() => expect(popup()).toBeNull());
+  expect(document.activeElement).toBe(trigger);
 });
 
 it('keeps pending attention first and links to the same run without an approval command', async () => {
@@ -232,6 +336,27 @@ it('does not present a partial or unmeasured context as a full-window meter', as
   );
 });
 
+it('states an estimate without a percentage once: the tokens, then the window as its unit', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      context: {
+        ...base.context,
+        tokens: 2_399,
+        windowTokens: 128_000,
+        completeness: 'partial',
+        percent: null,
+        barPercent: null,
+      },
+    }),
+  );
+  const figure = container.querySelector(
+    '[data-overview-widget="context"] [data-slot="card-content"] p:not(.sr-only)',
+  );
+  expect(figure?.textContent).toBe('2.4k/ 128k');
+  expect(figure?.textContent).not.toMatch(/2\.4k.*2\.4k/);
+});
+
 it('uses a measured meter and a sparkline only for reported completed-call values', async () => {
   const base = model();
   const container = await render(model({ usage: { ...base.usage!, perCall: [10, 0, 30] } }));
@@ -270,6 +395,13 @@ it('shows agent identity and accurate current status while work is active, then 
     'Reviewer',
   );
   expect(widgets(completed)[0]).toBe('results');
+});
+
+it('names no run scope while the last run is shown', async () => {
+  const container = await render(model());
+  expect(container.querySelector('[data-testid="overview-run-scope"]')).toBeNull();
+  const live = await render(model({ live: true, viewed: null, runNumber: 2 } as never));
+  expect(live.querySelector('[data-testid="overview-run-scope"]')).toBeNull();
 });
 
 it('identifies an older selected run without changing its usage or results', async () => {
@@ -326,7 +458,7 @@ it('the usage detail states reported input and cached input and names unreported
     }),
   );
   const trigger = container.querySelector<HTMLElement>(
-    '[data-overview-widget="usage"] [role="button"]',
+    '[data-overview-widget="usage"] button[aria-label="Open Usage details"]',
   );
   await act(async () => trigger?.click());
   const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
@@ -335,6 +467,9 @@ it('the usage detail states reported input and cached input and names unreported
   expect(detail).toContain('Cached input');
   expect(detail).toContain('1,500 (50%)');
   expect(detail).toContain('2 calls did not report cached input');
+  // The row names say what each figure is; no paragraph defines them again.
+  expect(detail).not.toContain('This run:');
+  expect(detail).not.toContain('not extra tokens');
 });
 
 it('the usage detail never shows an unreported cache as zero', async () => {
@@ -348,7 +483,7 @@ it('the usage detail never shows an unreported cache as zero', async () => {
     }),
   );
   const trigger = container.querySelector<HTMLElement>(
-    '[data-overview-widget="usage"] [role="button"]',
+    '[data-overview-widget="usage"] button[aria-label="Open Usage details"]',
   );
   await act(async () => trigger?.click());
   const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
@@ -370,7 +505,11 @@ it('names missing input reports rather than presenting the known-only sum as com
     }),
   );
   await act(async () =>
-    container.querySelector<HTMLElement>('[data-overview-widget="usage"] [role="button"]')?.click(),
+    container
+      .querySelector<HTMLElement>(
+        '[data-overview-widget="usage"] button[aria-label="Open Usage details"]',
+      )
+      ?.click(),
   );
   const detail = document.querySelector('[data-testid="usage-detail"]')?.textContent ?? '';
   expect(detail).toContain('100');

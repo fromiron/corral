@@ -111,9 +111,11 @@ async function press(element: Element) {
 }
 
 const button = (name: string) => {
-  const found = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
-    (item) => item.textContent?.trim() === name,
-  );
+  const all = [...document.querySelectorAll<HTMLButtonElement>('button')];
+  const found =
+    all.find((item) => item.textContent?.trim() === name) ??
+    // A button's badge follows its name.
+    all.find((item) => item.textContent?.trim().startsWith(name));
   if (!found) throw new Error(`no button ${name}`);
   return found;
 };
@@ -364,5 +366,13 @@ describe('the plan editor’s patterns', () => {
     const [first, second] = fixture.draftTeam.mock.calls.map((call) => call[1]?.operationId);
     expect(first).not.toBe(second);
     expect(fixture.saved).toEqual([]);
+  });
+
+  // The local suggestion says on its own button that it calls no model, instead of a sentence
+  // under it explaining what the button does.
+  it('marks the local suggestion button as making no model call', async () => {
+    await mount();
+    expect(button(en.TeamDraft.suggest).textContent).toContain(en.TeamDraft.noModelCall);
+    expect(document.body.textContent).not.toContain('Picks a team shape');
   });
 });

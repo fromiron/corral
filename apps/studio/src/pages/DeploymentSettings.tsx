@@ -86,7 +86,6 @@ export function DeploymentSettings({
   return (
     <section className="flex flex-col gap-3" aria-label={t('settingsTitle')}>
       <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('settingsTitle')}</h4>
-      <p className="text-caption text-muted-foreground">{t('settingsHint')}</p>
       {(config?.deployments ?? []).map((profile) => (
         <div key={profile.id} className="settings-surface flex flex-col gap-2">
           <p className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>

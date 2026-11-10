@@ -92,6 +92,6 @@ test('server connection failure stays on its host and retries the same session',
   await expect(page).toHaveURL(/#bootstrap=/);
   await page.unroute('**/api/v1/health');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(page.getByText('Local · simulated', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Simulated');
   await expect(page).not.toHaveURL(/#bootstrap=/);
 });

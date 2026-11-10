@@ -42,7 +42,6 @@ import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { type ChatDensity, preferences } from './preferences.ts';
-import { useQuestionNotice } from './questionNotice.ts';
 import { TurnLine, TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { toolRows } from './widgets/selectors.ts';
@@ -154,16 +153,10 @@ export function RunMessage({
     () => buildTurnProcess(state.events, projection, {}, label),
     [state.events, projection, label],
   );
-  // Waiting questions are answered in the exact run's response area; the notice names the first.
+  // Waiting questions are answered in the exact run's response area; the composer's notice
+  // names the first and carries the way there, so the turn does not repeat it.
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
-  const questions = interactions.flatMap((interaction) =>
-    interaction.kind === 'approval' ? [] : [interaction],
-  );
-  const loadBody = useCallback(
-    (bodyRef: string) => store.getState().loadArtifact(bodyRef),
-    [store],
-  );
-  const questionNotice = useQuestionNotice(questions, state.artifactTexts, loadBody);
+  const questions = interactions.filter((interaction) => interaction.kind !== 'approval');
   if (!projection)
     return (
       <div className="flex min-w-0 flex-col gap-3">
@@ -182,12 +175,6 @@ export function RunMessage({
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
   if (working && !watched) setWatched(true);
   const processOpen = chosen ?? (chatDensity === 'detailed' || working);
-  // Until its text is read, the notice keeps the generic count.
-  const requiredLabel =
-    questionNotice ??
-    (questions.length === 1
-      ? tw('actionQuestion')
-      : tw('actionMixed', { count: questions.length }));
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   // Current session activity lives by the composer and in the agent widget.
   // Historical failures stay visible here, while standalone consumers keep their activity row.
@@ -337,17 +324,6 @@ export function RunMessage({
           {runLine}
         </TurnLine>
       ) : null}
-      {sessionId && questions.length ? (
-        // The composer's notice announces it and carries the way to the answer; the turn it
-        // belongs to keeps one quiet line naming the question.
-        <p
-          data-testid="run-required-action"
-          role="note"
-          className="text-caption text-muted-foreground"
-        >
-          {requiredLabel}
-        </p>
-      ) : null}
       {working && !sessionId ? <RunActions session={store} compact /> : null}
       <ApprovalPanel
         session={store}
@@ -434,7 +410,7 @@ export function RunMessage({
           })}
         </ul>
       ) : null}
-      {/* An ended turn's reason is its notice's title, and a waiting question names itself. */}
+      {/* An ended turn's reason is its notice's title; a waiting question is the composer notice's. */}
       {projection.statusReason &&
       !unfinished &&
       !(sessionId && questions.length) &&

@@ -9,7 +9,15 @@ import {
 } from '@corral/contracts';
 import { planWithPattern, type TeamWording } from '@corral/core';
 import { draftFromPlan, planFromGoal } from '@corral/react';
-import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import {
+  Button,
+  fontWeights,
+  Input,
+  KitBadge,
+  Select,
+  Switch,
+  Textarea,
+} from '@corral/react/design-kit';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMessages, useTranslations } from 'use-intl';
@@ -149,19 +157,19 @@ export function TeamDraftDialog({
               placeholder={t('goalPlaceholder')}
             />
             <div className="flex flex-wrap items-start gap-3">
-              <div className="flex flex-col gap-1">
-                <Button
-                  variant="primary"
-                  size="compact"
-                  type="button"
-                  disabled={!goal.trim() || busy}
-                  onClick={suggest}
-                  className="self-start"
-                >
-                  {t('suggest')}
-                </Button>
-                <span className="text-caption text-muted-foreground">{t('suggestHint')}</span>
-              </div>
+              <Button
+                variant="primary"
+                size="compact"
+                type="button"
+                disabled={!goal.trim() || busy}
+                onClick={suggest}
+                className="self-start"
+              >
+                {t('suggest')}
+                <KitBadge size="compact" color="gray">
+                  {t('noModelCall')}
+                </KitBadge>
+              </Button>
               {live && models ? (
                 <div className="flex flex-col gap-1">
                   <Button

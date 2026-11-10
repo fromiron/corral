@@ -159,15 +159,92 @@ it('shows a judged request on its row and keeps other reasoning in the request d
   expect(judged?.closest('[hidden]')).toBeNull();
   expect(off?.textContent).toBe('Off · Not judged');
   expect(off?.closest('[hidden]')).not.toBeNull();
-  expect(judged?.closest('.turn-process-row')?.textContent).not.toContain('Request details');
-  expect(off?.closest('.turn-process-row')?.textContent).toContain('Request details');
+  // The judged row has no details to open; the other row is itself the way to its details.
+  const details = 'button[aria-label^="Details of"]';
+  expect(judged?.closest('.turn-process-row')?.querySelector(details)).toBeNull();
+  const opener = off?.closest('.turn-process-row')?.querySelector(details);
+  expect(opener?.getAttribute('aria-expanded')).toBe('false');
+  expect(opener?.getAttribute('aria-label')).toBe('Details of Model request 2 · Response complete');
+  expect(container.textContent).not.toContain('Request details');
+});
+
+it('opens a step’s details from its row, by pointer or keyboard, with no details label', async () => {
+  const { act } = await import('react');
+  const { createRoot } = await import('react-dom/client');
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  const projection = emptyProjection('run_rows');
+  projection.status = 'succeeded';
+  projection.executionOrder = ['lead'];
+  projection.executions.lead = {
+    executionId: 'lead',
+    nodeId: 'lead',
+    status: 'succeeded',
+  } as (typeof projection.executions)[string];
+  const events = [
+    {
+      type: 'tool.requested',
+      actor: { kind: 'agent', id: 'lead' },
+      payload: {
+        executionId: 'lead',
+        toolCallId: 'read',
+        name: 'read_file',
+        validatedArgs: { path: 'README.md' },
+      },
+    },
+    {
+      type: 'tool.finished',
+      actor: { kind: 'agent', id: 'lead' },
+      payload: { executionId: 'lead', toolCallId: 'read' },
+    },
+  ] as unknown as RunEvent[];
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={en}>
+        <TurnProcess
+          events={events}
+          projection={projection}
+          streams={{}}
+          label={(id) => id}
+          open
+          onOpenChange={() => {}}
+        />
+      </IntlProvider>,
+    ),
+  );
+  const row = container.querySelector('.turn-process-row');
+  expect(row?.textContent).not.toContain('Tool details');
+  const opener = row?.querySelector<HTMLButtonElement>('button[aria-expanded]');
+  expect(opener?.getAttribute('aria-label')).toBe('Details of Read · README.md · Done');
+  // The chevron says it opens; the panel it controls is closed and out of the tab order.
+  expect(opener?.querySelector('svg')).not.toBeNull();
+  const panel = container.querySelector(
+    `#${CSS.escape(opener?.getAttribute('aria-controls') ?? '')}`,
+  );
+  expect(panel?.hasAttribute('inert') || panel?.hasAttribute('hidden')).toBe(true);
+  await act(async () => opener?.click());
+  expect(opener?.getAttribute('aria-expanded')).toBe('true');
+  expect(panel?.hasAttribute('inert')).toBe(false);
+  expect(panel?.textContent).toContain('read_file');
+  // A native button: Enter and Space toggle it from the keyboard.
+  expect(opener?.tagName).toBe('BUTTON');
+  expect(opener?.getAttribute('type')).toBe('button');
+  await act(async () => root.unmount());
+  container.remove();
 });
 
 it.each(['en', 'ko'] as const)(
-  'a pending ask waits for the person, and status words read as words (%s)',
+  'a pending ask leaves the wait to the composer notice: the header shows time, the row no state (%s)',
   (locale) => {
     const projection = emptyProjection('run_ask');
     projection.status = 'awaiting_user';
+    projection.startedAt = '2026-11-10T00:00:00.000Z';
     projection.executionOrder = ['lead'];
     projection.executions.lead = {
       executionId: 'lead',
@@ -195,6 +272,7 @@ it.each(['en', 'ko'] as const)(
       },
       {
         type: 'user_input.requested',
+        recordedAt: '2026-11-10T00:00:05.000Z',
         actor: { kind: 'runtime', id: 'runtime' },
         payload: {
           requestId: 'question',
@@ -219,14 +297,27 @@ it.each(['en', 'ko'] as const)(
         />
       </IntlProvider>,
     );
+    // What each row shows: its label and its line, not the folded details.
     const rows = [...container.querySelectorAll('.turn-process-row')].map(
-      (row) => row.textContent ?? '',
+      (row) =>
+        `${row.querySelector('span')?.textContent ?? ''} ${row.querySelector('button[aria-expanded]')?.textContent ?? ''}`,
     );
     const messages = locale === 'en' ? en : ko;
     const ask = rows.find((row) => row.includes(messages.Turn.tool.ask_user));
     const plan = rows.find((row) => row.includes(messages.Turn.tool.update_plan));
-    expect(ask).toContain(locale === 'en' ? 'Waiting for your answer' : '답을 기다리는 중');
+    // The pill and the notice above the composer say the run waits; the turn does not.
+    expect(ask).not.toContain(messages.Status.awaiting_user);
+    expect(ask).not.toContain(locale === 'en' ? 'Waiting for your answer' : '답을 기다리는 중');
     expect(ask).not.toContain(messages.Transcript.tool.allowed);
+    // Nor does it open the question: its text shows only in that notice.
+    const askRow = [...container.querySelectorAll('.turn-process-row')].find((row) =>
+      row.querySelector('span')?.textContent?.includes(messages.Turn.tool.ask_user),
+    );
+    expect(askRow?.querySelector('button[aria-expanded]')).toBeNull();
     expect(plan).toContain(locale === 'en' ? 'Done' : '완료');
+    // Like any other state, the header is the time the turn worked, to its last record.
+    const header = container.querySelector('[data-testid="turn-process-header"]')?.textContent;
+    expect(header).not.toContain(messages.Status.awaiting_user);
+    expect(header).toMatch(locale === 'en' ? /^Worked 5s/ : /^작업 5초/);
   },
 );

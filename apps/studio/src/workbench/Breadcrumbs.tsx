@@ -15,7 +15,6 @@ import { ChevronDown } from '@corral/react/icons';
 import { useTranslations } from 'use-intl';
 import { useRegisteredCommands } from '../commandRegistry.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
-import { useTopbarLayout } from './TopbarSlot.tsx';
 
 // Each segment of the top bar's path is the menu for its level (project / session / run), so
 // moving between siblings needs neither the sidebar nor a second row of controls.
@@ -23,8 +22,9 @@ import { useTopbarLayout } from './TopbarSlot.tsx';
 const crumb = 'min-w-0 gap-1 px-2';
 
 // The open page registers its own session actions with their revision checks
-// (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those.
-const SESSION_ACTIONS = ['session:rename', 'session:pin', 'session:archive'];
+// (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those. A
+// meeting registers no completion criteria.
+const SESSION_ACTIONS = ['session:rename', 'session:criteria', 'session:pin', 'session:archive'];
 
 function latestRun(runs: readonly RunSummary[], sessionId: string) {
   let latest: RunSummary | undefined;
@@ -122,8 +122,8 @@ export function SessionMenu({
 }
 
 /**
- * The run segment of the run history: the session's runs, newest first. Each is named by its
- * number in the session and its request summary (`names`), as the run page names it.
+ * The run segment of the run history: the chosen run's number, and a menu of the session's runs,
+ * newest first, each named by its number and request summary (`names`).
  */
 export function RunMenu({
   runs,
@@ -149,9 +149,8 @@ export function RunMenu({
       : tw('runNumber', { number: number(id) });
   };
   const chosen = runs.find((run) => run.runId === runId);
-  // Once the bar is too narrow for the whole path, the run is its number; its request stays
-  // in the menu. The session name before it keeps its length.
-  const short = useTopbarLayout().path !== 'full';
+  // The run is its number: the run header below the bar names its request, and the menu lists
+  // each run's request beside its number.
   return (
     <Menu>
       <MenuTrigger
@@ -166,7 +165,7 @@ export function RunMenu({
       >
         {chosen ? <StatusDot status={chosen.status} label={label(chosen)} /> : null}
         <span data-crumb-label="" className="truncate">
-          {short ? tw('runNumber', { number: number(runId) }) : runName(runId)}
+          {tw('runNumber', { number: number(runId) })}
         </span>
         <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
       </MenuTrigger>

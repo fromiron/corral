@@ -29,7 +29,7 @@ test('the palette closes with Escape, and an IME composition Enter does not run 
   page,
 }) => {
   await page.goto('/');
-  const opener = page.getByRole('button', { name: 'Start chat', exact: true });
+  const opener = page.getByRole('button', { name: 'New conversation', exact: true });
   await opener.focus();
   // `/` opens the current project; the page must stay exactly where it is.
   const before = page.url();

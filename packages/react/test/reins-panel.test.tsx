@@ -68,6 +68,31 @@ describe('ReinsPanel', () => {
     expect(screen.getByText('Agent execution 2')).toBeInTheDocument();
     expect(screen.getByText('this execution only')).toBeInTheDocument();
   });
+  it('compact entry puts delivery and scope as chips on the heading row and states nothing twice', () => {
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel
+          session={fakeSession()}
+          target={{ executionId: 'exec_writer', nodeLabel: 'Writer', finished: false }}
+          compact
+        />
+      </IntlProvider>,
+    );
+    const heading = screen.getByRole('heading', { name: 'Give instruction · Writer' });
+    const row = heading.parentElement as HTMLElement;
+    const chips = [...row.querySelectorAll('[data-reins-chip]')];
+    expect(chips.map((chip) => chip.textContent)).toEqual([
+      'Delivery: next model request',
+      'Scope: this execution only',
+    ]);
+    // The chip names stay for screen readers; the value is what shows.
+    for (const chip of chips) expect(chip.querySelector('.sr-only')).not.toBeNull();
+    // The field keeps its name under the heading, without a visible label or a key hint.
+    const box = screen.getByLabelText('Instruction');
+    expect(document.querySelector(`label[for="${box.id}"]`)).toHaveClass('sr-only');
+    expect(box).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByText(/Enter sends/)).not.toBeInTheDocument();
+  });
   it('a missing compact instruction target never exposes run-wide settings as a substitute', () => {
     const session = fakeSession();
     session.setState({

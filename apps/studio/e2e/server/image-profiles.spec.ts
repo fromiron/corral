@@ -1,3 +1,4 @@
+import { modelSettingsTab, newTeam, openLibraryTeams, openProject } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, reasoningApi: true });
@@ -7,6 +8,8 @@ test('image profile CRUD and role configuration persist through the normal setti
   corral,
 }) => {
   await corral.open('/settings/models');
+  // Image profiles are the Images tab of the models settings; a reload opens on Sign-in.
+  await modelSettingsTab(page, 'Images');
   const section = page.getByRole('region', { name: 'Image generation', exact: true });
   await section.getByRole('button', { name: 'Add image profile' }).click();
   await section.getByLabel('Image profile ID', { exact: true }).fill('illustration');
@@ -24,6 +27,7 @@ test('image profile CRUD and role configuration persist through the normal setti
   await section.getByRole('button', { name: 'Save image profile' }).click();
   await expect(section.getByRole('status')).toHaveText('Image profile saved.');
   await page.reload();
+  await modelSettingsTab(page, 'Images');
   await expect(section.getByText('illustration', { exact: true })).toBeVisible();
   await section.screenshot({ path: test.info().outputPath('image-profiles.png') });
   const stored = await page.evaluate(async () => (await fetch('/api/v1/image-profiles')).json());
@@ -37,15 +41,15 @@ test('image profile CRUD and role configuration persist through the normal setti
   expect(JSON.stringify(stored)).not.toMatch(/apiKey|accessToken|refreshToken/);
 
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team', exact: true }).click();
+  await openProject(page, 'My project');
+  await openLibraryTeams(page);
+  await newTeam(page);
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Generate images/ }).check();
   await page.getByRole('textbox', { name: /^Image profile ID/ }).fill('illustration');
   await page.screenshot({ path: test.info().outputPath('image-role.png') });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Saved. New revision.' })).toBeVisible();
   await page.reload();
   const path = new URL(page.url()).pathname
     .replace('/edit', '')
@@ -59,6 +63,7 @@ test('image profile CRUD and role configuration persist through the normal setti
   await page.goto('about:blank');
   await corral.restart();
   await corral.open('/settings/models');
+  await modelSettingsTab(page, 'Images');
   await expect(section.getByText('illustration', { exact: true })).toBeVisible();
   await section.getByRole('button', { name: 'Delete', exact: true }).click();
   await section.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -67,6 +72,7 @@ test('image profile CRUD and role configuration persist through the normal setti
   await section.getByRole('button', { name: 'Confirm delete', exact: true }).click();
   await expect(section.getByText('No image profiles configured.')).toBeVisible();
   await page.reload();
+  await modelSettingsTab(page, 'Images');
   await expect(section.getByText('No image profiles configured.')).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

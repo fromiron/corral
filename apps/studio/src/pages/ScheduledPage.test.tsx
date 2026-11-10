@@ -250,7 +250,7 @@ it('a refresh tick reads only the shown schedule’s history; opening, focus and
   }
 });
 
-it('saves a new schedule disabled and says it will not run until enabled', async () => {
+it('saves a new schedule disabled, which its row and its switch then show', async () => {
   fixture.api.create.mockImplementation(async (draft: ScheduleDraft) =>
     schedule({ ...draft, id: 'schedule_new', revision: 1 }),
   );
@@ -267,9 +267,27 @@ it('saves a new schedule disabled and says it will not run until enabled', async
     enabled: false,
     sessionId: 'session_1',
   });
-  expect(container.querySelector('[role="status"]')?.textContent).toBe(
-    'Saved as disabled. This schedule will not run until you enable it.',
-  );
+  // No note says it again: the row's state and the switch are the result.
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(container.textContent).not.toContain('Saved as disabled');
+  expect(toggle('Enable scheduled runs').getAttribute('aria-checked')).toBe('false');
+});
+
+it('the chosen schedule’s detail keeps only what its row lacks', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule({ timezone: 'Asia/Seoul' })] });
+  await page();
+  await click(button(/Daily project review/));
+  await settle();
+  const detail = container.querySelector<HTMLElement>('section[aria-labelledby]');
+  const terms = [...(detail?.querySelectorAll('dt') ?? [])];
+  // Timing and next run are on the row; at a narrow width, where the row drops them, the detail
+  // shows them instead.
+  const wide = terms.filter((term) => !term.parentElement?.className.includes('md:hidden'));
+  expect(wide.map((term) => term.textContent)).toEqual(['Time zone', 'Target', 'Execution']);
+  expect(detail?.textContent).toContain('Asia/Seoul');
+  // The switch is the one control and the one mark for enabled.
+  expect(detail?.querySelectorAll('[role="switch"]')).toHaveLength(1);
+  expect(detail?.querySelector('[role="status"]')).toBeNull();
 });
 
 it('keeps a run status unknown when the run cannot be read, never completed', async () => {
@@ -449,7 +467,8 @@ it('in the browser demo, the empty state gives the reason and there is no disabl
   const empty = container.querySelector<HTMLElement>('.border-dashed');
   expect(empty?.querySelector('b')?.textContent).toBe(messages.Schedules.localOnly);
   expect(container.textContent).not.toContain('No schedules');
-  expect(empty?.querySelector('p')?.textContent).toBe(messages.Schedules.localOnlyText);
+  // The title is the whole of it: no sentence explains the feature.
+  expect(empty?.querySelector('p')).toBeNull();
   expect(
     [...container.querySelectorAll('button')].some((item) => item.textContent === 'New schedule'),
   ).toBe(false);

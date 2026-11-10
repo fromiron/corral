@@ -15,6 +15,9 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { _electron, expect } from '@playwright/test';
 import {
+  closeSettings,
+  lastRunSucceeded,
+  openFolderSettings,
   panelTab,
   requestBox,
   startSession,
@@ -208,15 +211,15 @@ try {
     'NotAllowedError',
   );
   console.log('Native permission boundary: synthetic audio allowed after consent; camera denied.');
-  await page.getByRole('tab', { name: /^Project folder/ }).click();
-  const folder = page.getByRole('tabpanel', { name: 'Project folder' });
+  // Folder linking and trust are in the settings dialog's Folders & tools.
+  const folder = await openFolderSettings(page);
   await application.evaluate(({ dialog }, selected) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
   }, original);
   await folder.getByRole('button', { name: 'Choose folder…', exact: true }).click();
   await expect(folder.getByText(original, { exact: true })).toBeVisible();
   await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
-  const trust = folder.getByRole('checkbox', { name: /Trust this repository/ });
+  const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   const trustResponse = page.waitForResponse(
     (response) =>
       response.request().method() === 'PATCH' &&
@@ -231,6 +234,7 @@ try {
   ]);
   assert.equal(trustedResponse.status(), 200);
   await expect(trust).toBeChecked({ timeout: 30000 });
+  await closeSettings(page);
   await teamFromTemplate(page);
   await startSession(page, 'Native package validation');
   await panelTab(page, 'Files');
@@ -247,9 +251,7 @@ try {
   console.log('Native folder picker, trust and real Git working copy are ready.');
   await requestBox(page).fill('Write a brief native package validation note.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible({
-    timeout: 30000,
-  });
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 30000 });
   await page.getByRole('tab', { name: 'Files', exact: true }).click();
   await page.getByRole('button', { name: 'Open index.html', exact: true }).click();
   await page.getByRole('button', { name: 'Open preview', exact: true }).click();
@@ -419,7 +421,7 @@ try {
   const restored = await application.firstWindow();
   await restored.waitForURL((url) => url.pathname === route, { timeout: 60000 });
   await expect(requestBox(restored)).toHaveValue('Draft preserved across a packaged restart');
-  await expect(restored.getByTestId('chat-timeline').getByText('Succeeded')).toBeVisible();
+  await expect(lastRunSucceeded(restored)).toBeVisible();
   await restored.keyboard.press('Control+Shift+k');
   await expect(restored.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   await closePalette(restored);

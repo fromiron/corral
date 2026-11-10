@@ -177,7 +177,7 @@ export function VaultSettingsPage() {
   const canAct = Boolean(vault && password.length >= 12 && !busy);
   const pending = status && !['idle', 'committed', 'rolled_back'].includes(status.status);
   return (
-    <SettingsLayout active="vault" {...(vault ? { description: t('intro') } : {})}>
+    <SettingsLayout active="vault">
       <main className="settings-content">
         {!vault ? (
           <p className="text-body text-muted-foreground">{t('serverOnly')}</p>
@@ -218,6 +218,8 @@ export function VaultSettingsPage() {
                   />
                 ))}
               </div>
+              {/* What never leaves this computer, beside the choice of what does. */}
+              <p className="text-caption text-muted-foreground">{t('excluded')}</p>
               <div className="flex flex-wrap gap-2">
                 <Select
                   label={t('project')}

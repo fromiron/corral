@@ -121,14 +121,6 @@ it.each(Object.entries(LABELS))(
   },
 );
 
-it('says how General saves in the frame’s one line', async () => {
-  fixture.services = browserDemo;
-  const container = await render(<SettingsContent section="general" />);
-  const line = container.querySelector('[data-testid="settings-save-mode"]');
-  expect(line?.textContent).toBe(messages.Desktop.savesAutomatically);
-  expect(line?.closest('[data-settings-header]')).toBeTruthy();
-});
-
 const emptyHarness = {
   entries: vi.fn(async () => []),
   packages: vi.fn(async () => []),
@@ -144,6 +136,24 @@ const emptyHarness = {
   mcpUsages: vi.fn(async () => []),
   profileManagement: vi.fn(async () => []),
 };
+
+// A heading names its section; no line under it introduces or explains the section
+// (docs/specs/workbench.md: 제목 아래 소개 문장을 두지 않는다).
+it.each([
+  ['general', browserDemo],
+  ['shortcuts', browserDemo],
+  ['defaults', browserDemo],
+  ['project-defaults', browserDemo],
+  ['skills', { ...browserDemo, mode: 'server', harnesses: emptyHarness }],
+  ['hooks', { ...browserDemo, mode: 'server', harnesses: emptyHarness }],
+  ['mcp', { ...browserDemo, mode: 'server', harnesses: emptyHarness }],
+] as const)('puts no intro line under the %s heading', async (section, services) => {
+  fixture.services = services;
+  const container = await render(<SettingsContent section={section} />);
+  const header = container.querySelector('[data-settings-header]');
+  expect(header?.querySelector('h2')).toBeTruthy();
+  expect(header?.querySelector('p')).toBeNull();
+});
 
 it.each([
   ['skills', messages.Resources.emptySkills],

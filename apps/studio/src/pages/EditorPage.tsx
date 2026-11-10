@@ -1,4 +1,4 @@
-import type { HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
+import type { HarnessBindingRef, HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
 import {
   ApprovalPanel,
@@ -119,7 +119,11 @@ export function TeamDesign({ corralId }: { corralId: string }) {
       record={record}
       workingCopy={copy}
       inSession
-      toolbar={<span className="text-caption text-muted-foreground">{te('appliesNextRun')}</span>}
+      toolbar={
+        <KitBadge size="compact" color="gray">
+          {te('appliesNextRun')}
+        </KitBadge>
+      }
     />
   );
 }
@@ -232,6 +236,7 @@ function Editor({
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const teams = useSavedTeams(record, draft.definition);
+  const resolvesHarness = useHarnessResolver();
   const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
   const [statsOn, setStatsOn] = useState(false);
   const revision = saved.record.definitionRevision;
@@ -331,22 +336,27 @@ function Editor({
               ← {t('backToSession')}
             </Button>
           ) : null}
-          <h1
-            className="min-w-0 truncate text-body text-foreground"
-            style={{ fontVariationSettings: fontWeights.semibold }}
-          >
-            {draft.definition.name}
-          </h1>
+          {/* The path bar names the team on screen (and the outline's team row); the heading
+              stays for the document outline. */}
+          <h1 className="sr-only">{draft.definition.name}</h1>
           <span className="text-caption text-muted-foreground" data-testid="revisions">
             {t('revisions', { definition: saved.record.definitionRevision })}
           </span>
           {fromSession ? (
-            <span className="text-caption text-muted-foreground">{t('appliesNextRun')}</span>
-          ) : null}
-          <span aria-live="polite">
-            <KitBadge size="compact" color={dirty ? 'amber' : 'gray'}>
-              {saving ? c('saving') : dirty ? c('unsaved') : c('saved')}
+            <KitBadge size="compact" color="gray">
+              {t('appliesNextRun')}
             </KitBadge>
+          ) : null}
+          {/* A disabled Save already says there is nothing to save; only unsaved work and a
+              save in progress show a badge. */}
+          <span aria-live="polite">
+            {saving || dirty ? (
+              <KitBadge size="compact" color="amber">
+                {saving ? c('saving') : c('unsaved')}
+              </KitBadge>
+            ) : (
+              <span className="sr-only">{c('saved')}</span>
+            )}
           </span>
           {message ? (
             <p
@@ -434,6 +444,7 @@ function Editor({
               profiles={profiles}
               teams={teams.references}
               resolveTeam={teams.resolve}
+              resolvesHarness={resolvesHarness}
               onOpenTeam={(corralId) =>
                 void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
               }
@@ -481,6 +492,43 @@ function Editor({
         </div>
       </div>
     </StudioStoresProvider>
+  );
+}
+
+/**
+ * Whether a work style a copied role names is one this installation keeps. Saved revisions stay,
+ * so any revision up to a profile's latest resolves. The browser demo has no work styles.
+ */
+function useHarnessResolver(): ((ref: HarnessBindingRef) => boolean) | undefined {
+  const { harnesses } = useServices();
+  const [latest, setLatest] = useState<ReadonlyMap<string, number> | null>(null);
+  useEffect(() => {
+    if (!harnesses) return;
+    let live = true;
+    // As the role's work style setting does: read again when work styles may have changed.
+    const refresh = () =>
+      void harnesses.profileManagement().then(
+        (profiles) =>
+          live &&
+          setLatest(new Map(profiles.map((profile) => [profile.profileId, profile.revision]))),
+        // A failed read keeps what was read before; with nothing read, nothing resolves.
+        () => {},
+      );
+    refresh();
+    window.addEventListener('focus', refresh);
+    window.addEventListener('corral:harness-changed', refresh);
+    return () => {
+      live = false;
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('corral:harness-changed', refresh);
+    };
+  }, [harnesses]);
+  return useMemo(
+    () =>
+      latest
+        ? (ref: HarnessBindingRef) => (latest.get(ref.profileId) ?? 0) >= ref.revision
+        : undefined,
+    [latest],
   );
 }
 
@@ -546,7 +594,6 @@ function RunSide({
         >
           {n('prepareExecution')}
         </summary>
-        <p className="my-2 text-caption text-muted-foreground">{n('runOverridesHint')}</p>
         <RunRoleOverrides
           roles={roles}
           profiles={profiles}

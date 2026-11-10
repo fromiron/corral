@@ -1,6 +1,12 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { lastRunSucceeded, requestBox, selectSessionTeam } from '../workbench.ts';
+import {
+  lastRunSucceeded,
+  newConversationFromSidebar,
+  openLibraryTeams,
+  requestBox,
+  selectSessionTeam,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Workbench UX review: pinpoint checks of the fixes
@@ -8,14 +14,14 @@ import { expect, type Harness, test } from './harness.ts';
 
 async function session(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.locator('input[type=file]').setInputFiles({
     name: 'review.corral.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(linearCorral(['writer']))),
   });
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('link', { name: 'New session', exact: true }).click();
+  await newConversationFromSidebar(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   // these checks run the imported team; the session conversation starts it.
   await selectSessionTeam(page, linearCorral(['writer']).name);
@@ -73,6 +79,10 @@ test('a referenced result keeps its exact version through a reload', async ({
     ? corral.server.coordinator.getSnapshot(first.runId).projection.output?.artifactVersionIds[0]
     : undefined;
   expect(version).toBeTruthy();
+  // Read the body now: once a later run in the session succeeds, the earlier final body is
+  // released (api-contract.md 산출물 본문 수명).
+  const text = corral.server.coordinator.getArtifactText(first?.runId as string, version as string);
+  expect(text).toBeTruthy();
 
   await requestBox(page).fill('Compare with @');
   const references = page.getByRole('listbox', { name: 'References' });
@@ -89,10 +99,8 @@ test('a referenced result keeps its exact version through a reload', async ({
   await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
   const second = corral.server.coordinator.listRuns().find((r) => r.runId !== first?.runId);
   // The reference reached the run as that exact version: its text is in the new brief.
-  const text = corral.server.coordinator.getArtifactText(first?.runId as string, version as string);
   const brief = corral.server.coordinator.getRunSnapshot(second?.runId as string)?.definition.input
     .brief;
-  expect(text).toBeTruthy();
   expect(brief).toContain('References');
   expect(brief).toContain(text as string);
   expect(corral.errors).toEqual([]);
@@ -108,7 +116,13 @@ test.describe('live models', () => {
     await requestBox(page).fill('Use the live model');
     // with live models possible, a session runs live; it offers no simulated way out.
     await expect(page.getByRole('combobox', { name: 'Run mode' })).toHaveCount(0);
-    await expect(page.getByTestId('models-not-ready')).toContainText('model-a');
+    const notReady = page.getByTestId('models-not-ready');
+    await expect(notReady).toContainText('model-a is not connected');
+    // The Connect button says where to go; no sentence repeats it.
+    await expect(notReady).not.toContainText('Settings');
+    await expect(
+      notReady.getByRole('link', { name: 'Connect a model', exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(page.getByTestId('app-sidebar')).toContainText('Connect a model');
     await expect(page.getByRole('button', { name: 'Use simulated agents' })).toHaveCount(0);

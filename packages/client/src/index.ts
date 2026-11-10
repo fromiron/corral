@@ -59,7 +59,6 @@ import type {
   LanguageStart,
   LanguageState,
   MeetingAdoptDecisionRequest,
-  MeetingConfig,
   MeetingDecisionVersion,
   MeetingDecisionWithdrawal,
   MeetingHandoffReceipt,
@@ -255,6 +254,7 @@ import type {
   CorralRepository,
   CorralSummary,
   MeetingResult,
+  NewSession,
   NewSessionEntry,
   ProjectChange,
   ProjectResult,
@@ -1274,14 +1274,7 @@ export class RestCorralRepository implements CorralRepository {
     return (await response.json()) as WorkSession;
   }
 
-  createSession(input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    meeting?: MeetingConfig;
-  }): Promise<SessionResult> {
+  createSession(input: NewSession): Promise<SessionResult> {
     return this.projectWrite('/sessions', 'POST', input) as Promise<SessionResult>;
   }
 
@@ -3010,6 +3003,10 @@ export class WorkspacesApi {
   inbox(projectId: string): Promise<InboxItemView[]> {
     return this.send(`/projects/${encodeURIComponent(projectId)}/inbox`);
   }
+  /** Each unarchived session's latest recorded check, decision and applying; read only. */
+  sessionEvidence(projectId: string): Promise<SessionEvidenceView[]> {
+    return this.send(`/projects/${encodeURIComponent(projectId)}/session-evidence`);
+  }
 }
 
 export interface ReviewCommentView {
@@ -3069,4 +3066,23 @@ export interface InboxItemView {
   detail: string | null;
   /** Present only for an uncertain terminal's read-only recovery link. */
   terminalId?: string;
+}
+
+/** A session's latest recorded check, decision and applying, without text, paths or output. */
+export interface SessionEvidenceView {
+  sessionId: string;
+  /** Present only when the latest check completed. */
+  check: {
+    /** The configured check's name, as recorded when it ran. */
+    name: string;
+    verdict: 'pass' | 'fail' | 'inconclusive' | 'not_evaluated';
+    /** An applied file write was recorded after the check started. */
+    writesSince: boolean;
+  } | null;
+  decision: {
+    decision: 'approved' | 'changes_requested';
+    /** An applied file write was recorded after the decision. */
+    writesSince: boolean;
+  } | null;
+  integration: IntegrationResultView['state'] | null;
 }

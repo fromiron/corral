@@ -26,7 +26,6 @@ export function DockTopBar({
   sessionView,
   fileWork,
   compact,
-  active,
   panels,
   controls,
   changeCount = 0,
@@ -39,7 +38,7 @@ export function DockTopBar({
   fileWork: boolean;
   /** A narrow host shows one pane at a time. */
   compact: boolean;
-  /** The active pane's id. */
+  /** The active pane's id. Its own tab names it, so the narrow switcher does not show it. */
   active: string;
   panels: { id: string; title: string }[];
   controls?: ReactNode;
@@ -125,11 +124,13 @@ export function DockTopBar({
       </TopbarViews>
       {compact && sessionView === 'files' ? (
         <div className="corral-dock-toolbar" data-testid="dock-toolbar">
-          <Select
+          {/* The pane's own tab names the one in front; the switcher reads Panes, not that name
+              again, and still reaches every pane. */}
+          <Select<string>
             label={t('panes')}
             placeholder={t('panes')}
             size="sm"
-            value={active}
+            value={null}
             onValueChange={(id) => onSelectPane(id)}
             options={[
               ...paneOptions,

@@ -72,7 +72,7 @@ function projection(): RunProjection {
   };
 }
 
-function renderTree(selectedExecutionId: string | null = null) {
+function renderTree(selectedExecutionId: string | null = null, titled = true) {
   const onSteer = vi.fn();
   const session = sessionStore({
     runId: 'run_tree',
@@ -85,6 +85,7 @@ function renderTree(selectedExecutionId: string | null = null) {
         session={session}
         onSteer={onSteer}
         selectedExecutionId={selectedExecutionId}
+        titled={titled}
       />
     </IntlProvider>,
   );
@@ -161,6 +162,24 @@ describe('execution card tree', () => {
             inputArtifactVersionIds: [],
             bodyAvailable: false,
           },
+          notes_v1: {
+            artifactVersionId: 'notes_v1',
+            artifactId: 'notes',
+            version: 1,
+            parentVersionId: null,
+            name: 'notes',
+            contract: 'text',
+            contentHash: 'hash',
+            byteLength: 5,
+            authorExecutionId: 'exec_other',
+            modelCallId: null,
+            contextSnapshotId: null,
+            submitted: true,
+            configRevision: 0,
+            criteriaVersionId: null,
+            inputArtifactVersionIds: [],
+            bodyAvailable: false,
+          },
         },
         artifactReads: { exec_lead: ['draft_v1'] },
         questions: {
@@ -188,11 +207,17 @@ describe('execution card tree', () => {
       [...screen.getByTestId(`execution-${id}`).querySelectorAll('[data-handoff]')].map(
         (item) => item.textContent,
       );
+    const made = (id: string) =>
+      screen.getByTestId(`execution-${id}`).querySelector('p[title]')?.getAttribute('title') ??
+      null;
     const retry = screen.getByTestId('execution-exec_retry');
-    expect(retry.textContent).toContain('draft v1');
     expect(retry.textContent).not.toMatch(/model request/);
     expect(sent('exec_retry')).toEqual(['draft v1 → research']);
+    // A version its chip already names is not repeated above it; an attempt number stays.
+    expect(made('exec_retry')).toBe('Attempt 2');
     expect(sent('exec_other')).toEqual(['Question → research · Answered']);
+    // A version nobody has read yet has no chip and keeps its own line.
+    expect(made('exec_other')).toBe('notes v1');
     // The receiver does not repeat what it was sent.
     expect(sent('exec_lead')).toEqual([]);
     expect(screen.queryByText(/Private/)).toBeNull();
@@ -205,6 +230,15 @@ describe('execution card tree', () => {
     await vi.waitFor(() => expect(within(list).getByText('Tool timed out')).toBeVisible());
     expect(within(list).queryByRole('button')).toBeNull();
     expect(screen.getByRole('button', { name: /1 needs you/ })).toBeInTheDocument();
+  });
+
+  it('inside a tab named for it, drops its title and keeps the count and the tree name', () => {
+    renderTree(null, false);
+    const header = document.querySelector('header');
+    // The bar's spark mark and title are its first two parts; the counts follow and stay.
+    expect(header?.parentElement?.className).toContain('[&>header>span:nth-child(-n+2)]:hidden');
+    expect(header?.textContent).toContain('4 executions');
+    expect(screen.getByRole('tree', { name: 'Executions' })).toBeInTheDocument();
   });
 
   it('shows no estimated cost in the tree', () => {

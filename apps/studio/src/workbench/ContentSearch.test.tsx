@@ -44,7 +44,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.unstubAllGlobals();
 });
-async function mount(editing = false) {
+async function mount(editing = false, dirty = false) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const api = {
     searchContents: vi.fn(
@@ -102,13 +102,14 @@ async function mount(editing = false) {
     target,
     path: match.path,
     baseHash: match.sha256,
-    dirty: false,
+    dirty,
     pendingSave: null,
     text: 'saved',
   };
   const owner = {
     open: vi.fn(async () => 'document'),
     getState: () => ({ documents: { document: entry } }),
+    subscribe: () => () => {},
   } as unknown as DocumentStore;
   const open = vi.fn(() => true);
   const element = document.createElement('div');
@@ -153,11 +154,17 @@ async function mount(editing = false) {
     });
   return { api, entry, owner, open, element, render, query, search, clickResult, edits };
 }
+it('says unsaved drafts are left out only while this copy has one', async () => {
+  const f = await mount(false, true);
+  expect(f.element.textContent).toContain(messages.ContentSearch.diskOnly);
+});
+
 it('searches saved content and opens the existing document with the exact range', async () => {
   const f = await mount();
   await f.query('greet');
   await f.search();
-  expect(f.element.textContent).toContain(messages.ContentSearch.diskOnly);
+  // Saved files are all there is to search: nothing to say about drafts.
+  expect(f.element.textContent).not.toContain(messages.ContentSearch.diskOnly);
   expect(f.element.textContent).toContain('1 matches in 2 files');
   f.entry.baseHash = 'c'.repeat(64);
   f.owner.refresh = vi.fn(async () => {

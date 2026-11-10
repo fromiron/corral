@@ -77,7 +77,6 @@ export function ScheduledPage() {
   const [histories, setHistories] = useState<Record<string, ScheduledOccurrence[]>>({});
   /** Null until read, and after a failed read: a run's status is then unknown. */
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
-  const [savedEnabled, setSavedEnabled] = useState<boolean | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   /** The editor: a new schedule (`base` null) or a change to `base`. */
   const [editing, setEditing] = useState<{ base: Schedule | null; draft: ScheduleDraft } | null>(
@@ -226,7 +225,6 @@ export function ScheduledPage() {
     }
   };
   const select = (schedule: Schedule) => {
-    setSavedEnabled(null);
     setError(null);
     setEditing(null);
     setSelected(schedule);
@@ -235,7 +233,6 @@ export function ScheduledPage() {
     const session = sessions[0];
     if (!session) return;
     setSelected(null);
-    setSavedEnabled(null);
     setEditing({
       base: null,
       draft: {
@@ -263,7 +260,6 @@ export function ScheduledPage() {
         ? await schedulesApi.update(base, draft)
         : await schedulesApi.create(draft);
       select(saved);
-      setSavedEnabled(saved.enabled);
     });
   };
   /** Stops or resumes future firings only; a run already started keeps going. */
@@ -271,7 +267,6 @@ export function ScheduledPage() {
     void perform(async () => {
       const saved = await schedulesApi.update(schedule, { ...scheduleDraft(schedule), enabled });
       setSelected(saved);
-      setSavedEnabled(saved.enabled);
     });
   const runNow = (schedule: Schedule) => {
     // A retry after a lost response reuses its command ID, so it never starts a second run.
@@ -295,7 +290,6 @@ export function ScheduledPage() {
     void perform(async () => {
       await schedulesApi.remove(schedule);
       setSelected(null);
-      setSavedEnabled(null);
     });
   const summary = (rule: ScheduleRule) =>
     rule.kind === 'once'
@@ -325,12 +319,13 @@ export function ScheduledPage() {
     return latest.runId ? runStatus(latest) : t(`occurrence.${latest.status}`);
   };
   // Without the local server the empty state's title is the reason, as in Library resources.
+  // Its one line is what New schedule waits for, while there is no session to run in.
   const empty =
     mode !== 'server'
-      ? { title: t('localOnly'), text: t('localOnlyText') }
+      ? { title: t('localOnly'), text: undefined }
       : {
           title: t('emptyTitle'),
-          text: loaded && !sessions.length ? t('needsSession') : t('emptyText'),
+          text: loaded && !sessions.length ? t('needsSession') : undefined,
         };
   /** The session's current name when it can be read, else the one listed when the page opened. */
   const targetSession = (sessionId: string) =>
@@ -442,13 +437,9 @@ export function ScheduledPage() {
             )}
             session={targetSession(shown.sessionId)}
             busy={busy}
-            savedEnabled={savedEnabled}
             onRun={() => runNow(shown)}
             onEnabled={(enabled) => setEnabled(shown, enabled)}
-            onEdit={() => {
-              setSavedEnabled(null);
-              setEditing({ base: shown, draft: scheduleDraft(shown) });
-            }}
+            onEdit={() => setEditing({ base: shown, draft: scheduleDraft(shown) })}
             onDelete={() => remove(shown)}
           />
         ) : null}
@@ -537,7 +528,6 @@ function ScheduleDetail({
   projectLabel,
   session,
   busy,
-  savedEnabled,
   onRun,
   onEnabled,
   onEdit,
@@ -550,7 +540,6 @@ function ScheduleDetail({
   /** Undefined until read; null when the session no longer exists. */
   session: WorkSession | null | undefined;
   busy: boolean;
-  savedEnabled: boolean | null;
   onRun(): void;
   onEnabled(enabled: boolean): void;
   onEdit(): void;
@@ -581,14 +570,22 @@ function ScheduleDetail({
           </Button>
         </div>
       </div>
+      {/* What the row lacks. Its timing and next run show here only where the row drops them. */}
       <dl className="m-0 grid gap-x-6 gap-y-3 sm:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1 md:hidden">
           <dt className={term}>{t('schedule')}</dt>
-          <dd className="m-0 text-body">
-            {summary}
-            {schedule.rule.kind === 'once' ? '' : ` · ${schedule.timezone}`}
-          </dd>
+          <dd className="m-0 text-body">{summary}</dd>
         </div>
+        <div className="flex min-w-0 flex-col gap-1 md:hidden">
+          <dt className={term}>{t('nextRun')}</dt>
+          <dd className="m-0 text-body tabular-nums">{nextRun}</dd>
+        </div>
+        {schedule.rule.kind === 'once' ? null : (
+          <div className="flex min-w-0 flex-col gap-1">
+            <dt className={term}>{t('timeZone')}</dt>
+            <dd className="m-0 text-body">{schedule.timezone}</dd>
+          </div>
+        )}
         <div className="flex min-w-0 flex-col gap-1">
           <dt className={term}>{t('target')}</dt>
           <dd className="m-0 flex min-w-0 flex-wrap items-center gap-1 text-body">
@@ -612,27 +609,19 @@ function ScheduleDetail({
           </dd>
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <dt className={term}>{t('nextRun')}</dt>
-          <dd className="m-0 text-body tabular-nums">{nextRun}</dd>
-        </div>
-        <div className="flex min-w-0 flex-col gap-1">
           <dt className={term}>{t('execution')}</dt>
           <dd className="m-0 text-body">
             {schedule.request.mode === 'live' ? t('connectedModel') : t('simulation')}
           </dd>
         </div>
       </dl>
+      {/* The one control for enabled; with the row's state it is also the result of a save. */}
       <Switch
         label={t('enable')}
         checked={schedule.enabled}
         disabled={busy}
         onToggle={() => onEnabled(!schedule.enabled)}
       />
-      {savedEnabled !== null ? (
-        <p role="status" className="m-0 text-body">
-          {t(savedEnabled ? 'savedEnabled' : 'savedDisabled')}
-        </p>
-      ) : null}
     </section>
   );
 }

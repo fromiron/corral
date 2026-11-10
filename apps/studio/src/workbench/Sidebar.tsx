@@ -1,6 +1,6 @@
 import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { SidebarStatusCard, StatusDot } from '@corral/react';
+import { StatusDot } from '@corral/react';
 import {
   Button,
   cn,
@@ -8,7 +8,6 @@ import {
   Sidebar as KitSidebar,
   Menu,
   MenuGroup,
-  MenuGroupLabel,
   MenuItem,
   MenuPopup,
   MenuTrigger,
@@ -448,9 +447,10 @@ export const Sidebar = memo(function Sidebar({
     }
   };
 
-  // One reading of whether requests reach a real model: the header names it, and the footer
-  // card explains it while they cannot.
+  // One reading of whether requests reach a real model, said once: the header's word. Its full
+  // form is only the Corral menu's accessible name.
   const blocked = mode === 'server' && live;
+  const noModel = blocked && !connected;
   const connection =
     mode !== 'server'
       ? studio('demoShort')
@@ -459,7 +459,6 @@ export const Sidebar = memo(function Sidebar({
         : connected
           ? shell('connected')
           : shell('noModel');
-  // One word for the header, shown only while the whole word fits.
   const connectionWord =
     mode !== 'server'
       ? shell('stateDemo')
@@ -469,32 +468,23 @@ export const Sidebar = memo(function Sidebar({
           ? shell('connected')
           : shell('stateNoModel');
   const connectionDot = blocked ? (connected ? 'bg-success' : 'bg-warning') : 'bg-muted-foreground';
-  const statusCard =
-    blocked && connected ? null : (
-      <SidebarStatusCard
-        data-testid="sidebar-status"
-        marker={
-          blocked ? (
-            <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-warning" />
-          ) : null
-        }
-        title={connection}
-        action={
-          live && !connected ? (
-            <Button
-              variant="ghost"
-              size="compact"
-              className="justify-start px-0"
-              onClick={() => void navigate(settingsNavigation.link('models'))}
-            >
-              {studio('liveNoModel')}
-            </Button>
-          ) : null
-        }
-      >
-        {blocked ? shell('noModelBody') : shell('simulatedBody')}
-      </SidebarStatusCard>
-    );
+  // The word always shows whole: the name before it is what gives way in a narrow sidebar.
+  const word = 'shrink-0 whitespace-nowrap text-muted-foreground';
+  const newShortcut = shortcutLabel('session.new');
+  const newConversation = (
+    <SidebarMenuButton
+      icon={SquarePen}
+      render={
+        <Link
+          to="/projects/$projectId"
+          params={{ projectId: model.current }}
+          search={{ newSession: true }}
+        />
+      }
+    >
+      {shell('newConversation')}
+    </SidebarMenuButton>
+  );
 
   return (
     <KitSidebar
@@ -509,62 +499,65 @@ export const Sidebar = memo(function Sidebar({
       <SidebarHeader>
         <div className="flex min-w-0 items-center gap-1">
           <div className="min-w-0 flex-1">
-            <Tooltip content={connection} side="right">
-              <div>
-                <SidebarWorkspaceHeader
-                  name={
-                    // The state word wraps out of the one-line row, whole, when there is no room
-                    // for it: the name is never cut mid-word. The dot on the tile always says it.
-                    <span className="flex h-5 flex-wrap gap-x-1.5 overflow-hidden">
-                      <span>Corral</span>
-                      <span
-                        data-testid="sidebar-connection"
-                        className="whitespace-nowrap text-muted-foreground"
-                        style={{ fontVariationSettings: fontWeights.normal }}
-                      >
-                        {connectionWord}
-                      </span>
+            <SidebarWorkspaceHeader
+              name={
+                <span className="flex min-w-0 gap-x-1.5">
+                  <span className="min-w-0 truncate">Corral</span>
+                  {noModel ? null : (
+                    <span
+                      data-testid="sidebar-connection"
+                      className={word}
+                      style={{ fontVariationSettings: fontWeights.normal }}
+                    >
+                      {connectionWord}
                     </span>
-                  }
-                  tile={
-                    <span className="relative flex">
-                      <WorkspaceTile>c</WorkspaceTile>
-                      <span
-                        className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar ${connectionDot}`}
-                      />
-                    </span>
-                  }
-                  labels={{
-                    menu: shell('workspace'),
-                    switchWorkspace: shell('workspaceMenuState', { state: connection }),
-                    toggleSidebar: tw('expandSidebar'),
-                  }}
-                  menu={
-                    <MenuGroup>
-                      {/* The full state leads the menu as a line, not a choice. */}
-                      <MenuGroupLabel className="flex items-center gap-2">
-                        <span
-                          aria-hidden="true"
-                          className={`size-2 shrink-0 rounded-full ${connectionDot}`}
-                        />
-                        {connection}
-                      </MenuGroupLabel>
-                      <MenuItem index={0} onClick={() => void navigate({ to: '/projects' })}>
-                        {shell('allProjects')}
-                      </MenuItem>
-                      {/* The projects page focuses its new-project form for this hash. */}
-                      <MenuItem
-                        index={1}
-                        onClick={() => void navigate({ to: '/projects', hash: 'new-project' })}
-                      >
-                        {shell('newProject')}
-                      </MenuItem>
-                    </MenuGroup>
-                  }
-                />
-              </div>
-            </Tooltip>
+                  )}
+                </span>
+              }
+              tile={
+                <span className="relative flex">
+                  <WorkspaceTile>c</WorkspaceTile>
+                  <span
+                    className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-sidebar ${connectionDot}`}
+                  />
+                </span>
+              }
+              labels={{
+                menu: shell('workspace'),
+                switchWorkspace: shell('workspaceMenuState', { state: connection }),
+                toggleSidebar: tw('expandSidebar'),
+              }}
+              menu={
+                <MenuGroup>
+                  <MenuItem index={0} onClick={() => void navigate({ to: '/projects' })}>
+                    {shell('allProjects')}
+                  </MenuItem>
+                  {/* The projects page focuses its new-project form for this hash. */}
+                  <MenuItem
+                    index={1}
+                    onClick={() => void navigate({ to: '/projects', hash: 'new-project' })}
+                  >
+                    {shell('newProject')}
+                  </MenuItem>
+                </MenuGroup>
+              }
+            />
           </div>
+          {noModel ? (
+            // Without a model the word is the way to connect one: beside the menu, not in it.
+            <Button
+              data-testid="sidebar-connection"
+              variant="ghost"
+              size="compact"
+              aria-label={shell('openModelSettings')}
+              className="shrink-0 px-1.5"
+              onClick={() => void navigate(settingsNavigation.link('models'))}
+            >
+              <span className={word} style={{ fontVariationSettings: fontWeights.normal }}>
+                {connectionWord}
+              </span>
+            </Button>
+          ) : null}
           <Tooltip content={tw('collapseSidebar')} shortcut={shortcutLabel('view.sidebar')}>
             <Button
               variant="ghost"
@@ -615,20 +608,14 @@ export const Sidebar = memo(function Sidebar({
           <SidebarGroup>
             <SidebarMenu>
               <SidebarMenuItem>
-                <Tooltip content={shell('newConversation')} shortcut={shortcutLabel('session.new')}>
-                  <SidebarMenuButton
-                    icon={SquarePen}
-                    render={
-                      <Link
-                        to="/projects/$projectId"
-                        params={{ projectId: model.current }}
-                        search={{ newSession: true }}
-                      />
-                    }
-                  >
-                    {shell('newConversation')}
-                  </SidebarMenuButton>
-                </Tooltip>
+                {newShortcut ? (
+                  // The row already says what it does; its tooltip adds only the shortcut.
+                  <Tooltip content={null} shortcut={newShortcut}>
+                    {newConversation}
+                  </Tooltip>
+                ) : (
+                  newConversation
+                )}
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -945,7 +932,6 @@ export const Sidebar = memo(function Sidebar({
         </p>
       ) : null}
       <SidebarFooter>
-        {statusCard}
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

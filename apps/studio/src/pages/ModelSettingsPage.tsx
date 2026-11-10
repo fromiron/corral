@@ -112,13 +112,7 @@ export function ModelSettingsPage() {
 
   return (
     <ModelSettingsRefresh value={refresh}>
-      <SettingsLayout
-        active="models"
-        // Where sign-in is kept is a fact the controls cannot show; it is said once, on Sign-in.
-        {...(mode === 'server' && models && live && MODEL_TABS[tab] === 'signIn'
-          ? { description: t('intro') }
-          : {})}
-      >
+      <SettingsLayout active="models">
         <main className="settings-content">
           {error ? (
             <p role="alert" className="text-danger">
@@ -133,11 +127,13 @@ export function ModelSettingsPage() {
             <p className="text-body text-muted-foreground">{t('noLive')}</p>
           ) : (
             <>
+              {/* Narrow, the strip scrolls; the kit's edge fade shows there is more beyond it. */}
               <TabsSubtle
                 idPrefix={idPrefix}
                 selectedIndex={tab}
                 onSelect={setTab}
                 aria-label={t('tabs.label')}
+                className="scroll-fade-x"
               >
                 {MODEL_TABS.map((id, index) => (
                   <TabsSubtleItem key={id} index={index} label={t(`tabs.${id}`)} />

@@ -2,7 +2,6 @@ import type { SessionSearchHit, SessionSearchResult, SessionSearchSource } from 
 import {
   Button,
   Dialog,
-  DialogDescription,
   DialogHeader,
   DialogPanel,
   DialogPopup,
@@ -201,10 +200,9 @@ export function SessionSearchDialog({
       <DialogPopup className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('privacy')}</DialogDescription>
         </DialogHeader>
+        {/* The switches say what is searched; the result line names the scope it covered. */}
         <DialogPanel className="space-y-3">
-          <p className="text-caption text-muted-foreground">{t('dialogScope')}</p>
           <Input
             aria-label={t('query')}
             value={query}

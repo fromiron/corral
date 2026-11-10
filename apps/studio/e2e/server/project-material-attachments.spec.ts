@@ -1,6 +1,6 @@
 import type { WorkSession } from '@corral/core';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { newConversation, openProject, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true });
@@ -13,7 +13,7 @@ async function prepare(page: Page, corral: Harness) {
   await page.getByRole('button', { name: 'Add entry', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Coding style · v1', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: /^Sessions/ }).click();
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(requestBox(page)).toBeVisible();
   await requestBox(page).fill('Review my code');
 }
@@ -56,7 +56,8 @@ test('explicit material selection survives reload and pins the submitted version
   await page.reload();
   await expect(requestBox(page)).toHaveValue('Review my code');
   // Editing the project record after selection must not silently replace the draft snapshot.
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
+  const sessionPath = new URL(page.url()).pathname;
+  await openProject(page);
   await page.getByRole('tab', { name: 'Instructions & memory' }).click();
   await page.getByRole('button', { name: 'Coding style · v1', exact: true }).click();
   await page
@@ -64,10 +65,9 @@ test('explicit material selection survives reload and pins the submitted version
     .fill('Use a different convention.');
   await page.getByRole('button', { name: 'Save new version', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Coding style · v2', exact: true })).toBeVisible();
-  await page
-    .getByRole('navigation', { name: 'Session tabs', exact: true })
-    .getByRole('link')
-    .click();
+  // Back to the session from the sidebar (the session tab strip is gone).
+  await page.getByTestId('app-sidebar').locator(`a[href="${sessionPath}?compose=true"]`).click();
+  await expect(requestBox(page)).toHaveValue('Review my code');
   corral.fake?.answerWith('The selected instructions were reviewed.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(async () => (await session(page)).entries[0]?.state).toBe('started');

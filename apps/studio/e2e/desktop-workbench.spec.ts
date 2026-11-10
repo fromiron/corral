@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import {
   lastRunSucceeded,
+  newConversation,
   panelTab,
   requestBox,
   startSession,
@@ -12,9 +13,8 @@ async function openSession(page: Page, blank = false) {
   await page.goto('/?delay=50');
   await teamFromTemplate(page);
   if (blank) {
-    await expect(page.getByRole('button', { name: 'Start chat', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
-    await expect(page).toHaveURL(/\/sessions\/session_/);
+    await expect(page.getByRole('button', { name: 'New conversation', exact: true })).toBeEnabled();
+    await newConversation(page);
     await expect(requestBox(page)).toHaveValue('');
     await expect(page.getByTestId('chat-timeline').getByRole('article')).toHaveCount(0);
   } else await startSession(page, 'Desktop workbench');

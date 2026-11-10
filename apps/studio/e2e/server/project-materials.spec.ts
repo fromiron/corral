@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { closeSettings, openFolderSettings, projectTab } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Project instructions and memory stay versioned records; request attachment is explicit.
@@ -38,14 +39,17 @@ test('clone and link through Projects; save versioned instructions', async ({ pa
   expect((await binding.json()).binding.trusted).toBe(false);
   expect(readFileSync(join(destination, 'README.md'), 'utf8')).toBe('# Project\n');
 
-  await page.getByRole('tab', { name: 'Project folder', exact: true }).click();
-  await page.getByRole('switch', { name: 'Trust this repository', exact: true }).click();
+  const folder = await openFolderSettings(page);
+  await folder.getByRole('switch', { name: 'Trust this repository', exact: true }).click();
   await expect(
-    page.getByRole('switch', { name: 'Trust this repository', exact: true }),
+    folder.getByRole('switch', { name: 'Trust this repository', exact: true }),
   ).toBeChecked();
   // Instructions and memory are project records, not folder files, so they have their own tab (#87).
-  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeHidden();
-  await page.getByRole('tab', { name: 'Instructions & memory', exact: true }).click();
+  // Folders & tools now also holds the tool forms, which have their own Name field.
+  await expect(folder.getByRole('textbox', { name: 'Contents', exact: true })).toHaveCount(0);
+  await expect(folder.getByRole('button', { name: 'Add entry', exact: true })).toHaveCount(0);
+  await closeSettings(page);
+  await projectTab(page, 'Instructions & memory');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Project guide');
   await page
     .getByRole('textbox', { name: 'Contents', exact: true })

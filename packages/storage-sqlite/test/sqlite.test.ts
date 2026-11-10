@@ -121,6 +121,41 @@ describe('SQLite database', () => {
     expect(named.ok && named.session.title).toBe('A title after restart');
   });
 
+  it('a database from before session criteria gains them, reading every old session as none', async () => {
+    const file = tempFile();
+    const step = MIGRATIONS.findIndex((migration) => migration.name === '0040_session_criteria');
+    expect(step).toBeGreaterThan(0);
+    const old = trackDatabase(new Database(file));
+    for (const migration of MIGRATIONS.slice(0, step)) {
+      old.exec(migration.sql);
+      migration.data?.(old);
+    }
+    old.pragma(`user_version = ${step}`);
+    old
+      .prepare(`INSERT INTO work_sessions
+      (id, project_id, corral_id, title, objective, pinned, revision, created_at, updated_at, archived_at, entries_json)
+      VALUES ('session_before', 'default', NULL, 'Before', 'Old purpose', 0, 3, 'x', 'x', NULL, '[]')`)
+      .run();
+    old.close();
+    const upgraded = openDatabase(file);
+    expect(upgraded.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);
+    const repo = repository(upgraded);
+    expect(await repo.getSession('session_before')).toMatchObject({
+      title: 'Before',
+      objective: 'Old purpose',
+      revision: 3,
+      criteria: [],
+    });
+    const saved = await repo.updateSession('session_before', {
+      criteria: ['Name the sources'],
+      expectedRevision: 3,
+    });
+    expect(saved.ok).toBe(true);
+    upgraded.close();
+    const reopened = repository(openDatabase(file));
+    expect((await reopened.getSession('session_before'))?.criteria).toEqual(['Name the sources']);
+  });
+
   it('migrates a new file to the latest schema with durable settings', () => {
     const db = openDatabase(tempFile());
     expect(db.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);

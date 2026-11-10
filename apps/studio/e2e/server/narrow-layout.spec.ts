@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import type { Locator, Page } from '@playwright/test';
+import { newConversation } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 async function reachable(target: Locator) {
@@ -72,7 +73,7 @@ for (const width of [390, 636, 967])
     corral,
   }, testInfo) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionUrl = page.url();
     await page.setViewportSize({ width, height: 757 });
@@ -139,7 +140,7 @@ test('review file choices and expanded original preview remain reachable at narr
   await showFiles();
   await readme.click();
   const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
-  await parts.getByRole('button', { name: 'Choose parts of this file', exact: true }).click();
+  await parts.getByRole('button', { name: 'Apply or revert a part', exact: true }).click();
   await parts
     .getByRole('checkbox', { name: /^Lines? \d/ })
     .first()
@@ -151,7 +152,7 @@ test('review file choices and expanded original preview remain reachable at narr
     for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme });
       await reachable(apply);
-      const comments = page.locator('#comments-heading');
+      const comments = page.getByTestId('review-comments');
       const applyBox = await apply.boundingBox();
       const commentBox = await comments.boundingBox();
       // The partial apply sits with the decision, never over the comments.

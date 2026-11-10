@@ -1,4 +1,10 @@
 import type { Locator } from '@playwright/test';
+import {
+  openConversationDetails,
+  openLibraryTeams,
+  openProject,
+  openSessionSearch,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // Measure rendered affordances, including alpha-composited borders and kit focus rings.
@@ -68,16 +74,16 @@ for (const colorScheme of ['light', 'dark'] as const) {
   }) => {
     await page.emulateMedia({ colorScheme });
     await corral.open('/projects/default');
-    await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-    const name = page.getByRole('textbox', { name: 'Session name', exact: true });
-    for (const field of [name, page.getByRole('textbox', { name: 'Purpose', exact: true })]) {
+    const details = await openConversationDetails(page);
+    const name = details.getByRole('textbox', { name: 'Name', exact: true });
+    for (const field of [name, details.getByRole('textbox', { name: 'Purpose', exact: true })]) {
       await expect(field).toBeVisible();
       await expect.poll(() => boundaryContrast(field)).toBeGreaterThan(1);
       await field.focus();
       // Resting bounds may be quiet; keyboard focus must remain a strong visible cue.
       await expect.poll(() => boundaryContrast(field)).toBeGreaterThanOrEqual(3);
     }
-    await page.getByRole('combobox', { name: 'Corral', exact: true }).focus();
+    await details.getByRole('combobox', { name: 'Corral', exact: true }).focus();
     await page.keyboard.press('Tab');
     await expect(name).toBeFocused();
     expect(await name.evaluate((input) => input.matches(':focus-visible'))).toBe(true);
@@ -107,8 +113,12 @@ test.describe('model identification', () => {
       });
       await corral.open('/projects/default');
       await page
-        .getByRole('button', { name: locale === 'en' ? 'Start chat' : '대화 시작', exact: true })
+        .getByRole('button', {
+          name: locale === 'en' ? 'New conversation' : '새 대화',
+          exact: true,
+        })
         .click();
+      await expect(page).toHaveURL(/\/sessions\/session_/);
       // Ultra and the request options are gone; the model chip carries the choice.
       const box = page.getByRole('combobox', {
         name: locale === 'en' ? 'Request' : '요청',
@@ -120,6 +130,10 @@ test.describe('model identification', () => {
         exact: true,
       });
       await expect(model).toContainText('OpenAI');
+      const settings = page.getByRole('dialog', {
+        name: locale === 'en' ? 'Model settings' : '모델 설정',
+        exact: true,
+      });
       for (const width of [320, 390]) {
         await page.setViewportSize({ width, height: 844 });
         await expect(model).toBeInViewport();
@@ -140,12 +154,15 @@ test.describe('model identification', () => {
             })
             .map((span) => span.textContent);
         });
-        expect(clipped).toEqual([]);
+        // Product gap: the kit's model chip truncates the name, which workbench.md forbids on
+        // narrow screens. Soft, so the popup checks below still run.
+        expect.soft(clipped).toEqual([]);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           width,
         );
         await model.click();
-        await expect(page.getByRole('menuitemradio').first()).toBeVisible();
+        // The chip opens the model settings popup, whose models are a listbox.
+        await expect(settings.getByRole('option').first()).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           width,
         );
@@ -155,11 +172,9 @@ test.describe('model identification', () => {
       }
       await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
       await model.click();
-      await expect(page.getByRole('menu')).toHaveCSS('outline-style', 'solid');
+      await expect(settings).toHaveCSS('outline-style', 'solid');
       expect(
-        await page
-          .getByRole('menu')
-          .evaluate((el) => Number.parseFloat(getComputedStyle(el).outlineWidth)),
+        await settings.evaluate((el) => Number.parseFloat(getComputedStyle(el).outlineWidth)),
       ).toBeGreaterThan(0);
       await page.keyboard.press('Escape');
       await expect(model).toBeFocused();
@@ -171,11 +186,17 @@ test.describe('model identification', () => {
 
 test('list filtering is named separately from private text search', async ({ page, corral }) => {
   await corral.open('/projects/default');
-  const filter = page.getByRole('searchbox', { name: 'Filter conversations', exact: true });
-  await expect(filter).toBeVisible();
-  await filter.fill('no-match-for-this-filter');
-  await expect(page.getByText('No matching sessions', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Search sessions and results', exact: true }).click();
+  // The sidebar's search field finds sessions by title and purpose in the palette; the search of
+  // message and result text is its own entry at the end of the list.
+  const { palette, input } = await openSessionSearch(page);
+  await input.fill('no-match-for-this-filter');
+  const textSearch = palette.getByRole('option', {
+    name: 'Search messages and results for “no-match-for-this-filter”',
+    exact: true,
+  });
+  await expect(palette.getByRole('option')).toHaveCount(1);
+  await expect(textSearch).toBeVisible();
+  await textSearch.click();
   const dialog = page.getByRole('dialog', { name: 'Search sessions and results', exact: true });
   await expect(dialog.getByRole('textbox', { name: 'Search text' })).toHaveValue(
     'no-match-for-this-filter',
@@ -187,14 +208,11 @@ test('list filtering is named separately from private text search', async ({ pag
     dialog.getByRole('switch', { name: 'Include archived', exact: true }),
   ).not.toBeChecked();
   await page.keyboard.press('Escape');
-  await expect(filter).toHaveValue('no-match-for-this-filter');
-  // #92: one entry point. Full search starts from the same field: its trailing button sits
-  // inside the field, and Enter in the field opens it with what was typed.
-  const field = page.getByTestId('session-search-field');
-  await expect(
-    field.getByRole('button', { name: 'Search sessions and results', exact: true }),
-  ).toBeVisible();
-  await filter.press('Enter');
+  await expect(dialog).toBeHidden();
+  // #92: one entry point. Enter in the same field opens the full search with what was typed.
+  const again = await openSessionSearch(page);
+  await again.input.fill('no-match-for-this-filter');
+  await again.input.press('Enter');
   await expect(dialog.getByRole('textbox', { name: 'Search text' })).toHaveValue(
     'no-match-for-this-filter',
   );
@@ -206,35 +224,37 @@ test('import guidance is contextual and import cancellation or failure preserves
   corral,
 }) => {
   await corral.open('/projects/default');
-  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await page.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Keep my project draft.');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await expect(
-    page.getByText(
-      'A custom Corral is optional. Use one when you want to define roles and how they work together.',
-      { exact: true },
-    ),
-  ).toHaveCount(1);
+  const details = await openConversationDetails(page);
+  await details
+    .getByRole('textbox', { name: 'Purpose', exact: true })
+    .fill('Keep my project draft.');
+  await page.keyboard.press('Escape');
+  await expect(details).toBeHidden();
+  // Teams are imported in the library. Its guidance is the import button's own description and
+  // tooltip; the screen does not add an explanatory sentence (workbench.md 전역 셸과 화면 틀).
+  await openLibraryTeams(page);
   const input = page.locator('input[type="file"][accept=".json,application/json"]');
   const importButton = page.getByRole('button', { name: 'Import JSON', exact: true });
+  // Reached from the keyboard, as before: the tooltip follows visible focus.
+  await importButton.focus();
+  await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Tab');
   await expect(importButton).toBeFocused();
-  await expect(
-    page.getByText('Choose a .corral.json file, optionally with its layout file.', { exact: true }),
-  ).toBeVisible();
+  await expect(importButton).toHaveAccessibleDescription('Choose a .corral.json file.');
+  await expect(page.getByRole('tooltip', { name: 'Choose a .corral.json file.' })).toBeVisible();
   const choosing = page.waitForEvent('filechooser');
   await importButton.press('Enter');
   await (await choosing).setFiles([]);
-  await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
-    'Keep my project draft.',
-  );
   await input.setInputFiles({
     name: 'invalid.corral.json',
     mimeType: 'application/json',
     buffer: Buffer.from('{}'),
   });
   await expect(page.getByRole('alert')).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
+  // The new conversation's details keep the draft through the cancelled and failed imports.
+  await openProject(page, 'My project');
+  const again = await openConversationDetails(page);
+  await expect(again.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
     'Keep my project draft.',
   );
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);

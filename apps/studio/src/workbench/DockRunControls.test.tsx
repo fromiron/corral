@@ -155,13 +155,16 @@ it('shows the run in the kit status pill without steps, progress or inline appro
   expect(root?.querySelector('[aria-live]')).toBeNull();
 });
 
-it('a waiting run turns the pill into Respond, with the count from two, and opens the response area', async () => {
+it('a waiting run shows its state like any other, with the count from two, and opens the response area', async () => {
   const projection = running();
   pendingApproval(projection, 'approval_a');
   const session = sessionStore({ runId: 'active-run', projection });
   const view = await mount({ session });
-  expect(view.pill()?.textContent).toContain('Respond');
+  expect(view.pill()?.textContent).toContain(messages.Status.awaiting_user);
+  expect(view.pill()?.textContent).toContain('Run #1');
   expect(view.pill()?.textContent).not.toContain('(1)');
+  // The notice above the composer is the one Respond; the pill states the run's state.
+  expect(view.pill()?.textContent).not.toContain('Respond');
   await act(async () => view.pill()?.click());
   // A request to respond: the run view opens its response area, whatever its width.
   expect(view.onOpen).toHaveBeenCalledWith('active-run', true);
@@ -170,7 +173,8 @@ it('a waiting run turns the pill into Respond, with the count from two, and open
   pendingApproval(two, 'approval_a');
   pendingApproval(two, 'approval_b');
   await act(async () => session.setState({ projection: two }));
-  expect(view.pill()?.textContent).toContain('Respond (2)');
+  expect(view.pill()?.textContent).toContain(`${messages.Status.awaiting_user} (2)`);
+  expect(view.pill()?.textContent).not.toContain('Respond');
 });
 
 it('names the active run by its number while another run is on screen', async () => {
@@ -265,16 +269,28 @@ it('the pill then drops its clock, then its words, keeping the state and the run
   expect(number.pill()?.getAttribute('aria-label')).toContain('Run #1');
 });
 
-it('a waiting run keeps Respond at every tier', async () => {
+it('a waiting run narrows like any other state and still opens the response area', async () => {
   const projection = running();
   pendingApproval(projection, 'approval_a');
   pendingApproval(projection, 'approval_b');
   const session = sessionStore({ runId: 'active-run', projection });
-  for (const tier of [3, 5, 7]) {
+  for (const [tier, shown] of [
+    [3, 'Run #1'],
+    [5, 'Run #1'],
+    [7, '#1'],
+  ] as const) {
     fixture.tier = tier;
     const view = await mount({ session });
-    expect(view.pill()?.textContent).toBe('Respond (2)');
+    expect(view.pill()?.textContent).toBe(shown);
+    const root = view.container.querySelector('[data-testid="dock-open-active-run"]');
+    expect(root?.getAttribute('data-state')).toBe('waiting');
+    // What left the pill stays in its name.
+    expect(view.pill()?.getAttribute('aria-label')).toContain(
+      `${messages.Status.awaiting_user} (2)`,
+    );
     expect(view.pill()?.getAttribute('aria-label')).toContain('Run #1');
+    await act(async () => view.pill()?.click());
+    expect(view.onOpen).toHaveBeenCalledWith('active-run', true);
     await cleanup.splice(0)[0]?.();
   }
 });

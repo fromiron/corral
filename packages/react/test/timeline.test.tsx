@@ -74,13 +74,14 @@ function event(
   } as RunEvent;
 }
 
-function renderEvents(fill = false, onOpenExecution?: (id: string) => void) {
+function renderEvents(fill = false, onOpenExecution?: (id: string) => void, headed = true) {
   const { definition } = researchTeamDraft();
   const writer = definition.nodes.find((node) => node.id === 'write')?.label ?? 'write';
   render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
       <Timeline
         fill={fill}
+        headed={headed}
         {...(onOpenExecution ? { onOpenExecution } : {})}
         session={sessionStore({
           runId: 'run_events',
@@ -141,6 +142,18 @@ it('gives the list the full width until an event is chosen', async () => {
   const row = screen.getAllByTestId('timeline-row')[0] as HTMLElement;
   await act(async () => fireEvent.click(within(row).getByRole('button')));
   expect(section.className).toContain('grid-cols-');
+});
+
+it('inside its tab, names nothing the tab says and counts only while a filter is on', async () => {
+  const user = userEvent.setup();
+  const writer = renderEvents(true, undefined, false);
+  // The Events tab already reads "Events 2": no heading, no "2 events of 2".
+  expect(screen.queryByRole('heading')).toBeNull();
+  expect(screen.queryByTestId('timeline-count')).toBeNull();
+  expect(screen.getByRole('region', { name: 'Events' })).toBeInTheDocument();
+  await user.click(screen.getByRole('combobox', { name: 'Execution' }));
+  await user.click(screen.getByRole('option', { name: `${writer} · attempt 2` }));
+  expect(screen.getByTestId('timeline-count').textContent).toBe('1 event of 2');
 });
 
 it('marks each actor with its own icon', () => {

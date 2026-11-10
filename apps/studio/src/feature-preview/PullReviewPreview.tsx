@@ -19,10 +19,10 @@ import {
   TabsList,
   Textarea,
 } from '@corral/react/design-kit';
-import { GitBranch, MessageSquare } from '@corral/react/icons';
+import { MessageSquare } from '@corral/react/icons';
 import { useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { PREVIEW_NOW, SAMPLE_PROJECT, SAMPLE_PULLS, type SamplePull } from './fixture.ts';
+import { PREVIEW_NOW, SAMPLE_PULLS, type SamplePull } from './fixture.ts';
 import { useDiffLabels, useFindingLabels, useSample } from './labels.ts';
 import { Simulated, useRunName } from './parts.tsx';
 import {
@@ -152,6 +152,7 @@ function PullDetail({
   posted: PostedComment[];
 }) {
   const t = useTranslations('FeaturePreview.pull');
+  const tDiff = useTranslations('FeaturePreview.diff');
   const say = useSample();
   const name = usePullName();
   const runName = useRunName();
@@ -183,12 +184,6 @@ function PullDetail({
         </h2>
         <p className="m-0 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
           <span className="inline-flex min-w-0 items-center gap-1.5">
-            <GitBranch aria-hidden className="size-3.5 shrink-0" />
-            <span className="[overflow-wrap:anywhere]">
-              {t('into', { branch: pull.branch, base: SAMPLE_PROJECT.base })}
-            </span>
-          </span>
-          <span className="inline-flex min-w-0 items-center gap-1.5">
             <MessageSquare aria-hidden className="size-3.5 shrink-0" />
             {runName(pull.linked)}
           </span>
@@ -216,6 +211,7 @@ function PullDetail({
           <DiffReview
             files={pull.files}
             state={state}
+            title={<span className="sr-only">{tDiff('review', { count: pull.files.length })}</span>}
             note={say(pull.description)}
             labels={diff.labels}
             hint={diff.hint}
@@ -346,7 +342,7 @@ function Comments({
           ))}
         </ol>
       ) : (
-        <EmptyState title={t('noComments')} text={t('noCommentsText')} />
+        <EmptyState title={t('noComments')} />
       )}
       <form
         className="grid gap-2"

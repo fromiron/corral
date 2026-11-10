@@ -38,6 +38,7 @@ export function Timeline({
   selectedSeq,
   onSelectSeq,
   fill = false,
+  headed = true,
   onOpenExecution,
 }: {
   session: RunSessionStore;
@@ -47,6 +48,11 @@ export function Timeline({
   onOpenExecution?: (executionId: string) => void;
   /** Fill the parent's height (the run workspace) instead of a fixed list height. */
   fill?: boolean;
+  /**
+   * Show the heading and the count. Inside a tab whose label already names the events and their
+   * number, the count shows only while a filter hides some of them.
+   */
+  headed?: boolean;
 }) {
   const t = useTranslations('Timeline');
   const format = useFormatter();
@@ -167,9 +173,15 @@ export function Timeline({
     </div>
   );
 
+  const filtered = actor !== 'all' || kind !== 'all' || execution !== 'all';
+  const count = (
+    <span className="text-muted-foreground" data-testid="timeline-count">
+      {t('count', { shown: shown.length, total: events.length })}
+    </span>
+  );
   return (
     <section
-      aria-labelledby="timeline-heading"
+      {...(headed ? { 'aria-labelledby': 'timeline-heading' } : { 'aria-label': t('heading') })}
       className={
         fill
           ? // The detail column exists only once an event is chosen; until then the list is full width.
@@ -178,20 +190,18 @@ export function Timeline({
       }
     >
       <KitCard className={fill ? 'flex min-h-0 flex-1 flex-col @3xl:h-full' : undefined}>
-        <KitCardHeader>
-          <h3 id="timeline-heading">
-            <KitCardTitle>{t('heading')}</KitCardTitle>
-          </h3>
-          <KitCardAction>
-            <span className="text-muted-foreground" data-testid="timeline-count">
-              {t('count', { shown: shown.length, total: events.length })}
-            </span>
-          </KitCardAction>
-        </KitCardHeader>
+        {headed ? (
+          <KitCardHeader>
+            <h3 id="timeline-heading">
+              <KitCardTitle>{t('heading')}</KitCardTitle>
+            </h3>
+            <KitCardAction>{count}</KitCardAction>
+          </KitCardHeader>
+        ) : null}
         <KitCardContent
           className={fill ? 'flex min-h-0 flex-1 flex-col gap-3' : 'flex flex-col gap-3'}
         >
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             {filter(t('actor'), actor, (v) => setActor(v as ActorFilter), [
               ['user', t('actors.user')],
               ['runtime', t('actors.runtime')],
@@ -204,6 +214,7 @@ export function Timeline({
               kinds.map((k) => [k, k]),
             )}
             {filter(t('execution'), execution, setExecution, executionOptions)}
+            {!headed && filtered ? <p className="ml-auto self-center">{count}</p> : null}
           </div>
           <div
             data-testid="timeline-columns"

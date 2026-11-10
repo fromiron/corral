@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { newTeam, openLibraryTeams } from './workbench.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', 'examples');
 
@@ -15,8 +16,8 @@ async function trackErrors(page: Page): Promise<string[]> {
 
 async function newCorral(page: Page, query = '') {
   await page.goto(`/${query}`);
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team' }).click();
+  await openLibraryTeams(page);
+  await newTeam(page);
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
 }
 
@@ -63,7 +64,7 @@ async function openTestRun(page: Page) {
 test('steps dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
   await newCorral(page, '?delay=50');
-  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Demo');
 
   await buildAgentToOutput(page);
   const brief = 'Compare notebook formats for field notes.';
@@ -115,7 +116,7 @@ test('an imported team with a Loop validates and runs through its review and app
   const errors = await trackErrors(page);
   // Short simulated replies: the team makes about thirty model requests over two rounds.
   await page.goto('/?delay=50');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
@@ -187,8 +188,8 @@ test('the workspace and editor have no serious automated accessibility violation
       .map((v) => ({ rule: v.id, targets: v.nodes.map((node) => node.target) }));
   expect(await serious()).toEqual([]);
 
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team' }).click();
+  await openLibraryTeams(page);
+  await newTeam(page);
   await buildAgentToOutput(page);
   // The view keeps the selected output clear of the sheet, so the agent is chosen from the list.
   await page
@@ -204,7 +205,7 @@ test('a reviewer without the criteria is flagged, and one click gives it them (#
 }) => {
   const errors = await trackErrors(page);
   await page.goto('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([

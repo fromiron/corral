@@ -91,7 +91,8 @@ it('heads the project group with the one settings target picker', async () => {
   try {
     const nav = container.querySelector<HTMLElement>('[data-testid="settings-sidebar"]');
     const group = nav?.querySelector<HTMLElement>('[aria-label="Project"]');
-    expect(group?.textContent).toContain('Settings for');
+    // The group label names the picker on screen; "Settings for" is its accessible name only.
+    expect(group?.textContent).not.toContain('Settings for');
     const pickers = container.querySelectorAll('[aria-label="Settings for"]');
     expect(pickers).toHaveLength(1);
     expect(group?.contains(pickers[0] ?? null)).toBe(true);

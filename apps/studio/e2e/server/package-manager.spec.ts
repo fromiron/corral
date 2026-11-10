@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { openFolderSettings } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const repositories: string[] = [];
@@ -69,8 +70,7 @@ test('reviewed packages install untrusted, preserve plain text metadata, and kee
   version('1.0.0');
   writeFileSync(join(source, 'extension.ts'), 'export default () => {};');
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Project folder/ }).click();
-  const folder = page.getByRole('tabpanel', { name: 'Project folder' });
+  const folder = await openFolderSettings(page);
   await folder.getByLabel('Folder path on this computer').fill(repository);
   await folder.getByRole('button', { name: 'Link folder' }).click();
   await expect(folder).toContainText('no uncommitted changes');

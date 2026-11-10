@@ -173,7 +173,6 @@ async function mount(
   holdNavigation = false,
   agentIds = ['worker'],
   runDefinition?: CorralDefinition,
-  runNumber?: number,
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -220,7 +219,6 @@ async function mount(
       <RunDetail
         runId={projection.runId}
         {...(request ? { request } : {})}
-        {...(runNumber ? { runNumber } : {})}
         search={selection}
         setSearch={(patch, options) => {
           navigations.push({ patch, options });
@@ -1023,9 +1021,12 @@ const failureEntry = (container: HTMLElement) =>
     (button) => button.textContent === 'Open the failed execution',
   );
 
-it('a failed run names its recorded end reason beside its state and opens the failed execution', async () => {
+it('a failed team run names which agent failed beside its state and opens the failed execution', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
-  const { container, run, navigations } = await mount('inline_team', null, {});
+  const { container, run, navigations } = await mount('inline_team', null, {}, undefined, false, [
+    'worker',
+    'reviewer',
+  ]);
   await failRun(run, {
     reason: 'execution_failed: worker',
     error: 'the model request failed: HTTP 500 (SERVER)',
@@ -1048,7 +1049,38 @@ it('a failed run names its recorded end reason beside its state and opens the fa
   expect(failure?.textContent).toContain('the model request failed: HTTP 500 (SERVER)');
 });
 
-it('a failed execution of unknown cause leads its failure with the recorded text', async () => {
+it('a failed one-agent run does not restate its state as that agent failing', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  // The assistant can call a helper, but the helper never ran: the run had one agent.
+  const base = linearCorral(['worker', 'helper'], 'inline_team');
+  const definition = {
+    ...base,
+    nodes: base.nodes.map((node) =>
+      node.id === 'helper' && node.type === 'agent'
+        ? { ...node, invocation: 'callable' as const }
+        : node,
+    ),
+  };
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    {},
+    undefined,
+    false,
+    undefined,
+    definition,
+  );
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model request failed: HTTP 500 (SERVER)',
+  });
+  // The state chip says Failed and the entry opens what failed; worker failed adds nothing.
+  expect(endReason(container)).toBeNull();
+  expect(header(container)?.textContent).not.toContain('worker failed');
+  expect(failureEntry(container)).toBeDefined();
+});
+
+it('a failed execution of unknown cause keeps the recorded text verbatim under a localized label', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
   await failRun(run, {
@@ -1058,9 +1090,9 @@ it('a failed execution of unknown cause leads its failure with the recorded text
   const failure = container.querySelector<HTMLElement>(
     '[data-testid="run-side"] [data-testid="execution-failure"]',
   );
-  expect(failure?.querySelector('p')?.textContent).toBe(
-    'the model worker reported a request failure',
-  );
+  // No code the catalogs can name: the server's sentence is the detail, never the headline.
+  const lines = [...(failure?.querySelectorAll('p') ?? [])].map((p) => p.textContent);
+  expect(lines).toEqual([messages.Failure.recorded, 'the model worker reported a request failure']);
   // Nothing is left folded away, and the recorded text is not repeated below it.
   expect(failure?.querySelector('details:not([open])')).toBeNull();
   expect(failure?.textContent?.split('the model worker reported a request failure')).toHaveLength(
@@ -1765,8 +1797,11 @@ it('opens the response area once when a new decision arrives and the side is fre
   const focused = document.activeElement;
   await waitFor(run, 1);
   expect(side(container)?.hidden).toBe(false);
-  // The panel is titled with the state's own name, as the run's status says it.
-  expect(side(container)?.querySelector('h2')?.textContent).toBe(messages.Status.awaiting_user);
+  // The header's status already says it: the panel's heading keeps the state's name for the
+  // outline but shows no title of its own.
+  const heading = side(container)?.querySelector('h2');
+  expect(heading?.textContent).toBe(messages.Status.awaiting_user);
+  expect(heading?.classList.contains('sr-only')).toBe(true);
   expect(
     side(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
   ).toBe(messages.Status.awaiting_user);
@@ -2069,6 +2104,15 @@ it('lists every result version with its source execution and opens it in the cen
     'artv_draft_2',
     'artv_draft_1',
   ]);
+  // One table: the column header shows once and each kind of result is a labelled group of rows.
+  expect(view?.querySelectorAll('table')).toHaveLength(1);
+  expect(view?.querySelectorAll('thead tr')).toHaveLength(1);
+  const groups = [...(view?.querySelectorAll('tbody') ?? [])];
+  expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+    'Final results',
+    'Work in between',
+  ]);
+  expect(groups[0]?.querySelector('th[scope="rowgroup"]')?.textContent).toBe('Final results1');
   for (const row of rows) {
     expect(row.textContent).toContain('worker · Round 2 · Attempt 1');
     expect(row.textContent).not.toMatch(/token|cost|\$/i);
@@ -2121,23 +2165,18 @@ it('opens an intermediate version with the artifact reader and Back returns to t
   expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
 });
 
-it('names the run by its session number and request, or its team when nothing was requested', async () => {
-  const asked = await mount(
-    'inline_team',
-    null,
-    {},
-    'Summarise the release',
-    false,
-    ['worker'],
-    undefined,
-    3,
-  );
+it('names the run by its request, or its team when nothing was requested, without its number', async () => {
+  // The path bar names the run by its number; the header does not repeat it.
+  const asked = await mount('inline_team', null, {}, 'Summarise the release');
   expect(asked.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
-    '#3 · Summarise the release',
+    'Summarise the release',
   );
-  const unnamed = await mount('inline_team', null, {}, undefined, false, ['worker'], undefined, 3);
+  const unnamed = await mount('inline_team', null, {});
   expect(unnamed.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
-    '#3 · Linear worker',
+    'Linear worker',
+  );
+  expect(unnamed.container.querySelector('[data-testid="run-header"]')?.textContent).not.toMatch(
+    /#\d/,
   );
 });
 

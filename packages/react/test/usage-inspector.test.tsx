@@ -16,11 +16,12 @@ const call = (modelCallId: string, outputTokens: number | null, finished = true)
     usage: outputTokens === null ? null : { outputTokens },
   }) as unknown as RunProjection['modelCalls'][string];
 
-function show(projection: ReturnType<typeof emptyProjection>) {
+function show(projection: ReturnType<typeof emptyProjection>, headed = true) {
   render(
     <IntlProvider locale="en" messages={messages}>
       <UsageInspector
         session={sessionStore({ projection, definition: linearCorral(['writer']) })}
+        headed={headed}
       />
     </IntlProvider>,
   );
@@ -39,6 +40,15 @@ describe('UsageInspector', () => {
     expect(screen.getByText('In progress').nextSibling).toHaveTextContent('1');
     expect(screen.queryByRole('meter')).not.toBeInTheDocument();
     expect(screen.queryByText(/budget|allowance|reserved|limit/i)).not.toBeInTheDocument();
+  });
+
+  it('inside the Usage tab, names its region without repeating the tab as a heading', () => {
+    const p = emptyProjection('run_usage');
+    p.modelCalls.call_done = call('call_done', 42);
+    show(p, false);
+    expect(screen.getByRole('region', { name: 'Usage' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Usage' })).toBeNull();
+    expect(screen.getByText('Output tokens')).toBeInTheDocument();
   });
 
   it('names the role and request while keeping call IDs in collapsed diagnostics', () => {

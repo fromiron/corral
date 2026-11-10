@@ -1,6 +1,12 @@
 import type { WorkSession } from '@corral/core';
 import type { Page } from '@playwright/test';
-import { requestBox, slash, startSession, teamFromTemplate } from '../workbench.ts';
+import {
+  newConversation,
+  requestBox,
+  slash,
+  startSession,
+  teamFromTemplate,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const picker = (page: Page) =>
@@ -28,7 +34,7 @@ test('the Auto composer restores a permission draft and starts with that policy'
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(picker(page)).toContainText('Default policy');
   await choose(page, 'Ask');
   await requestBox(page).fill('Summarize the permission choice.');

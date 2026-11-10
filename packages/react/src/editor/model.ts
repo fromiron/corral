@@ -651,7 +651,7 @@ export function importDefinition(text: string): ImportResult {
 
 export function compileDraft(
   draft: EditorDraft,
-  options: Pick<CompileOptions, 'resolveTeam'> = {},
+  options: Pick<CompileOptions, 'resolveTeam' | 'knownModelProfiles'> = {},
 ): DraftCompilation {
   const compiled = compileDefinition(draft.definition, options);
   if (!compiled.ok)

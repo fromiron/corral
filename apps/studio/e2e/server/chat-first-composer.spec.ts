@@ -1,7 +1,7 @@
 import type { CorralSummary, WorkSession } from '@corral/core';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { requestBox, slash } from '../workbench.ts';
+import { newConversation, openLibrary, openProject, requestBox, slash } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Use the real browser entry, server, adapter and Coordinator. Only the
@@ -10,7 +10,7 @@ test.use({ live: true, codexLogin: true, reasoningApi: true });
 
 async function startChat(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   return new URL(page.url()).pathname;
 }
@@ -91,9 +91,10 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   await expect(
     page.getByRole('navigation', { name: 'Projects and sessions', exact: true }),
   ).toContainText(prompt);
-  await expect(page.getByRole('navigation', { name: 'Session tabs', exact: true })).toContainText(
-    prompt,
-  );
+  // The session tab strip is gone (18bc4e25); the top bar's path names the open session.
+  await expect(
+    page.getByRole('navigation', { name: 'Current location', exact: true }),
+  ).toContainText(prompt);
   expect(persisted.corralId).toBeNull();
   expect(persisted.entries[0]).toMatchObject({ text: prompt, state: 'started', intent: 'next' });
   const run = corral.server.coordinator.listRuns()[0];
@@ -166,7 +167,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibrary(page, 'Templates');
   await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
@@ -174,8 +175,8 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
   expect(saved).toHaveLength(1);
   const custom = saved[0];
   if (!custom) throw new Error('Creating a Corral from the template must persist it');
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await openProject(page);
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   expect((await session(page)).corralId).toBeNull();
 

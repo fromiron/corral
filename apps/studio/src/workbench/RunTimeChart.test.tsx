@@ -254,6 +254,16 @@ it('a working run keeps growing to the present', () => {
   }
 });
 
+it('repeats nothing the tab and the run header say: the lanes carry no title, counts or elapsed chip', () => {
+  const { container } = show();
+  const section = container.querySelector('section');
+  expect(section?.getAttribute('aria-label')).toBe('Timeline');
+  // The kit lanes always draw a header (title, live counts, window chip); here it stays hidden.
+  const header = section?.querySelector('header');
+  expect(header?.parentElement?.className).toContain('[&>header]:hidden');
+  expect(header?.textContent).not.toContain('Timeline');
+});
+
 it('a live run marks now and an ended run offers no replay', () => {
   const live = show();
   expect(live.container.textContent).toContain('Now');

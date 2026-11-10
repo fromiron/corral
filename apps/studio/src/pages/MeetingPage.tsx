@@ -595,9 +595,9 @@ function AnswerCard({
         />
       </header>
       {minutes ? (
-        // The one place the minutes are offered: where the secretary posted them.
+        // The one place the minutes are offered: where the secretary posted them. The button
+        // under the secretary's name says what is ready.
         <div className="flex flex-col items-start gap-2">
-          <p className="text-subtitle text-foreground">{t('minutesReady')}</p>
           <Button size="compact" variant="secondary" onClick={onOpenMinutes}>
             <PanelRight />
             {t('viewMinutes')}

@@ -39,6 +39,8 @@ const NO_CLONE: GitCloneDraft = { source: '', destination: '' };
 export function ProjectsPage() {
   const t = useTranslations('Projects');
   const templates = useTemplateText();
+  const tw = useTranslations('Workspace');
+  const shell = useTranslations('Shell');
   const format = useFormatter();
   const now = useNow({ updateInterval: 60_000 });
   const { projects, corrals, runs } = projectsRoute.useLoaderData();
@@ -120,7 +122,7 @@ export function ProjectsPage() {
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <Page
-        title={t('heading')}
+        title={shell('allProjects')}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
             <Button ref={trigger} onClick={() => setCreating(true)}>

@@ -1,5 +1,11 @@
-import type { CorralDefinition } from '@corral/contracts';
-import { isBox, type RunStats } from '@corral/core';
+import type { AgentRole, CorralDefinition, HarnessBindingRef } from '@corral/contracts';
+import {
+  isBox,
+  ROLE_PRESET_IDS,
+  type RolePresetId,
+  type RunStats,
+  roleFromPreset,
+} from '@corral/core';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -25,6 +31,7 @@ import { compileDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
 import {
   Boxes,
+  Copy,
   GitMerge,
   Maximize2,
   Minimize2,
@@ -42,6 +49,7 @@ import {
   checkPorts,
   connectPorts,
   type EditResult,
+  importRole,
   type Pattern,
   type Placement,
   type PortRequest,
@@ -77,6 +85,8 @@ export interface TeamEditorProps {
   teams?: readonly TeamReference[];
   /** The saved definition a reference Team points at, once the host has loaded it. */
   resolveTeam?: ((corralId: string, definitionRevision: number) => unknown) | undefined;
+  /** Whether a work style a copied role names resolves here; without it none does. */
+  resolvesHarness?: ((ref: HarnessBindingRef) => boolean) | undefined;
   onOpenTeam?: ((corralId: string) => void) | undefined;
   /** Run stats of the saved revision, laid over the canvas while the host shows them. */
   runStats?: { stats: RunStats; definition: CorralDefinition } | null | undefined;
@@ -98,20 +108,36 @@ export function TeamEditor({
   loopSettings,
   teams = NO_TEAMS,
   resolveTeam,
+  resolvesHarness,
   onOpenTeam,
   runStats = null,
   onOpenRun,
 }: TeamEditorProps) {
   const t = useTranslations('TeamEditor');
+  const presetText = useTranslations('TeamTemplates.presets');
   const reduced = useReducedMotion() ?? false;
   const draft = useStore(editor, (s) => s.draft);
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const { definition } = draft;
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
+  // Once the host knows the model profiles, a role naming another one is a problem.
+  const knownModelProfiles = useMemo(() => profiles?.map((p) => p.profileId), [profiles]);
   const diagnostics = useMemo(
-    () => compileDraft(draft, resolveTeam ? { resolveTeam } : {}).diagnostics,
-    [draft, resolveTeam],
+    () =>
+      compileDraft(draft, {
+        ...(resolveTeam ? { resolveTeam } : {}),
+        ...(knownModelProfiles ? { knownModelProfiles } : {}),
+      }).diagnostics,
+    [draft, resolveTeam, knownModelProfiles],
+  );
+  // The role presets in the screen language.
+  const presets = useMemo(
+    () =>
+      ROLE_PRESET_IDS.map((id: RolePresetId) =>
+        roleFromPreset(id, id, { name: presetText(`${id}.name`), duty: presetText(`${id}.duty`) }),
+      ),
+    [presetText],
   );
 
   const [rawSelection, setSelection] = useState<TeamSelection>(NONE);
@@ -130,13 +156,22 @@ export function TeamEditor({
   // The sheet shows the selection unless the team's settings or the problem list is asked for.
   const [view, setView] = useState<Exclude<SheetView, 'selection'> | null>(null);
   const [dragging, setDragging] = useState<StepKind | null>(null);
-  const [menu, setMenu] = useState<{ open: boolean; at: Placement | null }>({
+  // The command menu, or the roles it copies from.
+  const [menu, setMenu] = useState<{ open: boolean; at: Placement | null; roles: boolean }>({
     open: false,
     at: null,
+    roles: false,
   });
+  // Said once, right after the import that left a work style out, until the next edit or
+  // selection.
+  const [dropped, setDropped] = useState<typeof draft | null>(null);
+  useEffect(() => {
+    if (dropped && dropped !== draft) setDropped(null);
+  }, [dropped, draft]);
 
   const select = useCallback((next: TeamSelection) => {
     setSelection(next);
+    setDropped(null);
     if (next.nodes.length || next.edge) setView(null);
   }, []);
   // Another view, such as an agent import, can ask for a step to be selected.
@@ -158,6 +193,13 @@ export function TeamEditor({
     if (!result.ok) return;
     editor.getState().applyDraft(result.draft);
     if (result.nodeId) select({ nodes: [result.nodeId], edge: null });
+  };
+  const copyRole = (role: AgentRole, at: Placement) => {
+    const result = importRole(editor.getState().draft, role, selection.nodes, at, {
+      resolvesHarness,
+    });
+    apply(result);
+    setDropped(result.ok && result.droppedHarness ? result.draft : null);
   };
 
   /** Where a new step goes when nothing else says: after, into or on what is selected. */
@@ -244,6 +286,20 @@ export function TeamEditor({
       onSelect: () => apply(result),
     });
   }
+  const roleTarget = importRole(draft, presets[0] as AgentRole, selection.nodes, at);
+  commands.push({
+    value: 'import-role',
+    label: t('importRole'),
+    ...(roleTarget.ok
+      ? selection.nodes.length
+        ? {}
+        : { description: t('withNewAgent') }
+      : { description: t(`rejected.${roleTarget.reason}`) }),
+    icon: Copy,
+    group: t('groups.patterns'),
+    disabled: !roleTarget.ok,
+    keywords: ['role', t('importRoleTitle')],
+  });
   for (const team of teams) {
     const result = placeStep(draft, 'team', at, { reference: team });
     commands.push({
@@ -348,7 +404,29 @@ export function TeamEditor({
       onSelect: () => editor.getState().redo(),
     },
   );
-  const openMenu = (where: Placement | null) => setMenu({ open: true, at: where });
+  const openMenu = (where: Placement | null) => setMenu({ open: true, at: where, roles: false });
+  const openRoles = () => setMenu((current) => ({ ...current, open: true, roles: true }));
+
+  // The roles to copy: the presets, then each other saved team's roles.
+  const roleItems: CommandMenuItemData[] = [
+    ...presets.map((role) => ({
+      value: `role:preset:${role.id}`,
+      label: role.name,
+      icon: Copy,
+      group: t('rolePresets'),
+      onSelect: () => copyRole(role, at),
+    })),
+    ...teams.flatMap((team) =>
+      (team.roles ?? []).map((role) => ({
+        value: `role:${team.corralId}:${role.id}`,
+        label: role.name,
+        icon: Copy,
+        group: team.name,
+        keywords: [team.name],
+        onSelect: () => copyRole(role, at),
+      })),
+    ),
+  ];
 
   // ⌘K belongs to the editor while focus is inside it; elsewhere it is the app's palette.
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -358,7 +436,7 @@ export function TeamEditor({
     if (key === 'k') {
       event.preventDefault();
       event.stopPropagation();
-      setMenu((current) => ({ open: !current.open, at: null }));
+      setMenu((current) => ({ open: !current.open, at: null, roles: false }));
       return;
     }
     if ((event.target as Element).closest('input, textarea, [contenteditable]')) return;
@@ -390,6 +468,7 @@ export function TeamEditor({
   }, [runStats, definition, onOpenRun]);
 
   const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
+  const notice = dropped && dropped === draft ? t('workStyleDropped') : null;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
     <div className="grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]" onKeyDown={onKeyDown}>
@@ -485,6 +564,8 @@ export function TeamEditor({
                 loopSettings={loopSettings}
                 teams={teams}
                 onOpenTeam={onOpenTeam}
+                onImportRole={openRoles}
+                notice={notice}
                 onSelect={select}
                 onClose={() => {
                   setView(null);
@@ -494,21 +575,66 @@ export function TeamEditor({
             </motion.div>
           ) : null}
         </AnimatePresence>
+        {/* Read out once; the sheet of the agent it happened to shows it. */}
+        <p role="status" className="sr-only">
+          {notice}
+        </p>
       </div>
       <CommandMenuDialog
         open={menu.open}
         onOpenChange={(open) => setMenu((current) => ({ ...current, open }))}
         shortcut={null}
-        title={t('commandTitle')}
-        description={t('commandDescription')}
+        title={menu.roles ? t('importRoleTitle') : t('commandTitle')}
+        description={menu.roles ? t('roleSearch') : t('commandDescription')}
       >
-        <CommandMenu items={commands} onSelect={() => setMenu({ open: false, at: null })}>
-          <CommandMenuInput placeholder={t('commandPlaceholder')} />
-          <CommandMenuList>
-            <CommandMenuEmpty>{t('commandEmpty')}</CommandMenuEmpty>
-          </CommandMenuList>
-        </CommandMenu>
+        <EditorMenu
+          items={menu.roles ? roleItems : commands}
+          roles={menu.roles}
+          placeholder={menu.roles ? t('roleSearch') : t('commandPlaceholder')}
+          empty={t('commandEmpty')}
+          onSelect={(item) => {
+            // Import role opens the roles in the same menu; anything else closes it.
+            if (item.value === 'import-role') openRoles();
+            else setMenu({ open: false, at: null, roles: false });
+          }}
+        />
       </CommandMenuDialog>
     </div>
+  );
+}
+
+/** The editor's command menu. Its field starts empty again when it turns to the roles. */
+function EditorMenu({
+  items,
+  roles,
+  placeholder,
+  empty,
+  onSelect,
+}: {
+  items: CommandMenuItemData[];
+  roles: boolean;
+  placeholder: string;
+  empty: string;
+  onSelect: (item: CommandMenuItemData) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [shown, setShown] = useState(roles);
+  if (shown !== roles) {
+    setShown(roles);
+    setQuery('');
+  }
+  return (
+    <CommandMenu
+      items={items}
+      query={query}
+      onQueryChange={setQuery}
+      closeOnSelect={false}
+      onSelect={onSelect}
+    >
+      <CommandMenuInput placeholder={placeholder} />
+      <CommandMenuList>
+        <CommandMenuEmpty>{empty}</CommandMenuEmpty>
+      </CommandMenuList>
+    </CommandMenu>
   );
 }

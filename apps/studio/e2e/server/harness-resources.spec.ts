@@ -158,7 +158,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByLabel('Use skill writing', { exact: true }).check();
     await page.getByRole('combobox', { name: 'Skill mode writing', exact: true }).click();
     await page.getByRole('option', { name: 'Mandatory · every turn', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Project tools and defaults', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Settings for', exact: true }).click();
     await page.getByRole('option', { name: 'Other project', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`settings=harness&settingsProject=${projectId}`));
     await expect(page.getByLabel('Work style name', { exact: true })).toHaveValue(

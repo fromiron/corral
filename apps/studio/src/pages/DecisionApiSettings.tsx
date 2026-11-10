@@ -39,7 +39,6 @@ export function DecisionApiSettings({ onChange }: { onChange?: () => void } = {}
       >
         {t('heading')}
       </h3>
-      <p className="text-body text-muted-foreground">{t('intro')}</p>
       {loadFailed ? (
         <p role="alert" className="text-body text-danger">
           {t('loadFailed')}

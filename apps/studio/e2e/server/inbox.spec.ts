@@ -59,9 +59,9 @@ async function twoDecisions(page: Page, corral: Harness) {
   ).map((label) => label.split(' · ')[0] ?? '');
   expect([...titles].sort()).toEqual(['First decision', 'Second decision']);
   const [title = '', nextTitle = ''] = titles;
-  // The group names the state; a decision's row names its run.
-  const row = (name: string) =>
-    page.getByRole('button', { name: `${name} · Run #1 · My project`, exact: true });
+  // The group names the state; a decision's row names its run. Every item is in one project,
+  // so no row names it.
+  const row = (name: string) => page.getByRole('button', { name: `${name} · Run #1`, exact: true });
   const detail = (name: string) => page.getByRole('region', { name, exact: true });
   return { status, response, title, nextTitle, row, detail };
 }
@@ -71,15 +71,14 @@ test('answers a waiting run in Needs you and moves focus to the next item after 
   corral,
 }) => {
   const { status, title, nextTitle, row, detail } = await twoDecisions(page, corral);
-  // Until an item is chosen its place is held, quietly.
-  await expect(page.getByText('Nothing selected', { exact: true })).toBeVisible();
+  // Until an item is chosen its place stands empty.
+  await expect(page.getByTestId('inbox-detail')).toHaveCount(0);
 
   await row(title).focus();
   await page.keyboard.press('Enter');
   await expect(detail(title)).toBeFocused();
-  await expect(page.getByText('Nothing selected', { exact: true })).toHaveCount(0);
-  // The heading names the run and links to it; the list stays beside it.
-  await expect(detail(title)).toContainText('Run #1 · My project');
+  // The heading names the session and links to the run; the row beside it keeps the run number.
+  await expect(detail(title).getByText('Run #1', { exact: true })).toBeHidden();
   await expect(detail(title).getByRole('link', { name: 'Open run', exact: true })).toHaveAttribute(
     'href',
     /^\/sessions\/[^/?]+\?panel=run&view=run&run=/,
@@ -122,11 +121,13 @@ test('a narrow window shows the chosen item in the list’s place and leads back
     page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
-  await expect(page.getByText('Nothing selected', { exact: true })).toBeHidden();
+  await expect(page.getByTestId('inbox-detail')).toHaveCount(0);
   expect(await sideways()).toBe(0);
 
   await row(title).click();
   await expect(detail(title)).toBeFocused();
+  // In the list's place, the item carries its row's run number.
+  await expect(detail(title).getByText('Run #1', { exact: true })).toBeVisible();
   await expect(response).toBeHidden();
   await expect(detail(title).getByRole('button', { name: 'Close', exact: true })).toBeHidden();
   expect(await sideways()).toBe(0);

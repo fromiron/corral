@@ -329,14 +329,11 @@ export function NodeSettings({
 
       {node.type === 'loop' ? loopSettings?.(node) : null}
       {node.type === 'output' ? (
-        <>
-          <KitSwitch
-            label={t('requireApproval')}
-            checked={node.requireApproval}
-            onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
-          />
-          <p className="text-caption text-muted-foreground">{t('outputNote')}</p>
-        </>
+        <KitSwitch
+          label={t('requireApproval')}
+          checked={node.requireApproval}
+          onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
+        />
       ) : null}
 
       {(node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (

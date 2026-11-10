@@ -17,7 +17,7 @@ const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const ago = (minutes: number) => PREVIEW_NOW - minutes * MINUTE;
 
-export const SAMPLE_PROJECT = { name: 'example-shop', base: 'main' } as const;
+export const SAMPLE_PROJECT = { name: 'example-shop' } as const;
 
 export const SAMPLE_SESSIONS = {
   total: { title: { en: 'Fix the checkout total', ko: '결제 합계 고치기' } },

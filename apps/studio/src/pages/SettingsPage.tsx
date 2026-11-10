@@ -56,7 +56,14 @@ export function SettingsLayout({
           </p>
         ) : null}
       </header>
-      <ScrollArea className="min-h-0 flex-1" radius="none">
+      {/* Sections scroll down, never sideways: as in the kit's sidebar, the content keeps the
+          frame's width (not Base UI's fit-content), so a long row wraps and a tab strip scrolls
+          inside it instead of pushing the page past the dialog's edge. */}
+      <ScrollArea
+        className="min-h-0 flex-1"
+        radius="none"
+        viewportClassName="[&>div]:!block [&>div]:!min-w-0"
+      >
         {needsProject ? null : children}
       </ScrollArea>
     </div>
@@ -75,13 +82,7 @@ export function SettingsPage({
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
   return (
-    <SettingsLayout
-      active={section}
-      // How this form saves, said where it applies (#81 SET-S10).
-      {...(section === 'general' || section === 'shortcuts'
-        ? { description: t('savesAutomatically'), descriptionId: 'settings-save-mode' }
-        : {})}
-    >
+    <SettingsLayout active={section}>
       <main className="settings-content">
         {section === 'general' ? (
           <div className="flex flex-col">
@@ -116,7 +117,7 @@ export function SettingsPage({
             <section className="settings-row">
               <div>
                 <h3>{t('sendKey')}</h3>
-                <p>{t('sendKeyHint')}</p>
+                {/* The one place the other key is named. */}
                 <p>
                   {t('sendCombination', {
                     send: sendKeyLabel(sendKey),
@@ -139,7 +140,6 @@ export function SettingsPage({
             <section className="settings-row">
               <div>
                 <h3>{t('language')}</h3>
-                <p>{t('languageHint')}</p>
               </div>
               <Select
                 label={t('language')}
@@ -148,21 +148,11 @@ export function SettingsPage({
                 options={LOCALES.map((l) => ({ value: l.id, label: l.name }))}
               />
             </section>
-            {/* Native-only controls stay in the app menu; say where (#84). Desktop shell only:
-                remote windows never get local desktop controls. */}
-            {desktop ? (
-              <section className="settings-row" data-testid="desktop-native-options">
-                <div>
-                  <h3>{t('nativeHeading')}</h3>
-                  <p>{t('nativeHint')}</p>
-                </div>
-              </section>
-            ) : null}
+            {/* Desktop shell only: remote windows never get local desktop controls. */}
             {desktop ? (
               <section className="settings-row">
                 <div>
-                  <h3>{t('notifySetting')}</h3>
-                  <p>{t('notifyHint')}</p>
+                  <h3>{t('notifyOn')}</h3>
                 </div>
                 <KitSwitch
                   label={t('notifyOn')}
@@ -187,7 +177,6 @@ export function SettingsPage({
           </section>
         ) : (
           <>
-            <p className="text-body text-muted-foreground">{t('aboutText')}</p>
             <DesktopAbout serverVersion={serverVersion} />
             <Button
               variant="tertiary"

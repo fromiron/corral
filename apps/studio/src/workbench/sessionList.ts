@@ -1,4 +1,4 @@
-import type { InboxItemView } from '@corral/client';
+import type { InboxItemView, SessionEvidenceView } from '@corral/client';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { INBOX_GROUPS, type InboxGroupId } from './inbox.ts';
@@ -74,10 +74,42 @@ const RESPONSE_KINDS: readonly InboxKind[] = kindsOf('response');
 const REVIEW_KINDS = kindsOf('review');
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
+/**
+ * Why a session needs attention: a terminal to check, the latest run's state that waits on the
+ * person, or else a response item ('awaiting_user' stands for a decision, whose run waits).
+ */
+export type AttentionReason =
+  | 'uncertain_terminal'
+  | 'awaiting_user'
+  | 'failed'
+  | 'interrupted'
+  | 'paused'
+  | 'uncertain_write';
+
 export interface SessionGroupRow {
   session: WorkSession;
+  /** Why a row of the attention group is there, each once; else empty. */
+  attention: AttentionReason[];
   /** The review kinds a row of the review group names, in the Needs you order; else empty. */
   review: ReviewKind[];
+}
+
+function attentionReasons(
+  session: WorkSession,
+  runs: RunSummary[],
+  has: ReadonlySet<InboxKind>,
+): AttentionReason[] {
+  const reasons: AttentionReason[] = [];
+  if (has.has('uncertain_terminal')) reasons.push('uncertain_terminal');
+  const latest = latestSessionRun(session, runs);
+  // Without the inbox, sessionListState says attention only for a run that waits on the person.
+  if (latest && sessionListState(session, runs) === 'attention')
+    reasons.push(latest.status as AttentionReason);
+  else {
+    if (has.has('decision')) reasons.push('awaiting_user');
+    if (has.has('uncertain_write')) reasons.push('uncertain_write');
+  }
+  return reasons;
 }
 
 /**
@@ -114,11 +146,42 @@ export function sessionGroups(
             ? 'review'
             : state;
     const rows = grouped.get(id) ?? [];
-    rows.push({ session, review: id === 'review' ? review : [] });
+    rows.push({
+      session,
+      attention: id === 'attention' ? attentionReasons(session, runs, has) : [],
+      review: id === 'review' ? review : [],
+    });
     grouped.set(id, rows);
   }
   return SESSION_GROUPS.flatMap((id) => {
     const rows = grouped.get(id);
     return rows ? [{ id, rows }] : [];
   });
+}
+
+/** A recorded fact a session row says (docs/specs/features/session-evidence.md). */
+export type SessionFact =
+  | 'checks_passed'
+  | 'changed_after_checks'
+  | 'approved'
+  | 'changes_requested'
+  | 'applied';
+
+/**
+ * What a session's latest check, decision and applying say on its row, in that order. Only the
+ * good outcomes show: a failed check, a decision with writes after it and an applying that did
+ * not finish are the Review group's kinds, and a fact never changes a session's group.
+ */
+export function sessionFacts(
+  evidence: Pick<SessionEvidenceView, 'check' | 'decision' | 'integration'> | undefined,
+): SessionFact[] {
+  if (!evidence) return [];
+  const facts: SessionFact[] = [];
+  const { check, decision, integration } = evidence;
+  if (check?.verdict === 'pass')
+    facts.push(check.writesSince ? 'changed_after_checks' : 'checks_passed');
+  if (decision && !decision.writesSince)
+    facts.push(decision.decision === 'approved' ? 'approved' : 'changes_requested');
+  if (integration === 'applied') facts.push('applied');
+  return facts;
 }

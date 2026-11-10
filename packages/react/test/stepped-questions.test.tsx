@@ -95,7 +95,7 @@ function setup(
   return { session, sendCommand };
 }
 
-const form = () => screen.getByRole('form', { name: 'Waiting for your answer' });
+const form = () => screen.getByRole('form', { name: 'Waiting for you' });
 const heading = () => within(form()).getByRole('heading', { level: 3 });
 const next = () => within(form()).getByRole('button', { name: 'Next' });
 const send = () => within(form()).getByRole('button', { name: 'Send answer' });
@@ -183,7 +183,7 @@ it('steps through the questions and sends every answer once, from the review ste
       ],
     }),
   );
-  expect(screen.queryByRole('form', { name: 'Waiting for your answer' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('form', { name: 'Waiting for you' })).not.toBeInTheDocument();
 });
 
 it('lets a person skip ahead but marks missing answers and holds Send until they are given', async () => {
@@ -299,4 +299,34 @@ it('keeps a single question on one screen with no steps', () => {
   expect(within(form()).queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Only?' })).toBeVisible();
   expect(send()).toBeDisabled();
+});
+
+it('states the wait once: no caption in the card, and a lone text field keeps its label unseen', () => {
+  setup({ key: 'one', questions: [{ id: 'a', prompt: 'Only?', kind: 'text' }] });
+  // The run's status and the form's name say it waits; the card adds no caption of its own.
+  expect(form()).not.toHaveTextContent('Waiting for');
+  // The question's prompt sits right above its one field: the label stays its name only.
+  const answer = screen.getByRole('textbox', { name: 'Your answer' });
+  expect(answer.closest('label')?.querySelector('.sr-only')?.textContent).toBe('Your answer');
+});
+
+it('keeps the free-text label visible beside a question’s options', async () => {
+  setup({
+    key: 'mixed',
+    questions: [
+      {
+        id: 'a',
+        prompt: 'Which?',
+        kind: 'single',
+        allowFreeText: true,
+        options: [
+          { id: 'x', label: 'X' },
+          { id: 'y', label: 'Y' },
+        ],
+      },
+    ],
+  });
+  const answer = screen.getByRole('textbox', { name: 'Your answer' });
+  expect(answer.closest('label')?.querySelector('.sr-only')).toBeNull();
+  expect(answer.closest('label')).toHaveTextContent('Your answer');
 });

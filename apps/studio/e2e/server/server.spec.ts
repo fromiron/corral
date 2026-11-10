@@ -1,9 +1,15 @@
 import type { Page } from '@playwright/test';
-import { addAgentAndOutput, openResult, renameTeam, startTestRun } from '../workbench.ts';
+import {
+  addAgentAndOutput,
+  openLibraryTeams,
+  openResult,
+  renameTeam,
+  startTestRun,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function agentToOutput(page: Page) {
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.getByRole('button', { name: 'New team' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
   await addAgentAndOutput(page);
@@ -14,7 +20,7 @@ test('a run on the local server saves first, finishes, and survives a reload', a
   corral,
 }) => {
   await corral.open('/');
-  await expect(page.getByText('Local · simulated', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Simulated');
   await agentToOutput(page);
   for (const returnBeforeResponse of [false, true]) {
     await renameTeam(page, `Saved team ${returnBeforeResponse}`);
@@ -53,15 +59,15 @@ test('a run on the local server saves first, finishes, and survives a reload', a
     await finished;
     if (!returnBeforeResponse)
       await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-    await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
-    await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   }
   await startTestRun(page);
   // The run started from a saved revision: nothing is left unsaved.
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
 
   await page.getByRole('link', { name: 'Open execution page' }).click();

@@ -166,7 +166,10 @@ async function mount(
   selectedRunId: string | null = null,
   mode: 'server' | 'browser' = 'server',
   runControlsOwnConfirmation = false,
-  extra: { home?: boolean; corrals?: CorralSummary[] } = {},
+  {
+    session: change,
+    ...extra
+  }: { home?: boolean; corrals?: CorralSummary[]; session?: Partial<WorkSession> } = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
@@ -205,6 +208,7 @@ async function mount(
     updatedAt: '2026-10-21T00:00:00Z',
     archivedAt: null,
     entries: [],
+    ...change,
   };
   let persistedQueue = initialQueue;
   const repository = {
@@ -1298,3 +1302,44 @@ it('keeps what the next run starts with for assistive tech, not as a line under 
   expect(summary?.classList.contains('sr-only')).toBe(true);
   expect(summary?.closest('[data-testid="composer-footer"]')).toBeNull();
 });
+
+it.each(['next', 'queue'] as const)(
+  'sends no completion criteria with a %s request; the server reads them from the session',
+  async (intent) => {
+    const sessionId = `done_when_${intent}`;
+    const criterion = 'The build passes without warnings';
+    writeComposerDraft(sessionId, {
+      text: 'Fix the build',
+      intent,
+      target: null,
+      targetLabel: null,
+      references: [],
+    });
+    const f =
+      intent === 'next'
+        ? await mount(sessionId, null, [], [], null, 'server', false, {
+            session: { criteria: [criterion] },
+          })
+        : await mount(sessionId, active, [], [], null, 'server', false, {
+            session: { criteria: [criterion] },
+          });
+    await f.click('Send');
+    if (intent === 'queue') {
+      expect(f.repository.addSessionEntry).toHaveBeenCalledOnce();
+      const saved = f.repository.addSessionEntry.mock.calls[0]?.[1];
+      await f.render(null, [{ ...queuedEntry(captured), attachments: undefined, ...saved }]);
+      await f.click('Start now');
+    }
+    expect(f.startAuto).toHaveBeenCalledOnce();
+    const sent = JSON.stringify([
+      f.startAuto.mock.calls,
+      f.repository.addSessionEntry.mock.calls,
+      f.repository.updateSessionEntry.mock.calls,
+      f.repository.updateSession.mock.calls,
+      f.transport.startRun.mock.calls,
+      f.transport.sendCommand.mock.calls,
+    ]);
+    expect(sent).not.toContain('"criteria"');
+    expect(sent).not.toContain(criterion);
+  },
+);

@@ -250,13 +250,13 @@ class Shape {
     return this;
   }
 
-  output(source: string, requireApproval = false) {
+  output(source: string) {
     this.nodes.push({
       id: 'output',
       type: 'output',
       label: this.labels.output,
       inputBindings: [read(source, 'draft')],
-      requireApproval,
+      requireApproval: false,
     });
     return this;
   }
@@ -366,7 +366,6 @@ const SHAPES: Record<TeamTemplateId, (shape: Shape) => Built> = {
         .edge('synthesis', 'out', 'output'),
       'scope',
     ),
-  // The result waits for the person's approval of the comparison.
   'tech-decision': (shape) =>
     done(
       shape
@@ -385,7 +384,7 @@ const SHAPES: Record<TeamTemplateId, (shape: Shape) => Built> = {
           ],
           'draft',
         )
-        .output('compare', true)
+        .output('compare')
         .edge('frame', 'out', 'research_a')
         .edge('frame', 'out', 'research_b')
         .edge('research_a', 'out', 'gather')

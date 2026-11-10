@@ -44,7 +44,7 @@ export function RunPanel({
     return (
       <div className="grid h-full place-items-center p-6">
         <div className="grid justify-items-center gap-3">
-          <EmptyState title={tw('noRuns')} text={tw('noRunsText')} />
+          <EmptyState title={tw('noRuns')} />
           <Button
             variant="secondary"
             size="compact"
@@ -86,7 +86,6 @@ export function RunPanel({
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
-          runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
           request={
             entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
           }

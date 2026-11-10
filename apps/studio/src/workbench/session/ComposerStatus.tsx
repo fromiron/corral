@@ -132,9 +132,14 @@ export function ComposerStatus({
         data-testid="composer-footer"
         className="flex min-w-0 items-center gap-2 px-4 pt-1.5 text-micro text-muted-foreground empty:hidden"
       >
-        <ComposerStats runs={runs} />
+        <ComposerStats runs={runs} besideBadge={simulated} />
         {simulated ? (
-          <Badge data-testid="composer-environment" variant="outline" size="sm">
+          <Badge
+            data-testid="composer-environment"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+          >
             {t('modeMock')}
           </Badge>
         ) : null}

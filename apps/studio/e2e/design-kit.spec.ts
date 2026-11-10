@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { requestBox } from './workbench.ts';
+import { newConversation, requestBox } from './workbench.ts';
 
 test('the kit themes preserve project creation and explicit theme choice', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -132,7 +132,7 @@ test('described select choices stay separated and readable without losing a draf
   page,
 }, testInfo) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await requestBox(page).fill('Keep this draft');
   const picker = page.getByRole('combobox', { name: 'Permissions for next request', exact: true });
   for (const width of [1280, 390]) {

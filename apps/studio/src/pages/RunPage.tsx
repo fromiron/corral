@@ -118,7 +118,6 @@ export function RunPage() {
  */
 export function RunDetail({
   runId,
-  runNumber,
   search,
   setSearch,
   embedded = false,
@@ -129,7 +128,6 @@ export function RunDetail({
   /** The request that started the run, when the caller knows it: the run's title. */
   request?: string | null;
   runId: string;
-  runNumber?: number;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded?: boolean;
@@ -203,7 +201,6 @@ export function RunDetail({
   return (
     <RunWorkspace
       runId={runId}
-      runNumber={runNumber}
       key={runId}
       session={session}
       definition={definition}
@@ -225,7 +222,6 @@ export function RunDetail({
 
 function RunWorkspace({
   runId,
-  runNumber,
   session,
   sessionId,
   definition,
@@ -237,7 +233,6 @@ function RunWorkspace({
 }: {
   runId: string;
   request: string | null;
-  runNumber: number | undefined;
   session: RunSessionStore;
   sessionId: string | null;
   definition: CorralDefinition;
@@ -515,7 +510,6 @@ function RunWorkspace({
         session={session}
         definition={definition}
         request={request}
-        runNumber={runNumber}
         waiting={pending}
         onRespond={() => {
           rememberTrigger();
@@ -654,6 +648,7 @@ function RunWorkspace({
                         rounds={rounds}
                         compact
                         wideCards
+                        titled={false}
                       />
                       <RunFlowDecisions
                         session={session}
@@ -685,6 +680,7 @@ function RunWorkspace({
                     <Timeline
                       session={session}
                       fill
+                      headed={false}
                       onOpenExecution={(id) => chooseExecution(id)}
                     />
                   ),
@@ -773,8 +769,9 @@ function RunWorkspace({
           <div className="grid grid-cols-1 gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
+                {/* The response area's state is the header's status: its heading stays unseen. */}
                 <h2
-                  className="truncate text-subtitle"
+                  className={panel === 'approval' ? 'sr-only' : 'truncate text-subtitle'}
                   style={{ fontVariationSettings: fontWeights.semibold }}
                 >
                   {panel === 'approval'
@@ -869,7 +866,7 @@ function RunWorkspace({
                     </Accordion>
                   </TabPanel>
                   <TabPanel value="usage" keepMounted className="space-y-3 pt-3" data-run-usage>
-                    <UsageInspector session={session} prices={prices} />
+                    <UsageInspector session={session} prices={prices} headed={false} />
                     {projection ? <RoutingTally projection={projection} /> : null}
                   </TabPanel>
                 </Tabs>
@@ -998,7 +995,6 @@ function RunHeader({
   session,
   definition,
   request,
-  runNumber,
   trailing,
   waiting = 0,
   onRespond,
@@ -1007,8 +1003,6 @@ function RunHeader({
   session: RunSessionStore;
   definition: CorralDefinition;
   request: string | null;
-  /** The run's number in its session, as the status pill and the composer count. */
-  runNumber?: number | undefined;
   trailing?: ReactNode;
   /** Questions and approvals waiting for the person; the status becomes the way to them. */
   waiting?: number;
@@ -1021,14 +1015,25 @@ function RunHeader({
   const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
   if (!projection) return null;
-  // A failed run says why beside its state, in Run info's words, and leads to what failed.
+  // A failed run says why beside its state, in Run info's words, and leads to what failed. With
+  // one agent, "{agent} failed" only restates the state chip, so it is left out.
   const failed = projection.status === 'failed';
   const failedExecution = failed ? failedExecutionId(projection) : null;
+  // The run's agents: those it schedules, and any callable helper that actually ran.
+  const ran = new Set(Object.values(projection.executions).map((execution) => execution.nodeId));
+  const soleAgent =
+    definition.nodes.filter(
+      (node) => node.type === 'agent' && (node.invocation !== 'callable' || ran.has(node.id)),
+    ).length <= 1;
+  const endReason =
+    projection.statusReason &&
+    !(soleAgent && projection.statusReason.split(': ')[0] === 'execution_failed')
+      ? projection.statusReason
+      : null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
-  const title = runNumber
-    ? t('runName', { number: runNumber, name: request ?? definition.name })
-    : (request ?? definition.name);
+  // The path bar names the run by its number; the header is its request.
+  const title = request ?? definition.name;
   return (
     <section
       data-testid="run-header"
@@ -1069,14 +1074,14 @@ function RunHeader({
             />
           </span>
         </div>
-        {failed && (projection.statusReason || (failedExecution && onOpenExecution)) ? (
+        {failed && (endReason || (failedExecution && onOpenExecution)) ? (
           <div className="flex min-w-0 items-center gap-2 @max-[44rem]/run-head:flex-1">
-            {projection.statusReason ? (
+            {endReason ? (
               <span
                 data-testid="run-end-reason"
                 className="min-w-0 truncate text-caption text-muted-foreground"
               >
-                <RunReason code={projection.statusReason} nodeLabel={labelOf} />
+                <RunReason code={endReason} nodeLabel={labelOf} />
               </span>
             ) : null}
             {failedExecution && onOpenExecution ? (

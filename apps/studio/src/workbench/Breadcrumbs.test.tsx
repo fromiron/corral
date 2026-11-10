@@ -131,7 +131,7 @@ it('lists the session runs newest first by number and status and selects one', a
   expect(onSelect).toHaveBeenCalledWith('second');
 });
 
-it('names each run by its session number and request summary', async () => {
+it('names the chosen run by its number alone; its request summary is in the menu', async () => {
   const container = await render(
     <RunMenu
       runs={[
@@ -144,8 +144,9 @@ it('names each run by its session number and request summary', async () => {
     />,
   );
   const trigger = container.querySelector('button');
-  expect(trigger?.textContent).toContain('#2 · Research brief');
-  expect(trigger?.textContent).not.toContain('Run #');
+  // The run header below the path carries the request; the path item does not repeat it.
+  expect(trigger?.textContent).toContain('Run #2');
+  expect(trigger?.textContent).not.toContain('Research brief');
   const items = await open(trigger);
   expect(items.map((item) => item.textContent)).toEqual([
     expect.stringContaining('#2 · Research brief'),

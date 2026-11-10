@@ -1,5 +1,5 @@
 import { linearCorral } from '@corral/testkit';
-import { startTestRun } from '../workbench.ts';
+import { openLibraryTeams, startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('Editor Run retries its lost start after a full renderer reload without a second Run', async ({
@@ -15,7 +15,7 @@ test('Editor Run retries its lost start after a full renderer reload without a s
     });
   });
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.locator('input[type=file]').setInputFiles({
     name: 'remote-editor.corral.json',
     mimeType: 'application/json',

@@ -1,3 +1,4 @@
+import { modelSettingsTab } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true });
@@ -16,6 +17,7 @@ test('Manual with the Local engine survives a server restart and downloads nothi
       failed.push(`${response.request().method()} ${response.status()}`);
   });
   await corral.open('/settings/models');
+  await modelSettingsTab(page, 'Local AI & judgment');
   const section = page.getByRole('region', { name: 'Reasoning judgment', exact: true });
   await expect(section.getByRole('radio', { name: 'Off', exact: true })).toHaveAttribute(
     'aria-checked',
@@ -33,6 +35,7 @@ test('Manual with the Local engine survives a server restart and downloads nothi
   await page.goto('about:blank');
   await corral.restart();
   await corral.open('/settings/models');
+  await modelSettingsTab(page, 'Local AI & judgment');
   await expect(section.getByRole('radio', { name: 'Manual', exact: true })).toHaveAttribute(
     'aria-checked',
     'true',
