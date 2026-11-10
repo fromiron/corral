@@ -1843,6 +1843,70 @@ it('turns the waiting status into the one way to respond', async () => {
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
 });
 
+it('keeps the response area for what an extension says after its prompt is answered', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const target = { requestId: 'request_1', executionId: 'exec_worker', attemptNo: 1 };
+  const hash = 'b'.repeat(64);
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `evt_${runSeq}`,
+      runId: 'run_layout',
+      runSeq,
+      recordedAt: '2026-10-26T09:06:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const asked = event(1, 'extension.ui_requested', {
+    ...target,
+    kind: 'confirm',
+    bodyRef: 'prompt_1',
+    bodyHash: hash,
+    deadline: '2026-10-26T09:16:00.000Z',
+  });
+  const answered = event(2, 'extension.ui_answered', {
+    ...target,
+    answerRef: 'answer_1',
+    answerHash: hash,
+  });
+  const said = event(3, 'extension.ui_notified', {
+    executionId: 'exec_worker',
+    kind: 'notify',
+    key: 'notice',
+    level: 'info',
+    bodyRef: 'notice_1',
+    bodyHash: hash,
+  });
+  const { container, run } = await mount('inline_team', null, {});
+  await act(async () => run.setState({ events: [asked] }));
+  await waitFor(run, 1);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Answered while the run goes on: the extension may still reply where it asked.
+  await act(async () => run.setState({ events: [asked, answered] }));
+  await waitFor(run, 0);
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Its reply holds the area while its text is kept; the area is named for it, not as waiting.
+  await act(async () => run.setState({ events: [asked, answered, said] }));
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('h2')?.textContent).toBe(messages.Harness.extensionNotice);
+  // The run ended and released the notice's text: nothing is left to show, so the area closes.
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () => run.setState({ projection: { ...projection, status: 'succeeded' } }));
+  expect(side(container)?.hidden).toBe(true);
+
+  // A decision with no extension behind it still closes the area once it is answered.
+  for (const done of cleanup.splice(0)) await done();
+  const plain = await mount('inline_team', null, {});
+  await waitFor(plain.run, 1);
+  expect(side(plain.container)?.hidden).toBe(false);
+  await waitFor(plain.run, 0);
+  expect(side(plain.container)?.hidden).toBe(true);
+});
+
 it('opens the response area once when a new decision arrives and the side is free', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run } = await mount('inline_team', null, {});

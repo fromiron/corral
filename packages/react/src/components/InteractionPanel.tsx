@@ -55,7 +55,10 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
   }, [session, refs, retry]);
   if (!pending.length && !notices.length) return null;
   return (
-    <section aria-label={t('extensionUi')} className="flex flex-col gap-2">
+    <section
+      aria-label={pending.length ? t('extensionUi') : t('extensionNotice')}
+      className="flex flex-col gap-2"
+    >
       {pending.map((event) =>
         event.type === 'user_input.requested' ? (
           <UserQuestionPrompt

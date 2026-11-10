@@ -245,6 +245,7 @@ function RunWorkspace({
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
   const status = useTranslations('Status');
+  const harness = useTranslations('Harness');
   const { execution, artifact, result } = search;
   const resultOpen = search.view === 'results' || result !== undefined;
   const documentOpen = resultOpen || artifact !== undefined;
@@ -354,8 +355,29 @@ function RunWorkspace({
       item.kind === 'approval' ? item.approval.approvalId : item.event.payload.requestId,
     )
     .join('|');
+  // An extension can answer back after its prompt: what it says shows in the response area
+  // under the prompt that was answered, so the area stays while the live run may still reply,
+  // and holds the extension's notices while their text is kept (it is released with the run's
+  // other working bodies when the run ends; api-contract.md, 산출물 본문 수명).
+  const extensionSaid = useStore(session, (s) =>
+    s.events.some(
+      (event) =>
+        event.type === 'extension.ui_notified' &&
+        canReadArtifactBody(s.projection, event.payload.bodyRef),
+    ),
+  );
+  const extensionReplying = useStore(
+    session,
+    (s) =>
+      Boolean(s.projection && !TERMINAL_RUN_STATUSES.has(s.projection.status)) &&
+      s.events.findLast(
+        (event) =>
+          event.type === 'extension.ui_requested' || event.type === 'extension.ui_answered',
+      )?.type === 'extension.ui_answered',
+  );
+  const responding = pending > 0 || extensionSaid || extensionReplying;
   const sideShown =
-    !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || pending > 0);
+    !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || responding);
   useEffect(() => {
     if (hasOutput) markRunReviewed();
   }, [hasOutput]);
@@ -375,8 +397,8 @@ function RunWorkspace({
     }
   }, [execution, executionNodeId, listedNodeId]);
   useEffect(() => {
-    if (panel === 'approval' && pending === 0) setPanel('closed');
-  }, [panel, pending]);
+    if (panel === 'approval' && !responding) setPanel('closed');
+  }, [panel, responding]);
   // A new question or approval opens the response area once, only into free space on a wide
   // page. An item counts as announced only once the area has actually shown it, so one first seen
   // behind a document, an inspector or a narrow page still opens it when the space frees up.
@@ -777,7 +799,9 @@ function RunWorkspace({
                   style={{ fontVariationSettings: fontWeights.semibold }}
                 >
                   {panel === 'approval'
-                    ? status('awaiting_user')
+                    ? pending > 0
+                      ? status('awaiting_user')
+                      : harness('extensionNotice')
                     : panel === 'run'
                       ? m('runInfo')
                       : (selectedTarget?.nodeLabel ??
@@ -800,7 +824,7 @@ function RunWorkspace({
               </Button>
             </div>
             <div hidden={panel !== 'approval'}>
-              {pending > 0 ? (
+              {responding ? (
                 <RunResponseArea
                   session={session}
                   focusRef={response}
