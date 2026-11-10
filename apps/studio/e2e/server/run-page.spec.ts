@@ -347,7 +347,8 @@ test.describe('active graph preview', () => {
       await steer.click();
       const reins = monitor.getByTestId('run-instructions');
       await expect(reins).toBeVisible();
-      await expect(reins).toBeFocused();
+      // A running execution takes instructions, so focus lands in the instruction box.
+      await expect(reins.getByLabel('Instruction', { exact: true })).toBeFocused();
       await expect(reins).toContainText('Agent execution 1');
       await expect(monitor.getByTestId('run-side')).toBeHidden();
       expect(new URL(page.url()).searchParams.get('execution')).toBeNull();

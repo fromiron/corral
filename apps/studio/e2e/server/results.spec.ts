@@ -104,7 +104,8 @@ test('selected-run usage and unique result identities survive reload without cha
     await expect(page.getByRole('link', { name: 'Succeeded Last run', exact: true })).toBeVisible();
     await expect(page.getByTestId('turn-run').last()).toHaveText(`Run #${index + 1}`);
   }
-  const totals = await page.getByTestId('composer-stats').innerText();
+  // The same reading the comparison below makes: the figures wrap, so the laid-out text differs.
+  const totals = (await page.getByTestId('composer-stats').textContent()) ?? '';
   expect(totals).toContain('Session total');
   // The run segment of the top bar's path exists only in run history.
   await panelTab(page, 'Runs');
