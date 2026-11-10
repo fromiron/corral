@@ -1,6 +1,6 @@
 import type { ModelProfileView, ProviderAuthView } from '@corral/client';
 import { Button, fontWeights, Input, TabsSubtle, TabsSubtleItem } from '@corral/react/design-kit';
-import { type FormEvent, type ReactNode, useId, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import {
@@ -36,11 +36,26 @@ export function ModelSettingsPage() {
   const [apiKeys, setApiKeys] = useState(0);
   const [tab, setTab] = useState(0);
   const idPrefix = `models-tabs-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  // "Change the key on the card" from the editor: the Sign-in tab shows that card, and its key
+  // field (or the card, once it holds a key) takes the focus.
+  const signIn = useRef<HTMLElement>(null);
+  const [shownCard, showCard] = useState<{ endpointId: string } | null>(null);
+  useEffect(() => {
+    if (!shownCard || MODEL_TABS[tab] !== 'signIn') return;
+    const card = signIn.current?.querySelector<HTMLElement>(
+      `[data-testid="provider-${CSS.escape(shownCard.endpointId)}"]`,
+    );
+    const target = card?.querySelector<HTMLElement>('[data-key-form] input') ?? card;
+    target?.scrollIntoView?.({ block: 'nearest' });
+    target?.focus();
+    showCard(null);
+  }, [shownCard, tab]);
   // Every tab stays mounted while hidden, so an unsaved key, sign-in or profile edit survives a
   // tab change and the leave guard still sees it.
   const panels: Record<(typeof MODEL_TABS)[number], ReactNode> = {
     signIn: (
       <section
+        ref={signIn}
         id="models-providers"
         tabIndex={-1}
         aria-labelledby="providers-heading"
@@ -63,7 +78,15 @@ export function ModelSettingsPage() {
       <>
         {editing && config ? (
           <div id="models-profiles" tabIndex={-1} className="outline-none">
-            <ModelConfigEditor config={config} catalog={catalog} onDone={() => setEditing(false)} />
+            <ModelConfigEditor
+              config={config}
+              catalog={catalog}
+              onDone={() => setEditing(false)}
+              onShowKey={(endpointId) => {
+                setTab(MODEL_TABS.indexOf('signIn'));
+                showCard({ endpointId });
+              }}
+            />
           </div>
         ) : (
           <div id="models-profiles" tabIndex={-1} className="flex flex-col gap-3 outline-none">
@@ -331,7 +354,7 @@ function ProviderCard({
       ) : null}
 
       {provider.methods.apiKey && (!provider.signedIn || borrowed) && !login ? (
-        <form onSubmit={saveKey} className="flex flex-col gap-1">
+        <form onSubmit={saveKey} data-key-form="" className="flex flex-col gap-1">
           <div className="flex items-end gap-2">
             <ApiKeyInput value={apiKey} onChange={setApiKey} disabled={busy} />
             <Button variant="primary" type="submit" disabled={busy || !apiKey.trim()}>
