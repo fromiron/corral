@@ -13,7 +13,9 @@ test('saved details are shown again before a quick new conversation starts', asy
   await expect(details).toBeHidden();
   // The quick ways to start show the saved details first instead of starting with them.
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
-  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Visible name');
+  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue(
+    'Visible name',
+  );
   await expect(details.getByRole('textbox', { name: 'Purpose' })).toHaveValue('Visible purpose');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
@@ -21,7 +23,9 @@ test('saved details are shown again before a quick new conversation starts', asy
     .getByTestId('app-sidebar')
     .getByRole('link', { name: 'New conversation', exact: true })
     .click();
-  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Visible name');
+  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue(
+    'Visible name',
+  );
   await expect(page).not.toHaveURL(/\/sessions\//);
 });
 
