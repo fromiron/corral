@@ -3,10 +3,27 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type CloneOperation, projectRequest } from '../projects-api.ts';
 
-export function GitCloneFolder({ onSelect }: { onSelect(path: string): void }) {
+/** What is typed into the clone form; its owner may keep it while the form is unmounted. */
+export interface GitCloneDraft {
+  source: string;
+  destination: string;
+}
+
+export function GitCloneFolder({
+  onSelect,
+  draft,
+  onDraftChange,
+}: {
+  onSelect(path: string): void;
+  draft?: GitCloneDraft;
+  onDraftChange?(draft: GitCloneDraft): void;
+}) {
   const t = useTranslations('GitClone');
-  const [source, setSource] = useState('');
-  const [destination, setDestination] = useState('');
+  const [own, setOwn] = useState<GitCloneDraft>({ source: '', destination: '' });
+  const { source, destination } = draft && onDraftChange ? draft : own;
+  const change = draft && onDraftChange ? onDraftChange : setOwn;
+  const setSource = (value: string) => change({ source: value, destination });
+  const setDestination = (value: string) => change({ source, destination: value });
   const [operations, setOperations] = useState<CloneOperation[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

@@ -1636,7 +1636,13 @@
       "runs": "Runs",
       "environment": "Environment"
     },
-    "actions": "Actions for {name}"
+    "actions": "Actions for {name}",
+    "column": {
+      "name": "Name",
+      "contents": "Teams and runs",
+      "saved": "Saved",
+      "actions": "Actions"
+    }
   },
   "Sessions": {
     "scheduledRequest": "Scheduled request",

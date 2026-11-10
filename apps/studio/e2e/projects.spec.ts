@@ -15,6 +15,7 @@ const openProject = (page: Page, name: string) =>
 
 async function newProject(page: Page, name: string) {
   await page.goto('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(/\/projects\/project_[a-z0-9]+$/);

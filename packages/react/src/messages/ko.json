@@ -1636,7 +1636,13 @@
       "runs": "실행",
       "environment": "환경"
     },
-    "actions": "{name} 작업"
+    "actions": "{name} 작업",
+    "column": {
+      "name": "이름",
+      "contents": "팀·실행",
+      "saved": "저장",
+      "actions": "작업"
+    }
   },
   "Sessions": {
     "scheduledRequest": "예약 실행 요청",

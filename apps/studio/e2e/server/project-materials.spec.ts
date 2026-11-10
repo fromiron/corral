@@ -19,6 +19,7 @@ test('clone and link through Projects; save versioned instructions', async ({ pa
   );
 
   await corral.open('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByText('Clone Git repository', { exact: true }).click();
   await page.getByLabel('Repository URL', { exact: true }).fill(source);
   await page.getByLabel('Absolute path of new folder').fill(destination);

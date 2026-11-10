@@ -6,6 +6,7 @@ import { expect, test } from './harness.ts';
 
 test('a run stays in the project it started in when its Corral moves', async ({ page, corral }) => {
   await corral.open('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Client A');
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(/\/projects\/project_[a-z0-9]+$/);

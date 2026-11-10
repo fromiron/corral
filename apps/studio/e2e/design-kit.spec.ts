@@ -8,6 +8,7 @@ test('the kit themes preserve project creation and explicit theme choice', async
       localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' }));
   });
   await page.goto('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 250, 250)');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Design kit');
@@ -34,6 +35,7 @@ test('the bundled Inter variable font renders the kit weights from the studio or
     if (request.resourceType() === 'font') fontRequests.push(request.url());
   });
   await page.goto('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
   const faces = await page.evaluate(async () => {
     const loaded = await document.fonts.load('550 14px Inter');
@@ -52,6 +54,7 @@ test('narrow forms retain names, keyboard focus and reduced motion', async ({ pa
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   await page.goto('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   const name = page.getByRole('textbox', { name: 'Name', exact: true });
   await expect(name).toBeVisible();
   await name.focus();
