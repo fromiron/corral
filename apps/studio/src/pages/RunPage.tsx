@@ -518,7 +518,14 @@ function RunWorkspace({
     setSteeringId(id);
     setSteeringTargets((previous) => new Set(previous).add(id));
     setSteeringOpen(true);
-    requestAnimationFrame(() => steeringPane.current?.focus({ preventScroll: true }));
+    // Opening it is asking to type: the instruction box takes focus, or the pane when the
+    // execution takes no instruction any more.
+    requestAnimationFrame(() =>
+      (
+        steeringPane.current?.querySelector<HTMLElement>('textarea:not([disabled])') ??
+        steeringPane.current
+      )?.focus({ preventScroll: true }),
+    );
   };
   const closeSteering = () => {
     setSteeringOpen(false);
