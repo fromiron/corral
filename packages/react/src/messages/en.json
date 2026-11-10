@@ -758,6 +758,7 @@
     "showKey": "Show API key",
     "hideKey": "Hide API key",
     "saveKey": "Save key",
+    "keySafety": "A saved key is never shown again or logged, and is exported only when you include it in a settings vault.",
     "signInInstead": "Sign in to Corral instead",
     "cancel": "Cancel",
     "openSignIn": "Open the sign-in page",

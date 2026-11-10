@@ -758,6 +758,7 @@
     "showKey": "API 키 표시",
     "hideKey": "API 키 숨기기",
     "saveKey": "키 저장",
+    "keySafety": "저장한 키는 다시 표시하거나 기록하지 않으며, 설정 금고에 포함하기로 선택할 때만 내보냅니다.",
     "signInInstead": "Corral에 직접 로그인",
     "cancel": "취소",
     "openSignIn": "로그인 페이지 열기",

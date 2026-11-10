@@ -196,6 +196,7 @@ function ProviderCard({
   const refresh = useModelSettingsRefresh();
   const [redirect, setRedirect] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const keySafety = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const login = provider.login;
@@ -356,11 +357,19 @@ function ProviderCard({
       {provider.methods.apiKey && (!provider.signedIn || borrowed) && !login ? (
         <form onSubmit={saveKey} data-key-form="" className="flex flex-col gap-1">
           <div className="flex items-end gap-2">
-            <ApiKeyInput value={apiKey} onChange={setApiKey} disabled={busy} />
+            <ApiKeyInput
+              value={apiKey}
+              onChange={setApiKey}
+              disabled={busy}
+              describedBy={keySafety}
+            />
             <Button variant="primary" type="submit" disabled={busy || !apiKey.trim()}>
               {t('saveKey')}
             </Button>
           </div>
+          <p id={keySafety} className="text-caption text-muted-foreground">
+            {t('keySafety')}
+          </p>
         </form>
       ) : null}
 

@@ -111,11 +111,26 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
       ),
     );
     const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
-    // The heading names the section alone: no intro line under it, and no storage note per key.
+    // The heading names the section alone: no intro line under it, and no storage note at the top.
     expect(container.querySelector('[data-description]')).toBeNull();
     expect(container.textContent).not.toContain(
       'Kept on this computer, outside the workspace, and used only',
     );
+    // What happens to a saved key is one line under the key field, once per card, and the
+    // field's description.
+    const card = container.querySelector<HTMLElement>('[data-testid="provider-openai"]');
+    const safety = [...(card?.querySelectorAll('p') ?? [])].filter(
+      (node) => node.textContent === messages.Models.keySafety,
+    );
+    expect(safety).toHaveLength(1);
+    expect(container.textContent?.split(messages.Models.keySafety)).toHaveLength(2);
+    const field = card?.querySelector('input');
+    expect(field?.getAttribute('aria-describedby')).toBe(safety[0]?.id);
+    expect(
+      field && safety[0]
+        ? field.compareDocumentPosition(safety[0]) & Node.DOCUMENT_POSITION_FOLLOWING
+        : 0,
+    ).toBeTruthy();
     // The kit keeps an invisible bold copy of each label for its width; read the visible one.
     const visible = (node: HTMLElement) => {
       const copy = node.cloneNode(true) as HTMLElement;
