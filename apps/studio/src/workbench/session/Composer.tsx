@@ -1649,13 +1649,19 @@ export function Composer({
       leftSlot={
         <>
           <Menu>
-            <MenuTrigger
-              render={
-                <Button variant="ghost" size="icon-compact" aria-label={tc('attachmentActions')} />
-              }
-            >
-              <Plus />
-            </MenuTrigger>
+            <Tooltip content={tc('attachmentActions')}>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-compact"
+                    aria-label={tc('attachmentActions')}
+                  />
+                }
+              >
+                <Plus />
+              </MenuTrigger>
+            </Tooltip>
             <MenuPopup align="start">
               <MenuItem
                 onClick={() => {
