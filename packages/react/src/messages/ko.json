@@ -435,8 +435,6 @@
       "refused": "거절됨",
       "interrupted": "시작 요청 중단"
     },
-    "savedEnabled": "활성 상태로 저장했습니다. 다음 예약 시각에 실행합니다.",
-    "savedDisabled": "비활성 상태로 저장했습니다. 활성화하기 전까지 실행하지 않습니다.",
     "resultTitle": "예약 실행 종료",
     "result": "예약 실행: {status}",
     "openRun": "실행 열기",

@@ -22,13 +22,16 @@ test('save a disabled schedule, run through Auto, and reopen its persisted histo
   await page.getByLabel('Request', { exact: true }).fill('Summarize the available information.');
   await expect(page.getByLabel('Enable scheduled runs')).not.toBeChecked();
   await page.getByRole('button', { name: 'Save schedule', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Saved as disabled' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Daily project review/ })).toBeVisible();
+  // The row and the switch say it was saved disabled; no note repeats it.
+  await expect(page.getByRole('cell', { name: 'Disabled', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Enable scheduled runs')).not.toBeChecked();
   await page.getByRole('button', { name: 'Run now', exact: true }).click();
   const history = page.getByRole('region', { name: 'Run history' });
   await expect(history.getByRole('link', { name: 'Open run', exact: true })).toBeVisible();
   await expect(history.getByText('Succeeded', { exact: true })).toBeVisible();
-  await expect(page.getByText('Scheduled run: Succeeded', { exact: true })).toBeVisible();
+  // The schedule's own row and history show the result, so no banner repeats it here.
+  await expect(page.getByText('Scheduled run: Succeeded', { exact: true })).toHaveCount(0);
   await history.getByRole('link', { name: 'Open run', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_.*run=run_/);
   await automation.click();

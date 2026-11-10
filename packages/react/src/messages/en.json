@@ -435,8 +435,6 @@
       "refused": "Refused",
       "interrupted": "Dispatch interrupted"
     },
-    "savedEnabled": "Saved and enabled. This schedule will run at its next scheduled time.",
-    "savedDisabled": "Saved as disabled. This schedule will not run until you enable it.",
     "resultTitle": "Scheduled run finished",
     "result": "Scheduled run: {status}",
     "openRun": "Open run",
