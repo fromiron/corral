@@ -7,11 +7,10 @@
 export const CHOSEN_BUTTON_ROW = 'bg-active text-foreground';
 
 /**
- * A kit Table row: the fill sits on its cells, rounded at the row's two ends like the table's
- * hover pill, and the row drops its rule so the fill reads as one piece.
+ * A kit Table row: the fill sits on its cells, square like the table's own hover highlight, and
+ * the row drops its rule so the fill reads as one piece.
  */
-export const CHOSEN_TABLE_ROW =
-  'border-transparent [&>td]:bg-active [&>td]:text-foreground [&>td:first-child]:rounded-l-lg [&>td:last-child]:rounded-r-lg';
+export const CHOSEN_TABLE_ROW = 'border-transparent [&>td]:bg-active [&>td]:text-foreground';
 
 /** The row above a chosen table row (or the header, above the first) drops its rule too. */
 export const ABOVE_CHOSEN_TABLE_ROW = 'border-transparent';
