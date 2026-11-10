@@ -116,7 +116,11 @@ test.describe('live models', () => {
     await requestBox(page).fill('Use the live model');
     // with live models possible, a session runs live; it offers no simulated way out.
     await expect(page.getByRole('combobox', { name: 'Run mode' })).toHaveCount(0);
-    await expect(page.getByTestId('models-not-ready')).toContainText('model-a');
+    const notReady = page.getByTestId('models-not-ready');
+    await expect(notReady).toContainText('model-a is not connected');
+    // The Connect button says where to go; no sentence repeats it.
+    await expect(notReady).not.toContainText('Settings');
+    await expect(notReady.getByRole('link', { name: 'Connect a model', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(page.getByTestId('app-sidebar')).toContainText('Connect a model');
     await expect(page.getByRole('button', { name: 'Use simulated agents' })).toHaveCount(0);

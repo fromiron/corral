@@ -1744,7 +1744,7 @@
     "runSettings": "Run settings",
     "autoModel": "Model",
     "autoHint": "The request uses the default workflow. Model:",
-    "autoNotReady": "{model} is not connected. Connect it under Settings › Models.",
+    "autoNotReady": "{model} is not connected",
     "autoFallback": "choice failed, ran one agent",
     "autoTemplate": {
       "single": "Auto · one agent",

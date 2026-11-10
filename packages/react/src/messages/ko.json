@@ -1744,7 +1744,7 @@
     "runSettings": "실행 설정",
     "autoModel": "모델",
     "autoHint": "요청에 맞춰 진행합니다. 모델:",
-    "autoNotReady": "모델 연결 필요: {model}. 설정 › 모델에서 연결하세요.",
+    "autoNotReady": "연결되지 않음: {model}",
     "autoFallback": "선택 실패, 에이전트 하나로 실행",
     "autoTemplate": {
       "single": "자동 · 에이전트 하나",
