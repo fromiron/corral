@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider, useTranslations } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { HookSettingsPage } from './ResourceSettingsPage.tsx';
 
 const api = { entries: vi.fn(async (): Promise<unknown[]> => []) };
@@ -49,7 +50,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function show() {
+async function show(locale: 'en' | 'ko' = 'en') {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -59,13 +60,26 @@ async function show() {
   });
   await act(async () =>
     root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <IntlProvider locale={locale} messages={locale === 'ko' ? ko : messages} timeZone="UTC">
         <HookSettingsPage />
       </IntlProvider>,
     ),
   );
   return container;
 }
+
+const hook = {
+  kind: 'extension',
+  resourceHash: 'hash_1',
+  entry: 'extensions/hook.ts',
+  name: 'Format on save',
+  description: '',
+  archivedAt: null,
+  successor: null,
+  profiles: [],
+  managementRevision: 1,
+  resource: { name: 'format-pack', trustedAt: null, sourceKind: 'local', version: '1.0.0' },
+};
 
 // workbench.md: a name shows once per screen. With an empty hook library the packages section
 // sits right below, named by its own heading, so no row of links above the page names it again.
@@ -80,20 +94,7 @@ it('names the hook page’s packages once, by their heading, while the library i
 // #82 (SET-S04): with hooks listed, package management sits below a long library, so the top of
 // the page says it is there and lets a keyboard user jump to it.
 it('heads a page with hooks with an On this page row that jumps to the library and the packages', async () => {
-  api.entries.mockResolvedValueOnce([
-    {
-      kind: 'extension',
-      resourceHash: 'hash_1',
-      entry: 'extensions/hook.ts',
-      name: 'Format on save',
-      description: '',
-      archivedAt: null,
-      successor: null,
-      profiles: [],
-      managementRevision: 1,
-      resource: { name: 'format-pack', trustedAt: null, sourceKind: 'local', version: '1.0.0' },
-    },
-  ]);
+  api.entries.mockResolvedValueOnce([hook]);
   const container = await show();
   const index = container.querySelector('nav');
   expect(index?.getAttribute('aria-label')).toBe(messages.Navigation.onThisPage);
@@ -110,4 +111,12 @@ it('heads a page with hooks with an On this page row that jumps to the library a
   await act(async () => jumps[0]?.click());
   expect(document.activeElement?.id).toBe('resources-library');
   expect(document.activeElement?.getAttribute('aria-label')).toBe(messages.Resources.library);
+});
+
+// The row names each section as a place, in Korean as in English ("Library", not "View library").
+it('names the Korean row’s sections as places', async () => {
+  api.entries.mockResolvedValueOnce([hook]);
+  const container = await show('ko');
+  const jumps = [...(container.querySelector('nav')?.querySelectorAll('button') ?? [])];
+  expect(jumps.map((button) => button.textContent)).toEqual(['라이브러리', '패키지']);
 });
