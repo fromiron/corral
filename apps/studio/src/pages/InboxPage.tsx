@@ -234,8 +234,14 @@ export function InboxPage() {
     const run = runId ? runs.find((item) => item.runId === runId) : undefined;
     return run ? runIdentity(run, runs, []).number : null;
   };
-  /** What the item is, never its body: a decision is not guessed as a question or an approval. */
-  const kindLine = ({ item }: InboxEntry) => {
+  /**
+   * What the item is, never its body. A decision's group already names its state, so its line is
+   * only the run (and it is not guessed as a question or an approval); other kinds name themselves.
+   */
+  const kindLine = ({ item }: InboxEntry): string | null => {
+    const number = runNumber(item.runId);
+    const run = number ? tw('runNumber', { number }) : null;
+    if (item.kind === 'decision') return run;
     const kind =
       item.kind === 'recipe_stopped'
         ? t('kind.recipe_stopped', {
@@ -243,15 +249,11 @@ export function InboxPage() {
               item.detail && tr.has(`reasons.${item.detail}`) ? tr(`reasons.${item.detail}`) : '',
           })
         : t(`kind.${item.kind}`);
-    const number = runNumber(item.runId);
-    return number ? `${kind} · ${tw('runNumber', { number })}` : kind;
+    return run ? `${kind} · ${run}` : kind;
   };
-  /** Under the detail's title: a decision is named by its run; its response area says the rest. */
-  const detailLine = (entry: InboxEntry) => {
-    const number = entry.item.kind === 'decision' ? runNumber(entry.item.runId) : null;
-    const line = number ? tw('runNumber', { number }) : kindLine(entry);
-    return `${line} · ${projectLabel(entry.projectId)}`;
-  };
+  const joined = (...parts: (string | null)[]) => parts.filter(Boolean).join(' · ');
+  /** Under the detail's title: the row's line and the project; the body says the rest. */
+  const detailLine = (entry: InboxEntry) => joined(kindLine(entry), projectLabel(entry.projectId));
 
   const choose = (entry: InboxEntry) => {
     setSelectedKey(entry.key);
@@ -378,7 +380,7 @@ export function InboxPage() {
                         role="listitem"
                         data-inbox-row={entry.key}
                         selected={selectedKey === entry.key}
-                        label={`${entry.item.sessionTitle} · ${line} · ${project}`}
+                        label={joined(entry.item.sessionTitle, line, project)}
                         onClick={() => choose(entry)}
                       >
                         <CardHeader className="[overflow-wrap:anywhere]">
@@ -386,7 +388,7 @@ export function InboxPage() {
                           <KitCardTitle className="[&>span]:overflow-visible">
                             {entry.item.sessionTitle}
                           </KitCardTitle>
-                          <CardDescription>{line}</CardDescription>
+                          {line ? <CardDescription>{line}</CardDescription> : null}
                         </CardHeader>
                         <CardFooter className="max-w-1/3 min-w-0">
                           <span className="truncate text-caption text-muted-foreground">

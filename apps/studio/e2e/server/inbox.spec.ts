@@ -49,7 +49,7 @@ async function twoDecisions(page: Page, corral: Harness) {
   await expect.poll(status, { timeout: 30_000 }).toEqual(['awaiting_user', 'awaiting_user']);
 
   await page.goto(`${corral.server.url}/inbox`);
-  const response = page.getByRole('list', { name: 'Response needed', exact: true });
+  const response = page.getByRole('list', { name: 'Waiting for you', exact: true });
   await expect(response.getByRole('listitem')).toHaveCount(2);
   // The rows' order is the server's; answer whichever comes first, then the one after it.
   const titles = (
@@ -59,8 +59,9 @@ async function twoDecisions(page: Page, corral: Harness) {
   ).map((label) => label.split(' · ')[0] ?? '');
   expect([...titles].sort()).toEqual(['First decision', 'Second decision']);
   const [title = '', nextTitle = ''] = titles;
+  // The group names the state; a decision's row names its run.
   const row = (name: string) =>
-    page.getByRole('button', { name: `${name} · Response needed · Run #1 · My project` });
+    page.getByRole('button', { name: `${name} · Run #1 · My project`, exact: true });
   const detail = (name: string) => page.getByRole('region', { name, exact: true });
   return { status, response, title, nextTitle, row, detail };
 }

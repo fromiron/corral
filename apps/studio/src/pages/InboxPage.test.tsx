@@ -280,16 +280,35 @@ it('shows each group as a titled list of project, session and run number, never 
   const lists = [...container.querySelectorAll<HTMLElement>('[role="list"]')];
   const name = (list: HTMLElement) =>
     document.getElementById(list.getAttribute('aria-labelledby') ?? '')?.textContent;
-  expect(lists.map(name)).toEqual(['Response needed', 'Waiting & stopped']);
+  // The first group is named by the state it holds.
+  expect(lists.map(name)).toEqual(['Waiting for you', 'Waiting & stopped']);
   expect(lists[0]?.textContent).toContain('Fix login');
-  expect(lists[0]?.textContent).toContain('Response needed · Run #2');
+  // The group already says a response is waiting: a decision's row names only its run.
+  const decision = lists[0]?.querySelector('[role="listitem"]');
+  expect(decision?.querySelector('[data-slot="card-description"]')?.textContent).toBe('Run #2');
+  expect(decision?.querySelector('button')?.getAttribute('aria-label')).toBe(
+    'Fix login · Run #2 · Alpha',
+  );
+  expect(lists[0]?.textContent).not.toContain('Response needed');
   expect(lists[0]?.textContent).toContain('Alpha');
+  // Other kinds keep their kind beside the run number.
   expect(lists[1]?.textContent).toContain('Write docs');
+  expect(lists[1]?.textContent).toContain('Queued request');
   expect(lists[1]?.textContent).toContain('Beta');
   expect(container.textContent).not.toContain('Private request body');
   // Rows open no run stores or subscriptions.
   expect(services.runFor).not.toHaveBeenCalled();
   expect(services.retainRun).not.toHaveBeenCalled();
+});
+
+it('names a decision whose run number is not known by its session alone, never by its state', async () => {
+  const { container, rowButton, detail, click } = await mount({ inbox: async () => [decisionA] });
+  const row = container.querySelector('[role="listitem"]');
+  expect(row?.querySelector('[data-slot="card-description"]')).toBeNull();
+  expect(rowButton('Fix login')?.getAttribute('aria-label')).toBe('Fix login · Alpha');
+  await click(rowButton('Fix login'));
+  expect(detail()?.querySelector('header p')?.textContent).toBe('Alpha');
+  expect(container.textContent).not.toContain('Response needed');
 });
 
 it('opens one run store for the selected decision only and releases it when the selection moves', async () => {

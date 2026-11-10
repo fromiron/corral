@@ -150,7 +150,7 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await expect(sessionRow).toHaveAttribute('href', terminalPath);
   await summary.click();
   await page
-    .getByRole('list', { name: 'Response needed', exact: true })
+    .getByRole('list', { name: 'Waiting for you', exact: true })
     .getByRole('button', {
       name: 'Observed terminal owner · Terminal exit needs checking · Unvisited terminal project',
       exact: true,

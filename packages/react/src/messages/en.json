@@ -965,12 +965,11 @@
     "title": "Needs you",
     "back": "Back",
     "groups": {
-      "response": "Response needed",
+      "response": "Waiting for you",
       "review": "Review",
       "waiting": "Waiting & stopped"
     },
     "kind": {
-      "decision": "Response needed",
       "uncertain_write": "File writes with unknown outcome",
       "uncertain_terminal": "Terminal exit needs checking",
       "unreviewed": "Unreviewed file writes",

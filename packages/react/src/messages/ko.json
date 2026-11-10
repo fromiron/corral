@@ -965,12 +965,11 @@
     "title": "확인 필요",
     "back": "돌아가기",
     "groups": {
-      "response": "응답 필요",
+      "response": "응답 대기",
       "review": "검토",
       "waiting": "대기·중단"
     },
     "kind": {
-      "decision": "응답 필요",
       "uncertain_write": "결과를 모르는 파일 쓰기",
       "uncertain_terminal": "터미널 종료 확인 필요",
       "unreviewed": "확인하지 않은 파일 쓰기",
