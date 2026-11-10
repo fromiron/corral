@@ -414,7 +414,6 @@ export function ResourceEditor({
                     <li key={path}>{path === reviewedEntry ? name.trim() : path}</li>
                   ))}
                 </ul>
-                <p className="mt-2 text-caption text-muted-foreground">{t('reviewHint')}</p>
                 <details className="mt-2">
                   <summary>{h('files', { count: review.resource.files.length })}</summary>
                   {reviewedSkill && reviewedSkill.name !== name.trim() ? (

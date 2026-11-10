@@ -128,12 +128,9 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
 
   return (
     <section className="flex flex-col gap-4 border-t border-line pt-6" aria-label={t('title')}>
-      <div>
-        <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
-          {t('title')}
-        </h3>
-        <p className="mt-1 text-body text-muted-foreground">{t('intro')}</p>
-      </div>
+      <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h3>
       <form
         className="flex flex-col gap-3"
         onSubmit={(event) => {

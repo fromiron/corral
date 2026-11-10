@@ -95,7 +95,6 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
       <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('heading')}
       </legend>
-      <p className="text-caption text-muted-foreground">{t('setupHint')}</p>
       {node.reviewRecipe ? (
         <p role="status" className="text-caption">
           {t('pinned', { revision: node.reviewRecipe.revision })}

@@ -236,7 +236,6 @@ export function SkillQualityPanel({
         {t('title')}
       </summary>
       <div className="mt-4 flex flex-col gap-4">
-        <p className="text-body text-muted-foreground">{t('intro')}</p>
         {restoredDraft && draftDirty ? (
           <p role="status" className="text-caption text-muted-foreground">
             {t('draftKept')}
