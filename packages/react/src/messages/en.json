@@ -596,7 +596,7 @@
       },
       "tech-decision": {
         "name": "Technical decision",
-        "body": "Researches two options at the same time and writes a comparison for you to approve."
+        "body": "Researches two options at the same time and writes a comparison that recommends one."
       },
       "blank": {
         "name": "Empty",

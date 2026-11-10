@@ -328,36 +328,20 @@ describe('mock runs of the templates', () => {
     expect(finalized(events)).toHaveLength(1);
   });
 
-  it('tech-decision: both research branches meet, then the comparison waits for approval', async () => {
+  it('tech-decision: both research branches meet, and the comparison is the result without an approval', async () => {
     const transport = runtime();
     const { runId, events } = await start(transport, build('tech-decision'));
-    const waiting = await waitForProjection(
+    const final = await waitForProjection(
       transport,
       runId,
       (p) => p.status === 'awaiting_user' || finished(p),
     );
-    expect(waiting.status).toBe('awaiting_user');
-    expect(ran(waiting, 'research_a')).toEqual(['succeeded']);
-    expect(ran(waiting, 'research_b')).toEqual(['succeeded']);
-    expect(ran(waiting, 'compare')).toEqual(['succeeded']);
-    expect(events.filter((e) => e.type === 'workflow.joined')).toHaveLength(1);
-    expect(finalized(events)).toHaveLength(0);
-    const approval = Object.values(waiting.approvals).find((a) => a.status === 'pending');
-    if (!approval) throw new Error('expected the approval of the comparison');
-    await transport.sendCommand({
-      schemaVersion: '0.1',
-      commandId: 'approve',
-      runId,
-      type: 'resolve_approval',
-      expectedControlRevision: waiting.controlRevision,
-      payload: {
-        approvalId: approval.approvalId,
-        subjectVersionId: approval.subjectVersionIds[0] ?? '',
-        decision: 'approve',
-      },
-    });
-    const final = await waitForProjection(transport, runId, finished);
     expect(final.status).toBe('succeeded');
+    expect(ran(final, 'research_a')).toEqual(['succeeded']);
+    expect(ran(final, 'research_b')).toEqual(['succeeded']);
+    expect(ran(final, 'compare')).toEqual(['succeeded']);
+    expect(events.filter((e) => e.type === 'workflow.joined')).toHaveLength(1);
+    expect(Object.values(final.approvals)).toEqual([]);
     expect(finalized(events)).toHaveLength(1);
   });
 });
