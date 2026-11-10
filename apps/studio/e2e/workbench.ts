@@ -30,7 +30,8 @@ export async function openLibrary(page: Page, view: 'Teams' | 'Templates' | 'Res
   else await page.goto(new URL(`/library/${view.toLowerCase()}`, page.url()).href);
   const tab = page
     .getByRole('tablist', { name: 'Library views', exact: true })
-    .getByRole('tab', { name: view, exact: true });
+    // The Teams tab carries the number of saved teams.
+    .getByRole('tab', { name: view === 'Teams' ? /^Teams( \d+)?$/ : view, exact: true });
   if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }

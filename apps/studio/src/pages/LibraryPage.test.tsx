@@ -545,6 +545,35 @@ it('offers New team and Browse templates when the project has no teams', async (
   expect(router.state.location.search).toMatchObject({ project: 'project_1' });
 });
 
+it("counts the project's teams on the Teams tab and names the list nowhere else", async () => {
+  await team(repository, 'Alpha reviewers', 'project_1');
+  await team(repository, 'Alpha writers', 'project_1');
+  await team(repository, 'Beta writers', 'project_2');
+  const { container } = await render('/library/teams?project=project_1');
+  const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
+  const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
+  expect(tabs.map(name)).toEqual(['Teams 2', 'Templates', 'Resources']);
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  expect(panel.textContent).not.toContain(messages.Library.teams.list);
+  expect(panel.querySelector('h2:not(section h2)')).toBeNull();
+  // Where teams are kept stays one click away, in the row of the list's actions.
+  const storage = panel.querySelector('button[aria-label="Where teams are saved"]');
+  const create = byText(panel, 'button', 'New team');
+  expect(storage).not.toBeNull();
+  expect(storage?.parentElement?.parentElement?.contains(create ?? null)).toBe(true);
+});
+
+it("heads the chosen team's detail with its name and leaves the row's details to the row", async () => {
+  await team(repository, 'Alpha reviewers', 'project_1');
+  const { container } = await render('/library/teams?project=project_1');
+  const detail = container.querySelector<HTMLElement>('section[aria-label="Team details"]');
+  expect(detail?.querySelector('h2')?.textContent).toContain('Alpha reviewers');
+  const row = container.querySelector('tbody tr');
+  expect(row?.textContent).toContain('Version 1');
+  expect(detail?.textContent).not.toContain('Version');
+  expect(detail?.textContent).not.toContain('Saved');
+});
+
 it('selects a team by its whole row', async () => {
   await team(repository, 'Alpha reviewers', 'project_1');
   await team(repository, 'Alpha writers', 'project_1');

@@ -208,23 +208,21 @@ export function LibraryTeams({
   return (
     <div className="flex flex-col gap-6">
       {teams.length ? (
-        <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
-            <SectionLabel count={teams.length}>{tl('teams.list')}</SectionLabel>
-            {/* Where teams are kept is worth knowing once, not a line under the list. */}
-            <Tooltip content={storage} className="max-w-xs">
-              <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
-                <Info aria-hidden />
-              </Button>
-            </Tooltip>
-          </div>
+        // The list's actions; the Teams tab above already names the list and counts it.
+        <div className="flex min-h-9 flex-wrap items-center justify-end gap-2">
+          {/* Where teams are kept is worth knowing once, not a line under the list. */}
+          <Tooltip content={storage} className="max-w-xs">
+            <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
+              <Info aria-hidden />
+            </Button>
+          </Tooltip>
           {archived ? null : (
-            <div className="flex flex-wrap items-center gap-2">
+            <>
               {importButton}
               <Button size="compact" disabled={busy} onClick={() => void openNew()}>
                 {t('new')}
               </Button>
-            </div>
+            </>
           )}
         </div>
       ) : null}
@@ -307,16 +305,10 @@ export function LibraryTeams({
               aria-label={tl('teams.detail')}
               className="flex flex-col gap-3"
             >
+              {/* The name heads it; its version, size and save time are on its row. */}
               <h2>
                 <KitCardTitle>{selected.name}</KitCardTitle>
               </h2>
-              <p className="text-caption text-muted-foreground">
-                {t('revisions', {
-                  definition: selected.definitionRevision,
-                  nodes: selected.nodeCount,
-                })}{' '}
-                · {t('updated', { time: ago(selected.updatedAt) })}
-              </p>
               <div className="flex flex-col items-stretch gap-2">
                 {archived ? null : (
                   <Button disabled={busy} onClick={() => void startWith(selected)}>
