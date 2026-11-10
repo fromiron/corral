@@ -644,6 +644,8 @@ it('names the reviewed minutes once, where the secretary posted them, and not in
   expect(reviews[0]?.closest('[data-chat-item]')?.getAttribute('data-chat-item')).toBe(
     'round_2:secretary',
   );
+  // The button under the secretary's name says it; no sentence above it says it again.
+  expect(reviews[0]?.closest('[data-chat-item]')?.textContent).not.toContain('minutesReady');
   const composer = must(
     f.container.querySelector<HTMLElement>('[data-testid="chat-composer"]'),
     'the composer',
@@ -1041,6 +1043,11 @@ it('the records open on the minutes, without a helper sentence, and print a cand
   const panel = must(records(), 'the records');
   expect(panel.textContent).not.toContain('candidateHint');
   expect(panel.textContent?.split('Ship the change')).toHaveLength(2);
+  // The panel title names the records; each minutes keeps its time, not a second title.
+  const minutes = must(panel.querySelector('article[aria-label="minutes"]'), 'the minutes');
+  expect(minutes.querySelector('h3')).toBeNull();
+  expect(minutes.querySelector('time')).not.toBeNull();
+  expect(panel.querySelector('[aria-label="aboutDecisions"]')).toBeNull();
 });
 
 it('closing the side records panel returns focus to the toolbar’s records toggle', async () => {
