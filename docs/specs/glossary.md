@@ -19,8 +19,8 @@
 | 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
 | 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | — |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
-| 실행이 사람의 답을 기다리는 상태 | Waiting for you / 응답 대기 | run status `awaiting_user` | 결정 대기, Response needed / 응답 필요 |
-| 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 실행 조작 알약, 대화 안내, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
+| 실행이 사람의 답을 기다리는 상태 | Waiting for you / 응답 대기 | run status `awaiting_user` | 결정 대기, Response needed / 응답 필요, Waiting for your answer / 답변을 기다리고 있습니다, 내 답변 대기, 답을 기다리는 중, 사용자를 기다리는 중 |
+| 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 대화 안내, 실행 기록 머리, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
 | 다시 쓰는 팀·템플릿·리소스 모음 | Library / 라이브러리 | `/library`, `features/library.md` | 자료실 |
 | 예약 실행 화면 | Automation / 자동화 | `/schedules`, `ScheduledPage` | 스케줄러 |
 | 프로젝트 세션 탭의 상태별 배치 | Needs attention / 확인 필요, Review / 검토, In progress / 진행 중, No run yet / 실행 전, Completed / 완료, Cancelled / 취소됨, Empty session / 빈 세션 | `sessionGroups` | Task status, To do, In review, Done |

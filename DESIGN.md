@@ -19,12 +19,12 @@ themes:
     focus: "#6B97FF"
 typography:
   body-md:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Inter, Pretendard Variable, system-ui, sans-serif"
     fontSize: 13px
     lineHeight: 20px
     fontWeight: 400
   body-compact:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Inter, Pretendard Variable, system-ui, sans-serif"
     fontSize: 12px
     lineHeight: 18px
     fontWeight: 400
@@ -95,7 +95,7 @@ Theme choice supports light, dark and system. `light-dark()` resolves the palett
 
 ## Typography
 
-Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font and serves it from its own origin; the system font is the fallback while it loads. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
+Use the kit's six semantic roles. Font family is `Inter, "Pretendard Variable", system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font for Latin and the Pretendard Variable font for Hangul only (by `unicode-range`), and serves both from its own origin; the system font is the fallback while they load. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
 
 | Role | Size / line height | Typical use |
 |---|---|---|
@@ -106,13 +106,13 @@ Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`.
 | `caption` | 12 / 16px | Secondary labels and metadata |
 | `micro` | 11 / 14px | Sparse status annotations |
 
-Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs. Because Inter is bundled, the kit's `font-variation-settings` weights render on every machine. Korean interface text uses one register: statements end in the 합니다 form ("저장했습니다", "세션이 없습니다"), and instructions use the 하세요 form ("모델을 연결하세요"). The 해요 form ("없어요", "열려요") is not used. Numbers are written in full with grouping (2,400, not 2.4천).
+Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs. Because Inter and Pretendard Variable are bundled, the kit's `font-variation-settings` weights render on every machine, in Korean as well as Latin. Korean interface text uses one register: statements end in the 합니다 form ("저장했습니다", "세션이 없습니다"), and instructions use the 하세요 form ("모델을 연결하세요"). The 해요 form ("없어요", "열려요") is not used. Numbers are written in full with grouping (2,400, not 2.4천).
 
 Editable fields use the 16px `--fs-field-touch` size on coarse pointers to prevent iOS focus zoom, preserving their existing line height.
 
 ## Layout, Spacing and Shape
 
-Use one workspace grammar: sidebar, path bar, task content and contextual panels. The sidebar's primary menu (new conversation, Needs you, Library, Automation) and project groups are the only navigation system; pages do not add their own side navigation. List pages (Needs you, Library, Automation, feature previews, a project's workspace) compose the kit page frame: the path bar, a display title, a toolbar row of kit Tabs or filters, then content at the wide or narrow measure. An empty conversation follows the kit home composition: a centered title above the composer and its start suggestions. Settings remain an overlay on the current work, including over Library. A chosen row in a list or table (Needs you, Library, Automation, settings lists) uses one treatment: the fill of the sidebar's active row with the row's own radius, distinct from hover and from keyboard focus in both themes. Button fills (`secondary`) are not used for rows. The contract lives in [workbench.md](docs/specs/workbench.md#전역-셸과-화면-틀).
+Use one workspace grammar: sidebar, path bar, task content and contextual panels. The sidebar's primary menu (new conversation, Needs you, Library, Automation) and project groups are the only navigation system; pages do not add their own side navigation. List pages (Needs you, Library, Automation, feature previews, a project's workspace) compose the kit page frame: the path bar, which is the only place the page is named, a toolbar row of kit Tabs or filters, then content at the wide or narrow measure. Outside the sidebar a name, a state or a count shows once per screen: a tab is not repeated as a heading inside it, a chosen row is not repeated as the first line of its detail, and no sentence restates the control beside it. Intro lines under headings, helper text that rewords a label and headings over a single control are not used; text a person needs before an irreversible or permission-granting action, errors with a cause and a next step, and the simulated and sample-data marks stay. An empty conversation follows the kit home composition: a centered title above the composer and its start suggestions. Settings remain an overlay on the current work, including over Library. A chosen row in a list or table (Needs you, Library, Automation, settings lists) uses one treatment: the fill of the sidebar's active row with the row's own radius, distinct from hover and from keyboard focus in both themes. Button fills (`secondary`) are not used for rows. The contract lives in [workbench.md](docs/specs/workbench.md#전역-셸과-화면-틀).
 
 A session uses the supplied kit's default Tabs, TabsList, TabItem and TabPanel for Conversation, Files, Changes and Execution history. Conversation and history are always available; file work adds Files and Changes in the same row. Keep the source component's appearance, spacing, selection, hover, motion and focus behavior unchanged. Conversation contains messages and the composer, Files owns the document dock and its auxiliary tools, Changes owns Git and review, and history reuses the Run screen. Never place file editing under Conversation or repeat these primary views in document tab strips. Switching views preserves drafts, documents and processes. Dock groups retain their controls for opening, arranging and closing files and auxiliary views. Page-level display preferences, such as conversation density, belong in the page menu rather than above the content.
 
