@@ -47,6 +47,7 @@ type LibraryData =
 export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined }) {
   const t = useTranslations('Library');
   const tp = useTranslations('Projects');
+  const tw = useTranslations('Workspace');
   const location = useRouterState({ select: (state) => state.location });
   const search = validateLibrarySearch(location.search as Record<string, unknown>);
   const remembered = useCurrentProject();
@@ -140,6 +141,23 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
               ))}
             </TabsList>
             <div className="flex flex-wrap items-center gap-2">
+              {/* An archived project gets no new teams. */}
+              {view === 'templates' && data.state === 'ready' && !project?.archivedAt ? (
+                <Button
+                  variant="tertiary"
+                  size="compact"
+                  onClick={() =>
+                    void navigate({
+                      to: VIEW_ROUTES.templates,
+                      search: { ...kept, draft: true },
+                      replace: true,
+                      resetScroll: false,
+                    })
+                  }
+                >
+                  {tw('draftFromGoal')}
+                </Button>
+              ) : null}
               {returnTo ? (
                 <Button
                   variant="ghost"

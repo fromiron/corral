@@ -6,7 +6,6 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   EmptyState,
@@ -412,7 +411,10 @@ function MoveCorral({
   );
 }
 
-/** Team templates and "draft a team from a goal" for the project. */
+/**
+ * Team templates for the project, and the "draft a team from a goal" dialog while the address
+ * asks for it (the library's toolbar opens it).
+ */
 export function LibraryTemplates({
   projectId,
   project,
@@ -432,7 +434,6 @@ export function LibraryTemplates({
   const text = useTemplateText();
   const navigate = useNavigate();
   const [copyTemplate, setCopyTemplate] = useState<WorkspaceTemplateId | null>(null);
-  const [draftOpen, setDraftOpen] = useState(false);
   // Each card shows the team its template makes: the roles in order, and whether any may
   // change files or run commands.
   const templates = useMemo(
@@ -450,22 +451,12 @@ export function LibraryTemplates({
         {tp('archivedNote')}
       </p>
     );
-  const closeDraft = () => {
-    setDraftOpen(false);
-    if (drafting) onDraftClosed();
-  };
   return (
-    <section aria-label={t('templatesHeading')} className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionLabel>{t('templatesHeading')}</SectionLabel>
-        <Button variant="tertiary" size="compact" onClick={() => setDraftOpen(true)}>
-          {t('draftFromGoal')}
-        </Button>
-      </div>
+    <>
       <div className="@container">
         <div className="grid gap-2 @2xl:grid-cols-2">
           {templates.map(({ id, steps, readOnly }) => (
-            <article key={id} aria-labelledby={`template-${id}`} className="@container/template">
+            <article key={id} aria-labelledby={`template-${id}`}>
               <Card className="h-full">
                 <CardHeader>
                   <h3 id={`template-${id}`}>
@@ -478,9 +469,6 @@ export function LibraryTemplates({
                       </Badge>
                     </CardAction>
                   ) : null}
-                  <CardDescription className="col-span-full">
-                    {t(`template.${id}.body`)}
-                  </CardDescription>
                 </CardHeader>
                 {steps.length ? (
                   <CardContent>
@@ -497,10 +485,11 @@ export function LibraryTemplates({
                     </ol>
                   </CardContent>
                 ) : null}
-                {/* Too narrow for both actions side by side, they stack at full width. */}
-                <CardFooter className="mt-auto flex-col items-stretch gap-2 @sm/template:flex-row @sm/template:items-center @sm/template:gap-1">
+                <CardFooter className="mt-auto">
                   {id === 'blank' ? null : (
                     <Button
+                      variant="tertiary"
+                      aria-label={t('templateNewConversation', { name: t(`template.${id}.name`) })}
                       onClick={() => {
                         // The project's new conversation opens with this team chosen.
                         chooseNewSessionTeam(projectId, `template:${id}`);
@@ -511,11 +500,15 @@ export function LibraryTemplates({
                         });
                       }}
                     >
-                      {t('startWithTemplate')}
+                      {t('newConversation')}
                     </Button>
                   )}
-                  <Button variant="tertiary" onClick={() => setCopyTemplate(id)}>
-                    {t('useTemplate')}
+                  <Button
+                    variant="ghost"
+                    aria-label={t('templateEditCopy', { name: t(`template.${id}.name`) })}
+                    onClick={() => setCopyTemplate(id)}
+                  >
+                    {t('editCopy')}
                   </Button>
                 </CardFooter>
               </Card>
@@ -534,9 +527,7 @@ export function LibraryTemplates({
           }}
         />
       ) : null}
-      {drafting || draftOpen ? (
-        <TeamDraftDialog onClose={closeDraft} projectId={projectId} />
-      ) : null}
-    </section>
+      {drafting ? <TeamDraftDialog onClose={onDraftClosed} projectId={projectId} /> : null}
+    </>
   );
 }

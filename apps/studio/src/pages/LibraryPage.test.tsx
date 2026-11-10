@@ -16,6 +16,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { setCurrentProject } from '../projects.ts';
 import { SettingsNavigationContext } from '../workbench/navigation.ts';
 import {
@@ -88,7 +89,7 @@ function SettingsBridge({ children }: { children: ReactNode }) {
   );
 }
 
-async function render(url: string, children?: ReactNode) {
+async function render(url: string, children?: ReactNode, locale: 'en' | 'ko' = 'en') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const root = createRootRoute({
     component: () => (
@@ -128,7 +129,7 @@ async function render(url: string, children?: ReactNode) {
   });
   await act(async () => {
     reactRoot.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <IntlProvider locale={locale} messages={locale === 'ko' ? ko : messages} timeZone="UTC">
         <RouterProvider router={router} />
       </IntlProvider>,
     );
@@ -577,12 +578,99 @@ it('shows the eight templates in order with their roles, and marks the ones that
       (mark) => mark.textContent === 'Read-only',
     );
   expect(cards.map(readOnly)).toEqual([true, false, false, false, true, true, true, false]);
-  // Every card offers a copy to edit; the empty canvas has no conversation to start.
+  // The name and the role flow only: no sentence retelling the flow.
+  const ids = [
+    'starter',
+    'implement-review',
+    'plan-implement-review',
+    'bug-fix',
+    'parallel-review',
+    'tech-decision',
+    'research-team',
+    'blank',
+  ] as const;
+  for (const [index, card] of cards.entries()) {
+    expect(card.querySelector('[data-slot="card-description"]')).toBeNull();
+    const id = ids[index] as (typeof ids)[number];
+    expect(card.textContent).not.toContain(messages.Workspace.template[id].body);
+  }
+  // Two quiet actions named for their template; the empty canvas has no conversation to start.
   const actions = (card: HTMLElement) =>
-    [...card.querySelectorAll('button')].map((button) => button.textContent);
-  expect(cards.map(actions)).toEqual([
-    ...Array(7).fill(['Start a session with this team', 'Edit this team']),
-    ['Edit this team'],
+    [...card.querySelectorAll('button')].map((button) => [
+      button.textContent,
+      button.getAttribute('aria-label'),
+    ]);
+  expect(cards.map(actions)).toEqual(
+    cards.map((card, index) => {
+      const name = title(card);
+      const edit = ['Edit a copy', `Edit a copy of ${name}`];
+      return index === 7 ? [edit] : [['New conversation', `New conversation with ${name}`], edit];
+    }),
+  );
+  // Neither is the screen's primary button: tertiary, then ghost.
+  for (const card of cards) {
+    const buttons = [...card.querySelectorAll('button')];
+    expect(buttons.filter((button) => button.className.includes('text-background'))).toEqual([]);
+    expect(buttons.at(-1)?.className).toContain('text-muted-foreground');
+  }
+  expect(cards[0]?.querySelector('button')?.className).not.toContain('text-muted-foreground');
+  // No label over the grid: the tab already names it.
+  expect(container.textContent).not.toContain('Start from a template');
+  expect(container.querySelector('[role="tabpanel"] section[aria-label]')).toBeNull();
+});
+
+it('starts a new conversation in the project with the template chosen', async () => {
+  const { container, router } = await render('/library/templates?project=project_1');
+  const start = container.querySelector<HTMLElement>(
+    'button[aria-label="New conversation with Bug fix"]',
+  );
+  await act(async () => start?.click());
+  await settle();
+  expect(router.state.location.pathname).toBe('/projects/project_1');
+  expect(router.state.location.search).toMatchObject({ newSession: true });
+  expect(JSON.parse(localStorage.getItem('corral:new-session:v1:project_1') ?? '{}').corralId).toBe(
+    'template:bug-fix',
+  );
+});
+
+it('drafts a team from a goal from the toolbar beside the tabs', async () => {
+  // The draft dialog follows the person's reduced-motion setting.
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+  }));
+  const { container, router } = await render('/library/templates?project=project_1');
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  expect(byText(panel, 'button', 'Draft from a goal')).toBeUndefined();
+  await act(async () => byText(container, 'button', 'Draft from a goal')?.click());
+  await settle();
+  expect(router.state.location.search).toMatchObject({ project: 'project_1', draft: true });
+  expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+  // The other views have nothing to draft.
+  const teams = await render('/library/teams?project=project_1');
+  expect(byText(teams.container, 'button', 'Draft from a goal')).toBeUndefined();
+});
+
+it('names every template’s roles in Korean on a Korean screen', async () => {
+  const { container } = await render('/library/templates?project=project_1', undefined, 'ko');
+  const cards = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')];
+  const roles = (card: HTMLElement) =>
+    [...card.querySelectorAll('ol[aria-label="역할"] > li')].map((step) => step.textContent);
+  expect(roles(cards[0] as HTMLElement)).toEqual(['에이전트 1']);
+  expect(roles(cards[6] as HTMLElement)).toEqual(['조사자', '작성자', '검토자']);
+  for (const card of cards)
+    for (const step of roles(card))
+      expect([step, /[A-Za-z]{2,}/.test(step ?? '')]).toEqual([step, false]);
+  const labels = [...(cards[0] as HTMLElement).querySelectorAll('button')].map((button) => [
+    button.textContent,
+    button.getAttribute('aria-label'),
+  ]);
+  expect(labels).toEqual([
+    ['새 대화', '단일 에이전트 템플릿으로 새 대화'],
+    ['사본 편집', '단일 에이전트 사본 편집'],
   ]);
 });
 
@@ -600,7 +688,7 @@ it('saves a copy of a new template as a separate team and opens it in the editor
     const card = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')].find(
       (article) => article.textContent?.includes('Parallel code review'),
     ) as HTMLElement;
-    await act(async () => byText(card, 'button', 'Edit this team')?.click());
+    await act(async () => byText(card, 'button', 'Edit a copy')?.click());
     await settle();
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
     await act(async () => byText(dialog, 'button', 'Save copy and edit')?.click());
