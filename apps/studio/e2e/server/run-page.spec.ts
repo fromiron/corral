@@ -554,6 +554,35 @@ test('a waiting approval shows its state once (the pill) and its decision once (
   expect(corral.errors).toEqual([]);
 });
 
+test('a decision sent from the conversation’s card hands focus on instead of dropping it', async ({
+  page,
+  corral,
+}) => {
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const decide = page
+    .locator('[data-testid^="approval-"]')
+    .getByRole('button', { name: 'Continue with this version' });
+  await expect(decide).toBeVisible({ timeout: 30_000 });
+  await decide.focus();
+  await page.keyboard.press('Enter');
+  await expect(decide).toHaveCount(0);
+  // The card left: focus goes to the next waiting card's main action if the final output
+  // already waits, else to the request box; never to the page.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) return 'page';
+        if (active.matches('[data-testid="chat-composer"] textarea')) return 'request';
+        if (active.textContent === 'Confirm as final result') return 'final';
+        return active.outerHTML.slice(0, 120);
+      }),
+    )
+    .toMatch(/^(request|final)$/);
+  expect(corral.errors).toEqual([]);
+});
+
 test('ACTION-01 opens one scoped response host and keeps later typing focus', async ({
   page,
   corral,

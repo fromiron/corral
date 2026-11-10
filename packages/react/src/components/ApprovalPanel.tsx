@@ -9,7 +9,7 @@ import {
   ToolPermissionPlan,
 } from '@corral/contracts';
 import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
-import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -148,6 +148,32 @@ export function ApprovalPanel({
     if (criteriaId) void session.getState().loadArtifact(criteriaId);
   }, [session, criteriaId]);
 
+  // A decision sent while focus was in its card hands focus on once the card has left and the
+  // decision's receipt is in (the buttons are enabled again), as an answered question does: to
+  // the next waiting card's main action (its decline when that action cannot be taken), else, in
+  // a chat view, to the request box. Focus the person moved elsewhere stays; other hosts (the Run
+  // page, Needs you) place focus themselves once nothing waits.
+  const section = useRef<HTMLElement>(null);
+  const handoff = useRef<{ approvalId: string; chat: Element | null } | null>(null);
+  useEffect(() => {
+    const owned = handoff.current;
+    if (!owned || busy || approvals.some((approval) => approval.approvalId === owned.approvalId))
+      return;
+    const frame = requestAnimationFrame(() => {
+      handoff.current = null;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      const next = section.current?.querySelector<HTMLElement>('[data-approval]');
+      const target =
+        next?.querySelector<HTMLButtonElement>('[data-approval-action="primary"]:not(:disabled)') ??
+        next?.querySelector<HTMLButtonElement>('[data-approval-action]:not(:disabled)') ??
+        (owned.chat?.isConnected
+          ? owned.chat.querySelector<HTMLTextAreaElement>('[data-testid=chat-composer] textarea')
+          : null);
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [approvals, busy]);
+
   const related = showRelatedPanels ? (
     <>
       <RecipeStatusPanel
@@ -182,12 +208,18 @@ export function ApprovalPanel({
       step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
     });
   const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
+    // Focus in this decision's card is handed on when the card leaves.
+    handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
+      ? { approvalId, chat: section.current?.closest('[data-chat-view]') ?? null }
+      : null;
     setBusy(true);
     try {
       const receipt = routeId
         ? await session.getState().resolveApproval(approvalId, decision, routeId)
         : await session.getState().resolveApproval(approvalId, decision);
       setRefused(receipt.error ? receipt : null);
+      // Refused: the card stays, and so does the person's focus.
+      if (receipt.error && handoff.current?.approvalId === approvalId) handoff.current = null;
     } catch {
       // The session preserves the unconfirmed receipt; approval stays pending.
     } finally {
@@ -205,16 +237,19 @@ export function ApprovalPanel({
           variant="tertiary"
           size="compact"
           disabled={busy}
+          data-approval-action="decline"
           onClick={() => void decide(approval.approvalId, 'reject')}
         >
           {t('rejectAs.route')}
         </Button>
-        {(approval.routes ?? []).map((route) => (
+        {(approval.routes ?? []).map((route, index) => (
           <Button
             key={route.id}
             variant="secondary"
             size="compact"
             disabled={busy}
+            // The first route is the card's main action when focus is handed to it.
+            data-approval-action={index === 0 ? 'primary' : 'route'}
             title={t('then.route')}
             onClick={() => void decide(approval.approvalId, 'approve', route.id)}
           >
@@ -228,6 +263,7 @@ export function ApprovalPanel({
           variant="tertiary"
           size="compact"
           disabled={busy}
+          data-approval-action="decline"
           onClick={() => void decide(approval.approvalId, 'reject')}
         >
           {approval.tool
@@ -242,6 +278,7 @@ export function ApprovalPanel({
         </Button>
         <Button
           size="compact"
+          data-approval-action="primary"
           disabled={
             busy ||
             !!(
@@ -283,6 +320,7 @@ export function ApprovalPanel({
       {related}
       {showPlan ? <WorkPlanPanel session={session} /> : null}
       <section
+        ref={section}
         {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
         className={`flex flex-col gap-2 ${className ?? ''}`}
       >
@@ -317,6 +355,7 @@ export function ApprovalPanel({
           <AgentCard
             key={approval.approvalId}
             data-testid={`approval-${approval.approvalId}`}
+            data-approval={approval.approvalId}
             role="article"
             aria-label={t('heading')}
             className="text-caption"
