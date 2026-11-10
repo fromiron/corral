@@ -269,6 +269,35 @@ it('the context detail says each measurement once and states only what is measur
   expect(visible(detail)).toContain('Input 2,000 · cached — · output 44');
 });
 
+it('before any measured request the context detail states its state once, with no waiting sentence', async () => {
+  const base = model();
+  const container = await render(
+    model({
+      context: {
+        ...base.context,
+        kind: 'empty',
+        tokens: null,
+        percent: null,
+        barPercent: null,
+        freeTokens: null,
+        windowTokens: null,
+        parts: [],
+        unmeasuredExecutions: 0,
+        coverage: null,
+        completeness: 'unmeasured',
+        measurementStage: null,
+      },
+    } as Partial<ChatWidgetModel>),
+  );
+  await act(async () => openButton(container, 'Context')?.click());
+  const detail = container.querySelector('[data-testid="context-inspector"]');
+  // The badge already says nothing is measured, so no sentence says usage will appear later.
+  expect(visible(detail)).toContain(messages.Widgets.measurementPending);
+  expect(visible(detail)).not.toMatch(/appears after|No measured request/);
+  // Nor is an empty note box left behind.
+  expect(detail?.querySelector('.bg-subtle.rounded-lg')).toBeNull();
+});
+
 it('in the Overview popover Escape first leaves the detail, then closes the popover', async () => {
   const container = await render(model(), (value) => <OverviewPopover model={value} />);
   const trigger = container.querySelector<HTMLElement>('[data-testid="session-summary-trigger"]');

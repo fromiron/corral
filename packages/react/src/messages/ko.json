@@ -309,7 +309,6 @@
     "requests": "{count, plural, =0 {모델 요청 없음} one {모델 요청 #회} other {모델 요청 #회}}",
     "steerThis": "지시",
     "output": "출력",
-    "outputPending": "실행이 끝나면 출력이 나타납니다.",
     "streamError": "실시간 업데이트가 멈췄습니다: {message}",
     "notRunnable": "실행하려면 구조 목록의 문제를 고치세요.",
     "checksNeedSession": "검사 단계는 세션의 작업 사본에서만 돌아서 이 팀은 여기서 시작할 수 없습니다.",
@@ -1544,7 +1543,6 @@
     "noCurrentResult": "현재 열 수 있는 최종 결과가 없습니다.",
     "label": "결과",
     "kind": {
-      "pending": "실행이 아직 진행 중입니다. 결과가 만들어지면 여기에 나타납니다.",
       "partial": "실행이 Output에 닿기 전에 끝났습니다. 멈추기 전까지 만든 부분 결과입니다.",
       "none": "실행이 결과 없이 끝났습니다."
     },
@@ -3563,7 +3561,6 @@
     "notMeasured": "미측정",
     "estimatedRemaining": "추정 잔여 공간",
     "measurementFailed": "요청 기록을 읽지 못했습니다. 실행 상세에서 상태를 확인하세요.",
-    "measurementWaiting": "아직 측정된 요청이 없습니다. 모델 요청이 기록되면 표시됩니다.",
     "missingCoverage": "측정에서 빠진 범위",
     "providerUsage": "공급자 사용량",
     "providerNumbers": "입력 {input} · 캐시 {cache} · 출력 {output}",

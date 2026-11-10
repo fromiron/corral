@@ -365,3 +365,31 @@ describe('Output tab with several final results', () => {
     expect(onOpenResults.mock.calls.map((c) => c[0])).toEqual(['v_a', 'v_b', 'v_c']);
   });
 });
+
+describe('Output before the run has one', () => {
+  // The run's status badge already says it is still working, so the output area adds no
+  // sentence of its own about when the output will appear, and no empty Output heading.
+  it('shows nothing while a running run has no output', () => {
+    const session = sessionStore({
+      runId: 'run_1',
+      projection: projectionWith([], { status: 'running' }),
+    });
+    const view = wrap(<RunOutput session={session} />);
+    expect(view.container.textContent).toBe('');
+    expect(screen.queryByRole('heading', { name: messages.Run.output })).toBeNull();
+  });
+
+  it('keeps the heading and text once the output exists', () => {
+    const session = sessionStore({
+      runId: 'run_1',
+      projection: projectionWith([version('v_a', 'report', 1)], {
+        status: 'succeeded',
+        output: { nodeId: 'out', artifactVersionIds: ['v_a'] },
+      }),
+      outputText: 'alpha body',
+    });
+    wrap(<RunOutput session={session} />);
+    expect(screen.getByRole('heading', { name: messages.Run.output })).toBeInTheDocument();
+    expect(screen.getByTestId('run-output')).toHaveTextContent('alpha body');
+  });
+});

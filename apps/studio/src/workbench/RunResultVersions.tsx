@@ -58,10 +58,11 @@ export function RunResultVersions({
       final: false,
     },
   ].filter((section) => section.items.length > 0);
+  // A run still working says so in the run header; only an ended run's empty result is news.
   if (!sections.length)
-    return (
+    return results.kind === 'pending' ? null : (
       <p role="status" className="p-6 text-caption text-muted-foreground">
-        {results.kind === 'pending' ? t('kind.pending') : t('kind.none')}
+        {t('kind.none')}
       </p>
     );
   // Rows are numbered across the groups so the table's one hover highlight follows them all.

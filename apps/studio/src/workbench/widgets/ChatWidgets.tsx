@@ -138,6 +138,16 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const { context } = model;
   const measured = context.tokens != null;
   const complete = context.coverage === 'request' && context.completeness === 'complete';
+  // An assembled request needs no sentence: the badge already says it is partial. Nor does one
+  // not measured yet: the badge says so.
+  const measurementNote =
+    complete || context.measurementStage === 'assembled'
+      ? null
+      : context.completeness === 'error'
+        ? t('measurementFailed')
+        : measured
+          ? t('noPercent')
+          : null;
   return (
     <div data-testid="context-inspector" className="flex flex-col gap-4 text-ui">
       <div>
@@ -243,23 +253,14 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       </ul>
       {model.simulated ||
       context.awaitingRefresh ||
-      (!complete && context.measurementStage !== 'assembled') ||
+      measurementNote ||
       context.unmeasuredExecutions ||
       context.omissions?.length ||
       model.readState === 'error' ? (
         <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-caption text-muted-foreground">
           {model.simulated ? <p>{t('simulatedNote')}</p> : null}
           {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
-          {/* An assembled request needs no sentence: the badge already says it is partial. */}
-          {!complete && context.measurementStage !== 'assembled' ? (
-            <p>
-              {context.completeness === 'error'
-                ? t('measurementFailed')
-                : measured
-                  ? t('noPercent')
-                  : t('measurementWaiting')}
-            </p>
-          ) : null}
+          {measurementNote ? <p>{measurementNote}</p> : null}
           {context.unmeasuredExecutions ? (
             <p>{t('unmeasuredExecutions', { count: context.unmeasuredExecutions })}</p>
           ) : null}

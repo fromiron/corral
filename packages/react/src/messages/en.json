@@ -309,7 +309,6 @@
     "requests": "{count, plural, =0 {no model requests} one {# model request} other {# model requests}}",
     "steerThis": "Steer",
     "output": "Output",
-    "outputPending": "The output appears when the run finishes.",
     "streamError": "Live updates stopped: {message}",
     "notRunnable": "Fix the problems in the structure list to enable Run.",
     "checksNeedSession": "Check steps run only in a session's working copy, so this team can't start here.",
@@ -1544,7 +1543,6 @@
     "noCurrentResult": "No current final result is available.",
     "label": "Results",
     "kind": {
-      "pending": "The run is still working. Results appear here as they are made.",
       "partial": "The run ended before its Output. These are partial results: what it made before it stopped.",
       "none": "The run ended without results."
     },
@@ -3563,7 +3561,6 @@
     "notMeasured": "Not measured",
     "estimatedRemaining": "Estimated remaining",
     "measurementFailed": "The request record could not be read. Check the execution details.",
-    "measurementWaiting": "No measured request yet. Usage appears after a model request is recorded.",
     "missingCoverage": "Unmeasured coverage",
     "providerUsage": "Provider usage",
     "providerNumbers": "Input {input} · cached {cache} · output {output}",
