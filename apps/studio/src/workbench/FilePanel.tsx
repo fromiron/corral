@@ -7,11 +7,15 @@ import {
   BannerTitle,
   Button,
   Input,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
   Select,
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { RefreshCw, Search, X } from '@corral/react/icons';
+import { Ellipsis, RefreshCw, Search, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import {
   lazy,
@@ -36,6 +40,7 @@ import type { RecoveryDraft } from './documents/recovery.ts';
 import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
 import { FileTree } from './FileTree.tsx';
 import { type FolderListing, needsListing, visibleRows } from './fileTree.ts';
+import { LineRangePopover } from './LineRangePopover.tsx';
 import { languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { openQuickOpen, takeFileReveal, useFileReveal } from './QuickOpen.tsx';
@@ -173,6 +178,8 @@ export function FilePanel({
   const [closeBusy, setCloseBusy] = useState(false);
   const [closeError, setCloseError] = useState(false);
   const [range, setRange] = useState({ start: 1, end: 1 });
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const previewMore = useRef<HTMLButtonElement>(null);
   const refreshRecoveries = useCallback(async () => {
     if (!owner || !workspaceId) return;
     const candidates = await owner.sessionRecoveries({ hostId: workspaceId, projectId, sessionId });
@@ -668,10 +675,22 @@ export function FilePanel({
         documents[documentKey].pendingSave ||
         documents[documentKey].recoveries.length),
   );
+  const closeButton = (path: string) => (
+    <Tooltip content={t('closeFile', { path })}>
+      <Button
+        size="icon-compact"
+        variant="ghost"
+        aria-label={t('closeFile', { path })}
+        onClick={() => void close(path)}
+      >
+        <X />
+      </Button>
+    </Tooltip>
+  );
   const searchModeControl = (
     <Select
       label={ts('mode')}
-      size="sm"
+      size="xs"
       className="min-w-0 max-w-full shrink-0"
       value={searchMode}
       onValueChange={setSearchMode}
@@ -706,15 +725,18 @@ export function FilePanel({
           {te('recoveryReadFailed')}
         </p>
       ) : null}
-      <div className="flex items-center gap-2">
+      {/* One head: where the tree reads from, its filter, then the tree's own controls. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {readOnly ? (
-          <span className="min-w-0 flex-1 text-xs text-muted-foreground">{t('sourceFolder')}</span>
+          <span className="min-w-0 truncate text-caption text-muted-foreground">
+            {t('sourceFolder')}
+          </span>
         ) : (
           <Select
             label={t('fileSource')}
             size="xs"
             variant="ghost"
-            className="min-w-0 flex-1 justify-start"
+            className="min-w-0 justify-start"
             value={scopeKind ?? 'project'}
             onValueChange={setSource}
             options={[
@@ -723,39 +745,56 @@ export function FilePanel({
             ]}
           />
         )}
-        {resultsAvailable ? (
-          <Button
-            size="compact"
-            variant={results ? 'secondary' : 'ghost'}
-            aria-pressed={results}
-            onClick={() => setResultsOn(!resultsOn)}
-          >
-            {tf('results')}
-          </Button>
+        {readOnly || searchMode === 'names' ? (
+          <div className="flex min-w-0 flex-[1_0_14rem] items-center gap-2">
+            {readOnly ? null : searchModeControl}
+            <Input
+              size="sm"
+              aria-label={t('filterFiles')}
+              placeholder={t('filterFiles')}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="min-w-0 flex-1"
+            />
+          </div>
         ) : null}
-        {readOnly ? null : (
-          <Tooltip content={`${tq('title')} (${formatChord({ mod: true, key: 'p' })})`}>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {resultsAvailable ? (
+            <Button
+              size="compact"
+              variant={results ? 'secondary' : 'ghost'}
+              aria-pressed={results}
+              onClick={() => setResultsOn(!resultsOn)}
+            >
+              {tf('results')}
+            </Button>
+          ) : null}
+          {readOnly ? null : (
+            <Tooltip content={tq('title')} shortcut={formatChord({ mod: true, key: 'p' })}>
+              <Button
+                size="icon-compact"
+                variant="ghost"
+                aria-label={tq('title')}
+                aria-keyshortcuts={
+                  /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta+P' : 'Control+P'
+                }
+                onClick={openQuickOpen}
+              >
+                <Search />
+              </Button>
+            </Tooltip>
+          )}
+          <Tooltip content={t('refreshFiles')}>
             <Button
               size="icon-compact"
               variant="ghost"
-              aria-label={tq('title')}
-              aria-keyshortcuts={
-                /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta+P' : 'Control+P'
-              }
-              onClick={openQuickOpen}
+              aria-label={t('refreshFiles')}
+              onClick={refresh}
             >
-              <Search />
+              <RefreshCw />
             </Button>
           </Tooltip>
-        )}
-        <Button
-          size="icon-compact"
-          variant="ghost"
-          aria-label={t('refreshFiles')}
-          onClick={refresh}
-        >
-          <RefreshCw />
-        </Button>
+        </div>
       </div>
       {!readOnly && searchMode === 'contents' ? (
         searchTarget && workspaces && owner && onOpenDocument ? (
@@ -810,19 +849,7 @@ export function FilePanel({
             ) : null}
           </div>
         )
-      ) : (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {readOnly ? null : searchModeControl}
-          <Input
-            size="sm"
-            aria-label={t('filterFiles')}
-            placeholder={t('filterFiles')}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 max-w-full flex-[1_0_10rem]"
-          />
-        </div>
-      )}
+      ) : null}
       {readOnly || searchMode === 'names' ? (
         <>
           {results && madeFiles === null ? (
@@ -862,41 +889,8 @@ export function FilePanel({
         <section
           data-testid="file-preview-pane"
           aria-label={active}
-          className="flex min-w-0 flex-col gap-2 border-t border-line pt-2"
+          className="flex min-w-0 flex-col overflow-hidden rounded-[var(--panel-radius)] border border-border"
         >
-          <DocumentHeader
-            path={active}
-            target={
-              scopeKind === 'session' && searchTarget
-                ? { kind: 'copy', target: searchTarget }
-                : { kind: 'source' }
-            }
-            unsaved={Boolean(
-              inlineEditor &&
-                documentKey &&
-                (documents[documentKey]?.dirty || documents[documentKey]?.pendingSave),
-            )}
-          >
-            {inlineEditor ? null : (
-              <span className="text-2xs text-muted-foreground">{tf('readOnlyPreview')}</span>
-            )}
-            <Button
-              size="icon-compact"
-              variant="ghost"
-              aria-label={t('closeFile', { path: active })}
-              onClick={() => void close(active)}
-            >
-              <X />
-            </Button>
-          </DocumentHeader>
-          {readError ? (
-            <p role="alert" className="text-xs text-danger">
-              {readError}
-            </p>
-          ) : null}
-          {!displayContent && !readError ? (
-            <p className="text-xs text-muted-foreground">{t('loadingFile')}</p>
-          ) : null}
           {inlineEditor && owner && documentKey && documents[documentKey] ? (
             <DocumentPanel
               key={documentKey}
@@ -907,68 +901,104 @@ export function FilePanel({
                   ? languageStore(services.workspaces, owner)
                   : undefined
               }
+              edits={
+                services.mode === 'server' && services.workspaces?.fileEditProposals
+                  ? services.workspaces
+                  : undefined
+              }
               viewId={fileViewId(sessionId, documents[documentKey].path)}
               onReference={onReference}
               onAttach={onAttach}
               readOnlyTarget={!currentCopy(documents[documentKey])}
+              headExtra={closeButton(active)}
             />
-          ) : displayContent?.kind === 'text' ? (
+          ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <label>
-                  {t('fromLine')}{' '}
-                  <Input
-                    type="number"
-                    min={1}
-                    max={lineCount}
-                    value={range.start}
-                    onChange={(e) =>
-                      setRange((r) => ({ ...r, start: e.target.valueAsNumber || 1 }))
-                    }
-                    className="w-14"
-                  />
-                </label>
-                <label>
-                  {t('toLine')}{' '}
-                  <Input
-                    type="number"
-                    min={range.start}
-                    max={lineCount}
-                    value={range.end}
-                    onChange={(e) => setRange((r) => ({ ...r, end: e.target.valueAsNumber || 1 }))}
-                    className="w-14"
-                  />
-                </label>
-                <Button
-                  size="compact"
-                  variant="tertiary"
-                  disabled={range.start < 1 || range.end < range.start || range.end > lineCount}
-                  onClick={() => onReference({ path: active, ...range })}
-                >
-                  {t('referenceLines')}
-                </Button>
-              </div>
-              <section
-                aria-label={t('fileContent')}
-                className="max-h-[45vh] overflow-auto rounded fill-group"
+              <DocumentHeader
+                path={active}
+                target={
+                  scopeKind === 'session' && searchTarget
+                    ? { kind: 'copy', target: searchTarget }
+                    : { kind: 'source' }
+                }
+                status={
+                  <span className="truncate @max-xl/head:sr-only">{tf('readOnlyPreview')}</span>
+                }
+                actions={
+                  displayContent?.kind === 'text' ? (
+                    <Menu>
+                      <Tooltip content={te('moreActions', { path: active })}>
+                        <MenuTrigger
+                          ref={previewMore}
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon-compact"
+                              aria-label={te('moreActions', { path: active })}
+                            />
+                          }
+                        >
+                          <Ellipsis />
+                        </MenuTrigger>
+                      </Tooltip>
+                      <MenuPopup align="end" className="min-w-48">
+                        <MenuItem
+                          onClick={() => requestAnimationFrame(() => setReferenceOpen(true))}
+                        >
+                          {te('referenceLinesMenu')}
+                        </MenuItem>
+                      </MenuPopup>
+                    </Menu>
+                  ) : null
+                }
               >
-                <Suspense
-                  fallback={<p className="p-3 text-xs text-muted-foreground">{t('loadingFile')}</p>}
-                >
-                  <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
-                </Suspense>
-              </section>
-              <p className="text-2xs text-muted-foreground">{t('referencePermission')}</p>
+                {closeButton(active)}
+              </DocumentHeader>
+              {readError ? (
+                <p role="alert" className="px-3 py-2 text-caption text-danger">
+                  {readError}
+                </p>
+              ) : null}
+              {!displayContent && !readError ? (
+                <p className="px-3 py-2 text-caption text-muted-foreground">{t('loadingFile')}</p>
+              ) : null}
+              {displayContent?.kind === 'text' ? (
+                <>
+                  <section aria-label={t('fileContent')} className="max-h-[45vh] overflow-auto">
+                    <Suspense
+                      fallback={
+                        <p className="p-3 text-caption text-muted-foreground">{t('loadingFile')}</p>
+                      }
+                    >
+                      <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
+                    </Suspense>
+                  </section>
+                  <LineRangePopover
+                    open={referenceOpen}
+                    onOpenChange={setReferenceOpen}
+                    anchor={previewMore}
+                    action={t('referenceLines')}
+                    range={range}
+                    lineCount={lineCount}
+                    onRange={setRange}
+                    note={t('referencePermission')}
+                    onSubmit={(value) => {
+                      onReference({ path: active, ...value });
+                      setReferenceOpen(false);
+                    }}
+                  />
+                </>
+              ) : displayContent ? (
+                <p className="px-3 py-2 text-caption text-muted-foreground">
+                  {displayContent.kind === 'too_large'
+                    ? tf('tooLarge')
+                    : displayContent.kind === 'binary'
+                      ? tf('binary')
+                      : t('fileUnavailable')}
+                </p>
+              ) : null}
             </>
-          ) : displayContent ? (
-            <p className="text-xs text-muted-foreground">
-              {displayContent.kind === 'too_large'
-                ? tf('tooLarge')
-                : displayContent.kind === 'binary'
-                  ? tf('binary')
-                  : t('fileUnavailable')}
-            </p>
-          ) : null}
+          )}
         </section>
       ) : null}
       {closeDialog}

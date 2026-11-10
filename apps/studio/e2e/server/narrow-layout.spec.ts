@@ -207,22 +207,35 @@ test('line navigation reveals the selection above the bottom dock', async ({
     await page.getByRole('button', { name: `Open README.md:${line}`, exact: true }).click();
     await expectLine(line);
   }
-  for (const line of [7, 9, 35, 2]) {
+  // Go to lines lives in the document's more menu and opens a small range popover.
+  const goTo = page.getByRole('dialog', { name: 'Go to lines', exact: true });
+  const openGoTo = async () => {
     await editorPanel
-      .getByRole('spinbutton', { name: 'From line', exact: true })
-      .fill(String(line));
-    await editorPanel.getByRole('spinbutton', { name: 'To line', exact: true }).fill(String(line));
-    await editorPanel.getByRole('button', { name: 'Go to lines', exact: true }).click();
+      .getByRole('button', { name: 'More actions for README.md', exact: true })
+      .click();
+    await page.getByRole('menuitem', { name: 'Go to lines…', exact: true }).click();
+    await expect(goTo).toBeVisible();
+  };
+  const goToLine = async (line: number) => {
+    await openGoTo();
+    await goTo.getByRole('spinbutton', { name: 'From line', exact: true }).fill(String(line));
+    await goTo.getByRole('spinbutton', { name: 'To line', exact: true }).fill(String(line));
+    await goTo.getByRole('button', { name: 'Go to lines', exact: true }).click();
+    await expect(goTo).toBeHidden();
+  };
+  for (const line of [7, 9, 35, 2]) {
+    await goToLine(line);
     await expectLine(line);
-    await expect(
-      editorPanel.getByRole('spinbutton', { name: 'From line', exact: true }),
-    ).toHaveValue(String(line));
+    await openGoTo();
+    await expect(goTo.getByRole('spinbutton', { name: 'From line', exact: true })).toHaveValue(
+      String(line),
+    );
+    await page.keyboard.press('Escape');
+    await expect(goTo).toBeHidden();
   }
   await page.screenshot({ path: testInfo.outputPath('editor-with-bottom-dock.png') });
   await page.getByRole('button', { name: 'Close pane: Terminal', exact: true }).click();
-  await editorPanel.getByRole('spinbutton', { name: 'From line', exact: true }).fill('9');
-  await editorPanel.getByRole('spinbutton', { name: 'To line', exact: true }).fill('9');
-  await editorPanel.getByRole('button', { name: 'Go to lines', exact: true }).click();
+  await goToLine(9);
   await expectLine(9);
 });
 

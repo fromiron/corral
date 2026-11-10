@@ -1,11 +1,14 @@
 import type { FileBrowseScope, PathSearchView } from '@corral/client';
 import {
+  Badge,
   CommandMenu,
   CommandMenuDialog,
   CommandMenuEmpty,
   CommandMenuInput,
+  CommandMenuItem,
   type CommandMenuItemData,
   CommandMenuList,
+  fontWeights,
 } from '@corral/react/design-kit';
 import { FileText, Folder } from '@corral/react/icons';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
@@ -65,6 +68,70 @@ export function useFileReveal(sessionId: string, enabled = true) {
 }
 
 type Target = { key: string; source: 'session' | 'project'; scope: FileBrowseScope };
+
+/**
+ * Which characters of a path the typed text matched: the text itself in the name, else in the
+ * path, else its characters in order. Display only; the search already ranked the result.
+ */
+export function matchedIndexes(path: string, query: string): Set<number> {
+  const needle = query.trim().toLowerCase();
+  const hay = path.toLowerCase();
+  const found = new Set<number>();
+  if (!needle) return found;
+  const nameStart = path.lastIndexOf('/') + 1;
+  const inName = hay.indexOf(needle, nameStart);
+  const at = inName >= 0 ? inName : hay.indexOf(needle);
+  if (at >= 0) {
+    for (let index = at; index < at + needle.length; index++) found.add(index);
+    return found;
+  }
+  let from = 0;
+  for (const char of needle) {
+    const index = hay.indexOf(char, from);
+    if (index < 0) return new Set();
+    found.add(index);
+    from = index + 1;
+  }
+  return found;
+}
+
+/** A path with its folder quiet and its name plain, and the typed characters emphasized. */
+function PathLabel({ path, query }: { path: string; query: string }) {
+  const matched = matchedIndexes(path, query);
+  const nameStart = path.lastIndexOf('/') + 1;
+  const part = (from: number, to: number) => {
+    const runs: { start: number; text: string; hit: boolean }[] = [];
+    for (let index = from; index < to; index++) {
+      const hit = matched.has(index);
+      const last = runs.at(-1);
+      if (last && last.hit === hit) last.text += path[index];
+      else runs.push({ start: index, text: path[index] ?? '', hit });
+    }
+    return runs.map((run) =>
+      run.hit ? (
+        <span
+          key={run.start}
+          className="text-foreground"
+          style={{ fontVariationSettings: fontWeights.bold }}
+        >
+          {run.text}
+        </span>
+      ) : (
+        <span key={run.start}>{run.text}</span>
+      ),
+    );
+  };
+  return (
+    <span className="flex min-w-0 flex-1 items-baseline">
+      {nameStart ? (
+        <span className="min-w-0 truncate text-muted-foreground">{part(0, nameStart)}</span>
+      ) : null}
+      <span className="min-w-0 max-w-full shrink-0 truncate text-foreground">
+        {part(nameStart, path.length)}
+      </span>
+    </span>
+  );
+}
 
 export function QuickOpen({
   projectId,
@@ -278,14 +345,26 @@ export function QuickOpen({
             aria-describedby={`${targetId} ${statusId}`}
             aria-busy={opening || undefined}
           />
-          <span id={targetId} className="shrink-0 text-caption text-muted-foreground">
-            {targetLabel}
-          </span>
+          {targetLabel ? (
+            <Badge id={targetId} variant="secondary" size="sm" className="shrink-0">
+              {targetLabel}
+            </Badge>
+          ) : (
+            <span id={targetId} />
+          )}
         </div>
         <span id={statusId} role="status" aria-live="polite" className="sr-only">
           {announcement}
         </span>
-        <CommandMenuList>
+        <CommandMenuList
+          renderItem={(item) => (
+            // Every result reads at full strength; the highlight marks the one Enter opens.
+            // The row keeps the folder or file icon from its item.
+            <CommandMenuItem value={item.value} className="text-foreground">
+              <PathLabel path={item.label} query={query} />
+            </CommandMenuItem>
+          )}
+        >
           <CommandMenuEmpty role="none" aria-live="off">
             {target === null
               ? t('noTarget')

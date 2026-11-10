@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TerminalView } from '@corral/contracts';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { lastRunSucceeded, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -24,6 +24,15 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
     },
     { path, method, body },
   );
+}
+
+// The writer-hold explanation lives behind the terminal's status help.
+async function expectReleaseHint(page: Page, panel: Locator) {
+  await panel.getByRole('button', { name: 'About this terminal', exact: true }).click();
+  const details = page.getByRole('dialog', { name: 'About this terminal', exact: true });
+  await expect(details).toContainText('Releasing input only disconnects this view’s keyboard');
+  await page.keyboard.press('Escape');
+  await expect(details).toBeHidden();
 }
 
 test.use({ replyDelayMs: 2000 });
@@ -160,7 +169,7 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   const notice = page.getByTestId('terminal-writer-notice');
   await expect(notice).toContainText('A terminal is holding this working copy');
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
-  await expect(panel).toContainText('Releasing input only disconnects this view’s keyboard');
+  await expectReleaseHint(page, panel);
   terminal = {
     ...terminal,
     state: 'uncertain',
@@ -238,7 +247,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await input.pressSequentially('sleep 120');
     await input.press('Enter');
     await panel.getByRole('button', { name: 'Release input', exact: true }).click();
-    await expect(panel).toContainText('Releasing input only disconnects this view’s keyboard');
+    await expectReleaseHint(page, panel);
     await expect(panel.getByRole('button', { name: 'Stop terminal', exact: true })).toBeEnabled();
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(page.getByTestId('terminal-writer-notice')).toContainText(
@@ -320,7 +329,7 @@ test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and
     await corral.open(`/sessions/${sessionId}?panel=terminal`);
     const panel = page.getByTestId('terminal-panel');
     await panel.getByRole('button', { name: 'New terminal', exact: true }).click();
-    await expect(panel.getByText('This view controls input.', { exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Release input', exact: true })).toBeVisible();
     const indicator = page.getByRole('tab').getByRole('img', { name: 'Terminal running' });
     await expect(indicator).toBeInViewport();
     const terminalList = await api(page, `/sessions/${sessionId}/terminals`, 'GET');

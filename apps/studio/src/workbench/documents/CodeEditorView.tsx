@@ -27,6 +27,8 @@ export interface CodeEditorViewProps {
   onSelection?: (startLine: number, endLine: number, selection: TextRange | null) => void;
   revealRange?: { startLine: number; endLine: number };
   revealSelection?: TextRange;
+  /** A new number switches whether Tab moves focus, as the editor's own Ctrl+M does. */
+  tabFocusRequest?: number;
   onError?: () => void;
   onOpenResource?: (resource: string, range: TextRange) => Promise<boolean>;
   debug?: EditorDebugState;
@@ -99,6 +101,7 @@ export function CodeEditorView(props: CodeEditorViewProps) {
     saveLabel,
     revealRange,
     revealSelection,
+    tabFocusRequest,
     className,
     debug,
   } = props;
@@ -322,6 +325,13 @@ export function CodeEditorView(props: CodeEditorViewProps) {
     const instance = editorRef.current;
     if (instance && revealSelection) revealTextSelection(instance, revealSelection);
   }, [revealSelection]);
+
+  const handledTabFocus = useRef(tabFocusRequest);
+  useEffect(() => {
+    if (tabFocusRequest === handledTabFocus.current) return;
+    handledTabFocus.current = tabFocusRequest;
+    void editorRef.current?.getAction('editor.action.toggleTabFocusMode')?.run();
+  }, [tabFocusRequest]);
 
   return (
     <section

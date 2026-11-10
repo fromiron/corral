@@ -1,3 +1,4 @@
+import type { FileEditProposal } from '@corral/contracts';
 import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -11,14 +12,19 @@ import { RefactorActions } from './language/RefactorActions.tsx';
 import { type LanguageStore, languageCopyKey, languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
 
+const noReview = () => {};
+
 export function LanguageSupport({
   owner,
   documentKey,
   selection = null,
+  onReview = noReview,
 }: {
   owner: DocumentStore;
   documentKey: string;
   selection?: LanguageSelection | null;
+  /** Opens a prepared rename or code fix in the document's edit proposal review. */
+  onReview?: (proposal: FileEditProposal) => void;
 }) {
   const { workspaces, mode } = useServices();
   const entry = useStore(owner, (state) => state.documents[documentKey]);
@@ -31,6 +37,7 @@ export function LanguageSupport({
       api={workspaces}
       owner={owner}
       selection={selection}
+      onReview={onReview}
     />
   );
 }
@@ -41,12 +48,14 @@ function LanguageControls({
   api,
   owner,
   selection,
+  onReview,
 }: {
   entry: DocumentBuffer;
   store: LanguageStore;
   api: WorkspacesClient;
   owner: DocumentStore;
   selection: LanguageSelection | null;
+  onReview: (proposal: FileEditProposal) => void;
 }) {
   const t = useTranslations('Language');
   const navigation = useSettingsNavigation();
@@ -73,7 +82,7 @@ function LanguageControls({
   const error = copy?.error ?? session?.error;
   const capabilities = session?.capabilities;
   return (
-    <section aria-label={t('label')} className="flex min-w-0 flex-col gap-1.5 text-xs">
+    <section aria-label={t('label')} className="flex min-w-0 flex-col gap-1.5 text-caption">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-muted-foreground">{t('label')}</span>
         {session ? (
@@ -181,6 +190,7 @@ function LanguageControls({
           entry={entry}
           store={store}
           selection={selection}
+          onReview={onReview}
         />
       ) : null}
       {error ? (

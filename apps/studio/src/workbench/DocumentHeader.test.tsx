@@ -27,7 +27,6 @@ vi.mock('../services.tsx', () => {
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
 }));
-vi.mock('./DocumentPanel.tsx', () => ({ DocumentPanel: () => <div data-document-panel /> }));
 
 const key = documentKey(target, 'note.txt');
 const buffer = (dirty: boolean) =>
@@ -36,6 +35,8 @@ const buffer = (dirty: boolean) =>
     target,
     path: 'note.txt',
     file: { target, path: 'note.txt', content: { kind: 'text', text: 'saved' }, writable: true },
+    text: 'saved',
+    model: null,
     dirty,
     pendingSave: null,
     recoveries: [],
@@ -102,6 +103,7 @@ it('a saved document shows no unsaved mark, and another copy generation’s bran
   const head = header(container);
   expect(head?.textContent).toContain(messages.Desktop.sessionCopy);
   expect(head?.textContent).not.toContain(messages.Documents.dirty);
+  expect(head?.textContent).toContain(messages.Documents.saved);
   expect(head?.textContent).not.toContain('someone-else');
 });
 

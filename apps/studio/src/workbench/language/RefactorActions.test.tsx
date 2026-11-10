@@ -11,11 +11,6 @@ import type { DocumentBuffer, DocumentStore } from '../documents/store.ts';
 import { RefactorActions } from './RefactorActions.tsx';
 import { type LanguageStore, languageCopyKey } from './store.ts';
 
-vi.mock('../EditProposalReview.tsx', () => ({
-  EditProposals: ({ proposal }: { proposal?: { title: string } | null }) => (
-    <div data-review>{proposal?.title ?? 'History'}</div>
-  ),
-}));
 const target = {
   hostId: 'host',
   projectId: 'project',
@@ -126,6 +121,7 @@ async function fixture() {
     (id: string, input: FileEditPreview, signal?: AbortSignal) => Promise<FileEditPreviewResult>
   >(async () => result);
   const api = { previewFileEdits: preview } as unknown as WorkspacesApi;
+  const onReview = vi.fn<(proposal: { title: string }) => void>();
   const element = document.createElement('div');
   document.body.append(element);
   const root = createRoot(element);
@@ -141,6 +137,7 @@ async function fixture() {
             position: { line: 0, character: 7 },
             range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } },
           }}
+          onReview={onReview}
         />
       </IntlProvider>,
     ),
@@ -168,7 +165,7 @@ async function fixture() {
       input?.dispatchEvent(new Event('input', { bubbles: true }));
     });
   };
-  return { element, owner, copies, editScope, preview, click, rename };
+  return { element, owner, copies, editScope, preview, click, rename, onReview };
 }
 
 it('a saved rename opens an immutable review and retry keeps the same request id', async () => {
@@ -187,7 +184,9 @@ it('a saved rename opens an immutable review and retry keeps the same request id
     newName: 'nextName',
   });
   expect(view.preview.mock.calls[1]?.[1]).toEqual(first);
-  expect(view.element.querySelector('[data-review]')?.textContent).toBe('Rename saved symbol');
+  // The one prepared proposal goes to the document's review; nothing is applied here.
+  expect(view.onReview).toHaveBeenCalledTimes(1);
+  expect(view.onReview.mock.calls[0]?.[0]?.title).toBe('Rename saved symbol');
   expect(view.owner.getState().documents.document?.text).toBe('const oldName = 1;');
 });
 
@@ -225,6 +224,6 @@ it('a dirty source never requests edits and a late generation cannot open a revi
     });
   });
   await act(async () => resolve(result));
-  expect(view.element.querySelector('[data-review]')?.textContent).toBe('History');
+  expect(view.onReview).not.toHaveBeenCalled();
   expect(view.preview.mock.calls[0]?.[2]?.aborted).toBe(true);
 });

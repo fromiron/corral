@@ -18,7 +18,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { LanguageSelection } from '../documents/CodeEditorView.tsx';
 import type { DocumentBuffer, DocumentStore } from '../documents/store.ts';
-import { EditProposals, type FileEditClient } from '../EditProposalReview.tsx';
+import type { FileEditClient } from '../EditProposalReview.tsx';
 import { type LanguageEditScope, type LanguageStore, languageCopyKey } from './store.ts';
 
 const identityOf = (session: LanguageSession | null | undefined) =>
@@ -43,12 +43,15 @@ export function RefactorActions({
   entry,
   store,
   selection,
+  onReview,
 }: {
   api: Pick<WorkspacesApi, 'previewFileEdits'> & FileEditClient;
   owner: DocumentStore;
   entry: DocumentBuffer;
   store: LanguageStore;
   selection: LanguageSelection | null;
+  /** Opens one prepared proposal in the document's review; nothing is applied here. */
+  onReview(proposal: FileEditProposal): void;
 }) {
   const t = useTranslations('FileEdits');
   const nameId = useId();
@@ -90,10 +93,6 @@ export function RefactorActions({
   const [result, setResult] = useState<{
     context: typeof context;
     value: FileEditPreviewResult;
-  } | null>(null);
-  const [review, setReview] = useState<{
-    context: typeof context;
-    proposal: FileEditProposal;
   } | null>(null);
   const [error, setError] = useState<{ context: typeof context; message: string } | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: A document or session scope change cancels its in-flight preview.
@@ -177,7 +176,7 @@ export function RefactorActions({
         throw new Error(t('changed'));
       setResult({ context, value });
       if (kind === 'rename' && value.proposals.length === 1 && value.proposals[0])
-        setReview({ context, proposal: value.proposals[0] });
+        onReview(value.proposals[0]);
       setRename(null);
     } catch (failure) {
       if (current.current === context && !controller.signal.aborted)
@@ -197,7 +196,7 @@ export function RefactorActions({
   ];
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {active && session.capabilities.rename ? (
           <Button
             size="compact"
@@ -230,26 +229,19 @@ export function RefactorActions({
             {t('cancel')}
           </Button>
         ) : null}
-        <EditProposals
-          api={api}
-          owner={owner}
-          target={entry.target}
-          proposal={review?.context === context ? review.proposal : null}
-          onConsumed={() => setReview(null)}
-        />
       </div>
       {active && dirty ? (
-        <p className="text-xs text-muted-foreground">{t('dirty')}</p>
+        <p className="text-caption text-muted-foreground">{t('dirty')}</p>
       ) : active && !selection ? (
-        <p className="text-xs text-muted-foreground">{t('selectSymbol')}</p>
+        <p className="text-caption text-muted-foreground">{t('selectSymbol')}</p>
       ) : null}
       {busy === context ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('previewing')}
         </p>
       ) : null}
       {error?.context === context ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error.message}
         </p>
       ) : null}
@@ -262,16 +254,16 @@ export function RefactorActions({
                 size="compact"
                 variant="tertiary"
                 className="self-start"
-                onClick={() => setReview({ context, proposal })}
+                onClick={() => onReview(proposal)}
               >
                 {proposal.title}
               </Button>
             ))
           ) : (
-            <p className="text-xs text-muted-foreground">{t('noActions')}</p>
+            <p className="text-caption text-muted-foreground">{t('noActions')}</p>
           )}
           {unavailable.length ? (
-            <details className="text-xs text-muted-foreground">
+            <details className="text-caption text-muted-foreground">
               <summary className="cursor-pointer rounded py-1">
                 {t('unsupportedCount', { count: unavailable.length })}
               </summary>
@@ -294,12 +286,12 @@ export function RefactorActions({
           <DialogTitle>{t('rename')}</DialogTitle>
           <DialogDescription>{t('savedOnly')}</DialogDescription>
           {renaming ? (
-            <p className="break-all text-xs text-muted-foreground">
+            <p className="break-all text-caption text-muted-foreground">
               {entry.path}:{renaming.selection.position.line + 1}:
               {renaming.selection.position.character + 1}
             </p>
           ) : null}
-          <label htmlFor={nameId} className="text-sm">
+          <label htmlFor={nameId} className="text-body">
             {t('newName')}
           </label>
           <Input
@@ -310,7 +302,7 @@ export function RefactorActions({
             onChange={(event) => setName(event.target.value)}
           />
           {error?.context === context ? (
-            <p role="alert" className="text-xs text-danger">
+            <p role="alert" className="text-caption text-danger">
               {error.message}
             </p>
           ) : null}

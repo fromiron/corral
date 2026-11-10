@@ -128,7 +128,12 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
       .getByText('# Release notes', { exact: true }),
   ).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Desktop workbench');
-  await page.getByRole('button', { name: 'Reference lines', exact: true }).click();
+  await page.getByRole('button', { name: 'More actions for README.md', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Reference lines…', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Reference lines', exact: true })
+    .getByRole('button', { name: 'Reference lines', exact: true })
+    .click();
   await expect(requestBox(page)).toHaveValue('@README.md:L1 Desktop workbench');
   await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();

@@ -19,9 +19,21 @@ const fixture = vi.hoisted(() => ({
   refresh: vi.fn(async (_id: string) => {}),
   stop: vi.fn(async (_id: string) => {}),
   captureSelection: vi.fn<(id: string) => Promise<TerminalSelection | null>>(),
+  documents: null as null | Record<string, { target: { sessionId: string }; writerBusy?: boolean }>,
 }));
 vi.mock('../services.tsx', () => ({
-  useServices: () => ({ mode: 'server', terminals: {}, workspaceId: fixture.workspaceId }),
+  useServices: () => ({
+    mode: 'server',
+    terminals: {},
+    workspaceId: fixture.workspaceId,
+    workspaces: fixture.documents ? {} : undefined,
+  }),
+}));
+vi.mock('./documents/store.ts', () => ({
+  documentStore: () => ({
+    getState: () => ({ documents: fixture.documents ?? {} }),
+    subscribe: () => () => {},
+  }),
 }));
 vi.mock('./terminals/store.ts', () => ({
   terminalStore: () => ({
@@ -235,17 +247,111 @@ it('unresolved creation exposes receipt recovery and prevents a new terminal', (
   expect(html).not.toContain('Retry original creation request');
 });
 
-it('another controller is read-only until an explicit takeover', () => {
-  const html = render(terminal);
-  expect(html).toContain('Another view controls input');
-  expect(html).toContain('Take over input');
-  expect(html).not.toContain('Release input');
+/** The panel mounted for interaction, with its details popover opened when asked. */
+async function interactive(
+  current: TerminalView,
+  props: { onAttach?: () => void } = {},
+  selected = false,
+) {
+  render(current);
+  const value = fixture.state.terminals.terminal;
+  assert(value);
+  value.hasSelection = selected;
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <TerminalPanel sessionId="session" {...props} />
+      </IntlProvider>,
+    ),
+  );
+  return {
+    container,
+    async details() {
+      const trigger = container.querySelector<HTMLElement>('[aria-label="About this terminal"]');
+      assert(trigger);
+      await act(async () => trigger.click());
+      return document.querySelector('[role="dialog"][aria-label="About this terminal"]')
+        ?.textContent;
+    },
+    async close() {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    },
+  };
+}
+
+it('another controller is read-only until an explicit takeover', async () => {
+  const view = await interactive(terminal);
+  try {
+    const head = view.container.textContent;
+    expect(head).toContain('Take over input');
+    expect(head).not.toContain('Release input');
+    // Who holds input is read from the status help, not a standing paragraph.
+    expect(head).not.toContain('Another view controls input');
+    expect(await view.details()).toContain('Another view controls input');
+  } finally {
+    await view.close();
+  }
 });
 
-it('distinguishes input control release from the protected working copy', () => {
+it('distinguishes input control release from the protected working copy', async () => {
+  const view = await interactive({ ...terminal, controller: null });
+  try {
+    expect(view.container.querySelector('[aria-label="Stop terminal"]')).not.toBeNull();
+    expect(view.container.textContent).not.toContain('Releasing input only disconnects');
+    const details = await view.details();
+    expect(details).toContain('Releasing input only disconnects this view’s keyboard');
+    expect(details).toContain('file saves and Runs that write to this copy are blocked');
+  } finally {
+    await view.close();
+  }
+});
+
+it('keeps the writer explanation out of the pane until a save is actually waiting', () => {
   const html = render({ ...terminal, controller: null });
-  expect(html).toContain('Releasing input only disconnects this view’s keyboard');
-  expect(html).toContain('Stop terminal');
+  for (const standing of [
+    'Commands run in this session',
+    'While this terminal is active',
+    'Releasing input only',
+    'This view is read-only until',
+  ])
+    expect(html).not.toContain(standing);
+  expect(html).not.toContain('A file save is waiting for this terminal');
+});
+
+it('says a terminal blocks a save only while a save of its copy is actually held', () => {
+  const blocking = 'A file save is waiting for this terminal. Stop it to save.';
+  try {
+    fixture.documents = { note: { target: { sessionId: 'session' }, writerBusy: false } };
+    expect(render(terminal)).not.toContain(blocking);
+    fixture.documents = { note: { target: { sessionId: 'other' }, writerBusy: true } };
+    expect(render(terminal)).not.toContain(blocking);
+    fixture.documents = { note: { target: { sessionId: 'session' }, writerBusy: true } };
+    expect(render(terminal)).toContain(blocking);
+    // A stopped terminal holds nothing, whatever the document still remembers.
+    expect(render({ ...terminal, state: 'exited', stopped: true })).not.toContain(blocking);
+  } finally {
+    fixture.documents = null;
+  }
+});
+
+it('attach selection is enabled only while terminal output is selected', async () => {
+  for (const selected of [false, true]) {
+    const view = await interactive(terminal, { onAttach: () => {} }, selected);
+    try {
+      expect(
+        view.container.querySelector<HTMLButtonElement>('button[aria-label="Attach selection"]')
+          ?.disabled,
+      ).toBe(!selected);
+    } finally {
+      await view.close();
+    }
+  }
 });
 
 it('marks unconfirmed termination in the terminal tab without implying it is running', () => {
@@ -356,10 +462,11 @@ it('attaches only the explicit selected text with its captured source target', a
         </IntlProvider>,
       ),
     );
-    const button = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent === 'Attach selection',
+    const button = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Attach selection"]',
     );
     assert(button);
+    expect(button.disabled).toBe(false);
     expect(attached).not.toHaveBeenCalled();
     await act(async () => button.click());
     expect(fixture.captureSelection).toHaveBeenCalledWith('terminal');

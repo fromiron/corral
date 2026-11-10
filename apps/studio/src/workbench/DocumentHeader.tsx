@@ -1,5 +1,6 @@
 import type { GitStatus, WorkspaceTarget } from '@corral/contracts';
-import { GitBranch } from '@corral/react/icons';
+import { Badge, Tooltip } from '@corral/react/design-kit';
+import { Files, Folder, GitBranch } from '@corral/react/icons';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -55,52 +56,82 @@ function useCopyBranch(target: WorkspaceTarget | null) {
   return branch?.key === key ? branch.name : null;
 }
 
+/** The unsaved mark: a dot, and its words while the head has room for them. */
+export function UnsavedMark({ label }: { label: string }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-foreground">
+      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-emphasis" />
+      <span className="truncate @max-lg/head:sr-only">{label}</span>
+    </span>
+  );
+}
+
 /**
- * A document's head: its path, where it opened from (the session working copy or the project
- * source folder), the copy's branch and whether it has unsaved changes. Actions go after it.
+ * A document's one-row head: its path, where it opened from (the session working copy or the
+ * project source folder), the copy's branch and its save state, then its actions. A narrow head
+ * keeps the marks and moves their words into tooltips.
  */
 export function DocumentHeader({
   path,
   target,
   unsaved = false,
+  status,
+  actions,
   children,
 }: {
   path: string;
   target: { kind: 'source' } | { kind: 'copy'; target: WorkspaceTarget };
   unsaved?: boolean;
+  /** The save state; without it, an unsaved document still shows its mark. */
+  status?: ReactNode;
+  /** Controls at the row's end, such as Save and the more menu. */
+  actions?: ReactNode;
   children?: ReactNode;
 }) {
   const td = useTranslations('Desktop');
   const tf = useTranslations('Files');
   const tdoc = useTranslations('Documents');
   const branch = useCopyBranch(target.kind === 'copy' ? target.target : null);
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  const folder = path.slice(0, path.length - name.length);
+  const source = td(target.kind === 'copy' ? 'sessionCopy' : 'sourceFolder');
+  const SourceIcon = target.kind === 'copy' ? Files : Folder;
   return (
     <div
       data-testid="document-header"
-      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-caption"
+      className="@container/head flex h-10 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 text-caption text-muted-foreground"
     >
-      <p className="min-w-0 flex-1 break-all text-foreground" title={path}>
-        {path}
+      {/* The folder gives way first, so the file name stays readable. */}
+      <p className="flex min-w-0 flex-1 items-center font-mono text-body" title={path}>
+        {folder ? <span className="min-w-0 truncate">{folder}</span> : null}
+        <span className="min-w-0 max-w-full shrink-0 truncate text-foreground">{name}</span>
       </p>
-      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
-        <span>{td(target.kind === 'copy' ? 'sessionCopy' : 'sourceFolder')}</span>
-        {branch ? (
-          <span className="inline-flex min-w-0 items-center gap-1" title={tf('branch', { branch })}>
+      <Tooltip content={source}>
+        <Badge variant="secondary" size="sm" className="shrink-0">
+          <span className="inline-flex items-center gap-1">
+            <SourceIcon aria-hidden className="size-3 shrink-0" />
+            <span className="@max-xl/head:sr-only">{source}</span>
+          </span>
+        </Badge>
+      </Tooltip>
+      {branch ? (
+        <Tooltip content={tf('branch', { branch })}>
+          <span className="inline-flex min-w-0 max-w-40 shrink items-center gap-1">
             <GitBranch size={12} aria-hidden className="shrink-0" />
             <span className="sr-only">{tf('branch', { branch })}</span>
-            <span aria-hidden className="truncate">
+            <span aria-hidden className="truncate @max-lg/head:hidden">
               {branch}
             </span>
           </span>
-        ) : null}
-        {unsaved ? (
-          <span className="inline-flex items-center gap-1 text-foreground">
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-emphasis" />
-            {tdoc('dirty')}
-          </span>
-        ) : null}
-      </span>
-      {children}
+        </Tooltip>
+      ) : null}
+      {status ?? (unsaved ? <UnsavedMark label={tdoc('dirty')} /> : null)}
+      {actions || children ? (
+        <span className="flex shrink-0 items-center gap-1">
+          {actions}
+          {children}
+        </span>
+      ) : null}
     </div>
   );
 }
