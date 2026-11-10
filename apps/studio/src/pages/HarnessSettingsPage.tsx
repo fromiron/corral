@@ -344,7 +344,11 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
     selected !== null &&
     JSON.stringify({ ...selected, ...pendingProfile }) === JSON.stringify(selected);
   return (
-    <SettingsLayout active="harness" {...(api ? { description: t('intro') } : {})}>
+    <SettingsLayout
+      active="harness"
+      // That a work style is shared is the one thing to say before its controls.
+      {...(api ? { description: t('sharedScope'), descriptionId: 'shared-scope' } : {})}
+    >
       <main className="settings-content">
         {!api ? (
           <p className="text-body text-muted-foreground">{t('localOnly')}</p>
@@ -378,9 +382,6 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
             ) : null}
             <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
               <legend className="sr-only">{t('heading')}</legend>
-              <p data-testid="shared-scope" className="rounded-md bg-subtle px-3 py-2 text-xs">
-                {t('sharedScope')}
-              </p>
               <div className="settings-list flex flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <Input

@@ -16,7 +16,25 @@ vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
 vi.mock('./SettingsPage.tsx', () => ({
-  SettingsLayout: ({ children }: { children: ReactNode }) => children,
+  // The frame's description line, as SettingsLayout draws it under the section title.
+  SettingsLayout: ({
+    children,
+    description,
+    descriptionId,
+  }: {
+    children: ReactNode;
+    description?: ReactNode;
+    descriptionId?: string;
+  }) => (
+    <>
+      {description ? (
+        <p data-description="" data-testid={descriptionId}>
+          {description}
+        </p>
+      ) : null}
+      {children}
+    </>
+  ),
 }));
 vi.mock('./ModelImportPanel.tsx', () => ({ ModelImportPanel: () => <p>import panel</p> }));
 vi.mock('./ImageProfileSettings.tsx', () => ({ ImageProfileSettings: () => <p>image panel</p> }));
@@ -81,6 +99,10 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
       ),
     );
     const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
+    // Where sign-in is kept is said once, on Sign-in, not under every tab or again per key.
+    expect(container.querySelector('[data-description]')?.textContent).toBe(messages.Models.intro);
+    expect(container.textContent?.split(messages.Models.intro)).toHaveLength(2);
+    expect(container.textContent).not.toContain(messages.Models.keyHint);
     // The kit keeps an invisible bold copy of each label for its width; read the visible one.
     const visible = (node: HTMLElement) => {
       const copy = node.cloneNode(true) as HTMLElement;
@@ -124,6 +146,7 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
     });
     await act(async () => tabs[3]?.click());
     expect(panelOf('#models-images')?.hidden).toBe(false);
+    expect(container.querySelector('[data-description]')).toBeNull();
     expect(panelOf('[data-testid="provider-openai"]')?.hidden).toBe(true);
     await act(async () => tabs[0]?.click());
     expect(

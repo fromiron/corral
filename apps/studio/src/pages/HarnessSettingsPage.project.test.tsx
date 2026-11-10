@@ -17,7 +17,25 @@ vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
 vi.mock('./SettingsPage.tsx', () => ({
-  SettingsLayout: ({ children }: { children: ReactNode }) => children,
+  // The frame's description line, as SettingsLayout draws it under the section title.
+  SettingsLayout: ({
+    children,
+    description,
+    descriptionId,
+  }: {
+    children: ReactNode;
+    description?: ReactNode;
+    descriptionId?: string;
+  }) => (
+    <>
+      {description ? (
+        <p data-description="" data-testid={descriptionId}>
+          {description}
+        </p>
+      ) : null}
+      {children}
+    </>
+  ),
 }));
 vi.mock('./HarnessMcpTools.tsx', () => ({ HarnessMcpTools: () => null }));
 vi.mock('../workbench/harness/PermissionPolicyEditor.tsx', () => ({
@@ -78,6 +96,55 @@ it('Work styles has no project picker of its own and follows the settings target
     expect(container.textContent).not.toContain('Alpha');
     await act(async () => render('b'));
     expect(projectTools).toHaveBeenLastCalledWith('b');
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it('says once that a work style is shared, as the section description', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  fixture.api = {
+    resources: async () => [],
+    profileManagement: async () => [],
+    projectTools: async () => null,
+    entries: async () => [],
+  } as unknown as HarnessApi;
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <SettingsNavigationContext.Provider
+            value={{
+              projects: [project('a', 'Alpha')],
+              projectId: 'a',
+              returnTo: '/projects',
+              search: {},
+              overlay: true,
+              link: (section) => ({ to: `/settings/${section}`, search: {}, resetScroll: false }),
+              selectProject: vi.fn(),
+            }}
+          >
+            <HarnessSettingsPage />
+          </SettingsNavigationContext.Provider>
+        </IntlProvider>,
+      ),
+    );
+    const description = container.querySelector('[data-description]');
+    expect(description?.textContent).toBe(messages.Harness.sharedScope);
+    expect(description?.getAttribute('data-testid')).toBe('shared-scope');
+    // No grey notice restating it, and no second line saying a save makes a revision.
+    expect(container.textContent?.split('Shared work style')).toHaveLength(2);
+    expect(container.textContent).not.toContain(messages.Harness.intro);
   } finally {
     await act(async () => root.unmount());
     container.remove();

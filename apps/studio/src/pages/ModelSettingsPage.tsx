@@ -114,8 +114,10 @@ export function ModelSettingsPage() {
     <ModelSettingsRefresh value={refresh}>
       <SettingsLayout
         active="models"
-        // Where sign-in is kept is a fact the controls cannot show.
-        {...(mode === 'server' && models && live ? { description: t('intro') } : {})}
+        // Where sign-in is kept is a fact the controls cannot show; it is said once, on Sign-in.
+        {...(mode === 'server' && models && live && MODEL_TABS[tab] === 'signIn'
+          ? { description: t('intro') }
+          : {})}
       >
         <main className="settings-content">
           {error ? (
@@ -340,7 +342,6 @@ function ProviderCard({
               {t('saveKey')}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">{t('keyHint')}</p>
         </form>
       ) : null}
 
