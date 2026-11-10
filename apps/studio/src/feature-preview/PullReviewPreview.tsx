@@ -152,6 +152,7 @@ function PullDetail({
   posted: PostedComment[];
 }) {
   const t = useTranslations('FeaturePreview.pull');
+  const tDiff = useTranslations('FeaturePreview.diff');
   const say = useSample();
   const name = usePullName();
   const runName = useRunName();
@@ -210,7 +211,7 @@ function PullDetail({
           <DiffReview
             files={pull.files}
             state={state}
-            title={<span className="sr-only">{diff.labels.review(pull.files.length)}</span>}
+            title={<span className="sr-only">{tDiff('review', { count: pull.files.length })}</span>}
             note={say(pull.description)}
             labels={diff.labels}
             hint={diff.hint}

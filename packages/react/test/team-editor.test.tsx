@@ -58,7 +58,7 @@ describe('team editor', () => {
     renderEditor(chain(1));
     const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });
     expect(outline.querySelector('h2')).toBeNull();
-    expect(outline.textContent).not.toContain(messages.TeamEditor.structure);
+    expect(outline.textContent).not.toContain('Structure');
     const add = screen.getByRole('button', { name: messages.TeamEditor.addStep });
     const problems = screen.getByRole('button', { name: /problems?$/ });
     // The team row holds the team name, its problems and the add button.
