@@ -1411,7 +1411,7 @@
     "suggest": "Suggest a team",
     "ask": "Ask the model",
     "asking": "Asking the model…",
-    "askHint": "Uses one model request with your sign-in.",
+    "askCost": "1 request",
     "retry": "Try again",
     "unusable": "The model did not give a usable team.",
     "patternLabel": "Team shape",

@@ -170,19 +170,19 @@ export function TeamDraftDialog({
                 </KitBadge>
               </Button>
               {live && models ? (
-                <div className="flex flex-col gap-1">
-                  <Button
-                    variant="tertiary"
-                    size="compact"
-                    type="button"
-                    disabled={!goal.trim() || busy}
-                    onClick={() => void ask()}
-                    className="self-start"
-                  >
-                    {busy ? t('asking') : askFailed ? t('retry') : t('ask')}
-                  </Button>
-                  <span className="text-caption text-muted-foreground">{t('askHint')}</span>
-                </div>
+                <Button
+                  variant="tertiary"
+                  size="compact"
+                  type="button"
+                  disabled={!goal.trim() || busy}
+                  onClick={() => void ask()}
+                  className="self-start"
+                >
+                  {busy ? t('asking') : askFailed ? t('retry') : t('ask')}
+                  <KitBadge size="compact" color="gray">
+                    {t('askCost')}
+                  </KitBadge>
+                </Button>
               ) : null}
             </div>
           </>

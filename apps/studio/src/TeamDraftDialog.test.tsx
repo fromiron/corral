@@ -381,4 +381,10 @@ describe('the plan editor’s patterns', () => {
     expect(button(en.TeamDraft.suggest).textContent).toContain(en.TeamDraft.noModelCall);
     expect(document.body.textContent).not.toContain('Picks a team shape');
   });
+
+  it('says on the ask button what the request costs, with no sentence under it', async () => {
+    await mount();
+    expect(button(en.TeamDraft.ask).textContent).toContain(en.TeamDraft.askCost);
+    expect(document.body.textContent).not.toContain('Uses one model request');
+  });
 });
