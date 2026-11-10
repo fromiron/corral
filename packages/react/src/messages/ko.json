@@ -323,7 +323,7 @@
       "children": "{count, plural, one {위임한 작업 #개} other {위임한 작업 #개}}를 기다리는 중",
       "message": "답을 기다리는 중",
       "approval": "승인을 기다리는 중",
-      "user": "사용자를 기다리는 중"
+      "user": "응답 대기"
     },
     "streamGap": "(일부 텍스트를 놓쳤습니다. 제출되면 전체 출력이 보입니다)",
     "agents": "에이전트",
@@ -1287,7 +1287,7 @@
     "loop_cap_declined": "{node}의 추가 회차를 거절함",
     "rejected": "{node}을(를) 반려함",
     "final_output_rejected": "최종 출력을 반려함",
-    "user_input_requested": "사용자 답변을 기다리고 있습니다"
+    "user_input_requested": "응답 대기"
   },
   "CommandPalette": {
     "label": "명령 팔레트",
