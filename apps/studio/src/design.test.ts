@@ -209,6 +209,14 @@ describe('design guard (Workbench polish P0)', () => {
     expect(cn('text-ui text-muted')).toBe('text-ui text-muted');
     expect(cn('text-xs text-ui')).toBe('text-ui');
   });
+
+  it('hangs every bulleted list: a wrapped item continues under its text, not its bullet', () => {
+    // An inside marker sits in the text's line, so a second line starts under the bullet.
+    const found = [...text].flatMap(([path, body]) =>
+      [...body.matchAll(/\blist-inside\b/g)].map((m) => `${where(path)}: ${m[0]}`),
+    );
+    expect(found).toEqual([]);
+  });
 });
 
 // The kit's six type roles and its variable-font weights replace Tailwind's default steps, and

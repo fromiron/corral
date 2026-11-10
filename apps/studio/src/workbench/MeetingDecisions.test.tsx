@@ -374,3 +374,14 @@ it('labels decisions by version and goal, localizes minutes time and folds inter
   );
   expect(ids?.open).toBe(false);
 });
+it('hangs the minutes lists: a wrapped item continues under its text, not under its bullet', async () => {
+  const f = await mount();
+  const lists = [...f.container.querySelectorAll('ul')].filter((list) => list.querySelector('li'));
+  expect(lists.length).toBeGreaterThan(0);
+  for (const list of lists) {
+    // The bullet sits outside the text's box, in the list's own left padding.
+    expect(list.className).toMatch(/\blist-outside\b/);
+    expect(list.className).toMatch(/\bpl-\d/);
+    expect(list.className).not.toMatch(/\blist-inside\b/);
+  }
+});
