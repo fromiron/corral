@@ -9,6 +9,7 @@ import {
   type AgentTreeLabels,
   type AgentTreeNode,
   Button,
+  cn,
   fontWeights,
   formatClock,
   Select,
@@ -296,11 +297,14 @@ export function ExecutionTree({
   wideCards = false,
   now,
   rounds,
+  titled = true,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
   compact?: boolean;
+  /** Show the bar's title. Inside a tab whose label names the executions, only the counts stay. */
+  titled?: boolean;
   /** Cards widen to the room their branches have, for a tree that owns a wide view. */
   wideCards?: boolean;
   /** The inspected rounds when other views of the work flow share them; otherwise its own. */
@@ -498,9 +502,12 @@ export function ExecutionTree({
     const model = projection.modelProfiles[execution.modelProfile];
     const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
     const handoffs = executionHandoffs(projection, id);
-    // A card names what its execution made, then where it sits among rounds and attempts.
+    // A card names what its execution made, then where it sits among rounds and attempts. A
+    // version already sent somewhere is named once, by its chip below.
     const made = handoffs.flatMap((handoff) =>
-      handoff.kind === 'artifact' ? [`${handoff.name} v${handoff.version}`] : [],
+      handoff.kind === 'artifact' && !handoff.targets.length
+        ? [`${handoff.name} v${handoff.version}`]
+        : [],
     );
     const task = [
       made.join(', ') || null,
@@ -591,8 +598,12 @@ export function ExecutionTree({
       labels={labels}
       size="compact"
       cardWidth={wideCards ? fittedCardWidth(root, treeWidth) : TREE.card}
-      // The column shrinks to the panel; cards truncate instead of widening it.
-      className="grid-cols-[minmax(0,1fr)]"
+      // The column shrinks to the panel; cards truncate instead of widening it. Untitled, the
+      // bar's first two parts (spark mark and title) step aside; the tree keeps the name.
+      className={cn(
+        'grid-cols-[minmax(0,1fr)]',
+        !titled && '[&>header>span:nth-child(-n+2)]:hidden',
+      )}
       {...(now === undefined ? {} : { now })}
     />
   );

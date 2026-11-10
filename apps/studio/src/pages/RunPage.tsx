@@ -648,6 +648,7 @@ function RunWorkspace({
                         rounds={rounds}
                         compact
                         wideCards
+                        titled={false}
                       />
                       <RunFlowDecisions
                         session={session}
