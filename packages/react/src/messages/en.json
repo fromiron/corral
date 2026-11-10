@@ -3669,6 +3669,7 @@
       "readError": "This run couldn't be read.",
       "retry": "Retry",
       "openDetail": "Open {name} details",
+      "back": "Back to Overview",
       "openChanges": "Open the changes",
       "spent": "Reported output tokens",
       "modelCalls": "Model calls",

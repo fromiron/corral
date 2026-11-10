@@ -121,6 +121,14 @@ function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
     </Popover>
   );
 }
+/** A detail's heading. Details open in Overview's own place, so none is a popover's title. */
+function DetailTitle({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+      {children}
+    </h2>
+  );
+}
 /** ContextInspector: what the presented run's last request held. */
 export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
@@ -132,7 +140,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
     <div data-testid="context-inspector" className="flex flex-col gap-4 text-ui">
       <div>
         <div className="flex items-center justify-between gap-3">
-          <PopoverTitle>{t('context')}</PopoverTitle>
+          <DetailTitle>{t('context')}</DetailTitle>
           <span className="rounded-md bg-subtle px-2 py-0.5 text-micro text-muted-foreground">
             {complete
               ? t('measurementFull')
@@ -355,7 +363,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   if (!model.agents) return null;
   return (
     <>
-      <PopoverTitle>{t('agentsHeading')}</PopoverTitle>
+      <DetailTitle>{t('agentsHeading')}</DetailTitle>
       <p className="mt-2 text-caption text-muted-foreground">
         {[
           t('agents', model.agents),

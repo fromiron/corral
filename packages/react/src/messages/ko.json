@@ -3669,6 +3669,7 @@
       "readError": "이 실행을 읽지 못했습니다.",
       "retry": "다시 시도",
       "openDetail": "{name} 자세히 보기",
+      "back": "현황으로 돌아가기",
       "openChanges": "변경사항 열기",
       "spent": "보고된 출력 토큰",
       "modelCalls": "모델 호출",

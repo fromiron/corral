@@ -207,9 +207,10 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(inspector).toContainText('System prompt');
     await expect(inspector).toContainText('Built-in tools');
     await expect(inspector).toContainText('Messages');
+    // Escape steps back from the detail to the widgets, onto the card that opened it.
     await page.keyboard.press('Escape');
     await expect(inspector).toBeHidden();
-    await expect(context).toBeFocused();
+    await expect(context.getByRole('button', { name: 'Open Context details' })).toBeFocused();
     await closeOverview(page);
     expect(
       subscriptions.filter((path) => path.includes(`/runs/${current(corral).runId}/events`)),
