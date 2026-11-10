@@ -22,6 +22,7 @@ import {
   sessionRunMode,
 } from './autoChoice.ts';
 import { watchRefresh } from './refresh.ts';
+import { reveal } from './reviewNavigation.ts';
 import { readComposerDraft, serializeComposerDraft } from './sessionDraft.ts';
 import { type ProfileInfo, useModelProfiles } from './useModels.ts';
 
@@ -87,6 +88,21 @@ export function MeetingHandoff({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<MeetingHandoffReceipt | null>(null);
+  // Opened from its button, the form comes into view with focus on its first field. A handoff
+  // reopened from a saved command takes no focus.
+  const form = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const bringForm = useRef(false);
+  useEffect(() => {
+    if (!open || !bringForm.current) return;
+    bringForm.current = false;
+    reveal(form.current);
+    form.current
+      ?.querySelector<HTMLElement>(
+        'button:not(:disabled), select:not(:disabled), input:not(:disabled)',
+      )
+      ?.focus({ preventScroll: true });
+  }, [open]);
   // Mock runs use the simulated profiles, whatever the connected models are.
   const menuProfiles = useMemo<ProfileInfo[]>(
     () =>
@@ -206,14 +222,20 @@ export function MeetingHandoff({
         <Button
           size="compact"
           variant="tertiary"
-          onClick={() => setOpen(!open)}
+          ref={toggle}
+          onClick={() => {
+            bringForm.current = !open;
+            setOpen(!open);
+            // Closing returns focus here from the form it removes.
+            if (open) toggle.current?.focus();
+          }}
           aria-expanded={open}
         >
           {t('open')}
         </Button>
       </div>
       {open ? (
-        <div className="flex min-w-0 flex-col gap-3">
+        <div ref={form} className="flex min-w-0 flex-col gap-3">
           <p className="text-muted-foreground">{t('scopeHint')}</p>
           <fieldset disabled={busy || !!pending} className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-col gap-1">

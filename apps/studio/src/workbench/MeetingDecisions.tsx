@@ -1,7 +1,7 @@
 import type { MeetingDecisionContent, MeetingView } from '@corral/contracts';
 import { activeMeetingDecision, type WorkSession } from '@corral/core';
 import { Button, fontWeights, Textarea } from '@corral/react/design-kit';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -9,6 +9,7 @@ import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { MeetingDiagnostics } from './MeetingDiagnostics.tsx';
 import { MeetingHandoff } from './MeetingHandoff.tsx';
+import { reveal } from './reviewNavigation.ts';
 
 const semibold = { fontVariationSettings: fontWeights.semibold };
 const normal = { fontVariationSettings: fontWeights.normal };
@@ -74,6 +75,29 @@ export function MeetingDecisions({
   const setWithdrawal = (next: Withdrawal | null) => changeEdit(sessionId, { withdrawal: next });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // A form opened from a button comes into view with focus on its first field; cancelling it
+  // returns focus to that button. A draft restored on remount takes no focus.
+  const form = useRef<HTMLFormElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const bringForm = useRef(false);
+  const openDraft = (next: Draft, origin: HTMLElement) => {
+    opener.current = origin;
+    bringForm.current = true;
+    setDraft(next);
+    setWithdrawal(null);
+  };
+  const closeDraft = () => {
+    setDraft(null);
+    if (opener.current?.isConnected) opener.current.focus();
+  };
+  useEffect(() => {
+    if (!draft || !bringForm.current) return;
+    bringForm.current = false;
+    reveal(form.current);
+    form.current
+      ?.querySelector<HTMLTextAreaElement>('textarea[name="goal"]')
+      ?.focus({ preventScroll: true });
+  }, [draft]);
   const nameOf = (id: string) =>
     view.config.participants.find((p) => p.participantId === id)?.name ?? id;
   const run = async (kind: 'adopt' | 'withdraw') => {
@@ -219,14 +243,16 @@ export function MeetingDecisions({
                         size="compact"
                         variant="secondary"
                         disabled={busy}
-                        onClick={() => {
-                          setDraft({
-                            minutesId: minutes.minutesId,
-                            candidateId: candidate.candidateId,
-                            content: candidate.content,
-                          });
-                          setWithdrawal(null);
-                        }}
+                        onClick={(event) =>
+                          openDraft(
+                            {
+                              minutesId: minutes.minutesId,
+                              candidateId: candidate.candidateId,
+                              content: candidate.content,
+                            },
+                            event.currentTarget,
+                          )
+                        }
                       >
                         {t('editCandidate')}
                       </Button>
@@ -240,6 +266,7 @@ export function MeetingDecisions({
       })}
       {draft ? (
         <form
+          ref={form}
           className="flex flex-col gap-3 rounded-lg fill-group p-3"
           onSubmit={(event) => {
             event.preventDefault();
@@ -285,7 +312,7 @@ export function MeetingDecisions({
             <Button type="submit" disabled={busy || !draft.content.goal.trim()}>
               {t('adopt')}
             </Button>
-            <Button type="button" variant="tertiary" disabled={busy} onClick={() => setDraft(null)}>
+            <Button type="button" variant="tertiary" disabled={busy} onClick={closeDraft}>
               {t('cancel')}
             </Button>
           </div>
@@ -324,15 +351,17 @@ export function MeetingDecisions({
                     size="compact"
                     variant="tertiary"
                     disabled={busy}
-                    onClick={() => {
-                      setDraft({
-                        minutesId: decision.minutesId,
-                        candidateId: decision.candidateId,
-                        content: decision.content,
-                        supersedesVersionId: decision.versionId,
-                      });
-                      setWithdrawal(null);
-                    }}
+                    onClick={(event) =>
+                      openDraft(
+                        {
+                          minutesId: decision.minutesId,
+                          candidateId: decision.candidateId,
+                          content: decision.content,
+                          supersedesVersionId: decision.versionId,
+                        },
+                        event.currentTarget,
+                      )
+                    }
                   >
                     {t('revise')}
                   </Button>

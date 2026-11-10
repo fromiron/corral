@@ -36,6 +36,8 @@ vi.mock('@corral/react/design-kit', () => ({
   ),
 }));
 const { MeetingDecisions, meetingDecisionEdits } = await import('./MeetingDecisions.tsx');
+// jsdom does not scroll; a form that opens asks to be brought into view.
+Element.prototype.scrollIntoView ??= () => {};
 const content = {
   goal: 'Ship safely',
   scope: ['web'],
@@ -163,6 +165,35 @@ it('shows dissent and failed participants, and adopts only the edited human sele
     }),
   );
 });
+it('opening a candidate for adoption brings its form into view, focused on the goal', async () => {
+  const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
+  const f = await mount();
+  const open = f.button('editCandidate');
+  open.focus();
+  await act(async () => open.click());
+  expect(document.activeElement).toBe(f.container.querySelector('textarea[name="goal"]'));
+  expect(reveal).toHaveBeenCalled();
+  // Cancelling returns focus to the button that opened the form.
+  await act(async () => f.button('cancel').click());
+  expect(f.container.querySelector('textarea[name="goal"]')).toBeNull();
+  expect(document.activeElement).toBe(open);
+});
+
+it('a revision form opens in view and focused, and a draft restored on remount takes no focus', async () => {
+  const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
+  const decided = { ...view, decisions: [decision] } as MeetingView;
+  const first = await mount(decided);
+  await act(async () => first.button('revise').click());
+  expect(document.activeElement).toBe(first.container.querySelector('textarea[name="goal"]'));
+  for (const unmount of cleanup.splice(0)) await unmount();
+  reveal.mockClear();
+  (document.activeElement as HTMLElement | null)?.blur();
+  const second = await mount(decided);
+  expect(second.container.querySelector('textarea[name="goal"]')).not.toBeNull();
+  expect(document.activeElement).toBe(document.body);
+  expect(reveal).not.toHaveBeenCalled();
+});
+
 it('withdrawn and superseded versions cannot hand off', async () => {
   const f = await mount({
     ...view,
