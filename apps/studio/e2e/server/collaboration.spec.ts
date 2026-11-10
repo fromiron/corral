@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { startTestRun, teamCanvas } from '../workbench.ts';
+import { openLibraryTeams, startTestRun, teamCanvas } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
@@ -9,7 +9,7 @@ test('one run shows two delegated helpers and a question answered by a new respo
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([join(EXAMPLES, 'research-brief.corral.json')]);

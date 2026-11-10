@@ -1,4 +1,4 @@
-import { requestBox } from '../workbench.ts';
+import { newConversation, openConversationDetails, openLibrary, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('ordinary chat entry', () => {
@@ -16,7 +16,7 @@ test.describe('ordinary chat entry', () => {
     await expect(page.getByTestId('step-corral')).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Corral', exact: true })).toBeHidden();
     await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toBeHidden();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionId = new URL(page.url()).pathname.split('/').at(-1);
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);
@@ -45,28 +45,49 @@ test('an explicit optional Corral choice and draft survive project navigation', 
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await page
+  const details = await openConversationDetails(page);
+  await details
     .getByRole('textbox', { name: 'Purpose', exact: true })
     .fill('Keep the optional purpose.');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await page.keyboard.press('Escape');
+  await expect(details).toBeHidden();
+  // Templates are in the library; the view survives a reload.
+  await openLibrary(page, 'Templates');
   await page.reload();
-  await expect(page.getByRole('tab', { name: /^Teams/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Library views' })
+      .getByRole('tab', { name: 'Templates', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await page
     .getByRole('article')
     .filter({ hasText: 'Single agent' })
     .getByRole('button', { name: 'Start a session with this team', exact: true })
     .click();
-  await expect(page.getByRole('combobox', { name: 'Corral', exact: true })).toContainText(
+  // The project's new conversation opens with the team chosen and the saved purpose, unstarted.
+  await expect(details.getByRole('combobox', { name: 'Corral', exact: true })).toContainText(
     'Single agent',
   );
-  await expect(page.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
+  await expect(details.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
     'Keep the optional purpose.',
   );
-  await page.getByRole('tab', { name: /^Sessions/ }).click();
+  await page.keyboard.press('Escape');
+  // The project's old link to its teams opens the library's teams of that project.
   await page.goto(`${corral.server.url}/projects/default#corrals`);
-  await expect(page.getByRole('tab', { name: /^Teams/ })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await expect(page).toHaveURL(/\/library\/teams\?project=default$/);
+  await expect(
+    page.getByRole('tablist', { name: 'Library views' }).getByRole('tab', { name: 'Teams' }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page
+    .getByTestId('app-sidebar')
+    .getByRole('link', { name: 'My project', exact: true })
+    .click();
+  // Saved details are shown before the conversation starts with them.
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await expect(details.getByRole('combobox', { name: 'Corral', exact: true })).toContainText(
+    'Single agent',
+  );
+  await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await expect(requestBox(page)).toHaveValue('Keep the optional purpose.');
   const sessionId = new URL(page.url()).pathname.split('/').at(-1);
@@ -79,14 +100,17 @@ test('an explicit optional Corral choice and draft survive project navigation', 
 test.describe('model readiness guidance', () => {
   test.use({ live: true, compatibleEndpoint: true });
 
-  test('a ready keyless compatible model completes connection guidance', async ({
-    page,
-    corral,
-  }) => {
+  // workbench.md (기본 입구): the empty Sessions tab is one empty state, with a model link only
+  // when no model can be used; there are no step-by-step start cards.
+  test('a ready keyless compatible model needs no connection step', async ({ page, corral }) => {
     await corral.open('/');
-    await expect(page.getByTestId('step-model')).toHaveAttribute('data-done', 'true');
-    await expect(page.getByTestId('step-run')).toHaveAttribute('aria-current', 'step');
-    await expect(page.getByTestId('step-corral')).toHaveCount(0);
+    await expect(page.getByText('No sessions yet', { exact: true })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: 'Connect a model' })).toHaveCount(
+      0,
+    );
+    await expect(page.getByTestId('sidebar-status')).toHaveCount(0);
+    for (const step of ['step-model', 'step-run', 'step-corral'])
+      await expect(page.getByTestId(step)).toHaveCount(0);
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);
   });
 });
@@ -97,8 +121,14 @@ test('a direct Corral library link still lets the user return to conversations',
 }) => {
   await corral.open('/');
   await page.goto(`${corral.server.url}/projects/default#corrals`);
-  await expect(page.getByRole('tab', { name: /^Teams/ })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('tab', { name: /^Sessions/ }).click();
+  // library.md: the old link replaces itself with the library's teams of that project.
+  await expect(page).toHaveURL(/\/library\/teams\?project=default$/);
+  await expect(
+    page.getByRole('tablist', { name: 'Library views' }).getByRole('tab', { name: 'Teams' }),
+  ).toHaveAttribute('aria-selected', 'true');
+  // Back returns to the work screen before it.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/projects\/default$/);
   await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
     'aria-selected',
     'true',

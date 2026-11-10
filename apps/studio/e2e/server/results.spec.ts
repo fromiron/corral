@@ -6,7 +6,7 @@ import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import { usageTotals } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { chooseRun, openResult, panelTab, requestBox } from '../workbench.ts';
+import { chooseRun, newConversation, openResult, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
@@ -93,7 +93,7 @@ test('selected-run usage and unique result identities survive reload without cha
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   for (const [index, text] of ['First scope check', 'Second scope check'].entries()) {
     await requestBox(page).fill(text);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -148,10 +148,22 @@ test('selected-run usage and unique result identities survive reload without cha
   const result = current.artifacts[latestId];
   assert(result);
   expect(current.executionOrder).toContain(result.authorExecutionId);
-  await expect(results.getByRole('option')).toHaveCount(1);
-  await expect(results.getByRole('option')).toContainText(`${result.name} v${result.version}`);
-  await expect(results.getByRole('option')).toContainText('Run #2');
-  await expect(results.getByRole('option')).toContainText(
+  // A finished run keeps its final and step results (api-contract.md, 산출물 본문 수명): the
+  // conversation's final reply and its helper's notes are both offered, each once.
+  const kept = Object.values(current.artifacts).filter(
+    (artifact) => artifact.bodyAvailable !== false,
+  );
+  expect(kept.length).toBeGreaterThan(0);
+  await expect(results.getByRole('option')).toHaveCount(kept.length);
+  for (const artifact of kept)
+    await expect(
+      results.getByRole('option').filter({ hasText: `${artifact.name} v${artifact.version} · ` }),
+    ).toHaveCount(1);
+  const option = results
+    .getByRole('option')
+    .filter({ hasText: `${result.name} v${result.version} · ` });
+  await expect(option).toContainText('Run #2');
+  await expect(option).toContainText(
     `execution ${current.executionOrder.indexOf(result.authorExecutionId) + 1}`,
   );
   expect(projection.artifacts[previousId]?.bodyAvailable).toBe(false);

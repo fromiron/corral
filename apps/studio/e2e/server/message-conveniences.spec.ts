@@ -62,7 +62,7 @@ test.describe('incomplete response', () => {
     const partial = page.getByTestId('live-text');
     await expect(partial.locator('strong')).toHaveText('Saved partial reply');
     await page
-      .getByTestId('chat-composer')
+      .getByRole('region', { name: 'Active run controls', exact: true })
       .getByRole('button', { name: 'Cancel whole run', exact: true })
       .click();
     const dialog = page.getByRole('dialog');

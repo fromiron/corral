@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import type { Locator, Page } from '@playwright/test';
+import { newConversation } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 async function reachable(target: Locator) {
@@ -72,7 +73,7 @@ for (const width of [390, 636, 967])
     corral,
   }, testInfo) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionUrl = page.url();
     await page.setViewportSize({ width, height: 757 });

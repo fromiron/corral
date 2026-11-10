@@ -1,4 +1,4 @@
-import { requestBox } from '../workbench.ts';
+import { newConversation, openAllProjects, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('settings guidance', () => {
@@ -15,12 +15,12 @@ test.describe('settings guidance', () => {
     await expect(menu.getByRole('link', { name: 'Models', exact: true })).toBeFocused();
     await page.screenshot({ path: '/tmp/corral-guidance-settings.png' });
     await menu.getByRole('link', { name: 'Folders & tools', exact: true }).click();
-    await expect(
-      page.getByRole('combobox', { name: 'Applies to project', exact: true }),
-    ).toContainText('My project');
+    await expect(page.getByRole('combobox', { name: 'Settings for', exact: true })).toContainText(
+      'My project',
+    );
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(
-      page.getByRole('combobox', { name: 'Applies to project', exact: true }),
+      page.getByRole('combobox', { name: 'Settings for', exact: true }),
     ).toBeInViewport();
     await page.screenshot({ path: '/tmp/corral-guidance-settings-narrow.png' });
     expect(corral.errors).toEqual([]);
@@ -54,14 +54,14 @@ test('server restart explains reconnection while keeping the unsent request', as
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await requestBox(page).fill('Keep this unsent draft after reconnection.');
   await corral.restart();
   await expect(
     page.getByRole('alert').filter({ hasText: 'Connect to the local server.' }),
   ).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Keep this unsent draft after reconnection.');
-  await page.getByRole('link', { name: 'All projects', exact: true }).click();
+  await openAllProjects(page);
   await expect(
     page.getByRole('alert').filter({ hasText: 'Connect to the local server.' }),
   ).toBeVisible();
@@ -73,7 +73,7 @@ test('file setup remains reachable after a request without a working copy', asyn
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await requestBox(page).fill('Add a comment to example.js.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('chat-timeline')).toContainText('Add a comment to example.js.');
@@ -96,7 +96,7 @@ test.describe('no connected models', () => {
   test.use({ live: true, codexLogin: false });
   test('keeps the draft and offers connection and a separate demo', async ({ page, corral }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     await requestBox(page).fill('Do not send without a connection.');
     const banner = page.getByTestId('models-not-ready');
     await expect(banner).toBeVisible();
@@ -107,13 +107,17 @@ test.describe('no connected models', () => {
     );
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(requestBox(page)).toHaveValue('Do not send without a connection.');
-    await page.getByRole('button', { name: 'Connect a model', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('Live requests are blocked');
+    // The sidebar's status card is the connection entry point and says the same thing.
+    const status = page.getByTestId('sidebar-status');
+    await expect(status).toContainText('Live requests are blocked');
+    await expect(
+      status.getByRole('button', { name: 'Connect a model', exact: true }),
+    ).toBeVisible();
     await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
     await page.reload();
     await expect(page.getByTestId('models-not-ready')).toBeVisible();
-    await page.getByRole('button', { name: '모델 연결 필요', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('실제 모델 요청은 차단됩니다');
+    await expect(status).toContainText('실제 요청은 차단됩니다');
+    await expect(status.getByRole('button', { name: '모델 연결 필요', exact: true })).toBeVisible();
     await corral.open('/projects/default?settings=project-defaults');
     await expect(
       page.getByRole('combobox', { name: '프로젝트 기본값', exact: true }),
