@@ -120,6 +120,7 @@ import { useMentionSearch } from '../useMentionSearch.ts';
 import { type ProfileInfo, type RoleModel, useModelProfiles, useTeamRoles } from '../useModels.ts';
 import { ComposerDock, ComposerPlan } from '../widgets/ChatWidgets.tsx';
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
+import { WorkingCopyChip } from '../WorkFolderNotice.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 
@@ -150,6 +151,7 @@ export function Composer({
   runControlsOwnConfirmation = false,
   home = false,
   onWorkFolder,
+  onSetUpWorkingCopy,
 }: {
   session: WorkSession;
   team: CorralSummary | null;
@@ -168,6 +170,9 @@ export function Composer({
   home?: boolean;
   /** Opens file-work setup; given while the project has no work folder yet. */
   onWorkFolder?: () => void;
+  /** Opens file-work setup; given while the conversation has no working copy. Its chip is the
+   *  row's one mark of that and stands in for the folder entry. */
+  onSetUpWorkingCopy?: () => void;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
@@ -1711,7 +1716,9 @@ export function Composer({
               ) : null}
             </MenuPopup>
           </Menu>{' '}
-          {onWorkFolder ? (
+          {onSetUpWorkingCopy ? (
+            <WorkingCopyChip onSetup={onSetUpWorkingCopy} />
+          ) : onWorkFolder ? (
             // The kit home's "work in a folder" entry, while the project has none.
             <Tooltip content={td('workFolder')}>
               <Button

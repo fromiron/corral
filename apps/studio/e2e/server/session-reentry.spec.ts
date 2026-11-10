@@ -28,7 +28,9 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
     return saved.entries[0].entryId as string;
   }, sessionId);
   await page.reload();
-  await page.getByRole('button', { name: 'Set up file work', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'No working copy · Set up file work', exact: true })
+    .click();
   await expect(page).toHaveURL(/panel=changes/);
   await openProject(page);
   await page
@@ -37,7 +39,9 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
     .click();
   await expect(requestBox(page)).toBeVisible();
   await expect(page).toHaveURL(/compose=true/);
-  await page.getByRole('button', { name: 'Set up file work', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'No working copy · Set up file work', exact: true })
+    .click();
   const dialog = await openTextSearch(page);
   await dialog.getByRole('textbox').fill('moonstone');
   await dialog.getByRole('switch', { name: 'Include private messages and results' }).click();

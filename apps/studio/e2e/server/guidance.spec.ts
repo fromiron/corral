@@ -77,17 +77,15 @@ test('file setup remains reachable after a request without a working copy', asyn
   await requestBox(page).fill('Add a comment to example.js.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('chat-timeline')).toContainText('Add a comment to example.js.');
-  const notice = page.getByTestId('work-folder-notice');
-  await expect(notice).toContainText('cannot change files');
-  const dismiss = notice.getByRole('button', { name: 'Hide working copy notice', exact: true });
-  await dismiss.focus();
-  await dismiss.press('Enter');
-  await expect(notice).toHaveCount(0);
-  const setup = page.getByTestId('work-folder-setup');
-  await expect(setup).toBeFocused();
+  // One chip in the composer row says it, and nothing above the conversation repeats it.
+  const setup = page.getByRole('button', {
+    name: 'No working copy · Set up file work',
+    exact: true,
+  });
+  await expect(setup).toHaveText('No working copy');
+  await expect(page.getByTestId('chat-timeline')).not.toContainText('No working copy');
   await page.reload();
   await expect(setup).toBeVisible();
-  await expect(notice).toHaveCount(0);
   await setup.click();
   await expect(page.getByRole('link', { name: 'Open Folders & tools', exact: true })).toBeVisible();
 });
