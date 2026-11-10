@@ -63,6 +63,7 @@ import {
   Fragment,
   type ReactElement,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -315,8 +316,15 @@ function RunWorkspace({
   const target = useSteerTarget(session, execution ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [listedNodeId, setListedNodeId] = useState<string | null>(null);
-  // The graph view's display, kept with the other view state across view switches.
-  const [graphDisplay, setGraphDisplay] = useState<'map' | 'list'>('map');
+  // The graph view's display, kept with the other view state across view switches. Until the
+  // person picks one, a map whose fit would make the names unreadable starts as the list.
+  const [graphChoice, setGraphChoice] = useState<'map' | 'list' | null>(null);
+  const [fittedDisplay, setFittedDisplay] = useState<'map' | 'list'>('map');
+  const graphDisplay = graphChoice ?? fittedDisplay;
+  const fitZoomed = useCallback(
+    (zoom: number) => setFittedDisplay(zoom < READABLE_MAP_ZOOM ? 'list' : 'map'),
+    [],
+  );
   const [panel, setPanel] = useState<'closed' | 'selection' | 'approval' | 'run'>(
     execution ? 'selection' : 'closed',
   );
@@ -550,13 +558,14 @@ function RunWorkspace({
                   render: () => (
                     <div className="flex h-full min-h-0 flex-col">
                       <div className="flex shrink-0 justify-end px-3 pt-2">
-                        <GraphDisplayToggle value={graphDisplay} onChange={setGraphDisplay} />
+                        <GraphDisplayToggle value={graphDisplay} onChange={setGraphChoice} />
                       </div>
                       <div className="min-h-0 flex-1">
                         <RunCanvas
                           session={session}
                           definition={definition}
                           display={graphDisplay}
+                          onFitZoom={fitZoomed}
                           selectedNodeId={highlightedNode}
                           onSelectNode={(id) => setSelectedNodeId(id)}
                           renderNodePreview={(nodeId, { close, trigger: origin }) =>
@@ -889,6 +898,12 @@ function RunWorkspace({
     </div>
   );
 }
+
+/**
+ * The smallest zoom at which the map's names stay readable: its 12px labels at 9px. A narrower
+ * stage starts the graph view as the list.
+ */
+const READABLE_MAP_ZOOM = 0.75;
 
 /** The graph view's two displays of one question: the relationship map and the agent list. */
 function GraphDisplayToggle({

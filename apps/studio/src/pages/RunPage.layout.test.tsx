@@ -9,16 +9,24 @@ import type {
 import { applyEvent, emptyProjection } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
-import { act, type ReactNode, useState } from 'react';
+import { act, type ReactNode, useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {}, replays: 0, pending: 0, batch: 'a' }));
+const fixture = vi.hoisted(() => ({
+  services: {},
+  replays: 0,
+  pending: 0,
+  batch: 'a',
+  // The zoom the canvas's automatic fit reports while its map shows; null reports none.
+  fitZoom: null as number | null,
+}));
 vi.mock('@corral/core', async (original) => {
   const module = await original<typeof import('@corral/core')>();
   return {
@@ -82,6 +90,7 @@ vi.mock('@corral/react', async (original) => {
       onSelectNode,
       selectedNodeId,
       renderNodePreview,
+      onFitZoom,
     }: {
       definition: CorralDefinition;
       session: RunSessionStore;
@@ -92,8 +101,15 @@ vi.mock('@corral/react', async (original) => {
         nodeId: string,
         controls: { close: () => void; trigger: HTMLElement | null },
       ) => ReactNode;
+      onFitZoom?: (zoom: number) => void;
     }) => {
       const [preview, setPreview] = useState<{ id: string; trigger: HTMLElement } | null>(null);
+      // Like the real stage, the map fits itself only while it shows, again as the page settles.
+      const observed = useStore(session, (state) => state.projection);
+      useLayoutEffect(() => {
+        void observed;
+        if (display !== 'list' && fixture.fitZoom !== null) onFitZoom?.(fixture.fitZoom);
+      }, [display, observed, onFitZoom]);
       return (
         <div>
           <output data-testid="layout">
@@ -146,6 +162,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   fixture.pending = 0;
   fixture.batch = 'a';
+  fixture.fitZoom = null;
 });
 
 async function mount(
@@ -1819,6 +1836,39 @@ it('switches the graph between its map and list, keeping the choice across views
   const map = await chooseDisplay(container, 'Map');
   expect(display()).toBe('map');
   expect(map?.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('starts the graph as its list when fitting the map would make the names unreadable', async () => {
+  fixture.fitZoom = 0.43;
+  const { container } = await mount('inline_team', null, {});
+  expect(container.querySelector('[data-testid="graph-display"]')?.textContent).toBe('list');
+  const toggle = container.querySelector('[role="group"][aria-label="Graph display"]');
+  const pressed = toggle?.querySelector('[aria-pressed="true"]');
+  expect(pressed?.textContent).toBe('List');
+});
+
+it('keeps the map once the person picks it on a narrow stage, across new events and views', async () => {
+  fixture.fitZoom = 0.43;
+  const { container, run } = await mount('inline_team', null, {});
+  const display = () => container.querySelector('[data-testid="graph-display"]')?.textContent;
+  expect(display()).toBe('list');
+  await chooseDisplay(container, 'Map');
+  expect(display()).toBe('map');
+  // The map fits itself again as the page settles; the person's choice stands.
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  expect(display()).toBe('map');
+  await act(async () => viewTab(container, 'Workflow')?.click());
+  await act(async () => viewTab(container, 'Graph')?.click());
+  expect(display()).toBe('map');
+});
+
+it('starts with the map when its fit keeps the names readable', async () => {
+  fixture.fitZoom = 1;
+  const { container, run } = await mount('inline_team', null, {});
+  const display = () => container.querySelector('[data-testid="graph-display"]')?.textContent;
+  expect(display()).toBe('map');
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  expect(display()).toBe('map');
 });
 
 it('choosing a list row is choosing its node and keeps the open right panel', async () => {

@@ -184,6 +184,73 @@ describe('run graph fit', () => {
   });
 });
 
+describe('the fit it reports', () => {
+  it('reports the zoom of each fit it makes on its own, never of one the person asks for', async () => {
+    const { definition } = researchTeamDraft();
+    const session = sessionStore({
+      runId: 'run_fit_report',
+      definition,
+      projection: projectionWith({
+        executions: {
+          root: {
+            executionId: 'root',
+            nodeId: 'research',
+            taskId: 'task_root',
+            attemptNo: 1,
+            parentExecutionId: null,
+            previousExecutionId: null,
+            depth: 0,
+            iterationId: null,
+            modelProfile: 'model-a',
+            configRevision: 0,
+            criteriaVersionId: null,
+            status: 'active',
+            activity: null,
+            waitingOn: null,
+            modelCallIds: [],
+            error: null,
+          },
+        },
+        executionOrder: ['root'],
+        nodeExecutions: { research: ['root'] },
+      }),
+    });
+    pane.width = 1100;
+    pane.height = 620;
+    const reported: number[] = [];
+    const view = render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunCanvas
+          session={session}
+          definition={definition}
+          selectedNodeId={null}
+          onSelectNode={() => {}}
+          onFitZoom={(zoom) => reported.push(zoom)}
+        />
+      </IntlProvider>,
+    );
+    await act(async () => {});
+    const scale = () =>
+      Number(
+        /scale\(([\d.]+)\)/.exec(
+          document.querySelector<HTMLElement>('[data-graph-stage]')?.style.transform ?? '',
+        )?.[1],
+      );
+    expect(reported.at(-1)).toBe(scale());
+    // A narrow pane while the page settles: the automatic fit shrinks the map and says so.
+    pane.width = 160;
+    await act(async () => {
+      for (const callback of observers) callback();
+    });
+    expect(reported.at(-1)).toBe(scale());
+    expect(reported.at(-1)).toBeLessThan(1);
+    const count = reported.length;
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Fit view' })));
+    expect(reported).toHaveLength(count);
+    view.unmount();
+  });
+});
+
 describe('the quick view', () => {
   it('opens on a side that leaves the neighbouring agents clickable', () => {
     const row = new Map([

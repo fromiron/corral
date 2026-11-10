@@ -76,6 +76,8 @@ export interface GraphViewportOptions {
    * Omitted, the view refits with the pane until the person moves it.
    */
   fitOnce?: boolean;
+  /** Called with the view each fit the stage makes on its own chooses; a requested fit is not. */
+  onAutoFit?: (viewport: Viewport) => void;
 }
 
 export function useGraphViewport({
@@ -86,40 +88,41 @@ export function useGraphViewport({
   canPan,
   fitRule = DEFAULT_FIT,
   fitOnce = false,
+  onAutoFit,
 }: GraphViewportOptions) {
   const pane = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  const read = useRef({ bounds, onMove, onTap, canPan, fitRule });
-  read.current = { bounds, onMove, onTap, canPan, fitRule };
+  const read = useRef({ bounds, onMove, onTap, canPan, fitRule, onAutoFit });
+  read.current = { bounds, onMove, onTap, canPan, fitRule, onAutoFit };
 
   // Until the person moves the view, it follows the pane: a panel opening beside it refits.
   const moved = useRef(false);
   // With `fitOnce`: whether the person has worked with the stage, which ends the first display.
   const engaged = useRef(false);
-  const place = useCallback(() => {
+  const place = useCallback((automatic: boolean) => {
     const element = pane.current;
     if (!element) return;
     moved.current = false;
-    setViewport(
-      fitBounds(
-        read.current.bounds(),
-        element.clientWidth,
-        element.clientHeight,
-        read.current.fitRule,
-      ),
+    const next = fitBounds(
+      read.current.bounds(),
+      element.clientWidth,
+      element.clientHeight,
+      read.current.fitRule,
     );
+    setViewport(next);
+    if (automatic) read.current.onAutoFit?.(next);
   }, []);
   /** A fit the person asked for. */
   const fit = useCallback(() => {
     engaged.current = true;
-    place();
+    place(false);
   }, [place]);
   useLayoutEffect(() => {
     const element = pane.current;
     if (!ready || !element) return;
     const measure = () => {
       if (element.clientWidth <= 0 || element.clientHeight <= 0) return;
-      if (fitOnce ? !engaged.current : !moved.current) place();
+      if (fitOnce ? !engaged.current : !moved.current) place(true);
     };
     measure();
     const observer = new ResizeObserver(measure);
