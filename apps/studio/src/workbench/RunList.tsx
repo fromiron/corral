@@ -40,7 +40,9 @@ export function RunList({
     };
   }, [runs, sessions, transport]);
   return (
-    <ul className="flex flex-col" aria-labelledby="runs-heading">
+    // Checkbox, status and run share columns across the rows (subgrid), so every run's name
+    // starts at one x whatever its status badge says.
+    <ul className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-3" aria-labelledby="runs-heading">
       {runs.map((run) => {
         const name = runIdentityText(
           identities[run.runId] ?? runIdentity(run, runs, sessions),
@@ -50,11 +52,11 @@ export function RunList({
         return (
           <li
             key={run.runId}
-            className="flex flex-wrap items-start gap-3 border-b border-line/50 py-2 text-sm last:border-b-0"
+            className="col-span-3 grid grid-cols-subgrid items-start border-b border-line/50 py-2 text-body last:border-b-0"
           >
             <CheckboxGroup
               checkedIndices={new Set(picked.includes(run.runId) ? [0] : [])}
-              className="w-fit shrink-0"
+              className="w-fit"
             >
               <CheckboxItem
                 index={0}
@@ -64,8 +66,10 @@ export function RunList({
                 onToggle={() => onPick(run.runId, !picked.includes(run.runId))}
               />
             </CheckboxGroup>
-            <StatusBadge status={run.status} />
-            <div className="min-w-0 flex-1">
+            <span className="justify-self-start">
+              <StatusBadge status={run.status} />
+            </span>
+            <div className="min-w-0">
               <Link
                 to="/runs/$runId"
                 params={{ runId: run.runId }}
@@ -73,13 +77,13 @@ export function RunList({
               >
                 {name}
               </Link>
-              <time dateTime={run.startedAt} className="block text-xs text-muted-foreground">
+              <time dateTime={run.startedAt} className="block text-caption text-muted-foreground">
                 {format.dateTime(new Date(run.startedAt), {
                   dateStyle: 'short',
                   timeStyle: 'medium',
                 })}
               </time>
-              <details className="text-xs text-muted-foreground">
+              <details className="text-caption text-muted-foreground">
                 <summary>{t('details')}</summary>
                 <code className="select-text break-all">{run.runId}</code>
               </details>
