@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { InboxItemView, WorkspaceBindingView, WorktreeView } from '@corral/client';
-import type { ProjectSummary, WorkSession } from '@corral/core';
+import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -372,4 +372,203 @@ it('stops reading working copies once the Environment tab is left', async () => 
   await settle();
   expect(workspaces.worktree).toHaveBeenCalledTimes(4);
   expect(workspaces.gitStatus).not.toHaveBeenCalled();
+});
+
+// The Sessions tab groups sessions by state (docs/specs/workbench.md#세션-목록의-상태와-처리할-항목).
+const at = (day: number) => `2026-11-${String(day).padStart(2, '0')}T00:00:00.000Z`;
+const ran = (sessionId: string, status: RunSummary['status']): RunSummary => ({
+  runId: `run_${sessionId}`,
+  sessionId,
+  projectId: 'alpha',
+  corralId: 'team',
+  status,
+  startedAt: at(9),
+});
+const inboxItem = (
+  kind: InboxItemView['kind'],
+  sessionId: string,
+  detail: string | null = null,
+): InboxItemView => ({ kind, sessionId, sessionTitle: sessionId, runId: null, detail });
+
+/**
+ * A waits for the person, B finished with writes to review, C runs, D has only a purpose, E
+ * finished, X was cancelled and Y is empty.
+ */
+function stateFixture(inbox: () => Promise<InboxItemView[]>) {
+  fixture.data = {
+    ...fixture.data,
+    sessions: [
+      { ...session('A', 'Answer the question'), updatedAt: at(5) },
+      { ...session('B', 'Build the report'), updatedAt: at(4) },
+      { ...session('C', 'Crunch the numbers'), updatedAt: at(3) },
+      { ...session('D', 'Draft the plan'), objective: 'Plan the release', updatedAt: at(2) },
+      { ...session('E', 'Edit the notes'), updatedAt: at(1) },
+      { ...session('X', 'Cancelled export'), updatedAt: at(6) },
+      { ...session('Y', 'Blank page'), updatedAt: at(7) },
+    ],
+    runs: [
+      ran('A', 'awaiting_user'),
+      ran('B', 'succeeded'),
+      ran('C', 'running'),
+      ran('E', 'succeeded'),
+      ran('X', 'cancelled'),
+    ],
+  };
+  const read = vi.fn(inbox);
+  fixture.services = {
+    ...fixture.services,
+    workspaces: { ...(fixture.services.workspaces as object), inbox: read },
+  };
+  return read;
+}
+const reviewItems = () => [
+  inboxItem('unreviewed', 'B', '3'),
+  inboxItem('check_failed', 'B', 'unit tests'),
+  inboxItem('queued', 'D', 'Private request body'),
+];
+
+/** Each group as shown: its disclosure, its list's name and the sessions listed in it. */
+function groups(container: HTMLElement) {
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  return [...panel.querySelectorAll<HTMLDetailsElement>('details')].map((details) => {
+    const list = details.querySelector<HTMLElement>('ul');
+    const label = list?.getAttribute('aria-labelledby');
+    return {
+      details,
+      name: label ? document.getElementById(label)?.textContent : null,
+      rows: [...details.querySelectorAll<HTMLAnchorElement>('li a[href^="/sessions/"]')].map(
+        (link) => new URL(link.href, 'http://x').pathname.split('/')[2],
+      ),
+    };
+  });
+}
+
+async function search(container: HTMLElement, value: string) {
+  const field = container.querySelector<HTMLInputElement>('input[type="search"]');
+  if (!field) throw new Error('no search field');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await settle();
+}
+
+it('groups the sessions by state, in order, each headed by its name and count', async () => {
+  stateFixture(async () => reviewItems());
+  const { container } = await render();
+  expect(groups(container).map(({ name, rows }) => [name, rows])).toEqual([
+    ['Needs attention', ['A']],
+    ['Review', ['B']],
+    ['In progress', ['C']],
+    ['No run yet', ['D']],
+    ['Completed', ['E']],
+    ['Cancelled', ['X']],
+    ['Empty session', ['Y']],
+  ]);
+  // The header is the group's name and its number of sessions, as Needs you heads its groups.
+  for (const group of groups(container)) {
+    const heading = group.details.querySelector('summary h2');
+    expect(heading?.textContent).toBe(`${group.name}${group.rows.length}`);
+  }
+  // No status filter: the groups are the states.
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  expect(panel.querySelector('[role="combobox"]')).toBeNull();
+  expect(panel.textContent).not.toMatch(/All statuses|Session status/);
+  expect(panel.querySelector('[aria-label="Session status"]')).toBeNull();
+});
+
+it('names the review kinds on a reviewed row, never their counts or a request body', async () => {
+  stateFixture(async () => reviewItems());
+  const { container } = await render();
+  const review = groups(container).find((group) => group.name === 'Review');
+  const row = review?.details.querySelector('li');
+  expect(row?.textContent).toContain(messages.Inbox.kind.unreviewed);
+  expect(row?.textContent).toContain(messages.Inbox.kind.check_failed);
+  expect(row?.textContent).not.toMatch(/3 unreviewed|unit tests/);
+  // Other groups do not name review kinds, and no row shows a queued request's body.
+  for (const group of groups(container).filter((group) => group.name !== 'Review'))
+    expect(group.details.textContent).not.toContain(messages.Inbox.kind.unreviewed);
+  expect(container.textContent).not.toContain('Private request body');
+});
+
+it('starts Cancelled and Empty session collapsed and every other group open', async () => {
+  stateFixture(async () => reviewItems());
+  const { container } = await render();
+  expect(groups(container).map(({ name, details }) => [name, details.open])).toEqual([
+    ['Needs attention', true],
+    ['Review', true],
+    ['In progress', true],
+    ['No run yet', true],
+    ['Completed', true],
+    ['Cancelled', false],
+    ['Empty session', false],
+  ]);
+  // A collapsed group opens from its header, and stays open through the next render.
+  const empty = groups(container).find((group) => group.name === 'Empty session');
+  const summary = empty?.details.querySelector<HTMLElement>('summary');
+  expect(summary?.textContent).toBe('Empty session1');
+  await act(async () => summary?.click());
+  await settle();
+  await search(container, 'x');
+  await search(container, '');
+  expect(groups(container).find((group) => group.name === 'Empty session')?.details.open).toBe(
+    true,
+  );
+  expect(
+    empty?.details.querySelector('button[aria-label="Archive empty session: Blank page"]'),
+  ).toBeTruthy();
+});
+
+it('keeps only matching rows while searching, with every group open', async () => {
+  stateFixture(async () => reviewItems());
+  const { container } = await render();
+  // Titles and purposes match: A, D (by its purpose too), X and Y.
+  await search(container, 'an');
+  expect(groups(container).map(({ name, rows, details }) => [name, rows, details.open])).toEqual([
+    ['Needs attention', ['A'], true],
+    ['No run yet', ['D'], true],
+    ['Cancelled', ['X'], true],
+    ['Empty session', ['Y'], true],
+  ]);
+  // Without a query the groups are as they started.
+  await search(container, '');
+  expect(groups(container)).toHaveLength(7);
+  expect(groups(container).find((group) => group.name === 'Cancelled')?.details.open).toBe(false);
+  await search(container, 'nothing like this');
+  expect(groups(container)).toEqual([]);
+  expect(container.textContent).toContain(messages.Sessions.noMatches);
+});
+
+it('groups by run state alone when the first inbox read fails, says so once and retries', async () => {
+  let fail = true;
+  const read = stateFixture(async () => {
+    if (fail) throw new Error('inbox unavailable');
+    return reviewItems();
+  });
+  const { container } = await render();
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(groups(container).map(({ name, rows }) => [name, rows])).toEqual([
+    ['Needs attention', ['A']],
+    ['In progress', ['C']],
+    ['No run yet', ['D']],
+    ['Completed', ['B', 'E']],
+    ['Cancelled', ['X']],
+    ['Empty session', ['Y']],
+  ]);
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  const failure = messages.Inbox.loadFailed.replace('{project}', 'Alpha');
+  expect(panel.textContent?.split(failure)).toHaveLength(2);
+  // A failed read is not "nothing to review".
+  expect(container.textContent).not.toContain(messages.Inbox.empty);
+  expect(container.textContent).not.toMatch(/nothing (to review|needs you)/i);
+  const retry = [...panel.querySelectorAll('button')].filter(
+    (button) => button.textContent === messages.Inbox.retry,
+  );
+  expect(retry).toHaveLength(1);
+  fail = false;
+  await act(async () => retry[0]?.click());
+  await settle();
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(panel.textContent).not.toContain(failure);
+  expect(groups(container).find((group) => group.name === 'Review')?.rows).toEqual(['B']);
 });

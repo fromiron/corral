@@ -1935,17 +1935,16 @@
     "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed.",
     "archivedSending": "Sending a message keeps this session archived.",
     "restoreSession": "Restore session",
-    "statusFilter": "Session status",
     "archiveEmpty": "Archive empty session: {title}",
     "keyboardHint": "Use ↑ and ↓ to move between sessions.",
     "listState": {
-      "all": "All statuses",
-      "running": "In progress",
       "attention": "Needs attention",
-      "completed": "Completed",
+      "review": "Review",
+      "running": "In progress",
       "ready": "No run yet",
-      "empty": "Empty session",
-      "cancelled": "Cancelled"
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "empty": "Empty session"
     },
     "restoreNamed": "Restore session: {title}",
     "listSessionUnavailable": "This session is no longer available.",

@@ -40,12 +40,14 @@ test('project session list distinguishes and archives empty sessions', async ({ 
   await page.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\//);
   await page.goto('/');
-  await page.getByRole('combobox', { name: 'Session status' }).click();
-  await page.getByRole('option', { name: 'Empty session', exact: true }).click();
-  await page.getByRole('button', { name: /Archive empty session/ }).click();
+  // Empty sessions have their own group, collapsed until opened.
+  const empty = page.getByRole('list', { name: 'Empty session', exact: true });
+  await expect(empty).toBeHidden();
+  await page.locator('summary', { hasText: 'Empty session' }).click();
+  await empty.getByRole('button', { name: /Archive empty session/ }).click();
   await expect(page.getByRole('button', { name: /Archive empty session/ })).toHaveCount(0);
   await page.getByRole('button', { name: /Show archived/ }).click();
-  await expect(page.getByRole('list', { name: 'Sessions', exact: true })).toContainText('Archived');
+  await expect(empty).toContainText('Archived');
 });
 
 test('sidebar session links remain keyboard reachable and row menu returns focus', async ({

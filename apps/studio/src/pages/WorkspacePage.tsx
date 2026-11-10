@@ -7,6 +7,9 @@ import {
   type WorkSession,
 } from '@corral/core';
 import {
+  Banner,
+  BannerActions,
+  BannerTitle,
   Button,
   cn,
   Dialog,
@@ -43,7 +46,7 @@ import {
 } from '@corral/react/design-kit';
 import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
@@ -58,6 +61,9 @@ import { RunList } from '../workbench/RunList.tsx';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import {
   latestSessionRun,
+  type SessionGroupId,
+  type SessionGroupRow,
+  sessionGroups,
   sessionListState,
   uncertainSessionTerminal,
 } from '../workbench/sessionList.ts';
@@ -81,7 +87,8 @@ export function WorkspacePage() {
   const navigate = useNavigate();
   const href = useRouterState({ select: (state) => state.location.href });
   const [errors, setErrors] = useState<string[]>([]);
-  const inboxItems = useProjectInbox(projectId);
+  const inbox = useProjectInbox(projectId);
+  const inboxItems = inbox.items;
   const folder = useFolder(projectId);
   // Roadmap 16: two runs picked for comparison, oldest choice dropped past two.
   const [picked, setPicked] = useState<string[]>([]);
@@ -199,7 +206,8 @@ export function WorkspacePage() {
                 <SessionList
                   sessions={sessions}
                   runs={runs}
-                  attention={inboxItems}
+                  inbox={inbox}
+                  projectName={shown}
                   archived={archived}
                 />
               }
@@ -219,29 +227,55 @@ export function WorkspacePage() {
   );
 }
 
-/** The project's pending items, as the Sessions tab's pending actions count them. */
-function useProjectInbox(projectId: string) {
+interface ProjectInbox {
+  items: InboxItemView[];
+  /** The latest read failed; `items` are what the last good read found, or none. */
+  failed: boolean;
+  retry: () => void;
+}
+
+/** The project's pending items, as the header counts them and the Sessions tab groups them. */
+function useProjectInbox(projectId: string): ProjectInbox {
   const { workspaces } = useServices();
   const [items, setItems] = useState<InboxItemView[]>([]);
+  const [failed, setFailed] = useState(false);
+  const reload = useRef<() => void>(() => {});
   useEffect(() => {
     setItems([]);
+    setFailed(false);
+    reload.current = () => {};
     if (!workspaces) return;
     let live = true;
-    const load = () =>
+    // Reads overlap (the timer, a retry): an older answer never replaces a newer one.
+    let sent = 0;
+    let shown = 0;
+    const load = () => {
+      const read = ++sent;
+      const current = () => live && read > shown;
       workspaces.inbox(projectId).then(
         (list) => {
-          if (live) setItems(list);
+          if (!current()) return;
+          shown = read;
+          setItems(list);
+          setFailed(false);
         },
-        () => {},
+        () => {
+          if (!current()) return;
+          shown = read;
+          setFailed(true);
+        },
       );
-    void load();
+    };
+    reload.current = load;
+    load();
     const timer = setInterval(load, 5000);
     return () => {
       live = false;
       clearInterval(timer);
     };
   }, [workspaces, projectId]);
-  return items;
+  const retry = useCallback(() => reload.current(), []);
+  return { items, failed, retry };
 }
 
 type Folder =
@@ -860,26 +894,30 @@ function EnvironmentPanel({
   );
 }
 
+/** Groups a person closes less often than they open; the others start open. */
+const START_COLLAPSED: readonly SessionGroupId[] = ['cancelled', 'empty'];
+
 /**
- * The project's work sessions and meetings: pinned first, searchable. Without any, one empty
- * state names what a session is; the header's New conversation starts the first, and a missing
- * model is the one other step.
+ * The project's work sessions and meetings, grouped by state (docs/specs/workbench.md#세션-목록의-
+ * 상태와-처리할-항목) and searchable. Without any, one empty state names what a session is; the
+ * header's New conversation starts the first, and a missing model is the one other step.
  */
 function SessionList({
   sessions,
   runs,
-  attention,
+  inbox,
+  projectName,
   archived,
 }: {
   sessions: WorkSession[];
   runs: RunSummary[];
-  attention: InboxItemView[];
+  inbox: ProjectInbox;
+  projectName: string;
   /** An archived project starts nothing. */
   archived: boolean;
 }) {
-  const status = useTranslations('Status');
   const t = useTranslations('Sessions');
-  const tw = useTranslations('Workspace');
+  const ti = useTranslations('Inbox');
   const navigation = useSettingsNavigation();
   const { mode, live, models } = useServices();
   const profiles = useModelProfiles();
@@ -889,11 +927,9 @@ function SessionList({
     models !== null &&
     profiles !== null &&
     !profiles.some((profile) => profile.available);
-  const ago = useSessionAge();
-  const size = useSize();
+  const id = useId();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-  const [stateFilter, setStateFilter] = useState('all');
   const [error, setError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState<string | null>(null);
   const { repository } = useServices();
@@ -918,16 +954,39 @@ function SessionList({
     }
   };
   const needle = query.trim().toLowerCase();
+  // While searching every group opens; what is closed then lasts only until the search ends.
+  const searching = needle !== '';
+  const [collapsed, setCollapsed] = useState<ReadonlySet<SessionGroupId>>(
+    () => new Set(START_COLLAPSED),
+  );
+  const [closedInSearch, setClosedInSearch] = useState<ReadonlySet<SessionGroupId>>(new Set());
+  const [wasSearching, setWasSearching] = useState(searching);
+  if (wasSearching !== searching) {
+    setWasSearching(searching);
+    setClosedInSearch(new Set());
+  }
+  const closed = searching ? closedInSearch : collapsed;
+  // The disclosure owns its open state; this follows it, so a render never undoes a toggle.
+  const toggled = (group: SessionGroupId, open: boolean) => {
+    if (open !== closed.has(group)) return;
+    (searching ? setClosedInSearch : setCollapsed)((previous) => {
+      const next = new Set(previous);
+      if (open) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
   const archivedCount = sessions.filter((x) => x.archivedAt).length;
   const none = sessions.length === archivedCount && !showArchived;
-  const shown = sessions
-    .filter(
+  const groups = sessionGroups(
+    sessions.filter(
       (x) =>
         (showArchived || !x.archivedAt) &&
-        (stateFilter === 'all' || sessionListState(x, runs, attention) === stateFilter) &&
         (!needle || `${x.title}\n${x.objective}`.toLowerCase().includes(needle)),
-    )
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
+    ),
+    runs,
+    inbox.items,
+  );
   return (
     <section aria-labelledby="sessions-heading" className="flex flex-col gap-2">
       <h2 id="sessions-heading" className="sr-only">
@@ -946,25 +1005,18 @@ function SessionList({
               onChange={setQuery}
             />
           </InputGroup>
-          <Select
-            label={t('statusFilter')}
-            variant="chip"
-            value={stateFilter}
-            onValueChange={setStateFilter}
-            options={[
-              'all',
-              'running',
-              'attention',
-              'completed',
-              'cancelled',
-              'ready',
-              'empty',
-            ].map((value) => ({
-              value,
-              label: t(`listState.${value}`),
-            }))}
-          />
         </div>
+      ) : null}
+      {inbox.failed ? (
+        // The groups below are then by run state alone: no review group is not "nothing to review".
+        <Banner status="error" size="compact">
+          <BannerTitle>{ti('loadFailed', { project: projectName })}</BannerTitle>
+          <BannerActions>
+            <Button variant="tertiary" size="compact" onClick={inbox.retry}>
+              {ti('retry')}
+            </Button>
+          </BannerActions>
+        </Banner>
       ) : null}
       {error ? (
         <p role="alert" className="text-caption text-destructive">
@@ -982,80 +1034,43 @@ function SessionList({
             </Button>
           ) : null}
         </div>
-      ) : shown.length === 0 ? (
+      ) : groups.length === 0 ? (
         <p className="px-2 py-2 text-body text-muted-foreground">{t('noMatches')}</p>
       ) : (
-        // One column for the rows and one for their action, shared by every row (subgrid), so the
-        // meta's right edge lines up whether or not a row can be archived.
-        <ul aria-label={t('heading')} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2">
-          {shown.map((x) => {
-            const latest = latestSessionRun(x, runs);
-            const terminal = uncertainSessionTerminal(x.sessionId, attention);
-            const Icon = x.meeting ? Users : MessageCircle;
-            const runCount = runs.filter((r) => r.sessionId === x.sessionId).length;
-            return (
-              <li key={x.sessionId} className="col-span-2 grid grid-cols-subgrid items-center">
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId: x.sessionId }}
-                  search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
-                  data-session-kind={x.meeting ? 'meeting' : 'session'}
-                  className={cn(
-                    'flex min-w-0 items-center rounded-md transition-colors hover:bg-hover',
-                    // The row takes the density's control height, as sidebar and table rows do.
-                    size.variant === 'compact'
-                      ? 'min-h-7 gap-2 px-1.5 py-1'
-                      : 'min-h-9 gap-2.5 px-2 py-1.5',
-                  )}
-                >
-                  <Icon aria-hidden size={size.icon} className="shrink-0 text-muted-foreground" />
-                  {x.meeting ? <span className="sr-only">{t('meeting')}</span> : null}
-                  {/* Narrow: the state and time take a second line under the title. */}
-                  <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                    <span className={cn('min-w-0 truncate text-foreground', size.type.body)}>
-                      {x.title}
-                    </span>
-                    <span
-                      className={cn(
-                        'min-w-0 text-muted-foreground sm:shrink-0 sm:text-right',
-                        size.type.caption,
-                      )}
-                    >
-                      {[
-                        x.pinned ? t('pinned') : null,
-                        x.archivedAt ? t('archived') : null,
-                        terminal ? t('terminalNeedsAttention') : null,
-                        latest
-                          ? status(latest.status)
-                          : terminal
-                            ? null
-                            : t(`listState.${sessionListState(x, runs)}`),
-                        // Without a run the state above already says so.
-                        runCount ? t('runCount', { count: runCount }) : null,
-                        tw('updated', { time: ago(x.updatedAt) }),
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
-                  </span>
-                </Link>
-                {x.archivedAt || sessionListState(x, runs, attention) === 'empty' ? (
-                  <Button
-                    variant="ghost"
-                    size="compact"
-                    disabled={archiving !== null}
-                    aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', {
-                      title: x.title,
-                    })}
-                    onClick={() => void setArchived(x, !x.archivedAt)}
-                  >
-                    {t(x.archivedAt ? 'restoreSession' : 'archive')}
-                  </Button>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="flex flex-col gap-4">
+          {groups.map((group) => (
+            <details
+              key={group.id}
+              open={!closed.has(group.id)}
+              onToggle={(event) => toggled(group.id, event.currentTarget.open)}
+            >
+              {/* Headed like the Needs you groups; the row's inset lines the name up with them. */}
+              <SessionGroupSummary>
+                <SectionLabel count={group.rows.length}>
+                  <span id={`${id}-${group.id}`}>{t(`listState.${group.id}`)}</span>
+                </SectionLabel>
+              </SessionGroupSummary>
+              {/* One column for the rows and one for their action, shared by the group's rows
+                  (subgrid), so the meta's right edge lines up whether or not a row can be archived. */}
+              <ul
+                aria-labelledby={`${id}-${group.id}`}
+                className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] gap-x-2"
+              >
+                {group.rows.map((row) => (
+                  <SessionRow
+                    key={row.session.sessionId}
+                    row={row}
+                    runs={runs}
+                    attention={inbox.items}
+                    archivable={Boolean(row.session.archivedAt) || group.id === 'empty'}
+                    archiving={archiving !== null}
+                    onArchive={(session) => void setArchived(session, !session.archivedAt)}
+                  />
+                ))}
+              </ul>
+            </details>
+          ))}
+        </div>
       )}
       {archivedCount > 0 ? (
         <Button
@@ -1069,5 +1084,103 @@ function SessionList({
         </Button>
       ) : null}
     </section>
+  );
+}
+
+/** A group's disclosure header, inset like a row so its name sits over the rows' icons. */
+function SessionGroupSummary({ children }: { children: React.ReactNode }) {
+  const size = useSize();
+  return (
+    <summary className={size.variant === 'compact' ? 'min-h-6 px-1.5' : 'min-h-7 px-2'}>
+      {children}
+    </summary>
+  );
+}
+
+/**
+ * One session: its title, then what it is waiting on and the latest run's actual state, its runs
+ * and when it last changed. A row in the review group names the kinds it has to review.
+ */
+function SessionRow({
+  row: { session: x, review },
+  runs,
+  attention,
+  archivable,
+  archiving,
+  onArchive,
+}: {
+  row: SessionGroupRow;
+  runs: RunSummary[];
+  attention: InboxItemView[];
+  archivable: boolean;
+  archiving: boolean;
+  onArchive: (session: WorkSession) => void;
+}) {
+  const status = useTranslations('Status');
+  const t = useTranslations('Sessions');
+  const ti = useTranslations('Inbox');
+  const tw = useTranslations('Workspace');
+  const ago = useSessionAge();
+  const size = useSize();
+  const latest = latestSessionRun(x, runs);
+  const terminal = uncertainSessionTerminal(x.sessionId, attention);
+  const Icon = x.meeting ? Users : MessageCircle;
+  const runCount = runs.filter((r) => r.sessionId === x.sessionId).length;
+  return (
+    <li className="col-span-2 grid grid-cols-subgrid items-center">
+      <Link
+        to="/sessions/$sessionId"
+        params={{ sessionId: x.sessionId }}
+        search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
+        data-session-kind={x.meeting ? 'meeting' : 'session'}
+        className={cn(
+          'flex min-w-0 items-center rounded-md transition-colors hover:bg-hover',
+          // The row takes the density's control height, as sidebar and table rows do.
+          size.variant === 'compact' ? 'min-h-7 gap-2 px-1.5 py-1' : 'min-h-9 gap-2.5 px-2 py-1.5',
+        )}
+      >
+        <Icon aria-hidden size={size.icon} className="shrink-0 text-muted-foreground" />
+        {x.meeting ? <span className="sr-only">{t('meeting')}</span> : null}
+        {/* Narrow: the state and time take a second line under the title. */}
+        <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <span className={cn('min-w-0 truncate text-foreground', size.type.body)}>{x.title}</span>
+          <span
+            className={cn(
+              'min-w-0 text-muted-foreground sm:shrink-0 sm:text-right',
+              size.type.caption,
+            )}
+          >
+            {[
+              x.pinned ? t('pinned') : null,
+              x.archivedAt ? t('archived') : null,
+              terminal ? t('terminalNeedsAttention') : null,
+              // What there is to review, by kind: never a count or a request's text.
+              ...review.map((kind) => ti(`kind.${kind}`)),
+              latest
+                ? status(latest.status)
+                : terminal
+                  ? null
+                  : t(`listState.${sessionListState(x, runs)}`),
+              // Without a run the state above already says so.
+              runCount ? t('runCount', { count: runCount }) : null,
+              tw('updated', { time: ago(x.updatedAt) }),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </span>
+      </Link>
+      {archivable ? (
+        <Button
+          variant="ghost"
+          size="compact"
+          disabled={archiving}
+          aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', { title: x.title })}
+          onClick={() => onArchive(x)}
+        >
+          {t(x.archivedAt ? 'restoreSession' : 'archive')}
+        </Button>
+      ) : null}
+    </li>
   );
 }

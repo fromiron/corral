@@ -140,10 +140,8 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   // The project counts the item; Needs you lists it (docs/specs/features/inbox.md).
   const summary = page.getByRole('link', { name: '1 item needs you', exact: true });
   await expect(summary).toBeVisible();
-  await page.getByRole('combobox', { name: 'Session status', exact: true }).click();
-  await page.getByRole('option', { name: 'Needs attention', exact: true }).click();
   const sessionRow = page
-    .getByRole('list', { name: 'Sessions', exact: true })
+    .getByRole('list', { name: 'Needs attention', exact: true })
     .getByRole('link', { name: /Observed terminal owner/ });
   await expect(sessionRow).toBeVisible();
   await expect(sessionRow).toContainText('Terminal needs attention');
