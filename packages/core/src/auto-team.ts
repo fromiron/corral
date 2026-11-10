@@ -405,6 +405,18 @@ export interface AutoSignal {
 
 const cancelled = () => new Error('the auto request was cancelled before a run started');
 
+/** What the server knows when it admits a request; none of it is part of the request identity. */
+export interface AutoStartContext<S extends AutoSignal = AutoSignal> {
+  fileTools: boolean;
+  signal?: S;
+  /**
+   * the stored session's completion criteria, read when the request was admitted. They stand in
+   * for the team's or auto default; criteria the request carries itself (a meeting handoff's
+   * adopted ones) win. A resend of the same command keeps what its first admission used.
+   */
+  sessionCriteria?: readonly string[];
+}
+
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
   prepareModels?(
     request: AutoStart,
@@ -544,11 +556,13 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
 
   const run = async (
     request: AutoStart,
-    context: { fileTools: boolean; signal?: S },
+    context: AutoStartContext<S>,
     requestHash: string,
   ): Promise<AutoStartResult> => {
     const signal = context.signal;
     if (signal?.aborted) throw cancelled();
+    const criteria =
+      request.criteria ?? (context.sessionCriteria?.length ? [...context.sessionCriteria] : null);
     const refused = deps.precheck?.(request);
     if (refused) return { ...refused, autoRoute: null };
     const prepared = deps.prepareModels?.(request);
@@ -577,7 +591,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         brief: request.brief,
         ...(request.taskScope ? { taskScope: request.taskScope } : {}),
         ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
-        ...(request.criteria ? { criteria: request.criteria } : {}),
+        ...(criteria ? { criteria } : {}),
         choice: request.choice,
         ...(harness ? { harness, commandTools: true } : {}),
         fileTools,
@@ -661,7 +675,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       brief: request.brief,
       ...(request.taskScope ? { taskScope: request.taskScope } : {}),
       ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
-      ...(request.criteria ? { criteria: request.criteria } : {}),
+      ...(criteria ? { criteria } : {}),
       choice: request.choice,
       ...(request.harness ? { harness: request.harness } : {}),
       fileTools: context.fileTools,
@@ -688,10 +702,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
   };
 
   return {
-    start(
-      request: AutoStart,
-      context: { fileTools: boolean; signal?: S },
-    ): Promise<AutoStartResult> {
+    start(request: AutoStart, context: AutoStartContext<S>): Promise<AutoStartResult> {
       const requestHash = bytesToHex(sha256(utf8ToBytes(canonicalJson(request))));
       const previous = deps.previousStart?.(request.commandId, requestHash, request);
       if (previous)
