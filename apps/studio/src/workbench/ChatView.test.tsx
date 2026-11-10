@@ -152,6 +152,47 @@ it('follows growing replies, keeps following after a message click, and pauses f
   expect(top).toBe(1000);
 });
 
+it('keeps following when the reply grows between its own scroll to the end and that scroll’s event', async () => {
+  sessionStorage.clear();
+  const container = await render();
+  const box = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+  const row = container.querySelector<HTMLElement>('[data-chat-item]');
+  if (!box || !row) throw new Error('Conversation fixture missing');
+  let height = 500;
+  let top = 0;
+  Object.defineProperties(box, {
+    scrollHeight: { get: () => height },
+    clientHeight: { get: () => 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  row.getBoundingClientRect = () => ({ top: -top, bottom: height - top }) as DOMRect;
+  const resize = async () =>
+    act(async () => {
+      for (const callback of resizeCallbacks) callback();
+    });
+  await resize();
+  expect(top).toBe(300);
+  // The browser dispatches the view's own scroll after the turn has grown again (a card's
+  // footer, the next words): the reader did not leave the end.
+  height = 668;
+  await act(async () => box.dispatchEvent(new Event('scroll', { bubbles: true })));
+  await resize();
+  expect(top).toBe(468);
+  // Dragging the scrollbar up still stops following.
+  await act(async () => {
+    box.scrollTop = 100;
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  height = 900;
+  await resize();
+  expect(top).toBe(100);
+});
+
 it('expanded records use the reading area while retaining the composer and mounted conversation', async () => {
   const container = await render(undefined, true);
   const timeline = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');

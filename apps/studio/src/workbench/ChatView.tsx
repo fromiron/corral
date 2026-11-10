@@ -88,6 +88,9 @@ export function ChatView({
   const timeline = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  // Where the view last put the end in view itself; its scroll event may arrive after the turn
+  // has grown again, which is not the reader leaving the end.
+  const followedTop = useRef(Number.POSITIVE_INFINITY);
   const restoreTop = useRef<number | null>(null);
   const restoreAnchor = useRef<{ id: string; offset: number } | null>(null);
   const readingAnchor = useRef<{ id: string; offset: number } | null>(null);
@@ -119,6 +122,7 @@ export function ChatView({
     if (!box || !body) return;
     const key = `corral:chat-scroll:${sessionId}`;
     follow.current = true;
+    followedTop.current = Number.POSITIVE_INFINITY;
     restoreTop.current = null;
     restoreAnchor.current = null;
     readingAnchor.current = null;
@@ -157,7 +161,10 @@ export function ChatView({
       } else if (restoreTop.current !== null) {
         box.scrollTop = restoreTop.current;
         if (box.scrollHeight - box.clientHeight >= restoreTop.current) restoreTop.current = null;
-      } else if (follow.current) box.scrollTop = box.scrollHeight;
+      } else if (follow.current) {
+        box.scrollTop = box.scrollHeight;
+        followedTop.current = box.scrollTop;
+      }
       setAtEnd(box.scrollHeight - box.scrollTop - box.clientHeight < 48);
     };
     const remember = () => {
@@ -226,6 +233,8 @@ export function ChatView({
   const readPosition = () => {
     const box = timeline.current;
     if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
+    // Still where the view put the end: the content grew below, the reader did not move up.
+    if (follow.current && box.scrollTop >= followedTop.current - 1) return;
     follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
     const top = box.getBoundingClientRect().top;
     const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
@@ -362,7 +371,10 @@ export function ChatView({
                   restoreAnchor.current = null;
                   readingAnchor.current = null;
                   follow.current = true;
-                  if (timeline.current) timeline.current.scrollTop = timeline.current.scrollHeight;
+                  if (timeline.current) {
+                    timeline.current.scrollTop = timeline.current.scrollHeight;
+                    followedTop.current = timeline.current.scrollTop;
+                  }
                 }}
               >
                 <ArrowDown />
