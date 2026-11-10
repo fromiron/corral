@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   actionCopy,
   actionRequired,
+  actionTone,
   activityLine,
   agentActivity,
   changesPresentation,
@@ -56,6 +57,22 @@ describe('chat widget selectors', () => {
     });
     expect(actionCopy(action)).toEqual(['actionCompletedWithFailures']);
     expect(action.hasFailure).toBe(true);
+    expect(actionTone(action)).toBe('warning');
+  });
+  it('tells an ordinary question in the info tone and keeps the warning for what can go wrong', () => {
+    const action = (patch: Partial<Parameters<typeof actionRequired>[0]>) =>
+      actionRequired({
+        pendingApprovals: 0,
+        pendingQuestions: 0,
+        failedEffects: 0,
+        unclearEffects: 0,
+        ...patch,
+      });
+    expect(actionTone(action({ pendingQuestions: 2 }))).toBe('info');
+    expect(actionTone(action({ pendingApprovals: 1 }))).toBe('warning');
+    expect(actionTone(action({ pendingQuestions: 1, pendingApprovals: 1 }))).toBe('warning');
+    expect(actionTone(action({ pendingQuestions: 1, failedEffects: 1 }))).toBe('warning');
+    expect(actionTone(action({ unclearEffects: 1 }))).toBe('warning');
   });
   it('refreshes file changes after hashline and shell writes, including partial failures', () => {
     const calls = [

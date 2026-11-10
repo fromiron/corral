@@ -47,6 +47,7 @@ import {
 } from './ChatWidgets.tsx';
 import {
   actionCopy,
+  actionTone,
   type OverviewWidget,
   overviewWidgets,
   type UsageSummary,
@@ -231,7 +232,7 @@ function AttentionWidget({ model }: { model: ChatWidgetModel }) {
     .map((key) => (key === 'actionMixed' ? t(key, { count: model.action.count }) : t(key)))
     .join(' · ');
   return (
-    <Banner status="warning" size="compact" role="note">
+    <Banner status={actionTone(model.action)} size="compact" role="note">
       <BannerTitle>{label}</BannerTitle>
       <BannerActions>
         <Button

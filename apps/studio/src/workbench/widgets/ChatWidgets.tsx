@@ -38,7 +38,7 @@ import { useLocale, useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
 import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
-import { actionCopy, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
+import { actionCopy, actionTone, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -690,7 +690,7 @@ export function ComposerDock({
         // The live region below announces it; the banner itself stays a note.
         <Banner
           data-testid="action-required"
-          status="warning"
+          status={actionTone(run.action)}
           contrast="high"
           size="compact"
           role="note"

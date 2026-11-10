@@ -465,6 +465,14 @@ const unclearCopy = {
   termination: 'actionStopUnconfirmed',
 } as const;
 
+/**
+ * The attention banner's kit status: a question only asks, so it reads in the info tone; an
+ * approval, a failure or an unclear effect keeps the warning.
+ */
+export function actionTone(action: ReturnType<typeof actionRequired>): 'info' | 'warning' {
+  return action.summary === 'question' ? 'info' : 'warning';
+}
+
 /** Widgets message keys for the attention banner; several unclear causes are each named. */
 export function actionCopy(action: ReturnType<typeof actionRequired>) {
   if (!action.visible) return [];
