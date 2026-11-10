@@ -43,8 +43,8 @@ Fields (use exactly these, no others):
 - name: a short title for the team (at most ${TEAM_LIMITS.name} characters)
 - pattern: one of ${quoted(TEAM_PATTERNS)}
 - brief: the task as the team will receive it (at most ${TEAM_LIMITS.brief} characters)
-- criteria: 1 to 6 short checks the result must pass
-- roles: one entry for each role of the pattern, no more and no fewer: {"slot": role, "name": a short job title, "duty": what this role does, in one or two sentences}
+- criteria: 1 to 6 short checks the result must pass (each at most ${TEAM_LIMITS.criterion} characters)
+- roles: one entry for each role of the pattern, no more and no fewer: {"slot": role, "name": a short job title (at most ${TEAM_LIMITS.roleName} characters), "duty": what this role does, in one or two sentences (at most ${TEAM_LIMITS.duty} characters)}
 - reviewRounds: 1 to 3, only for ${quoted(REVIEW_LOOP_PATTERNS)}; leave it out for the other patterns
 - finalApproval: true when a person should approve the final result; always true for ${quoted(APPROVAL_PATTERNS)}
 
