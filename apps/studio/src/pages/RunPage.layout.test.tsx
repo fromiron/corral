@@ -78,10 +78,20 @@ vi.mock('@corral/react', async (original) => {
       </section>
     ),
     RunFlowView: () => <output data-testid="run-flow">Workflow</output>,
-    ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
-      <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
-        Approval evidence
-      </button>
+    // Like the real panel, it sets the host's control on its first row.
+    ApprovalPanel: ({
+      onOpenArtifact,
+      action,
+    }: {
+      onOpenArtifact: (id: string) => void;
+      action?: ReactNode;
+    }) => (
+      <p data-testid="approval-first-row">
+        {action}
+        <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
+          Approval evidence
+        </button>
+      </p>
     ),
     RunCanvas: ({
       definition,
@@ -848,6 +858,29 @@ it('does not reopen a completed approval panel when a later decision appears', a
   await updatePending(0);
   expect(side?.hidden).toBe(true);
   await updatePending(1);
+  expect(side?.hidden).toBe(true);
+});
+
+it('sets the response area close on the area first row, never on a row of its own', async () => {
+  fixture.pending = 1;
+  const { container } = await mount('inline_team', null, {});
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  const respond = container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]');
+  respond?.focus();
+  await act(async () => respond?.click());
+  const closes = side?.querySelectorAll<HTMLButtonElement>('button[aria-label="Close details"]');
+  expect(closes).toHaveLength(1);
+  const close = closes?.[0];
+  // The response area's first row carries it; its heading stays for screen readers only.
+  expect(close?.closest('[data-run-response]')).not.toBeNull();
+  expect(close?.closest('[data-testid="approval-first-row"]')?.textContent).toContain(
+    'Approval evidence',
+  );
+  expect(side?.querySelector('h2')?.className).toContain('sr-only');
+  await act(async () => {
+    close?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
   expect(side?.hidden).toBe(true);
 });
 

@@ -526,6 +526,16 @@ function RunWorkspace({
   };
   const highlightedNode = selectedNodeId ?? executionNodeId;
   const selectedTarget = execution ? target : null;
+  const closeDetails = (
+    <Button
+      variant="ghost"
+      size="icon-compact"
+      aria-label={m('closeDetails')}
+      onClick={closeDetail}
+    >
+      <X />
+    </Button>
+  );
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
       {notice}
@@ -791,44 +801,41 @@ function RunWorkspace({
         >
           {/* One column the panel's width: an open part wraps or scrolls in it, never widens it. */}
           <div className="grid grid-cols-1 gap-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                {/* The response area's state is the header's status: its heading stays unseen. */}
-                <h2
-                  className={panel === 'approval' ? 'sr-only' : 'truncate text-subtitle'}
-                  style={{ fontVariationSettings: fontWeights.semibold }}
-                >
-                  {panel === 'approval'
-                    ? pending > 0
-                      ? status('awaiting_user')
-                      : harness('extensionNotice')
-                    : panel === 'run'
+            {panel === 'approval' ? (
+              // The response area's state is the header's status: its heading stays unseen, and
+              // the close sits on the area's first row instead of a row of its own.
+              <h2 className="sr-only">
+                {pending > 0 ? status('awaiting_user') : harness('extensionNotice')}
+              </h2>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2
+                    className="truncate text-subtitle"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {panel === 'run'
                       ? m('runInfo')
                       : (selectedTarget?.nodeLabel ??
                         definition.nodes.find((node) => node.id === listedNodeId)?.label ??
                         m('details'))}
-                </h2>
-                {panel === 'selection' && execution && projection?.executions[execution] ? (
-                  <div className="text-caption text-muted-foreground">
-                    <ExecutionIdentity projection={projection} executionId={execution} />
-                  </div>
-                ) : null}
+                  </h2>
+                  {panel === 'selection' && execution && projection?.executions[execution] ? (
+                    <div className="text-caption text-muted-foreground">
+                      <ExecutionIdentity projection={projection} executionId={execution} />
+                    </div>
+                  ) : null}
+                </div>
+                {closeDetails}
               </div>
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label={m('closeDetails')}
-                onClick={closeDetail}
-              >
-                <X />
-              </Button>
-            </div>
+            )}
             <div hidden={panel !== 'approval'}>
               {responding ? (
                 <RunResponseArea
                   session={session}
                   focusRef={response}
                   onOpenArtifact={openArtifact}
+                  {...(panel === 'approval' ? { action: closeDetails } : {})}
                 />
               ) : null}
             </div>

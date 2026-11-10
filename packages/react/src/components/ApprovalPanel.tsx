@@ -25,8 +25,9 @@ import {
   fontWeights,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { InteractionPanel } from './InteractionPanel.tsx';
-import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
+import { FirstRow, RowAction } from './FirstRow.tsx';
+import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
+import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
 /** A Loop that stopped for a stall is asked about in its own words. */
@@ -48,6 +49,7 @@ export function ApprovalPanel({
   showRelatedPanels = true,
   headed = true,
   policySettingsAction,
+  action,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
@@ -66,9 +68,25 @@ export function ApprovalPanel({
   headed?: boolean;
   /** Navigation only: never grants broader permission to this call. */
   policySettingsAction?: ReactNode;
+  /**
+   * A control of the host's frame (the Run page's close), set at the end of the area's first row
+   * (the first card's heading row, or the first line above it) so it never takes a row of its
+   * own. For hosts that leave the plan out (`showPlan` false).
+   */
+  action?: ReactNode;
 }) {
   const t = useTranslations('Approvals');
   const headingId = useId();
+  // Which part draws the area's first row, and so carries the host's control.
+  const lead = useStore(session, (s) =>
+    !action || !showRelatedPanels
+      ? 'approvals'
+      : recipeStatusShown(s.events)
+        ? 'recipe'
+        : interactionShown(s.events, s.projection)
+          ? 'interaction'
+          : 'approvals',
+  );
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
   const nodes = useStore(session, (s) => s.definition?.nodes);
@@ -129,16 +147,32 @@ export function ApprovalPanel({
     if (criteriaId) void session.getState().loadArtifact(criteriaId);
   }, [session, criteriaId]);
 
+  const related = showRelatedPanels ? (
+    <>
+      <RecipeStatusPanel
+        session={session}
+        onOpenArtifact={onOpenArtifact}
+        action={lead === 'recipe' ? action : undefined}
+      />
+      <InteractionPanel session={session} action={lead === 'interaction' ? action : undefined} />
+    </>
+  ) : null;
   if (approvals.length === 0)
     return (
       <>
-        {showRelatedPanels ? (
-          <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-        ) : null}
-        {showRelatedPanels ? <InteractionPanel session={session} /> : null}
+        {related}
+        {/* Nothing else to stand beside: the host's control keeps its place. */}
+        {lead === 'approvals' && action ? <FirstRow action={action}>{null}</FirstRow> : null}
         {showPlan ? <WorkPlanPanel session={session} /> : null}
       </>
     );
+  const shownDone = compact ? [] : done;
+  // The first row that shows: the visible heading, the first decision already made, or the
+  // first card's heading row.
+  const approvalsAction = lead === 'approvals' ? action : undefined;
+  const headingAction = headed && !compact ? approvalsAction : undefined;
+  const doneAction = headingAction ? undefined : approvalsAction;
+  const cardAction = headingAction || shownDone.length ? undefined : approvalsAction;
   const label = (id: string) =>
     artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
   /** What waits; a breakpoint names the step it holds. */
@@ -245,32 +279,32 @@ export function ApprovalPanel({
 
   return (
     <>
-      {showRelatedPanels ? (
-        <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-      ) : null}
-      {showRelatedPanels ? <InteractionPanel session={session} /> : null}
+      {related}
       {showPlan ? <WorkPlanPanel session={session} /> : null}
       <section
         {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
         className={`flex flex-col gap-2 ${className ?? ''}`}
       >
         {headed ? (
-          <h3
-            id={headingId}
-            className={compact ? 'sr-only' : 'text-ui'}
-            style={{ fontVariationSettings: fontWeights.semibold }}
-          >
-            {t('heading')}
-          </h3>
+          <FirstRow action={headingAction}>
+            <h3
+              id={headingId}
+              className={compact ? 'sr-only' : 'text-ui'}
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
+              {t('heading')}
+            </h3>
+          </FirstRow>
         ) : null}
         {/* UX-11: decisions already made in this run stay in view, so the next one reads as a
           new step rather than a retry of the last. */}
-        {(compact ? [] : done).map((approval) => (
+        {shownDone.map((approval, index) => (
           <p
             key={approval.approvalId}
             data-testid={`approved-${approval.approvalId}`}
             className="flex items-center gap-1.5 text-caption text-muted-foreground"
           >
+            {index === 0 ? <RowAction action={doneAction} /> : null}
             <AgentStatusIcon status="done" size={12} />
             {t('done', {
               step: kindText(approval),
@@ -278,7 +312,7 @@ export function ApprovalPanel({
             })}
           </p>
         ))}
-        {approvals.map((approval) => (
+        {approvals.map((approval, index) => (
           <AgentCard
             key={approval.approvalId}
             data-testid={`approval-${approval.approvalId}`}
@@ -293,6 +327,7 @@ export function ApprovalPanel({
                   : 'flex items-start gap-2.5 px-4 pt-3.5 pr-3.5'
               }
             >
+              {index === 0 && !compact ? <RowAction action={cardAction} /> : null}
               <AgentStatusIcon
                 status="waiting"
                 size={14}
@@ -321,6 +356,7 @@ export function ApprovalPanel({
               </div>
               {compact ? (
                 <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {index === 0 ? <RowAction action={cardAction} /> : null}
                   {decisionButtons(approval)}
                 </div>
               ) : null}
