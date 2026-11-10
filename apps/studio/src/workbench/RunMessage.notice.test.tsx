@@ -120,57 +120,33 @@ function waitingRun(): RunProjection {
   return projection;
 }
 
-it('names the first waiting question in one quiet line; the composer notice carries the action', async () => {
+it('leaves a waiting question to the composer notice: the turn neither names nor answers it', async () => {
   const sendCommand = vi.fn();
   const loadArtifact = vi.fn(async () => {});
   fixture.store = sessionStore({
     runId: 'run_chat',
     projection: waitingRun(),
-    events: [question('q_1', 'exec_a', 1)],
+    events: [question('q_1', 'exec_a', 1), question('q_2', 'exec_b', 2)],
     artifactTexts: { body_q_1: body('Which layout should I keep?') },
     sendCommand,
     loadArtifact,
   });
   const container = await show();
-  const note = container.querySelector('[data-testid="run-required-action"]');
-  expect(note?.textContent).toContain('Which layout should I keep?');
-  expect(note?.textContent).not.toContain(messages.Widgets.actionQuestion);
-  // One caption line: no second banner, no button or link repeating the composer's notice.
-  expect(note?.tagName).toBe('P');
-  expect(note?.textContent).not.toContain(messages.Widgets.actionOpen);
-  expect(note?.querySelectorAll('a, button')).toHaveLength(0);
+  // The question's text and Respond show once, in the notice above the composer.
+  expect(container.querySelector('[data-testid="run-required-action"]')).toBeNull();
+  expect(container.textContent).not.toContain('Which layout should I keep?');
+  expect(container.textContent).not.toContain(messages.Widgets.actionQuestion);
+  expect(container.textContent).not.toContain(messages.Widgets.actionMixed.replace('{count}', '2'));
+  expect(container.textContent).not.toContain(messages.Widgets.actionOpen);
   expect(container.querySelector('[data-slot="banner"]')).toBeNull();
   // No inline answering.
   expect(container.querySelectorAll('input, textarea, select, [role="radio"]')).toHaveLength(0);
   expect(container.querySelector('[role="form"], form')).toBeNull();
   expect(fixture.links).not.toContainEqual({ panel: 'run', run: 'run_chat', view: 'run' });
   expect(sendCommand).not.toHaveBeenCalled();
-});
-
-it('adds the count beside the first question and reads a body it does not have yet', async () => {
-  const loadArtifact = vi.fn(async () => {});
-  fixture.store = sessionStore({
-    runId: 'run_chat',
-    projection: waitingRun(),
-    events: [question('q_1', 'exec_a', 1), question('q_2', 'exec_b', 2)],
-    artifactTexts: {},
-    loadArtifact,
-  });
-  const container = await show();
-  const banner = () => container.querySelector('[data-testid="run-required-action"]');
-  // Until the question text is read, the banner keeps the generic count.
-  expect(banner()?.textContent).toContain(messages.Widgets.actionMixed.replace('{count}', '2'));
-  expect(loadArtifact).toHaveBeenCalledWith('body_q_1');
-  await act(async () =>
-    fixture.store?.setState({
-      artifactTexts: { body_q_1: body(`Which layout should I keep? ${'x'.repeat(300)}`) },
-    }),
-  );
-  const text = banner()?.textContent ?? '';
-  expect(text).toContain('Which layout should I keep?');
-  expect(text).toContain('2 waiting');
-  // A long question is shortened in the notice; the response area keeps it whole.
-  expect(text).not.toContain('x'.repeat(300));
+  // The turn does not read the question's body for a line it no longer shows.
+  expect(loadArtifact).not.toHaveBeenCalledWith('body_q_1');
+  expect(loadArtifact).not.toHaveBeenCalledWith('body_q_2');
 });
 
 it('shows a thinking indicator where the answer will appear until observed output arrives', async () => {

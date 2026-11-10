@@ -5217,10 +5217,7 @@
     "requestGenerating": "응답 생성 중",
     "requestFinished": "응답 완료",
     "requestUnconfirmed": "응답 완료 기록 없음",
-    "requestDetails": "요청 상세",
-    "waitingForAnswer": "답을 기다리는 중",
-    "toolDetails": "도구 상세",
-    "agentDetails": "에이전트 활동"
+    "stepDetails": "{step} 상세"
   },
   "RunMonitor": {
     "backToWork": "작업으로 돌아가기",

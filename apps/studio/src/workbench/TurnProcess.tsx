@@ -10,15 +10,19 @@ import {
   turnSummary,
 } from '@corral/react';
 import {
+  Collapse,
+  cn,
+  DisclosureChevron,
+  focusRing,
   ThinkingStep,
-  ThinkingStepDetails,
   ThinkingStepSource,
   ThinkingStepSources,
   ThinkingSteps,
   ThinkingStepsContent,
   ThinkingStepsHeader,
+  useSize,
 } from '@corral/react/design-kit';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 type IconName = 'brain' | 'search' | 'pencil' | 'play' | 'users' | 'message-circle' | 'dot' | 'x';
@@ -53,6 +57,48 @@ function useElapsed(from: string | null, to: string | null, active: boolean) {
   if (!from) return null;
   return Math.max(0, Math.round(((to ? Date.parse(to) : now) - Date.parse(from)) / 1000));
 }
+/**
+ * A step row that opens its own details. The row's second line is the disclosure button, with a
+ * chevron, and its hit area covers the whole row; its name says which step's details it opens.
+ */
+function StepDetails({
+  step,
+  description,
+  children,
+}: {
+  step: string;
+  description: string;
+  children: ReactNode;
+}) {
+  const t = useTranslations('Turn');
+  const size = useSize();
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={t('stepDetails', { step: [step, description].filter(Boolean).join(' · ') })}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          size.type.body,
+          'flex w-fit max-w-full cursor-pointer items-center gap-1 rounded-sm text-left text-muted-foreground after:absolute after:inset-0 hover:text-foreground',
+          focusRing,
+        )}
+      >
+        {description ? <span className="min-w-0">{description}</span> : null}
+        <DisclosureChevron open={open} size={12} className="text-current" />
+      </button>
+      {/* Above the row's hit area, so the details' own controls stay reachable. */}
+      <Collapse id={id} open={open} hideWhenClosed className="relative">
+        <div className="pt-1">{children}</div>
+      </Collapse>
+    </>
+  );
+}
+
 function Sources({ sources }: { sources: ProcessRow['sources'] }) {
   return sources.length ? (
     <ThinkingStepSources>
@@ -107,7 +153,8 @@ export function TurnProcess({
     [given, events, projection, label],
   );
   const summary = events.length ? process : { ...process, ...turnSummary(projection) };
-  // The lead's open ask waits on the person, not on the tool: its row says so.
+  // The lead's open ask waits on the person, not on the tool. The composer's notice and the top
+  // bar's pill say so; its row names no tool state that would read as work going on.
   const lead = projection.executionOrder[0];
   const asking = useMemo(
     () =>
@@ -116,7 +163,10 @@ export function TurnProcess({
       ),
     [events, projection, lead],
   );
-  const seconds = useElapsed(summary.startedAt, summary.endedAt, summary.active);
+  // A waiting turn's time stops at its last record, as the run's timeline does.
+  const waiting = projection.status === 'awaiting_user';
+  const until = summary.endedAt ?? (waiting ? (events.at(-1)?.recordedAt ?? null) : null);
+  const seconds = useElapsed(summary.startedAt, until, summary.active);
   const time =
     seconds === null
       ? null
@@ -124,12 +174,13 @@ export function TurnProcess({
         ? t('seconds', { s: seconds })
         : t('minutes', { m: Math.floor(seconds / 60), s: seconds % 60 });
   const terminal = TERMINAL_RUN_STATUSES.has(projection.status);
-  // An ended turn reads as the time it took and its steps, whatever its end state: the turn
-  // says once, below, that it failed or was cancelled. A turn that waits names what it waits on.
+  // An ended or waiting turn reads as the time it worked and its steps, whatever its state: the
+  // turn says once, below, that it failed or was cancelled, and the composer's notice says it
+  // waits for the person.
   const header =
     summary.active && time
       ? t('working', { time })
-      : terminal && time
+      : (terminal || waiting) && time
         ? summary.steps
           ? t('workedSteps', { time, count: summary.steps })
           : t('worked', { time })
@@ -197,32 +248,38 @@ export function TurnProcess({
       <ThinkingStepsContent>
         {process.rows.map((row, index) => {
           const last = index === process.rows.length - 1;
-          if (row.kind === 'model')
+          if (row.kind === 'model') {
+            const label = t('request', { no: row.no });
+            // A judged request shows its judgement on the row; any other opens it as details.
+            const judged = Boolean(row.call.reasoning?.route);
             return (
               <ThinkingStep
                 key={`model:${row.id}`}
                 icon="brain"
-                label={t('request', { no: row.no })}
-                description={modelDescription(row)}
+                label={label}
+                {...(judged ? { description: modelDescription(row) } : {})}
                 status={row.active ? 'active' : 'complete'}
                 isLast={last}
                 className="turn-process-row"
               >
-                {row.call.reasoning?.route ? (
-                  // Aligns the button's text with the description, like ThinkingStepDetails.
+                {judged ? (
+                  // Aligns the button's text with the description.
                   <div className="-ml-3 self-start">
                     <ReasoningSummary call={row.call} open={row.open} />
                   </div>
-                ) : null}
-                <Sources sources={row.sources} />
-                {row.call.reasoning?.route ? null : (
-                  <ThinkingStepDetails summary={t('requestDetails')}>
-                    <ReasoningSummary call={row.call} open={row.open} />
-                  </ThinkingStepDetails>
+                ) : (
+                  <StepDetails step={label} description={modelDescription(row)}>
+                    <div className="-ml-3">
+                      <ReasoningSummary call={row.call} open={row.open} />
+                    </div>
+                  </StepDetails>
                 )}
+                <Sources sources={row.sources} />
               </ThinkingStep>
             );
-          if (row.kind === 'tool')
+          }
+          if (row.kind === 'tool') {
+            const label = t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name;
             return (
               <ThinkingStep
                 key={`tool:${row.id}`}
@@ -231,46 +288,50 @@ export function TurnProcess({
                     ? 'x'
                     : (ICONS[row.name] ?? 'dot')
                 }
-                label={t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name}
-                description={[
-                  row.artifact ? t('artifactTarget', row.artifact) : row.target,
-                  asking &&
-                  ASKS.has(row.name) &&
-                  (row.status === 'requested' || row.status === 'allowed')
-                    ? t('waitingForAnswer')
-                    : tt(`tool.${row.status}`),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
+                label={label}
                 status={row.active ? 'active' : 'complete'}
                 isLast={last}
                 className="turn-process-row"
               >
-                <Sources sources={row.sources} />
-                <ThinkingStepDetails summary={t('toolDetails')}>
+                <StepDetails
+                  step={label}
+                  description={[
+                    row.artifact ? t('artifactTarget', row.artifact) : row.target,
+                    asking &&
+                    ASKS.has(row.name) &&
+                    (row.status === 'requested' || row.status === 'allowed')
+                      ? null
+                      : tt(`tool.${row.status}`),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                >
                   <ExecutionToolGroup tools={[row]} activityState={activityState(row.active)} />
-                </ThinkingStepDetails>
+                </StepDetails>
+                <Sources sources={row.sources} />
               </ThinkingStep>
             );
+          }
+          const status = ts.has(row.status) ? ts(row.status) : row.status;
           return (
             <ThinkingStep
               key={`agent:${row.id}`}
               icon={row.status === 'failed' || row.status === 'cancelled' ? 'x' : 'users'}
               label={row.label}
-              description={ts.has(row.status) ? ts(row.status) : row.status}
+              {...(row.tools.length ? {} : { description: status })}
               status={row.active ? 'active' : 'complete'}
               isLast={last}
               className="turn-process-row"
             >
-              <Sources sources={row.sources} />
               {row.tools.length ? (
-                <ThinkingStepDetails summary={t('agentDetails')}>
+                <StepDetails step={row.label} description={status}>
                   <ExecutionToolGroup
                     tools={row.tools}
                     activityState={activityState(row.active, row.status)}
                   />
-                </ThinkingStepDetails>
+                </StepDetails>
               ) : null}
+              <Sources sources={row.sources} />
             </ThinkingStep>
           );
         })}

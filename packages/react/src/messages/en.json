@@ -5217,10 +5217,7 @@
     "requestGenerating": "Generating response",
     "requestFinished": "Response complete",
     "requestUnconfirmed": "Response completion not recorded",
-    "requestDetails": "Request details",
-    "waitingForAnswer": "Waiting for your answer",
-    "toolDetails": "Tool details",
-    "agentDetails": "Agent activity"
+    "stepDetails": "Details of {step}"
   },
   "RunMonitor": {
     "backToWork": "Back to work",
