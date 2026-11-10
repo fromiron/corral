@@ -43,7 +43,6 @@ export {
 } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
 export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
-export { SidebarStatusCard } from './components/SidebarStatusCard.tsx';
 export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';
