@@ -767,7 +767,8 @@ function RunWorkspace({
             (wide ? 'w-[360px] shrink-0 border-l border-line' : 'min-w-0 flex-1')
           }
         >
-          <div className="grid gap-4">
+          {/* One column the panel's width: an open part wraps or scrolls in it, never widens it. */}
+          <div className="grid grid-cols-1 gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <h2
