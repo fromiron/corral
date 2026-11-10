@@ -97,8 +97,10 @@ export function SessionMenu({
               const label = run ? (status.has(run.status) ? status(run.status) : run.status) : null;
               return (
                 <MenuRadioItem key={session.sessionId} value={session.sessionId} closeOnClick>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                  {/* A grid, not a flex row: its title column asks for no width of its own, so a
+                      long title truncates inside the popup and the status keeps its place. */}
+                  <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                    <span className="truncate">{session.title}</span>
                     {run && label ? (
                       <span className="flex shrink-0 items-center gap-1.5 text-caption text-muted-foreground">
                         <StatusDot status={run.status} />
@@ -172,10 +174,10 @@ export function RunMenu({
         <MenuRadioGroup value={runId} onValueChange={(value) => onSelect(String(value))}>
           {[...runs].reverse().map((run) => (
             <MenuRadioItem key={run.runId} value={run.runId} closeOnClick>
-              <span className="flex min-w-0 items-center gap-2">
+              <span className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
                 <StatusDot status={run.status} />
-                <span className="min-w-0 flex-1 truncate">{runName(run.runId)}</span>
-                <span className="shrink-0 text-caption text-muted-foreground">
+                <span className="truncate">{runName(run.runId)}</span>
+                <span className="text-caption text-muted-foreground">
                   <span className="sr-only"> · </span>
                   {label(run)}
                 </span>
