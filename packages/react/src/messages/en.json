@@ -46,7 +46,6 @@
   },
   "ImageProfiles": {
     "heading": "Image generation",
-    "intro": "Configure an OpenAI Images model. The selected provider profile must use an API key; subscription sign-in does not authorize image generation.",
     "loading": "Loading image profiles…",
     "empty": "No image profiles configured.",
     "failed": "The image profile request failed.",
@@ -66,7 +65,8 @@
     "duplicate": "This image profile ID already exists. Edit the existing profile instead.",
     "save": "Save image profile",
     "saving": "Saving…",
-    "add": "Add image profile"
+    "add": "Add image profile",
+    "needsApiKey": "This profile uses a subscription sign-in. Image generation needs an API key."
   },
   "Studio": {
     "title": "Corral Studio",
@@ -750,7 +750,7 @@
     "endpoint": "Endpoint: {host}",
     "endpointChanged": "The endpoint address changed since the key was entered. Enter the key again.",
     "signedInCodex": "Using your Codex CLI login (read only).",
-    "codexHint": "Corral does not renew it or change the file. When it expires, run codex to sign in again, or sign in to Corral instead.",
+    "codexHint": "When it expires, run codex to sign in again.",
     "codexPermissions": "The Codex login file could not be verified as private. Check its permissions: restrict access to your user and system administrators on Windows, or use chmod 600 on macOS and Linux.",
     "notSignedIn": "Not signed in. Live runs with this provider are refused until you sign in.",
     "expires": "Current token valid until {time}",
@@ -1466,7 +1466,6 @@
     "heading": "Edit models",
     "usingDefaults": "No profiles are set for this workspace yet; these are the defaults. Saving writes them to .corral/config.json.",
     "profiles": "Profiles",
-    "profilesHint": "Agents choose a profile by name; each profile names a provider and a model.",
     "newProfile": "new profile {n}",
     "fieldName": "Profile name",
     "fieldProvider": "Provider",
@@ -1479,11 +1478,8 @@
     "removeShort": "Remove",
     "addProfile": "Add profile",
     "endpoints": "OpenAI-compatible endpoints",
-    "endpointsHint": "Add an API address and model IDs, then choose this connection in a profile. Use https, or http only on this computer (localhost, 127.0.0.1).",
     "endpointId": "Endpoint id {n}",
-    "endpointIdHint": "Connection ID used by profiles, for example hive.",
-    "endpointName": "Endpoint name {n}",
-    "endpointNameHint": "Optional display name. Leave blank to use the connection ID.",
+    "endpointName": "Endpoint name {n} (optional)",
     "endpointKeyHint": "Save models also saves this key separately on this computer. Leave blank to keep a saved key. Stored keys are never loaded here.",
     "endpointKeyOnCard": "Change the key on the {name} card",
     "keysFailed": "Settings saved, but API key saving failed: {message}. Your remaining entries are kept; save again to retry.",
@@ -1509,7 +1505,8 @@
     "invalidNumber": "Use safe integers: context 1–10,000,000, compaction 0 or above. Leave blank to inherit.",
     "invalidRelation": "Reserve must be below context; recent history must be below context minus reserve.",
     "previewPending": "Calculating effective values…",
-    "previewUnavailable": "Cannot calculate effective values. Check the profile and connection settings."
+    "previewUnavailable": "Cannot calculate effective values. Check the profile and connection settings.",
+    "endpointAddressHint": "Use https, or http only on this computer (localhost, 127.0.0.1)."
   },
   "Compare": {
     "heading": "Compare runs",
@@ -2854,7 +2851,6 @@
   },
   "DecisionApis": {
     "heading": "Decision APIs",
-    "intro": "Judge-only APIs, each with its own API key, separate from model sign-ins and model keys.",
     "name": {
       "jev": "TypeSafe Jev",
       "openai-decisions": "OpenAI Decisions"
@@ -3652,7 +3648,6 @@
   },
   "ModelImport": {
     "heading": "Import model settings",
-    "intro": "Read selected settings from another agent. Review models before saving. Commands, environment references and OAuth tokens are never imported.",
     "source": "Source",
     "path": "Configuration file (optional)",
     "defaultPath": "Use this source's default settings file",
@@ -3676,7 +3671,8 @@
     "model": "Model",
     "context": "Context",
     "price": "Input / output",
-    "filterMore": "Showing the first 100 matches. Filter to narrow the list."
+    "filterMore": "Showing the first 100 matches. Filter to narrow the list.",
+    "excluded": "Commands, environment references and OAuth tokens are never imported."
   },
   "Preview": {
     "open": "Open preview",
@@ -5112,7 +5108,6 @@
   },
   "ModelUsage": {
     "heading": "Model request history",
-    "description": "Records of execution, draft, routing and media requests. Earlier histories remain available in each run.",
     "load": "Load history",
     "refresh": "Refresh",
     "loading": "Loading…",

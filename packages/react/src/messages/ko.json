@@ -46,7 +46,6 @@
   },
   "ImageProfiles": {
     "heading": "이미지 생성",
-    "intro": "OpenAI Images 모델을 설정합니다. 선택한 제공자 프로필에는 API 키가 필요하며, 구독 로그인으로는 이미지를 생성할 수 없습니다.",
     "loading": "이미지 프로필을 불러오는 중…",
     "empty": "설정된 이미지 프로필이 없습니다.",
     "failed": "이미지 프로필 요청에 실패했습니다.",
@@ -66,7 +65,8 @@
     "duplicate": "이미 사용 중인 이미지 프로필 ID입니다. 기존 프로필을 수정하세요.",
     "save": "이미지 프로필 저장",
     "saving": "저장 중…",
-    "add": "이미지 프로필 추가"
+    "add": "이미지 프로필 추가",
+    "needsApiKey": "이 프로필은 구독 로그인을 씁니다. 이미지 생성에는 API 키가 필요합니다."
   },
   "Studio": {
     "title": "Corral Studio",
@@ -750,7 +750,7 @@
     "endpoint": "엔드포인트: {host}",
     "endpointChanged": "키를 넣은 뒤 엔드포인트 주소가 바뀌었습니다. 키를 다시 넣으세요.",
     "signedInCodex": "Codex CLI 로그인을 사용 중입니다(읽기 전용).",
-    "codexHint": "Corral은 이 로그인을 갱신하거나 파일을 바꾸지 않습니다. 만료되면 codex를 실행해 다시 로그인하거나 Corral에 로그인하세요.",
+    "codexHint": "만료되면 codex를 실행해 다시 로그인하세요.",
     "codexPermissions": "Codex 로그인 파일의 접근 권한이 안전하게 제한됐는지 확인할 수 없습니다. Windows에서는 본인과 시스템 관리자만 접근하도록 설정하고, macOS와 Linux에서는 chmod 600을 사용하세요.",
     "notSignedIn": "로그인하지 않았습니다. 로그인하기 전까지 이 공급자의 실제 실행은 거절됩니다.",
     "expires": "현재 토큰은 {time}까지 유효합니다",
@@ -1466,7 +1466,6 @@
     "heading": "모델 편집",
     "usingDefaults": "이 작업 공간에는 아직 프로필이 없어 기본값을 쓰고 있습니다. 저장하면 .corral/config.json에 기록합니다.",
     "profiles": "프로필",
-    "profilesHint": "에이전트는 프로필 이름으로 모델을 고릅니다. 프로필마다 공급자와 모델을 정합니다.",
     "newProfile": "새 프로필 {n}",
     "fieldName": "프로필 이름",
     "fieldProvider": "공급자",
@@ -1479,11 +1478,8 @@
     "removeShort": "제거",
     "addProfile": "프로필 추가",
     "endpoints": "OpenAI 호환 엔드포인트",
-    "endpointsHint": "API 주소와 모델 ID를 추가하고, 프로필에서 이 연결을 선택하세요. 주소는 HTTPS를 쓰고, HTTP는 이 컴퓨터(127.0.0.1)에만 씁니다.",
     "endpointId": "연결 ID {n}",
-    "endpointIdHint": "프로필에서 이 연결을 참조할 때 사용하는 고유 값입니다.",
     "endpointName": "표시 이름 {n} (선택)",
-    "endpointNameHint": "화면에 보여줄 이름입니다. 비워두면 연결 ID를 사용합니다.",
     "endpointKeyHint": "모델 저장을 누르면 키도 이 컴퓨터에 별도로 보관합니다. 비워두면 기존 키를 유지합니다. 저장된 키는 다시 불러오지 않습니다.",
     "endpointKeyOnCard": "{name} 카드에서 키 바꾸기",
     "keysFailed": "설정은 저장했지만 API 키 저장에 실패했습니다: {message}. 남은 입력은 유지했습니다. 다시 저장하면 재시도합니다.",
@@ -1509,7 +1505,8 @@
     "invalidNumber": "컨텍스트는 1~10,000,000, 압축값은 0 이상의 안전한 정수로 입력하세요. 빈 칸은 기본값을 사용합니다.",
     "invalidRelation": "요약 여유 토큰은 컨텍스트보다 작고, 최근 기록 토큰은 컨텍스트에서 요약 여유를 뺀 값보다 작아야 합니다.",
     "previewPending": "유효값 계산 중…",
-    "previewUnavailable": "유효값을 계산하지 못했습니다. 프로필과 연결 설정을 확인하세요."
+    "previewUnavailable": "유효값을 계산하지 못했습니다. 프로필과 연결 설정을 확인하세요.",
+    "endpointAddressHint": "HTTPS를 쓰고, HTTP는 이 컴퓨터(localhost, 127.0.0.1)에서만 쓰세요."
   },
   "Compare": {
     "heading": "실행 비교",
@@ -2854,7 +2851,6 @@
   },
   "DecisionApis": {
     "heading": "판정 API",
-    "intro": "판정 전용 API입니다. 모델 로그인이나 모델 키와 별개인 자체 API 키를 씁니다.",
     "name": {
       "jev": "TypeSafe Jev",
       "openai-decisions": "OpenAI Decisions"
@@ -3652,7 +3648,6 @@
   },
   "ModelImport": {
     "heading": "모델 설정 가져오기",
-    "intro": "다른 에이전트의 설정을 읽고 저장할 모델을 선택합니다. 명령·환경 변수 참조는 실행하지 않고 OAuth 토큰은 가져오지 않습니다.",
     "source": "가져올 도구",
     "path": "설정 파일 (선택)",
     "defaultPath": "선택한 도구의 기본 설정 파일 사용",
@@ -3676,7 +3671,8 @@
     "model": "모델",
     "context": "컨텍스트",
     "price": "입력 / 출력",
-    "filterMore": "처음 100개 항목입니다. 검색어로 범위를 좁혀 주세요."
+    "filterMore": "처음 100개 항목입니다. 검색어로 범위를 좁혀 주세요.",
+    "excluded": "명령·환경 변수 참조·OAuth 토큰은 가져오지 않습니다."
   },
   "Preview": {
     "open": "미리보기 열기",
@@ -5112,7 +5108,6 @@
   },
   "ModelUsage": {
     "heading": "모델 요청 이력",
-    "description": "실행·초안·라우팅·미디어 요청의 기록입니다. 과거 실행 이력은 각 실행에서 확인할 수 있습니다.",
     "load": "이력 불러오기",
     "refresh": "새로고침",
     "loading": "불러오는 중…",

@@ -50,7 +50,8 @@ export function ModelImportPanel() {
       >
         {t('heading')}
       </h3>
-      <p className="text-body text-muted-foreground">{t('intro')}</p>
+      {/* What never crosses over from the other agent. */}
+      <p className="text-body text-muted-foreground">{t('excluded')}</p>
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {

@@ -111,7 +111,7 @@ test.describe('a borrowed Codex CLI login', () => {
     await expect(openai.getByTestId('auth-status')).toContainText(
       'Using your Codex CLI login (read only)',
     );
-    await expect(openai).toContainText('Corral does not renew it');
+    await expect(openai).toContainText('When it expires, run codex to sign in again.');
     await expect(openai).toContainText('Current token valid until');
     // Signing out of Codex happens in Codex; a Corral sign-in can take over instead.
     await expect(openai.getByRole('button', { name: 'Sign out' })).toHaveCount(0);

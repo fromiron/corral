@@ -72,7 +72,6 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
       >
         {t('heading')}
       </h3>
-      <p className="text-body text-muted-foreground">{t('intro')}</p>
       {error ? (
         <p role="alert" className="text-body text-danger">
           {error}
@@ -210,6 +209,11 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                   })),
                 ]}
               />
+              {/* Image generation is authorized by an API key only, never a subscription. */}
+              {modelProfiles.find((profile) => profile.profileId === draft.modelProfileId)
+                ?.method === 'oauth' ? (
+                <p className="text-danger">{t('needsApiKey')}</p>
+              ) : null}
             </div>
             <label htmlFor={`${ids}-model`} className="flex flex-col gap-1 text-caption">
               {t('model')}

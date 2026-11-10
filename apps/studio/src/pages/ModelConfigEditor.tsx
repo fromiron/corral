@@ -194,7 +194,6 @@ export function ModelConfigEditor({
         <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
           {t('profiles')}
         </legend>
-        <p className="text-caption text-muted-foreground">{t('profilesHint')}</p>
         <p className="text-caption text-muted-foreground">{t('isolationHint')}</p>
         {profiles.map((profile, index) => {
           const provider = choices.find((c) => c.id === profile.provider);
@@ -337,7 +336,6 @@ export function ModelConfigEditor({
         <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
           {t('endpoints')}
         </legend>
-        <p className="text-caption text-muted-foreground">{t('endpointsHint')}</p>
         {endpoints.map((endpoint, index) => {
           const n = index + 1;
           return (
@@ -351,7 +349,6 @@ export function ModelConfigEditor({
                   onChange={(e) => setEndpoint(index, { id: e.target.value })}
                   className="font-mono"
                 />
-                <span className="text-muted-foreground">{t('endpointIdHint')}</span>
               </label>
               <label className="flex flex-col gap-1 text-caption">
                 <span>{t('endpointName', { n })}</span>
@@ -361,7 +358,6 @@ export function ModelConfigEditor({
                   value={endpoint.name}
                   onChange={(e) => setEndpoint(index, { name: e.target.value })}
                 />
-                <span className="text-muted-foreground">{t('endpointNameHint')}</span>
               </label>
               <label className="flex flex-col gap-1 text-caption sm:col-span-2">
                 <span>{t('endpointAddress', { n })}</span>
@@ -372,6 +368,8 @@ export function ModelConfigEditor({
                   onChange={(e) => setEndpoint(index, { baseUrl: e.target.value })}
                   className="font-mono sm:col-span-2"
                 />
+                {/* Where a key may be sent: the one rule the address field needs. */}
+                <span className="text-muted-foreground">{t('endpointAddressHint')}</span>
               </label>
               <div className="flex flex-col gap-1 text-caption">
                 <span>{t('endpointAccess', { n })}</span>
