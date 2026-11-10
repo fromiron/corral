@@ -403,6 +403,11 @@ export function InboxPage() {
                         role="listitem"
                         data-inbox-row={entry.key}
                         selected={selectedKey === entry.key}
+                        // The chosen row is filled as in Library and Automation (the secondary
+                        // tint), so it reads apart from the hover highlight in both themes.
+                        className={
+                          selectedKey === entry.key ? '[--active:var(--secondary)]' : undefined
+                        }
                         label={joined(entry.item.sessionTitle, line, project)}
                         onClick={() => choose(entry)}
                       >
