@@ -528,7 +528,9 @@ export function RunCanvas({
   const selectedRelations = selectedNodeId
     ? edges.filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId)
     : [];
-  const shownStates = relationStates.filter((state) => edges.some((edge) => edge.state === state));
+  // The legend lists the states on screen; an ended run with one state needs no key for it.
+  const onScreen = relationStates.filter((state) => edges.some((edge) => edge.state === state));
+  const shownStates = ended && onScreen.length === 1 ? [] : onScreen;
   return (
     // The source AgentGraph names its stage as a group; a fieldset would imply form controls.
     // biome-ignore lint/a11y/useSemanticElements: a labelled group of agent buttons, not a form.

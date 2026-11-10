@@ -727,6 +727,18 @@ describe('RunCanvas', () => {
     expect(state('research', 'helper')).toBe('settled');
     expect(state('research', 'review')).toBe('failed');
     expect(legend()).toEqual(['Failed', 'Finished']);
+    // An ended run whose relations all finished has one state: the lines say it, no legend.
+    await act(async () =>
+      harness.session.setState({
+        projection: {
+          ...live,
+          status: 'succeeded',
+          executions: { ...live.executions, reviewer: { ...reviewer, status: 'succeeded' } },
+        },
+      }),
+    );
+    expect(state('research', 'review')).toBe('settled');
+    expect(screen.queryByRole('list', { name: 'Observed relationships' })).toBeNull();
   });
 
   it('labels the selected agent relations with kind, count and direction', async () => {
