@@ -88,7 +88,10 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
   const status = useTranslations('Status');
   const format = useFormatter();
   const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
-  const clock = useNow(1000, live);
+  // Waiting for the person or paused, the run records nothing new: its axis stops at the last
+  // record instead of stretching with the clock and squeezing what was recorded.
+  const held = projection?.status === 'awaiting_user' || projection?.status === 'paused';
+  const clock = useNow(1000, live && !held);
   const rows = useMemo(() => executionIntervals(events), [events]);
   const tools = useMemo(() => executionToolEntries(events), [events]);
   const { created, authors } = useMemo(() => {
@@ -222,7 +225,12 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
       : (projection?.toolCalls[call.callId]?.name ?? t('tool'));
   const milliseconds = (value: number) =>
     t('milliseconds', { value: format.number(value, { maximumFractionDigits: 0 }) });
-  const now = live ? Math.max(clock, board.end) : board.end;
+  const lastRecord = Date.parse(events.at(-1)?.recordedAt ?? '');
+  const now = !live
+    ? board.end
+    : held
+      ? Math.max(board.end, Number.isFinite(lastRecord) ? lastRecord : board.end)
+      : Math.max(clock, board.end);
   return (
     <section aria-label={t('time')} className="flex h-full flex-col gap-3 overflow-auto p-3">
       <AgentLanes

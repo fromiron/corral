@@ -114,9 +114,13 @@ afterEach(() => {
   for (const unmount of roots.splice(0)) act(unmount);
 });
 
-function show(selected?: string, ended = false) {
+function show(selected?: string, ended = false, status?: 'running' | 'awaiting_user' | 'paused') {
   const { events, projection: observed, definition } = fixture();
-  const projection = ended ? { ...observed, status: 'succeeded' as const } : observed;
+  const projection = ended
+    ? { ...observed, status: 'succeeded' as const }
+    : status
+      ? { ...observed, status }
+      : observed;
   const onSelect = vi.fn();
   const container = document.createElement('div');
   document.body.append(container);
@@ -215,6 +219,39 @@ it('names each span by what its execution created and numbers only later attempt
   expect(span('exec_w2')).toContain('Attempt 2');
   expect(span('exec_w1')).toContain('writer');
   expect(span('exec_w1')).not.toContain('Attempt');
+});
+
+/** The retried writer ran from 5 s to 9 s; the left edge of its span on the board, in %. */
+const writerLeft = (container: HTMLElement) =>
+  Number.parseFloat(
+    container.querySelector<HTMLElement>('[data-execution-id="exec_w2"]')?.closest('li')?.style
+      .left ?? 'NaN',
+  );
+
+it.each(['awaiting_user', 'paused'] as const)(
+  'while the run is %s the axis stops at the last record instead of stretching with the clock',
+  (status) => {
+    vi.useFakeTimers({ now: START + 60_000 });
+    try {
+      const { container } = show(undefined, false, status);
+      // The record ends at 9 s: the writer's span starts five ninths along it.
+      expect(writerLeft(container)).toBeCloseTo((5 / 9) * 100, 1);
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(writerLeft(container)).toBeCloseTo((5 / 9) * 100, 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+it('a working run keeps growing to the present', () => {
+  vi.useFakeTimers({ now: START + 60_000 });
+  try {
+    const { container } = show(undefined, false, 'running');
+    expect(writerLeft(container)).toBeCloseTo((5 / 60) * 100, 1);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('a live run marks now and an ended run offers no replay', () => {
@@ -357,7 +394,12 @@ const assigned = (
 ) => event(seq, 'task.attempt_assigned', { taskId, executionId, attemptNo }, ms);
 
 /** Three tasks: the writer's finished after a retry, the lead's is open, a review never started. */
-function taskFixture(ended: boolean, selected?: string, onSelect: (id: string) => void = () => {}) {
+function taskFixture(
+  ended: boolean,
+  selected?: string,
+  onSelect: (id: string) => void = () => {},
+  held?: 'awaiting_user' | 'paused',
+) {
   const events = [
     task(1, 'task_lead', 'lead', 0),
     task(2, 'task_writer', 'writer', 0),
@@ -376,7 +418,7 @@ function taskFixture(ended: boolean, selected?: string, onSelect: (id: string) =
   const observed = events.reduce(applyEvent, emptyProjection(RUN));
   const projection = {
     ...observed,
-    status: ended ? ('succeeded' as const) : observed.status,
+    status: ended ? ('succeeded' as const) : (held ?? observed.status),
     artifacts: {
       ...observed.artifacts,
       draft_v1: { name: 'draft' } as (typeof observed.artifacts)[string],
@@ -448,6 +490,20 @@ it('opens the latest attempt of a chosen task and marks the task of the selected
   expect(onSelect).toHaveBeenCalledWith('exec_w2');
   // A task that never started has nothing to open.
   expect(row('task_review')?.querySelector('button')).toBeNull();
+});
+
+it('a run waiting for the person stops its open task at the last record', () => {
+  vi.useFakeTimers({ now: START + 60_000 });
+  try {
+    const container = taskFixture(false, undefined, () => {}, 'awaiting_user');
+    const lead = container.querySelector<HTMLElement>('[data-task-id="task_lead"] button');
+    // The lead's task is open; the record ends at 9 s, a minute before the clock.
+    expect(lead?.getAttribute('aria-label')).toContain('0:09');
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(lead?.getAttribute('aria-label')).toContain('0:09');
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('a live run keeps an unfinished task open', () => {

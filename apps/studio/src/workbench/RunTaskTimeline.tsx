@@ -42,6 +42,8 @@ export function RunTaskTimeline({
   const t = useTranslations('RunMonitor.taskTimeline');
   const status = useTranslations('Status');
   const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
+  // Waiting for the person or paused, the axis stops at the last record, as the agent lanes do.
+  const held = projection?.status === 'awaiting_user' || projection?.status === 'paused';
   const board = useMemo(() => {
     if (!projection || !events.length) return null;
     const first = events[0];
@@ -104,7 +106,7 @@ export function RunTaskTimeline({
         title={t('title')}
         steps={board.steps}
         startedAt={board.startedAt}
-        {...(live ? {} : { now: board.lastAt })}
+        {...(live && !held ? {} : { now: board.lastAt })}
         size="compact"
         selectedStepId={selected ? (projection?.executions[selected]?.taskId ?? null) : null}
         {...(onSelect
