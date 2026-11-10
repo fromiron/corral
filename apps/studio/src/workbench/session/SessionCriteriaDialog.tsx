@@ -13,9 +13,15 @@ import { CriteriaField } from '../CriteriaField.tsx';
 import { readCriteria } from '../sessionCriteria.ts';
 
 /**
+ * How a save ended: saved (the dialog closes), a notice that leaves the next Save to the person,
+ * or a failure. Both keep what was typed.
+ */
+export type CriteriaSave = { kind: 'saved' } | { kind: 'notice' | 'failed'; message: string };
+
+/**
  * A work session's completion criteria, read and edited as a plain list, one per line
  * (docs/specs/workbench.md#세션-완료-기준). `criteria` opens it with the saved lines; `null`
- * closes it. A refused save keeps what was typed and says why.
+ * closes it. Whatever the save says, what was typed stays.
  */
 export function SessionCriteriaDialog({
   criteria,
@@ -26,21 +32,20 @@ export function SessionCriteriaDialog({
   criteria: readonly string[] | null;
   /** The control that opened it, which takes focus back when it closes. */
   opener: RefObject<HTMLElement | null>;
-  /** Resolves null once saved, which closes the dialog, or the words that say why not. */
-  onSave(criteria: string[]): Promise<string | null>;
+  onSave(criteria: string[]): Promise<CriteriaSave>;
   onClose(): void;
 }) {
   const t = useTranslations('Sessions');
   const id = useId();
   const field = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<Exclude<CriteriaSave, { kind: 'saved' }> | null>(null);
   const [saving, setSaving] = useState(false);
   // Each opening starts from the saved lines; closing keeps the text while the dialog leaves.
   useEffect(() => {
     if (criteria === null) return;
     setText(criteria.join('\n'));
-    setError(null);
+    setOutcome(null);
   }, [criteria]);
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -48,17 +53,19 @@ export function SessionCriteriaDialog({
     const lines = readCriteria(text);
     // Past a limit the field already says which; nothing is sent.
     if (!lines) return field.current?.focus();
-    if (lines.join('\n') === criteria.join('\n')) return onClose();
     setSaving(true);
-    setError(null);
+    setOutcome(null);
     try {
-      const refused = await onSave(lines);
-      if (refused === null) onClose();
-      else setError(refused);
+      const result = await onSave(lines);
+      if (result.kind === 'saved') onClose();
+      else setOutcome(result);
     } catch (failure) {
-      setError(
-        t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
-      );
+      setOutcome({
+        kind: 'failed',
+        message: t('failed', {
+          message: failure instanceof Error ? failure.message : String(failure),
+        }),
+      });
     } finally {
       setSaving(false);
     }
@@ -90,9 +97,14 @@ export function SessionCriteriaDialog({
                 value={text}
                 onChange={setText}
               />
-              {error ? (
+              {outcome?.kind === 'failed' ? (
                 <p role="alert" className="text-body text-destructive">
-                  {error}
+                  {outcome.message}
+                </p>
+              ) : outcome ? (
+                // Not a failure: what changed, and what the next Save does.
+                <p role="status" className="text-body text-warning">
+                  {outcome.message}
                 </p>
               ) : null}
             </div>

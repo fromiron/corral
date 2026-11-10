@@ -10,7 +10,10 @@ import { TopbarSlotContext } from '../TopbarSlot.tsx';
 import { SessionActions } from './SessionActions.tsx';
 
 const services = vi.hoisted(() => ({
-  repository: { updateSession: (() => {}) as (...args: unknown[]) => unknown },
+  repository: {
+    updateSession: (() => {}) as (...args: unknown[]) => unknown,
+    getSession: (() => {}) as (...args: unknown[]) => unknown,
+  },
   mode: 'server',
   terminals: {},
 }));
@@ -31,6 +34,8 @@ Element.prototype.getAnimations ??= () => [];
 const cleanup: (() => Promise<void>)[] = [];
 beforeEach(() => {
   services.repository.updateSession = vi.fn();
+  // Unless a test says otherwise, the session cannot be read again.
+  services.repository.getSession = vi.fn(async () => null);
 });
 afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose();
@@ -394,3 +399,105 @@ it.each(['actionsMenu', 'pathMenu'] as const)(
     expect(document.activeElement).toBe(trigger);
   },
 );
+
+// A save refused for its revision reads the session again (docs/specs/workbench.md#세션-완료-기준).
+const stale = {
+  ok: false,
+  error: 'revision_conflict',
+  message: 'This session was changed elsewhere (revision 5). Reload first.',
+};
+const stored = (change: Partial<WorkSession>) => ({
+  ...session,
+  revision: 5,
+  criteria: ['The build passes'],
+  ...change,
+});
+/** What the dialog says beside the field: failures and notices alike. */
+const dialogNotes = () =>
+  [
+    ...(criteriaBox()
+      ?.closest('[role="dialog"]')
+      ?.querySelectorAll('[role="alert"], [role="status"]') ?? []),
+  ].map((node) => node.textContent);
+
+it('saves once more with the new revision when only something else changed, and says nothing', async () => {
+  const f = await mountCriteria();
+  const read = services.repository.getSession as Mock;
+  // Renamed elsewhere while the dialog was open; its criteria are as it opened with.
+  read.mockResolvedValue(stored({ title: 'Renamed elsewhere' }));
+  f.update.mockResolvedValueOnce(stale).mockResolvedValueOnce({ ok: true, session });
+  await openCriteria(f.actionsMenu);
+  await type(criteriaBox(), 'The build passes\nDocs mention the flag');
+  await act(async () => button(messages.Sessions.save)?.click());
+  await settle();
+  expect(read).toHaveBeenCalledExactlyOnceWith('session');
+  expect(f.update.mock.calls).toEqual([
+    ['session', { criteria: ['The build passes', 'Docs mention the flag'], expectedRevision: 4 }],
+    ['session', { criteria: ['The build passes', 'Docs mention the flag'], expectedRevision: 5 }],
+  ]);
+  expect(dialogNotes()).toEqual([]);
+  await settle(600);
+  expect(criteriaBox()).toBeNull();
+});
+
+it('says the criteria changed elsewhere and saves nothing more until Save is pressed again', async () => {
+  const f = await mountCriteria();
+  const read = services.repository.getSession as Mock;
+  read.mockResolvedValue(stored({ revision: 6, criteria: ['Someone else wrote this'] }));
+  f.update.mockResolvedValueOnce(stale).mockResolvedValueOnce({ ok: true, session });
+  await openCriteria(f.actionsMenu);
+  await type(criteriaBox(), 'Docs mention the flag');
+  await act(async () => button(messages.Sessions.save)?.click());
+  await settle(600);
+  expect(f.update).toHaveBeenCalledOnce();
+  // Not a failure: what happened, with the typed text still there.
+  expect(dialogNotes()).toEqual([criteria.changedElsewhere]);
+  expect(criteriaBox()?.value).toBe('Docs mention the flag');
+  await settle(300);
+  expect(f.update).toHaveBeenCalledOnce();
+  // Pressing Save again replaces them, against the revision just read.
+  await act(async () => button(messages.Sessions.save)?.click());
+  await settle();
+  expect(f.update).toHaveBeenLastCalledWith('session', {
+    criteria: ['Docs mention the flag'],
+    expectedRevision: 6,
+  });
+  expect(read).toHaveBeenCalledOnce();
+  await settle(600);
+  expect(criteriaBox()).toBeNull();
+});
+
+it('retries a refused save at most once and then says it failed', async () => {
+  const f = await mountCriteria();
+  const read = services.repository.getSession as Mock;
+  read.mockResolvedValue(stored({ title: 'Renamed elsewhere' }));
+  const again = {
+    ...stale,
+    message: 'This session was changed elsewhere (revision 6). Reload first.',
+  };
+  f.update.mockResolvedValueOnce(stale).mockResolvedValue(again);
+  await openCriteria(f.actionsMenu);
+  await type(criteriaBox(), 'Docs mention the flag');
+  await act(async () => button(messages.Sessions.save)?.click());
+  await settle(600);
+  expect(f.update).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledOnce();
+  expect(dialogNotes()).toEqual([messages.Sessions.failed.replace('{message}', again.message)]);
+  expect(criteriaBox()?.value).toBe('Docs mention the flag');
+});
+
+it('says the save failed and keeps the text when the session cannot be read again', async () => {
+  const f = await mountCriteria();
+  const read = services.repository.getSession as Mock;
+  read.mockRejectedValue(new Error('The server cannot be reached.'));
+  f.update.mockResolvedValue(stale);
+  await openCriteria(f.actionsMenu);
+  await type(criteriaBox(), 'Docs mention the flag');
+  await act(async () => button(messages.Sessions.save)?.click());
+  await settle(600);
+  expect(f.update).toHaveBeenCalledOnce();
+  expect(dialogNotes()).toEqual([
+    messages.Sessions.failed.replace('{message}', 'The server cannot be reached.'),
+  ]);
+  expect(criteriaBox()?.value).toBe('Docs mention the flag');
+});

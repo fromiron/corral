@@ -2005,7 +2005,8 @@
       "label": "완료 기준",
       "placeholder": "빌드가 경고 없이 통과합니다",
       "tooMany": "완료 기준은 {max}줄까지 적을 수 있습니다.",
-      "tooLong": "{line}번째 줄이 {max}자를 넘습니다."
+      "tooLong": "{line}번째 줄이 {max}자를 넘습니다.",
+      "changedElsewhere": "다른 곳에서 완료 기준이 바뀌었습니다. 저장하면 적은 내용으로 바꿉니다."
     }
   },
   "Files": {

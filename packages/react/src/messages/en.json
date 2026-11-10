@@ -2005,7 +2005,8 @@
       "label": "Completion criteria",
       "placeholder": "The build passes without warnings",
       "tooMany": "Completion criteria have up to {max} lines.",
-      "tooLong": "Line {line} is longer than {max} characters."
+      "tooLong": "Line {line} is longer than {max} characters.",
+      "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
     }
   },
   "Files": {
