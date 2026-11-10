@@ -123,4 +123,18 @@ describe('Korean messages (UX-A5)', () => {
     );
     expect(untranslated.map(([key]) => key)).toEqual([]);
   });
+
+  // The product speaks in the 합니다/하세요 register; a 해요체 ending (해요, 돼요, 예요, 이에요,
+  // 어요, 아요, 네요, 죠) is a slip. Nouns that end in 요 (필요, 중요, 주요, 개요) are not endings.
+  it('ends sentences in the 합니다/하세요 register, never 해요체', () => {
+    const word = /([가-힣]+[요죠])(?![가-힣])/g;
+    const nouns = /(필요|중요|주요|개요|수요|소요|강요)$/;
+    const slips = [...koLeaves].flatMap(([key, message]) =>
+      [...parseIcu(message).text.matchAll(word)]
+        .map((match) => match[1] as string)
+        .filter((ending) => !ending.endsWith('세요') && !nouns.test(ending))
+        .map((ending) => `${key}: ${ending}`),
+    );
+    expect(slips).toEqual([]);
+  });
 });
