@@ -5347,6 +5347,7 @@
   "Failure": {
     "cancelled": "이 단계는 취소되었습니다.",
     "diagnostics": "진단 정보",
+    "recorded": "기록된 이유",
     "code": {
       "TARGET_NOT_FOUND": "요청한 파일·폴더 또는 대상을 찾을 수 없습니다.",
       "TARGET_TERMINAL": "대상이 종료되었거나 취소되어 이 요청을 적용하지 못했습니다.",

@@ -5347,6 +5347,7 @@
   "Failure": {
     "cancelled": "This step was cancelled.",
     "diagnostics": "Diagnostics",
+    "recorded": "Recorded reason",
     "code": {
       "TARGET_NOT_FOUND": "The requested file, folder, or target is unavailable.",
       "TARGET_TERMINAL": "The target has ended or was cancelled, so this request could not be applied.",

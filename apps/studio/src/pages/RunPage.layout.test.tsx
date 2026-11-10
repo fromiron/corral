@@ -1048,7 +1048,7 @@ it('a failed run names its recorded end reason beside its state and opens the fa
   expect(failure?.textContent).toContain('the model request failed: HTTP 500 (SERVER)');
 });
 
-it('a failed execution of unknown cause leads its failure with the recorded text', async () => {
+it('a failed execution of unknown cause keeps the recorded text verbatim under a localized label', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
   await failRun(run, {
@@ -1058,9 +1058,9 @@ it('a failed execution of unknown cause leads its failure with the recorded text
   const failure = container.querySelector<HTMLElement>(
     '[data-testid="run-side"] [data-testid="execution-failure"]',
   );
-  expect(failure?.querySelector('p')?.textContent).toBe(
-    'the model worker reported a request failure',
-  );
+  // No code the catalogs can name: the server's sentence is the detail, never the headline.
+  const lines = [...(failure?.querySelectorAll('p') ?? [])].map((p) => p.textContent);
+  expect(lines).toEqual([messages.Failure.recorded, 'the model worker reported a request failure']);
   // Nothing is left folded away, and the recorded text is not repeated below it.
   expect(failure?.querySelector('details:not([open])')).toBeNull();
   expect(failure?.textContent?.split('the model worker reported a request failure')).toHaveLength(
