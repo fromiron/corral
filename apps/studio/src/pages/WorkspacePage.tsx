@@ -793,14 +793,13 @@ function EnvironmentPanel({
       <section aria-label={t('folder')} className="flex flex-col gap-3">
         <SectionLabel>{t('folder')}</SectionLabel>
         <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* The folder's state is the header's badge; this section holds its details. */}
           <div className="flex min-w-0 flex-col gap-1">
             {folder.state === 'loading' ? (
               <p role="status" className="text-body text-muted-foreground">
                 {tf('loading')}
               </p>
-            ) : (
-              <FolderBadge folder={folder} />
-            )}
+            ) : null}
             {binding ? (
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-body">
                 <dt className="text-muted-foreground">{t('path')}</dt>

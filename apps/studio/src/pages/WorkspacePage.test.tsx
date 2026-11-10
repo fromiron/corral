@@ -330,6 +330,11 @@ it('shows the source folder and each working copy, saying where nothing is known
   // Path, branch and changes are not reported for this copy: none of them reads as "none".
   expect(row?.textContent?.match(/No information/g)?.length).toBe(3);
   expect(panel.textContent).not.toContain('Plan the release');
+  // The folder's state is said once, in the header above the tabs.
+  expect(
+    container.textContent?.match(new RegExp(messages.Workspace.folder.ready, 'g')),
+  ).toHaveLength(1);
+  expect(panel.textContent).not.toContain(messages.Workspace.folder.ready);
 });
 
 it('stops reading working copies once the Environment tab is left', async () => {
