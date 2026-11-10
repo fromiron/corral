@@ -1,6 +1,6 @@
 import type { MeetingDecisionContent, MeetingView } from '@corral/contracts';
 import { activeMeetingDecision, type WorkSession } from '@corral/core';
-import { Button, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Textarea } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -9,6 +9,9 @@ import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { MeetingDiagnostics } from './MeetingDiagnostics.tsx';
 import { MeetingHandoff } from './MeetingHandoff.tsx';
+
+const semibold = { fontVariationSettings: fontWeights.semibold };
+const normal = { fontVariationSettings: fontWeights.normal };
 
 const fields = [
   'scope',
@@ -119,9 +122,8 @@ export function MeetingDecisions({
     (minutes, index, all) => minutes.document || index === all.length - 1,
   );
   return (
-    <section className="flex min-w-0 flex-col gap-4 text-sm" aria-label={t('heading')}>
-      <h2 className="font-medium">{t('heading')}</h2>
-      <p className="text-muted-foreground">{t('candidateHint')}</p>
+    // The records' own heading names this part; candidates explain themselves on it.
+    <section className="flex min-w-0 flex-col gap-4 text-body" aria-label={t('heading')}>
       {!view.minutes?.length ? <p className="text-muted-foreground">{t('empty')}</p> : null}
       {displayedMinutes?.map((minutes) => {
         const doc = minutes.document;
@@ -138,12 +140,16 @@ export function MeetingDecisions({
         return (
           <article
             key={minutes.minutesId}
-            className="flex min-w-0 flex-col gap-3 rounded fill-group p-3"
+            className="flex min-w-0 flex-col gap-3 rounded-lg fill-group p-3"
             aria-label={t('minutes')}
           >
-            <h3 className="font-medium">
-              {t('minutes')} ·{' '}
-              <time dateTime={minutes.createdAt}>
+            <h3 className="flex flex-wrap items-baseline gap-x-2 text-subtitle" style={semibold}>
+              {t('minutes')}
+              <time
+                dateTime={minutes.createdAt}
+                className="text-caption text-muted-foreground"
+                style={normal}
+              >
                 {format.dateTime(new Date(minutes.createdAt), {
                   dateStyle: 'short',
                   timeStyle: 'medium',
@@ -181,7 +187,7 @@ export function MeetingDecisions({
                 <TextList title={t('unverifiedFacts')} values={doc.unverifiedFacts} />
                 {nonresponses.length ? (
                   <div>
-                    <h4 className="font-medium">{t('nonresponse')}</h4>
+                    <h4 style={semibold}>{t('nonresponse')}</h4>
                     <ul className="list-inside list-disc">
                       {nonresponses.map((answer) => (
                         <li
@@ -196,15 +202,22 @@ export function MeetingDecisions({
                   </div>
                 ) : null}
                 {doc.candidates.map((candidate) => (
-                  <div key={candidate.candidateId} className="flex flex-col gap-2">
-                    <h4 className="font-medium">
-                      {t('candidate')}: {candidate.content.goal}
+                  <div
+                    key={candidate.candidateId}
+                    className="flex flex-col gap-2 border-t border-border pt-3"
+                  >
+                    {/* The goal is the candidate's name; it is printed once, here. */}
+                    <h4 className="text-subtitle" style={semibold}>
+                      <span className="block text-caption text-muted-foreground" style={normal}>
+                        {t('candidate')}
+                      </span>
+                      {candidate.content.goal}
                     </h4>
                     <DecisionContent content={candidate.content} />
                     <div>
                       <Button
                         size="compact"
-                        variant="tertiary"
+                        variant="secondary"
                         disabled={busy}
                         onClick={() => {
                           setDraft({
@@ -227,14 +240,16 @@ export function MeetingDecisions({
       })}
       {draft ? (
         <form
-          className="flex flex-col gap-3 rounded fill-group p-3"
+          className="flex flex-col gap-3 rounded-lg fill-group p-3"
           onSubmit={(event) => {
             event.preventDefault();
             void run('adopt');
           }}
         >
-          <h3 className="font-medium">{t(draft.supersedesVersionId ? 'revise' : 'adopt')}</h3>
-          <p className="text-muted-foreground">{t('editHint')}</p>
+          <h3 className="text-subtitle" style={semibold}>
+            {t(draft.supersedesVersionId ? 'revise' : 'adopt')}
+          </h3>
+          <p className="text-caption text-muted-foreground">{t('editHint')}</p>
           <fieldset disabled={busy} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               {t('goal')}
@@ -285,13 +300,13 @@ export function MeetingDecisions({
         return (
           <article
             key={decision.versionId}
-            className="flex min-w-0 flex-col gap-3 rounded fill-group p-3"
+            className="flex min-w-0 flex-col gap-3 rounded-lg fill-group p-3"
             aria-label={t('decision')}
           >
-            <h3 className="font-medium">
+            <h3 className="text-subtitle" style={semibold}>
               {t('decisionLabel', { number: index + 1, goal: decision.content.goal })}
             </h3>
-            <p>
+            <p className="text-caption text-muted-foreground">
               {t(withdrawn ? 'withdrawn' : superseded ? 'superseded' : 'adopted')}
               {withdrawn ? `: ${withdrawn.reason}` : ''}
               {superseded
@@ -391,7 +406,7 @@ function TextList({ title, values }: { title: string; values: string[] }) {
   const t = useTranslations('MeetingsDecisions');
   return (
     <div>
-      <h4 className="font-medium">{title}</h4>
+      <h4 style={semibold}>{title}</h4>
       {values.length ? (
         <ul className="list-inside list-disc">
           {values.map((value, index) => (
@@ -410,8 +425,8 @@ function TextList({ title, values }: { title: string; values: string[] }) {
 function DecisionContent({ content }: { content: MeetingDecisionContent }) {
   const t = useTranslations('MeetingsDecisions');
   return (
+    // The goal heads the candidate or decision that holds this content.
     <div className="flex flex-col gap-2">
-      <p className="wrap-anywhere">{content.goal}</p>
       {fields.map((field) => (
         <TextList key={field} title={t(field)} values={content[field]} />
       ))}

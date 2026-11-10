@@ -4,17 +4,28 @@ import {
   type MeetingView,
   type QueuedMeetingMessage,
   SECRETARY_ID,
+  type TextAttachment,
+  textAttachmentKey,
 } from '@corral/contracts';
-import { activeMeetingDecision, type MeetingResult, type WorkSession } from '@corral/core';
-import { FailureNotice, SafeMarkdown } from '@corral/react';
+import type { MeetingResult, WorkSession } from '@corral/core';
+import { CopyTextButton, FailureNotice, SafeMarkdown } from '@corral/react';
 import {
+  AgentIdentity,
+  type AgentStatus,
+  AgentStatusLabel,
   Banner,
   BannerActions,
   BannerTitle,
   Button,
   cn,
+  Dialog,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
   fontWeights,
   InputMessage,
+  KitChatMessage,
   Menu,
   MenuItem,
   MenuPopup,
@@ -23,7 +34,7 @@ import {
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Ellipsis, PanelRight, Square, Users } from '@corral/react/icons';
+import { Ellipsis, FileText, PanelRight, Plus, Square, Users, X } from '@corral/react/icons';
 import { Link, useRouter } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
@@ -31,13 +42,14 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useRegisterCommands } from '../commandRegistry.ts';
 import { projectsChanged } from '../projects.ts';
@@ -58,6 +70,7 @@ import {
 } from '../workbench/MeetingRecords.tsx';
 import { isSendKey, preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
+import { TurnActions } from '../workbench/RunMessage.tsx';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -284,7 +297,6 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                 view={view}
                 mode={mode}
                 error={error || loadError}
-                onOpenRecords={openRecords}
                 onStop={
                   active
                     ? () => void act(() => meetings.stop(sessionId, active.roundId))
@@ -478,25 +490,64 @@ function MeetingActions({
   );
 }
 
+/**
+ * The person's message: the kit's sent bubble on the right, whom it was for above it, and its
+ * time and copy action in the row the bubble reveals, as in a session.
+ */
 function MeetingMessage({ round, config }: { round: RoundView; config: MeetingConfig }) {
   const t = useTranslations('Meetings');
+  const format = useFormatter();
   const secretary = t('secretary');
   const addressed =
     round.kind === 'mention' || round.kind === 'secretary'
       ? round.participantIds.map((id) => nameOf(config, id, secretary)).join(', ')
       : null;
+  // The time alone on the day it was sent; the date joins it afterwards and in the tooltip.
+  const created = new Date(round.createdAt);
+  const dated = !Number.isNaN(created.getTime());
+  const day = (date: Date) => format.dateTime(date, { dateStyle: 'short' });
+  const full = dated ? format.dateTime(created, { timeStyle: 'short', dateStyle: 'short' }) : '';
+  const when = !dated
+    ? null
+    : day(created) === day(new Date())
+      ? format.dateTime(created, { timeStyle: 'short' })
+      : full;
   return (
-    <div className="mb-5 ml-auto flex max-w-[85%] flex-col gap-1 rounded-lg fill-group px-3 py-2 text-body">
-      <span className="text-caption text-muted-foreground">
-        {t('you')}
-        {addressed ? ` · ${t('to', { names: addressed })}` : ''}
-      </span>
-      <p className="whitespace-pre-wrap wrap-anywhere">{round.message}</p>
-      {round.attachments?.length ? <TextAttachmentList attachments={round.attachments} /> : null}
+    <div className="chat-turn flex flex-col items-end gap-1">
+      {addressed ? (
+        <p className="px-1 text-caption text-muted-foreground">{t('to', { names: addressed })}</p>
+      ) : null}
+      <KitChatMessage
+        from="user"
+        time={
+          when ? (
+            <time dateTime={round.createdAt} title={full}>
+              {when}
+            </time>
+          ) : undefined
+        }
+        actions={round.message ? <CopyTextButton text={round.message} /> : undefined}
+      >
+        <span className="sr-only">{t('you')} </span>
+        {round.message}
+        {round.attachments?.length ? <TextAttachmentList attachments={round.attachments} /> : null}
+      </KitChatMessage>
     </div>
   );
 }
 
+const FAILED_ANSWER = new Set(['failed', 'refused', 'interrupted', 'not_started']);
+/** The kit's status glyph for an answer that is not (yet) a reply. */
+const ANSWER_GLYPH: Record<string, AgentStatus> = {
+  running: 'running',
+  waiting: 'queued',
+  stopped: 'stopped',
+};
+
+/**
+ * A participant's turn: their avatar and name head it, the answer reads in the kit's chat prose
+ * in the foreground colour, and a quiet icon row under it copies the text.
+ */
 function AnswerCard({
   answer,
   name,
@@ -508,41 +559,52 @@ function AnswerCard({
 }) {
   const t = useTranslations('Meetings');
   const detailed = useStore(preferences, (state) => state.chatDensity === 'detailed');
-  const failed = ['failed', 'refused', 'interrupted', 'not_started'].includes(answer.status);
+  const failed = FAILED_ANSWER.has(answer.status);
   const httpStatus = /\b(?:HTTP|status)\s*:?\s*(\d{3})\b/i.exec(answer.detail ?? '')?.[1];
+  const minutes = answer.status === 'answered' && onOpenMinutes;
   return (
-    <article aria-label={name} className="mb-5 flex min-w-0 flex-col gap-1.5">
-      <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption">
-        <span className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
-          {name}
-        </span>
-        {answer.status !== 'answered' ? (
-          <span
-            role={answer.status === 'running' ? 'status' : undefined}
-            className={failed ? 'text-danger' : 'text-muted-foreground'}
-          >
-            {t(`status.${answer.status}`)}
-          </span>
-        ) : null}
-        {detailed && answer.runId ? (
-          <Link
-            to="/runs/$runId"
-            params={{ runId: answer.runId }}
-            className="text-muted-foreground underline"
-          >
-            {t('openRun')}
-          </Link>
-        ) : null}
+    <article
+      aria-label={name}
+      className="chat-turn turn-actions-scope flex min-w-0 flex-col gap-1.5 wrap-anywhere"
+    >
+      <header>
+        <AgentIdentity
+          name={name}
+          avatarSize={20}
+          trailing={
+            <>
+              {answer.status !== 'answered' ? (
+                <AgentStatusLabel
+                  role={answer.status === 'running' ? 'status' : undefined}
+                  status={failed ? 'failed' : (ANSWER_GLYPH[answer.status] ?? 'stopped')}
+                  label={t(`status.${answer.status}`)}
+                  className={failed ? 'text-danger' : undefined}
+                />
+              ) : null}
+              {detailed && answer.runId ? (
+                <Link
+                  to="/runs/$runId"
+                  params={{ runId: answer.runId }}
+                  className="text-caption text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  {t('openRun')}
+                </Link>
+              ) : null}
+            </>
+          }
+        />
       </header>
-      {answer.status === 'answered' && onOpenMinutes ? (
-        <div className="flex flex-wrap items-center gap-2 text-body">
-          <p>{t('minutesReady')}</p>
-          <Button size="compact" variant="tertiary" onClick={onOpenMinutes}>
+      {minutes ? (
+        // The one place the minutes are offered: where the secretary posted them.
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-subtitle text-foreground">{t('minutesReady')}</p>
+          <Button size="compact" variant="secondary" onClick={onOpenMinutes}>
+            <PanelRight />
             {t('viewMinutes')}
           </Button>
         </div>
       ) : answer.text ? (
-        <SafeMarkdown text={answer.text} />
+        <SafeMarkdown text={answer.text} size="chat" />
       ) : answer.status === 'answered' ? (
         <p className="text-body text-muted-foreground">{t('answerNotKept')}</p>
       ) : answer.status === 'running' && answer.runId && answer.participantId !== SECRETARY_ID ? (
@@ -566,6 +628,11 @@ function AnswerCard({
           {answer.usage.unknown ? ` · ${t('usageUnknown')}` : ''}
         </p>
       ) : null}
+      {answer.text && !minutes ? (
+        <TurnActions>
+          <CopyTextButton text={answer.text} />
+        </TurnActions>
+      ) : null}
     </article>
   );
 }
@@ -578,7 +645,7 @@ function StreamingAnswer({ runId }: { runId: string }) {
       return call && !call.finished && !stream.broken && !stream.completed;
     })
     .at(-1)?.[1].text;
-  return text ? <SafeMarkdown text={text} /> : null;
+  return text ? <SafeMarkdown text={text} size="chat" /> : null;
 }
 
 function MeetingComposer({
@@ -588,7 +655,6 @@ function MeetingComposer({
   mode,
   error,
   onStop,
-  onOpenRecords,
   send,
   sendQueued,
   dropQueued,
@@ -600,7 +666,6 @@ function MeetingComposer({
   mode: 'mock' | 'live';
   error: string;
   onStop?: (() => void) | undefined;
-  onOpenRecords(): void;
   send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
   sendQueued(): Promise<MeetingResult | null>;
   dropQueued(): Promise<MeetingResult | null>;
@@ -713,14 +778,17 @@ function MeetingComposer({
     .findLast((round) => round.kind === 'secretary')
     ?.answers.find((answer) => answer.participantId === SECRETARY_ID);
   const summaryFailed = Boolean(
-    latestMinutes?.error ||
-      (latestSecretary &&
-        ['failed', 'refused', 'interrupted', 'not_started'].includes(latestSecretary.status)),
+    latestMinutes?.error || (latestSecretary && FAILED_ANSWER.has(latestSecretary.status)),
   );
-  const hasDecision = view.decisions?.some((decision) =>
-    activeMeetingDecision(view, decision.versionId),
-  );
-  const hasCandidate = view.minutes?.some((minutes) => minutes.document?.candidates.length);
+  // Evidence is chosen in a dialog the add menu opens; what is chosen stays in the composer.
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const showEvidence = (open: boolean) => {
+    setEvidenceOpen(open);
+    // Closing ends the picker and drops its pending read, so nothing is loading any more.
+    if (!open) setAttachmentLoading(false);
+  };
+  const requestPlan = () =>
+    void dispatch({ kind: 'message', text: t('summaryRequest'), mentions: [SECRETARY_ID] });
   return (
     <div
       className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2"
@@ -748,28 +816,12 @@ function MeetingComposer({
                     size="compact"
                     variant="tertiary"
                     disabled={sending || active}
-                    onClick={() =>
-                      void dispatch({
-                        kind: 'message',
-                        text: t('summaryRequest'),
-                        mentions: [SECRETARY_ID],
-                      })
-                    }
+                    onClick={requestPlan}
                   >
                     {t('retrySummary')}
                   </Button>
                 </BannerActions>
               </Banner>
-            ) : null}
-            {view.rounds.length > 0 && !hasDecision ? (
-              <div className="flex flex-wrap items-center gap-2 px-1 text-caption text-muted-foreground">
-                <p>{t(hasCandidate ? 'handoffNeedsAdoption' : 'handoffNeedsMinutes')}</p>
-                {hasCandidate ? (
-                  <Button size="compact" variant="tertiary" onClick={onOpenRecords}>
-                    {t('viewMinutes')}
-                  </Button>
-                ) : null}
-              </div>
             ) : null}
             {view.queued ? (
               <div
@@ -805,47 +857,34 @@ function MeetingComposer({
               onChange={setMentions}
               disabled={sending}
             />
-            {mentions.length ? null : (
-              <p className="px-1 text-caption text-muted-foreground">{t('everyone')}</p>
-            )}
-            <details
-              aria-label={t('evidence')}
-              open={attachments.length ? true : undefined}
-              className="px-1 text-caption"
-            >
-              <summary className="cursor-pointer rounded-sm py-1 text-muted-foreground focus-visible:outline-2 focus-visible:outline-focus-ring">
-                {attachments.length
-                  ? t('evidenceSelected', { count: attachments.length })
-                  : t('evidence')}
-              </summary>
-              <div className="pt-1">
-                <MeetingEvidencePicker
-                  projectId={projectId}
-                  value={attachments}
-                  onChange={setAttachments}
-                  onLoading={setAttachmentLoading}
-                  disabled={sending}
-                />
-              </div>
-            </details>
+            {attachments.length ? (
+              <EvidenceChips
+                value={attachments}
+                onChange={setAttachments}
+                disabled={sending || attachmentLoading}
+              />
+            ) : null}
           </>
         }
         leftSlot={
           <>
-            <Button
-              size="compact"
-              variant="ghost"
-              disabled={sending || attachmentLoading || view.rounds.length === 0}
-              onClick={() =>
-                void dispatch({
-                  kind: 'message',
-                  text: t('summaryRequest'),
-                  mentions: [SECRETARY_ID],
-                })
-              }
-            >
-              {t('summarise')}
-            </Button>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button variant="ghost" size="icon-compact" aria-label={t('attachmentActions')} />
+                }
+              >
+                <Plus />
+              </MenuTrigger>
+              <MenuPopup align="start">
+                <MenuItem
+                  disabled={sending || attachmentLoading}
+                  onClick={() => showEvidence(true)}
+                >
+                  {t('evidence')}
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
             {text || mentions.length || attachments.length ? (
               <Button
                 size="compact"
@@ -863,12 +902,22 @@ function MeetingComposer({
           </>
         }
         rightSlot={
-          onStop ? (
-            <Button size="compact" variant="tertiary" onClick={onStop}>
-              <Square size={12} aria-hidden />
-              {t('stopRound')}
+          <>
+            {onStop ? (
+              <Button size="compact" variant="tertiary" onClick={onStop}>
+                <Square size={12} aria-hidden />
+                {t('stopRound')}
+              </Button>
+            ) : null}
+            <Button
+              size="compact"
+              variant="ghost"
+              disabled={sending || attachmentLoading || view.rounds.length === 0}
+              onClick={requestPlan}
+            >
+              {t('summarise')}
             </Button>
-          ) : null
+          </>
         }
       />
       {error ? (
@@ -876,7 +925,73 @@ function MeetingComposer({
           {error}
         </p>
       ) : null}
+      <Dialog open={evidenceOpen} onOpenChange={showEvidence}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{t('evidence')}</DialogTitle>
+          </DialogHeader>
+          <DialogPanel>
+            {evidenceOpen ? (
+              <MeetingEvidencePicker
+                projectId={projectId}
+                value={attachments}
+                onChange={(next) => {
+                  setAttachments(next);
+                  // A new item is the choice made; the composer shows it from here.
+                  if (next.length > attachments.length) showEvidence(false);
+                }}
+                onLoading={setAttachmentLoading}
+                disabled={sending}
+              />
+            ) : null}
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
     </div>
+  );
+}
+
+/** The evidence chosen for the next message, each removable before it is sent. */
+function EvidenceChips({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: TextAttachment[];
+  onChange(next: TextAttachment[]): void;
+  disabled: boolean;
+}) {
+  const t = useTranslations('Meetings');
+  return (
+    <ul
+      aria-label={t('evidenceSelected', { count: value.length })}
+      className="flex flex-wrap gap-1"
+    >
+      {value.map((item) => (
+        <li
+          key={textAttachmentKey(item)}
+          className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-caption"
+        >
+          <FileText size={12} aria-hidden className="shrink-0 text-muted-foreground" />
+          <span className="truncate" title={item.name}>
+            {item.name}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-tiny"
+            disabled={disabled}
+            aria-label={t('removeEvidence', { name: item.name })}
+            onClick={() =>
+              onChange(
+                value.filter((entry) => textAttachmentKey(entry) !== textAttachmentKey(item)),
+              )
+            }
+          >
+            <X />
+          </Button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -994,6 +1109,7 @@ function MeetingRecipients({
   disabled: boolean;
 }) {
   const t = useTranslations('Meetings');
+  const rule = useId();
   const people = [
     ...config.participants.map((participant) => ({
       id: participant.participantId,
@@ -1002,11 +1118,21 @@ function MeetingRecipients({
     { id: SECRETARY_ID, name: t('secretary') },
   ];
   return (
-    <fieldset className="flex flex-wrap items-center gap-1 px-1 text-caption" disabled={disabled}>
+    <fieldset
+      className="flex flex-wrap items-center gap-1 text-caption"
+      disabled={disabled}
+      aria-describedby={rule}
+    >
       <legend className="sr-only">{t('mentions')}</legend>
-      <span aria-hidden className="pr-1 text-muted-foreground">
-        {t('mentions')}
+      {/* Who answers a message that names no one: once, on the label, not as a sentence. */}
+      <span id={rule} className="sr-only">
+        {t('everyone')}
       </span>
+      <Tooltip content={t('everyone')}>
+        <span aria-hidden className="cursor-default px-1 text-muted-foreground">
+          {t('mentions')}
+        </span>
+      </Tooltip>
       {/* The chosen recipients take the kit's selected treatment. */}
       {people.map((person) => (
         <Button

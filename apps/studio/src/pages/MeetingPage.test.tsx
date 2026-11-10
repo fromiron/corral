@@ -54,6 +54,9 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@corral/react', () => ({
   SafeMarkdown: ({ text }: any) => <p>{text}</p>,
   FailureNotice: ({ message }: any) => <p data-testid="provider-failure">{message}</p>,
+  CopyTextButton: ({ text }: any) => (
+    <button type="button" aria-label="copyMessage" data-copy={text} />
+  ),
 }));
 vi.mock('@corral/react/design-kit', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@corral/react/design-kit')>()),
@@ -262,12 +265,25 @@ async function mount(
       setter.call(box, text);
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
+  /** Opens the composer's add menu and chooses Attach evidence. */
+  const openEvidence = async () => {
+    await act(async () => button('attachmentActions')?.click());
+    let item: HTMLElement | undefined;
+    await vi.waitFor(() => {
+      item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (entry) => entry.getAttribute('aria-label') === 'evidence',
+      );
+      expect(item).toBeDefined();
+    });
+    await act(async () => item?.click());
+  };
   return {
     container,
     meetings,
     button,
     box,
     type,
+    openEvidence,
     resize: (next: { narrow: boolean }) =>
       act(async () => {
         screen.narrow = next.narrow;
@@ -557,6 +573,7 @@ it('asking the secretary to summarise preserves the unsent draft', async () => {
 
 it('only explicitly attached evidence is sent, and a failed send preserves it', async () => {
   const f = await mount(view());
+  await f.openEvidence();
   await act(async () => f.button('attachEvidence')?.click());
   await f.type('Review this evidence');
   f.meetings.send.mockRejectedValueOnce(new Error('connection lost'));
@@ -570,29 +587,95 @@ it('only explicitly attached evidence is sent, and a failed send preserves it', 
   expect(f.meetings.send.mock.calls.at(-1)?.[1]).not.toHaveProperty('attachments');
 });
 
-it('starts with a compact composer and keeps selected evidence reviewable', async () => {
+it('starts with a compact composer; evidence is attached from its add menu and stays in view', async () => {
   const f = await mount(view());
-  const disclosure = f.container.querySelector<HTMLDetailsElement>(
-    'details[aria-label="evidence"]',
+  const composer = must(
+    f.container.querySelector<HTMLElement>('[data-testid="chat-composer"]'),
+    'the composer',
   );
-  expect(disclosure).not.toBeNull();
-  expect(disclosure?.open).toBe(false);
-  expect(f.button('attachEvidence')?.closest('details')).toBe(disclosure);
+  const chosen = () => composer.querySelector('[aria-label="evidenceSelected"]');
   expect(f.box.rows).toBe(2);
-  await act(async () => disclosure!.querySelector('summary')!.click());
-  expect(disclosure?.open).toBe(true);
+  // The picker is not laid out in the composer; the add menu opens it.
+  expect(f.button('attachEvidence')).toBeUndefined();
+  expect(composer.querySelector('details')).toBeNull();
+  expect(chosen()).toBeNull();
+  await f.openEvidence();
+  // The same handler as before: the picker's choice becomes the message's evidence.
   await act(async () => f.button('attachEvidence')?.click());
-  expect(disclosure?.querySelector('summary')?.textContent).toBe('evidenceSelected');
+  expect(chosen()?.textContent).toContain('brief.txt');
   await f.type('Review this');
   f.meetings.send.mockRejectedValueOnce(new Error('connection lost'));
   await act(async () => f.button('send')?.click());
-  expect(disclosure?.open).toBe(true);
-  expect(disclosure?.querySelector('summary')?.textContent).toBe('evidenceSelected');
+  expect(chosen()?.textContent).toContain('brief.txt');
   await act(async () => f.button('send')?.click());
   expect(f.meetings.send.mock.calls.at(-1)?.[1]).toMatchObject({
     attachments: [{ name: 'brief.txt' }],
   });
-  expect(disclosure?.querySelector('summary')?.textContent).toBe('evidence');
+  expect(chosen()).toBeNull();
+  // A chosen item can be taken off before sending.
+  await f.openEvidence();
+  await act(async () => f.button('attachEvidence')?.click());
+  await act(async () => f.button('removeEvidence')?.click());
+  expect(chosen()).toBeNull();
+});
+
+it('names the reviewed minutes once, where the secretary posted them, and not in the composer', async () => {
+  const f = await mount(
+    view({
+      rounds: [
+        firstRound(),
+        {
+          ...firstRound(),
+          roundId: 'round_2',
+          commandId: 'c2',
+          kind: 'secretary',
+          message: 'summaryRequest',
+          participantIds: ['secretary'],
+          answers: [{ ...answer('secretary', 'answered'), text: '{}' }],
+        },
+      ],
+      minutes: [{ ...minutesWithCandidate, roundId: 'round_2' }],
+    }),
+  );
+  const reviews = [...document.body.querySelectorAll('button')].filter(
+    (item) => item.textContent?.trim() === 'viewMinutes',
+  );
+  expect(reviews).toHaveLength(1);
+  expect(reviews[0]?.closest('[data-chat-item]')?.getAttribute('data-chat-item')).toBe(
+    'round_2:secretary',
+  );
+  const composer = must(
+    f.container.querySelector<HTMLElement>('[data-testid="chat-composer"]'),
+    'the composer',
+  );
+  // No prompt row restating the next step, and the recipients' rule is not a visible sentence.
+  expect(composer.textContent).not.toContain('handoffNeeds');
+  expect([...composer.querySelectorAll('p')].some((p) => p.textContent === 'everyone')).toBe(false);
+  // Asking the secretary for a plan stays one quiet action beside Send.
+  expect(f.button('summarise')?.closest('[data-testid="chat-composer"]')).toBe(composer);
+});
+
+it('reads an answer as prose under its participant, and the person’s message as a sent bubble', async () => {
+  const f = await mount(view());
+  const architect = must(
+    f.container.querySelector<HTMLElement>('article[aria-label="Architect"]'),
+    'the answer',
+  );
+  // The turn is headed by the participant's name, then the answer, then a quiet copy action.
+  expect(architect.querySelector('header')?.textContent).toContain('Architect');
+  expect(architect.textContent).toContain('p1 says yes');
+  expect(architect.querySelector('[aria-label="copyMessage"]')?.getAttribute('data-copy')).toBe(
+    'p1 says yes',
+  );
+  const message = must(
+    f.container.querySelector<HTMLElement>('[data-chat-item="round_1:message"]'),
+    'the message',
+  );
+  expect(message.textContent).toContain('Ship it?');
+  expect(message.querySelector('article')).toBeNull();
+  expect(message.querySelector('[aria-label="copyMessage"]')?.getAttribute('data-copy')).toBe(
+    'Ship it?',
+  );
 });
 
 it('a late refresh cannot replace a newer round view', async () => {
@@ -720,6 +803,7 @@ it('keeps the meeting draft across navigation and remounts, isolated from other 
   const f = await mount(view());
   await f.type('Keep this exact meeting draft.');
   await act(async () => f.button('@Builder')?.click());
+  await f.openEvidence();
   await act(async () => f.button('attachEvidence')?.click());
   await f.hide();
   const other = await mount(view({ sessionId: 'another_meeting' }));
@@ -729,7 +813,9 @@ it('keeps the meeting draft across navigation and remounts, isolated from other 
   await f.show();
   expect(f.container.querySelector('textarea')?.value).toBe('Keep this exact meeting draft.');
   expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('true');
-  expect(f.container.textContent).toContain('evidenceSelected');
+  expect(f.container.querySelector('[aria-label="evidenceSelected"]')?.textContent).toContain(
+    'brief.txt',
+  );
   await act(async () => f.button('clearDraft')?.click());
   expect(f.container.querySelector('textarea')?.value).toBe('');
   await f.hide();
@@ -806,7 +892,8 @@ it('keeps only the latest minutes error visible outside the collapsed panel with
     kind: 'message',
     mentions: ['secretary'],
   });
-  expect(f.container.textContent).toContain('handoffNeedsMinutes');
+  // With no minutes to adopt, the next step is the composer's own request for a plan.
+  expect(f.button('summarise')?.hasAttribute('disabled')).toBe(false);
 });
 
 it('uses the chosen send key and preserves IME confirmation keys', async () => {
@@ -946,6 +1033,14 @@ it('the records panel opens and closes from the toolbar, keeping the draft, and 
   expect(records() === null || records()?.hidden).toBe(true);
   expect(f.button('records')?.getAttribute('aria-pressed')).toBe('false');
   expect(f.container.querySelector('textarea')?.value).toBe('Unsent while reading');
+});
+
+it('the records open on the minutes, without a helper sentence, and print a candidate’s goal once', async () => {
+  const f = await mount(view({ minutes: [minutesWithCandidate] }));
+  await act(async () => f.button('records')?.click());
+  const panel = must(records(), 'the records');
+  expect(panel.textContent).not.toContain('candidateHint');
+  expect(panel.textContent?.split('Ship the change')).toHaveLength(2);
 });
 
 it('closing the side records panel returns focus to the toolbar’s records toggle', async () => {

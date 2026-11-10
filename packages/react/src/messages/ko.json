@@ -4954,8 +4954,6 @@
     "clearDraft": "초안 지우기",
     "summaryFailed": "비서가 회의록을 정리하지 못했습니다. 다시 요청한 뒤 결정을 검토·채택하세요.",
     "retrySummary": "회의록 다시 요청",
-    "handoffNeedsMinutes": "아직 넘길 결정이 없습니다. 비서에게 계획을 요청하고 제안을 검토·채택하세요.",
-    "handoffNeedsAdoption": "회의록에서 제안을 검토·채택하면 작업으로 넘길 수 있습니다.",
     "heading": "회의",
     "new": "새 회의",
     "newTitle": "새 회의 만들기",
@@ -5032,6 +5030,8 @@
     "secretaryUnavailable": "비서에게 연결된 모델을 선택해 주세요.",
     "evidence": "자료 첨부",
     "evidenceSelected": "선택한 자료 {count, number}개",
+    "attachmentActions": "첨부",
+    "removeEvidence": "{name} 제거",
     "evidenceResults": "결과·산출물 첨부",
     "evidenceRuns": "실행 선택",
     "evidenceArtifacts": "산출물 버전 선택",
@@ -5047,6 +5047,7 @@
     "expandRecords": "기록 넓게 보기",
     "compactRecords": "기록 좁게 보기",
     "closeRecords": "기록 닫기",
+    "aboutDecisions": "결정 후보와 결정 안내",
     "mentionParticipant": "메시지에 @{name} 넣기"
   },
   "MeetingsDecisions": {

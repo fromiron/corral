@@ -4954,8 +4954,6 @@
     "clearDraft": "Clear draft",
     "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
     "retrySummary": "Request minutes again",
-    "handoffNeedsMinutes": "No decision is ready to hand off. Ask the secretary for a plan, then review and adopt a proposal.",
-    "handoffNeedsAdoption": "Review and adopt a proposal in the minutes before handing it off to work.",
     "heading": "Meeting",
     "new": "New meeting",
     "newTitle": "Create a meeting",
@@ -5032,6 +5030,8 @@
     "secretaryUnavailable": "Choose a connected model for the secretary.",
     "evidence": "Attach evidence",
     "evidenceSelected": "Selected evidence ({count, number})",
+    "attachmentActions": "Attachments",
+    "removeEvidence": "Remove {name}",
     "evidenceResults": "Attach result or artifact",
     "evidenceRuns": "Choose a run",
     "evidenceArtifacts": "Choose an artifact version",
@@ -5047,6 +5047,7 @@
     "expandRecords": "Expand records",
     "compactRecords": "Compact records",
     "closeRecords": "Close records",
+    "aboutDecisions": "About candidates and decisions",
     "mentionParticipant": "Add @{name} to the message"
   },
   "MeetingsDecisions": {

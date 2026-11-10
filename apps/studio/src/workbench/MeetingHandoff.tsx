@@ -8,7 +8,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@corral/core';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -417,12 +417,14 @@ export function MeetingHandoffLinks({
   };
   if (!api || (!receipts.length && !error && !readError)) return null;
   return (
-    <section className="flex min-w-0 flex-col gap-3 text-sm" aria-label={t('history')}>
-      <h2 className="font-medium">{t('history')}</h2>
+    <section className="flex min-w-0 flex-col gap-3 text-body" aria-label={t('history')}>
+      <h2 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('history')}
+      </h2>
       {receipts.map((receipt) => (
         <article
           key={receipt.commandId}
-          className="flex min-w-0 flex-col gap-2 rounded fill-group p-3"
+          className="flex min-w-0 flex-col gap-2 rounded-lg fill-group p-3"
         >
           <p className="wrap-anywhere">
             {t('decisionVersion')}: {receipt.decisionVersionId} · {t(`state.${receipt.state}`)}

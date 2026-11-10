@@ -5,9 +5,12 @@ import {
   DialogPopup,
   DialogTitle,
   fontWeights,
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Maximize2, Minimize2, X } from '@corral/react/icons';
+import { Info, Maximize2, Minimize2, X } from '@corral/react/icons';
 import { type ReactNode, type RefObject, useId, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -27,7 +30,7 @@ export function useNarrowScreen() {
   return useSyncExternalStore(subscribe, narrowNow, () => false);
 }
 
-const headingClass = 'min-w-0 flex-1 truncate rounded-sm text-subtitle text-foreground';
+const headingClass = 'min-w-0 truncate rounded-sm text-subtitle text-foreground';
 
 /**
  * The minutes, decisions and handoff beside the conversation. Closing only hides the panel, so a
@@ -62,15 +65,18 @@ export function MeetingRecordsPanel({
       )}
     >
       <div className="flex shrink-0 items-center gap-1 py-2 pr-2 pl-4">
-        <h2
-          id={heading}
-          ref={headingRef}
-          tabIndex={-1}
-          className={headingClass}
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {t('records')}
-        </h2>
+        <div className="flex min-w-0 flex-1 items-center gap-0.5">
+          <h2
+            id={heading}
+            ref={headingRef}
+            tabIndex={-1}
+            className={headingClass}
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {t('records')}
+          </h2>
+          <RecordsInfo />
+        </div>
         <Tooltip content={t(widened ? 'compactRecords' : 'expandRecords')}>
           <Button
             variant="ghost"
@@ -116,14 +122,17 @@ export function MeetingRecordsDrawer({
         className="top-0 right-0 left-auto flex h-dvh max-h-dvh w-[min(30rem,calc(100vw-3rem))] max-w-none flex-col overflow-hidden rounded-none p-0"
       >
         <div className="flex shrink-0 items-center gap-1 py-2 pr-2 pl-4">
-          <DialogTitle
-            ref={headingRef}
-            tabIndex={-1}
-            className={headingClass}
-            style={{ fontVariationSettings: fontWeights.semibold }}
-          >
-            {t('records')}
-          </DialogTitle>
+          <div className="flex min-w-0 flex-1 items-center gap-0.5">
+            <DialogTitle
+              ref={headingRef}
+              tabIndex={-1}
+              className={headingClass}
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
+              {t('records')}
+            </DialogTitle>
+            <RecordsInfo />
+          </div>
           <CloseRecords onClose={onClose} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
@@ -131,6 +140,31 @@ export function MeetingRecordsDrawer({
         </div>
       </DialogPopup>
     </Dialog>
+  );
+}
+
+/** What the records hold, said once beside their heading instead of above them. */
+function RecordsInfo() {
+  const t = useTranslations('Meetings');
+  const td = useTranslations('MeetingsDecisions');
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-compact"
+            className="shrink-0 text-muted-foreground"
+            aria-label={t('aboutDecisions')}
+          />
+        }
+      >
+        <Info />
+      </PopoverTrigger>
+      <PopoverPopup align="start" width="sm">
+        <p className="text-caption text-foreground">{td('candidateHint')}</p>
+      </PopoverPopup>
+    </Popover>
   );
 }
 

@@ -14,6 +14,7 @@ vi.mock('use-intl', () => ({
 }));
 vi.mock('./MeetingHandoff.tsx', () => ({ MeetingHandoff: () => <p>handoff-action</p> }));
 vi.mock('@corral/react/design-kit', () => ({
+  fontWeights: { normal: '', semibold: '', bold: '' },
   Input: (props: any) => <input {...props} />,
   Textarea: (props: any) => <textarea {...props} />,
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
