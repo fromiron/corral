@@ -295,4 +295,8 @@ it('a run no request names reads like any turn: its status is said once, by the 
   expect(badges[0]?.closest('.sr-only')).not.toBeNull();
   // The turn still opens its run record from its process line.
   expect(container.querySelector('[data-testid="turn-run"]')?.textContent).toContain('Run #2');
+  // The run has a name here, so assistive tech is never read its internal id.
+  const card = container.querySelector('section');
+  expect(card?.getAttribute('aria-label')).toBe('Run #2');
+  expect(card?.textContent).not.toContain((runs[1] as RunSummary).runId);
 });
