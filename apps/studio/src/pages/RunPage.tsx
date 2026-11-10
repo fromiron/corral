@@ -679,6 +679,7 @@ function RunWorkspace({
                     <Timeline
                       session={session}
                       fill
+                      headed={false}
                       onOpenExecution={(id) => chooseExecution(id)}
                     />
                   ),
