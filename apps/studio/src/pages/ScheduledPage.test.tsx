@@ -40,7 +40,7 @@ vi.mock('@tanstack/react-router', () => ({
     children,
     to: _to,
     params: _params,
-    search: _search,
+    search,
     ...props
   }: {
     children?: ReactNode;
@@ -48,7 +48,7 @@ vi.mock('@tanstack/react-router', () => ({
     params?: unknown;
     search?: unknown;
   }) => (
-    <a href="#run" {...props}>
+    <a href="#run" data-search={JSON.stringify(search ?? {})} {...props}>
       {children}
     </a>
   ),
@@ -276,7 +276,8 @@ it('keeps a run status unknown when the run cannot be read, never completed', as
   expect(records?.textContent).toContain('Started');
   expect(records?.textContent).toContain('Status unknown');
   expect(records?.textContent).not.toMatch(/Succeeded|Completed/);
-  expect(records?.querySelector('a')?.textContent).toBe('Open run / respond');
+  // Not known to wait for the person: the link only opens the run.
+  expect(records?.querySelector('a')?.textContent).toBe('Open run');
   // A listing without that run is no better: still unknown.
   fixture.services.transport.listRuns.mockResolvedValue([
     { ...run('succeeded'), runId: 'run_other' },
@@ -285,6 +286,34 @@ it('keeps a run status unknown when the run cannot be read, never completed', as
   await settle();
   expect(history()?.textContent).toContain('Status unknown');
   expect(history()?.textContent).not.toContain('Succeeded');
+});
+
+it('a run waiting for the person is a link to respond; any other run is a link to open it', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.history.mockResolvedValue({ occurrences: [started()] });
+  fixture.services.transport.listRuns.mockResolvedValue([run('awaiting_user')]);
+  await page();
+  await click(button(/Daily project review/));
+  const link = () => history()?.querySelector('a');
+  expect(link()?.textContent).toBe('Respond');
+  expect(JSON.parse(link()?.getAttribute('data-search') ?? '{}')).toEqual({
+    panel: 'run',
+    view: 'run',
+    run: 'run_1',
+    respond: true,
+  });
+  // Once it moves on, the same row opens the run.
+  fixture.services.transport.listRuns.mockResolvedValue([run('running')]);
+  await act(async () => window.dispatchEvent(new Event('focus')));
+  await settle();
+  expect(link()?.textContent).toBe('Open run');
+  expect(JSON.parse(link()?.getAttribute('data-search') ?? '{}')).toEqual({
+    panel: 'run',
+    view: 'run',
+    run: 'run_1',
+  });
+  // The column is named for what its links do.
+  expect(history()?.querySelector('thead')?.textContent).toContain('Open run');
 });
 
 it('disabling stops future runs without cancelling the one in progress', async () => {

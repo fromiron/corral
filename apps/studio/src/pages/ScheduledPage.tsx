@@ -433,43 +433,54 @@ export function ScheduledPage() {
                       <TableHead>{t('dispatchResult')}</TableHead>
                       <TableHead>{t('runStatus')}</TableHead>
                       <TableHead>
-                        <span className="sr-only">{t('openRunRespond')}</span>
+                        <span className="sr-only">{t('openRun')}</span>
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {histories[shown.id]?.map((entry, index) => (
-                      <TableRow key={entry.id} index={index}>
-                        <TableCell className="tabular-nums">
-                          {format.dateTime(new Date(entry.dueAt), DATE_TIME)}
-                          {entry.manual ? ` · ${t('manual')}` : ''}
-                        </TableCell>
-                        <TableCell>
-                          {t(`occurrence.${entry.status}`)}
-                          {entry.detail ? (
-                            <p className="m-0 text-caption text-muted-foreground">{entry.detail}</p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>{entry.runId ? runStatus(entry) : null}</TableCell>
-                        <TableCell className="text-right">
-                          {entry.runId ? (
-                            <Button
-                              variant="ghost"
-                              size="compact"
-                              render={
-                                <Link
-                                  to="/sessions/$sessionId"
-                                  params={{ sessionId: shown.sessionId }}
-                                  search={{ panel: 'run', view: 'run', run: entry.runId }}
-                                />
-                              }
-                            >
-                              {t('openRunRespond')}
-                            </Button>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {histories[shown.id]?.map((entry, index) => {
+                      // Known to wait for the person (from the runs already read): respond.
+                      const waiting = scheduleHistoryStatus(entry, runs ?? []) === 'awaiting_user';
+                      return (
+                        <TableRow key={entry.id} index={index}>
+                          <TableCell className="tabular-nums">
+                            {format.dateTime(new Date(entry.dueAt), DATE_TIME)}
+                            {entry.manual ? ` · ${t('manual')}` : ''}
+                          </TableCell>
+                          <TableCell>
+                            {t(`occurrence.${entry.status}`)}
+                            {entry.detail ? (
+                              <p className="m-0 text-caption text-muted-foreground">
+                                {entry.detail}
+                              </p>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>{entry.runId ? runStatus(entry) : null}</TableCell>
+                          <TableCell className="text-right">
+                            {entry.runId ? (
+                              <Button
+                                variant="ghost"
+                                size="compact"
+                                render={
+                                  <Link
+                                    to="/sessions/$sessionId"
+                                    params={{ sessionId: shown.sessionId }}
+                                    search={{
+                                      panel: 'run',
+                                      view: 'run',
+                                      run: entry.runId,
+                                      ...(waiting ? { respond: true as const } : {}),
+                                    }}
+                                  />
+                                }
+                              >
+                                {t(waiting ? 'respond' : 'openRun')}
+                              </Button>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

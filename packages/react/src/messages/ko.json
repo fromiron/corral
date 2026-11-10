@@ -495,7 +495,7 @@
     "runNow": "지금 실행",
     "delete": "예약 삭제",
     "history": "실행 기록",
-    "openRunRespond": "실행 열기 / 응답",
+    "respond": "응답하기",
     "weekday": {
       "sun": "일",
       "mon": "월",

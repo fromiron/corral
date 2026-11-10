@@ -495,7 +495,7 @@
     "runNow": "Run now",
     "delete": "Delete schedule",
     "history": "Run history",
-    "openRunRespond": "Open run / respond",
+    "respond": "Respond",
     "weekday": {
       "sun": "Sun",
       "mon": "Mon",
