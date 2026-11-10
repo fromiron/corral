@@ -309,6 +309,11 @@ it.each(['en', 'ko'] as const)(
     expect(ask).not.toContain(messages.Status.awaiting_user);
     expect(ask).not.toContain(locale === 'en' ? 'Waiting for your answer' : '답을 기다리는 중');
     expect(ask).not.toContain(messages.Transcript.tool.allowed);
+    // Nor does it open the question: its text shows only in that notice.
+    const askRow = [...container.querySelectorAll('.turn-process-row')].find((row) =>
+      row.querySelector('span')?.textContent?.includes(messages.Turn.tool.ask_user),
+    );
+    expect(askRow?.querySelector('button[aria-expanded]')).toBeNull();
     expect(plan).toContain(locale === 'en' ? 'Done' : '완료');
     // Like any other state, the header is the time the turn worked, to its last record.
     const header = container.querySelector('[data-testid="turn-process-header"]')?.textContent;

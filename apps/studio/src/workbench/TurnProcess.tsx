@@ -280,6 +280,12 @@ export function TurnProcess({
           }
           if (row.kind === 'tool') {
             const label = t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name;
+            // The open ask's question shows only in the notice above the composer, so its row
+            // offers no details until it is answered.
+            const pendingAsk =
+              asking &&
+              ASKS.has(row.name) &&
+              (row.status === 'requested' || row.status === 'allowed');
             return (
               <ThinkingStep
                 key={`tool:${row.id}`}
@@ -293,21 +299,19 @@ export function TurnProcess({
                 isLast={last}
                 className="turn-process-row"
               >
-                <StepDetails
-                  step={label}
-                  description={[
-                    row.artifact ? t('artifactTarget', row.artifact) : row.target,
-                    asking &&
-                    ASKS.has(row.name) &&
-                    (row.status === 'requested' || row.status === 'allowed')
-                      ? null
-                      : tt(`tool.${row.status}`),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                >
-                  <ExecutionToolGroup tools={[row]} activityState={activityState(row.active)} />
-                </StepDetails>
+                {pendingAsk ? null : (
+                  <StepDetails
+                    step={label}
+                    description={[
+                      row.artifact ? t('artifactTarget', row.artifact) : row.target,
+                      tt(`tool.${row.status}`),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  >
+                    <ExecutionToolGroup tools={[row]} activityState={activityState(row.active)} />
+                  </StepDetails>
+                )}
                 <Sources sources={row.sources} />
               </ThinkingStep>
             );
