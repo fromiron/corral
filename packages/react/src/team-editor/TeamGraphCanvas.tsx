@@ -571,7 +571,7 @@ export function TeamGraphCanvas({
                 key={item.id}
                 data-box={item.id}
                 className={cn(
-                  'absolute rounded-[14px] border',
+                  'absolute rounded-xl border',
                   isSelected ? 'border-emphasis' : 'border-border',
                   target && (target.check.ok ? 'border-emphasis' : 'border-destructive'),
                 )}
@@ -773,7 +773,7 @@ export function TeamGraphCanvas({
                 type="button"
                 data-node={item.id}
                 aria-pressed={isSelected}
-                className={cn(focusRing, 'absolute rounded-[12px] text-left')}
+                className={cn(focusRing, 'absolute rounded-xl text-left')}
                 style={{
                   transform: `translate(${item.rect.x}px, ${item.rect.y}px)`,
                   width: item.rect.w,

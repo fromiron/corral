@@ -65,6 +65,20 @@ describe('design guard (Workbench polish P0)', () => {
     expect(found).toEqual([]);
   });
 
+  // DESIGN.md: controls 8px, panels and popup containers 12px, compact badges 4px, through the
+  // kit's radius classes. Only the kit itself sets a radius in pixels (its shape map's
+  // concentric focus rings and chips).
+  it('rounds corners with the kit radii, never an arbitrary pixel radius outside the kit', () => {
+    const found = [...text]
+      .filter(([path]) => !where(path).startsWith('packages/react/src/design-kit/'))
+      .flatMap(([path, body]) =>
+        [...body.matchAll(/\brounded(?:-[a-z]{1,2})?-\[[0-9.]+px\]/g)].map(
+          (match) => `${where(path)}: ${match[0]}`,
+        ),
+      );
+    expect(found).toEqual([]);
+  });
+
   it('does not extend the touch-field exception to local or other pixel sizes', () => {
     const shared = join(root, 'packages/react/src/design-kit/lib/type-scale.ts');
     const touchRole = "const fieldTouchClass = 'pointer-coarse:text-[16px]';";
