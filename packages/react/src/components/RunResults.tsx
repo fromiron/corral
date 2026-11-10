@@ -116,6 +116,13 @@ export function RunResults({
               ))}
             </ResultSection>
           ) : null}
+          {/* The open step result is the chosen row while it is open, under its own group, so
+              the reader beside the list always has its row on screen. */}
+          {kept && chosen === kept ? (
+            <ResultSection heading={t(results.kind === 'partial' ? 'partial' : 'intermediate')}>
+              <ResultButton session={session} item={kept} chosen onSelect={onSelect} />
+            </ResultSection>
+          ) : null}
         </nav>
         {chosen ? (
           <ResultReader

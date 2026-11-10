@@ -262,10 +262,22 @@ describe('RunResults view', () => {
       expect(screen.getByTestId('result-body')).toHaveTextContent('kept step body'),
     );
     expect(screen.getByRole('heading', { name: 'notes v1' })).toBeInTheDocument();
-    // The list beside it stays the run's final results.
+    // The list beside it keeps the run's final results and shows the opened step result as the
+    // selected row, under its own group, so the reader always has a row chosen on screen.
+    const list = screen.getByRole('navigation', { name: 'Results' });
+    const finals = within(list).getByRole('region', { name: 'Final results' });
     expect(
-      within(screen.getByRole('navigation', { name: 'Results' })).getAllByRole('button'),
-    ).toHaveLength(1);
+      within(finals)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual([expect.stringContaining('report v1')]);
+    expect(within(finals).getByRole('button')).not.toHaveAttribute('aria-current');
+    const between = within(list).getByRole('region', { name: 'Work in between' });
+    const step = within(between).getByRole('button');
+    expect(step).toHaveTextContent('notes v1');
+    expect(step).toHaveAttribute('aria-current', 'true');
+    // The released version is never offered as a row.
+    expect(within(list).queryByText(/scratch/)).toBeNull();
 
     view.rerender(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
