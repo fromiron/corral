@@ -40,6 +40,10 @@ vi.mock('./services.tsx', () => ({
 
 // jsdom has no layout or media queries; the kit's select measures and animates.
 Element.prototype.getAnimations ??= () => [];
+// The kit's switch captures the pointer while it is pressed.
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.hasPointerCapture ??= () => false;
 globalThis.ResizeObserver ??= class {
   observe() {}
   unobserve() {}
@@ -329,17 +333,19 @@ describe('the plan editor’s patterns', () => {
     expect(roleNames()).toEqual(expectedRoles(en, 'bug_fix'));
   }, 10_000);
 
-  it('a technical decision always asks for approval; patterns without a review loop have no rounds', async () => {
+  it('the approval is off for every pattern until the person turns it on; patterns without a review loop have no rounds', async () => {
     await mount();
     await type(field<HTMLTextAreaElement>(en.TeamDraft.goalLabel), 'Write a launch note');
     await press(button(en.TeamDraft.suggest));
     expect(document.querySelector(`[aria-label="${en.TeamDraft.rounds}"]`)).not.toBeNull();
     await choosePattern(en, 'tech_decision');
-    const approval = document.querySelector('[role="switch"]');
-    expect(approval?.getAttribute('aria-checked')).toBe('true');
+    const approval = () => document.querySelector<HTMLElement>('[role="switch"]');
+    expect(approval()?.getAttribute('aria-checked')).toBe('false');
     expect(
-      approval?.hasAttribute('disabled') || approval?.getAttribute('aria-disabled'),
-    ).toBeTruthy();
+      approval()?.hasAttribute('disabled') || approval()?.getAttribute('aria-disabled') === 'true',
+    ).toBe(false);
+    await press(approval() as HTMLElement);
+    expect(approval()?.getAttribute('aria-checked')).toBe('true');
     expect(document.querySelector(`[aria-label="${en.TeamDraft.rounds}"]`)).toBeNull();
     await choosePattern(en, 'parallel_review');
     expect(document.querySelector(`[aria-label="${en.TeamDraft.rounds}"]`)).toBeNull();

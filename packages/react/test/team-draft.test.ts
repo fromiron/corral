@@ -153,7 +153,8 @@ describe('planFromGoal, the local suggestion', () => {
       expect(suggested?.roles[0]?.name).not.toBe(messages.TeamDraft.wording.roles.researcher.name);
       expect(suggested?.roles[0]?.duty).toMatch(/security|보안/);
       expect(suggested?.criteria.join(' ')).toMatch(/evidence|근거/);
-      expect(suggested?.finalApproval).toBe(true);
+      // The suggestion never turns the approval on; the person does, in the plan editor.
+      expect(suggested?.finalApproval).toBe(false);
       expect(suggested && TeamPlan.safeParse(suggested).success).toBe(true);
       if (!suggested) throw new Error('Expected a security review plan');
       const definition = draftFromPlan(suggested, 'security_review').definition;

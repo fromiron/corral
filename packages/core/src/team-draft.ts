@@ -1,5 +1,4 @@
 import {
-  approvalIsFixed,
   type CorralDefinition,
   DEFAULT_LIMITS,
   hasReviewLoop,
@@ -170,7 +169,7 @@ function patternParts(
           : [wording.criteria.direct, wording.criteria.sources],
       roles: slots.map((slot) => ({ slot, ...wording.roles[slot] })),
       ...rounds,
-      finalApproval: pattern !== 'single',
+      finalApproval: false,
     };
   }
   const words = wording.templates?.[pattern] as PatternWording | undefined;
@@ -184,8 +183,7 @@ function patternParts(
       return { slot, name: named.name, duty: named.duty };
     }),
     ...rounds,
-    // A template's own default: only the technical decision waits for approval.
-    finalApproval: approvalIsFixed(pattern),
+    finalApproval: false,
   };
 }
 
@@ -273,8 +271,7 @@ function templateDraft(
     nodes: definition.nodes.map((node) => {
       if (node.type === 'loop' && plan.reviewRounds !== undefined)
         return { ...node, maxIterations: plan.reviewRounds };
-      if (node.type === 'output' && !approvalIsFixed(pattern))
-        return { ...node, requireApproval: plan.finalApproval };
+      if (node.type === 'output') return { ...node, requireApproval: plan.finalApproval };
       return node;
     }),
   };

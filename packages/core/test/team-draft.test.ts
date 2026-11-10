@@ -91,7 +91,7 @@ function templateWording(pattern: TemplatePattern): TeamTemplateWording {
 }
 
 /** Everything a plan may word: names, brief, criteria, prompts, labels, rounds, approval. */
-function structure(definition: CorralDefinition, approvalIsWording: boolean) {
+function structure(definition: CorralDefinition) {
   return {
     ...definition,
     name: '',
@@ -100,8 +100,7 @@ function structure(definition: CorralDefinition, approvalIsWording: boolean) {
     nodes: definition.nodes.map((node) => {
       const unlabeled = { ...node, label: '' };
       if (unlabeled.type === 'loop') return { ...unlabeled, maxIterations: 0 };
-      if (unlabeled.type === 'output' && approvalIsWording)
-        return { ...unlabeled, requireApproval: false };
+      if (unlabeled.type === 'output') return { ...unlabeled, requireApproval: false };
       return unlabeled;
     }),
   };
@@ -140,8 +139,7 @@ describe('drafting the five template patterns', () => {
     const id = PATTERN_TEMPLATES[pattern];
     const drafted = draftFromPlan(plan(pattern), 'drafted_1', labels).definition;
     const template = teamTemplate(id, 'drafted_1', templateWording(pattern));
-    const approvalIsWording = pattern !== 'tech_decision';
-    expect(structure(drafted, approvalIsWording)).toEqual(structure(template, approvalIsWording));
+    expect(structure(drafted)).toEqual(structure(template));
     // With the template's own words, rounds and approval, the draft is the template exactly.
     const same = plan(pattern, {
       name: template.name,
@@ -153,7 +151,7 @@ describe('drafting the five template patterns', () => {
         duty: `Template duty for ${role.id}.`,
       })),
       ...(template.nodes.some((node) => node.type === 'loop') ? { reviewRounds: 2 } : {}),
-      finalApproval: pattern === 'tech_decision',
+      finalApproval: false,
     });
     expect(draftFromPlan(same, 'drafted_1', labels).definition).toEqual(template);
   });
@@ -183,15 +181,17 @@ describe('drafting the five template patterns', () => {
     expect(quiet.nodes.find((node) => node.type === 'output')).toMatchObject({
       requireApproval: false,
     });
-    // The technical decision always ends with the person's approval of the comparison.
-    const decision = draftFromPlan(
-      plan('tech_decision', { finalApproval: false }),
-      'drafted_4',
-      labels,
-    ).definition;
-    expect(decision.nodes.find((node) => node.type === 'output')).toMatchObject({
-      requireApproval: true,
-    });
+    // No pattern asks for an approval the plan did not: the technical decision follows it too.
+    for (const finalApproval of [false, true]) {
+      const decision = draftFromPlan(
+        plan('tech_decision', { finalApproval }),
+        'drafted_4',
+        labels,
+      ).definition;
+      expect(decision.nodes.find((node) => node.type === 'output')).toMatchObject({
+        requireApproval: finalApproval,
+      });
+    }
   });
 
   it.each([
@@ -384,8 +384,14 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     expect(changing(draftFromPlan(suggested, 'bug_1', labels).definition)).toEqual(['fix']);
   });
 
-  it('a decision goal waits for approval; the read-only and implement goals do not', () => {
-    expect(planFromGoal('Decide between Redux and Zustand', wording)?.finalApproval).toBe(true);
+  it('no suggested plan waits for approval, whatever its pattern', () => {
+    expect(planFromGoal('Decide between Redux and Zustand', wording)).toMatchObject({
+      pattern: 'tech_decision',
+      finalApproval: false,
+    });
+    expect(planFromGoal('Write a launch note for the new export', wording)?.finalApproval).toBe(
+      false,
+    );
     expect(
       planFromGoal('Review the API code for correctness; report findings only', wording),
     ).toMatchObject({

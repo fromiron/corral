@@ -1,5 +1,4 @@
 import {
-  APPROVAL_PATTERNS,
   REVIEW_LOOP_PATTERNS,
   TEAM_LIMITS,
   TEAM_PATTERNS,
@@ -34,7 +33,7 @@ const PATTERN_USE: Record<TeamPattern, string> = {
   parallel_review:
     'a scope step lists what to look at, correctness and security reviews run at the same time, then a synthesis merges their findings into one report. Reviewing existing code or a change without modifying it.',
   tech_decision:
-    'a framer states the question and two options, each option is researched at the same time, then a comparison recommends one for the person to approve. Choosing between technical options.',
+    'a framer states the question and two options, each option is researched at the same time, then a comparison recommends one. Choosing between technical options.',
 };
 
 export const DRAFT_SYSTEM_PROMPT = `You design a small team of AI agents for a goal. Answer with one JSON object and nothing else.
@@ -46,12 +45,12 @@ Fields (use exactly these, no others):
 - criteria: 1 to 6 short checks the result must pass (each at most ${TEAM_LIMITS.criterion} characters)
 - roles: one entry for each role of the pattern, no more and no fewer: {"slot": role, "name": a short job title (at most ${TEAM_LIMITS.roleName} characters), "duty": what this role does, in one or two sentences (at most ${TEAM_LIMITS.duty} characters)}
 - reviewRounds: 1 to 3, only for ${quoted(REVIEW_LOOP_PATTERNS)}; leave it out for the other patterns
-- finalApproval: true when a person should approve the final result; always true for ${quoted(APPROVAL_PATTERNS)}
+- finalApproval: false unless the goal itself asks that a person approve the result before it is final
 
 Patterns:
 ${TEAM_PATTERNS.map((pattern) => `- "${pattern}": ${PATTERN_USE[pattern]} Roles: ${TEAM_SLOTS[pattern].join(', ')}`).join('\n')}
 
-Pick the smallest pattern that fits. Write in the language of the goal.`;
+Pick the smallest pattern that fits. A small edit that needs no review round (a line or two, wording, comments, a rename) is "single" even when it changes code or documents. Write in the language of the goal.`;
 
 /** The plan in a model's answer, or null when there is none that fits. */
 export function planFromAnswer(text: string): TeamPlan | null {

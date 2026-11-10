@@ -1,6 +1,5 @@
 import { ApiError } from '@corral/client';
 import {
-  approvalIsFixed,
   hasReviewLoop,
   TEAM_PATTERNS,
   TEAM_SLOTS,
@@ -261,7 +260,6 @@ function PlanEditor({
         role.slot === ordered[index]?.slot ? { ...role, ...patch } : role,
       ),
     });
-  const fixedApproval = approvalIsFixed(plan.pattern);
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1 text-body">
@@ -358,11 +356,9 @@ function PlanEditor({
             />
           </div>
         ) : null}
-        {/* The technical decision always ends with the person's approval. */}
         <Switch
           label={t('approval')}
-          checked={fixedApproval || plan.finalApproval}
-          disabled={fixedApproval}
+          checked={plan.finalApproval}
           onToggle={() => onChange({ ...plan, finalApproval: !plan.finalApproval })}
         />
       </div>

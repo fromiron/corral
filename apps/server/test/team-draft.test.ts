@@ -19,7 +19,7 @@ const answer = (pattern: TeamPattern, extra: Record<string, unknown> = {}) => ({
   criteria: ['Say how it was checked.'],
   roles: TEAM_SLOTS[pattern].map((slot) => ({ slot, name: `${slot}`, duty: `Do ${slot}.` })),
   ...(LOOPS.has(pattern) ? { reviewRounds: 2 } : {}),
-  finalApproval: pattern === 'tech_decision',
+  finalApproval: false,
   ...extra,
 });
 
@@ -32,9 +32,17 @@ describe('the draft prompt', () => {
       expect(line, pattern).toBeDefined();
       expect(line).toContain(`Roles: ${TEAM_SLOTS[pattern].join(', ')}`);
     }
-    expect(DRAFT_SYSTEM_PROMPT).toContain(
-      'Pick the smallest pattern that fits. Write in the language of the goal.',
+    expect(DRAFT_SYSTEM_PROMPT).toContain('Pick the smallest pattern that fits.');
+    expect(DRAFT_SYSTEM_PROMPT).toContain('Write in the language of the goal.');
+  });
+
+  it('asks for an approval only when the goal does, and for no pattern by rule', () => {
+    const line = DRAFT_SYSTEM_PROMPT.split('\n').find((text) =>
+      text.startsWith('- finalApproval:'),
     );
+    expect(line).toContain('false unless the goal itself asks');
+    expect(DRAFT_SYSTEM_PROMPT).not.toContain('always true');
+    expect(DRAFT_SYSTEM_PROMPT).not.toContain('to approve.');
   });
 });
 

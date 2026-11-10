@@ -44,13 +44,8 @@ export const REVIEW_LOOP_PATTERNS = [
   'bug_fix',
 ] as const satisfies readonly TeamPattern[];
 
-/** The patterns whose result always waits for the person's approval, whatever the plan says. */
-export const APPROVAL_PATTERNS = ['tech_decision'] as const satisfies readonly TeamPattern[];
-
 export const hasReviewLoop = (pattern: TeamPattern) =>
   (REVIEW_LOOP_PATTERNS as readonly TeamPattern[]).includes(pattern);
-export const approvalIsFixed = (pattern: TeamPattern) =>
-  (APPROVAL_PATTERNS as readonly TeamPattern[]).includes(pattern);
 
 const Text = (max: number) => z.string().trim().min(1).max(max);
 
@@ -74,7 +69,7 @@ export const TeamPlan = z
       .max(MAX_ROLES),
     /** Review rounds for the patterns with a review loop. */
     reviewRounds: z.int().min(1).max(3).optional(),
-    /** The final output waits for the person's approval. */
+    /** The final output waits for the person's approval. No pattern turns this on by itself. */
     finalApproval: z.boolean(),
   })
   .superRefine((plan, ctx) => {

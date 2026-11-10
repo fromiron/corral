@@ -37,7 +37,7 @@ const planFor = (pattern: TeamPattern, slots: readonly string[] = TEAM_SLOTS[pat
   criteria: ['Do what the brief asks.'],
   roles: slots.map((slot) => ({ slot, name: `${slot} role`, duty: `Do the ${slot} part.` })),
   ...(LOOPS.has(pattern) ? { reviewRounds: 2 } : {}),
-  finalApproval: pattern === 'tech_decision',
+  finalApproval: false,
 });
 
 describe('TeamPlan patterns', () => {
