@@ -305,6 +305,20 @@ it('shows one empty state when the project has no sessions; the header alone sta
   expect(router.state.location.pathname).toBe('/sessions/session_9');
 });
 
+it('lists a session without a run by its state once, not also as "no runs"', async () => {
+  fixture.services = {
+    ...fixture.services,
+    workspaces: { ...(fixture.services.workspaces as object), inbox: vi.fn(async () => []) },
+  };
+  const { container } = await render();
+  const rows = [...container.querySelectorAll<HTMLElement>('[role="tabpanel"] li')];
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row.textContent).toContain(messages.Sessions.listState.empty);
+    expect(row.textContent).not.toMatch(/no runs/);
+  }
+});
+
 it('shows the source folder and each working copy, saying where nothing is known', async () => {
   const { container } = await render();
   const environment = tabs(container).find((tab) => tabName(tab) === 'Environment');

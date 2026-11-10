@@ -8,6 +8,7 @@ import {
 } from '@corral/core';
 import {
   Button,
+  cn,
   Dialog,
   DialogDescription,
   DialogFooter,
@@ -38,6 +39,7 @@ import {
   Tabs,
   TabsList,
   Textarea,
+  useSize,
 } from '@corral/react/design-kit';
 import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
@@ -887,6 +889,7 @@ function SessionList({
     profiles !== null &&
     !profiles.some((profile) => profile.available);
   const ago = useSessionAge();
+  const size = useSize();
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [stateFilter, setStateFilter] = useState('all');
@@ -981,26 +984,42 @@ function SessionList({
       ) : shown.length === 0 ? (
         <p className="px-2 py-2 text-body text-muted-foreground">{t('noMatches')}</p>
       ) : (
-        <ul aria-label={t('heading')} className="flex flex-col">
+        // One column for the rows and one for their action, shared by every row (subgrid), so the
+        // meta's right edge lines up whether or not a row can be archived.
+        <ul aria-label={t('heading')} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2">
           {shown.map((x) => {
             const latest = latestSessionRun(x, runs);
             const terminal = uncertainSessionTerminal(x.sessionId, attention);
             const Icon = x.meeting ? Users : MessageCircle;
+            const runCount = runs.filter((r) => r.sessionId === x.sessionId).length;
             return (
-              <li key={x.sessionId} className="flex items-center gap-2">
+              <li key={x.sessionId} className="col-span-2 grid grid-cols-subgrid items-center">
                 <Link
                   to="/sessions/$sessionId"
                   params={{ sessionId: x.sessionId }}
                   search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
                   data-session-kind={x.meeting ? 'meeting' : 'session'}
-                  className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-hover"
+                  className={cn(
+                    'flex min-w-0 items-center rounded-md transition-colors hover:bg-hover',
+                    // The row takes the density's control height, as sidebar and table rows do.
+                    size.variant === 'compact'
+                      ? 'min-h-7 gap-2 px-1.5 py-1'
+                      : 'min-h-9 gap-2.5 px-2 py-1.5',
+                  )}
                 >
-                  <Icon aria-hidden size={16} className="shrink-0 text-muted-foreground" />
+                  <Icon aria-hidden size={size.icon} className="shrink-0 text-muted-foreground" />
                   {x.meeting ? <span className="sr-only">{t('meeting')}</span> : null}
                   {/* Narrow: the state and time take a second line under the title. */}
                   <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                    <span className="min-w-0 truncate text-body text-foreground">{x.title}</span>
-                    <span className="min-w-0 text-caption text-muted-foreground sm:shrink-0 sm:text-right">
+                    <span className={cn('min-w-0 truncate text-foreground', size.type.body)}>
+                      {x.title}
+                    </span>
+                    <span
+                      className={cn(
+                        'min-w-0 text-muted-foreground sm:shrink-0 sm:text-right',
+                        size.type.caption,
+                      )}
+                    >
                       {[
                         x.pinned ? t('pinned') : null,
                         x.archivedAt ? t('archived') : null,
@@ -1010,9 +1029,8 @@ function SessionList({
                           : terminal
                             ? null
                             : t(`listState.${sessionListState(x, runs)}`),
-                        t('runCount', {
-                          count: runs.filter((r) => r.sessionId === x.sessionId).length,
-                        }),
+                        // Without a run the state above already says so.
+                        runCount ? t('runCount', { count: runCount }) : null,
                         tw('updated', { time: ago(x.updatedAt) }),
                       ]
                         .filter(Boolean)
