@@ -132,7 +132,7 @@ export function ComposerStatus({
         data-testid="composer-footer"
         className="flex min-w-0 items-center gap-2 px-4 pt-1.5 text-micro text-muted-foreground empty:hidden"
       >
-        <ComposerStats runs={runs} besideBadge={simulated} />
+        <ComposerStats runs={runs} />
         {simulated ? (
           <Badge
             data-testid="composer-environment"

@@ -61,3 +61,37 @@ it('names each figure so it needs no definition, and opens nothing', async () =>
   expect(container.querySelector('details, summary')).toBeNull();
   expect(container.textContent).not.toMatch(/Turns are runs|not model calls/);
 });
+
+it('breaks a narrow line between figures, never inside one, and keeps every figure', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ComposerStats runs={[run('one', 2_000, 454)]} />
+      </IntlProvider>,
+    ),
+  );
+  const stats = container.querySelector<HTMLElement>('[data-testid="composer-stats"]');
+  // The line is not cut with an ellipsis as a whole; each figure is one unbreakable unit.
+  expect(stats?.className).not.toMatch(/\btruncate\b/);
+  const figures = [...(stats?.querySelectorAll<HTMLElement>('[data-stat]') ?? [])];
+  expect(figures.map((figure) => figure.textContent?.replace(/^ · /, ''))).toEqual([
+    'Session total',
+    '1 run',
+    '0 tool and agent steps',
+    '2.5K reported in/out tokens',
+    'cache not reported',
+  ]);
+  for (const figure of figures) {
+    expect(figure.className).toMatch(/\bwhitespace-nowrap\b/);
+    // No figure is dropped at any width.
+    expect(figure.className).not.toMatch(/hidden/);
+  }
+});
