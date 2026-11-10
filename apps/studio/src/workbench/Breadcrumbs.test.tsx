@@ -131,6 +131,41 @@ it('lists the session runs newest first by number and status and selects one', a
   expect(onSelect).toHaveBeenCalledWith('second');
 });
 
+it('gives way to the number alone when narrow, never a cut word, and keeps its name', async () => {
+  const container = await render(
+    <RunMenu
+      runs={[run('first', 'current', 'failed', '2026-11-01T00:00:00Z')]}
+      runId="first"
+      onSelect={vi.fn()}
+    />,
+  );
+  const trigger = container.querySelector('button') as HTMLElement;
+  // The name a person hears is the whole label, whatever the bar has room to show.
+  const nameOf = (element: Element): string =>
+    [...element.childNodes]
+      .map((node) => {
+        if (!(node instanceof Element)) return node.textContent ?? '';
+        if (node.getAttribute('aria-hidden') === 'true') return '';
+        const label = node.getAttribute('aria-label');
+        return label ? ` ${label} ` : nameOf(node);
+      })
+      .join('');
+  expect(nameOf(trigger).replace(/\s+/g, ' ').trim()).toBe('Failed Run #1');
+  // The label is the word and the number as two unbreakable parts, the number last: a narrow
+  // label wraps the word away and shows "#1", rather than an ellipsis inside "Run".
+  const label = trigger.querySelector<HTMLElement>('[data-crumb-label]');
+  expect(label?.className).not.toMatch(/\btruncate\b/);
+  const word = label?.querySelector<HTMLElement>('[data-run-word]');
+  const numberPart = label?.querySelector<HTMLElement>('[data-run-number]');
+  expect(word?.textContent?.trim()).toBe('Run');
+  expect(numberPart?.textContent).toBe('#1');
+  expect(word?.className).toMatch(/\bwhitespace-nowrap\b/);
+  expect(numberPart?.className).toMatch(/\bwhitespace-nowrap\b/);
+  expect(label?.className).toMatch(/\bflex-wrap\b/);
+  expect(label?.className).toMatch(/\bcontent-end\b/);
+  expect(word?.compareDocumentPosition(numberPart as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
 it('names the chosen run by its number alone; its request summary is in the menu', async () => {
   const container = await render(
     <RunMenu
