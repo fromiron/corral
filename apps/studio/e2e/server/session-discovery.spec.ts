@@ -40,7 +40,7 @@ test('search scopes lead to explicit private search and group matching entries b
 }) => {
   await corral.open('/');
   const details = await openConversationDetails(page);
-  await details.getByRole('textbox', { name: 'Session name' }).fill('Search fixture');
+  await details.getByRole('textbox', { name: 'Name', exact: true }).fill('Search fixture');
   await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(requestBox(page)).toBeVisible();
   const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;

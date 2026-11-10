@@ -1833,6 +1833,7 @@
     "heading": "세션",
     "new": "새 세션",
     "titleLabel": "제목(선택)",
+    "nameLabel": "이름",
     "objectiveLabel": "목적",
     "teamLabel": "Corral",
     "noTeam": "팀 없음",
@@ -1923,7 +1924,7 @@
       "explain": "질문"
     },
     "editTeam": "팀 설계 열기",
-    "objectivePlaceholder": "이 세션에서 할 일을 적으세요",
+    "objectivePlaceholder": "에이전트에게 보내지 않는 메모",
     "appliesAt": "다음 모델 요청에",
     "autoTeam": "기본 대화",
     "runSettings": "실행 설정",
@@ -2003,7 +2004,7 @@
     "reviewAndEvidenceLoadFailed": "검토할 항목과 검사·판단·반영 기록을 불러오지 못했습니다.",
     "criteria": {
       "label": "완료 기준",
-      "placeholder": "빌드가 경고 없이 통과합니다",
+      "placeholder": "예: 모든 테스트가 통과합니다",
       "tooMany": "완료 기준은 {max}줄까지 적을 수 있습니다.",
       "tooLong": "{line}번째 줄이 {max}자를 넘습니다.",
       "changedElsewhere": "다른 곳에서 완료 기준이 바뀌었습니다. 저장하면 적은 내용으로 바꿉니다."
@@ -3384,8 +3385,6 @@
     "closeControls": "제어 닫기",
     "firstRequestHint": "팀은 자동으로 두거나 직접 고른 뒤, 세션에서 요청을 작성하세요.",
     "sessionDetails": "세션 정보 (선택)",
-    "sessionName": "세션 이름",
-    "optionalPurposeHint": "장기적인 목적은 선택 사항이며 자동으로 전송되지 않습니다.",
     "addToWorkStyle": "작업 방식에서 연결하기",
     "connectWorkStyle": "작업 방식에 연결",
     "finishConnecting": "사용 설정 닫기",

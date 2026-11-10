@@ -1833,6 +1833,7 @@
     "heading": "Sessions",
     "new": "New session",
     "titleLabel": "Title (optional)",
+    "nameLabel": "Name",
     "objectiveLabel": "Purpose",
     "teamLabel": "Corral",
     "noTeam": "No team yet",
@@ -1923,7 +1924,7 @@
       "explain": "Question"
     },
     "editTeam": "Open team design",
-    "objectivePlaceholder": "What should this session work on?",
+    "objectivePlaceholder": "A note that is not sent to agents",
     "appliesAt": "at its next model request",
     "autoTeam": "Default chat",
     "runSettings": "Run settings",
@@ -2003,7 +2004,7 @@
     "reviewAndEvidenceLoadFailed": "Couldn't load items to review, checks, decisions or applying.",
     "criteria": {
       "label": "Completion criteria",
-      "placeholder": "The build passes without warnings",
+      "placeholder": "Example: all tests pass",
       "tooMany": "Completion criteria have up to {max} lines.",
       "tooLong": "Line {line} is longer than {max} characters.",
       "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
@@ -3384,8 +3385,6 @@
     "closeControls": "Close controls",
     "firstRequestHint": "Leave the team on Auto or choose one, then write your request in the session.",
     "sessionDetails": "Session details (optional)",
-    "sessionName": "Session name",
-    "optionalPurposeHint": "A long-term purpose is optional. It is never sent automatically.",
     "addToWorkStyle": "Connect in Work styles",
     "connectWorkStyle": "Connect a work style",
     "finishConnecting": "Done configuring usage",

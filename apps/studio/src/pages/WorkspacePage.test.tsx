@@ -1113,6 +1113,79 @@ it('adds a line on Enter in the criteria field, also while composing, and never 
   expect(criteriaField()).toBe(field);
 });
 
+it('heads the form with its title only and lets the placeholders tell a note from criteria', async () => {
+  const { container } = await render();
+  await openDetails(container);
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
+  // The title says a conversation is being named: the field is just Name.
+  const name = dialog.querySelector('input#new-session-title-alpha');
+  expect(name).toBeTruthy();
+  // The kit keeps a hidden bold copy of the label to reserve its width; read what is shown.
+  const label = dialog.querySelector('label[for="new-session-title-alpha"]')?.cloneNode(true);
+  expect(label).toBeTruthy();
+  for (const copy of (label as Element).querySelectorAll('[aria-hidden="true"]')) copy.remove();
+  expect(label?.textContent).toBe(messages.Sessions.nameLabel);
+  expect(messages.Sessions.nameLabel).toBe('Name');
+  expect(ko.Sessions.nameLabel).toBe('이름');
+  expect(dialog.textContent).not.toMatch(/Session name|never sent automatically/);
+  // No sentence under the title, and nothing describes the dialog by an id that is gone.
+  const described = dialog.getAttribute('aria-describedby');
+  for (const id of described?.split(' ') ?? []) expect(document.getElementById(id)).toBeTruthy();
+  expect(dialog.querySelector('[data-slot="dialog-description"]')).toBeNull();
+  // The purpose is a note that stays here; the criteria are what the agents work toward.
+  expect(
+    dialog.querySelector<HTMLTextAreaElement>('textarea#new-session-objective-alpha')?.placeholder,
+  ).toBe(messages.Sessions.objectivePlaceholder);
+  expect(messages.Sessions.objectivePlaceholder).toBe('A note that is not sent to agents');
+  expect(ko.Sessions.objectivePlaceholder).toBe('에이전트에게 보내지 않는 메모');
+  expect(criteriaField()?.placeholder).toBe(messages.Sessions.criteria.placeholder);
+  for (const catalog of [messages, ko])
+    expect(catalog.Sessions.criteria.placeholder).toMatch(/^(Example|예): /);
+});
+
+it('shows the default team choice by its own name when no team is chosen', async () => {
+  fixture.data = {
+    ...fixture.data,
+    corrals: [
+      {
+        corralId: 'corral_review',
+        projectId: 'alpha',
+        name: 'Review team',
+        definitionRevision: 1,
+        nodeCount: 2,
+        updatedAt: '2026-11-10T00:00:00.000Z',
+      },
+    ],
+  };
+  const { container } = await render();
+  await openDetails(container);
+  const team = () =>
+    document.querySelector<HTMLElement>(
+      `[role="combobox"][aria-label="${messages.Sessions.teamLabel}"]`,
+    );
+  expect(team()?.textContent).toContain(messages.Sessions.autoTeam);
+  expect(team()?.textContent).not.toContain(messages.Select.placeholder);
+  // Choosing a team and then the default again stores no team, as before.
+  const choose = async (label: string) => {
+    await act(async () => team()?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((row) =>
+      row.textContent?.includes(label),
+    );
+    expect(option, label).toBeTruthy();
+    await act(async () => option?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
+  };
+  const stored = () =>
+    JSON.parse(localStorage.getItem('corral:new-session:v1:alpha') ?? '{}').corralId;
+  await choose('Review team');
+  expect(stored()).toBe('corral_review');
+  expect(team()?.textContent).toContain('Review team');
+  await choose(messages.Sessions.autoTeam);
+  expect(stored()).toBe('');
+  expect(team()?.textContent).toContain(messages.Sessions.autoTeam);
+});
+
 it('keeps the typed criteria when the conversation could not be created', async () => {
   const message = 'Completion criteria have up to 20 lines of 1 to 200 characters.';
   const createSession = creating(async () => ({ ok: false, error: 'invalid', message }));

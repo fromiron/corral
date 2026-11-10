@@ -7,13 +7,13 @@ test('saved details are shown again before a quick new conversation starts', asy
   await page.getByRole('button', { name: 'More ways to start a conversation' }).click();
   await page.getByRole('menuitem', { name: /^Set name, purpose and team first/ }).click();
   const details = page.getByRole('dialog', { name: 'New conversation', exact: true });
-  await details.getByRole('textbox', { name: 'Session name' }).fill('Visible name');
+  await details.getByRole('textbox', { name: 'Name', exact: true }).fill('Visible name');
   await details.getByRole('textbox', { name: 'Purpose' }).fill('Visible purpose');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
   // The quick ways to start show the saved details first instead of starting with them.
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
-  await expect(details.getByRole('textbox', { name: 'Session name' })).toHaveValue('Visible name');
+  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Visible name');
   await expect(details.getByRole('textbox', { name: 'Purpose' })).toHaveValue('Visible purpose');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
@@ -21,7 +21,7 @@ test('saved details are shown again before a quick new conversation starts', asy
     .getByTestId('app-sidebar')
     .getByRole('link', { name: 'New conversation', exact: true })
     .click();
-  await expect(details.getByRole('textbox', { name: 'Session name' })).toHaveValue('Visible name');
+  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Visible name');
   await expect(page).not.toHaveURL(/\/sessions\//);
 });
 
@@ -31,7 +31,7 @@ test.fixme('closed saved details still show that a name or purpose is saved', as
   await page.goto('/');
   await page.getByRole('button', { name: 'More ways to start a conversation' }).click();
   await page.getByRole('menuitem', { name: /^Set name, purpose and team first/ }).click();
-  await page.getByRole('textbox', { name: 'Session name' }).fill('Visible name');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Visible name');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('main')).toContainText('Visible name');
 });

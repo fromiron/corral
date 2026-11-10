@@ -18,7 +18,6 @@ import {
   Button,
   cn,
   Dialog,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogPanel,
@@ -529,6 +528,9 @@ function ProjectMenu({
   );
 }
 
+/** The team select's value for starting without a team; the draft keeps it as ''. */
+const AUTO_TEAM = 'auto:';
+
 /**
  * Starts a conversation at once. Its menu opens the name, purpose and team first; those details
  * are remembered for the project and nothing runs until the first request is sent.
@@ -544,7 +546,6 @@ function NewConversation({
 }) {
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workspace');
-  const n = useTranslations('Navigation');
   const templateText = useTemplateText();
   const { repository } = useServices();
   const { sendKey } = usePreferences();
@@ -694,7 +695,6 @@ function NewConversation({
           <form onSubmit={create} aria-label={t('new')}>
             <DialogHeader>
               <DialogTitle>{tw('newConversation')}</DialogTitle>
-              <DialogDescription>{n('optionalPurposeHint')}</DialogDescription>
             </DialogHeader>
             <DialogPanel>
               <div className="flex flex-col gap-3">
@@ -702,12 +702,13 @@ function NewConversation({
                   variant="chip"
                   disabled={saving}
                   label={t('teamLabel')}
-                  value={team}
+                  // The select reads '' as nothing chosen; no team is a choice of its own.
+                  value={team || AUTO_TEAM}
                   onValueChange={(value) => {
-                    if (!creating.current) edit({ corralId: value });
+                    if (!creating.current) edit({ corralId: value === AUTO_TEAM ? '' : value });
                   }}
                   options={[
-                    { value: '', label: t('autoTeam') },
+                    { value: AUTO_TEAM, label: t('autoTeam') },
                     ...corrals.map((c) => ({ value: c.corralId, label: c.name })),
                     ...suggested.map((id) => ({
                       value: `template:${id}`,
@@ -719,7 +720,7 @@ function NewConversation({
                 <InputGroup className="w-full">
                   <InputField
                     index={0}
-                    label={n('sessionName')}
+                    label={t('nameLabel')}
                     id={`new-session-title-${projectId}`}
                     disabled={saving}
                     value={title}
