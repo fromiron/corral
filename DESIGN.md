@@ -68,7 +68,7 @@ The design kit is copied into this repository. Building Corral does not read ano
 | Role | Light | Dark | Use |
 |---|---|---|---|
 | `background` / `surface-1` | #FAFAFA | #171717 | Workspace floor |
-| `surface-2` | #FCFCFC | #1E1E1E | Sidebar and grouped settings |
+| `surface-2` | #FCFCFC | #1E1E1E | The workspace content beside the sidebar (kit inset), and grouped settings |
 | `card` / `surface-3` | #FFFFFF | #252525 | Focused field surface; popup level above a page-level context |
 | `surface-4` | #FFFFFF | #2C2C2C | Explicit raised work surfaces |
 | `surface-5` | #FFFFFF | #333333 | Dialog level above a page-level context |
@@ -112,7 +112,7 @@ Editable fields use the 16px `--fs-field-touch` size on coarse pointers to preve
 
 ## Layout, Spacing and Shape
 
-Use one workspace grammar: sidebar, path bar, task content and contextual panels. The sidebar's primary menu (new conversation, Needs you, Library, Automation) and project groups are the only navigation system; pages do not add their own side navigation. List pages (Needs you, Library, Automation, feature previews, a project's workspace) compose the kit page frame: the path bar, a display title, a toolbar row of kit Tabs or filters, then content at the wide or narrow measure. An empty conversation follows the kit home composition: a centered title above the composer and its start suggestions. Settings remain an overlay on the current work, including over Library. The contract lives in [workbench.md](docs/specs/workbench.md#전역-셸과-화면-틀).
+Use one workspace grammar: sidebar, path bar, task content and contextual panels. The sidebar's primary menu (new conversation, Needs you, Library, Automation) and project groups are the only navigation system; pages do not add their own side navigation. List pages (Needs you, Library, Automation, feature previews, a project's workspace) compose the kit page frame: the path bar, a display title, a toolbar row of kit Tabs or filters, then content at the wide or narrow measure. An empty conversation follows the kit home composition: a centered title above the composer and its start suggestions. Settings remain an overlay on the current work, including over Library. A chosen row in a list or table (Needs you, Library, Automation, settings lists) uses one treatment: the fill of the sidebar's active row with the row's own radius, distinct from hover and from keyboard focus in both themes. Button fills (`secondary`) are not used for rows. The contract lives in [workbench.md](docs/specs/workbench.md#전역-셸과-화면-틀).
 
 A session uses the supplied kit's default Tabs, TabsList, TabItem and TabPanel for Conversation, Files, Changes and Execution history. Conversation and history are always available; file work adds Files and Changes in the same row. Keep the source component's appearance, spacing, selection, hover, motion and focus behavior unchanged. Conversation contains messages and the composer, Files owns the document dock and its auxiliary tools, Changes owns Git and review, and history reuses the Run screen. Never place file editing under Conversation or repeat these primary views in document tab strips. Switching views preserves drafts, documents and processes. Dock groups retain their controls for opening, arranging and closing files and auxiliary views. Page-level display preferences, such as conversation density, belong in the page menu rather than above the content.
 
