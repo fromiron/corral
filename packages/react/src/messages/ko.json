@@ -517,7 +517,7 @@
     "running": "진행 중",
     "pausing": "일시정지 중",
     "paused": "일시정지됨",
-    "awaiting_user": "결정 대기",
+    "awaiting_user": "응답 대기",
     "cancelling": "취소 중",
     "succeeded": "성공",
     "failed": "실패",
