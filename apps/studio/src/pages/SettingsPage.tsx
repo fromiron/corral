@@ -56,7 +56,14 @@ export function SettingsLayout({
           </p>
         ) : null}
       </header>
-      <ScrollArea className="min-h-0 flex-1" radius="none">
+      {/* Sections scroll down, never sideways: as in the kit's sidebar, the content keeps the
+          frame's width (not Base UI's fit-content), so a long row wraps and a tab strip scrolls
+          inside it instead of pushing the page past the dialog's edge. */}
+      <ScrollArea
+        className="min-h-0 flex-1"
+        radius="none"
+        viewportClassName="[&>div]:!block [&>div]:!min-w-0"
+      >
         {needsProject ? null : children}
       </ScrollArea>
     </div>

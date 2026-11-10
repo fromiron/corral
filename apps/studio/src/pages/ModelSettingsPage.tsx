@@ -133,11 +133,13 @@ export function ModelSettingsPage() {
             <p className="text-body text-muted-foreground">{t('noLive')}</p>
           ) : (
             <>
+              {/* Narrow, the strip scrolls; the kit's edge fade shows there is more beyond it. */}
               <TabsSubtle
                 idPrefix={idPrefix}
                 selectedIndex={tab}
                 onSelect={setTab}
                 aria-label={t('tabs.label')}
+                className="scroll-fade-x"
               >
                 {MODEL_TABS.map((id, index) => (
                   <TabsSubtleItem key={id} index={index} label={t(`tabs.${id}`)} />
