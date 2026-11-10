@@ -3665,7 +3665,6 @@
       "unknownUsage": "{count, plural, one {# request did not report usage} other {# requests did not report usage}}",
       "openRun": "Open the run"
     },
-    "lastRunNumber": "Last run · Run #{number}",
     "activityStarting": "Preparing to run…",
     "actionCompletedWithFailures": "The run completed, but some tool steps failed. Review those steps before relying on the result.",
     "actionOpenFailure": "Review failed steps",

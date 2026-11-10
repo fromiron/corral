@@ -173,7 +173,6 @@ async function mount(
   holdNavigation = false,
   agentIds = ['worker'],
   runDefinition?: CorralDefinition,
-  runNumber?: number,
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -220,7 +219,6 @@ async function mount(
       <RunDetail
         runId={projection.runId}
         {...(request ? { request } : {})}
-        {...(runNumber ? { runNumber } : {})}
         search={selection}
         setSearch={(patch, options) => {
           navigations.push({ patch, options });
@@ -2140,23 +2138,18 @@ it('opens an intermediate version with the artifact reader and Back returns to t
   expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
 });
 
-it('names the run by its session number and request, or its team when nothing was requested', async () => {
-  const asked = await mount(
-    'inline_team',
-    null,
-    {},
-    'Summarise the release',
-    false,
-    ['worker'],
-    undefined,
-    3,
-  );
+it('names the run by its request, or its team when nothing was requested, without its number', async () => {
+  // The path bar names the run by its number; the header does not repeat it.
+  const asked = await mount('inline_team', null, {}, 'Summarise the release');
   expect(asked.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
-    '#3 · Summarise the release',
+    'Summarise the release',
   );
-  const unnamed = await mount('inline_team', null, {}, undefined, false, ['worker'], undefined, 3);
+  const unnamed = await mount('inline_team', null, {});
   expect(unnamed.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
-    '#3 · Linear worker',
+    'Linear worker',
+  );
+  expect(unnamed.container.querySelector('[data-testid="run-header"]')?.textContent).not.toMatch(
+    /#\d/,
   );
 });
 

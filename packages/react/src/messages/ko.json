@@ -3665,7 +3665,6 @@
       "unknownUsage": "요청 {count}회가 사용량을 보고하지 않았습니다",
       "openRun": "실행 열기"
     },
-    "lastRunNumber": "마지막 실행 · 실행 #{number}",
     "activityStarting": "실행 준비 중…",
     "actionCompletedWithFailures": "실행은 완료됐지만 일부 도구 단계가 실패했습니다. 결과를 사용하기 전에 해당 단계를 확인하세요.",
     "actionOpenFailure": "실패한 단계 확인",

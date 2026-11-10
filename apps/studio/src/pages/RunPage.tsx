@@ -118,7 +118,6 @@ export function RunPage() {
  */
 export function RunDetail({
   runId,
-  runNumber,
   search,
   setSearch,
   embedded = false,
@@ -129,7 +128,6 @@ export function RunDetail({
   /** The request that started the run, when the caller knows it: the run's title. */
   request?: string | null;
   runId: string;
-  runNumber?: number;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded?: boolean;
@@ -203,7 +201,6 @@ export function RunDetail({
   return (
     <RunWorkspace
       runId={runId}
-      runNumber={runNumber}
       key={runId}
       session={session}
       definition={definition}
@@ -225,7 +222,6 @@ export function RunDetail({
 
 function RunWorkspace({
   runId,
-  runNumber,
   session,
   sessionId,
   definition,
@@ -237,7 +233,6 @@ function RunWorkspace({
 }: {
   runId: string;
   request: string | null;
-  runNumber: number | undefined;
   session: RunSessionStore;
   sessionId: string | null;
   definition: CorralDefinition;
@@ -515,7 +510,6 @@ function RunWorkspace({
         session={session}
         definition={definition}
         request={request}
-        runNumber={runNumber}
         waiting={pending}
         onRespond={() => {
           rememberTrigger();
@@ -999,7 +993,6 @@ function RunHeader({
   session,
   definition,
   request,
-  runNumber,
   trailing,
   waiting = 0,
   onRespond,
@@ -1008,8 +1001,6 @@ function RunHeader({
   session: RunSessionStore;
   definition: CorralDefinition;
   request: string | null;
-  /** The run's number in its session, as the status pill and the composer count. */
-  runNumber?: number | undefined;
   trailing?: ReactNode;
   /** Questions and approvals waiting for the person; the status becomes the way to them. */
   waiting?: number;
@@ -1034,9 +1025,8 @@ function RunHeader({
       : null;
   const labelOf = (nodeId: string) =>
     definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
-  const title = runNumber
-    ? t('runName', { number: runNumber, name: request ?? definition.name })
-    : (request ?? definition.name);
+  // The path bar names the run by its number; the header is its request.
+  const title = request ?? definition.name;
   return (
     <section
       data-testid="run-header"

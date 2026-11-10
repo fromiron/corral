@@ -86,7 +86,6 @@ export function RunPanel({
           key={runId}
           sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
           runId={runId}
-          runNumber={runs.findIndex((run) => run.runId === runId) + 1 || undefined}
           request={
             entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
           }

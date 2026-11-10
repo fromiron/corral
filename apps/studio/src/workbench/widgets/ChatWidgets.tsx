@@ -63,12 +63,15 @@ const CATEGORY_FILL: Record<string, string> = {
 };
 export const chipClass = `inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground transition-colors hover:bg-subtle hover:text-foreground ${focusRing}`;
 const number = (value: number) => value.toLocaleString();
-/** "Last run" only for the newest finished run; an older one names its position (#72). */
+/**
+ * "Last run" for the newest finished run, whose turn already links it by number; an older one
+ * names its position (#72).
+ */
 function viewedLabel(
   viewed: NonNullable<ChatWidgetModel['viewed']>,
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
-  if (viewed.latest && viewed.number) return t('lastRunNumber', { number: viewed.number });
+  if (viewed.latest && viewed.number) return t('lastRun');
   return viewed.number
     ? t('selectedRun', { number: viewed.number, total: viewed.total })
     : t('selectedRunUnordered');

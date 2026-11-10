@@ -100,9 +100,9 @@ test('selected-run usage and unique result identities survive reload without cha
     await expect(page.getByTestId('composer-stats')).toContainText(
       text.startsWith('First') ? '1 turn' : '2 turns',
     );
-    await expect(
-      page.getByRole('link', { name: `Succeeded Last run · Run #${index + 1}`, exact: true }),
-    ).toBeVisible();
+    // The newest run is the last run; its turn, not the composer, names its number.
+    await expect(page.getByRole('link', { name: 'Succeeded Last run', exact: true })).toBeVisible();
+    await expect(page.getByTestId('turn-run').last()).toHaveText(`Run #${index + 1}`);
   }
   const totals = await page.getByTestId('composer-stats').locator('summary').innerText();
   expect(totals).toContain('Session total');
