@@ -7,8 +7,9 @@ import { formatCount } from './numbers.ts';
 import { sessionStats } from './selectors.ts';
 
 /**
- * turns · steps · tokens · cache hit for the session, under the composer (DSH-style),
- * read from each turn's Coordinator snapshot. An unreported cache figure is named, never 0.
+ * runs · tool and agent steps · reported in/out tokens · cache hit for the session, under the
+ * composer (DSH-style), read from each run's Coordinator snapshot. Each figure is named so it
+ * needs no definition. An unreported cache figure is named, never 0.
  */
 export function ComposerStats({
   runs,
@@ -47,7 +48,7 @@ export function ComposerStats({
   // Least needed last: a narrow composer gives up the cache share, then the tokens. Whatever
   // still does not fit is cut at the end of the line, never drawn over what sits beside it.
   const parts = [
-    { text: t('statTurns', { count: stats.turns }), keep: '' },
+    { text: t('statRuns', { count: stats.turns }), keep: '' },
     { text: t('statSteps', { count: stats.steps }), keep: '' },
     {
       text: t('statTokens', {
@@ -66,19 +67,14 @@ export function ComposerStats({
     },
   ];
   return (
-    <details data-testid="composer-stats" className="min-w-0 tabular-nums">
-      <summary className="cursor-pointer">
-        <span className="min-w-0 truncate">
-          {t('statSession')}
-          {parts.map((part) => (
-            <span key={part.text} className={part.keep}>
-              {' · '}
-              {part.text}
-            </span>
-          ))}
+    <p data-testid="composer-stats" className="min-w-0 truncate tabular-nums">
+      {t('statSession')}
+      {parts.map((part) => (
+        <span key={part.text} className={part.keep}>
+          {' · '}
+          {part.text}
         </span>
-      </summary>
-      <p className="mt-1 max-w-prose text-muted-foreground">{t('statDefinition')}</p>
-    </details>
+      ))}
+    </p>
   );
 }

@@ -98,13 +98,13 @@ test('selected-run usage and unique result identities survive reload without cha
     await requestBox(page).fill(text);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(page.getByTestId('composer-stats')).toContainText(
-      text.startsWith('First') ? '1 turn' : '2 turns',
+      text.startsWith('First') ? '1 run' : '2 runs',
     );
     // The newest run is the last run; its turn, not the composer, names its number.
     await expect(page.getByRole('link', { name: 'Succeeded Last run', exact: true })).toBeVisible();
     await expect(page.getByTestId('turn-run').last()).toHaveText(`Run #${index + 1}`);
   }
-  const totals = await page.getByTestId('composer-stats').locator('summary').innerText();
+  const totals = await page.getByTestId('composer-stats').innerText();
   expect(totals).toContain('Session total');
   // The run segment of the top bar's path exists only in run history.
   await panelTab(page, 'Runs');
@@ -114,7 +114,7 @@ test('selected-run usage and unique result identities survive reload without cha
   await expect(selected).toBeVisible();
   await page.reload();
   await expect(selected).toBeVisible();
-  await expect(page.getByTestId('composer-stats').locator('summary')).toHaveText(totals);
+  await expect(page.getByTestId('composer-stats')).toHaveText(totals);
   await page.getByTestId('session-summary-trigger').click();
   const overview = page.getByTestId('session-summary-popup');
   await expect(overview.getByTestId('overview-run-scope')).toHaveText('Selected run · Run #1');
