@@ -97,25 +97,25 @@ const SUGGESTED_NAME_LENGTH = 48;
 // The template patterns, reached only from words that leave little doubt.
 const REVIEW_CODE = /\b(review\w*|audit\w*|inspect\w*)\b|검토|리뷰|점검/i;
 const CODE =
-  /\b(code|codebase|source|prs?|pull[ -]?requests?|diffs?|branch\w*|commits?|modules?|middleware|functions?|endpoints?|services?|implementation|apis?|repo\w*|librar\w*|components?|handlers?)\b|코드|브랜치|커밋|모듈|함수|미들웨어|구현|엔드포인트|서비스|라이브러리|컴포넌트|API/i;
+  /\b(code|codebase|prs?|pull[ -]?requests?|diffs?|branch\w*|commits?|modules?|middleware|functions?|endpoints?|implementation|repo\w*|librar\w*|components?|handlers?)\b|코드|브랜치|커밋|모듈|함수|미들웨어|구현|엔드포인트|라이브러리|컴포넌트/i;
 const NO_CHANGE =
   /\b(without (chang|modif|edit|touch|fix)\w*|(don['’]?t|do not|never) (change|modify|edit|touch|fix)\w*|read[- ]only|findings only|only report\w*|report (the )?findings|no (changes|edits|fixes))\b|고치지\s*말|수정하지\s*말|바꾸지\s*말|변경하지\s*말|건드리지\s*말|손대지\s*말|읽기\s*전용/i;
 const CORRECTNESS = /\b(correctness|logic errors?)\b|정확성|논리\s*오류/i;
 const BUG =
   /\b(bugs?|crash\w*|errors?|exceptions?|fail\w*|broken|regressions?|flaky|intermittent\w*|timeouts?|hangs?|freez\w*|leaks?)\b|버그|오류|에러|장애|크래시|죽는|죽어|깨지|깨져|실패|안\s?되|멈추|멈춰|타임아웃|먹통/i;
-const CAUSE =
-  /\b(causes?|caused|why|root|investigat\w*|debug\w*|diagnos\w*|reproduc\w*|trace|find out)\b|원인|이유|왜|재현|추적|디버그|디버깅/i;
 const FIX = /\b(fix\w*|repair\w*|resolv\w*|patch\w*)\b|고쳐|고치|수정해|해결/i;
 const DECISION =
   /\b(decid\w*|decisions?|choos\w*|chose|pick|select|which (one|option|is better)|should (we|i)|recommend\w*|trade-?offs?)\b|결정|선택|고를|고르|골라|할지|추천|권해|권하/i;
 const OPTIONS =
   /\b(between|or|vs\.?|versus|both|options?|alternatives?|either)\b|중\s*(에|에서)?\s*(무엇|어느|뭘|뭐|하나|어떤)|아니면|두\s*(안|가지|방안|옵션|후보)|둘\s*중|대신/i;
 const IMPLEMENT =
-  /\b(implement\w*|add|adds|adding|build|builds|building|develop|developing|introduce|integrat\w*|migrat\w*|refactor\w*)\b|구현|추가|개발|도입|연동|마이그레이션|리팩터|리팩토링|이관/i;
+  /\b(implement\w*|add|adds|adding|build|builds|building|develop|developing|introduce|integrat\w*|refactor\w*)\b|구현|추가|개발|도입|연동|리팩터|리팩토링/i;
 const PLAN_FIRST =
   /\b(plan\w*|design\w*|migrat\w*|stages?|staged|step[- ]by[- ]step|phases?|phased|incremental\w*|roadmap|architect\w*)\b|설계|계획|마이그레이션|이관|옮기|옮겨|단계|아키텍처/i;
 const DOCUMENT =
   /\b(documents?|docs?|reports?|articles?|essays?|posts?|announcements?|proposals?|blogs?|e-?mails?|letters?|memos?|newsletters?|readme|faq|slides?|decks?|guides?|manuals?)\b|안내문|보고서|문서|제안서|기획서|이메일|편지|공지|슬라이드|가이드|매뉴얼/i;
+/** Writing a document: never a code pattern, whatever the document is about. */
+const WRITE = /\b(write|writing|draft\w*|summar\w*)\b|작성|써\s*줘|써줘|요약/i;
 const SOFTWARE =
   /\b(pages?|screens?|forms?|buttons?|toggles?|apps?|features?|cach\w*|database|db|tests?|settings|ui|cli|validation|login|sign[- ]?up|export|import|search)\b|화면|양식|폼|버튼|토글|앱|기능|캐시|데이터베이스|테스트|설정|로그인|가입|내보내기|검색/i;
 
@@ -138,9 +138,12 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
     return 'parallel_review';
   // A security PR review is a recognized task of its own (docs/specs/features/canvas.md).
   if (isSecurityReview(brief)) return null;
-  if (BUG.test(brief) && (CAUSE.test(brief) || FIX.test(brief)) && !keepsCode) return 'bug_fix';
   if (DECISION.test(brief) && OPTIONS.test(brief)) return 'tech_decision';
-  if (IMPLEMENT.test(brief) && !(DOCUMENT.test(brief) && !SOFTWARE.test(brief)))
+  const document = DOCUMENT.test(brief);
+  if (document && WRITE.test(brief)) return null;
+  // Fixing changes code; finding a cause without fixing it is research.
+  if (BUG.test(brief) && FIX.test(brief) && !keepsCode) return 'bug_fix';
+  if (IMPLEMENT.test(brief) && !(document && !SOFTWARE.test(brief)))
     return PLAN_FIRST.test(brief) ? 'plan_implement_review' : 'implement_review';
   return null;
 }
