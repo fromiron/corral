@@ -28,7 +28,9 @@ describe('auto mode is frozen while drafts widen', () => {
     expect(AUTO_ROUTER_PROMPT).toBe(frozen.routerPrompt);
     expect(autoRouterPrompt(['low', 'medium', 'high'])).toBe(frozen.routerPromptWithLevels);
     expect(autoRouterPrompt(['low', 'medium'])).toBe(frozen.routerPromptWithTwoLevels);
-    expect(AUTO_ROUTER_PROMPT).not.toMatch(/implement_review|bug_fix|parallel_review|tech_decision/);
+    expect(AUTO_ROUTER_PROMPT).not.toMatch(
+      /implement_review|bug_fix|parallel_review|tech_decision/,
+    );
   });
 
   it('the local route picks one of the three, as before, for every development goal', () => {
@@ -45,7 +47,8 @@ describe('auto mode is frozen while drafts widen', () => {
   it('the local route is unchanged for goals the new draft patterns now catch', () => {
     const recorded = Object.entries(frozen.localRoutes as Record<string, string>);
     expect(recorded.length).toBeGreaterThan(40);
-    for (const [goal, template] of recorded) expect(localAutoRoute(goal).template, goal).toBe(template);
+    for (const [goal, template] of recorded)
+      expect(localAutoRoute(goal).template, goal).toBe(template);
   });
 
   it('builds the same definitions, conversation lead and roster byte for byte', () => {
