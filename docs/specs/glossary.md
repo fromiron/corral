@@ -20,7 +20,7 @@
 | 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | — |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
 | 실행이 사람의 답을 기다리는 상태 | Waiting for you / 응답 대기 | run status `awaiting_user` | 결정 대기, Response needed / 응답 필요 |
-| 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 실행 조작 알약, 대화 안내, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
+| 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 대화 안내, 실행 기록 머리, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
 | 다시 쓰는 팀·템플릿·리소스 모음 | Library / 라이브러리 | `/library`, `features/library.md` | 자료실 |
 | 예약 실행 화면 | Automation / 자동화 | `/schedules`, `ScheduledPage` | 스케줄러 |
 | 샘플 데이터로 보이는 미구현 흐름 | Feature preview / 기능 미리보기 | `/preview`, `feature-preview` | 데모(시뮬레이션 실행과 구분) |
