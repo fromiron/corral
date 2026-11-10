@@ -629,7 +629,7 @@
     "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
     "openRun": "Open execution page",
     "backToSession": "Back to the session",
-    "appliesNextRun": "Saved changes apply from the session's next run; runs already started keep their team.",
+    "appliesNextRun": "Applies from the next run",
     "modeSaveFailed": "Could not save the run mode. Your selection stays in this view."
   },
   "RunPage": {
@@ -3186,9 +3186,8 @@
     "teamTools": "Team tools",
     "design": "Design",
     "testRun": "Test run",
-    "directRunHint": "Test this team directly. This execution is not added to a session.",
+    "directRunHint": "This execution is not added to a session.",
     "prepareExecution": "Prepare an execution",
-    "runOverridesHint": "These choices apply to the next execution. The saved team stays the same.",
     "closeResult": "Close result",
     "personalDefaults": "Personal default work style",
     "switchSession": "Switch session"
@@ -5465,7 +5464,6 @@
       "noPredecessor": "Only a step that something leads to can be split.",
       "oneAgentOnly": "Split one agent in the flow at a time."
     },
-    "structure": "Structure",
     "outline": "Team structure",
     "addStep": "Add a step",
     "problems": "{count, plural, =0 {No problems} one {# problem} other {# problems}}",

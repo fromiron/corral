@@ -54,6 +54,17 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
 };
 
 describe('team editor', () => {
+  it('puts the add button on the team row of the outline, with no heading over the outline', () => {
+    renderEditor(chain(1));
+    const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });
+    expect(outline.querySelector('h2')).toBeNull();
+    expect(outline.textContent).not.toContain(messages.TeamEditor.structure);
+    const add = screen.getByRole('button', { name: messages.TeamEditor.addStep });
+    const problems = screen.getByRole('button', { name: /problems?$/ });
+    // The team row holds the team name, its problems and the add button.
+    expect(add.parentElement).toBe(problems.parentElement);
+  });
+
   it('names the reviewer in the canvas mark of a missing-criteria warning', () => {
     const { draft } = ok(applyPattern(chain(1), 'reviewLoop', ['agent_1']));
     const contracts = new Map(draft.definition.roles.map((r) => [r.id, r.outputContract]));
