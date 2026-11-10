@@ -533,10 +533,11 @@ export function InboxPage() {
               ) : null}
             </section>
           ) : entries.length > 0 ? (
-            // One quiet line, centred in what is visible of the column below the page title.
+            // One quiet line where the detail opens, placed as the kit's empty state is: at the
+            // top of its column, centred across it, the same at every height.
             <div
               data-testid="inbox-no-selection"
-              className="max-lg:hidden lg:sticky lg:top-6 lg:grid lg:min-h-[calc(100dvh-11rem)] lg:place-items-center"
+              className="px-6 py-10 text-center max-lg:hidden lg:sticky lg:top-6"
             >
               <p className="m-0 text-body text-muted-foreground">{t('noSelection')}</p>
             </div>
