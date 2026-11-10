@@ -3763,7 +3763,6 @@
     "pull": {
       "list": "Pull requests",
       "named": "#{number} {title}",
-      "into": "{branch} into {base}",
       "state": {
         "open": "Open",
         "merged": "Merged",

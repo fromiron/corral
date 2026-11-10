@@ -24,7 +24,7 @@ const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const ago = (minutes: number) => PREVIEW_NOW - minutes * MINUTE;
 
-export const SAMPLE_PROJECT = { name: 'example-shop', repo: 'example/shop', base: 'main' } as const;
+export const SAMPLE_PROJECT = { name: 'example-shop', repo: 'example/shop' } as const;
 export const SAMPLE_MODEL = 'Sample model';
 
 export const SAMPLE_SESSIONS = {

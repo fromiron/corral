@@ -3763,7 +3763,6 @@
     "pull": {
       "list": "PR 목록",
       "named": "#{number} {title}",
-      "into": "{branch} → {base}",
       "state": {
         "open": "열림",
         "merged": "병합됨",
