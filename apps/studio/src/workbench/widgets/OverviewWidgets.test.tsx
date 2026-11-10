@@ -465,6 +465,9 @@ it('the usage detail states reported input and cached input and names unreported
   expect(detail).toContain('Cached input');
   expect(detail).toContain('1,500 (50%)');
   expect(detail).toContain('2 calls did not report cached input');
+  // The row names say what each figure is; no paragraph defines them again.
+  expect(detail).not.toContain('This run:');
+  expect(detail).not.toContain('not extra tokens');
 });
 
 it('the usage detail never shows an unreported cache as zero', async () => {

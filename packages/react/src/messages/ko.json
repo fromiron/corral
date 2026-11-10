@@ -3235,7 +3235,6 @@
     "completed": "완료",
     "verification": "검증 필요",
     "evidence": "근거 {count}개",
-    "scopeHint": "계획의 진행 상태는 작업 완료와 별개입니다. 근거는 기록 당시의 대상과 기준에 해당합니다.",
     "staleCriteria": "이 계획 이후 완료 기준이 변경되었습니다.",
     "staleAttempt": "이 계획은 이전 시도에서 기록되었습니다.",
     "unavailable": "계획 또는 근거를 불러오지 못했습니다.",
@@ -3655,7 +3654,6 @@
       "inputUnreported": "완료된 호출 {count}회가 입력 토큰을 보고하지 않았습니다.",
       "runScope": "선택한 실행 · 실행 #{number}",
       "selectedRun": "선택한 실행",
-      "usageDefinition": "이 실행이 보고한 출력 토큰과 모델 호출 수입니다. 입력은 끝난 호출이 보고한 사용량이며, 캐시 입력은 입력의 일부로 다시 더하지 않습니다.",
       "simulatedUsage": "시뮬레이션 사용량이며 실제 제공자 측정값이나 청구액이 아닙니다.",
       "unknownUsage": "요청 {count}회가 사용량을 보고하지 않았습니다",
       "openRun": "실행 열기"

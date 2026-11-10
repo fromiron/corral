@@ -440,7 +440,6 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
   return (
     <div data-testid="usage-detail" className="flex flex-col gap-3 text-body">
       <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('usage')}</p>
-      <p className="text-caption text-muted-foreground">{t('usageDefinition')}</p>
       <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
         {rows.map(([name, value]) => (
           <div key={name} className="contents">

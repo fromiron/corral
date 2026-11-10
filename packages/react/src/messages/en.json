@@ -3235,7 +3235,6 @@
     "completed": "Completed",
     "verification": "Verification required",
     "evidence": "Evidence ({count})",
-    "scopeHint": "Plan progress is separate from task completion. Evidence refers to the recorded target and criteria.",
     "staleCriteria": "The completion criteria have changed since this plan.",
     "staleAttempt": "This plan belongs to an earlier attempt.",
     "unavailable": "The plan or evidence could not be loaded.",
@@ -3655,7 +3654,6 @@
       "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}",
       "runScope": "Selected run · Run #{number}",
       "selectedRun": "Selected run",
-      "usageDefinition": "This run: reported output tokens and model calls. Input is reported usage from finished calls; cached input is part of input, not extra tokens.",
       "simulatedUsage": "Simulation usage; not a provider measurement or bill.",
       "unknownUsage": "{count, plural, one {# request did not report usage} other {# requests did not report usage}}",
       "openRun": "Open the run"
