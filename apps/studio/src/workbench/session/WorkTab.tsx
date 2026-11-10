@@ -74,7 +74,10 @@ export function WorkTab({
         sessionId={session.sessionId}
         messageId={messageId}
         header={
-          <MeetingHandoffLinks key={`handoffs:${session.sessionId}`} sessionId={session.sessionId} />
+          <MeetingHandoffLinks
+            key={`handoffs:${session.sessionId}`}
+            sessionId={session.sessionId}
+          />
         }
         items={[
           ...session.entries

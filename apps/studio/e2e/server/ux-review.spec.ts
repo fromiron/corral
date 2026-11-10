@@ -120,7 +120,9 @@ test.describe('live models', () => {
     await expect(notReady).toContainText('model-a is not connected');
     // The Connect button says where to go; no sentence repeats it.
     await expect(notReady).not.toContainText('Settings');
-    await expect(notReady.getByRole('link', { name: 'Connect a model', exact: true })).toBeVisible();
+    await expect(
+      notReady.getByRole('link', { name: 'Connect a model', exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(page.getByTestId('app-sidebar')).toContainText('Connect a model');
     await expect(page.getByRole('button', { name: 'Use simulated agents' })).toHaveCount(0);

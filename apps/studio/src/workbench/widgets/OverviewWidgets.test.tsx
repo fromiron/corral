@@ -350,7 +350,9 @@ it('states an estimate without a percentage once: the tokens, then the window as
       },
     }),
   );
-  const figure = container.querySelector('[data-overview-widget="context"] [data-slot="card-content"] p:not(.sr-only)');
+  const figure = container.querySelector(
+    '[data-overview-widget="context"] [data-slot="card-content"] p:not(.sr-only)',
+  );
   expect(figure?.textContent).toBe('2.4k/ 128k');
   expect(figure?.textContent).not.toMatch(/2\.4k.*2\.4k/);
 });

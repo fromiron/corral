@@ -224,7 +224,9 @@ it('opens a step’s details from its row, by pointer or keyboard, with no detai
   expect(opener?.getAttribute('aria-label')).toBe('Details of Read · README.md · Done');
   // The chevron says it opens; the panel it controls is closed and out of the tab order.
   expect(opener?.querySelector('svg')).not.toBeNull();
-  const panel = container.querySelector(`#${CSS.escape(opener?.getAttribute('aria-controls') ?? '')}`);
+  const panel = container.querySelector(
+    `#${CSS.escape(opener?.getAttribute('aria-controls') ?? '')}`,
+  );
   expect(panel?.hasAttribute('inert') || panel?.hasAttribute('hidden')).toBe(true);
   await act(async () => opener?.click());
   expect(opener?.getAttribute('aria-expanded')).toBe('true');
