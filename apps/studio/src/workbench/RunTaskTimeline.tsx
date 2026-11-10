@@ -103,7 +103,10 @@ export function RunTaskTimeline({
   return (
     <section aria-label={t('title')} className="flex flex-col gap-3 p-3">
       <PlanVsActual
+        // The title only names the board's list: the By task tab shows the view's name and the
+        // run header the elapsed time, so the kit's header stays hidden, as the lanes' does.
         title={t('title')}
+        className="[&>header]:hidden"
         steps={board.steps}
         startedAt={board.startedAt}
         {...(live && !held ? {} : { now: board.lastAt })}
