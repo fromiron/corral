@@ -189,14 +189,24 @@ function patternParts(
   };
 }
 
-/** The plan with another pattern: its roles rebuilt, its name, brief and criteria kept. */
+/**
+ * The plan with another pattern: its roles, settings and criteria become the pattern's defaults,
+ * its name and brief stay. `keepCriteria` keeps criteria the person wrote by hand.
+ */
 export function planWithPattern(
   plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria'>,
   pattern: TeamPattern,
   wording: TeamWording,
+  { keepCriteria = false }: { keepCriteria?: boolean } = {},
 ): TeamPlan {
-  const { criteria: _, ...parts } = patternParts(pattern, wording);
-  return { name: plan.name, pattern, brief: plan.brief, criteria: [...plan.criteria], ...parts };
+  const parts = patternParts(pattern, wording);
+  return {
+    name: plan.name,
+    pattern,
+    brief: plan.brief,
+    ...parts,
+    criteria: keepCriteria ? [...plan.criteria] : parts.criteria,
+  };
 }
 
 /** The local suggestion: no model call. Null for an empty goal. */

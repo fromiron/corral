@@ -235,21 +235,38 @@ describe('drafting the five template patterns', () => {
 });
 
 describe('changing a plan’s pattern', () => {
+  const defaults = (pattern: TeamPattern) =>
+    isTemplate(pattern)
+      ? [`The ${pattern} criterion.`]
+      : pattern === 'single'
+        ? ['Answer the brief directly.']
+        : ['Answer the brief directly.', 'Name the sources.'];
+  const isTemplate = (pattern: TeamPattern): pattern is TemplatePattern =>
+    pattern in PATTERN_TEMPLATES;
+
   it.each(TEAM_PATTERNS)(
-    'to %s rebuilds its roles and keeps name, brief and criteria',
+    'to %s rebuilds its roles and criteria and keeps name and brief',
     (pattern) => {
-      const before = plan('tech_decision', { name: 'Kept name', criteria: ['Kept criterion.'] });
+      const before = plan('tech_decision', { name: 'Kept name', criteria: ['Old criterion.'] });
       const after = planWithPattern(before, pattern, wording);
       expect(TeamPlan.safeParse(after).success).toBe(true);
       expect(after).toMatchObject({
         pattern,
         name: 'Kept name',
         brief: before.brief,
-        criteria: ['Kept criterion.'],
+        criteria: defaults(pattern),
       });
       expect(after.roles.map((role) => role.slot)).toEqual([...TEAM_SLOTS[pattern]]);
     },
   );
+
+  it.each(TEAM_PATTERNS)('to %s keeps criteria the person wrote', (pattern) => {
+    const before = plan('tech_decision', { criteria: ['My own check.'] });
+    const after = planWithPattern(before, pattern, wording, { keepCriteria: true });
+    expect(after.criteria).toEqual(['My own check.']);
+    expect(after.criteria).not.toBe(before.criteria);
+    expect(after.roles.map((role) => role.slot)).toEqual([...TEAM_SLOTS[pattern]]);
+  });
 
   it('refuses a template pattern when the wording has none for it', () => {
     const { templates: _, ...base } = wording;

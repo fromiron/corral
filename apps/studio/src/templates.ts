@@ -144,14 +144,23 @@ export function draftWording(messages: unknown): TeamWording {
   };
 }
 
-/** A pattern's name: the draft's own name for the three, the template's for the five. */
+/**
+ * A pattern's name, the same as its template card's on the Library page: the single agent card
+ * for single, the template's card for the five; the two without a card have the draft's names.
+ */
 export function patternName(messages: unknown, pattern: TeamPattern): string {
   const { TeamDraft, Workspace } = messages as {
     TeamDraft: { patterns: Record<string, string> };
     Workspace: { template: Record<string, { name: string } | undefined> };
   };
-  return isTemplatePattern(pattern)
-    ? (Workspace.template[PATTERN_TEMPLATES[pattern]]?.name ?? pattern)
+  const card =
+    pattern === 'single'
+      ? 'starter'
+      : isTemplatePattern(pattern)
+        ? PATTERN_TEMPLATES[pattern]
+        : null;
+  return card
+    ? (Workspace.template[card]?.name ?? pattern)
     : (TeamDraft.patterns[pattern] ?? pattern);
 }
 

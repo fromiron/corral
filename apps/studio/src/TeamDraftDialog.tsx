@@ -237,6 +237,14 @@ function PlanEditor({
   const id = useId();
   // The raw text, so a new empty line can be typed; the plan keeps the non-empty lines.
   const [criteria, setCriteria] = useState(plan.criteria.join('\n'));
+  // Criteria typed since the suggestion survive a pattern change; a new suggestion mounts a
+  // new editor, and criteria from a model answer count as not typed.
+  const [criteriaEdited, setCriteriaEdited] = useState(false);
+  const changePattern = (pattern: TeamPattern) => {
+    const next = planWithPattern(plan, pattern, wording, { keepCriteria: criteriaEdited });
+    if (!criteriaEdited) setCriteria(next.criteria.join('\n'));
+    onChange(next);
+  };
   const ordered = TEAM_SLOTS[plan.pattern].map((slot) => plan.roles.find((r) => r.slot === slot));
   const setRole = (index: number, patch: { name?: string; duty?: string }) =>
     onChange({
@@ -253,7 +261,7 @@ function PlanEditor({
         <Select<TeamPattern>
           label={t('patternLabel')}
           value={plan.pattern}
-          onValueChange={(pattern) => onChange(planWithPattern(plan, pattern, wording))}
+          onValueChange={changePattern}
           options={TEAM_PATTERNS.map((pattern) => ({
             value: pattern,
             label: patternName(messages, pattern),
@@ -319,6 +327,7 @@ function PlanEditor({
           rows={3}
           onChange={(e) => {
             setCriteria(e.target.value);
+            setCriteriaEdited(true);
             onChange({
               ...plan,
               criteria: e.target.value
