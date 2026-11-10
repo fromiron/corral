@@ -17,8 +17,10 @@ vi.mock('../TopbarSlot.tsx', async (original) => {
   const real = await original<typeof import('../TopbarSlot.tsx')>();
   return {
     ...real,
-    useTopbarLayout: () =>
-      fixture.tier === null ? real.useTopbarLayout() : topbarLayout(fixture.tier),
+    useTopbarLayout: () => {
+      const fitted = real.useTopbarLayout();
+      return fixture.tier === null ? fitted : topbarLayout(fixture.tier);
+    },
   };
 });
 vi.mock('../topbarTier.ts', async (original) => {
