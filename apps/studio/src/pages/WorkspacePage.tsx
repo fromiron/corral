@@ -155,7 +155,10 @@ export function WorkspacePage() {
                       </Button>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  {/* The row fills from its end, so when it wraps New conversation takes the
+                      first line alone and the menu stays beside New meeting; the reversed order
+                      and direction cancel out, so it still reads left to right in source order. */}
+                  <div className="flex flex-row-reverse flex-wrap-reverse items-center justify-end gap-2 [&>*]:order-2 [&>:first-child]:order-3 [&>:last-child]:order-1">
                     {archived ? null : (
                       <>
                         <NewConversation
