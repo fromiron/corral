@@ -1117,6 +1117,58 @@ it('a failed run with no failed execution names its reason and offers no entry',
   expect(failureEntry(container)).toBeUndefined();
 });
 
+it('a run its review recipe stopped says why once, in the recipe panel with its rounds', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  const recipe = {
+    loopNodeId: 'review_loop',
+    recipeId: 'recipe_1',
+    revision: 1,
+    recipeHash: 'a'.repeat(64),
+    criteriaVersionId: 'criteria_1',
+  };
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `evt_${runSeq}`,
+      runId: 'run_layout',
+      runSeq,
+      recordedAt: '2026-10-26T09:06:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  await act(async () =>
+    run.setState({
+      events: [
+        event(1, 'recipe.evaluated', {
+          ...recipe,
+          iterationId: 'iteration_1',
+          candidateVersionId: 'candidate_1',
+          reviewVersionId: 'review_1',
+          checkReportIds: [],
+          tree: null,
+          verdict: 'revise',
+        }),
+        event(2, 'recipe.stopped', {
+          ...recipe,
+          reason: 'attempt_limit',
+          candidateVersionId: 'candidate_1',
+        }),
+      ],
+    }),
+  );
+  await failRun(run, { reason: 'review_recipe:attempt_limit', executions: false });
+  const panel = header(container)?.querySelector<HTMLElement>('[data-testid="recipe-status"]');
+  expect(panel?.textContent).toContain('Generation attempt limit reached');
+  expect(panel?.textContent).toContain('Revise');
+  // The reason is said once, in words, never as its code.
+  expect(endReason(container)).toBeNull();
+  expect(header(container)?.textContent).not.toContain('review_recipe');
+  expect(header(container)?.textContent?.split('Generation attempt limit reached')).toHaveLength(2);
+});
+
 it('workspace changes inspected executions without silently retargeting an instruction draft', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run, navigate } = await mount('inline_team', null, {

@@ -110,6 +110,13 @@ describe('run status reasons (UX-A4)', () => {
     expect(reason('final_output_rejected')).toBe('You rejected the final output');
   });
 
+  it('names why a review recipe stopped the run', () => {
+    expect(reason('review_recipe:attempt_limit')).toBe('Generation attempt limit reached');
+    expect(reason('review_recipe:repeated_output')).toBe('Candidate repeated without change');
+    // A stop the catalog cannot name stays as recorded.
+    expect(reason('review_recipe:something_new')).toBe('review_recipe:something_new');
+  });
+
   it('an unknown code is shown as it is', () => {
     expect(reason('something_new: x')).toBe('something_new: x');
   });

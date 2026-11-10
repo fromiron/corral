@@ -19,6 +19,7 @@ export { PathCrumb } from './components/PathCrumb.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningSummary } from './components/ReasoningSummary.tsx';
+export { RecipeStatusPanel } from './components/RecipeStatusPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
 export { RoutingTally } from './components/RoutingTally.tsx';
 export { RunActions } from './components/RunActions.tsx';

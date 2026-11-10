@@ -19,6 +19,7 @@ import {
   FailureNotice,
   primaryWorkPlan,
   QuestionsPanel,
+  RecipeStatusPanel,
   ReinsPanel,
   RoutingTally,
   RunActions,
@@ -522,6 +523,7 @@ function RunWorkspace({
           setSteeringOpen(false);
           chooseExecution(id);
         }}
+        onOpenArtifact={(id) => openArtifact(id)}
         trailing={
           <Button
             ref={detailsButton}
@@ -999,6 +1001,7 @@ function RunHeader({
   waiting = 0,
   onRespond,
   onOpenExecution,
+  onOpenArtifact,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
@@ -1009,16 +1012,28 @@ function RunHeader({
   onRespond?: () => void;
   /** Opens an execution's detail: a failed run's one way to the execution that failed. */
   onOpenExecution?: (executionId: string) => void;
+  /** Opens a version the review recipe evaluated. */
+  onOpenArtifact?: (artifactVersionId: string) => void;
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
   const status = useTranslations('Status');
   const projection = useRunDisplay(session, (s) => s.projection);
+  const recipeStopped = useStore(session, (s) =>
+    s.events.some((event) => event.type === 'recipe.stopped'),
+  );
   if (!projection) return null;
   // A failed run says why beside its state, in Run info's words, and leads to what failed. With
   // one agent, "{agent} failed" only restates the state chip, so it is left out.
   const failed = projection.status === 'failed';
   const failedExecution = failed ? failedExecutionId(projection) : null;
+  // A run its review recipe stopped says why in the recipe's panel, with the rounds it judged;
+  // the reason is not said again beside the state.
+  const recipeStop =
+    failed &&
+    recipeStopped &&
+    Boolean(onOpenArtifact) &&
+    Boolean(projection.statusReason?.startsWith('review_recipe:'));
   // The run's agents: those it schedules, and any callable helper that actually ran.
   const ran = new Set(Object.values(projection.executions).map((execution) => execution.nodeId));
   const soleAgent =
@@ -1027,6 +1042,7 @@ function RunHeader({
     ).length <= 1;
   const endReason =
     projection.statusReason &&
+    !recipeStop &&
     !(soleAgent && projection.statusReason.split(': ')[0] === 'execution_failed')
       ? projection.statusReason
       : null;
@@ -1101,6 +1117,11 @@ function RunHeader({
           {trailing}
         </div>
       </div>
+      {recipeStop && onOpenArtifact ? (
+        <div className="pt-1 pb-2">
+          <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
+        </div>
+      ) : null}
     </section>
   );
 }
