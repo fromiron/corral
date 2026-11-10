@@ -50,6 +50,8 @@ export interface InspectorSheetProps {
   onOpenTeam?: ((corralId: string) => void) | undefined;
   /** Opens the roles to copy onto the selected agent. */
   onImportRole?: (() => void) | undefined;
+  /** What the last edit left out, shown under the heading until the next edit. */
+  notice?: string | null | undefined;
   onSelect: (selection: TeamSelection) => void;
   onClose: () => void;
 }
@@ -132,6 +134,7 @@ export function InspectorSheet({
   teams,
   onOpenTeam,
   onImportRole,
+  notice,
   onSelect,
   onClose,
 }: InspectorSheetProps) {
@@ -434,6 +437,17 @@ export function InspectorSheet({
           <X />
         </Button>
       </header>
+      {notice ? (
+        <p
+          className={cn(
+            size.type.caption,
+            'flex gap-1.5 border-b border-border px-4 py-2 text-foreground',
+          )}
+        >
+          <TriangleAlert size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />
+          {notice}
+        </p>
+      ) : null}
       <div className="grid content-start gap-4 overflow-y-auto p-4">{body}</div>
     </aside>
   );

@@ -40,7 +40,6 @@ import {
   ShieldCheck,
   Split,
   Trash2,
-  TriangleAlert,
   Undo2,
   UserCheck,
   Users,
@@ -163,7 +162,8 @@ export function TeamEditor({
     at: null,
     roles: false,
   });
-  // Said once, right after the import that left a work style out, until the next edit.
+  // Said once, right after the import that left a work style out, until the next edit or
+  // selection.
   const [dropped, setDropped] = useState<typeof draft | null>(null);
   useEffect(() => {
     if (dropped && dropped !== draft) setDropped(null);
@@ -171,6 +171,7 @@ export function TeamEditor({
 
   const select = useCallback((next: TeamSelection) => {
     setSelection(next);
+    setDropped(null);
     if (next.nodes.length || next.edge) setView(null);
   }, []);
   // Another view, such as an agent import, can ask for a step to be selected.
@@ -467,6 +468,7 @@ export function TeamEditor({
   }, [runStats, definition, onOpenRun]);
 
   const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
+  const notice = dropped && dropped === draft ? t('workStyleDropped') : null;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
     <div className="grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]" onKeyDown={onKeyDown}>
@@ -563,6 +565,7 @@ export function TeamEditor({
                 teams={teams}
                 onOpenTeam={onOpenTeam}
                 onImportRole={openRoles}
+                notice={notice}
                 onSelect={select}
                 onClose={() => {
                   setView(null);
@@ -572,14 +575,10 @@ export function TeamEditor({
             </motion.div>
           ) : null}
         </AnimatePresence>
-        <div role="status" className="pointer-events-none absolute top-14 left-3 z-30">
-          {dropped && dropped === draft ? (
-            <p className="flex max-w-64 items-start gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-caption text-foreground shadow-sm">
-              <TriangleAlert size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />
-              {t('workStyleDropped')}
-            </p>
-          ) : null}
-        </div>
+        {/* Read out once; the sheet of the agent it happened to shows it. */}
+        <p role="status" className="sr-only">
+          {notice}
+        </p>
       </div>
       <CommandMenuDialog
         open={menu.open}

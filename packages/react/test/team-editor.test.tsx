@@ -341,9 +341,18 @@ describe('team editor: importing a role', () => {
       .getAllByRole('status')
       .filter((s) => s.textContent?.includes('without its work style'));
     expect(notices).toHaveLength(1);
-    // The next edit takes the notice away; it does not come back.
-    await act(async () => editor.getState().updateNode('agent_2', { label: 'Writer' }));
-    expect(screen.queryByText(/without its work style/)).toBeNull();
+    // The agent's sheet shows it under its heading.
+    expect(
+      within(screen.getByRole('complementary', { name: 'Settings' })).getAllByText(
+        /without its work style/,
+      ),
+    ).toHaveLength(1);
+    // The next edit takes the notice away; it does not come back with redo.
+    await act(async () => editor.getState().undo());
+    expect(screen.queryAllByText(/without its work style/)).toEqual([]);
+    await act(async () => editor.getState().redo());
+    expect(roleOf(editor.getState().draft, 'agent_1')?.prompt).toBe(releaseCheck.prompt);
+    expect(screen.queryAllByText(/without its work style/)).toEqual([]);
   });
 
   it('says nothing when the role had no work style', async () => {
@@ -354,6 +363,6 @@ describe('team editor: importing a role', () => {
       fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
     );
     await act(async () => fireEvent.click(screen.getByRole('option', { name: /^Plan/ })));
-    expect(screen.queryByText(/without its work style/)).toBeNull();
+    expect(screen.queryAllByText(/without its work style/)).toEqual([]);
   });
 });
