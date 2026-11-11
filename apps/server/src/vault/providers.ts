@@ -3,14 +3,14 @@ import type { Credential } from '@earendil-works/pi-ai';
 import { z } from 'zod';
 import type { LiveModels } from '../app.ts';
 import type { VaultCredentialOwner } from '../models/credential-store.ts';
-import { endpointClashes, endpointsFrom, registerEndpoints } from '../models/endpoints.ts';
+import { endpointClashes, registerEndpoints } from '../models/endpoints.ts';
 import type { ModelRegistry } from '../models/registry.ts';
 import { readWorkspaceConfig, type Workspace, writeModelConfig } from '../workspace.ts';
 import { vaultRevision } from './service.ts';
 import type { VaultDomainAdapter } from './types.ts';
 
 const wire = z.strictObject({
-  modelProfiles: z.array(z.unknown()).max(20),
+  modelProfiles: z.array(z.unknown()),
   modelProviders: z.array(z.unknown()).max(10),
   secrets: z
     .record(
@@ -98,7 +98,7 @@ export function providersVaultAdapter(options: {
       modelProfiles: parsed.config.modelProfiles ?? [],
       modelProviders: parsed.config.modelProviders ?? [],
     };
-    const endpoints = endpointsFrom(target.modelProviders);
+    const endpoints = registry.endpointsFor(target.modelProviders);
     const desired = structuredClone(
       rollback && data.localCredentials ? data.localCredentials : before.credentials,
     );
@@ -142,7 +142,7 @@ export function providersVaultAdapter(options: {
         target,
         before.configRevision,
         (config) => {
-          const endpoints = endpointsFrom(config.modelProviders);
+          const endpoints = registry.endpointsFor(config.modelProviders);
           return [
             ...endpointClashes(live.models, endpoints),
             ...registry.unknownProviders(config.modelProfiles ?? [], endpoints),
@@ -179,7 +179,7 @@ export function providersVaultAdapter(options: {
     const latest = readWorkspaceConfig(workspace.root);
     workspace.config = latest.config;
     workspace.configRevision = latest.revision;
-    const activeEndpoints = endpointsFrom(latest.config.modelProviders);
+    const activeEndpoints = registry.endpointsFor(latest.config.modelProviders);
     registerEndpoints(live.models, activeEndpoints);
     await registry.reconfigure(latest.config.modelProfiles ?? [], activeEndpoints, latest.revision);
     return { revision: committed.revision };
@@ -240,7 +240,7 @@ export function providersVaultAdapter(options: {
         modelProviders: checked.config.modelProviders,
       });
       if (!validated.ok) throw new Error('The selected local endpoint binding is invalid.');
-      const endpoints = endpointsFrom(validated.config.modelProviders);
+      const endpoints = registry.endpointsFor(validated.config.modelProviders);
       if (
         endpointClashes(live.models, endpoints).length ||
         registry.unknownProviders(validated.config.modelProfiles ?? [], endpoints).length

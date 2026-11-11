@@ -9,6 +9,7 @@ import type {
   SkillKey,
   SkillUpdatePreview,
 } from '@corral/contracts';
+import { ModelSelect, profileChoices } from '@corral/react';
 import { Button, Checkbox, fontWeights, Select, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -53,6 +54,7 @@ export function SkillQualityPanel({
   onChanged(): void;
 }) {
   const t = useTranslations('SkillQuality');
+  const tc = useTranslations('Composer');
   const { models, live } = useServices();
   const navigation = useSettingsNavigation();
   const [profiles, setProfiles] = useState<ModelProfileView[]>([]);
@@ -392,18 +394,24 @@ export function SkillQualityPanel({
             ]}
             onValueChange={(value) => edit(() => setMode(value as 'mock' | 'live'))}
           />
-          <Select
+          <ModelSelect
             label={t('model')}
             value={model}
             options={
               profiles.length
-                ? profiles
-                    .filter((profile) => mode === 'mock' || profile.available)
-                    .map((profile) => ({
-                      value: profile.profileId,
-                      label: `${profile.modelName ?? profile.modelId} · ${profile.profileId}`,
-                    }))
-                : [{ value: 'model-a', label: 'model-a' }]
+                ? profileChoices(
+                    profiles
+                      .filter((profile) => mode === 'mock' || profile.available)
+                      .map((profile) => ({
+                        ...profile,
+                        label: `${profile.providerName} · ${profile.modelName ?? profile.modelId}`,
+                      })),
+                    {
+                      profiles: tc('modelPicker.profiles'),
+                      unavailable: tc('modelPicker.unavailable'),
+                    },
+                  )
+                : [{ id: 'model-a', name: 'model-a', description: '' }]
             }
             onValueChange={(value) => edit(() => setModel(value))}
           />

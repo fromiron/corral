@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 import type { ModelsApi } from '@corral/client';
-import { act, type ReactNode } from 'react';
+import { act, type ReactNode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ModelSettingsPage } from './ModelSettingsPage.tsx';
 
-const fixture = vi.hoisted(() => ({ models: {} as ModelsApi }));
+const fixture = vi.hoisted(() => ({
+  models: {} as ModelsApi,
+  applied: [] as number[],
+  // The providers the Connections tab was first drawn with.
+  firstProviders: null as number | null,
+}));
 vi.mock('../services.tsx', () => ({
   useServices: () => ({ mode: 'server', live: true, models: fixture.models }),
 }));
@@ -36,7 +41,67 @@ vi.mock('./SettingsPage.tsx', () => ({
     </>
   ),
 }));
-vi.mock('./ModelImportPanel.tsx', () => ({ ModelImportPanel: () => <p>import panel</p> }));
+// The tabs' own screens have their own tests; here they only show what the page hands them.
+vi.mock('./ModelConnections.tsx', async () => {
+  const { useModelSettingsRefresh } = await import('../workbench/modelSettings.tsx');
+  return {
+    ModelConnections: ({
+      providers,
+      onMakeProfile,
+      onOpenProfile,
+    }: {
+      providers: unknown[];
+      onMakeProfile: (provider: string, model: string) => void;
+      onOpenProfile: (profileId: string) => void;
+    }) => {
+      const refresh = useModelSettingsRefresh();
+      fixture.firstProviders ??= providers.length;
+      return (
+        <div data-testid="connections">
+          <button type="button" onClick={() => onMakeProfile('openai', 'o9')}>
+            make o9
+          </button>
+          <button type="button" onClick={() => onOpenProfile('model-a')}>
+            open model-a
+          </button>
+          <button type="button" onClick={() => void refresh().catch(() => {})}>
+            read the lists again
+          </button>
+        </div>
+      );
+    },
+  };
+});
+vi.mock('./ModelProfilesEditor.tsx', () => ({
+  // Like the editor, it makes the profile a request asks for once per mount and says so.
+  ModelProfilesEditor: ({
+    request,
+    focus,
+    onRequestHandled,
+  }: {
+    request?: { provider: string; model: string; nonce: number } | null;
+    focus?: { profileId: string } | null;
+    onRequestHandled?: (nonce: number) => void;
+  }) => {
+    const [draft, setDraft] = useState('');
+    const [made, setMade] = useState<string[]>([]);
+    const handled = useRef<number | null>(null);
+    useEffect(() => {
+      if (!request || handled.current === request.nonce) return;
+      handled.current = request.nonce;
+      fixture.applied.push(request.nonce);
+      setMade((list) => [...list, `${request.provider}/${request.model}`]);
+      onRequestHandled?.(request.nonce);
+    });
+    return (
+      <div data-testid="profiles">
+        <input aria-label="draft" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <span data-testid="request">{made.join(',')}</span>
+        <span data-testid="focus">{focus?.profileId ?? ''}</span>
+      </div>
+    );
+  },
+}));
 vi.mock('./ImageProfileSettings.tsx', () => ({ ImageProfileSettings: () => <p>image panel</p> }));
 vi.mock('./LocalAiPanel.tsx', () => ({ LocalAiPanel: () => <p>local ai panel</p> }));
 vi.mock('./EffortRoutingSettings.tsx', () => ({
@@ -46,22 +111,10 @@ vi.mock('./DecisionApiSettings.tsx', () => ({
   DecisionApiSettings: () => <p>decision panel</p>,
 }));
 vi.mock('./ModelUsagePanel.tsx', () => ({ ModelUsagePanel: () => <p>usage panel</p> }));
-// The editor's "Change the key on the … card" action, for each endpoint it names.
-vi.mock('./ModelConfigEditor.tsx', () => ({
-  ModelConfigEditor: ({ onShowKey }: { onShowKey?: (endpointId: string) => void }) => (
-    <>
-      {['hive', 'other'].map((id) => (
-        <button key={id} type="button" onClick={() => onShowKey?.(id)}>
-          {`key on ${id}`}
-        </button>
-      ))}
-    </>
-  ),
-}));
 
 afterEach(() => vi.unstubAllGlobals());
 
-it('splits Models into tabs that keep every section and its unsaved input', async () => {
+async function render() {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
@@ -77,81 +130,69 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
       disconnect() {}
     },
   );
+  fixture.applied = [];
+  fixture.firstProviders = null;
   fixture.models = {
     profiles: async () => [],
-    auth: async () => [
-      {
-        providerId: 'openai',
-        name: 'OpenAI',
-        signedIn: false,
-        method: null,
-        methods: { oauth: false, apiKey: true },
-        endpoint: null,
-        endpointChanged: false,
-        connectionTest: null,
-        subscription: false,
-        expiresAt: null,
-        login: null,
-        source: null,
-        permissionsOk: true,
-      },
-    ],
+    auth: async () => [{ providerId: 'openai', name: 'OpenAI' }],
     catalog: async () => [],
-    config: async () => null,
+    config: async () => ({
+      revision: 'r1',
+      usingDefaults: false,
+      modelProviders: [],
+      modelProfiles: [],
+    }),
   } as unknown as ModelsApi;
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  try {
-    await act(async () =>
-      root.render(
-        <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <ModelSettingsPage />
-        </IntlProvider>,
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ModelSettingsPage />
+      </IntlProvider>,
+    ),
+  );
+  return {
+    container,
+    tabs: () => [...container.querySelectorAll<HTMLElement>('[role="tab"]')],
+    panelOf: (selector: string) =>
+      container.querySelector(selector)?.closest<HTMLElement>('[role="tabpanel"]'),
+    button: (text: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+        (item) => item.textContent === text,
       ),
-    );
-    const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
-    // The heading names the section alone: no intro line under it, and no storage note at the top.
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+// The kit keeps an invisible bold copy of each label for its width; read the visible one.
+const visible = (node: HTMLElement) => {
+  const copy = node.cloneNode(true) as HTMLElement;
+  for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+  return copy.textContent;
+};
+
+it('splits Models into tabs, Connections first, that keep every section and its unsaved input', async () => {
+  const page = await render();
+  try {
+    const { container, tabs, panelOf } = page;
+    // The heading names the section alone: no intro line under it.
     expect(container.querySelector('[data-description]')).toBeNull();
-    expect(container.textContent).not.toContain(
-      'Kept on this computer, outside the workspace, and used only',
-    );
-    // What happens to a saved key is one line under the key field, once per card, and the
-    // field's description.
-    const card = container.querySelector<HTMLElement>('[data-testid="provider-openai"]');
-    const safety = [...(card?.querySelectorAll('p') ?? [])].filter(
-      (node) => node.textContent === messages.Models.keySafety,
-    );
-    expect(safety).toHaveLength(1);
-    expect(container.textContent?.split(messages.Models.keySafety)).toHaveLength(2);
-    const field = card?.querySelector('input');
-    expect(field?.getAttribute('aria-describedby')).toBe(safety[0]?.id);
-    expect(
-      field && safety[0]
-        ? field.compareDocumentPosition(safety[0]) & Node.DOCUMENT_POSITION_FOLLOWING
-        : 0,
-    ).toBeTruthy();
-    // The kit keeps an invisible bold copy of each label for its width; read the visible one.
-    const visible = (node: HTMLElement) => {
-      const copy = node.cloneNode(true) as HTMLElement;
-      for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
-      return copy.textContent;
-    };
-    expect(tabs.map(visible)).toEqual([
-      'Sign-in',
+    expect(tabs().map(visible)).toEqual([
+      'Connections',
       'Profiles',
       'Local AI & judgment',
       'Images',
       'Usage',
     ]);
-    const panels = [...container.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
-    expect(panels).toHaveLength(5);
-    const panelOf = (selector: string) =>
-      container.querySelector(selector)?.closest<HTMLElement>('[role="tabpanel"]');
-    // Sign-in opens first, and every section still exists in some tab.
-    expect(panelOf('[data-testid="provider-openai"]')?.hidden).toBe(false);
+    expect(container.querySelectorAll('[role="tabpanel"]')).toHaveLength(5);
+    expect(panelOf('[data-testid="connections"]')?.hidden).toBe(false);
+    expect(panelOf('[data-testid="profiles"]')?.hidden).toBe(true);
     for (const text of [
-      'import panel',
       'image panel',
       'local ai panel',
       'judgment panel',
@@ -162,103 +203,84 @@ it('splits Models into tabs that keep every section and its unsaved input', asyn
     // The judgment's link to the decision APIs stays within one tab.
     expect(panelOf('#models-effort-routing')).toBe(panelOf('#models-decision-apis'));
     expect(panelOf('#models-local-ai')).toBe(panelOf('#models-decision-apis'));
-    expect(panelOf('#models-import')).toBe(panelOf('#models-profiles'));
 
-    const key = container.querySelector<HTMLInputElement>('[data-testid="provider-openai"] input');
-    expect(key).not.toBeNull();
+    // An unsaved profile edit survives a tab change.
+    await act(async () => tabs()[1]?.click());
+    const draft = container.querySelector<HTMLInputElement>('input[aria-label="draft"]');
     await act(async () => {
-      if (!key) return;
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      setter?.call(key, 'typed-but-unsaved');
-      key.dispatchEvent(new Event('input', { bubbles: true }));
+      if (!draft) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        draft,
+        'typed-but-unsaved',
+      );
+      draft.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await act(async () => tabs[3]?.click());
+    await act(async () => tabs()[3]?.click());
     expect(panelOf('#models-images')?.hidden).toBe(false);
-    expect(container.querySelector('[data-description]')).toBeNull();
-    expect(panelOf('[data-testid="provider-openai"]')?.hidden).toBe(true);
-    await act(async () => tabs[0]?.click());
-    expect(
-      container.querySelector<HTMLInputElement>('[data-testid="provider-openai"] input')?.value,
-    ).toBe('typed-but-unsaved');
+    await act(async () => tabs()[1]?.click());
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="draft"]')?.value).toBe(
+      'typed-but-unsaved',
+    );
   } finally {
-    await act(async () => root.unmount());
-    container.remove();
+    await page.unmount();
   }
 });
 
-const provider = (providerId: string, saved: boolean) => ({
-  providerId,
-  name: providerId,
-  signedIn: saved,
-  method: saved ? 'api_key' : null,
-  methods: { oauth: false, apiKey: true },
-  endpoint: null,
-  endpointChanged: false,
-  connectionTest: null,
-  subscription: false,
-  expiresAt: null,
-  login: null,
-  source: saved ? 'corral' : null,
-  permissionsOk: true,
+it('a model made into a profile, or a profile opened, takes the person to the Profiles tab', async () => {
+  const page = await render();
+  try {
+    const { container, tabs, panelOf, button } = page;
+    await act(async () => button('make o9')?.click());
+    expect(tabs()[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(panelOf('[data-testid="profiles"]')?.hidden).toBe(false);
+    expect(container.querySelector('[data-testid="request"]')?.textContent).toBe('openai/o9');
+    await act(async () => tabs()[0]?.click());
+    await act(async () => button('open model-a')?.click());
+    expect(tabs()[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(container.querySelector('[data-testid="focus"]')?.textContent).toBe('model-a');
+  } finally {
+    await page.unmount();
+  }
 });
 
-it('changing a key from the editor shows the Sign-in tab and focuses that card', async () => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
-    media: query,
-    addEventListener() {},
-    removeEventListener() {},
-  }));
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  );
-  fixture.models = {
-    profiles: async () => [],
-    // Hive holds a saved key, so its card has no key field; the other one still asks for one.
-    auth: async () => [provider('hive', true), provider('other', false)],
-    catalog: async () => [],
-    config: async () => ({ revision: 'r1', modelProviders: [], modelProfiles: [] }),
-  } as unknown as ModelsApi;
-  const container = document.createElement('div');
-  document.body.append(container);
-  const root = createRoot(container);
+it('keeps the Profiles tab and its draft when one read of the config fails, and makes a request once', async () => {
+  const page = await render();
   try {
-    await act(async () =>
-      root.render(
-        <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <ModelSettingsPage />
-        </IntlProvider>,
-      ),
-    );
-    const tabs = () => [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
-    const button = (text: string) =>
-      [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-        (item) => item.textContent === text,
+    const { container, tabs, button } = page;
+    await act(async () => button('make o9')?.click());
+    expect(fixture.applied).toHaveLength(1);
+    const draft = () => container.querySelector<HTMLInputElement>('input[aria-label="draft"]');
+    await act(async () => {
+      const input = draft();
+      if (!input) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        input,
+        'typed-but-unsaved',
       );
-    const card = (id: string) =>
-      container.querySelector<HTMLElement>(`[data-testid="provider-${id}"]`);
-    const signIn = () => card('hive')?.closest<HTMLElement>('[role="tabpanel"]');
-    await act(async () => tabs()[1]?.click());
-    await act(async () => button('Edit models')?.click());
-    expect(signIn()?.hidden).toBe(true);
-
-    await act(async () => button('key on hive')?.click());
-    expect(signIn()?.hidden).toBe(false);
-    expect(tabs()[0]?.getAttribute('aria-selected')).toBe('true');
-    expect(document.activeElement).toBe(card('hive'));
-
-    await act(async () => tabs()[1]?.click());
-    await act(async () => button('key on other')?.click());
-    expect(signIn()?.hidden).toBe(false);
-    expect(document.activeElement).toBe(card('other')?.querySelector('input'));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const config = fixture.models.config;
+    fixture.models.config = async () => {
+      throw new Error('offline');
+    };
+    await act(async () => tabs()[0]?.click());
+    await act(async () => button('read the lists again')?.click());
+    expect(draft()?.value).toBe('typed-but-unsaved');
+    fixture.models.config = config;
+    await act(async () => button('read the lists again')?.click());
+    expect(draft()?.value).toBe('typed-but-unsaved');
+    // The request was made into a profile once, not again on a later read.
+    expect(fixture.applied).toHaveLength(1);
   } finally {
-    await act(async () => root.unmount());
-    container.remove();
+    await page.unmount();
+  }
+});
+
+it('draws the Connections tab once the lists are read, so its first rows are not news', async () => {
+  const page = await render();
+  try {
+    expect(fixture.firstProviders).toBe(1);
+  } finally {
+    await page.unmount();
   }
 });

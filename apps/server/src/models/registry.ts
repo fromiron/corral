@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   ContextMeter,
   type EndpointSpec,
+  endpointProvider,
   type ModelBroker,
   managedRetryStream,
   modelReasoningCapabilities as reasoningCapabilities,
@@ -33,14 +34,35 @@ import {
 } from '@corral/core';
 import { accountModelStream, withSessionAffinityOptions } from '@corral/pi-runtime-port';
 import type {
+  Api,
   AssistantMessage,
   AuthEvent,
   AuthPrompt,
   CredentialStore,
+  Model,
   Models,
+  MutableModels,
 } from '@earendil-works/pi-ai';
+import type { ModelCatalogService } from './catalog-service.ts';
+import { connectionProfileId } from './connection-models.ts';
+import {
+  type EndpointFetchResult,
+  type EndpointModelCache,
+  type EndpointModelSource,
+  endpointAddress,
+  fetchEndpointModels,
+} from './endpoint-models.ts';
 import { probeEndpoint } from './endpoint-probe.ts';
-import { ENDPOINT_ORIGIN, type Endpoint } from './endpoints.ts';
+import {
+  ENDPOINT_ORIGIN,
+  type Endpoint,
+  endpointModelSpec,
+  endpointsFrom,
+  type ModelValueField,
+  registerEndpoints,
+  registeredEndpointIds,
+  type ValueSource,
+} from './endpoints.ts';
 import { ModelRequestRuntime, type RequestRuntimeOptions } from './request-runtime.ts';
 import {
   DRAFT_MAX_OUTPUT_TOKENS,
@@ -70,21 +92,39 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
 ];
 
 /**
- * Providers whose subscription OAuth Corral does not start: Anthropic does not allow third-party
- * apps to use subscription credentials. They take an API key instead.
+ * What a provider's key auth needs besides the key, as Pi resolves it (its Cloudflare
+ * providers read these from the server environment). Named when a key alone is refused.
  */
-const NO_SUBSCRIPTION_OAUTH = new Set(['anthropic']);
+const KEY_NEEDS: Readonly<Record<string, { what: string; env: string }>> = {
+  'cloudflare-workers-ai': { what: 'a Cloudflare account ID', env: 'CLOUDFLARE_ACCOUNT_ID' },
+  'cloudflare-ai-gateway': {
+    what: 'a Cloudflare account ID and AI Gateway ID',
+    env: 'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_GATEWAY_ID',
+  },
+};
+
+/** Corral's own subscription sign-in to this provider makes a borrowed Codex CLI login no connection. */
+const OPENAI = 'openai';
 
 /** How a provider is reached: `none` is a keyless local endpoint. */
 export type AuthMethod = 'oauth' | 'api_key' | 'none';
 
 /** A sign-in request the registry cannot serve; `code` picks the HTTP answer. */
 export class RegistryError extends Error {
-  readonly code: 'not_found' | 'unsupported';
-  constructor(code: 'not_found' | 'unsupported', message: string) {
+  /** `conflict`: settings or the credential changed while the request was in flight. */
+  readonly code: 'not_found' | 'unsupported' | 'conflict';
+  constructor(code: 'not_found' | 'unsupported' | 'conflict', message: string) {
     super(message);
     this.code = code;
   }
+}
+
+/** The last model list fetch of an endpoint: its category, HTTP status and time. */
+export interface EndpointModelsView {
+  kind: EndpointFetchResult['kind'];
+  status: number | null;
+  fetchedAt: string;
+  modelCount: number;
 }
 
 export interface ProviderAuthView {
@@ -122,6 +162,16 @@ export interface ProviderAuthView {
   source: 'corral' | 'codex-cli' | 'environment' | null;
   /** True only when borrowed login permissions are verified private; false includes unknown. */
   permissionsOk: boolean;
+  /** Models this connection can use now; 0 when it is not connected. */
+  modelCount: number;
+  /** An endpoint's last `/models` fetch; null for built-in providers and before any fetch. */
+  modelFetch: Omit<EndpointModelsView, 'modelCount'> | null;
+}
+
+/** One value of an endpoint model and where it came from. */
+export interface SourcedValue<T> {
+  value: T;
+  source: ValueSource;
 }
 
 export interface CatalogProvider {
@@ -134,6 +184,13 @@ export interface CatalogProvider {
     id: string;
     name: string;
     cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+    /** Endpoint models only: each limit and ability with its source. */
+    limits?: {
+      contextWindow: SourcedValue<number>;
+      maxOutput: SourcedValue<number>;
+      reasoning: SourcedValue<boolean>;
+      imageInput: SourcedValue<boolean>;
+    };
   }[];
 }
 
@@ -141,11 +198,15 @@ export interface LoginView {
   state: 'waiting' | 'exchanging' | 'failed';
   /** The provider's sign-in page; opening it is the person's own step. */
   authUrl: string | null;
+  /** The code to enter on that page, for a device-code sign-in. */
+  userCode: string | null;
   error: string | null;
 }
 
 export interface ModelProfileView {
   profileId: string;
+  /** A named profile from the config, or a model of a connected provider. */
+  source: 'profile' | 'connection';
   provider: string;
   providerName: string;
   modelId: string;
@@ -172,7 +233,25 @@ export interface RegistryOptions {
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
   /** OpenAI-compatible endpoints from the workspace config, already registered. */
   endpoints?: ReadonlyMap<string, Endpoint>;
+  /** Fetching endpoint model lists: the cache, models.dev metadata and the request function. */
+  endpointModels?: {
+    cache: EndpointModelCache;
+    catalog?: ModelCatalogService | null;
+    fetch?: typeof fetch;
+    timeoutMs?: number;
+  };
 }
+
+interface ModelFetch {
+  /** The endpoint's credential epoch when the fetch started. */
+  epoch: string;
+  /** The endpoint as it was when the fetch started: its address and access. */
+  endpoint: Endpoint;
+  abort: AbortController;
+  promise: Promise<EndpointModelsView>;
+}
+
+const SIGN_IN = (name: string) => `sign in to ${name} under Settings → Models`;
 
 interface PendingLogin {
   view: LoginView;
@@ -188,9 +267,35 @@ export class ModelRegistry implements ModelResolver {
       expires: number | null;
       endpointChanged: boolean;
       stored: boolean;
+      /** What Pi says this credential can call, cached for the synchronous resolver. */
+      models: readonly Model<Api>[];
     }
   >();
   private readonly logins = new Map<string, PendingLogin>();
+  /** The newest status check per provider; an older one that finishes later is dropped. */
+  private readonly statusChecks = new Map<string, number>();
+  /** Every connection model id of every known provider, connected or not. */
+  private connectionIds: Map<string, { provider: string; model: string }> | null = null;
+
+  /**
+   * The endpoint model definitions Runs were resolved with, by provider and snapshot hash, with
+   * what a person wrote for them then. A later fetched change leaves them in use; a written change
+   * refuses them (features/model-connections.md, Run과 엔드포인트 정의). Entries whose written part
+   * no longer matches the config are dropped when it is saved.
+   */
+  private readonly pinned = new Map<
+    string,
+    { provider: string; modelId: string; spec: EndpointSpec; written: string }
+  >();
+
+  private readonly fetches = new Map<string, ModelFetch>();
+  private readonly lastFetch = new Map<string, Omit<EndpointModelsView, 'modelCount'>>();
+  /** Providers with a list Pi fetches whose refresh has finished in this process. */
+  private readonly dynamicLoaded = new Set<string>();
+  /** Bumped per provider when its credential changes; a fetch across a change is dropped. */
+  private readonly credentialEpochs = new Map<string, number>();
+  private readonly background = new Set<Promise<unknown>>();
+  private readonly stopped = new AbortController();
 
   private readonly connectionTests = new Map<
     string,
@@ -222,7 +327,7 @@ export class ModelRegistry implements ModelResolver {
         // Re-resolve the host's origin-bound credential; a bare per-request key loses its binding.
         ...(this.options.endpoints?.has(model.provider) ? { apiKey: undefined } : {}),
         onPayload: async (payload, selected) => {
-          if (snapshot) this.assertEndpointSnapshot(snapshot);
+          if (snapshot) this.endpointSpecOf(snapshot);
           return (await options?.onPayload?.(payload, selected)) ?? payload;
         },
         cacheRetention: options?.cacheRetention ?? 'short',
@@ -280,50 +385,160 @@ export class ModelRegistry implements ModelResolver {
     return { retention: 'short', source: 'product' };
   }
 
-  private readonly models: Models;
+  private readonly models: MutableModels;
   private profiles: readonly ProfileConfig[];
   private options: RegistryOptions;
 
-  constructor(models: Models, profiles: readonly ProfileConfig[], options: RegistryOptions) {
+  constructor(models: MutableModels, profiles: readonly ProfileConfig[], options: RegistryOptions) {
     this.models = models;
     this.profiles = profiles;
     this.options = options;
   }
 
-  private providers(): string[] {
+  private now() {
+    return this.options.now?.() ?? Date.now();
+  }
+
+  /** pi-ai's own providers; endpoints, including ones no longer configured, are not among them. */
+  private builtinProviders(): string[] {
+    const registered = registeredEndpointIds(this.models);
+    return this.models
+      .getProviders()
+      .map((provider) => provider.id)
+      .filter((id) => !registered.has(id) && !this.options.endpoints?.has(id));
+  }
+
+  /** Providers whose status is kept: those the profiles name, the endpoints and Pi's own. */
+  private statusProviders(): string[] {
     return [
       ...new Set([
         ...this.profiles.map((p) => p.provider),
         ...(this.options.endpoints?.keys() ?? []),
+        ...this.builtinProviders(),
       ]),
     ];
   }
 
-  /** Re-reads sign-in status; the resolver answers from this (run start is synchronous). */
-  async refreshStatus(): Promise<void> {
-    for (const providerId of this.providers()) {
-      const check = await this.models.checkAuth(providerId).catch(() => undefined);
-      const stored = await this.options.credentials.read(providerId).catch(() => undefined);
-      const endpoint = this.options.endpoints?.get(providerId);
-      this.status.set(providerId, {
-        method: endpoint?.spec.keyless && check ? 'none' : (check?.type ?? null),
-        expires: stored?.type === 'oauth' ? stored.expires : null,
-        stored: stored !== undefined,
-        endpointChanged: Boolean(
-          endpoint &&
-            stored?.type === 'api_key' &&
-            stored.env?.[ENDPOINT_ORIGIN] !== endpoint.origin,
-        ),
-      });
+  /** A provider that can be signed in to here: one of Pi's or a configured endpoint. */
+  private knownProvider(providerId: string): boolean {
+    return Boolean(this.options.endpoints?.has(providerId)) || this.isBuiltin(providerId);
+  }
+
+  /**
+   * Re-reads sign-in status and what each connection can call; the resolver answers from this
+   * (run start is synchronous). Reads credentials and environment only: an OAuth token is
+   * never refreshed here. One provider after its own request; all otherwise.
+   */
+  async refreshStatus(providerId?: string): Promise<void> {
+    await Promise.all(
+      (providerId ? [providerId] : this.statusProviders()).map((id) => this.checkStatus(id)),
+    );
+  }
+
+  private async checkStatus(providerId: string) {
+    const check = (this.statusChecks.get(providerId) ?? 0) + 1;
+    this.statusChecks.set(providerId, check);
+    const auth = await this.models.checkAuth(providerId).catch(() => undefined);
+    const stored = await this.options.credentials.read(providerId).catch(() => undefined);
+    const endpoint = this.options.endpoints?.get(providerId);
+    const method: AuthMethod | null =
+      endpoint?.spec.keyless && auth ? 'none' : (auth?.type ?? null);
+    let models: readonly Model<Api>[] = [];
+    if (method) {
+      const available = await this.models.getAvailable(providerId).catch(() => []);
+      // A subscription token reaches fewer models than an API key; list only those it can call.
+      const allowed = method === 'oauth' ? this.options.subscriptionModels?.(providerId) : null;
+      models = allowed ? available.filter((model) => allowed.has(model.id)) : available;
     }
+    if (this.statusChecks.get(providerId) !== check) return;
+    this.status.set(providerId, {
+      method,
+      expires: stored?.type === 'oauth' ? stored.expires : null,
+      stored: stored !== undefined,
+      endpointChanged: Boolean(
+        endpoint && stored?.type === 'api_key' && stored.env?.[ENDPOINT_ORIGIN] !== endpoint.origin,
+      ),
+      models,
+    });
+  }
+
+  /**
+   * A borrowed Codex CLI login while Corral has its own OpenAI subscription sign-in: it still
+   * serves a profile that names it, but it is not a connection and lists no models, so the same
+   * models are not offered twice. Beside an API key it stays a connection: a key and a
+   * subscription are different access (features/model-connections.md, 연결).
+   */
+  private shadowedLogin(providerId: string): boolean {
+    if (providerId === OPENAI) return false;
+    const layered = sourceAware(this.options.credentials);
+    if (layered?.sourceOf(providerId) !== 'codex-cli') return false;
+    const openai = this.status.get(OPENAI);
+    return Boolean(
+      openai?.method === 'oauth' && openai.stored && layered.sourceOf(OPENAI) === 'corral',
+    );
+  }
+
+  /** Signed in and counted as a connection: its models are listed without a profile. */
+  private isConnection(providerId: string): boolean {
+    return Boolean(this.status.get(providerId)?.method) && !this.shadowedLogin(providerId);
+  }
+
+  /** The models of every known provider by connection profile id, built when first needed. */
+  private connectionIndex() {
+    if (this.connectionIds) return this.connectionIds;
+    const index = new Map<string, { provider: string; model: string }>();
+    for (const provider of [...(this.options.endpoints?.keys() ?? []), ...this.builtinProviders()])
+      for (const model of this.models.getModels(provider)) {
+        const id = connectionProfileId(provider, model.id);
+        if (!index.has(id)) index.set(id, { provider, model: model.id });
+      }
+    this.connectionIds = index;
+    return index;
+  }
+
+  /** The provider and model lists changed: ids are indexed again on next use. */
+  private catalogChanged() {
+    this.connectionIds = null;
+  }
+
+  /** A named profile, else a model of a connection; an id never stops resolving when signed out. */
+  private profileFor(
+    profile: string,
+  ):
+    | { ok: true; config: ProfileConfig; connection: boolean }
+    | Extract<ModelResolution, { ok: false }> {
+    const named = this.profiles.find((p) => p.id === profile);
+    if (named) return { ok: true, config: named, connection: false };
+    const listed = this.connectionIndex().get(profile);
+    if (listed)
+      return {
+        ok: true,
+        config: { id: profile, provider: listed.provider, model: listed.model },
+        connection: true,
+      };
+    // A provider whose list is not known now (a dynamic list, an endpoint not fetched yet).
+    const owner = [...(this.options.endpoints?.keys() ?? []), ...this.builtinProviders()]
+      .filter((provider) => profile.startsWith(`${provider}:`))
+      .sort((a, b) => b.length - a.length)[0];
+    if (owner && !this.status.get(owner)?.method)
+      return { ok: false, code: 'CAPABILITY_DENIED', reason: SIGN_IN(this.providerName(owner)) };
+    // A list Pi fetches is empty until its refresh finishes (at server start, or offline).
+    if (owner && this.models.getProvider(owner)?.refreshModels && !this.dynamicLoaded.has(owner))
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        reason: `the ${this.providerName(owner)} model list is not loaded yet; try again in a moment`,
+      };
+    return { ok: false, code: 'GRAPH_INVALID', reason: 'no such model profile' };
   }
 
   resolve(profile: string, mode: 'mock' | 'live'): ModelResolution {
     if (mode === 'mock') {
       return { ok: true, snapshot: { profile, provider: null, modelId: null, auth: 'mock' } };
     }
-    const config = this.profiles.find((p) => p.id === profile);
-    if (!config) return { ok: false, code: 'GRAPH_INVALID', reason: 'no such model profile' };
+    const found = this.profileFor(profile);
+    if (!found.ok) return found;
+    const config = found.config;
     if (config.workerIsolation && process.platform !== 'linux')
       return {
         ok: false,
@@ -342,11 +557,29 @@ export class ModelRegistry implements ModelResolver {
       return {
         ok: false,
         code: 'CAPABILITY_DENIED',
-        reason: `sign in to ${this.providerName(config.provider)} under Settings → Models`,
+        reason: SIGN_IN(this.providerName(config.provider)),
+      };
+    }
+    if (found.connection && this.shadowedLogin(config.provider)) {
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        reason:
+          'the Codex CLI login is not used while Corral has its own OpenAI sign-in; choose the OpenAI model',
       };
     }
     // A subscription token reaches fewer models than an API key; say so before the run.
     const allowed = method === 'oauth' ? this.options.subscriptionModels?.(config.provider) : null;
+    if (
+      found.connection &&
+      !this.status.get(config.provider)?.models.some((model) => model.id === config.model)
+    ) {
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        reason: `${config.model} is not available with ${allowed ? 'a subscription sign-in' : `the current ${this.providerName(config.provider)} sign-in`}`,
+      };
+    }
     if (allowed && !allowed.has(config.model)) {
       return {
         ok: false,
@@ -357,6 +590,7 @@ export class ModelRegistry implements ModelResolver {
     const context = this.contextPolicy(config);
     if (context.errors.length)
       return { ok: false, code: 'CAPABILITY_DENIED', reason: context.errors.join('; ') };
+    const endpointHash = this.pin(config.provider, config.model);
     return {
       ok: true,
       snapshot: {
@@ -370,13 +604,7 @@ export class ModelRegistry implements ModelResolver {
         cachePolicy: this.cachePolicy(config),
         maxOutputTokens: this.models.getModel(config.provider, config.model)!.maxTokens,
         imageInput: this.models.getModel(config.provider, config.model)!.input.includes('image'),
-        ...(this.options.endpoints?.get(config.provider)
-          ? {
-              endpointHash: createHash('sha256')
-                .update(canonicalJson(this.options.endpoints.get(config.provider)!.spec))
-                .digest('hex'),
-            }
-          : {}),
+        ...(endpointHash ? { endpointHash } : {}),
         ...(config.workerIsolation ? { workerIsolation: config.workerIsolation } : {}),
         reasoning: reasoningCapabilities(this.models.getModel(config.provider, config.model)),
         // The run record knows oauth and api_key; a keyless endpoint is recorded as api_key.
@@ -387,11 +615,7 @@ export class ModelRegistry implements ModelResolver {
 
   /** The access token for one request; pi-ai refreshes an expired OAuth token first. */
   modelBroker(snapshot: ModelProfileSnapshot, owner?: AgentStartInput): ModelBroker {
-    this.assertEndpointSnapshot(snapshot);
-    const model =
-      snapshot.provider && snapshot.modelId
-        ? this.models.getModel(snapshot.provider, snapshot.modelId)
-        : undefined;
+    const model = this.snapshotModel(snapshot);
     if (!model) throw new Error('the pinned sandbox model is unavailable');
     const meter = new ContextMeter();
     return {
@@ -431,11 +655,10 @@ export class ModelRegistry implements ModelResolver {
   }
 
   async credentials(model: ModelProfileSnapshot): Promise<string | null> {
-    this.assertEndpointSnapshot(model);
+    const resolved = this.snapshotModel(model);
     if (!model.provider || !model.modelId) return null;
     // A keyless endpoint gets no key from this computer.
     if (this.options.endpoints?.get(model.provider)?.spec.keyless) return null;
-    const resolved = this.models.getModel(model.provider, model.modelId);
     if (!resolved) throw new Error(`${model.provider} has no model ${model.modelId}`);
     let auth: Awaited<ReturnType<Models['getAuth']>>;
     try {
@@ -450,7 +673,7 @@ export class ModelRegistry implements ModelResolver {
       }
       throw new Error(`sign-in to ${this.providerName(model.provider)} failed; sign in again`);
     } finally {
-      void this.refreshStatus();
+      void this.refreshStatus(model.provider);
     }
     return auth?.auth.apiKey ?? null;
   }
@@ -533,7 +756,7 @@ export class ModelRegistry implements ModelResolver {
         true,
       );
     } finally {
-      void this.refreshStatus();
+      void this.refreshStatus(provider);
     }
     const plan = planFromAnswer(text);
     return plan
@@ -559,10 +782,12 @@ export class ModelRegistry implements ModelResolver {
     const requestId = operation?.requestId ?? randomUUID();
     if (!resolution.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId)
       return { ok: false, reason: 'model_error' };
-    const selected = this.models.getModel(
-      resolution.snapshot.provider,
-      resolution.snapshot.modelId,
-    );
+    let selected: Model<Api> | undefined;
+    try {
+      selected = this.snapshotModel(resolution.snapshot);
+    } catch {
+      return { ok: false, reason: 'model_error' };
+    }
     const model =
       selected && resolution.snapshot.contextPolicy
         ? { ...selected, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
@@ -679,7 +904,7 @@ export class ModelRegistry implements ModelResolver {
     } finally {
       clearTimeout(timer);
       off();
-      void this.refreshStatus();
+      void this.refreshStatus(resolution.snapshot.provider);
     }
   }
 
@@ -697,17 +922,36 @@ export class ModelRegistry implements ModelResolver {
     endpoints: ReadonlyMap<string, Endpoint>,
     configRevision = this.options.configRevision,
   ) {
+    const before = this.options.endpoints ?? new Map<string, Endpoint>();
     this.connectionEpoch++;
     this.connectionTests.clear();
     this.profiles = profiles;
     this.options = { ...this.options, endpoints, ...(configRevision ? { configRevision } : {}) };
+    this.catalogChanged();
+    // A pinned definition whose written part changed refuses its requests from now on.
+    for (const [key, entry] of this.pinned) {
+      const current = endpoints.get(entry.provider);
+      if (!current || writtenPart(current, entry.modelId) !== entry.written)
+        this.pinned.delete(key);
+    }
+    // A new endpoint, a new address or access, or an address with no list yet fetches its list.
+    // A fetch in flight for an unchanged address and access goes on; its result is kept.
+    const changed = [...endpoints.values()]
+      .filter((endpoint) => !sameAccess(before.get(endpoint.providerId), endpoint))
+      .map((endpoint) => endpoint.providerId);
+    const unlisted = [...endpoints.values()]
+      .filter((endpoint) => !endpoint.fetchedAt)
+      .map((endpoint) => endpoint.providerId);
+    for (const id of [...this.lastFetch.keys()])
+      if (changed.includes(id) || !endpoints.has(id)) this.lastFetch.delete(id);
+    for (const [id, running] of this.fetches) if (!endpoints.has(id)) running.abort.abort();
     await this.refreshStatus();
+    for (const id of new Set([...changed, ...unlisted])) this.fetchInBackground(id);
   }
 
-  setConfigRevision(configRevision: string) {
-    this.connectionEpoch++;
-    this.connectionTests.clear();
-    this.options = { ...this.options, configRevision };
+  /** Endpoints of a configuration with the lists fetched for them (the cache), not yet in use. */
+  endpointsFor(configs: Parameters<typeof endpointsFrom>[0]): Map<string, Endpoint> {
+    return endpointsFrom(configs, this.options.endpointModels?.cache);
   }
 
   contextPolicy(
@@ -720,11 +964,19 @@ export class ModelRegistry implements ModelResolver {
     const model = endpoint
       ? endpoint.spec.models.find((model) => model.id === profile.model)
       : this.models.getModel(profile.provider, profile.model);
+    // The endpoint's own figure (written or listed), models.dev's, or a default.
+    const listed = endpoint?.sources?.get(profile.model)?.contextWindow;
     return resolveProfileContext(
       profile,
       {
         contextWindow: configured ?? model?.contextWindow ?? null,
-        source: endpoint ? (configured !== undefined ? 'endpoint' : 'fallback') : 'catalog',
+        source: endpoint
+          ? configured !== undefined || listed === 'response'
+            ? 'endpoint'
+            : listed === 'catalog'
+              ? 'catalog'
+              : 'fallback'
+          : 'catalog',
       },
       configRevision,
       model ? ('maxTokens' in model ? model.maxTokens : model.maxOutput) : FALLBACK_OUTPUT_TOKENS,
@@ -750,68 +1002,139 @@ export class ModelRegistry implements ModelResolver {
   }
 
   private isBuiltin(providerId: string): boolean {
-    return Boolean(this.models.getProvider(providerId)) && !this.options.endpoints?.has(providerId);
+    return (
+      Boolean(this.models.getProvider(providerId)) &&
+      !this.options.endpoints?.has(providerId) &&
+      !registeredEndpointIds(this.models).has(providerId)
+    );
   }
 
-  /** Providers and their models for the profile editor; no credentials or status. */
+  /**
+   * Providers and their models for the profile editor and the connection list; no credentials
+   * or status. Endpoint models carry each limit and ability with its source.
+   */
   catalog(): CatalogProvider[] {
+    const removed = registeredEndpointIds(this.models);
     return this.models
       .getProviders()
-      .map((provider) => ({
-        providerId: provider.id,
-        name: provider.name,
-        endpoint: this.options.endpoints?.has(provider.id) ?? false,
-        methods: this.methods(provider.id),
-        models: provider.getModels().map((m) => ({
-          id: m.id,
-          name: m.name,
-          // pi-ai's list prices (USD per million tokens), for estimates only.
-          cost: {
-            input: m.cost.input,
-            output: m.cost.output,
-            cacheRead: m.cost.cacheRead,
-            cacheWrite: m.cost.cacheWrite,
-          },
-        })),
-      }))
-      .filter((p) => p.models.length > 0)
+      .filter((provider) => this.options.endpoints?.has(provider.id) || !removed.has(provider.id))
+      .map((provider) => {
+        const endpoint = this.options.endpoints?.get(provider.id);
+        return {
+          providerId: provider.id,
+          name: provider.name,
+          endpoint: Boolean(endpoint),
+          // A provider with a list it fetches may have none before it is connected.
+          dynamic: Boolean(provider.refreshModels),
+          methods: this.methods(provider.id),
+          models: provider.getModels().map((m) => {
+            const limits = endpoint ? limitsOf(endpoint, m.id) : null;
+            return {
+              id: m.id,
+              name: m.name,
+              // pi-ai's list prices (USD per million tokens), for estimates only.
+              cost: {
+                input: m.cost.input,
+                output: m.cost.output,
+                cacheRead: m.cost.cacheRead,
+                cacheWrite: m.cost.cacheWrite,
+              },
+              ...(limits ? { limits } : {}),
+            };
+          }),
+        };
+      })
+      .filter((p) => p.models.length > 0 || p.endpoint || p.dynamic)
+      .map(({ dynamic: _, ...provider }) => provider)
       .sort((a, b) => Number(b.endpoint) - Number(a.endpoint) || a.name.localeCompare(b.name));
   }
 
-  /** The non-secret definition of the endpoint behind a model, for its worker. */
+  /**
+   * The non-secret definition of the endpoint model behind a snapshot, for its worker: the
+   * address, auth, cache and session settings and that one model, as pinned when it was resolved.
+   */
   endpointOf(model: ModelProfileSnapshot): EndpointSpec | null {
-    this.assertEndpointSnapshot(model);
-    return (model.provider && this.options.endpoints?.get(model.provider)?.spec) || null;
+    return this.endpointSpecOf(model);
   }
 
-  private assertEndpointSnapshot(model: ModelProfileSnapshot) {
-    if (!model.endpointHash) return;
-    const endpoint = model.provider && this.options.endpoints?.get(model.provider)?.spec;
-    if (
-      !endpoint ||
-      createHash('sha256').update(canonicalJson(endpoint)).digest('hex') !== model.endpointHash
-    )
-      throw new Error('The endpoint configuration changed after this request was prepared.');
+  /**
+   * Pins one endpoint model's effective definition for the Runs resolved with it; its hash goes
+   * into their snapshot. Null for a provider that is not an endpoint.
+   */
+  private pin(provider: string, modelId: string): string | null {
+    const endpoint = this.options.endpoints?.get(provider);
+    const spec = endpoint ? endpointModelSpec(endpoint.spec, modelId) : null;
+    if (!endpoint || !spec) return null;
+    const hash = endpointHash(spec);
+    this.pinned.set(`${provider}\u0000${hash}`, {
+      provider,
+      modelId,
+      spec,
+      written: writtenPart(endpoint, modelId),
+    });
+    return hash;
+  }
+
+  /**
+   * The endpoint definition a snapshot runs with: the one pinned when it was resolved, while what
+   * a person wrote for it (address, access, cache and session settings, that model's values) is
+   * unchanged. A snapshot pinned before this process started is served only by an identical
+   * current definition. Anything else refuses the prepared request.
+   */
+  private endpointSpecOf(model: ModelProfileSnapshot): EndpointSpec | null {
+    if (!model.endpointHash) return null;
+    const endpoint = model.provider ? this.options.endpoints?.get(model.provider) : undefined;
+    if (endpoint && model.modelId) {
+      const pinned = this.pinned.get(`${endpoint.providerId}\u0000${model.endpointHash}`);
+      if (pinned?.written === writtenPart(endpoint, model.modelId)) return pinned.spec;
+      const own = endpointModelSpec(endpoint.spec, model.modelId);
+      if (own && endpointHash(own) === model.endpointHash) return own;
+    }
+    throw new Error('The endpoint configuration changed after this request was prepared.');
+  }
+
+  /** The model a snapshot runs on: an endpoint's pinned definition, else Pi's own model. */
+  private snapshotModel(snapshot: ModelProfileSnapshot): Model<Api> | undefined {
+    const spec = this.endpointSpecOf(snapshot);
+    if (!snapshot.provider || !snapshot.modelId) return undefined;
+    return spec
+      ? endpointProvider(snapshot.provider, spec).getModels()[0]
+      : this.models.getModel(snapshot.provider, snapshot.modelId);
   }
 
   private methods(providerId: string): { oauth: boolean; apiKey: boolean } {
     const auth = this.models.getProvider(providerId)?.auth;
     return {
-      oauth: Boolean(auth?.oauth) && !NO_SUBSCRIPTION_OAUTH.has(providerId),
+      oauth: Boolean(auth?.oauth),
       apiKey: Boolean(auth?.apiKey) && !this.options.endpoints?.get(providerId)?.spec.keyless,
     };
   }
 
-  /** Stores an API key entered under Settings → Models; it is never returned. */
+  /**
+   * Stores an API key entered under Settings → Models; it is never returned. An endpoint then
+   * fetches its model list; a provider with a dynamic list refreshes it.
+   */
   async setApiKey(providerId: string, key: string): Promise<void> {
-    if (!this.providers().includes(providerId)) {
-      throw new RegistryError('not_found', 'no model profile uses this provider');
+    if (!this.knownProvider(providerId)) {
+      throw new RegistryError('not_found', 'no such model provider');
     }
     if (!this.methods(providerId).apiKey) {
       throw new RegistryError('unsupported', 'this provider does not take an API key');
     }
     const endpoint = this.options.endpoints?.get(providerId);
+    // A key Pi cannot sign in with on its own (an account ID is missing) is not stored: the page
+    // could neither show it as a connection nor remove it.
+    if (!endpoint && !(await this.models.getAuth(providerId, { apiKey: key }).catch(() => null))) {
+      const needs = KEY_NEEDS[providerId];
+      throw new RegistryError(
+        'unsupported',
+        needs
+          ? `${this.providerName(providerId)} needs ${needs.what} besides the API key; set ${needs.env} in the server environment. The key was not saved.`
+          : `${this.providerName(providerId)} needs more than an API key here. The key was not saved.`,
+      );
+    }
     this.connectionEpoch++;
+    this.credentialChanged(providerId);
     this.connectionTests.delete(providerId);
     this.cancelLogin(providerId);
     await this.options.credentials.modify(providerId, async () => ({
@@ -821,8 +1144,11 @@ export class ModelRegistry implements ModelResolver {
       ...(endpoint ? { env: { [ENDPOINT_ORIGIN]: endpoint.origin } } : {}),
     }));
     this.connectionEpoch++;
+    this.credentialChanged(providerId);
     this.connectionTests.delete(providerId);
-    await this.refreshStatus();
+    await this.refreshStatus(providerId);
+    if (endpoint) this.fetchInBackground(providerId);
+    else this.connected(providerId);
   }
 
   /** Test only the saved endpoint metadata route, never a caller-supplied URL or inference. */
@@ -833,7 +1159,8 @@ export class ModelRegistry implements ModelResolver {
     const epoch = this.connectionEpoch;
     const credential = await this.options.credentials.read(providerId);
     const current = () =>
-      epoch === this.connectionEpoch && this.options.endpoints?.get(providerId) === endpoint;
+      epoch === this.connectionEpoch &&
+      sameEndpoint(this.options.endpoints?.get(providerId), endpoint);
     if (!current())
       throw new RegistryError('unsupported', 'settings changed; test the connection again');
     const apiKey =
@@ -864,12 +1191,25 @@ export class ModelRegistry implements ModelResolver {
     return Boolean(this.models.getProvider(providerId)?.auth.oauth?.isSubscription);
   }
 
+  /**
+   * Connected providers, and those the profiles or endpoints name even when signed out. A
+   * provider never connected and never named is offered by the catalog instead.
+   */
   authView(): ProviderAuthView[] {
     const now = this.options.now?.() ?? Date.now();
     const layered = sourceAware(this.options.credentials);
-    return this.providers().map((providerId) => {
+    const named = new Set([
+      ...this.profiles.map((profile) => profile.provider),
+      ...(this.options.endpoints?.keys() ?? []),
+    ]);
+    const shown = this.statusProviders().filter(
+      (providerId) =>
+        named.has(providerId) || this.isConnection(providerId) || this.logins.has(providerId),
+    );
+    return shown.map((providerId) => {
       const status = this.status.get(providerId);
       const login = this.logins.get(providerId);
+      const endpoint = this.options.endpoints?.get(providerId);
       return {
         providerId,
         name: this.providerName(providerId),
@@ -885,34 +1225,71 @@ export class ModelRegistry implements ModelResolver {
         source: sourceOf(status, () => layered?.sourceOf(providerId) ?? 'corral'),
         permissionsOk:
           layered?.sourceOf(providerId) !== 'codex-cli' || layered.codexPermissionsOk(),
+        modelCount: status && this.isConnection(providerId) ? status.models.length : 0,
+        modelFetch: endpoint
+          ? (this.lastFetch.get(providerId) ??
+            (endpoint.fetchedAt
+              ? { kind: 'connected' as const, status: null, fetchedAt: endpoint.fetchedAt }
+              : null))
+          : null,
       };
     });
   }
 
+  /**
+   * Named profiles first, then the models of every connected provider that no named profile
+   * already points at. Capabilities are worked out only for those connected models.
+   */
   profilesView(): ModelProfileView[] {
-    return this.profiles.map((profile) => {
-      const model = this.models.getModel(profile.provider, profile.model);
-      const method = this.status.get(profile.provider)?.method ?? null;
-      const context = this.contextPolicy(profile);
-      return {
-        profileId: profile.id,
-        provider: profile.provider,
-        providerName: this.providerName(profile.provider),
-        modelId: profile.model,
-        modelName: model?.name ?? null,
-        available: Boolean(model),
-        reasoning: model?.reasoning ?? null,
-        imageInput: model ? model.input.includes('image') : null,
-        reasoningCapabilities: reasoningCapabilities(model),
-        contextWindow: context.policy?.contextWindow ?? model?.contextWindow ?? null,
-        ...(context.policy ? { contextPolicy: context.policy } : {}),
-        maxOutputTokens: model?.maxTokens ?? null,
-        method,
-        keyConfigured: method !== null,
-        subscriptionSupported:
-          this.options.subscriptionModels?.(profile.provider)?.has(profile.model) ?? null,
-      };
-    });
+    const named = this.profiles.map((profile) => ({
+      ...this.profileView(profile),
+      source: 'profile' as const,
+    }));
+    const taken = new Set(this.profiles.map((profile) => profile.id));
+    const pointed = new Set(this.profiles.map((p) => `${p.provider}\u0000${p.model}`));
+    // The resolver's index decides which provider and model an id means when two pairs share it.
+    const index = this.connectionIndex();
+    const connection: ModelProfileView[] = [];
+    for (const provider of this.statusProviders()) {
+      const status = this.status.get(provider);
+      if (!status || !this.isConnection(provider) || !this.knownProvider(provider)) continue;
+      for (const model of status.models) {
+        if (pointed.has(`${provider}\u0000${model.id}`)) continue;
+        const id = connectionProfileId(provider, model.id);
+        const owner = index.get(id);
+        if (taken.has(id) || owner?.provider !== provider || owner.model !== model.id) continue;
+        taken.add(id);
+        connection.push({
+          ...this.profileView({ id, provider, model: model.id }),
+          source: 'connection',
+        });
+      }
+    }
+    return [...named, ...connection];
+  }
+
+  private profileView(profile: ProfileConfig): Omit<ModelProfileView, 'source'> {
+    const model = this.models.getModel(profile.provider, profile.model);
+    const method = this.status.get(profile.provider)?.method ?? null;
+    const context = this.contextPolicy(profile);
+    return {
+      profileId: profile.id,
+      provider: profile.provider,
+      providerName: this.providerName(profile.provider),
+      modelId: profile.model,
+      modelName: model?.name ?? null,
+      available: Boolean(model),
+      reasoning: model?.reasoning ?? null,
+      imageInput: model ? model.input.includes('image') : null,
+      reasoningCapabilities: reasoningCapabilities(model),
+      contextWindow: context.policy?.contextWindow ?? model?.contextWindow ?? null,
+      ...(context.policy ? { contextPolicy: context.policy } : {}),
+      maxOutputTokens: model?.maxTokens ?? null,
+      method,
+      keyConfigured: method !== null,
+      subscriptionSupported:
+        this.options.subscriptionModels?.(profile.provider)?.has(profile.model) ?? null,
+    };
   }
 
   /**
@@ -921,22 +1298,20 @@ export class ModelRegistry implements ModelResolver {
    * completes it. Resolves once the sign-in page is known.
    */
   async startLogin(providerId: string): Promise<LoginView> {
-    if (!this.providers().includes(providerId)) {
-      throw new RegistryError('not_found', 'no model profile uses this provider');
+    if (!this.knownProvider(providerId)) {
+      throw new RegistryError('not_found', 'no such model provider');
     }
     if (!this.methods(providerId).oauth) {
       throw new RegistryError(
         'unsupported',
-        NO_SUBSCRIPTION_OAUTH.has(providerId)
-          ? `${this.providerName(providerId)} subscription sign-in is not supported; enter an API key`
-          : `${this.providerName(providerId)} signs in with an API key here`,
+        `${this.providerName(providerId)} signs in with an API key here`,
       );
     }
     const running = this.logins.get(providerId);
     if (running && running.view.state !== 'failed') return { ...running.view };
 
     const pending: PendingLogin = {
-      view: { state: 'waiting', authUrl: null, error: null },
+      view: { state: 'waiting', authUrl: null, userCode: null, error: null },
       abort: new AbortController(),
       manual: null,
     };
@@ -957,10 +1332,26 @@ export class ModelRegistry implements ModelResolver {
               pending.view.authUrl = event.url;
               announced();
             }
+            // A device-code sign-in: the person opens the page and enters the code there.
+            if (event.type === 'device_code') {
+              pending.view.authUrl = event.verificationUri;
+              pending.view.userCode = event.userCode;
+              announced();
+            }
             if (event.type === 'progress') pending.view.state = 'exchanging';
           },
           prompt: (prompt: AuthPrompt) =>
             new Promise<string>((resolve, reject) => {
+              // The provider's own default: the first (browser) way to sign in, and a blank
+              // optional field (GitHub Copilot's Enterprise domain means github.com).
+              if (prompt.type === 'select' && prompt.options[0]) {
+                resolve(prompt.options[0].id);
+                return;
+              }
+              if (prompt.type === 'text') {
+                resolve('');
+                return;
+              }
               if (prompt.type !== 'manual_code') {
                 reject(new Error('this sign-in step is not supported here'));
                 return;
@@ -973,7 +1364,9 @@ export class ModelRegistry implements ModelResolver {
       )
       .then(async () => {
         this.logins.delete(providerId);
-        await this.refreshStatus();
+        this.credentialChanged(providerId);
+        await this.refreshStatus(providerId);
+        this.connected(providerId);
       })
       .catch((error: unknown) => {
         pending.view.state = 'failed';
@@ -1000,14 +1393,280 @@ export class ModelRegistry implements ModelResolver {
   }
 
   async logout(providerId: string) {
+    if (!this.knownProvider(providerId)) {
+      // A key left for an endpoint the config no longer names can still be removed.
+      const stored = await this.options.credentials
+        .list()
+        .then((list) => list.some((credential) => credential.providerId === providerId))
+        .catch(() => false);
+      if (!stored) throw new RegistryError('not_found', 'no such model provider');
+      this.credentialChanged(providerId);
+      await this.models.logout(providerId);
+      return;
+    }
     this.connectionEpoch++;
+    this.credentialChanged(providerId);
     this.connectionTests.delete(providerId);
     this.cancelLogin(providerId);
+    this.fetches.get(providerId)?.abort.abort();
     await this.models.logout(providerId);
     this.connectionEpoch++;
+    this.credentialChanged(providerId);
     this.connectionTests.delete(providerId);
-    await this.refreshStatus();
+    await this.refreshStatus(providerId);
   }
+
+  private credentialChanged(providerId: string) {
+    this.credentialEpochs.set(providerId, (this.credentialEpochs.get(providerId) ?? 0) + 1);
+  }
+
+  private fetchEpoch(providerId: string) {
+    return String(this.credentialEpochs.get(providerId) ?? 0);
+  }
+
+  private track(work: Promise<unknown>) {
+    const tracked: Promise<unknown> = work
+      .catch(() => {})
+      .finally(() => this.background.delete(tracked));
+    this.background.add(tracked);
+  }
+
+  /** Settles once every background fetch and refresh started so far has finished. */
+  async idle(): Promise<void> {
+    while (this.background.size) await Promise.all([...this.background]);
+  }
+
+  /** Stops fetches and refreshes in flight; the server is closing. */
+  close() {
+    this.stopped.abort();
+    for (const running of this.fetches.values()) running.abort.abort();
+  }
+
+  /**
+   * A provider was just connected: one with a dynamic list (Radius) refreshes it through Pi in
+   * the background. Pi's static lists need nothing.
+   */
+  private connected(providerId: string) {
+    if (!this.models.getProvider(providerId)?.refreshModels) return;
+    this.track(this.refreshDynamic([providerId], true));
+  }
+
+  /** At server start: the connected providers with a dynamic list refresh it through Pi. */
+  refreshDynamicProviders() {
+    const ids = this.builtinProviders().filter(
+      (id) => this.status.get(id)?.method && this.models.getProvider(id)?.refreshModels,
+    );
+    if (ids.length) this.track(this.refreshDynamic(ids, false));
+  }
+
+  private async refreshDynamic(providers: string[], force: boolean) {
+    if (this.stopped.signal.aborted) return;
+    const result = await this.models.refresh({ providers, force, signal: this.stopped.signal });
+    for (const id of providers)
+      if (!result.aborted && !result.errors.has(id)) this.dynamicLoaded.add(id);
+    this.catalogChanged();
+    await Promise.all(providers.map((id) => this.refreshStatus(id)));
+  }
+
+  /** Throws unless the provider is a configured endpoint: `not_found` when Pi does not know it either. */
+  assertEndpoint(providerId: string) {
+    if (this.options.endpoints?.has(providerId)) return;
+    throw this.isBuiltin(providerId)
+      ? new RegistryError('unsupported', 'model lists are fetched for added endpoints only')
+      : new RegistryError('not_found', 'no such model provider');
+  }
+
+  private fetchInBackground(providerId: string) {
+    if (this.stopped.signal.aborted) return;
+    this.track(this.refreshEndpointModels(providerId));
+  }
+
+  /**
+   * Fetches an endpoint's model list from its saved address (features/model-connections.md,
+   * 엔드포인트 모델 가져오기). One fetch per endpoint at a time: a caller joins the one in flight.
+   * A result that arrives after the endpoint's address or access, or its credential, changed is
+   * dropped; other config changes keep it.
+   */
+  refreshEndpointModels(providerId: string): Promise<EndpointModelsView> {
+    const endpoint = this.options.endpoints?.get(providerId);
+    if (!endpoint) {
+      try {
+        this.assertEndpoint(providerId);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+      return Promise.reject(new RegistryError('not_found', 'no such model provider'));
+    }
+    const epoch = this.fetchEpoch(providerId);
+    const running = this.fetches.get(providerId);
+    if (running && running.epoch === epoch && sameAccess(running.endpoint, endpoint))
+      return running.promise;
+    running?.abort.abort();
+    const abort = new AbortController();
+    const entry: ModelFetch = {
+      epoch,
+      endpoint,
+      abort,
+      promise: Promise.resolve() as unknown as Promise<EndpointModelsView>,
+    };
+    entry.promise = this.fetchModels(providerId, endpoint, epoch, abort.signal).finally(() => {
+      if (this.fetches.get(providerId) === entry) this.fetches.delete(providerId);
+    });
+    this.fetches.set(providerId, entry);
+    return entry.promise;
+  }
+
+  private async fetchModels(
+    providerId: string,
+    endpoint: Endpoint,
+    epoch: string,
+    signal: AbortSignal,
+  ): Promise<EndpointModelsView> {
+    const current = () =>
+      !signal.aborted &&
+      this.fetchEpoch(providerId) === epoch &&
+      sameAccess(this.options.endpoints?.get(providerId), endpoint);
+    const late = () =>
+      new RegistryError(
+        'conflict',
+        'settings changed while the models were fetched; refresh again',
+      );
+    const credential = await this.options.credentials.read(providerId).catch(() => undefined);
+    if (!current()) throw late();
+    // Only the key entered for this origin; never one entered for another address.
+    const apiKey =
+      !endpoint.spec.keyless &&
+      credential?.type === 'api_key' &&
+      credential.env?.[ENDPOINT_ORIGIN] === endpoint.origin
+        ? credential.key
+        : undefined;
+    let result: EndpointFetchResult;
+    if (!endpoint.spec.keyless && !apiKey)
+      result = { kind: 'authentication', status: null, models: null };
+    else {
+      const catalog = this.options.endpointModels?.catalog;
+      // models.dev holds no user data; a failed refresh keeps the fetch going.
+      if (catalog?.view().stale) await catalog.refresh();
+      if (!current()) throw late();
+      result = await fetchEndpointModels({
+        baseUrl: endpoint.spec.baseUrl,
+        ...(apiKey ? { apiKey } : {}),
+        ...(this.options.endpointModels?.fetch ? { fetch: this.options.endpointModels.fetch } : {}),
+        ...(this.options.endpointModels?.timeoutMs
+          ? { timeoutMs: this.options.endpointModels.timeoutMs }
+          : {}),
+        signal,
+      });
+    }
+    if (!current()) throw late();
+    const fetchedAt = new Date(this.now()).toISOString();
+    // The list joins the endpoint as it is configured now (the same address and access).
+    const now = this.options.endpoints?.get(providerId) ?? endpoint;
+    if (result.models) this.useFetched(providerId, now, result.models, fetchedAt);
+    this.lastFetch.set(providerId, { kind: result.kind, status: result.status, fetchedAt });
+    await this.refreshStatus(providerId);
+    const status = this.status.get(providerId);
+    return {
+      kind: result.kind,
+      status: result.status,
+      fetchedAt,
+      modelCount: status?.method ? status.models.length : 0,
+    };
+  }
+
+  /** Caches a fetched list for its address and puts the endpoint's new definition in use. */
+  private useFetched(
+    providerId: string,
+    endpoint: Endpoint,
+    models: NonNullable<EndpointFetchResult['models']>,
+    fetchedAt: string,
+  ) {
+    if (!endpoint.config) return;
+    const catalog = this.options.endpointModels?.catalog;
+    const entry = {
+      fetchedAt,
+      models: models.map(({ id, ...response }) => ({
+        id,
+        response,
+        catalog: catalog?.match(id) ?? {},
+      })),
+    };
+    const cache = this.options.endpointModels?.cache;
+    try {
+      cache?.write(endpoint.spec.baseUrl, entry);
+    } catch {
+      /* The list is still used until the server stops; the next fetch writes it again. */
+    }
+    const address = endpointAddress(endpoint.spec.baseUrl);
+    const source: EndpointModelSource = {
+      read: (baseUrl) =>
+        endpointAddress(baseUrl) === address ? entry : (cache?.read(baseUrl) ?? null),
+    };
+    const rebuilt = endpointsFrom([endpoint.config], source).get(providerId);
+    if (!rebuilt) return;
+    const endpoints = new Map(this.options.endpoints);
+    endpoints.set(providerId, rebuilt);
+    this.options = { ...this.options, endpoints };
+    registerEndpoints(this.models, new Map([[providerId, rebuilt]]));
+    this.catalogChanged();
+  }
+}
+
+function endpointHash(spec: EndpointSpec | null): string {
+  return createHash('sha256').update(canonicalJson(spec)).digest('hex');
+}
+
+/**
+ * What a person wrote for one endpoint model: the address, access, cache and session settings
+ * and the values written for that model. Fetched values and the display name are not part of it.
+ */
+function writtenPart(endpoint: Endpoint, modelId: string): string {
+  const { baseUrl, keyless, cacheRetention, sessionAffinity } = endpoint.spec;
+  const entry = endpoint.config
+    ? endpoint.config.models?.find((model) => model.id === modelId)
+    : endpoint.spec.models.find((model) => model.id === modelId);
+  return canonicalJson({
+    baseUrl,
+    keyless,
+    cacheRetention: cacheRetention ?? null,
+    sessionAffinity: sessionAffinity ?? null,
+    model: entry
+      ? Object.fromEntries(Object.entries(entry).filter(([, value]) => value !== undefined))
+      : null,
+  });
+}
+
+/** An endpoint still reached at the same address with the same access. */
+function sameAccess(current: Endpoint | undefined, expected: Endpoint) {
+  return (
+    current !== undefined &&
+    current.spec.baseUrl === expected.spec.baseUrl &&
+    current.spec.keyless === expected.spec.keyless
+  );
+}
+
+/** The same configured endpoint, though its definition may have taken a newly fetched list. */
+function sameEndpoint(current: Endpoint | undefined, expected: Endpoint) {
+  return (
+    current !== undefined &&
+    (expected.config ? current.config === expected.config : current === expected)
+  );
+}
+
+function limitsOf(
+  endpoint: Endpoint,
+  modelId: string,
+): CatalogProvider['models'][number]['limits'] {
+  const model = endpoint.spec.models.find((candidate) => candidate.id === modelId);
+  const sources = endpoint.sources?.get(modelId);
+  if (!model || !sources) return undefined;
+  const sourced = <T>(value: T, field: ModelValueField) => ({ value, source: sources[field] });
+  return {
+    contextWindow: sourced(model.contextWindow, 'contextWindow'),
+    maxOutput: sourced(model.maxOutput, 'maxOutput'),
+    reasoning: sourced(model.reasoning, 'reasoning'),
+    imageInput: sourced(model.imageInput ?? false, 'imageInput'),
+  };
 }
 
 /** Sign-in errors in plain words; never the token endpoint's response body. */

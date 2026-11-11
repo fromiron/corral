@@ -14,27 +14,52 @@ import {
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai';
 
+/** The chat APIs Pi ships; a model on any other API (a test double) is given no levels. */
+const PI_CHAT_APIS: ReadonlySet<string> = new Set([
+  'openai-completions',
+  'mistral-conversations',
+  'openai-responses',
+  'azure-openai-responses',
+  'openai-codex-responses',
+  'anthropic-messages',
+  'bedrock-converse-stream',
+  'google-generative-ai',
+  'google-vertex',
+  'pi-messages',
+]);
+
+/**
+ * Serializers whose reasoning and output fields Corral has tested against Pi's payload and
+ * compares in every request. Other Pi formats still get Pi's levels, but only as Pi's
+ * `reasoning` option: Corral records the mapped level without checking the wire.
+ */
+function verifiedSerializer(model: Model<Api>): boolean {
+  return (
+    ['openai-responses', 'openai-codex-responses'].includes(model.api) ||
+    (hasApi(model, 'anthropic-messages') && model.compat?.forceAdaptiveThinking === true) ||
+    (hasApi(model, 'openai-completions') &&
+      ((model.compat?.thinkingFormat === 'deepseek' &&
+        model.compat.supportsReasoningEffort !== false) ||
+        (model.compat?.thinkingFormat === 'openai' &&
+          model.compat.supportsReasoningEffort === true &&
+          model.thinkingLevelMap !== undefined)))
+  );
+}
+
+/** Pi omits Google's thinking settings differently; its `off` rewrite would pick a level. */
+const GOOGLE_APIS: ReadonlySet<string> = new Set(['google-generative-ai', 'google-vertex']);
+
 /** Metadata and serializer identity pinned before any execution starts. */
 export function modelReasoningCapabilities(model: Model<Api> | undefined): ReasoningCapabilities {
-  if (
-    !model ||
-    !(
-      ['openai-responses', 'openai-codex-responses'].includes(model.api) ||
-      (hasApi(model, 'anthropic-messages') && model.compat?.forceAdaptiveThinking === true) ||
-      (hasApi(model, 'openai-completions') &&
-        ((model.compat?.thinkingFormat === 'deepseek' &&
-          model.compat.supportsReasoningEffort !== false) ||
-          (model.compat?.thinkingFormat === 'openai' &&
-            model.compat.supportsReasoningEffort === true &&
-            model.thinkingLevelMap !== undefined)))
-    )
-  )
+  if (!model) return { levels: [], providerDefault: false };
+  const verified = verifiedSerializer(model);
+  if (!verified && !(model.reasoning && PI_CHAT_APIS.has(model.api)))
     return { levels: [], providerDefault: false };
   const levels = model.reasoning ? getSupportedThinkingLevels(model) : [];
   const mapping = Object.fromEntries(
     levels.map((level) => [
       level,
-      model.thinkingLevelMap?.[level] ?? (level === 'off' ? 'none' : level),
+      model.thinkingLevelMap?.[level] ?? (verified && level === 'off' ? 'none' : level),
     ]),
   );
   const capabilities = { levels, providerDefault: true, api: model.api, mapping };
@@ -74,7 +99,8 @@ export function reasoningRequest(
     if (resolution.resolved !== 'off') next.reasoning = resolution.resolved;
     return { model, options: next };
   }
-  if (hasApi(model, 'anthropic-messages')) return { model, options: next };
+  if (hasApi(model, 'anthropic-messages') || GOOGLE_APIS.has(model.api))
+    return { model, options: next };
   // Pi Codex adds `none` for omission unless off maps to null. Never mutate the catalog model.
   return {
     model: { ...model, thinkingLevelMap: { ...model.thinkingLevelMap, off: null } },
@@ -102,6 +128,22 @@ export function requestOutputCap(
   return cap;
 }
 
+/**
+ * The output cap of a chat completions body. A model that names no field gets the one Pi
+ * picks for its host; the cap is then read from whichever field is present, never both.
+ */
+function completionsCap(
+  model: Model<'openai-completions'>,
+  body: { max_tokens?: unknown; max_completion_tokens?: unknown },
+) {
+  const field = model.compat?.maxTokensField;
+  if (field === 'max_tokens') return body.max_tokens;
+  if (field === 'max_completion_tokens') return body.max_completion_tokens;
+  if (body.max_tokens !== undefined && body.max_completion_tokens !== undefined)
+    throw new Error('provider output limit differs from the Coordinator permit');
+  return body.max_completion_tokens ?? body.max_tokens;
+}
+
 export function verifyReasoningWire(
   model: Model<Api>,
   payload: unknown,
@@ -111,6 +153,14 @@ export function verifyReasoningWire(
 ): ReasoningWire | undefined {
   if (!resolution) return undefined;
   if (!payload || typeof payload !== 'object') throw new Error('invalid provider payload');
+  if (!verifiedSerializer(model)) {
+    // A format Corral has not tested: the record is the mapped level, which may differ from
+    // what Pi actually sends (features/model-connections.md).
+    const level = resolution.resolved;
+    return level === null
+      ? { kind: 'omitted', value: null }
+      : { kind: 'effort', value: model.thinkingLevelMap?.[level] ?? level };
+  }
   const body = payload as {
     model?: unknown;
     reasoning?: { effort?: unknown };
@@ -186,9 +236,7 @@ export function verifyReasoningWire(
     const cap = hasApi(model, 'anthropic-messages')
       ? body.max_tokens
       : hasApi(model, 'openai-completions')
-        ? model.compat?.maxTokensField === 'max_tokens'
-          ? body.max_tokens
-          : body.max_completion_tokens
+        ? completionsCap(model, body)
         : body.max_output_tokens;
     const unsupported =
       model.api === 'openai-codex-responses' ||

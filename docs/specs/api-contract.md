@@ -52,7 +52,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /session | `{token}` | 서버 실행 중 유효한 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 잘못된 token은 401 |
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트), sessionId. `POST /runs`는 `sessionId?`를 받고 팀 프로젝트의 세션이 아니면 `TARGET_NOT_FOUND` |
-| GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록. 자격 증명·상태 없음 |
+| GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록, provider별 연결 방법(`oauth`·`apiKey`). 엔드포인트의 모델은 `limits`(contextWindow·maxOutput·reasoning·imageInput 각각 `{value, source}`; source는 `config`·`known`·`response`·`catalog`·`default`)를 가진다. 자격 증명·상태 없음 |
 | GET /model-config | — | `modelProfiles`, `modelProviders`, `usingDefaults`, `revision`(설정 파일 내용 해시) |
 | PUT /model-config | revision, modelProfiles, modelProviders | 두 키만 교체해 저장·즉시 반영. 검사 실패 `SCHEMA_INVALID`(필드 이름만), 다른 revision `REVISION_CONFLICT` |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
@@ -187,14 +187,15 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /model-profiles | — | profileId, provider, modelId, modelName, available, reasoning, contextWindow, maxOutputTokens, method(`oauth`·`api_key`·null), keyConfigured |
-| GET /model-auth | — | provider별 signedIn, method, subscription, expiresAt, 진행 중 login(state·authUrl·error) |
-| PUT /model-auth/:provider/api-key | `{key, revision?}` | 프로필의 provider 또는 등록 endpoint에 키 저장. optional config revision 불일치 시 `REVISION_CONFLICT`; 응답은 인증 상태만 포함 |
+| GET /model-profiles | — | 이름 있는 프로필과 연결된 공급자의 모델. 항목마다 profileId, `source`(`profile`·`connection`), provider, modelId, modelName, available, reasoning, contextWindow, maxOutputTokens, method(`oauth`·`api_key`·null), keyConfigured. 연결에서 온 모델의 profileId 규칙은 [모델 연결](features/model-connections.md#모델-참조) |
+| GET /model-auth | — | 연결된 provider와 프로필·endpoint가 쓰는 provider별 signedIn, method, subscription, expiresAt, `modelCount`(쓸 수 있는 모델 수, 연결되지 않았으면 0), endpoint의 마지막 모델 가져오기 `modelFetch`(`kind`, HTTP `status` 또는 null, `fetchedAt`; 내장 provider와 가져온 적 없는 endpoint는 null), 진행 중 login(state·authUrl·`userCode`·error). `userCode`는 기기 코드 방식 로그인에서 사람이 공급자 화면에 넣는 코드이고 그 밖에는 null |
+| PUT /model-auth/:provider/api-key | `{key, revision?}` | Pi가 아는 provider 또는 등록 endpoint에 키 저장. endpoint면 저장 뒤 모델 목록을 가져온다. 모르는 provider는 `TARGET_NOT_FOUND`. 키만으로는 연결되지 않는 provider(계정 ID가 더 필요한 경우)는 저장하지 않고 `COMMAND_NOT_SUPPORTED`. optional config revision 불일치 시 `REVISION_CONFLICT`; 응답은 인증 상태만 포함 |
 | POST /model-auth/:provider/probe | `{revision}` | 등록된 endpoint의 `/models` GET 연결 확인. 추론·redirect 없음. origin-bound 키만 사용. `kind`, HTTP `status`, `checkedAt` 반환; 현재 설정과 다르면 거절 |
-| POST /model-auth/:provider/login | — | 202. provider 자체 로그인 시작. 사용자가 여는 authUrl을 돌려준다 |
+| POST /model-auth/:provider/login | — | 202. Pi가 아는 provider의 자체 로그인 시작. 사용자가 여는 authUrl을 돌려준다. 모르는 provider는 `TARGET_NOT_FOUND` |
+| POST /model-auth/:provider/models/refresh | `{revision}` | 등록된 endpoint의 `/models`에서 모델 목록을 다시 가져온다. 추론·redirect 없음. origin-bound 키만 사용. `kind`, HTTP `status`, `fetchedAt`, `modelCount` 반환. 다른 revision과, 도중에 그 endpoint의 주소·인증 방식이나 자격 증명이 바뀐 늦은 결과는 `REVISION_CONFLICT`, 모르는 provider는 `TARGET_NOT_FOUND`, endpoint가 아닌 provider는 `COMMAND_NOT_SUPPORTED`. 한도와 규칙은 [모델 연결](features/model-connections.md#엔드포인트-모델-가져오기) |
 | POST /model-auth/:provider/login/callback | `{url}` | 브라우저의 최종 redirect 주소(자동 콜백이 닿지 않을 때) |
 | DELETE /model-auth/:provider/login | — | 진행 중 로그인 취소 |
-| DELETE /model-auth/:provider | — | 로그아웃. 저장한 자격 증명 삭제 |
+| DELETE /model-auth/:provider | — | 로그아웃. 저장한 자격 증명 삭제. 설정에서 지운 endpoint의 남은 키도 지운다. provider도 저장된 자격 증명도 없으면 `TARGET_NOT_FOUND` |
 
 로컬 AI 설치. 설치 규칙은 [로컬 AI](features/local-intelligence.md)가 정한다. 로컬 AI가 없는 서버도 GET /local-ai에는 번들의 release·모델 이름과 state `unsupported`를 돌려주고, 설치와 취소는 403 `CAPABILITY_DENIED`다.
 

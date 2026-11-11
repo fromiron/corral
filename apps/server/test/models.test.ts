@@ -132,6 +132,7 @@ describe('model sign-in and profiles', () => {
     expect(started.body).toEqual({
       state: 'waiting',
       authUrl: 'https://auth.example.test/authorize?state=s1',
+      userCode: null,
       error: null,
     });
     const openai = await signIn(context.json);
@@ -179,6 +180,7 @@ describe('model sign-in and profiles', () => {
     expect(login).toEqual({
       state: 'failed',
       authUrl: 'https://auth.example.test/authorize?state=s1',
+      userCode: null,
       error: 'The provider refused the sign-in. Try again.',
     });
     expect(context.responses.join('\n')).not.toContain('leaked-body');
@@ -271,10 +273,16 @@ describe('model sign-in and profiles', () => {
       { id: 'model-b', provider: 'openai', model: 'gpt-test-b-api-only' },
     ]);
     await signIn(context.json);
-    const profiles = (await context.json('/model-profiles')).body;
+    const profiles: { source: string; subscriptionSupported: boolean | null }[] = (
+      await context.json('/model-profiles')
+    ).body;
     expect(
-      profiles.map((p: { subscriptionSupported: boolean | null }) => p.subscriptionSupported),
+      profiles.filter((p) => p.source === 'profile').map((p) => p.subscriptionSupported),
     ).toEqual([true, false]);
+    // The connection lists only the models the subscription sign-in may use.
+    expect(
+      profiles.filter((p) => p.source === 'connection').map((p) => p.subscriptionSupported),
+    ).toEqual([true]);
     const repo = new RestCorralRepository({ baseUrl: context.server.url, fetch: context.call });
     const definition = linearCorral(['writer']);
     for (const role of definition.roles) role.modelProfile = 'model-b';
@@ -359,7 +367,7 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     expect((await finish(context)).status).toBe('refused');
   });
 
-  it('refuses an empty or oversized key, a provider no profile uses, and Anthropic subscription sign-in', async () => {
+  it('refuses an empty or oversized key and a provider Pi does not know; Anthropic offers both methods', async () => {
     const context = await start(makeFake(), [
       ...FAKE_PROFILES,
       { id: 'claude', provider: 'anthropic', model: 'claude-test' },
@@ -368,13 +376,11 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     expect((await setKey(context.json, 'openai', 'x'.repeat(2000))).status).toBe(400);
     expect((await setKey(context.json, 'nobody', 'sk-x')).status).toBe(404);
     const login = await context.json('/model-auth/anthropic/login', { method: 'POST' });
-    expect(login.status).toBe(501);
-    expect(login.body.error).toMatchObject({ code: 'COMMAND_NOT_SUPPORTED' });
-    expect(login.body.error.message).toMatch(/API key/);
+    expect(login.status).toBe(202);
     const anthropic = (await context.json('/model-auth')).body.find(
       (p: { providerId: string }) => p.providerId === 'anthropic',
     );
-    expect(anthropic).toMatchObject({ methods: { oauth: false, apiKey: true } });
+    expect(anthropic).toMatchObject({ methods: { oauth: true, apiKey: true } });
   });
 
   it('a keyless local endpoint runs without a key; a keyed one gets the entered key', async () => {
@@ -493,23 +499,42 @@ describe('API keys and OpenAI-compatible endpoints', () => {
           method: 'POST',
           body: JSON.stringify({ revision: rev }),
         });
+      // Saving a key also fetches the model list once, in the background
+      // (features/model-connections.md); wait for that fetch to settle.
+      const fetched = async (kind: string) => {
+        for (let i = 0; i < 200; i++) {
+          const view = (await context.json('/model-auth')).body[0];
+          if (view.modelFetch?.kind === kind) return view.modelFetch;
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        throw new Error(`no ${kind} model fetch`);
+      };
+      const listed = {
+        path: '/v1/models',
+        method: 'GET',
+        authorization: 'Bearer fixture-probe-secret',
+      };
       expect((await probe('stale')).status).toBe(409);
       expect((await probe()).body).toMatchObject({ kind: 'authentication', status: null });
       expect(seen).toEqual([]);
       await setKey(context.json, 'local', 'fixture-probe-secret');
+      // The fixture answers a body that is no model list.
+      expect(await fetched('unsupported')).toMatchObject({ status: 200 });
+      expect(seen).toEqual([listed]);
       expect((await probe()).body).toMatchObject({
         kind: 'connected',
         status: 200,
         checkedAt: expect.any(String),
       });
-      expect(seen).toEqual([
-        { path: '/v1/models', method: 'GET', authorization: 'Bearer fixture-probe-secret' },
-      ]);
+      expect(seen).toEqual([listed, listed]);
       status = 302;
       expect((await probe()).body).toMatchObject({ kind: 'redirect', status: 302 });
-      expect(seen).toHaveLength(2);
+      expect(seen).toHaveLength(3);
       expect((await context.json('/model-auth')).body[0].connectionTest.kind).toBe('redirect');
       await setKey(context.json, 'local', 'replacement-probe-secret');
+      expect(await fetched('redirect')).toMatchObject({ status: 302 });
+      expect(seen).toHaveLength(4);
+      expect(seen.some((request) => request.path.includes('credential-sink'))).toBe(false);
       expect((await context.json('/model-auth')).body[0].connectionTest).toBeNull();
       expect(context.responses.join('\n')).not.toMatch(
         /fixture-probe-secret|private provider response|replacement-probe-secret/,
@@ -520,7 +545,9 @@ describe('API keys and OpenAI-compatible endpoints', () => {
       const received = new Promise<void>((resolve) => {
         entered = resolve;
       });
+      // Only the probe is held; the model fetch the next key save starts is answered at once.
       hold = (send) => {
+        hold = undefined;
         release = send;
         entered?.();
       };
@@ -786,7 +813,7 @@ describe('editing profiles and endpoints from the Models page', () => {
         cacheWrite: expect.any(Number),
       },
     });
-    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(false);
+    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(true);
 
     const current = await context.json('/model-config');
     expect(current.body).toMatchObject({

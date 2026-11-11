@@ -1,5 +1,5 @@
 import type { EffectiveHarnessSnapshot } from '@corral/contracts';
-import type { EditorDraft, EditorStore } from '@corral/react';
+import { type EditorDraft, type EditorStore, ModelSelect, profileChoices } from '@corral/react';
 import {
   Button,
   Checkbox,
@@ -10,7 +10,7 @@ import {
   Textarea,
 } from '@corral/react/design-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocale } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import {
@@ -31,6 +31,7 @@ export function MarkdownAgentImport({
   projectId: string;
 }) {
   const ko = useLocale().startsWith('ko');
+  const tc = useTranslations('Composer');
   const { harnesses } = useServices();
   const text = (english: string, korean: string) => (ko ? korean : english);
   const draft = useStore(editor, (state) => state.draft);
@@ -238,20 +239,18 @@ export function MarkdownAgentImport({
             ) : null}
             <div className="flex flex-col gap-1 text-body">
               <span>{text('Connected model profile', '연결된 모델 프로필')}</span>
-              <Select
+              <ModelSelect
                 label={text('Connected model profile', '연결된 모델 프로필')}
                 value={modelProfile}
+                placeholder={text('Map to a connected model', '연결된 모델에 매핑')}
                 onValueChange={(value) => {
                   setModel(value);
                   setConfirmed(false);
                 }}
-                options={[
-                  { value: '', label: text('Map to a connected model', '연결된 모델에 매핑') },
-                  ...available.map((profile) => ({
-                    value: profile.profileId,
-                    label: profile.label,
-                  })),
-                ]}
+                options={profileChoices(available, {
+                  profiles: tc('modelPicker.profiles'),
+                  unavailable: tc('modelPicker.unavailable'),
+                })}
               />
             </div>
             {!available.length ? (

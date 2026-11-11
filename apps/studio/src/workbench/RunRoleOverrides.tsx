@@ -1,6 +1,6 @@
 import type { RoleRunOverrides } from '@corral/contracts';
-import { ReasoningSelect } from '@corral/react';
-import { fontWeights, Select } from '@corral/react/design-kit';
+import { ModelSelect, profileChoices, ReasoningSelect } from '@corral/react';
+import { fontWeights } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { ProfileInfo, RoleModel } from './useModels.ts';
@@ -18,6 +18,7 @@ export function RunRoleOverrides({
   onChange: (value: RoleRunOverrides) => void;
 }) {
   const t = useTranslations('Reasoning');
+  const tm = useTranslations('ModelSelect');
   const [open, setOpen] = useState(false);
   if (!roles.length) return null;
   return (
@@ -45,7 +46,7 @@ export function RunRoleOverrides({
             return (
               <fieldset key={role.roleId} className="flex flex-col gap-1">
                 <legend style={{ fontVariationSettings: fontWeights.semibold }}>{role.name}</legend>
-                <Select
+                <ModelSelect
                   label={`${role.name} · ${t('model')}`}
                   value={override.modelProfile ?? ''}
                   onValueChange={(modelProfile) => {
@@ -55,8 +56,11 @@ export function RunRoleOverrides({
                     update(next);
                   }}
                   options={[
-                    { value: '', label: `${t('inherit')} · ${role.profileId}` },
-                    ...(profiles ?? []).map((p) => ({ value: p.profileId, label: p.label })),
+                    { id: '', name: `${t('inherit')} · ${role.profileId}`, description: '' },
+                    ...profileChoices(profiles ?? [], {
+                      profiles: tm('profiles'),
+                      unavailable: tm('unavailable'),
+                    }),
                   ]}
                 />
                 <ReasoningSelect

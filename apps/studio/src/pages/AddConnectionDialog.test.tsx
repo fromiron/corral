@@ -1,0 +1,747 @@
+// @vitest-environment jsdom
+import {
+  ApiError,
+  type CatalogProvider,
+  type ModelConfig,
+  type ModelProfileView,
+  type ModelsApi,
+  type ProviderAuthView,
+} from '@corral/client';
+import { DesignKitProvider } from '@corral/react/design-kit';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { IntlProvider } from 'use-intl';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { AddConnectionDialog, type AddConnectionStart } from './AddConnectionDialog.tsx';
+import {
+  all,
+  click,
+  control,
+  field,
+  provider,
+  settle,
+  stubBrowser,
+  type,
+  visibleText,
+} from './modelTestDom.ts';
+
+const fixture = vi.hoisted(() => ({ models: {} as Partial<ModelsApi>, refresh: vi.fn() }));
+vi.mock('../services.tsx', () => ({
+  useServices: () => ({ mode: 'server', live: true, models: fixture.models }),
+}));
+vi.mock('../workbench/modelSettings.tsx', () => ({
+  useModelSettingsRefresh: () => fixture.refresh,
+}));
+vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+  useSettingsForm: () => async () => true,
+  useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
+}));
+vi.mock('./ModelImportPanel.tsx', () => ({
+  ModelImportPanel: () => <p data-testid="import-face">import from another tool</p>,
+}));
+
+const entry = (providerId: string, name: string, methods: CatalogProvider['methods']) => ({
+  providerId,
+  name,
+  endpoint: false,
+  methods,
+  models: [],
+});
+const catalog: CatalogProvider[] = [
+  entry('openai', 'OpenAI', { oauth: true, apiKey: true }),
+  entry('github-copilot', 'GitHub Copilot', { oauth: true, apiKey: false }),
+  entry('mistral', 'Mistral', { oauth: false, apiKey: true }),
+  entry('anthropic', 'Anthropic', { oauth: true, apiKey: true }),
+  entry('openai-codex', 'OpenAI Codex (legacy)', { oauth: true, apiKey: false }),
+];
+const config: ModelConfig = {
+  revision: 'r1',
+  usingDefaults: false,
+  modelProfiles: [],
+  modelProviders: [],
+};
+const model = (provider: string, modelId: string): ModelProfileView => ({
+  profileId: `${provider}:${modelId}`,
+  source: 'connection',
+  provider,
+  providerName: provider,
+  modelId,
+  modelName: null,
+  available: true,
+  reasoning: false,
+  contextWindow: 32_000,
+  maxOutputTokens: 4096,
+  method: 'api_key',
+  keyConfigured: true,
+  subscriptionSupported: null,
+});
+
+let root: Root;
+let container: HTMLElement;
+const onOpenChange = vi.fn();
+let state: { providers: ProviderAuthView[]; profiles: ModelProfileView[]; config: ModelConfig };
+
+const page = (start: AddConnectionStart) => (
+  <IntlProvider locale="en" messages={messages} timeZone="UTC">
+    <DesignKitProvider>
+      <AddConnectionDialog
+        open
+        onOpenChange={onOpenChange}
+        start={start}
+        providers={state.providers}
+        catalog={catalog}
+        config={state.config}
+        profiles={state.profiles}
+      />
+    </DesignKitProvider>
+  </IntlProvider>
+);
+async function show(start: AddConnectionStart = { face: 'find' }) {
+  await act(async () => root.render(page(start)));
+  await settle();
+}
+const title = () => visibleText(document.body.querySelector('[role="dialog"] h2'));
+const alertText = () =>
+  all('[role="dialog"] [role="alert"]')
+    .map((el) => el.textContent)
+    .join(' ');
+const statusText = () =>
+  document.body.querySelector('[role="dialog"] [role="status"]')?.textContent;
+/** One read of the lists by the face's own poll. */
+const nextRead = () =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+const waiting = {
+  state: 'waiting' as const,
+  authUrl: 'https://auth.example/authorize',
+  userCode: null,
+  error: null,
+};
+const copilot = (patch: Partial<ProviderAuthView> = {}) =>
+  provider({
+    providerId: 'github-copilot',
+    name: 'GitHub Copilot',
+    methods: { oauth: true, apiKey: false },
+    ...patch,
+  });
+// A face that leaves springs out for 120 ms; checks after a face change read the one that stays.
+const faceSettles = () => settle(300);
+
+beforeEach(() => {
+  stubBrowser();
+  state = {
+    providers: [provider({ providerId: 'openai', signedIn: true, method: 'oauth', modelCount: 3 })],
+    profiles: [],
+    config,
+  };
+  // The page re-reads every list after a change; here it renders again with the current state,
+  // inside the act of whatever called it.
+  fixture.refresh = vi.fn(async () => {
+    root.render(page(currentStart));
+  });
+  fixture.models = {};
+  container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+});
+let currentStart: AddConnectionStart = { face: 'find' };
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
+
+describe('Add connection', () => {
+  it('finds a provider, marks the connected ones, and offers an address and an import', async () => {
+    await show();
+    expect(title()).toBe('Add connection');
+    const search = field('Search providers');
+    expect(search).toBeDefined();
+    const rows = () =>
+      all('[data-directory-row]').map((el) => visibleText(el).split(' ').slice(0, 2).join(' '));
+    expect(rows()[0]).toBe('OpenAI-compatible address');
+    // Connected providers are marked; methods are what the server reports for each provider.
+    const openai = all('[data-directory-row]').find((el) =>
+      visibleText(el).startsWith('OpenAI Subscription'),
+    );
+    expect(visibleText(openai)).toBe('OpenAI Subscription · API key');
+    expect(openai?.textContent).toContain('Connected');
+    const anthropic = all('[data-directory-row]').find((el) =>
+      visibleText(el).startsWith('Anthropic'),
+    );
+    expect(visibleText(anthropic)).toBe('Anthropic Subscription · API key');
+    await type(search, 'copilot');
+    expect(rows()).toEqual(['GitHub Copilot']);
+    await type(search, 'zzz');
+    expect(document.body.textContent).toContain('No provider matches “zzz”.');
+    await type(search, '');
+    await click(control('Import from another tool’s settings'));
+    await faceSettles();
+    expect(title()).toBe('Import settings');
+    expect(document.body.querySelector('[data-testid="import-face"]')).not.toBeNull();
+    await click(control('Back'));
+    await faceSettles();
+    expect(title()).toBe('Add connection');
+  });
+
+  it('leaves the legacy Codex sign-in out of the directory unless it is already in use', async () => {
+    const codexRow = () =>
+      all('[data-directory-row]').find((el) => visibleText(el).startsWith('OpenAI Codex'));
+    // OpenAI's own subscription reaches the same models: the legacy one is not offered beside it.
+    await show();
+    expect(codexRow()).toBeUndefined();
+    await act(async () => root.unmount());
+    // A borrowed Codex CLI login keeps it in the list.
+    root = createRoot(container);
+    state.providers = [
+      provider({
+        providerId: 'openai-codex',
+        name: 'OpenAI Codex (legacy)',
+        signedIn: true,
+        method: 'oauth',
+        source: 'codex-cli',
+      }),
+    ];
+    await show();
+    expect(codexRow()).toBeDefined();
+    await act(async () => root.unmount());
+    // So does a profile that points at it.
+    root = createRoot(container);
+    state.providers = [];
+    state.config = {
+      ...config,
+      modelProfiles: [{ id: 'old-codex', provider: 'openai-codex', model: 'gpt-6' }],
+    };
+    await show();
+    expect(codexRow()).toBeDefined();
+  });
+
+  it('signs in on the provider page with a device code, then shows the models found', async () => {
+    const login = { state: 'waiting' as const, authUrl: null, userCode: null, error: null };
+    fixture.models = {
+      startLogin: vi.fn(async () => login),
+      cancelLogin: vi.fn(async () => []),
+    };
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'github-copilot' };
+    await show(currentStart);
+    expect(fixture.models.startLogin).toHaveBeenCalledWith('github-copilot');
+    expect(title()).toBe('GitHub Copilot');
+    expect(document.body.textContent).toContain('Preparing sign-in');
+    // The poll reports the provider page and the code to enter there.
+    state.providers = [
+      provider({
+        providerId: 'github-copilot',
+        name: 'GitHub Copilot',
+        methods: { oauth: true, apiKey: false },
+        login: {
+          state: 'waiting',
+          authUrl: 'https://github.example/login/device',
+          userCode: 'WDJB-MJHT',
+          error: null,
+        },
+      }),
+    ];
+    await show(currentStart);
+    // The provider is named once, in the title.
+    expect(document.body.textContent).toContain('Waiting for you to finish signing in');
+    const face = document.body.querySelector('[role="dialog"]');
+    expect(visibleText(face).split('GitHub Copilot').length - 1).toBe(1);
+    const open = control('Open sign-in page') as HTMLAnchorElement;
+    expect(open.href).toBe('https://github.example/login/device');
+    expect(open.rel).toContain('noopener');
+    // The code is shown to type on that page, with a copy control.
+    const code = all('button').find((button) => button.textContent?.includes('WDJB-MJHT'));
+    expect(code?.getAttribute('aria-label')).toBe('Copy');
+    expect(code?.getAttribute('aria-labelledby')).toContain(code?.id);
+    // A device code needs no pasted address.
+    expect(control('Paste the address instead')).toBeUndefined();
+
+    state.providers = [
+      provider({
+        providerId: 'github-copilot',
+        name: 'GitHub Copilot',
+        methods: { oauth: true, apiKey: false },
+        signedIn: true,
+        method: 'oauth',
+        modelCount: 2,
+      }),
+    ];
+    state.profiles = [model('github-copilot', 'gpt-6'), model('github-copilot', 'claude-opus')];
+    await show(currentStart);
+    await faceSettles();
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain('2 models ready');
+    expect(all('li').map((li) => visibleText(li))).toEqual(['gpt-6', 'claude-opus']);
+    await click(control('Done'));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(fixture.models.cancelLogin).not.toHaveBeenCalled();
+  });
+
+  it('takes the final address when the sign-in callback does not arrive, and cancels on Back', async () => {
+    fixture.models = {
+      startLogin: vi.fn(async () => ({
+        state: 'waiting' as const,
+        authUrl: 'https://auth.example/authorize',
+        userCode: null,
+        error: null,
+      })),
+      submitRedirect: vi.fn(async () => true),
+      cancelLogin: vi.fn(async () => []),
+    };
+    state.providers = [
+      provider({
+        providerId: 'openai',
+        login: {
+          state: 'waiting',
+          authUrl: 'https://auth.example/authorize',
+          userCode: null,
+          error: null,
+        },
+      }),
+    ];
+    currentStart = { face: 'connect', providerId: 'openai' };
+    await show(currentStart);
+    // OpenAI has both methods: the person chooses; subscription comes first.
+    expect(control('Subscription')?.getAttribute('aria-selected')).toBe('true');
+    await click(control('Paste the address instead'));
+    await type(field('Address the browser stopped on'), 'http://127.0.0.1:1455/cb?code=x');
+    await click(control('Use this address'));
+    expect(fixture.models.submitRedirect).toHaveBeenCalledWith(
+      'openai',
+      'http://127.0.0.1:1455/cb?code=x',
+    );
+    // The pasted address is not shown again.
+    expect(all<HTMLInputElement>('input').some((input) => input.value.includes('code=x'))).toBe(
+      false,
+    );
+    await click(control('Back'));
+    await faceSettles();
+    expect(fixture.models.cancelLogin).toHaveBeenCalledWith('openai');
+    expect(title()).toBe('Add connection');
+  });
+
+  it('stays on the connect face when sign-in fails and says what to do', async () => {
+    fixture.models = {
+      startLogin: vi.fn(async () => ({
+        state: 'waiting' as const,
+        authUrl: null,
+        userCode: null,
+        error: null,
+      })),
+      cancelLogin: vi.fn(async () => []),
+    };
+    state.providers = [
+      provider({
+        providerId: 'github-copilot',
+        name: 'GitHub Copilot',
+        methods: { oauth: true, apiKey: false },
+        login: { state: 'failed', authUrl: null, userCode: null, error: 'the code expired' },
+      }),
+    ];
+    currentStart = { face: 'connect', providerId: 'github-copilot' };
+    await show(currentStart);
+    expect(title()).toBe('GitHub Copilot');
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe(
+      'Sign-in didn’t finish: the code expired',
+    );
+    await click(control('Try again'));
+    expect(fixture.models.startLogin).toHaveBeenCalledTimes(2);
+  });
+
+  it('saves an API key and shows the refusal reason the server gives', async () => {
+    fixture.models = {
+      setApiKey: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new ApiError(
+            501,
+            'COMMAND_NOT_SUPPORTED',
+            'Cloudflare Workers AI needs an account id as well as a key.',
+          ),
+        )
+        .mockResolvedValue([]),
+    };
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    const key = field('API key');
+    // The field stands alone: no caption under it.
+    expect(key?.getAttribute('aria-describedby')).toBeNull();
+    expect(document.body.textContent).not.toContain('never shown again');
+    await type(key, 'sk-test');
+    await click(control('Connect'));
+    expect(fixture.models.setApiKey).toHaveBeenCalledWith('mistral', 'sk-test', 'r1');
+    // The key step stays, with the server's reason as it gave it.
+    expect(title()).toBe('Mistral');
+    expect(field('API key')).toBeDefined();
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe(
+      'Cloudflare Workers AI needs an account id as well as a key.',
+    );
+    // The server answered about that key: it is not kept on the page.
+    expect(field('API key')?.value).toBe('');
+    state.providers = [
+      provider({
+        providerId: 'mistral',
+        name: 'Mistral',
+        methods: { oauth: false, apiKey: true },
+        signedIn: true,
+        method: 'api_key',
+        modelCount: 1,
+      }),
+    ];
+    state.profiles = [model('mistral', 'mistral-large')];
+    await type(field('API key'), 'sk-test-2');
+    await click(control('Connect'));
+    expect(fixture.models.setApiKey).toHaveBeenLastCalledWith('mistral', 'sk-test-2', 'r1');
+    await faceSettles();
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain('1 model ready');
+    // The key is never shown after entry.
+    expect(all<HTMLInputElement>('input').some((input) => input.value.startsWith('sk-test'))).toBe(
+      false,
+    );
+  });
+
+  it('adds an endpoint from only an address and a key, then lists what it fetched', async () => {
+    const saved: ModelConfig = {
+      ...config,
+      revision: 'r2',
+      modelProviders: [
+        {
+          id: 'local-server',
+          name: 'Local server',
+          baseUrl: 'http://127.0.0.1:11434/v1',
+          access: 'api_key',
+          models: [],
+        },
+      ],
+    };
+    fixture.models = {
+      saveConfig: vi.fn(async () => saved),
+      setApiKey: vi.fn(async () => []),
+      refreshEndpointModels: vi
+        .fn()
+        .mockResolvedValueOnce({
+          kind: 'authentication',
+          status: 401,
+          fetchedAt: '2026-11-11T00:00:00Z',
+          modelCount: 0,
+        })
+        .mockResolvedValue({
+          kind: 'connected',
+          status: 200,
+          fetchedAt: '2026-11-11T00:00:00Z',
+          modelCount: 2,
+        }),
+    };
+    currentStart = { face: 'address' };
+    await show(currentStart);
+    expect(title()).toBe('OpenAI-compatible address');
+    // Labels share one typeface; only the address value is set in mono.
+    const addressLabel = all('label').find((el) => visibleText(el) === 'Address');
+    expect(addressLabel?.closest('.font-mono')).toBeNull();
+    expect(addressLabel?.parentElement?.classList).toContain('[&_input]:font-mono');
+    expect(document.body.textContent).not.toContain('never shown again');
+    await type(field('Address'), 'http://192.168.0.9/v1');
+    await click(control('Connect'));
+    // An http address off this computer is refused before anything is saved.
+    expect(fixture.models.saveConfig).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Use https, or http only on this computer');
+    await type(field('Name'), 'Local server');
+    await type(field('Address'), 'http://127.0.0.1:11434/v1');
+    await type(field('API key'), 'sk-local');
+    await click(control('Connect'));
+    expect(fixture.models.saveConfig).toHaveBeenCalledWith({
+      revision: 'r1',
+      modelProfiles: [],
+      modelProviders: [
+        {
+          id: 'local-server',
+          name: 'Local server',
+          baseUrl: 'http://127.0.0.1:11434/v1',
+          access: 'api_key',
+          models: [],
+        },
+      ],
+    });
+    expect(fixture.models.setApiKey).toHaveBeenCalledWith('local-server', 'sk-local', 'r2');
+    expect(fixture.models.refreshEndpointModels).toHaveBeenCalledWith('local-server', 'r2');
+    // The fetch was refused: stay here with the category and the next step.
+    expect(title()).toBe('OpenAI-compatible address');
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe(
+      'The address refused the key. Enter the key again.',
+    );
+    // Trying again edits the endpoint that was saved instead of adding another.
+    state.config = saved;
+    state.profiles = [model('local-server', 'llama-4'), model('local-server', 'qwen-4')];
+    await type(field('API key'), 'sk-local-2');
+    await click(control('Connect'));
+    expect(fixture.models.saveConfig).toHaveBeenCalledTimes(1);
+    expect(fixture.models.setApiKey).toHaveBeenLastCalledWith('local-server', 'sk-local-2', 'r2');
+    await faceSettles();
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain('2 models ready');
+  });
+  it('conceals a sent key, clears it when the server answers and keeps it only when nothing arrived', async () => {
+    fixture.models = {
+      setApiKey: vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new ApiError(501, 'COMMAND_NOT_SUPPORTED', 'needs an account id')),
+    };
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    await type(field('API key'), 'sk-test');
+    await click(control('Show API key'));
+    expect(field('API key')?.type).toBe('text');
+    await click(control('Connect'));
+    // The request never reached the server: the key stays to send again, hidden.
+    expect(field('API key')?.value).toBe('sk-test');
+    expect(field('API key')?.type).toBe('password');
+    expect(alertText()).toContain('Not saved');
+    await click(control('Connect'));
+    // The server answered: the key leaves the page.
+    expect(field('API key')?.value).toBe('');
+    expect(alertText()).toBe('needs an account id');
+  });
+
+  it('clears a typed key when an address is switched to no key', async () => {
+    currentStart = { face: 'address' };
+    await show(currentStart);
+    await type(field('API key'), 'sk-local');
+    await click(control('No key'));
+    await click(control('API key'));
+    expect(field('API key')?.value).toBe('');
+  });
+
+  it('saves a key again on the new revision when only the revision moved', async () => {
+    fixture.models = {
+      setApiKey: vi
+        .fn()
+        .mockRejectedValueOnce(new ApiError(409, 'REVISION_CONFLICT', 'the config changed'))
+        .mockResolvedValue([]),
+      config: vi.fn(async () => ({ ...config, revision: 'r2' })),
+    };
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    await type(field('API key'), 'sk-test');
+    await click(control('Connect'));
+    expect(fixture.models.setApiKey).toHaveBeenLastCalledWith('mistral', 'sk-test', 'r2');
+    expect(alertText()).toBe('');
+    await faceSettles();
+    expect(title()).toBe('Mistral');
+    expect(control('Done')).toBeDefined();
+  });
+
+  it('adds an address again on the new revision when only the revision moved', async () => {
+    const saved = (revision: string): ModelConfig => ({
+      ...config,
+      revision,
+      modelProviders: [
+        {
+          id: 'local',
+          name: 'Local',
+          baseUrl: 'http://127.0.0.1:11434/v1',
+          access: 'none',
+          models: [],
+        },
+      ],
+    });
+    fixture.models = {
+      saveConfig: vi
+        .fn()
+        .mockRejectedValueOnce(new ApiError(409, 'REVISION_CONFLICT', 'the config changed'))
+        .mockResolvedValue(saved('r3')),
+      config: vi.fn(async () => ({ ...config, revision: 'r2' })),
+      refreshEndpointModels: vi.fn(async () => ({
+        kind: 'connected' as const,
+        status: 200,
+        fetchedAt: '2026-11-11T00:00:00Z',
+        modelCount: 1,
+      })),
+    };
+    currentStart = { face: 'address' };
+    await show(currentStart);
+    await type(field('Name'), 'Local');
+    await type(field('Address'), 'http://127.0.0.1:11434/v1');
+    await click(control('No key'));
+    await click(control('Connect'));
+    expect(fixture.models.saveConfig).toHaveBeenCalledTimes(2);
+    expect(fixture.models.saveConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ revision: 'r2' }),
+    );
+    expect(fixture.models.refreshEndpointModels).toHaveBeenCalledWith('local', 'r3');
+    expect(alertText()).toBe('');
+  });
+
+  it('keeps the pasted-address step open and says so when the address is not accepted', async () => {
+    fixture.models = {
+      startLogin: vi.fn(async () => waiting),
+      submitRedirect: vi.fn(async () => false),
+      cancelLogin: vi.fn(async () => []),
+    };
+    state.providers = [provider({ providerId: 'openai', login: waiting })];
+    currentStart = { face: 'connect', providerId: 'openai' };
+    await show(currentStart);
+    await click(control('Paste the address instead'));
+    await type(field('Address the browser stopped on'), 'http://127.0.0.1:1455/cb?code=x');
+    await click(control('Use this address'));
+    expect(fixture.models.submitRedirect).toHaveBeenCalled();
+    expect(alertText()).toBe('The address was not accepted.');
+    // The step stays to paste again; what was sent is not shown again.
+    expect(field('Address the browser stopped on')?.value).toBe('');
+  });
+
+  it('starts again when a sign-in it picked up from the lists is gone', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fixture.models = {
+      startLogin: vi.fn(async () => waiting),
+      cancelLogin: vi.fn(async () => []),
+    };
+    // The lists still show a sign-in from a moment ago.
+    state.providers = [
+      copilot({
+        login: {
+          state: 'waiting',
+          authUrl: 'https://github.example/login/device',
+          userCode: 'OLD0-CODE',
+          error: null,
+        },
+      }),
+    ];
+    currentStart = { face: 'connect', providerId: 'github-copilot' };
+    await show(currentStart);
+    expect(fixture.models.startLogin).not.toHaveBeenCalled();
+    // The next read: it was cancelled, and the provider is not connected.
+    state.providers = [copilot()];
+    await show(currentStart);
+    for (let read = 0; read < 4; read++) await nextRead();
+    expect(fixture.models.startLogin).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain('Waiting for you to finish signing in');
+    vi.useRealTimers();
+  });
+
+  it('a sign-in that ends without finishing is not taken for the key the provider already had', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const keyed = (patch: Partial<ProviderAuthView> = {}) =>
+      provider({
+        providerId: 'openai',
+        signedIn: true,
+        method: 'api_key',
+        source: 'corral',
+        modelCount: 3,
+        ...patch,
+      });
+    fixture.models = {
+      startLogin: vi.fn(async () => waiting),
+      cancelLogin: vi.fn(async () => []),
+    };
+    state.providers = [keyed()];
+    currentStart = { face: 'connect', providerId: 'openai', method: 'oauth' };
+    await show(currentStart);
+    state.providers = [keyed({ login: waiting })];
+    await show(currentStart);
+    // Cancelled in another window: the sign-in is gone, the key is still there.
+    state.providers = [keyed()];
+    await show(currentStart);
+    for (let read = 0; read < 4; read++) await nextRead();
+    await faceSettles();
+    expect(control('Done')).toBeUndefined();
+    expect(alertText()).toBe('Sign-in didn’t finish');
+    expect(control('Try again')).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it('finishes a sign-in that completed before the first read of the lists', async () => {
+    fixture.models = {
+      startLogin: vi.fn(async () => {
+        state.providers = [copilot({ signedIn: true, method: 'oauth', modelCount: 1 })];
+        state.profiles = [model('github-copilot', 'gpt-6')];
+        return waiting;
+      }),
+      cancelLogin: vi.fn(async () => []),
+    };
+    state.providers = [copilot()];
+    currentStart = { face: 'connect', providerId: 'github-copilot' };
+    await show(currentStart);
+    await faceSettles();
+    expect(statusText()).toContain('1 model ready');
+    expect(fixture.models.cancelLogin).not.toHaveBeenCalled();
+  });
+
+  it('reads on until the provider settles when the sign-in leaves the list before the connection shows', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fixture.models = {
+      startLogin: vi.fn(async () => waiting),
+      cancelLogin: vi.fn(async () => []),
+    };
+    // The first read after starting fails; the sign-in is still followed.
+    fixture.refresh = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(async () => {
+        root.render(page(currentStart));
+      });
+    state.providers = [copilot()];
+    currentStart = { face: 'connect', providerId: 'github-copilot' };
+    await show(currentStart);
+    expect(alertText()).toBe('');
+    expect(document.body.textContent).toContain('Waiting for you to finish signing in');
+    // A read between the sign-in leaving the list and the connection showing.
+    await nextRead();
+    expect(control('Done')).toBeUndefined();
+    state.providers = [copilot({ signedIn: true, method: 'oauth', modelCount: 1 })];
+    state.profiles = [model('github-copilot', 'gpt-6')];
+    await nextRead();
+    await faceSettles();
+    expect(statusText()).toContain('1 model ready');
+    vi.useRealTimers();
+  });
+
+  it('says the model list is still being read rather than "0 models ready"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fixture.models = { setApiKey: vi.fn(async () => []) };
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    await type(field('API key'), 'sk-test');
+    state.providers = [
+      provider({
+        providerId: 'mistral',
+        name: 'Mistral',
+        methods: { oauth: false, apiKey: true },
+        signedIn: true,
+        method: 'api_key',
+        modelCount: 1,
+      }),
+    ];
+    await click(control('Connect'));
+    await faceSettles();
+    expect(statusText()).toBe('Reading the model list');
+    expect(document.body.textContent).not.toContain('0 models');
+    state.profiles = [model('mistral', 'mistral-large')];
+    await nextRead();
+    await faceSettles();
+    expect(statusText()).toContain('1 model ready');
+    vi.useRealTimers();
+  });
+
+  it('does not say a key failed when only reading the lists after saving it failed', async () => {
+    fixture.models = { setApiKey: vi.fn(async () => []) };
+    fixture.refresh = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    await type(field('API key'), 'sk-test');
+    await click(control('Connect'));
+    await faceSettles();
+    expect(alertText()).toBe('');
+    expect(control('Done')).toBeDefined();
+  });
+});

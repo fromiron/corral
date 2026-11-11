@@ -1,21 +1,21 @@
 # 모델 연결
 
-로컬 서버(`pnpm serve` 또는 `pnpm corral dev`)의 **Models** 화면에서 모델 공급자에 연결한다. 자격 증명은 작업 공간 밖 사용자 설정 디렉터리(`$XDG_CONFIG_HOME/corral` 또는 `~/.config/corral`, Windows `%APPDATA%\corral`)의 `credentials.json`(0600)에만 저장한다. Corral 정의·SQLite·이벤트·export·화면에는 나오지 않는다.
+로컬 서버(`pnpm serve` 또는 `pnpm corral dev`)의 **Models** 화면 **연결** 탭에서 모델 공급자에 연결한다. **연결 추가**는 Pi가 지원하는 모든 공급자를 보여 준다. 연결된 공급자의 모델은 프로필을 만들지 않아도 모델 선택기에 나온다([명세](../specs/features/model-connections.md)). 자격 증명은 작업 공간 밖 사용자 설정 디렉터리(`$XDG_CONFIG_HOME/corral` 또는 `~/.config/corral`, Windows `%APPDATA%\corral`)의 `credentials.json`(0600)에만 저장한다. Corral 정의·SQLite·이벤트·export·화면에는 나오지 않는다.
 
 ## 연결 방법
 
 | 방법 | 쓰는 곳 | 비고 |
 |---|---|---|
-| ChatGPT로 로그인 | OpenAI | 공급자 페이지에서 직접 로그인. 토큰은 서버가 갱신 |
+| 구독 로그인 | OpenAI(ChatGPT), Anthropic(Claude), GitHub Copilot 등 Pi가 구독 로그인을 지원하는 공급자 | 공급자 페이지에서 직접 로그인. 토큰은 서버가 갱신. 그 구독이 부를 수 있는 모델만 나온다 |
 | Codex CLI 로그인 | `openai-codex` | Corral 로그인이 없고 `~/.codex/auth.json`(또는 `$CODEX_HOME`)이 있으면 읽기 전용으로 사용. 갱신·수정하지 않으므로 만료되면 `codex`를 다시 실행 |
 | API 키 입력 | API 키를 받는 공급자(OpenAI, Anthropic 등)와 사용자 정의 엔드포인트 | Models 화면에 입력. 다시 보여 주지 않으며 "키 지우기"로 삭제 |
 | 환경 변수 | 같음 | 예: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. 입력한 키가 있으면 그것이 우선 |
 
-Anthropic 구독(Pro/Max) 로그인은 지원하지 않는다. Anthropic은 API 키로 연결한다.
+구독 로그인과 API 키 중 무엇을 쓸지는 사용자가 정한다. 구독을 다른 앱에서 쓰는 것을 허용하는지는 공급자의 약관을 따른다.
 
 ## 프로필
 
-에이전트는 프로필 이름(`model-a`, `model-b` 등)으로 모델을 고른다. Models 화면의 **모델 편집**에서 고르거나, 작업 공간의 `.corral/config.json`을 직접 고친다. 화면에서 저장하면 두 키(`modelProfiles`, `modelProviders`)만 바뀌고 서버를 다시 시작하지 않아도 다음 Run부터 쓰인다.
+프로필은 모델에 붙인 이름이다(`model-a`, `model-b` 등). 기본 팀은 이 이름으로 모델을 가리키고, 프로필마다 컨텍스트와 압축 값을 따로 정할 수 있다. 연결된 공급자의 다른 모델은 프로필 없이 바로 고를 수 있으므로, 이름이나 모델별 설정이 필요할 때만 프로필을 만든다. 프로필 수에는 한도가 없다. Models 화면의 **모델 편집**에서 고르거나, 작업 공간의 `.corral/config.json`을 직접 고친다. 화면에서 저장하면 두 키(`modelProfiles`, `modelProviders`)만 바뀌고 서버를 다시 시작하지 않아도 다음 Run부터 쓰인다.
 
 ```json
 {
@@ -31,7 +31,7 @@ Anthropic 구독(Pro/Max) 로그인은 지원하지 않는다. Anthropic은 API 
 
 ## OpenAI 호환 엔드포인트 (Ollama, LM Studio, OpenRouter)
 
-`modelProviders`에 엔드포인트를 선언하고 프로필에서 그 id를 쓴다.
+`modelProviders`에 엔드포인트를 선언한다. 주소와 인증만 적으면 서버가 그 주소의 `/models`에서 모델 목록을 가져오고, 한도와 능력은 응답과 models.dev 카탈로그에서 채운다. `models`에 적은 항목은 가져온 목록에 더해지고 같은 ID면 적은 값이 이긴다. 가져온 목록은 설정 파일에 쓰지 않는다. 이름이나 모델별 설정이 필요하면 프로필에서 그 id를 쓴다.
 
 ```json
 {
@@ -68,7 +68,8 @@ Anthropic 구독(Pro/Max) 로그인은 지원하지 않는다. Anthropic은 API 
 - 키는 넣을 때의 주소(origin)에 묶인다. 설정의 `baseUrl` origin이 바뀌면 그 키를 쓰지 않는다. 화면에는 "키를 다시 넣으세요"가 보인다.
 - id는 pi-ai 내장 공급자 이름(`openai`, `anthropic` 등)과 겹칠 수 없다.
 - 설정 파일에는 키를 넣을 수 없다. 키처럼 보이는 필드가 있으면 서버가 시작을 거부한다.
-- 알려진 모델 외에는 모델 한도를 빼면 context 32,000, 출력 4,096 토큰을 쓴다.
+- 설정, `/models` 응답, models.dev 어디에도 한도가 없는 모델은 context 32,000, 출력 4,096 토큰을 쓴다.
+- 추론을 지원하는 모델은 `low`, `medium`, `high`를 OpenAI식 `reasoning_effort`로 보낸다. 그 형식을 받지 않는 서버에서는 그 모델에 `"reasoning": false`를 적는다.
 
 ## Hive의 DeepSeek V4.1 Flash
 

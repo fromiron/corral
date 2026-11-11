@@ -22,7 +22,8 @@ export const EndpointSpec = z.strictObject({
   keyless: z.boolean(),
   cacheRetention: z.enum(['none', 'short', 'long']).optional(),
   sessionAffinity: z.enum(['headers', 'headers-and-body']).optional(),
-  models: z.array(EndpointModel).min(1).max(50),
+  /** Up to 50 written in the config plus up to 2,000 the endpoint listed at `/models`. */
+  models: z.array(EndpointModel).min(1).max(2_050),
 });
 export type EndpointSpec = z.infer<typeof EndpointSpec>;
 
@@ -38,12 +39,96 @@ function isHiveDeepSeek(baseUrl: string, modelId: string) {
   );
 }
 
-/** Published defaults for known endpoint/model pairs; explicit configuration takes priority. */
-export function endpointModelDefaults(baseUrl: string, modelId: string) {
+/**
+ * Published values for a known endpoint address and model (guides/models.md). They come after
+ * the configuration and before anything the endpoint or a catalog reports; null when unknown.
+ */
+export function knownEndpointModel(baseUrl: string, modelId: string) {
   return isHiveDeepSeek(baseUrl, modelId)
     ? { ...ENDPOINT_DEFAULTS, contextWindow: 1_000_000, reasoning: true, imageInput: true }
-    : { ...ENDPOINT_DEFAULTS, reasoning: false, imageInput: undefined };
+    : null;
 }
+
+/** Published defaults for known endpoint/model pairs; explicit configuration takes priority. */
+export function endpointModelDefaults(baseUrl: string, modelId: string) {
+  return (
+    knownEndpointModel(baseUrl, modelId) ?? {
+      ...ENDPOINT_DEFAULTS,
+      reasoning: false,
+      imageInput: undefined,
+    }
+  );
+}
+
+/**
+ * Addresses pi-ai 1.5.0's chat completions client recognizes (its `detectCompat`, matched the
+ * same way): Pi picks the reasoning format and levels for these hosts itself, so an endpoint
+ * there keeps them (features/model-connections.md, 직접 추가한 엔드포인트). Revisit on a Pi upgrade.
+ */
+const PI_RECOGNIZED_HOSTS = [
+  'api.z.ai',
+  'open.bigmodel.cn',
+  'api.together.ai',
+  'api.together.xyz',
+  'api.moonshot.',
+  'openrouter.ai',
+  'api.cloudflare.com',
+  'gateway.ai.cloudflare.com',
+  'integrate.api.nvidia.com',
+  'api.ant-ling.com',
+  'cerebras.ai',
+  'api.x.ai',
+  'chutes.ai',
+  'opencode.ai',
+];
+
+/** Whether Pi recognizes this address and serializes reasoning for it in its own format. */
+function piRecognizedHost(baseUrl: string): boolean {
+  return (
+    PI_RECOGNIZED_HOSTS.some((host) => baseUrl.includes(host)) ||
+    baseUrl.toLowerCase().includes('deepseek.com')
+  );
+}
+
+/**
+ * Recognized hosts Pi sends no reasoning level or switch to (its `detectCompat`: the OpenAI
+ * format with `supportsReasoningEffort` off). A level chosen there would change nothing, so
+ * their reasoning models offer none: only the provider default.
+ */
+const PI_SENDS_NO_LEVEL = [
+  'api.x.ai',
+  'api.moonshot.',
+  'gateway.ai.cloudflare.com',
+  'integrate.api.nvidia.com',
+];
+const NO_LEVELS = {
+  thinkingLevelMap: {
+    off: null,
+    minimal: null,
+    low: null,
+    medium: null,
+    high: null,
+    xhigh: null,
+    max: null,
+  },
+};
+
+/**
+ * OpenAI-style `reasoning_effort` for a reasoning model of an added endpoint on a host Pi does not
+ * recognize: low, medium and high; the provider default sends no effort at all.
+ */
+const ENDPOINT_EFFORT = {
+  thinkingLevelMap: {
+    off: null,
+    minimal: null,
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: null,
+    max: null,
+  },
+  compat: { thinkingFormat: 'openai' as const, supportsReasoningEffort: true },
+};
 
 /**
  * Sent to a keyless endpoint: OpenAI clients need some key, and local servers such as Ollama
@@ -100,7 +185,13 @@ export function endpointProvider(
             maxTokensField: 'max_completion_tokens' as const,
           },
         }
-      : {}),
+      : !m.reasoning
+        ? {}
+        : !piRecognizedHost(spec.baseUrl)
+          ? ENDPOINT_EFFORT
+          : PI_SENDS_NO_LEVEL.some((host) => spec.baseUrl.includes(host))
+            ? NO_LEVELS
+            : {}),
   }));
   return createProvider({
     id: providerId,

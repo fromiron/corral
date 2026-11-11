@@ -141,7 +141,11 @@ describe('composer model picker', () => {
   it('omits reasoning controls for a context that does not use them', () => {
     show(undefined, { showReasoning: false });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).toBeNull();
+    // The model search is the one combobox left.
+    expect(screen.getAllByRole('combobox').map((box) => box.getAttribute('aria-label'))).toEqual([
+      'Search models',
+    ]);
+    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
     expect(screen.queryByRole('tablist')).toBeNull();
   });
 });

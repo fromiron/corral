@@ -21,11 +21,14 @@ const provider = (patch: Partial<ProviderAuthView> = {}): ProviderAuthView => ({
   login: null,
   source: 'corral',
   permissionsOk: true,
+  modelCount: 1,
+  modelFetch: null,
   ...patch,
 });
 
 const profile = (patch: Partial<ModelProfileView> = {}): ModelProfileView => ({
   profileId: 'default',
+  source: 'profile',
   provider: 'openai',
   providerName: 'OpenAI',
   modelId: 'gpt-5',

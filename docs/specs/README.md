@@ -16,12 +16,13 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | Desktop·명령·preview·host·음성 | [desktop-contract.md](desktop-contract.md) |
 | 개인 하네스·Skill·MCP·확장 | [harness-contract.md](harness-contract.md) |
 | 모델·추론·리소스 | [models-and-resources.md](models-and-resources.md) |
+| 공급자 연결·자동 모델 목록·엔드포인트 모델 가져오기 | [features/model-connections.md](features/model-connections.md) |
 | 자동 추론의 판정 엔진(Local d1·판정 API)·판정 입력·대기·취소 | [features/effort-routing.md](features/effort-routing.md) |
 | 관리형 LLM 요청·컨텍스트·캐시·정산 | [llm-runtime.md](llm-runtime.md) |
 | HTTP·이벤트·스키마 | [api.md](api.md), [api-contract.md](api-contract.md) |
 | 화면·코드 용어 | [glossary.md](glossary.md) |
 | 팀 그래프의 노드·포트·상자·병렬·컴파일 규칙 | [features/team-graph.md](features/team-graph.md) |
-| 기능별 수용 기준 | [features/](features/): [팀 편집기](features/canvas.md), [팀 그래프](features/team-graph.md), [포크와 중단점](features/fork-and-breakpoints.md), [실행 통계](features/run-stats.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [확인 필요](features/inbox.md), [세션 증거 요약](features/session-evidence.md), [화면 테마](features/themes.md), [라이브러리](features/library.md), [기능 미리보기](features/feature-preview.md), [파일 경로 검색](features/file-search.md), [추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md), [판정 API](features/decision-apis.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
+| 기능별 수용 기준 | [features/](features/): [팀 편집기](features/canvas.md), [팀 그래프](features/team-graph.md), [포크와 중단점](features/fork-and-breakpoints.md), [실행 통계](features/run-stats.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [확인 필요](features/inbox.md), [세션 증거 요약](features/session-evidence.md), [화면 테마](features/themes.md), [모델 연결](features/model-connections.md), [라이브러리](features/library.md), [기능 미리보기](features/feature-preview.md), [파일 경로 검색](features/file-search.md), [추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md), [판정 API](features/decision-apis.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
 | 디자인 토큰·공용 컴포넌트 | [DESIGN.md](../../DESIGN.md) |
 | 모델 연결·출시·평가 사용법 | [guides/](../guides/) |
 

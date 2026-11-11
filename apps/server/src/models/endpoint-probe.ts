@@ -10,6 +10,21 @@ export interface EndpointProbeResult {
   status: number | null;
 }
 
+/** The connection-check category of an HTTP status (features/model-connection-check.md). */
+export function probeKind(status: number): EndpointProbeResult['kind'] {
+  return status >= 200 && status < 300
+    ? 'connected'
+    : status === 401 || status === 403
+      ? 'authentication'
+      : status === 429
+        ? 'rateLimit'
+        : status >= 500
+          ? 'server'
+          : status >= 300 && status < 400
+            ? 'redirect'
+            : 'unsupported';
+}
+
 /** Explicit metadata request only. Redirects never receive origin-bound credentials. */
 export async function probeEndpoint(options: {
   baseUrl: string;
@@ -28,18 +43,7 @@ export async function probeEndpoint(options: {
     );
     void response.body?.cancel().catch(() => {});
     const status = response.status;
-    const kind = response.ok
-      ? 'connected'
-      : status === 401 || status === 403
-        ? 'authentication'
-        : status === 429
-          ? 'rateLimit'
-          : status >= 500
-            ? 'server'
-            : status >= 300 && status < 400
-              ? 'redirect'
-              : 'unsupported';
-    return { kind, status };
+    return { kind: response.ok ? 'connected' : probeKind(status), status };
   } catch {
     return { kind: 'connection', status: null };
   }

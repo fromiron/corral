@@ -10,6 +10,7 @@ import type {
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { ModelSelect, type ProfileChoice, profileChoices } from '../components/ModelSelect.tsx';
 import { ReasoningSelect } from '../components/ReasoningSelect.tsx';
 import {
   KitButton as Button,
@@ -33,10 +34,7 @@ import type { EditorStore } from '../editor/store.ts';
 // field writes through the editor store, so undo covers it.
 
 /** A model profile the role may use, as the local server knows it. */
-export interface ProfileOption {
-  profileId: string;
-  label: string;
-  available: boolean;
+export interface ProfileOption extends ProfileChoice {
   reasoningCapabilities?: ReasoningCapabilities | undefined;
 }
 
@@ -74,6 +72,7 @@ export function NodeSettings({
   loopSettings: LoopSettings | undefined;
 }) {
   const t = useTranslations('Inspector');
+  const tm = useTranslations('ModelSelect');
   const id = useId();
   const session = useEditSession(editor);
   const draft = useStore(editor, (s) => s.draft);
@@ -132,25 +131,15 @@ export function NodeSettings({
               <label htmlFor={`${id}-profile`} className="text-caption">
                 {t('modelProfile')}
               </label>
-              <Select
+              <ModelSelect
                 id={`${id}-profile`}
                 label={t('modelProfile')}
                 value={role.modelProfile}
                 onValueChange={(modelProfile) => update(node.id, { modelProfile })}
-                options={[
-                  ...(profiles.some((p) => p.profileId === role.modelProfile)
-                    ? []
-                    : [
-                        {
-                          value: role.modelProfile,
-                          label: t('profileMissing', { profile: role.modelProfile }),
-                        },
-                      ]),
-                  ...profiles.map((p) => ({
-                    value: p.profileId,
-                    label: `${p.profileId} — ${p.label}${p.available ? '' : ` (${t('profileSignIn')})`}`,
-                  })),
-                ]}
+                options={profileChoices(profiles, {
+                  profiles: tm('profiles'),
+                  unavailable: t('profileSignIn'),
+                })}
               />
             </div>
           ) : (

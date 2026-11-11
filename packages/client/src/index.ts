@@ -1365,8 +1365,30 @@ export class RestCorralRepository implements CorralRepository {
 
 export interface LoginView {
   state: 'waiting' | 'exchanging' | 'failed';
+  /** The provider's sign-in page; opening it is the person's own step. */
   authUrl: string | null;
+  /** The code to enter on that page, for a device-code sign-in. */
+  userCode: string | null;
   error: string | null;
+}
+
+/** The category of a connection check or an endpoint's `/models` fetch. */
+export type EndpointCheckKind =
+  | 'connected'
+  | 'authentication'
+  | 'rateLimit'
+  | 'server'
+  | 'redirect'
+  | 'unsupported'
+  | 'connection';
+
+/** POST /model-auth/:providerId/models/refresh: the fetch's result and the list in use after it. */
+export interface EndpointModelsView {
+  kind: EndpointCheckKind;
+  status: number | null;
+  fetchedAt: string;
+  /** Models of the endpoint the server can use now. */
+  modelCount: number;
 }
 
 export interface ProviderAuthView {
@@ -1399,6 +1421,10 @@ export interface ProviderAuthView {
   source: 'corral' | 'codex-cli' | 'environment' | null;
   /** True only when borrowed login permissions are verified private; false includes unknown. */
   permissionsOk: boolean;
+  /** Models this connection can use now; 0 when it is not connected. */
+  modelCount: number;
+  /** An endpoint's last `/models` fetch; null for built-in providers and before any fetch. */
+  modelFetch: Omit<EndpointModelsView, 'modelCount'> | null;
 }
 
 /** GET /local-ai: the local AI bundle for the settings panel's install. */
@@ -1463,6 +1489,8 @@ export interface EffortRoutingView {
 
 export interface ModelProfileView {
   profileId: string;
+  /** A named profile from the config, or a model of a connected provider. */
+  source: 'profile' | 'connection';
   provider: string;
   providerName: string;
   modelId: string;
@@ -1492,7 +1520,23 @@ export interface CatalogProvider {
     id: string;
     name: string;
     cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+    /** Endpoint models only: each limit and ability with where it came from. */
+    limits?: {
+      contextWindow: SourcedValue<number>;
+      maxOutput: SourcedValue<number>;
+      reasoning: SourcedValue<boolean>;
+      imageInput: SourcedValue<boolean>;
+    };
   }[];
+}
+
+/**
+ * One value of an endpoint model and its source, highest first: the config, Corral's known
+ * values for the address, the endpoint's `/models`, models.dev, the defaults.
+ */
+export interface SourcedValue<T> {
+  value: T;
+  source: 'config' | 'known' | 'response' | 'catalog' | 'default';
 }
 
 export interface ProfileConfig extends ProfileContextOverrides {
@@ -1515,6 +1559,7 @@ export interface EndpointConfig {
     contextWindow?: number;
     maxOutput?: number;
     reasoning?: boolean;
+    imageInput?: boolean;
   }[];
 }
 
@@ -1694,6 +1739,17 @@ export class ModelsApi {
     revision: string,
   ): Promise<NonNullable<ProviderAuthView['connectionTest']>> {
     return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/probe`, {
+      method: 'POST',
+      body: JSON.stringify({ revision }),
+    });
+  }
+
+  /**
+   * Fetches an endpoint's `/models` again from the saved address. The revision is the config the
+   * person is looking at; a changed config answers REVISION_CONFLICT and sends nothing.
+   */
+  refreshEndpointModels(providerId: string, revision: string): Promise<EndpointModelsView> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/models/refresh`, {
       method: 'POST',
       body: JSON.stringify({ revision }),
     });
