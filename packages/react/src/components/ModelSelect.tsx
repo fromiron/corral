@@ -12,6 +12,8 @@ export interface ProfileChoice {
   providerName?: string | undefined;
   modelId?: string | undefined;
   modelName?: string | null | undefined;
+  /** Whether the model takes images: true only when that is confirmed. */
+  imageInput?: boolean | null | undefined;
 }
 
 /** The kit's brand mark for a provider, where it has one; otherwise its initial shows. */
@@ -57,6 +59,8 @@ export function profileChoices(
         .join(' '),
       ...(mark ? { mark } : {}),
       ...(profile.providerName ? { markText: profile.providerName } : {}),
+      // Only a confirmed image input is marked; text-only and unknown look alike.
+      ...(profile.imageInput === true ? { imageInput: true } : {}),
     };
     if (!connection) named.push(option);
     else groups.set(group, [...(groups.get(group) ?? []), option]);
@@ -104,6 +108,7 @@ export function ModelSelect({
   className?: string;
 }) {
   const t = useTranslations('ModelSelect');
+  const tc = useTranslations('Connections');
   const models =
     value && !options.some((option) => option.id === value)
       ? [
@@ -139,6 +144,8 @@ export function ModelSelect({
         settings: label,
         trigger: (name) => `${label}: ${name}`,
         empty: t('empty'),
+        // The same mark, by the same name, as a connection's model list.
+        image: tc('image'),
       }}
     />
   );

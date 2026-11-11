@@ -5,7 +5,15 @@ import type {
   VaultPreview,
   VaultStatus,
 } from '@corral/client';
-import { Button, Checkbox, fontWeights, Input, Select } from '@corral/react/design-kit';
+import { ModelSelect, profileChoices } from '@corral/react';
+import {
+  Button,
+  Checkbox,
+  fontWeights,
+  Input,
+  type ModelOption,
+  Select,
+} from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useLocale } from '../locale.tsx';
@@ -22,6 +30,7 @@ type Choice = { value: string; label: string };
 const inputClass = 'min-w-0';
 export function VaultSettingsPage() {
   const t = useTranslations('Vault');
+  const tc = useTranslations('Composer');
   const projectText = useTranslations('Projects');
   const defaultProjectName = projectText('defaultName');
   const { vault, repository, models } = useServices();
@@ -40,7 +49,7 @@ export function VaultSettingsPage() {
   const [teams, setTeams] = useState<Choice[]>([]);
   const [sessions, setSessions] = useState<Choice[]>([]);
   const [parents, setParents] = useState<Choice[]>([]);
-  const [profiles, setProfiles] = useState<Choice[]>([]);
+  const [profiles, setProfiles] = useState<ModelOption[]>([]);
   const [keys, setKeys] = useState<Choice[]>([]);
   const [includeSecrets, setIncludeSecrets] = useState<string[]>([]);
   const [etag, setEtag] = useState<string | null>(null);
@@ -81,12 +90,15 @@ export function VaultSettingsPage() {
         );
         setTeams(teams.map((team) => ({ value: team.corralId, label: team.name })));
         setProfiles(
-          profiles
-            .filter((profile) => profile.available)
-            .map((profile) => ({
-              value: profile.profileId,
-              label: `${profile.profileId} · ${profile.modelId}`,
-            })),
+          profileChoices(
+            profiles
+              .filter((profile) => profile.available)
+              .map((profile) => ({
+                ...profile,
+                label: `${profile.providerName} · ${profile.modelName ?? profile.modelId}`,
+              })),
+            { profiles: tc('modelPicker.profiles'), unavailable: tc('modelPicker.unavailable') },
+          ),
         );
         setKeys(
           providers
@@ -100,7 +112,7 @@ export function VaultSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [vault, repository, models, t, defaultProjectName]);
+  }, [vault, repository, models, t, tc, defaultProjectName]);
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
@@ -373,6 +385,27 @@ export function VaultSettingsPage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {entry.fields.map((field) => {
                       const value = bindings[entry.domain]?.[field.key] ?? '';
+                      const bind = (next: string) => {
+                        setPreviewDirty(true);
+                        setBindings((current) => ({
+                          ...current,
+                          [entry.domain]: { ...current[entry.domain], [field.key]: next },
+                        }));
+                      };
+                      // A model is chosen with the searchable, grouped model field.
+                      if (field.kind === 'model')
+                        return (
+                          <div key={field.key} className="min-w-56">
+                            <ModelSelect
+                              label={field.label}
+                              placeholder={field.label}
+                              value={value}
+                              options={profiles}
+                              disabled={busy}
+                              onValueChange={bind}
+                            />
+                          </div>
+                        );
                       const options =
                         field.kind === 'project'
                           ? projects
@@ -382,9 +415,7 @@ export function VaultSettingsPage() {
                               ? sessions
                               : field.kind === 'parent'
                                 ? parents
-                                : field.kind === 'model'
-                                  ? profiles
-                                  : null;
+                                : null;
                       return options ? (
                         <Select
                           key={field.key}

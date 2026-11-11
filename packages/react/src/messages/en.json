@@ -238,7 +238,6 @@
     "fileToolsHint": "Reads and writes files only in the session's working copy, through Corral's file tools. Without a working copy the tools are refused.",
     "teamDefaults": "For every run of this team",
     "advanced": "Advanced",
-    "profileMissing": "{profile} (not set up here)",
     "profileSignIn": "sign-in needed",
     "teamPlanOwner": "Own the team work plan (one planner per team)",
     "runCommand": "Run shell commands",

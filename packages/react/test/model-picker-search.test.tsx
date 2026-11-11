@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { AutoModelMenu } from '../../../apps/studio/src/workbench/AutoModelMenu.tsx';
@@ -155,6 +156,58 @@ describe('model picker search and groups', () => {
     });
     expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-label', models[0]?.name);
   });
+
+  it('names as active only a row that is drawn, and gives each drawn row its place in the list', async () => {
+    const models = many(600);
+    const chosen = models[590] as ModelOption;
+    render(<Picker defaultOpen value={chosen.id} models={models} />);
+    const field = await screen.findByRole('combobox', { name: 'Search models' });
+    const active = () => field.getAttribute('aria-activedescendant');
+    expect(document.getElementById(active() ?? '')).toHaveAttribute('aria-label', chosen.name);
+    // Scrolled away from the active row, the field names no row that is not there.
+    act(() => {
+      fireEvent.scroll(screen.getByRole('listbox'), { target: { scrollTop: 0 } });
+    });
+    const named = active();
+    expect(named === null || document.getElementById(named) !== null).toBe(true);
+    // Each drawn row says where it stands among all the matching rows.
+    const first = screen.getAllByRole('option')[0];
+    expect(first).toHaveAttribute('aria-setsize', '600');
+    expect(first).toHaveAttribute('aria-posinset', '1');
+    await userEvent.setup().type(field, 'model-17');
+    const matches = screen.getAllByRole('option');
+    expect(matches[0]).toHaveAttribute('aria-setsize', '11');
+    expect(matches.map((o) => o.getAttribute('aria-posinset'))).toEqual(
+      matches.map((_, i) => String(i + 1)),
+    );
+  });
+
+  it('keeps the active row on the same model when the list is read again', async () => {
+    const user = userEvent.setup();
+    const first: ModelOption[] = [
+      { id: 'a', name: 'A', description: '', group: 'One' },
+      { id: 'b', name: 'B', description: '', group: 'One' },
+      { id: 'c', name: 'C', description: '', group: 'One' },
+    ];
+    let reload: (models: ModelOption[]) => void = () => {};
+    function Reloading() {
+      const [models, setModels] = useState(first);
+      reload = setModels;
+      return <Picker defaultOpen value="a" models={models} />;
+    }
+    render(<Reloading />);
+    const field = await screen.findByRole('combobox', { name: 'Search models' });
+    await waitFor(() => expect(field).toHaveFocus());
+    await user.keyboard('{ArrowDown}');
+    const activeName = () =>
+      document
+        .getElementById(field.getAttribute('aria-activedescendant') ?? '')
+        ?.getAttribute('aria-label');
+    expect(activeName()).toBe('B');
+    // A model added at the top moves every index; the active row stays on B.
+    act(() => reload([{ id: 'z', name: 'Z', description: '', group: 'One' }, ...first]));
+    expect(activeName()).toBe('B');
+  });
 });
 
 describe('composer picker groups', () => {
@@ -201,7 +254,7 @@ describe('composer picker groups', () => {
     },
   ];
 
-  it('lists named profiles first, then one group per provider, each model once', async () => {
+  it('lists named profiles first, then one group per provider in alphabetical order', async () => {
     render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <DesignKitProvider>
@@ -237,5 +290,35 @@ describe('composer picker groups', () => {
         .map((o) => o.textContent),
     ).toEqual(['o9']);
     expect(screen.getAllByRole('option', { name: /GPT-6 Luna/ })).toHaveLength(1);
+  });
+
+  it('marks a model confirmed to take images and nothing else about images', async () => {
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <DesignKitProvider>
+          <AutoModelMenu
+            value={{ modelProfile: 'model-a' }}
+            profiles={profiles.map((profile, index) => ({
+              ...profile,
+              imageInput: index === 0 ? true : index === 1 ? false : null,
+            }))}
+            showReasoning={false}
+            disabled={false}
+            open
+            onOpenChange={vi.fn()}
+            onChange={vi.fn()}
+          />
+        </DesignKitProvider>
+      </IntlProvider>,
+    );
+    await screen.findByRole('combobox', { name: 'Search models' });
+    const luna = screen.getByRole('option', { name: /GPT-6 Luna/ });
+    expect(luna.getAttribute('aria-label')).toContain('Image input');
+    expect(luna.querySelector('[data-mark="image"]')).not.toBeNull();
+    const sol = screen.getByRole('option', { name: /GPT-6 Sol/ });
+    expect(sol.querySelector('[data-mark="image"]')).toBeNull();
+    expect(screen.getByRole('listbox').textContent).not.toMatch(
+      /Images supported|Text only|unconfirmed/,
+    );
   });
 });

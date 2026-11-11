@@ -24,7 +24,8 @@ export function AutoModelMenu({
 }) {
   const t = useTranslations('Sessions'),
     tq = useTranslations('Reasoning'),
-    tc = useTranslations('Composer');
+    tc = useTranslations('Composer'),
+    tn = useTranslations('Connections');
   const profile = profiles.find((p) => p.profileId === value.modelProfile);
   const effort =
     value.reasoning?.mode === 'fixed'
@@ -103,6 +104,8 @@ export function AutoModelMenu({
         settings: tc('modelPicker.settings'),
         trigger: () => t('autoModel'),
         empty: tc('modelPicker.empty'),
+        // The same mark, by the same name, as a connection's model list.
+        image: tn('image'),
       }}
       footerText={tc('nextRequest')}
       search={{

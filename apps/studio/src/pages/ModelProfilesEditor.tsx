@@ -298,6 +298,7 @@ export function ModelProfilesEditor({
           keywords: `${model.modelId} ${model.providerName} ${model.provider}`,
           ...(mark ? { mark } : {}),
           markText: model.providerName,
+          ...(model.imageInput ? { imageInput: true } : {}),
         };
       }),
     [profiles],

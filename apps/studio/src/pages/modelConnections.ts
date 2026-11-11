@@ -158,6 +158,8 @@ export interface ConnectedModel {
   providerName: string;
   modelId: string;
   name: string;
+  /** Confirmed to take images. */
+  imageInput: boolean;
 }
 
 export const modelKey = (provider: string, modelId: string) => `${provider}\u0000${modelId}`;
@@ -180,6 +182,7 @@ export function connectedModels(profiles: ModelProfileView[]): ConnectedModel[] 
       providerName: view.providerName,
       modelId: view.modelId,
       name: view.modelName ?? view.modelId,
+      imageInput: view.imageInput === true,
     });
   }
   return out.sort(

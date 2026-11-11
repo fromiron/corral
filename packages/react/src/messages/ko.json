@@ -238,7 +238,6 @@
     "fileToolsHint": "Corral 파일 도구로 세션 작업 사본 안에서만 파일을 읽고 씁니다. 작업 사본이 없으면 도구는 거절됩니다.",
     "teamDefaults": "이 팀의 모든 실행에 쓰는 기본값",
     "advanced": "고급",
-    "profileMissing": "{profile} (여기에 설정 없음)",
     "profileSignIn": "로그인 필요",
     "teamPlanOwner": "팀 작업 계획 담당 (팀당 한 역할)",
     "runCommand": "셸 명령 실행",

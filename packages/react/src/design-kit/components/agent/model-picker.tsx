@@ -64,6 +64,8 @@ export interface ModelOption {
   keywords?: string;
   /** The tile's letter when there is no mark. Omitted, the name's first letter. */
   markText?: string;
+  /** Confirmed to take images: the row shows the image mark, named by `labels.image`. */
+  imageInput?: boolean;
 }
 
 /** The search field over the list; without it the list itself takes the keys. */
@@ -99,6 +101,8 @@ export interface ModelPickerLabels {
   settings: string;
   trigger: (name: string) => string;
   empty: string;
+  /** The image mark's name, on a model confirmed to take images. */
+  image: string;
 }
 
 const defaultLabels: ModelPickerLabels = {
@@ -106,6 +110,7 @@ const defaultLabels: ModelPickerLabels = {
   settings: 'Model settings',
   trigger: (name) => `Model: ${name}`,
   empty: 'No model profiles',
+  image: 'Image input',
 };
 
 export interface ModelPickerProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onChange'> {
@@ -217,7 +222,7 @@ function Glyph({ model, small }: { model: ModelOption; small?: boolean }) {
 /** A row of the list: a group heading or an option (by its index in `models`). */
 type ListRow =
   | { kind: 'group'; key: string; label: string }
-  | { kind: 'option'; key: string; index: number; double: boolean };
+  | { kind: 'option'; key: string; index: number; position: number; double: boolean };
 type RowKind = 'group' | 'single' | 'double';
 const kindOf = (row: ListRow): RowKind =>
   row.kind === 'group' ? 'group' : row.double ? 'double' : 'single';
@@ -245,12 +250,20 @@ function matches(model: ModelOption, query: string) {
 function listRows(models: ModelOption[], query: string): ListRow[] {
   const rows: ListRow[] = [];
   let group: string | undefined;
+  let position = 0;
   models.forEach((model, index) => {
     if (!matches(model, query)) return;
     if (model.group !== undefined && model.group !== group)
       rows.push({ kind: 'group', key: `group:${index}`, label: model.group });
     group = model.group;
-    rows.push({ kind: 'option', key: model.id, index, double: Boolean(model.description) });
+    position++;
+    rows.push({
+      kind: 'option',
+      key: model.id,
+      index,
+      position,
+      double: Boolean(model.description),
+    });
   });
   return rows;
 }
@@ -415,6 +428,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
     const Brain = icons.brain;
     const Globe = icons.globe;
     const SearchIcon = icons.search;
+    const ImageIcon = icons.image;
 
     const [selected, setSelected] = useControllable(
       value,
@@ -437,7 +451,10 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
         (m) => m.auto || (m.speed !== undefined && m.quality !== undefined && m.cost !== undefined),
       );
     const selectedIndex = models.findIndex((m) => m.id === selected);
-    const [active, setActive] = useState(selectedIndex);
+    // The active row is kept by its model's id, so a list read again keeps it on that model.
+    const [activeId, setActiveId] = useState<string | null>(selected || null);
+    const active = activeId === null ? -1 : models.findIndex((m) => m.id === activeId);
+    const setActive = (index: number) => setActiveId(models[index]?.id ?? null);
     const [pointing, setPointing] = useState(false);
     const [keyboard, setKeyboard] = useState(false);
 
@@ -446,6 +463,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
     const [query, setQuery] = useState('');
     const q = query.trim().toLowerCase();
     const rows = useMemo(() => listRows(models, q), [models, q]);
+    const optionCount = useMemo(() => rows.filter((row) => row.kind === 'option').length, [rows]);
     const rowOf = useMemo(() => {
       const map = new Map<number, number>();
       rows.forEach((row, i) => {
@@ -490,6 +508,15 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
         ? thinking
         : Boolean(reasoning?.effort && reasoning.effort.value !== 'off');
     const optionId = (index: number) => `${id}-opt-${index}`;
+    // A current model that cannot be chosen says why (not connected, unavailable) in the trigger's
+    // description too, as a field already says it in its text.
+    const triggerNote =
+      [
+        triggerDescription,
+        current && (triggerKind === 'field' || current.disabled) ? current.description : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || undefined;
 
     /** Scrolls the list so the option's row (and its group heading, when it opens one) shows. */
     const reveal = (index: number, center = false) => {
@@ -509,15 +536,16 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
 
     // Controlled choices remain the host's state until its update is confirmed. Opening (or a
     // new selection while open) recenters the list once it is in the document: the popup's
-    // content can mount a render after `open` turns true.
+    // content can mount a render after `open` turns true. A list read again with the same
+    // selection keeps the active row and the query.
     const recenter = useRef(false);
     useLayoutEffect(() => {
       if (!open) return;
-      setActive(selectedIndex);
+      setActiveId(selected || null);
       setPointing(false);
       setQuery('');
       recenter.current = true;
-    }, [open, selectedIndex]);
+    }, [open, selected]);
 
     // The first drawn row of each kind gives that kind's real height at this density.
     useLayoutEffect(() => {
@@ -599,6 +627,8 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
 
     const showHighlight = pointing || keyboard;
     const activeRow = rowOf.get(active);
+    // Only a drawn row can be named as the active one.
+    const activeDrawn = activeRow !== undefined && activeRow >= from && activeRow < to;
     const box =
       activeRow !== undefined
         ? { top: tops[activeRow] ?? 0, height: heights[activeRow] ?? 0 }
@@ -658,8 +688,12 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
           role="option"
           data-row-kind={kindOf(row)}
           aria-selected={isSel}
+          aria-setsize={optionCount}
+          aria-posinset={row.position}
           aria-label={
-            showHints ? optionLabel(m) : [m.name, m.description].filter(Boolean).join(', ')
+            showHints
+              ? optionLabel(m)
+              : [m.name, m.description, m.imageInput ? labels.image : ''].filter(Boolean).join(', ')
           }
           aria-disabled={disabled || m.disabled || undefined}
           data-active={isActive || undefined}
@@ -700,6 +734,15 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
               </span>
             ) : null}
           </span>
+          {m.imageInput ? (
+            <span
+              data-mark="image"
+              title={labels.image}
+              className="inline-flex shrink-0 text-muted-foreground"
+            >
+              <ImageIcon aria-hidden className="size-3.5" strokeWidth={1.5} />
+            </span>
+          ) : null}
           {showHints &&
             (m.auto ? (
               <span
@@ -759,7 +802,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
             aria-expanded={open}
             aria-controls={`${id}-menu`}
             aria-label={labels.trigger(triggerName)}
-            aria-description={triggerDescription}
+            aria-description={triggerNote}
             disabled={disabled}
             data-slot="model-picker-trigger"
             className={cn(
@@ -886,9 +929,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
                             aria-expanded
                             aria-controls={`${id}-list`}
                             aria-autocomplete="list"
-                            aria-activedescendant={
-                              activeRow !== undefined ? optionId(active) : undefined
-                            }
+                            aria-activedescendant={activeDrawn ? optionId(active) : undefined}
                             aria-label={search.label}
                             placeholder={search.placeholder ?? search.label}
                             autoComplete="off"
@@ -937,8 +978,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
                           ? { 'aria-label': labels.model }
                           : {
                               'aria-labelledby': `${id}-label`,
-                              'aria-activedescendant':
-                                activeRow !== undefined ? optionId(active) : undefined,
+                              'aria-activedescendant': activeDrawn ? optionId(active) : undefined,
                             })}
                         aria-disabled={disabled || undefined}
                         data-pointing={pointing || undefined}
