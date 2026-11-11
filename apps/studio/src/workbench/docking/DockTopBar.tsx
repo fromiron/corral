@@ -134,7 +134,6 @@ export function DockTopBar({
           <Select<string>
             label={t('panes')}
             placeholder={t('panes')}
-            size="sm"
             value={null}
             onValueChange={(id) => onSelectPane(id)}
             options={[

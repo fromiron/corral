@@ -1,10 +1,9 @@
+import { useSize } from '@corral/react/design-kit';
 import { ChevronRight, FileText, Folder, FolderOpen } from '@corral/react/icons';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { TreeRow } from './fileTree.ts';
-
-const ROW = 28;
 
 /**
  * The Files tree (WAI-ARIA tree view). One row takes Tab; arrows move, Right/Left open and close
@@ -33,12 +32,18 @@ export function FileTree({
 }) {
   const t = useTranslations('Files');
   const scroll = useRef<HTMLDivElement>(null);
+  // A row is control high at the interface density, its name in the step's body text.
+  const size = useSize();
+  const row = size.controlHeight;
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroll.current,
-    estimateSize: () => ROW,
+    estimateSize: () => row,
     overscan: 8,
   });
+  // A density change moves every row; sizes already placed are dropped.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the row height is the trigger.
+  useEffect(() => virtual.measure?.(), [row]);
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const pending = useRef<string | null>(null);
   const stop =
@@ -151,14 +156,14 @@ export function FileTree({
                 height: item.size,
                 paddingInlineStart: `${0.25 + (row.level - 1) * 0.875}rem`,
               }}
-              className={`flex items-center gap-1.5 rounded-md pr-2 text-left text-caption text-foreground transition-colors duration-(--duration-fast) focus-visible:-outline-offset-2 ${row.path === active ? 'bg-[var(--tint)] hover:bg-[var(--tint-hover)]' : 'hover:bg-hover'}`}
+              className={`flex items-center gap-1.5 rounded-md pr-2 text-left ${size.text} text-foreground transition-colors duration-(--duration-fast) focus-visible:-outline-offset-2 ${row.path === active ? 'bg-[var(--tint)] hover:bg-[var(--tint-hover)]' : 'hover:bg-hover'}`}
             >
               <ChevronRight
-                size={14}
+                size={size.icon}
                 aria-hidden
                 className={`shrink-0 text-muted-foreground transition-transform duration-(--duration-fast) motion-reduce:transition-none ${folder ? '' : 'invisible'} ${row.expanded ? 'rotate-90' : ''}`}
               />
-              <Icon size={14} aria-hidden className="shrink-0 text-muted-foreground" />
+              <Icon size={size.icon} aria-hidden className="shrink-0 text-muted-foreground" />
               <span className="min-w-0 truncate">{row.name}</span>
               {row.loading ? (
                 <span className="ml-auto shrink-0 text-muted-foreground">{t('folderLoading')}</span>

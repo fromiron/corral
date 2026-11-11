@@ -255,7 +255,6 @@ export function ContentSearch({
           {modeControl}
           <Input
             type="text"
-            size="sm"
             aria-label={t('placeholder')}
             placeholder={t('placeholder')}
             maxLength={200}
@@ -267,20 +266,18 @@ export function ContentSearch({
         <div className="flex flex-wrap items-center gap-2">
           <Switch
             label={t('caseSensitive')}
-            size="compact"
             checked={caseSensitive}
             onToggle={() => setCaseSensitive(!caseSensitive)}
           />
           <Button
             type="submit"
-            size="compact"
             variant="tertiary"
             disabled={!query || phase === 'searching' || phase === 'preparing'}
           >
             {t('search')}
           </Button>
           {phase === 'searching' || phase === 'preparing' ? (
-            <Button size="compact" type="button" variant="ghost" onClick={cancel}>
+            <Button type="button" variant="ghost" onClick={cancel}>
               {phase === 'preparing' ? te('cancel') : t('cancel')}
             </Button>
           ) : null}
@@ -317,7 +314,6 @@ export function ContentSearch({
           <label htmlFor={replacementId} className="flex flex-col gap-1 text-caption">
             {te('replacement')}
             <Input
-              size="sm"
               id={replacementId}
               aria-label={te('replacement')}
               value={replacement}
@@ -332,7 +328,6 @@ export function ContentSearch({
           </label>
           <p className="text-caption text-muted-foreground">{te('savedOnly')}</p>
           <Button
-            size="compact"
             variant="tertiary"
             disabled={result.truncated || phase === 'preparing'}
             onClick={() => void previewReplace()}

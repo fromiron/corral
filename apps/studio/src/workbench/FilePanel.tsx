@@ -15,6 +15,7 @@ import {
   Select,
   Textarea,
   Tooltip,
+  useSize,
 } from '@corral/react/design-kit';
 import { Ellipsis, RefreshCw, Search, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
@@ -125,6 +126,8 @@ export function FilePanel({
   const tf = useTranslations('Files');
   const tq = useTranslations('QuickOpen');
   const te = useTranslations('Documents');
+  // A kept file's row grows with its path: the control height of the interface density is its least.
+  const pathRow = useSize().variant === 'compact' ? 'min-h-7' : 'min-h-9';
   const td = useTranslations('Docking');
   const ts = useTranslations('ContentSearch');
   const tw = useTranslations('Workbench');
@@ -569,7 +572,6 @@ export function FilePanel({
               <div className="mt-2 flex flex-wrap gap-2">
                 {sameCopy ? (
                   <Button
-                    size="compact"
                     variant="tertiary"
                     onClick={() => {
                       setSource('session');
@@ -580,7 +582,6 @@ export function FilePanel({
                   </Button>
                 ) : null}
                 <Button
-                  size="compact"
                   variant="ghost"
                   onClick={() => {
                     void owner
@@ -613,15 +614,14 @@ export function FilePanel({
           <div key={entry.key} className="flex min-w-0 items-center gap-2">
             <Button
               variant="ghost"
-              size="sm-multiline"
-              className="min-w-0 flex-1 justify-start break-all text-left"
+              className={`h-auto min-w-0 flex-1 justify-start whitespace-normal break-all text-left ${pathRow}`}
               onClick={() => setRetainedKey(entry.key)}
             >
               {entry.path}
             </Button>
             <Button
               variant="ghost"
-              size="icon-compact"
+              size="icon"
               aria-label={t('closeFile', { path: entry.path })}
               onClick={() => void close(entry.path, undefined, entry.key)}
             >
@@ -644,12 +644,11 @@ export function FilePanel({
     ) : null;
   const fileSetup =
     scope?.kind === 'project' && !hasCopy && !loading ? (
-      <Banner status="info" role="note" size="compact">
+      <Banner status="info" role="note">
         <BannerTitle>{tf('noCopyReadOnly')}</BannerTitle>
         <BannerActions>
           <Button
             variant="tertiary"
-            size="compact"
             render={
               <Link
                 to="/sessions/$sessionId"
@@ -694,7 +693,7 @@ export function FilePanel({
   const closeButton = (path: string) => (
     <Tooltip content={t('closeFile', { path })}>
       <Button
-        size="icon-compact"
+        size="icon"
         variant="ghost"
         aria-label={t('closeFile', { path })}
         onClick={() => void close(path)}
@@ -706,7 +705,6 @@ export function FilePanel({
   const searchModeControl = (
     <Select
       label={ts('mode')}
-      size="xs"
       className="min-w-0 max-w-full shrink-0"
       value={searchMode}
       onValueChange={setSearchMode}
@@ -750,24 +748,26 @@ export function FilePanel({
             {t('sourceFolder')}
           </span>
         ) : (
-          <Select
-            label={t('fileSource')}
-            size="xs"
-            variant="ghost"
-            className="min-w-0 justify-start"
-            value={scopeKind ?? 'project'}
-            onValueChange={setSource}
-            options={[
-              { value: 'project' as const, label: t('sourceFolder') },
-              ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
-            ]}
-          />
+          // The picker gives up its width (its value truncates) so the tools keep their place.
+          <div className="min-w-0">
+            <Select
+              label={t('fileSource')}
+              variant="ghost"
+              className="min-w-0 justify-start"
+              value={scopeKind ?? 'project'}
+              onValueChange={setSource}
+              options={[
+                { value: 'project' as const, label: t('sourceFolder') },
+                ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
+              ]}
+            />
+          </div>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {readOnly ? null : (
             <Tooltip content={tq('title')} shortcut={formatChord({ mod: true, key: 'p' })}>
               <Button
-                size="icon-compact"
+                size="icon"
                 variant="ghost"
                 aria-label={tq('title')}
                 aria-keyshortcuts={
@@ -780,12 +780,7 @@ export function FilePanel({
             </Tooltip>
           )}
           <Tooltip content={t('refreshFiles')}>
-            <Button
-              size="icon-compact"
-              variant="ghost"
-              aria-label={t('refreshFiles')}
-              onClick={refresh}
-            >
+            <Button size="icon" variant="ghost" aria-label={t('refreshFiles')} onClick={refresh}>
               <RefreshCw />
             </Button>
           </Tooltip>
@@ -796,7 +791,6 @@ export function FilePanel({
         <div className="flex min-w-0 items-center gap-2">
           {readOnly ? null : searchModeControl}
           <Input
-            size="sm"
             aria-label={t('filterFiles')}
             placeholder={t('filterFiles')}
             value={query}
@@ -805,7 +799,6 @@ export function FilePanel({
           />
           {resultsAvailable ? (
             <Button
-              size="compact"
               variant={results ? 'secondary' : 'ghost'}
               aria-pressed={results}
               className="shrink-0"
@@ -832,7 +825,6 @@ export function FilePanel({
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {searchModeControl}
               <Input
-                size="sm"
                 disabled
                 placeholder={ts('placeholder')}
                 aria-label={ts('placeholder')}
@@ -844,7 +836,6 @@ export function FilePanel({
             </p>
             {hasCopy && scopeKind === 'project' ? (
               <Button
-                size="compact"
                 variant="tertiary"
                 className="self-start"
                 onClick={() => setSource('session')}
@@ -853,7 +844,6 @@ export function FilePanel({
               </Button>
             ) : !hasCopy ? (
               <Button
-                size="compact"
                 variant="tertiary"
                 className="self-start"
                 render={
@@ -954,7 +944,7 @@ export function FilePanel({
                           render={
                             <Button
                               variant="ghost"
-                              size="icon-compact"
+                              size="icon"
                               aria-label={te('moreActions', { path: active })}
                             />
                           }

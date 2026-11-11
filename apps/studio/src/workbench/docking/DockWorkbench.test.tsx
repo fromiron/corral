@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SizeScope } from '@corral/react/design-kit';
 import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -49,6 +50,7 @@ async function fixture(
     >
   > = {},
   topbar: HTMLElement | null = null,
+  density?: 'default' | 'compact',
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
@@ -95,7 +97,7 @@ async function fixture(
   const ref = createRef<DockWorkbenchHandle>();
   const renderSession = async (sessionId: string) =>
     act(async () => {
-      root.render(
+      const dock = (
         <TopbarSlotContext.Provider value={{ actions: null, views: topbar, crumbs: null }}>
           <DockWorkbench
             ref={ref}
@@ -107,8 +109,9 @@ async function fixture(
             renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
             {...props}
           />
-        </TopbarSlotContext.Provider>,
+        </TopbarSlotContext.Provider>
       );
+      root.render(density ? <SizeScope size={density}>{dock}</SizeScope> : dock);
     });
   await renderSession('session');
   return { ref, container, owner, closeView, key, renderSession };
@@ -688,31 +691,39 @@ function dockWidth(width: number) {
   } as DOMRect);
 }
 
-it('from 960px a new dock opens documents in a group beside the file tree', async () => {
-  dockWidth(1280);
-  try {
-    const f = await fixture();
-    // Dockview lays the grid out on the frame after it is measured.
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
-    await act(async () => f.ref.current?.openContext('files'));
-    await act(async () => {
-      expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(
-        true,
-      );
-    });
-    const groups = savedGroups();
-    expect(groups.map(({ id, views }) => ({ id, views }))).toEqual([
-      { id: 'tree', views: ['context:files'] },
-      { id: 'main1', views: [expect.stringMatching(/^document:/)] },
-    ]);
-    // The tree keeps a column of about 260px; the document takes the rest.
-    expect(groups[0]?.size).toBeGreaterThanOrEqual(240);
-    expect(groups[0]?.size).toBeLessThanOrEqual(280);
-    expect(groups[1]?.size).toBeGreaterThan(900);
-  } finally {
-    vi.restoreAllMocks();
-  }
-});
+// The tree's column fits its head (where it reads from with its tools, then the filter row) at the
+// interface density: about 260px at compact, 300px at the default size.
+it.each([
+  ['compact', 240, 280],
+  ['default', 280, 320],
+] as const)(
+  'from 960px a new dock opens documents in a group beside the file tree (%s)',
+  async (density, min, max) => {
+    dockWidth(1280);
+    try {
+      const f = await fixture({}, null, density);
+      // Dockview lays the grid out on the frame after it is measured.
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+      await act(async () => f.ref.current?.openContext('files'));
+      await act(async () => {
+        expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(
+          true,
+        );
+      });
+      const groups = savedGroups();
+      expect(groups.map(({ id, views }) => ({ id, views }))).toEqual([
+        { id: 'tree', views: ['context:files'] },
+        { id: 'main1', views: [expect.stringMatching(/^document:/)] },
+      ]);
+      // The tree keeps its column; the document takes the rest.
+      expect(groups[0]?.size).toBeGreaterThanOrEqual(min);
+      expect(groups[0]?.size).toBeLessThanOrEqual(max);
+      expect(groups[1]?.size).toBeGreaterThan(900);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  },
+);
 
 it('a team design opened first in a wide new dock stays a full-width tab with the tree', async () => {
   dockWidth(1280);
