@@ -115,8 +115,12 @@ export function ApprovalPanel({
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
     [all],
   );
+  // A card the run-wide decision covered leaves with no line of its own: that decision says it.
   const done = useMemo(
-    () => Object.values(all ?? {}).filter((a) => a.status === 'approved'),
+    () =>
+      Object.values(all ?? {}).filter(
+        (a) => a.status === 'approved' && a.reason !== 'allowed_for_run',
+      ),
     [all],
   );
   // The criteria a decision about versions is judged by; a run limit and a tool call have none.

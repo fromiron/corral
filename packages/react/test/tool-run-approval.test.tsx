@@ -185,6 +185,24 @@ describe('a tool permission card', () => {
     },
   );
 
+  it('a waiting card the run-wide decision covered leaves without a result line of its own', async () => {
+    const covered = {
+      ...approval('appr_covered', 'approved', 'artv_0010'),
+      reason: 'allowed_for_run' as const,
+    };
+    show({
+      appr_run: approval('appr_run', 'approved', 'artv_0007', 'run'),
+      appr_covered: covered as ReturnType<typeof approval>,
+      appr_next: approval('appr_next', 'pending', 'artv_0009'),
+    });
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('approved-appr_run').textContent).toContain(
+        en.Approvals.doneToolRun.replace(': {call}', ''),
+      ),
+    );
+    expect(screen.queryByTestId('approved-appr_covered')).toBeNull();
+  });
+
   it('names the decisions in Korean', async () => {
     show({ approval_tool: approval('approval_tool', 'pending', 'tool_body') }, 'ko');
     expect(screen.getByRole('button', { name: '이번만 허용' })).toBeVisible();
