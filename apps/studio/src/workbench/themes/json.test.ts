@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseTheme, readThemeFile, serializeTheme, THEME_FILE_MAX_BYTES } from './json.ts';
+import {
+  parseTheme,
+  readThemeFile,
+  serializeTheme,
+  THEME_FILE_MAX_BYTES,
+  themeFileName,
+} from './json.ts';
 
 /** A valid Corral theme file as plain data; each case breaks one thing. */
 function file(): Record<string, unknown> {
@@ -223,5 +229,23 @@ describe('Corral theme JSON', () => {
     const exported = JSON.parse(serializeTheme(tampered as typeof result.palette));
     expect(exported.id).toBeUndefined();
     expect(exported.ui.extra).toBeUndefined();
+  });
+});
+
+describe('the exported file name', () => {
+  it('is the theme name made safe for a file name, with .json', () => {
+    expect(themeFileName('Monokai (2)')).toBe('Monokai (2).json');
+    expect(themeFileName('바다 테마')).toBe('바다 테마.json');
+    expect(themeFileName('a/b\\c:d*e?f"g<h>i|j')).toBe('a-b-c-d-e-f-g-h-i-j.json');
+    expect(themeFileName('  tabs\tand\nlines  ')).toBe('tabs-and-lines.json');
+  });
+
+  it('never names a hidden, relative or reserved file', () => {
+    expect(themeFileName('..')).toBe('theme.json');
+    expect(themeFileName('.profile')).toBe('profile.json');
+    expect(themeFileName('Dusk.')).toBe('Dusk.json');
+    expect(themeFileName('///')).toBe('theme.json');
+    expect(themeFileName('CON')).toBe('CON-theme.json');
+    expect(themeFileName('lpt1')).toBe('lpt1-theme.json');
   });
 });
