@@ -91,6 +91,18 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
   { id: 'model-b', provider: 'openai', model: 'gpt-6.1-sol' },
 ];
 
+/**
+ * What a provider's key auth needs besides the key, as Pi resolves it (its Cloudflare
+ * providers read these from the server environment). Named when a key alone is refused.
+ */
+const KEY_NEEDS: Readonly<Record<string, { what: string; env: string }>> = {
+  'cloudflare-workers-ai': { what: 'a Cloudflare account ID', env: 'CLOUDFLARE_ACCOUNT_ID' },
+  'cloudflare-ai-gateway': {
+    what: 'a Cloudflare account ID and AI Gateway ID',
+    env: 'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_GATEWAY_ID',
+  },
+};
+
 /** Corral's own sign-in to this provider makes a borrowed Codex CLI login no connection. */
 const OPENAI = 'openai';
 
@@ -1097,6 +1109,17 @@ export class ModelRegistry implements ModelResolver {
       throw new RegistryError('unsupported', 'this provider does not take an API key');
     }
     const endpoint = this.options.endpoints?.get(providerId);
+    // A key Pi cannot sign in with on its own (an account ID is missing) is not stored: the page
+    // could neither show it as a connection nor remove it.
+    if (!endpoint && !(await this.models.getAuth(providerId, { apiKey: key }).catch(() => null))) {
+      const needs = KEY_NEEDS[providerId];
+      throw new RegistryError(
+        'unsupported',
+        needs
+          ? `${this.providerName(providerId)} needs ${needs.what} besides the API key; set ${needs.env} in the server environment. The key was not saved.`
+          : `${this.providerName(providerId)} needs more than an API key here. The key was not saved.`,
+      );
+    }
     this.connectionEpoch++;
     this.credentialChanged(providerId);
     this.connectionTests.delete(providerId);
@@ -1354,8 +1377,17 @@ export class ModelRegistry implements ModelResolver {
   }
 
   async logout(providerId: string) {
-    if (!this.knownProvider(providerId))
-      throw new RegistryError('not_found', 'no such model provider');
+    if (!this.knownProvider(providerId)) {
+      // A key left for an endpoint the config no longer names can still be removed.
+      const stored = await this.options.credentials
+        .list()
+        .then((list) => list.some((credential) => credential.providerId === providerId))
+        .catch(() => false);
+      if (!stored) throw new RegistryError('not_found', 'no such model provider');
+      this.credentialChanged(providerId);
+      await this.models.logout(providerId);
+      return;
+    }
     this.connectionEpoch++;
     this.credentialChanged(providerId);
     this.connectionTests.delete(providerId);

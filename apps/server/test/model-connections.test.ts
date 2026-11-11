@@ -14,6 +14,8 @@ import {
   type Model,
   type OAuthAuth,
 } from '@earendil-works/pi-ai';
+import { cloudflareAIGatewayProvider } from '@earendil-works/pi-ai/providers/cloudflare-ai-gateway';
+import { cloudflareWorkersAIProvider } from '@earendil-works/pi-ai/providers/cloudflare-workers-ai';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LiveModels } from '../src/app.ts';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
@@ -384,6 +386,28 @@ describe('connecting any provider Pi knows', () => {
     }
   });
 
+  it('a key for a provider that needs more than the key is refused and not stored; the reason names what is missing', async () => {
+    const fake = fakeOpenAI({ configDir: temp('config') });
+    fake.live.models.setProvider(cloudflareWorkersAIProvider());
+    fake.live.models.setProvider(cloudflareAIGatewayProvider());
+    const context = await start(fake.live);
+    for (const [id, missing] of [
+      ['cloudflare-workers-ai', /account ID/],
+      ['cloudflare-ai-gateway', /AI Gateway ID/],
+    ] as const) {
+      const answer = await context.json(`/model-auth/${id}/api-key`, {
+        method: 'PUT',
+        body: JSON.stringify({ key: 'cf-fixture-secret' }),
+      });
+      expect(answer.status, id).toBe(501);
+      expect(answer.body.error.code).toBe('COMMAND_NOT_SUPPORTED');
+      expect(answer.body.error.message).toMatch(missing);
+      expect(await fake.credentials.read(id)).toBeUndefined();
+      expect(await providerOf(context, id)).toBeUndefined();
+    }
+    expect(context.responses.join('\n')).not.toContain('cf-fixture-secret');
+  });
+
   it('Anthropic offers the sign-in methods Pi gives it, like every other provider', async () => {
     const fake = fakeOpenAI({ configDir: temp('config') });
     const context = await start(fake.live);
@@ -705,6 +729,33 @@ describe('endpoint models over HTTP', () => {
         reasoning: { value: true, source: 'response' },
       },
     });
+  });
+
+  it('signing out removes a key left for an endpoint the config no longer has', async () => {
+    const fake = fakeOpenAI({ configDir: temp('config') });
+    const context = await start(fake.live, {
+      modelProfiles: FAKE_PROFILES,
+      modelProviders: [ROUTER],
+    });
+    await context.json('/model-auth/router/api-key', {
+      method: 'PUT',
+      body: JSON.stringify({ key: 'fixture-router-key' }),
+    });
+    expect(await fake.credentials.read('router')).toBeDefined();
+    const { revision } = (await context.json('/model-config')).body;
+    const saved = await context.json('/model-config', {
+      method: 'PUT',
+      body: JSON.stringify({ revision, modelProfiles: FAKE_PROFILES, modelProviders: [] }),
+    });
+    expect(saved.status).toBe(200);
+    const removed = await context.json('/model-auth/router', { method: 'DELETE' });
+    expect(removed.status).toBe(200);
+    expect(await fake.credentials.read('router')).toBeUndefined();
+    // Neither a known provider nor a stored key: still not found.
+    const again = await context.json('/model-auth/router', { method: 'DELETE' });
+    expect(again.status).toBe(404);
+    expect(again.body.error.code).toBe('TARGET_NOT_FOUND');
+    expect(context.responses.join('\n')).not.toContain('fixture-router-key');
   });
 
   it('saving the reasoning judgment settings while the models are fetched keeps the fetched list', async () => {
