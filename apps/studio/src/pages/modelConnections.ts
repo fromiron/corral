@@ -1,4 +1,9 @@
-import type { EndpointCheckKind, ModelProfileView, ProviderAuthView } from '@corral/client';
+import type {
+  EndpointCheckKind,
+  ModelConfig,
+  ModelProfileView,
+  ProviderAuthView,
+} from '@corral/client';
 
 /** How a connected provider signs in, as its row names it. */
 export type ConnectionMethod = 'subscription' | 'oauth' | 'apiKey' | 'envKey' | 'codex' | 'keyless';
@@ -70,6 +75,24 @@ function methodOf(provider: ProviderAuthView): ConnectionMethod {
   if (provider.source === 'codex-cli') return 'codex';
   if (provider.method === 'api_key') return provider.source === 'environment' ? 'envKey' : 'apiKey';
   return provider.subscription ? 'subscription' : 'oauth';
+}
+
+/**
+ * Whether Add connection offers a provider. Pi's legacy Codex subscription reaches the models
+ * OpenAI's own subscription offers, so it is listed only while a login or a profile uses it.
+ */
+export function offeredToAdd(
+  providerId: string,
+  providers: ProviderAuthView[],
+  config: Pick<ModelConfig, 'modelProfiles'> | null,
+): boolean {
+  if (providerId !== 'openai-codex') return true;
+  const own = providers.find((provider) => provider.providerId === providerId);
+  return Boolean(
+    own?.signedIn ||
+      own?.source === 'codex-cli' ||
+      config?.modelProfiles.some((profile) => profile.provider === providerId),
+  );
 }
 
 /** Rows that need the person first, then the connected ones; alphabetical inside each. */

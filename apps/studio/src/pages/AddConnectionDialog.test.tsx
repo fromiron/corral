@@ -53,6 +53,7 @@ const catalog: CatalogProvider[] = [
   entry('github-copilot', 'GitHub Copilot', { oauth: true, apiKey: false }),
   entry('mistral', 'Mistral', { oauth: false, apiKey: true }),
   entry('anthropic', 'Anthropic', { oauth: true, apiKey: true }),
+  entry('openai-codex', 'OpenAI Codex (legacy)', { oauth: true, apiKey: false }),
 ];
 const config: ModelConfig = {
   revision: 'r1',
@@ -162,6 +163,38 @@ describe('Add connection', () => {
     expect(title()).toBe('Add connection');
   });
 
+  it('leaves the legacy Codex sign-in out of the directory unless it is already in use', async () => {
+    const codexRow = () =>
+      all('[data-directory-row]').find((el) => visibleText(el).startsWith('OpenAI Codex'));
+    // OpenAI's own subscription reaches the same models: the legacy one is not offered beside it.
+    await show();
+    expect(codexRow()).toBeUndefined();
+    await act(async () => root.unmount());
+    // A borrowed Codex CLI login keeps it in the list.
+    root = createRoot(container);
+    state.providers = [
+      provider({
+        providerId: 'openai-codex',
+        name: 'OpenAI Codex (legacy)',
+        signedIn: true,
+        method: 'oauth',
+        source: 'codex-cli',
+      }),
+    ];
+    await show();
+    expect(codexRow()).toBeDefined();
+    await act(async () => root.unmount());
+    // So does a profile that points at it.
+    root = createRoot(container);
+    state.providers = [];
+    state.config = {
+      ...config,
+      modelProfiles: [{ id: 'old-codex', provider: 'openai-codex', model: 'gpt-6' }],
+    };
+    await show();
+    expect(codexRow()).toBeDefined();
+  });
+
   it('signs in on the provider page with a device code, then shows the models found', async () => {
     const login = { state: 'waiting' as const, authUrl: null, userCode: null, error: null };
     fixture.models = {
@@ -189,7 +222,11 @@ describe('Add connection', () => {
       }),
     ];
     await show(currentStart);
-    const open = control('Open GitHub Copilot sign-in') as HTMLAnchorElement;
+    // The provider is named once, in the title.
+    expect(document.body.textContent).toContain('Waiting for you to finish signing in');
+    const face = document.body.querySelector('[role="dialog"]');
+    expect(visibleText(face).split('GitHub Copilot').length - 1).toBe(1);
+    const open = control('Open sign-in page') as HTMLAnchorElement;
     expect(open.href).toBe('https://github.example/login/device');
     expect(open.rel).toContain('noopener');
     // The code is shown to type on that page, with a copy control.
@@ -307,6 +344,9 @@ describe('Add connection', () => {
     currentStart = { face: 'connect', providerId: 'mistral' };
     await show(currentStart);
     const key = field('API key');
+    // The field stands alone: no caption under it.
+    expect(key?.getAttribute('aria-describedby')).toBeNull();
+    expect(document.body.textContent).not.toContain('never shown again');
     await type(key, 'sk-test');
     await click(control('Connect'));
     expect(fixture.models.setApiKey).toHaveBeenCalledWith('mistral', 'sk-test', 'r1');
@@ -369,6 +409,11 @@ describe('Add connection', () => {
     currentStart = { face: 'address' };
     await show(currentStart);
     expect(title()).toBe('OpenAI-compatible address');
+    // Labels share one typeface; only the address value is set in mono.
+    const addressLabel = all('label').find((el) => visibleText(el) === 'Address');
+    expect(addressLabel?.closest('.font-mono')).toBeNull();
+    expect(addressLabel?.parentElement?.classList).toContain('[&_input]:font-mono');
+    expect(document.body.textContent).not.toContain('never shown again');
     await type(field('Address'), 'http://192.168.0.9/v1');
     await click(control('Connect'));
     // An http address off this computer is refused before anything is saved.

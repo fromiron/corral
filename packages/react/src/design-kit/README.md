@@ -4,7 +4,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 75 imported component/helper files, including the extracted `WorkspaceTile` and page chrome, the adapted opaque, hex-only `ColorPicker` and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 76 imported component/helper files, including the extracted `WorkspaceTile` and page chrome, the adapted opaque, hex-only `ColorPicker` and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.

@@ -137,6 +137,9 @@ describe('Profiles tab', () => {
 
   it('shows Save and Cancel only while something changed', async () => {
     await show();
+    // The tab already names the list: no heading repeats it, and the list keeps its name.
+    expect(document.body.querySelector('h3')).toBeNull();
+    expect(document.body.querySelector('section[aria-label="Profiles"]')).not.toBeNull();
     expect(control('Save')).toBeUndefined();
     expect(control('Cancel')).toBeUndefined();
     await click(control('Add profile'));

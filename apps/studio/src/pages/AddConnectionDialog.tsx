@@ -31,7 +31,7 @@ import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ModelImportPanel } from './ModelImportPanel.tsx';
-import { endpointIdFor } from './modelConnections.ts';
+import { endpointIdFor, offeredToAdd } from './modelConnections.ts';
 
 /** Where the dialog opens: the directory, one provider's connect face, an address, an import. */
 export type AddConnectionStart =
@@ -176,7 +176,12 @@ export function AddConnectionDialog({
         keywords: 'openai compatible endpoint url ollama lm studio vllm',
       },
       ...catalog
-        .filter((entry) => !entry.endpoint && (entry.methods.oauth || entry.methods.apiKey))
+        .filter(
+          (entry) =>
+            !entry.endpoint &&
+            (entry.methods.oauth || entry.methods.apiKey) &&
+            offeredToAdd(entry.providerId, providers, config),
+        )
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
         .map((entry) => {
           const logo = providerMark(entry.providerId);
@@ -264,7 +269,6 @@ export function AddConnectionDialog({
           <SignInFace
             key={face.providerId}
             providerId={face.providerId}
-            name={nameOf(face.providerId)}
             provider={providers.find((p) => p.providerId === face.providerId)}
             login={login}
             onTyped={setTyped}
@@ -360,7 +364,6 @@ function failureText(failure: unknown, t: ReturnType<typeof useTranslations<'Add
 
 function SignInFace({
   providerId,
-  name,
   provider,
   login,
   onTyped,
@@ -368,7 +371,6 @@ function SignInFace({
   back,
 }: {
   providerId: string;
-  name: string;
   provider: ProviderAuthView | undefined;
   login: { current: { providerId: string; seen: boolean } | null };
   onTyped: (typed: boolean) => void;
@@ -455,7 +457,7 @@ function SignInFace({
             ? t('starting')
             : view.state === 'exchanging'
               ? t('exchanging')
-              : t('waiting', { name })}
+              : t('waiting')}
         </p>
       )}
       {error ? (
@@ -522,12 +524,12 @@ function SignInFace({
             variant="primary"
             render={<a href={view.authUrl} target="_blank" rel="noopener noreferrer" />}
           >
-            {t('openSignIn', { name })}
+            {t('openSignIn')}
             <ExternalLink aria-hidden />
           </Button>
         ) : (
           <KitButton variant="primary" loading>
-            {t('openSignIn', { name })}
+            {t('openSignIn')}
           </KitButton>
         )}
       </div>
@@ -549,14 +551,12 @@ function KeyFace({
   back: ReactNode;
 }) {
   const t = useTranslations('AddConnection');
-  const tm = useTranslations('Models');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask(`api-key:${providerId}`);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const safety = `${providerId}-key-safety`;
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const value = key.trim();
@@ -578,21 +578,15 @@ function KeyFace({
   };
   return (
     <form onSubmit={(event) => void submit(event)} className="grid gap-4">
-      <div className="grid gap-1">
-        <ApiKeyInput
-          kitLabel
-          value={key}
-          disabled={busy}
-          describedBy={safety}
-          onChange={(value) => {
-            setKey(value);
-            onTyped(Boolean(value));
-          }}
-        />
-        <p id={safety} className="m-0 text-caption text-muted-foreground">
-          {tm('keySafety')}
-        </p>
-      </div>
+      <ApiKeyInput
+        kitLabel
+        value={key}
+        disabled={busy}
+        onChange={(value) => {
+          setKey(value);
+          onTyped(Boolean(value));
+        }}
+      />
       {error ? (
         <p role="alert" className="m-0 text-body text-danger">
           {error}
@@ -626,7 +620,6 @@ function AddressFace({
   back: ReactNode;
 }) {
   const t = useTranslations('AddConnection');
-  const tm = useTranslations('Models');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask('endpoint');
@@ -639,7 +632,6 @@ function AddressFace({
   const [error, setError] = useState<string | null>(null);
   // The endpoint this face saved, before the parent's config has caught up with it.
   const saved = useRef<{ endpoint: EndpointConfig; revision: string } | null>(null);
-  const safety = 'endpoint-key-safety';
   const changed = (next: string, before: string | undefined) => onTyped(next !== (before ?? ''));
 
   const submit = async (event: FormEvent) => {
@@ -730,7 +722,7 @@ function AddressFace({
           autoComplete="off"
           spellCheck={false}
           inputMode="url"
-          className="font-mono"
+          className="[&_input]:font-mono"
           {...(invalid ? { error: t('addressInvalid') } : {})}
           onChange={(value) => {
             setAddress(value);
@@ -750,22 +742,16 @@ function AddressFace({
         </TabsList>
       </Tabs>
       {access === 'api_key' ? (
-        <div className="grid gap-1">
-          <ApiKeyInput
-            kitLabel
-            value={key}
-            disabled={busy}
-            describedBy={safety}
-            {...(endpoint || saved.current ? { placeholder: t('keepKey') } : {})}
-            onChange={(value) => {
-              setKey(value);
-              onTyped(Boolean(value));
-            }}
-          />
-          <p id={safety} className="m-0 text-caption text-muted-foreground">
-            {tm('keySafety')}
-          </p>
-        </div>
+        <ApiKeyInput
+          kitLabel
+          value={key}
+          disabled={busy}
+          {...(endpoint || saved.current ? { placeholder: t('keepKey') } : {})}
+          onChange={(value) => {
+            setKey(value);
+            onTyped(Boolean(value));
+          }}
+        />
       ) : null}
       {error ? (
         <p role="alert" className="m-0 text-body text-danger">

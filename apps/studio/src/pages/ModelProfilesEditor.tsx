@@ -11,7 +11,6 @@ import {
   Button,
   Collapse,
   DisclosureChevron,
-  fontWeights,
   Input,
   InputField,
   InputGroup,
@@ -21,7 +20,7 @@ import {
   Tooltip,
 } from '@corral/react/design-kit';
 import { Info, Plus, X } from '@corral/react/icons';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
@@ -143,7 +142,6 @@ export function ModelProfilesEditor({
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask('model-profiles');
-  const headingId = useId();
 
   // The config this draft started from; a newer one replaces it only while nothing is edited.
   const [base, setBase] = useState(config);
@@ -399,15 +397,8 @@ export function ModelProfilesEditor({
   useSettingsForm({ dirty, pending: saving, save });
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <div className="flex min-h-9 items-center justify-between gap-3">
-        <h3
-          id={headingId}
-          className="m-0 text-subtitle"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {t('heading')}
-        </h3>
+    <section aria-label={t('heading')} className="flex flex-col gap-3">
+      <div className="flex min-h-9 items-center justify-end gap-3">
         <Button ref={addRef} variant="tertiary" size="compact" onClick={add} disabled={saving}>
           <Plus aria-hidden />
           {t('add')}
