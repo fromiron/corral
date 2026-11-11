@@ -38,8 +38,9 @@ export function RunActions({
     ) : (
       words
     );
-  // As icons they sit among the bar's other icon buttons and take their look.
-  const size = narrowIcons ? 'icon-compact' : 'compact';
+  // In a bar (the run header, the top bar) they keep the bar's compact actions, as icons among
+  // its other icon buttons; in a panel they take the interface density.
+  const size = narrowIcons ? 'icon-compact' : compact ? 'compact' : undefined;
   const projection = useStore(session, (s) => s.projection);
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
   const shownRun = projection?.runId ?? null;
@@ -73,7 +74,6 @@ export function RunActions({
       <div className="flex flex-wrap gap-1">
         <Button
           variant="destructive"
-          size="compact"
           disabled={pending}
           onClick={() => {
             const chosen = shownRun;
@@ -87,7 +87,7 @@ export function RunActions({
         >
           {t('confirmCancelRun')}
         </Button>
-        <Button variant="tertiary" size="compact" onClick={() => setConfirmCancel(false)}>
+        <Button variant="tertiary" onClick={() => setConfirmCancel(false)}>
           {t('keepRunning')}
         </Button>
       </div>

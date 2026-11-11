@@ -203,7 +203,6 @@ export function ExecutionToolGroup({
     <ToolCallGroup
       calls={calls}
       labels={labels}
-      size="compact"
       label={activityState && tools.some(unfinished) ? activityState.label : undefined}
     />
   );
@@ -236,15 +235,7 @@ export function ExecutionToolRows({
         const [first] = run;
         if (!first) return null;
         if (run.length === 1)
-          return (
-            <ToolCallCard
-              key={first.id}
-              variant="row"
-              call={first}
-              labels={labels}
-              size="compact"
-            />
-          );
+          return <ToolCallCard key={first.id} variant="row" call={first} labels={labels} />;
         return <RepeatedTool key={first.id} calls={run} labels={labels} />;
       })}
     </div>
@@ -264,7 +255,6 @@ function RepeatedTool({ calls, labels }: { calls: ToolCall[]; labels: Partial<To
       <ToolCallGroup
         calls={calls}
         labels={labels}
-        size="compact"
         label={`${first?.name} ×${calls.length}`}
         open={chosen ?? hot}
         onOpenChange={setChosen}

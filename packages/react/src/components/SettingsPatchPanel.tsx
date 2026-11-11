@@ -281,7 +281,6 @@ export function SettingsPatchPanel({
                   }
                   onClick={prepare}
                   variant="secondary"
-                  size="compact"
                 >
                   {t('preview')}
                 </Button>
@@ -324,7 +323,6 @@ export function SettingsPatchPanel({
                       disabled={pending || projection.controlRevision !== preview.revision}
                       onClick={() => void confirm()}
                       variant="primary"
-                      size="compact"
                     >
                       {t('confirm')}
                     </Button>

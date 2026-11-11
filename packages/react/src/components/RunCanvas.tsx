@@ -660,7 +660,7 @@ export function RunCanvas({
                 <div className="flex items-center justify-between gap-3 px-2 pb-2">
                   <PopoverTitle className="min-w-0 truncate">{node.label}</PopoverTitle>
                   <PopoverClose
-                    render={<Button variant="ghost" size="icon-compact" />}
+                    render={<Button variant="ghost" size="icon" />}
                     aria-label={t('closePreview')}
                   >
                     <X />

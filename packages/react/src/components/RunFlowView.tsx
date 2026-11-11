@@ -196,7 +196,6 @@ export function RunFlowView({
           {card.artifact?.current && card.artifact.artifactVersionId ? (
             <Button
               variant="tertiary"
-              size="compact"
               onClick={() => onOpenArtifact(card.artifact?.artifactVersionId ?? '')}
             >
               {t('open', { name: card.artifact.label })}
@@ -296,7 +295,6 @@ export function RunFlowView({
                 <Button
                   key={entry.id}
                   variant="tertiary"
-                  size="compact"
                   aria-pressed={entry.id === group.id}
                   onClick={() => setSelected(entry.id)}
                 >
@@ -334,12 +332,7 @@ export function RunFlowView({
             <div className="flex flex-wrap gap-1.5">
               {[group.from, group.to].flatMap((node) =>
                 node.executionIds.map((id) => (
-                  <Button
-                    key={id}
-                    size="compact"
-                    variant="ghost"
-                    onClick={() => onSelectExecution(id)}
-                  >
+                  <Button key={id} variant="ghost" onClick={() => onSelectExecution(id)}>
                     {t('attempt', {
                       name: node.label,
                       attempt: projection.executions[id]?.attemptNo ?? 1,
@@ -356,12 +349,7 @@ export function RunFlowView({
           <div className="flex flex-wrap gap-2">
             {agents.flatMap((node) =>
               node.executionIds.map((id) => (
-                <Button
-                  key={id}
-                  variant="tertiary"
-                  size="compact"
-                  onClick={() => onSelectExecution(id)}
-                >
+                <Button key={id} variant="tertiary" onClick={() => onSelectExecution(id)}>
                   {t('attempt', {
                     name: node.label,
                     attempt: projection.executions[id]?.attemptNo ?? 1,
@@ -450,7 +438,6 @@ export function RunFlowView({
                 </div>
                 {artifact.current && artifact.artifactVersionId ? (
                   <Button
-                    size="compact"
                     variant="tertiary"
                     onClick={() => onOpenArtifact(artifact.artifactVersionId ?? '')}
                   >
@@ -654,7 +641,7 @@ function EvidenceSummary({
           {t(`evidenceKind.${evidence.kind}`)} · {name}
         </span>
         {artifact && canReadArtifactBody(projection, evidence.id) && (
-          <Button variant="ghost" size="compact" onClick={() => onOpenArtifact(evidence.id)}>
+          <Button variant="ghost" onClick={() => onOpenArtifact(evidence.id)}>
             {t('open', { name })}
           </Button>
         )}

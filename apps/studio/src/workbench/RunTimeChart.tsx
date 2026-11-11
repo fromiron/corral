@@ -244,7 +244,6 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
         selectedTaskId={selected ?? null}
         onSelectTask={onSelect}
         labels={labels}
-        size="compact"
       />
       {calls.length ? (
         <ul

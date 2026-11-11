@@ -185,11 +185,7 @@ export function RunDetail({
         </p>
         {activeRunId === runId ? <RunActions session={session} /> : null}
         {error ? (
-          <Button
-            variant="tertiary"
-            size="compact"
-            onClick={() => void session.getState().open(runId)}
-          >
+          <Button variant="tertiary" onClick={() => void session.getState().open(runId)}>
             {t('retry')}
           </Button>
         ) : null}
@@ -761,7 +757,7 @@ function RunWorkspace({
             className="min-h-0 flex-1 overflow-auto p-6 outline-none"
             aria-label={m('results')}
           >
-            <Button variant="ghost" size="compact" onClick={closeDocument}>
+            <Button variant="ghost" onClick={closeDocument}>
               {m('backToWork')}
             </Button>
             {documentOpen ? (
@@ -792,12 +788,7 @@ function RunWorkspace({
             data-testid="run-instructions"
           >
             <div className="mx-auto grid w-full max-w-[760px] gap-4">
-              <Button
-                variant="ghost"
-                size="compact"
-                className="justify-self-start"
-                onClick={closeSteering}
-              >
+              <Button variant="ghost" className="justify-self-start" onClick={closeSteering}>
                 {m('backToWork')}
               </Button>
               {[...steeringTargets].map((id) => (
@@ -873,11 +864,7 @@ function RunWorkspace({
                 />
               ) : null}
               {selectedTarget && !selectedTarget.finished && panel === 'selection' ? (
-                <Button
-                  variant="primary"
-                  size="compact"
-                  onClick={() => openSteering(selectedTarget.executionId)}
-                >
+                <Button variant="primary" onClick={() => openSteering(selectedTarget.executionId)}>
                   {m('steer')}
                 </Button>
               ) : null}
@@ -995,7 +982,6 @@ function GraphDisplayToggle({
         <Button
           key={option}
           variant={value === option ? 'secondary' : 'ghost'}
-          size="compact"
           aria-pressed={value === option}
           onClick={() => onChange(option)}
         >
@@ -1349,7 +1335,7 @@ function CopyRunId({ runId }: { runId: string }) {
     <>
       <Button
         variant="ghost"
-        size="icon-compact"
+        size="icon"
         aria-label={t('copyRunId')}
         onClick={() =>
           void navigator.clipboard?.writeText(runId).then(
@@ -1542,7 +1528,6 @@ function NodeRunActions({
     <div className="flex flex-col gap-1 border-t border-line pt-2 text-caption">
       {breakable ? (
         <Switch
-          size="compact"
           label={t('pauseBefore')}
           checked={options.breakpoints.includes(nodeId)}
           onToggle={() => options.toggle(nodeId)}
@@ -1551,7 +1536,6 @@ function NodeRunActions({
       {forkable ? (
         <Button
           variant="secondary"
-          size="compact"
           className="justify-start"
           disabled={options.busy}
           onClick={() => void options.fork(nodeId)}
@@ -1587,7 +1571,6 @@ function RunStepOptions({
             <li key={step.id} className="flex min-h-8 items-center justify-between gap-2">
               {options.breakable(step.id) ? (
                 <Switch
-                  size="compact"
                   label={step.label}
                   checked={options.breakpoints.includes(step.id)}
                   onToggle={() => options.toggle(step.id)}
@@ -1597,7 +1580,6 @@ function RunStepOptions({
                   <span className="min-w-0 truncate">{step.label}</span>
                   <Button
                     variant="secondary"
-                    size="compact"
                     disabled={options.busy}
                     onClick={() => void options.fork(step.id)}
                   >
@@ -1690,7 +1672,6 @@ function NodeExecutions({
                     readable?.artifactVersionId === latest.artifactVersionId && onOpenArtifact ? (
                       <Button
                         variant="ghost"
-                        size="compact"
                         className="max-w-full justify-start whitespace-normal text-left"
                         aria-describedby={identityId}
                         onClick={() => onOpenArtifact(latest.artifactVersionId)}
@@ -1712,7 +1693,6 @@ function NodeExecutions({
               <div className="flex flex-wrap gap-1">
                 <Button
                   variant={id === selectedExecutionId ? 'secondary' : 'ghost'}
-                  size="compact"
                   aria-pressed={id === selectedExecutionId}
                   aria-describedby={identityId}
                   onClick={() => onChoose(id)}
@@ -1724,7 +1704,6 @@ function NodeExecutions({
                 onOpenArtifact ? (
                   <Button
                     variant="ghost"
-                    size="compact"
                     aria-describedby={identityId}
                     onClick={() => onOpenArtifact(readable.artifactVersionId)}
                   >
@@ -1735,12 +1714,7 @@ function NodeExecutions({
                 projection.status !== 'cancelling' &&
                 e.status !== 'cancelling' &&
                 onSteer ? (
-                  <Button
-                    variant="ghost"
-                    size="compact"
-                    aria-describedby={identityId}
-                    onClick={() => onSteer(id)}
-                  >
+                  <Button variant="ghost" aria-describedby={identityId} onClick={() => onSteer(id)}>
                     {m('steer')}
                   </Button>
                 ) : null}
@@ -1750,7 +1724,7 @@ function NodeExecutions({
         })}
       </ul>
       {preview && ids.length > visibleIds.length ? (
-        <Button variant="ghost" size="compact" className="justify-start" onClick={onShowAll}>
+        <Button variant="ghost" className="justify-start" onClick={onShowAll}>
           {t('allExecutions')} · {ids.length}
         </Button>
       ) : null}

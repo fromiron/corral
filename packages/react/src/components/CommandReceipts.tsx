@@ -53,7 +53,6 @@ export function CommandReceipts({
               type="button"
               disabled={pending.includes(command.commandId)}
               variant="tertiary"
-              size="compact"
               onClick={() =>
                 void session
                   .getState()

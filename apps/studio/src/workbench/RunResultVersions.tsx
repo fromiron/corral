@@ -38,8 +38,10 @@ export function RunResultVersions({
   const current = useStore(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   const results = useMemo(() => (projection ? runResults(projection) : null), [projection]);
-  // A name is a compact button's label; one that cannot be opened is set the same way.
-  const label = useSize('compact').type;
+  // A name is a row button's label; one that cannot be opened is set the same way.
+  const size = useSize();
+  const label = size.type;
+  const inset = size.variant === 'compact' ? '-ml-3' : '-ml-4';
   if (!projection || !results) return null;
   const source = (item: ResultItem) => {
     const execution = projection.executions[item.authorExecutionId];
@@ -121,8 +123,7 @@ export function RunResultVersions({
                     {readable ? (
                       <Button
                         variant="ghost"
-                        size="compact"
-                        className="-ml-3 max-w-full justify-start text-foreground"
+                        className={`${inset} max-w-full justify-start text-foreground`}
                         aria-label={t('itemName', { name: item.name, version: item.version })}
                         onClick={(event) =>
                           (section.final ? onOpenResult : onOpenArtifact)(

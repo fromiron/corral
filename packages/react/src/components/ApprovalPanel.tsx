@@ -23,6 +23,7 @@ import {
   BannerTitle,
   Button,
   fontWeights,
+  SizeScope,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow, RowAction } from './FirstRow.tsx';
@@ -228,14 +229,17 @@ export function ApprovalPanel({
   };
 
   // Buttons are the only way to decide: the card has no Enter/Escape shortcut. As in the kit's
-  // permission card, the decline sits left of the primary action.
-  const decisionButtons = (approval: (typeof approvals)[number]) =>
+  // permission card, the decline sits left of the primary action, and as there and in the kit
+  // run screen's approval card, the decision row is compact at every interface density.
+  const decisionButtons = (approval: (typeof approvals)[number]) => (
+    <SizeScope size="compact">{decisionRow(approval)}</SizeScope>
+  );
+  const decisionRow = (approval: (typeof approvals)[number]) =>
     approval.kind === 'route' ? (
       // A router that could not choose: each connected route is its own answer.
       <>
         <Button
           variant="tertiary"
-          size="compact"
           disabled={busy}
           data-approval-action="decline"
           onClick={() => void decide(approval.approvalId, 'reject')}
@@ -246,7 +250,6 @@ export function ApprovalPanel({
           <Button
             key={route.id}
             variant="secondary"
-            size="compact"
             disabled={busy}
             // The first route is the card's main action when focus is handed to it.
             data-approval-action={index === 0 ? 'primary' : 'route'}
@@ -261,7 +264,6 @@ export function ApprovalPanel({
       <>
         <Button
           variant="tertiary"
-          size="compact"
           disabled={busy}
           data-approval-action="decline"
           onClick={() => void decide(approval.approvalId, 'reject')}
@@ -277,7 +279,6 @@ export function ApprovalPanel({
             : t(`rejectAs.${copyKey(approval)}`)}
         </Button>
         <Button
-          size="compact"
           data-approval-action="primary"
           disabled={
             busy ||
@@ -458,7 +459,6 @@ export function ApprovalPanel({
                     <Button
                       key={id}
                       variant="tertiary"
-                      size="compact"
                       title={id}
                       onClick={() => onOpenArtifact(id)}
                     >
@@ -484,7 +484,7 @@ export function ApprovalPanel({
               </div>
             )}
             {refused?.error ? (
-              <Banner role="alert" status="error" size="compact" className="mx-3 mb-3">
+              <Banner role="alert" status="error" className="mx-3 mb-3">
                 <BannerTitle>{t('refused', { message: refused.error.message })}</BannerTitle>
               </Banner>
             ) : null}

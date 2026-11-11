@@ -110,7 +110,6 @@ export function RunTaskTimeline({
         steps={board.steps}
         startedAt={board.startedAt}
         {...(live && !held ? {} : { now: board.lastAt })}
-        size="compact"
         selectedStepId={selected ? (projection?.executions[selected]?.taskId ?? null) : null}
         {...(onSelect
           ? {
