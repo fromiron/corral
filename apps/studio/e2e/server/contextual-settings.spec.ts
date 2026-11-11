@@ -307,8 +307,10 @@ test.describe('settings layout and keyboard', () => {
         )
         .toBe('inside');
     }
-    await dialog.getByRole('combobox', { name: 'Appearance', exact: true }).click();
-    await page.getByRole('option', { name: 'Light', exact: true }).click();
+    await dialog
+      .getByRole('radiogroup', { name: 'Appearance', exact: true })
+      .getByRole('radio', { name: 'Light', exact: true })
+      .click();
     await dialog.getByRole('link', { name: 'Models', exact: true }).click();
     await expect(dialog.getByTestId('provider-openai')).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('settings-wide-light.png') });
@@ -328,8 +330,10 @@ test.describe('settings layout and keyboard', () => {
     const korean = page.getByRole('dialog', { name: '설정', exact: true });
     await expect(korean).toBeVisible();
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await korean.getByRole('combobox', { name: '화면 테마', exact: true }).click();
-    await page.getByRole('option', { name: '다크', exact: true }).click();
+    await korean
+      .getByRole('radiogroup', { name: '화면 테마', exact: true })
+      .getByRole('radio', { name: '다크', exact: true })
+      .click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.screenshot({ path: test.info().outputPath('settings-narrow-korean-dark.png') });
     expect(await korean.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);

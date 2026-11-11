@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { contrastRatio, mix } from './color.ts';
 import type { Palette } from './palette.ts';
-import { PALETTE_TOKENS, paletteTokens } from './tokens.ts';
+import { legibleText, PALETTE_TOKENS, paletteTokens } from './tokens.ts';
 
 const dark: Palette = {
   name: 'Night',
@@ -161,5 +161,26 @@ describe('the one token function', () => {
       (name) => !PALETTE_TOKENS.includes(name) && !leftToKit.has(name),
     );
     expect(uncovered).toEqual([]);
+  });
+});
+
+describe('text that stays legible on a draft', () => {
+  const surfaces = (palette: Palette) =>
+    [1, 2, 3, 4, 5, 6, 7, 8].map((step) => paletteTokens(palette)[`--surface-${step}`] as string);
+  const leastContrast = (text: string, palette: Palette) =>
+    Math.min(...surfaces(palette).map((surface) => contrastRatio(text, surface)));
+
+  it("is the theme's own text while it reads at 4.5:1 on every surface", () => {
+    expect(legibleText(dark)).toBe(dark.ui.foreground);
+    expect(legibleText(light)).toBe(light.ui.foreground);
+  });
+
+  it('turns black or white when the text color itself is too faint', () => {
+    const faintDark = { ...dark, ui: { ...dark.ui, foreground: '#3a3a3a' } };
+    expect(legibleText(faintDark)).toBe('#ffffff');
+    const faintLight = { ...light, ui: { ...light.ui, foreground: '#e0dccf' } };
+    expect(legibleText(faintLight)).toBe('#000000');
+    for (const palette of [faintDark, faintLight])
+      expect(leastContrast(legibleText(palette), palette)).toBeGreaterThanOrEqual(4.5);
   });
 });

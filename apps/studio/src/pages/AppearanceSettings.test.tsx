@@ -29,8 +29,8 @@ import { PALETTE_TOKENS } from '../workbench/themes/tokens.ts';
 import { SettingsPage } from './SettingsPage.tsx';
 
 // Personal themes in Settings › General (docs/specs/features/themes.md, 개인 테마 and its
-// acceptance scenarios): the list under Appearance, the editor with its live preview and
-// contrast marks, export, import, delete and the cap.
+// acceptance scenarios): their cards in the Appearance gallery, the editor with its sample, color
+// tiles, kit picker and contrast marks, export, import, delete and the cap.
 
 vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'browser' }) }));
 vi.mock('../CommandPalette.tsx', () => ({ ShortcutTable: () => null }));
@@ -73,7 +73,7 @@ vi.mock('../workbench/theme-colors.ts', () => ({
     );
   },
 }));
-// The kit select's options as a native list, each group under its label.
+// The kit select's options as a native list (the editor's base), each group under its label.
 vi.mock('@corral/react/design-kit', async (original) => ({
   ...(await original<typeof import('@corral/react/design-kit')>()),
   Select: ({
@@ -111,6 +111,8 @@ vi.mock('@corral/react/design-kit', async (original) => ({
 }));
 
 const html = document.documentElement;
+// jsdom runs no animations; Base UI asks for them when a popup closes.
+Element.prototype.getAnimations ??= () => [];
 const builtin = (id: string) => BUILTIN_THEMES.find((theme) => theme.id === id)?.palette as Palette;
 const monokai = builtin('monokai');
 const latte = builtin('catppuccin-latte');
@@ -122,6 +124,15 @@ beforeEach(() => {
   values = new Map();
   failThemeWrites = false;
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  // jsdom has no layout; the picker's hue slider observes its own width.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => {
@@ -230,15 +241,47 @@ const field = (label: string) => {
 };
 const editor = () => document.querySelector('[data-theme-editor]');
 const prompt = () => document.querySelector('[data-settings-guard]');
-const rows = () => all('[data-personal-themes] li').map((row) => row.textContent?.trim());
-const appearance = () => must(field(messages.Desktop.appearance), 'appearance select');
-const personalGroup = () =>
-  [
-    ...(appearance().querySelector(`optgroup[label="${messages.Desktop.personalThemes}"]`)
-      ?.children ?? []),
-  ].map((option) => option.textContent);
+/** The personal themes' cards, by name, in the gallery's order. */
+const cards = () =>
+  all('[data-personal-themes] [role="radio"]').map((card) => card.getAttribute('aria-label'));
+const card = (name: string) =>
+  must(
+    all('[data-appearance] [role="radio"]').find(
+      (each) => each.getAttribute('aria-label') === name,
+    ),
+    `card ${name}`,
+  );
+const checked = () =>
+  all('[data-appearance] [role="radio"]')
+    .filter((each) => each.getAttribute('aria-checked') === 'true')
+    .map((each) => each.getAttribute('aria-label'));
+const newTile = () => must(button(T.newTheme), 'New theme tile');
 const tokens = () =>
   Object.fromEntries(PALETTE_TOKENS.map((name) => [name, html.style.getPropertyValue(name)]));
+/** What an element's aria-describedby points at, as text. */
+const described = (element: Element) =>
+  (element.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ');
+/** A color's tile in the editor, by its name. */
+const tile = (name: string) =>
+  must(
+    all('[data-theme-editor] [data-color-tile]').find(
+      (each) => each.getAttribute('aria-label') === name,
+    ),
+    `tile ${name}`,
+  );
+/** The value a tile shows for its color. */
+const shownValue = (name: string) => described(tile(name)).match(/#[0-9a-f]{6}/i)?.[0];
+/** The open picker (a closing one stays mounted until its exit has played). */
+const picker = () =>
+  document.querySelector<HTMLElement>('[data-slot="color-picker-popup"][data-open]');
+const slider = (popup: Element) =>
+  must(popup.querySelector<HTMLInputElement>('input[type="range"]'), 'hue slider');
+const hexField = () =>
+  must(picker()?.querySelector<HTMLInputElement>(`input[aria-label="${T.hex}"]`), 'hex field');
 
 async function click(element: HTMLElement | null) {
   await act(async () => must(element, 'element to click').click());
@@ -261,6 +304,43 @@ async function pressEscape(target: HTMLElement) {
   });
   await flush();
 }
+/** Waits out a popup's exit. */
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+}
+/** Opens a color's picker from its tile (closing one already open) and returns the popup. */
+async function openPicker(name: string) {
+  const shown = picker();
+  if (shown) {
+    await pressEscape(must(shown.querySelector<HTMLElement>('input'), 'hex field'));
+    await settle();
+  }
+  await click(tile(name));
+  const popup = must(picker(), `picker for ${name}`);
+  expect(popup.getAttribute('aria-label')).toBe(name);
+  return popup;
+}
+/** Types a value into a color's picker (it applies as soon as it is a whole #rrggbb). */
+async function typeColor(name: string, value: string) {
+  if (picker()?.getAttribute('aria-label') !== name) await openPicker(name);
+  await type(hexField(), value);
+}
+/** A menu item's label, without the hidden copy the kit keeps for its width. */
+const itemLabel = (item: Element) => {
+  const read = item.cloneNode(true) as Element;
+  for (const hidden of read.querySelectorAll('.invisible, [aria-hidden="true"]')) hidden.remove();
+  return read.textContent?.trim();
+};
+/** Picks a card menu's item: Edit, Export or Delete. */
+async function cardAction(name: string, action: string) {
+  await click(button(T.actionsNamed.replace('{name}', name)));
+  const item = all('[role="menuitem"]').find((each) => itemLabel(each) === action);
+  await click(must(item, `${action} in the menu of ${name}`));
+  // The menu hands focus back once its exit has played, before anything else is pressed.
+  await settle();
+}
 async function chooseFile(contents: BlobPart, name = 'theme.json') {
   const input = must(
     document.querySelector<HTMLInputElement>('[data-personal-themes] input[type="file"]'),
@@ -281,27 +361,33 @@ function importReason() {
   return alert?.textContent ?? '';
 }
 
-describe('the personal theme list', () => {
-  it('is only its head while there are no personal themes', async () => {
+describe('the personal themes in the gallery', () => {
+  it('are their label, Import and the New theme tile while there are none', async () => {
     await show();
-    const section = must(document.querySelector('[data-personal-themes]'), 'list');
-    expect(section.querySelector('h3')?.textContent).toBe(messages.Desktop.personalThemes);
+    const group = must(document.querySelector('[data-personal-themes]'), 'personal group');
+    const label = document.getElementById(group.getAttribute('aria-labelledby') ?? '');
+    expect(label?.textContent).toBe(messages.Desktop.personalThemes);
     expect(button(T.newTheme)).not.toBeNull();
     expect(button(T.import)).not.toBeNull();
-    expect(section.querySelector('ul, li, p')).toBeNull();
-    expect(personalGroup()).toEqual([]);
+    expect(cards()).toEqual([]);
+    expect(group.querySelector('ul, li, p')).toBeNull();
   });
 
-  it('shows each theme with edit, export and delete, and lists them in the picker', async () => {
+  it('show each theme as a card of the one choice, with Edit, Export and Delete in its menu', async () => {
     stored({ ...monokai, name: 'Harbor' }, 'harbor');
     stored({ ...latte, name: 'Dawn' }, 'dawn');
     stored({ ...monokai, name: 'Ember' }, 'ember');
     await show();
-    expect(rows()).toEqual(['Harbor', 'Dawn', 'Ember']);
-    for (const name of ['Harbor', 'Dawn', 'Ember'])
-      for (const action of [T.editNamed, T.exportNamed, T.deleteNamed])
-        expect(button(action.replace('{name}', name))).not.toBeNull();
-    expect(personalGroup()).toEqual(['Harbor', 'Dawn', 'Ember']);
+    expect(cards()).toEqual(['Harbor', 'Dawn', 'Ember']);
+    expect(document.querySelectorAll('[data-appearance] [role="radiogroup"]')).toHaveLength(1);
+    for (const name of ['Harbor', 'Dawn', 'Ember']) {
+      const menu = must(button(T.actionsNamed.replace('{name}', name)), `menu of ${name}`);
+      // The menu is the card's neighbour, never inside the radio.
+      expect(menu.closest('[role="radio"]')).toBeNull();
+      await click(menu);
+      expect(all('[role="menuitem"]').map(itemLabel)).toEqual([T.edit, T.export, T.delete]);
+      await pressEscape(must(document.activeElement as HTMLElement, 'focus in the menu'));
+    }
   });
 });
 
@@ -310,24 +396,23 @@ describe('a new theme', () => {
     chooseAppearance('builtin:monokai');
     await show();
     const before = tokens();
-    await click(button(T.newTheme));
+    await click(newTile());
     expect(editor()).not.toBeNull();
     const name = field(T.name);
     expect(name.value).toBe('Monokai (2)');
     expect(document.activeElement).toBe(name);
-    expect(field(T.ui.background).value).toBe(monokai.ui.background);
+    expect(shownValue(T.ui.background)).toBe(monokai.ui.background);
     expect(tokens()).toEqual(before);
     await type(name, 'Harbor');
     await click(button(T.save));
     expect(editor()).toBeNull();
-    expect(rows()).toEqual(['Harbor']);
+    expect(cards()).toEqual(['Harbor']);
     const [saved] = personalThemes.getState();
     expect(preferences.getState()).toMatchObject({ theme: 'dark', palette: `custom:${saved?.id}` });
     expect(tokens()).toEqual(before);
-    expect(appearance().value).toBe(`custom:${saved?.id}`);
-    expect(personalGroup()).toEqual(['Harbor']);
-    // Focus goes back to the control that opened the editor.
-    expect(document.activeElement).toBe(button(T.newTheme));
+    expect(checked()).toEqual(['Harbor']);
+    // Focus goes back to the tile that opened the editor.
+    expect(document.activeElement).toBe(newTile());
   });
 
   it('under system copies the side showing now, named after it', async () => {
@@ -340,13 +425,13 @@ describe('a new theme', () => {
     applyAppearance();
     expect(html.classList.contains('dark')).toBe(true);
     await show();
-    await click(button(T.newTheme));
+    await click(newTile());
     expect(field(T.name).value).toBe('Dark (2)');
     expect(field(T.base).value).toBe('dark');
-    expect(field(T.ui.background).value).toBe('#171717');
-    expect(field(T.ui.muted).value).toBe('#b8b8b8');
-    expect(field(T.syntax.comment).value).toBe('#b8b8b8');
-    expect(field(T.terminal.red).value).toBe('#cc0000');
+    expect(shownValue(T.ui.background)).toBe('#171717');
+    expect(shownValue(T.ui.muted)).toBe('#b8b8b8');
+    expect(shownValue(T.syntax.comment)).toBe('#b8b8b8');
+    expect(shownValue(T.terminal.red)).toBe('#cc0000');
     await click(button(T.save));
     const [saved] = personalThemes.getState();
     expect(saved?.palette).toMatchObject({ name: 'Dark (2)', base: 'dark' });
@@ -359,10 +444,11 @@ describe('the editor', () => {
     chooseAppearance('builtin:nord');
     await show();
     const before = tokens();
-    await click(button(T.newTheme));
+    await click(newTile());
     // About 3:1 on Nord's background.
-    await type(field(T.ui.muted), '#7e7e7e');
+    await typeColor(T.ui.muted, '#7e7e7e');
     expect(html.style.getPropertyValue('--muted-foreground')).toBe('#7e7e7e');
+    expect(shownValue(T.ui.muted)).toBe('#7e7e7e');
     await click(button(T.cancel));
     expect(prompt()).not.toBeNull();
     expect(editor()).not.toBeNull();
@@ -371,18 +457,24 @@ describe('the editor', () => {
     expect(tokens()).toEqual(before);
     expect(preferences.getState().palette).toBe('builtin:nord');
     expect(values.has(PERSONAL_THEMES_KEY)).toBe(false);
-    expect(rows()).toEqual([]);
-    expect(document.activeElement).toBe(button(T.newTheme));
+    expect(cards()).toEqual([]);
+    expect(document.activeElement).toBe(newTile());
   });
 
-  it('Escape asks the same, and keep editing leaves the draft on screen', async () => {
+  it('Escape closes an open picker first, then asks the same; keep editing leaves the draft on screen', async () => {
     chooseAppearance('builtin:nord');
     await show();
     const before = tokens();
-    await click(button(T.newTheme));
-    const muted = field(T.ui.muted);
-    await type(muted, '#7e7e7e');
-    await pressEscape(muted);
+    await click(newTile());
+    await typeColor(T.ui.muted, '#7e7e7e');
+    await pressEscape(hexField());
+    await settle();
+    expect(picker()).toBeNull();
+    expect(document.querySelector('[data-slot="color-picker-popup"]')).toBeNull();
+    expect(tile(T.ui.muted).getAttribute('aria-expanded')).toBe('false');
+    expect(prompt()).toBeNull();
+    expect(editor()).not.toBeNull();
+    await pressEscape(tile(T.ui.muted));
     expect(prompt()).not.toBeNull();
     await click(button(messages.SettingsDialog.keepEditing));
     expect(editor()).not.toBeNull();
@@ -396,11 +488,11 @@ describe('the editor', () => {
 
   it('cancel and Escape with nothing changed ask nothing', async () => {
     await show();
-    await click(button(T.newTheme));
+    await click(newTile());
     await click(button(T.cancel));
     expect(prompt()).toBeNull();
     expect(editor()).toBeNull();
-    await click(button(T.newTheme));
+    await click(newTile());
     await pressEscape(field(T.name));
     expect(prompt()).toBeNull();
     expect(editor()).toBeNull();
@@ -410,8 +502,8 @@ describe('the editor', () => {
     chooseAppearance('builtin:monokai');
     const { router } = await show();
     const before = tokens();
-    await click(button(T.newTheme));
-    await type(field(T.ui.background), '#101010');
+    await click(newTile());
+    await typeColor(T.ui.background, '#101010');
     expect(html.style.getPropertyValue('--surface-1')).toBe('#101010');
     // Closing the dialog leaves `?settings=` (navigation.close navigates there).
     const close = () =>
@@ -436,113 +528,186 @@ describe('the editor', () => {
     expect(values.has(PERSONAL_THEMES_KEY)).toBe(false);
   });
 
-  it('marks #12345 and red as invalid and does not apply them; upper case applies and is stored lower case', async () => {
+  it('opens the kit picker from a tile: a typed #rrggbb applies; #12345 and red are marked there and never reach the draft or storage; upper case is stored lower case', async () => {
     chooseAppearance('builtin:monokai');
     await show();
-    await click(button(T.newTheme));
-    const info = field(T.ui.info);
+    await click(newTile());
+    const info = tile(T.ui.info);
+    const popup = await openPicker(T.ui.info);
+    expect(info.getAttribute('aria-expanded')).toBe('true');
+    // Opaque and hex only: one value field, the area and the hue, no alpha and no format menu.
+    expect(popup.querySelectorAll('input:not([type="range"])')).toHaveLength(1);
+    expect([...popup.querySelectorAll('input[type="range"]')].map((s) => s.ariaLabel)).toEqual([
+      T.hue,
+    ]);
+    expect(popup.querySelector(`[aria-label="${T.area}"]`)).not.toBeNull();
+    expect(hexField().value.toLowerCase()).toBe(monokai.ui.info.slice(1));
     for (const bad of ['#12345', 'red']) {
-      await type(info, bad);
-      await blur(info);
-      expect(info.getAttribute('aria-invalid')).toBe('true');
+      await type(hexField(), bad);
+      await blur(hexField());
+      expect(hexField().getAttribute('aria-invalid')).toBe('true');
+      expect(described(hexField())).toBe(T.hexInvalid.replace('{format}', '#rrggbb'));
       expect(html.style.getPropertyValue('--info')).toBe(monokai.ui.info);
+      expect(shownValue(T.ui.info)).toBe(monokai.ui.info);
     }
-    // Saving with an invalid color saves nothing and goes to the field.
+    // Saving now stores the color the tile shows, never the text that did not apply.
+    await type(field(T.name), 'Kept info');
     await click(button(T.save));
-    expect(editor()).not.toBeNull();
-    expect(personalThemes.getState()).toEqual([]);
-    expect(document.activeElement).toBe(info);
-    await type(info, '#ABCDEF');
-    await blur(info);
-    expect(info.hasAttribute('aria-invalid')).toBe(false);
+    expect(editor()).toBeNull();
+    expect(personalThemes.getState()[0]?.palette.ui.info).toBe(monokai.ui.info);
+    await cardAction('Kept info', T.edit);
+    await typeColor(T.ui.info, '#ABCDEF');
+    expect(hexField().hasAttribute('aria-invalid')).toBe(false);
     expect(html.style.getPropertyValue('--info')).toBe('#abcdef');
+    expect(shownValue(T.ui.info)).toBe('#abcdef');
     await click(button(T.save));
     expect(personalThemes.getState()[0]?.palette.ui.info).toBe('#abcdef');
     expect(values.get(PERSONAL_THEMES_KEY)).not.toMatch(/#ABCDEF/);
   });
 
-  it('keeps the picker and the hex field in step', async () => {
+  it('keeps the picker, the hex field and the draft in step', async () => {
     chooseAppearance('builtin:monokai');
     await show();
-    await click(button(T.newTheme));
-    const picker = field(T.pick.replace('{name}', T.syntax.keyword));
-    expect(picker.type).toBe('color');
-    expect(picker.value).toBe(monokai.syntax.keyword);
+    await click(newTile());
+    const hue = slider(await openPicker(T.syntax.keyword));
+    const before = hexField().value;
     await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      setter?.call(picker, '#123abc');
-      picker.dispatchEvent(new Event('input', { bubbles: true }));
+      hue.focus();
+      hue.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     });
-    expect(field(T.syntax.keyword).value).toBe('#123abc');
-    expect(html.style.getPropertyValue('--syntax-keyword')).toBe('#123abc');
-    await type(field(T.syntax.keyword), '#00ff00');
-    expect(picker.value).toBe('#00ff00');
+    await flush();
+    const moved = `#${hexField().value.toLowerCase()}`;
+    expect(moved).not.toBe(`#${before.toLowerCase()}`);
+    expect(html.style.getPropertyValue('--syntax-keyword')).toBe(moved);
+    expect(shownValue(T.syntax.keyword)).toBe(moved);
+    await type(hexField(), '#00ff00');
+    expect(hue.getAttribute('aria-valuenow')).toBe('120');
+    expect(shownValue(T.syntax.keyword)).toBe('#00ff00');
   });
 
-  it('shows the contrast of a text color and marks it under 4.5:1 in words; saving is never blocked', async () => {
+  it("offers the draft's other colors as swatches, so a related color is one press away", async () => {
+    chooseAppearance('builtin:monokai');
+    await show();
+    await click(newTile());
+    const popup = await openPicker(T.ui.warning);
+    const yellow = must(
+      popup.querySelector<HTMLElement>(`button[aria-label="${T.terminal.yellow}"]`),
+      'terminal yellow swatch',
+    );
+    await click(yellow);
+    expect(html.style.getPropertyValue('--warning')).toBe(monokai.terminal[3]);
+    expect(shownValue(T.ui.warning)).toBe(monokai.terminal[3]);
+  });
+
+  it('shows the contrast of a text color in its picker, and beside its tile only under 4.5:1, in words; saving is never blocked', async () => {
     chooseAppearance('builtin:nord');
     await show();
-    await click(button(T.newTheme));
-    const muted = field(T.ui.muted);
-    const contrast = () =>
-      (muted.getAttribute('aria-describedby') ?? '')
-        .split(' ')
-        .map((id) => document.getElementById(id)?.textContent ?? '')
-        .join(' ');
-    await type(muted, '#7e7e7e');
-    expect(contrast()).toContain('3.0:1');
-    expect(contrast()).toContain(T.low);
-    await type(muted, '#9e9e9e');
+    await click(newTile());
+    const contrast = () => picker()?.querySelector('[data-contrast]')?.textContent ?? '';
+    const mark = () => tile(T.ui.muted).querySelector('[data-low-contrast]');
+    await typeColor(T.ui.muted, '#9e9e9e');
+    expect(contrast()).toContain(T.contrast);
     expect(contrast()).toContain('4.6:1');
     expect(contrast()).not.toContain(T.low);
-    // Background and selection are not text colors.
-    expect(field(T.ui.background).getAttribute('aria-describedby')).toBeNull();
-    await type(muted, '#7e7e7e');
+    // A color that passes shows nothing beside its tile.
+    expect(mark()).toBeNull();
+    expect(described(tile(T.ui.muted))).not.toContain(':1');
+    await type(hexField(), '#7e7e7e');
+    expect(contrast()).toContain('3.0:1');
+    expect(contrast()).toContain(T.low);
+    expect(mark()?.textContent).toContain('3.0:1');
+    expect(mark()?.textContent).toContain(T.low);
+    expect(described(tile(T.ui.muted))).toContain(T.low);
+    // Background, selection and the code and terminal colors are not judged as text.
+    const judged = all('[data-theme-editor] [data-color-tile]')
+      .filter((each) => each.querySelector('[data-low-contrast]'))
+      .map((each) => each.ariaLabel);
+    expect(judged).toEqual([T.ui.muted]);
+    await openPicker(T.ui.background);
+    expect(contrast()).toBe('');
     await click(button(T.save));
     expect(editor()).toBeNull();
     expect(personalThemes.getState()[0]?.palette.ui.muted).toBe('#7e7e7e');
   });
 
+  it('draws a low contrast mark in a color that reads on the draft, even when the text color is the one judged', async () => {
+    chooseAppearance('builtin:nord');
+    await show();
+    await click(newTile());
+    // Nord's floor is #2e3440: this text all but disappears on it.
+    await typeColor(T.ui.foreground, '#3b4252');
+    const mark = must(
+      tile(T.ui.foreground).querySelector<HTMLElement>('[data-low-contrast]'),
+      'low contrast mark',
+    );
+    expect(mark.style.color).toBe('rgb(255, 255, 255)');
+    expect(picker()?.querySelector<HTMLElement>('[data-contrast]')?.style.color).toBe(
+      'rgb(255, 255, 255)',
+    );
+  });
+
+  it('lays the terminal colors out as two rows of eight tiles, named by color', async () => {
+    chooseAppearance('builtin:monokai');
+    await show();
+    await click(newTile());
+    const rows = all('[data-theme-editor] [data-terminal-row]');
+    expect(rows.map((row) => row.dataset.terminalRow)).toEqual(['normal', 'bright']);
+    const names = Object.values(T.terminal);
+    expect(
+      rows.map((row) =>
+        [...row.querySelectorAll('[data-color-tile]')].map((each) => each.ariaLabel),
+      ),
+    ).toEqual([names.slice(0, 8), names.slice(8)]);
+    expect(names.map(shownValue)).toEqual(monokai.terminal);
+    await typeColor(T.terminal.brightBlue, '#123456');
+    expect(shownValue(T.terminal.brightBlue)).toBe('#123456');
+    const sample = must(editor()?.querySelector('[role="img"]'), 'sample');
+    expect(
+      sample.querySelector<HTMLElement>('[data-terminal-color="12"]')?.style.backgroundColor,
+    ).toBe('rgb(18, 52, 86)');
+  });
+
   it('says so when storage refuses the save, and keeps the editor and the changes', async () => {
     chooseAppearance('builtin:monokai');
     await show();
-    await click(button(T.newTheme));
-    await type(field(T.ui.background), '#101010');
+    await click(newTile());
+    await typeColor(T.ui.background, '#101010');
     await type(field(T.name), 'Kept');
     failThemeWrites = true;
     await click(button(T.save));
     expect(editor()?.querySelector('[role="alert"]')?.textContent).toBe(T.saveFailed);
     expect(field(T.name).value).toBe('Kept');
-    expect(field(T.ui.background).value).toBe('#101010');
+    expect(shownValue(T.ui.background)).toBe('#101010');
     expect(html.style.getPropertyValue('--surface-1')).toBe('#101010');
     expect(personalThemes.getState()).toEqual([]);
     expect(preferences.getState().palette).toBe('builtin:monokai');
     failThemeWrites = false;
     await click(button(T.save));
     expect(editor()).toBeNull();
-    expect(rows()).toEqual(['Kept']);
+    expect(cards()).toEqual(['Kept']);
   });
 
   it('saving the applied theme keeps it applied with the new colors', async () => {
     const id = stored({ ...monokai, name: 'Mine' }, 'mine');
     chooseAppearance(`custom:${id}`);
     await show();
-    await click(button(T.editNamed.replace('{name}', 'Mine')));
+    await cardAction('Mine', T.edit);
     expect(editor()?.querySelector('h3')?.textContent).toBe(T.editTheme);
-    await type(field(T.ui.background), '#202020');
+    await typeColor(T.ui.background, '#202020');
     await click(button(T.save));
     expect(editor()).toBeNull();
     expect(preferences.getState()).toMatchObject({ theme: 'dark', palette: 'custom:mine' });
     expect(html.style.getPropertyValue('--surface-1')).toBe('#202020');
     expect(personalThemes.getState()[0]?.palette.ui.background).toBe('#202020');
-    expect(document.activeElement).toBe(button(T.editNamed.replace('{name}', 'Mine')));
+    // Focus goes back to the card whose menu opened the editor.
+    expect(document.activeElement).toBe(card('Mine'));
   });
 
   it("refuses a name another personal theme has, and keeps the theme's own name", async () => {
     stored({ ...monokai, name: 'Mine' }, 'mine');
     stored({ ...monokai, name: 'Other' }, 'other');
     await show();
-    await click(button(T.editNamed.replace('{name}', 'Other')));
+    await cardAction('Other', T.edit);
     const name = field(T.name);
     await type(name, ' Mine ');
     await click(button(T.save));
@@ -553,20 +718,30 @@ describe('the editor', () => {
     expect(personalThemes.getState().map((theme) => theme.palette.name)).toEqual(['Mine', 'Other']);
     // Its own name is not another theme's.
     await type(name, 'Other');
-    await type(field(T.ui.background), '#202020');
+    await typeColor(T.ui.background, '#202020');
     await click(button(T.save));
     expect(editor()).toBeNull();
   });
 
-  it('shows a sample of the draft: text, status marks, code and the sixteen terminal colors', async () => {
+  it('shows a sample of the draft: a sidebar with its chosen row, text, status marks, code, the sixteen terminal colors and two buttons', async () => {
     chooseAppearance('builtin:monokai');
     await show();
-    await click(button(T.newTheme));
+    await click(newTile());
     const sample = must(editor()?.querySelector('[role="img"]'), 'sample');
     expect(sample.getAttribute('aria-label')).toBe(T.sample);
+    expect(sample.querySelector('[data-sample-selected]')?.textContent).toBe(T.sampleRows.second);
     expect(sample.textContent).toContain(T.sampleBody);
     expect(sample.textContent).toContain(T.sampleMuted);
+    for (const status of [T.ui.success, T.ui.warning, T.ui.error, T.ui.info, T.ui.emphasis])
+      expect(sample.textContent).toContain(status);
+    expect(sample.querySelector('code')?.textContent).toContain(T.sampleComment);
     expect(sample.querySelectorAll('[data-terminal-color]')).toHaveLength(16);
+    expect([...sample.querySelectorAll('button')].map((each) => each.textContent)).toEqual([
+      T.samplePrimary,
+      T.sampleSecondary,
+    ]);
+    // A picture, not controls: nothing in it takes focus.
+    expect(sample.querySelector('[inert]')).not.toBeNull();
   });
 });
 
@@ -589,19 +764,19 @@ describe('export and import', () => {
     ) {
       names.push(this.download);
     });
-    await click(button(T.exportNamed.replace('{name}', 'Harbor')));
+    await cardAction('Harbor', T.export);
     expect(names).toEqual(['Harbor.json']);
     const exported = await must(files[0], 'exported file').text();
     expect(exported).toBe(serializeTheme(harbor));
     await chooseFile(exported, 'Harbor.json');
-    expect(rows()).toEqual(['Harbor', 'Harbor (2)']);
+    expect(cards()).toEqual(['Harbor', 'Harbor (2)']);
     const copy = personalThemes.getState()[1];
     expect(copy?.palette).toEqual({ ...harbor, name: 'Harbor (2)' });
     expect(preferences.getState().palette).toBe('builtin:dracula');
     expect(tokens()).toEqual(before);
-    expect(personalGroup()).toEqual(['Harbor', 'Harbor (2)']);
-    // Focus is on the new row.
-    expect(document.activeElement?.closest('li')?.textContent).toContain('Harbor (2)');
+    expect(checked()).toEqual(['Dracula']);
+    // Focus is on the new card.
+    expect(document.activeElement).toBe(card('Harbor (2)'));
   });
 
   const file = (change: (theme: Record<string, unknown>) => void) => {
@@ -640,7 +815,7 @@ describe('export and import', () => {
       await chooseFile(contents);
       expect(personalThemes.getState()).toEqual([]);
       expect(values.has(PERSONAL_THEMES_KEY)).toBe(false);
-      expect(rows()).toEqual([]);
+      expect(cards()).toEqual([]);
       const shown = importReason();
       expect(shown).toBe(reason);
       for (const echoed of ['Evil', 'evil', 'url(', 'payload']) expect(shown).not.toContain(echoed);
@@ -649,7 +824,7 @@ describe('export and import', () => {
 });
 
 describe('the cap of twenty', () => {
-  it('disables New theme and Import with the reason reachable', async () => {
+  it('disables the New theme tile and Import with the reason reachable', async () => {
     for (let index = 0; index < PERSONAL_THEME_LIMIT; index++)
       stored({ ...monokai, name: `Theme ${index}` }, `theme-${index}`);
     await show();
@@ -664,13 +839,7 @@ describe('the cap of twenty', () => {
       expect(control.getAttribute('aria-disabled')).toBe('true');
       // Still in the tab order, so the reason can be reached.
       expect(control.disabled).toBe(false);
-      const describedBy = control.getAttribute('aria-describedby') ?? '';
-      expect(
-        describedBy
-          .split(' ')
-          .map((id) => document.getElementById(id)?.textContent)
-          .join(' '),
-      ).toContain(reason);
+      expect(described(control)).toContain(reason);
       await click(control);
     }
     expect(editor()).toBeNull();
@@ -684,32 +853,34 @@ describe('deleting', () => {
     const id = stored({ ...latte, name: 'Dawn' }, 'dawn');
     chooseAppearance(`custom:${id}`);
     await show();
-    await click(button(T.deleteNamed.replace('{name}', 'Dawn')));
+    await cardAction('Dawn', T.delete);
     const dialog = must(document.querySelector('[role="dialog"]'), 'confirmation');
     expect(dialog.textContent).toContain(T.deleteTitle.replace('{name}', 'Dawn'));
     await click(button(T.cancel));
-    expect(rows()).toEqual(['Dawn']);
-    await click(button(T.deleteNamed.replace('{name}', 'Dawn')));
+    expect(cards()).toEqual(['Dawn']);
+    await cardAction('Dawn', T.delete);
     await click(button(T.delete));
-    expect(rows()).toEqual([]);
+    expect(cards()).toEqual([]);
     expect(preferences.getState()).toMatchObject({ theme: 'light', palette: null });
     expect(parsePreferences(values.get(PREFERENCES_KEY) ?? null).palette).toBeNull();
     expect(Object.values(tokens()).filter(Boolean)).toEqual([]);
     expect(html.classList.contains('light')).toBe(true);
-    expect(document.activeElement).toBe(button(T.newTheme));
+    expect(checked()).toEqual([messages.Desktop.light]);
+    // The last personal theme is gone: focus goes to the New theme tile.
+    expect(document.activeElement).toBe(newTile());
   });
 
-  it('a dark-based theme goes back to dark, and focus moves to the next row', async () => {
+  it('a dark-based theme goes back to dark, and focus moves to the next card', async () => {
     stored({ ...monokai, name: 'Harbor' }, 'harbor');
     const id = stored({ ...monokai, name: 'Ember' }, 'ember');
     stored({ ...latte, name: 'Dawn' }, 'dawn');
     chooseAppearance(`custom:${id}`);
     await show();
-    await click(button(T.deleteNamed.replace('{name}', 'Ember')));
+    await cardAction('Ember', T.delete);
     await click(button(T.delete));
-    expect(rows()).toEqual(['Harbor', 'Dawn']);
+    expect(cards()).toEqual(['Harbor', 'Dawn']);
     expect(preferences.getState()).toMatchObject({ theme: 'dark', palette: null });
     expect(html.classList.contains('dark')).toBe(true);
-    expect(document.activeElement).toBe(button(T.editNamed.replace('{name}', 'Dawn')));
+    expect(document.activeElement).toBe(card('Dawn'));
   });
 });
