@@ -1212,6 +1212,7 @@
     "rawReply": "Model call {no} · response text",
     "streaming": "Still streaming. Not final until the request finishes.",
     "gap": "Part of the stream was lost; the final reply replaces it.",
+    "allowedForRun": "Allowed for this run",
     "tool": {
       "requested": "Requested",
       "allowed": "Running",
