@@ -30,17 +30,18 @@ export function appearanceOf(choice: Choice): Appearance {
 
 /**
  * System, light or dark sets `theme` and clears `palette`; a named theme sets `palette` and
- * `theme` to its base, so the vault export carries only the brightness. A named theme that
- * cannot be found changes nothing and returns false.
+ * `theme` to its base, so the vault export carries only the brightness. The choice is applied
+ * at once. A named theme that cannot be found changes nothing and returns false.
  */
 export function chooseAppearance(choice: Appearance): boolean {
-  if (!isPaletteId(choice)) {
-    changePreferences({ theme: choice, palette: null });
-    return true;
+  if (!isPaletteId(choice)) changePreferences({ theme: choice, palette: null });
+  else {
+    const palette = findPalette(choice);
+    if (!palette) return false;
+    changePreferences({ theme: palette.base, palette: choice });
   }
-  const palette = findPalette(choice);
-  if (!palette) return false;
-  changePreferences({ theme: palette.base, palette: choice });
+  // On screen at once, wherever the choice was made.
+  applyAppearance();
   return true;
 }
 

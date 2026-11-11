@@ -2130,6 +2130,8 @@
     "system": "시스템",
     "light": "라이트",
     "dark": "다크",
+    "builtinThemes": "내장 테마",
+    "personalThemes": "개인 테마",
     "language": "언어",
     "send": "요청 보내기",
     "newLine": "줄 바꾸기",
