@@ -97,6 +97,10 @@ test.describe('model identification', () => {
   for (const locale of ['en', 'ko']) {
     test(`model and effort stay readable at 320/390px in ${locale}`, async ({ page, corral }) => {
       await page.addInitScript((value) => localStorage.setItem('corral:locale', value), locale);
+      const longName =
+        locale === 'ko'
+          ? '긴 모델 이름 검증 · reasoning-model-with-a-long-name-2026-10'
+          : 'Long model name verification · reasoning-model-with-a-long-name-2026-10';
       await page.route('**/api/v1/model-profiles', async (route) => {
         const response = await route.fetch();
         const profiles = await response.json();
@@ -104,10 +108,7 @@ test.describe('model identification', () => {
           response,
           json: profiles.map((profile: { modelName: string }) => ({
             ...profile,
-            modelName:
-              locale === 'ko'
-                ? '긴 모델 이름 검증 · reasoning-model-with-a-long-name-2026-10'
-                : 'Long model name verification · reasoning-model-with-a-long-name-2026-10',
+            modelName: longName,
           })),
         });
       });
@@ -129,7 +130,8 @@ test.describe('model identification', () => {
         name: locale === 'en' ? 'Model' : '모델',
         exact: true,
       });
-      await expect(model).toContainText('OpenAI');
+      // The chip names the chosen model by its name; the provider is the list's group.
+      await expect(model).toContainText(longName);
       const settings = page.getByRole('dialog', {
         name: locale === 'en' ? 'Model settings' : '모델 설정',
         exact: true,
@@ -154,8 +156,8 @@ test.describe('model identification', () => {
             })
             .map((span) => span.textContent);
         });
-        // Product gap: the kit's model chip truncates the name, which workbench.md forbids on
-        // narrow screens. Soft, so the popup checks below still run.
+        // The chip wraps a long name rather than cutting it off, as workbench.md asks on narrow
+        // screens. Soft, so the popup checks below still run.
         expect.soft(clipped).toEqual([]);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           width,
