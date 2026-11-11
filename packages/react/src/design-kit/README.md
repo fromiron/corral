@@ -4,7 +4,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 74 imported component/helper files, including the extracted `WorkspaceTile` and page chrome and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 75 imported component/helper files, including the extracted `WorkspaceTile`, page chrome and `ColorTile` and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.
@@ -71,6 +71,7 @@ Tooltip explicitly provides its popup role and trigger description linkage while
 The following needs have no matching source contract:
 
 - `Input` preserves native input events, input refs, external labels and file inputs. Source InputField instead owns a controlled string value and a container ref. `Textarea` has no standalone counterpart in the supplied kit. These small native controls use the source field hover/focus states and type/shape tokens; their border stays inside the 36px/28px height, and coarse-pointer settings retain 44px targets.
+- `ColorField` edits one opaque `#rrggbb` color (a personal theme's colors). The source color picker's panel holds alpha and RGB/HSL/OKLCH formats a theme cannot carry, so only its `ColorTile` is extracted (`components/ui/color-picker.tsx`) and the field draws the source popover trigger's look: a bordered control with the tile, then the hex value. The hex is an editable native text field with the Input bridge's hover, focus and invalid states; the tile holds a native color input that opens the system picker.
 - Generic `Popover` is absent from the source catalog. Its bridge composes Base UI positioning with source Elevated, and a stable `keepMounted` content container preserves the request-options draft. It retains no separate popup visual skin.
 - General horizontal/vertical separators and loading skeletons have no standalone source equivalent. Their small primitives consume kit tokens. Inline actions compose source Button.
 - Virtualized scroll fades, scroll chaining and hidden scrollbar options preserve product scrolling behavior while using the source ScrollArea and scrollbar appearance.
@@ -83,7 +84,7 @@ Source fingerprints identify copied files and adaptations. Type checks, browser 
 
 ## Source fingerprints
 
-Source hashes cover original complete files. The workspace-header hash identifies the file containing the extracted WorkspaceTile; the local hash covers its imported function and imports. The same source file's SidebarWorkspaceHeader row covers the header and its re-export of that tile. The screens/chrome hash identifies the sample-screen file containing the extracted page chrome; the local hash covers PathBar, Page, SectionLabel, EmptyState and their imports. ChatMessage's local hash reflects the omitted thumbnail branch. Local hashes record the source after the adaptations above; compatibility bridges and exports are Corral-owned and are not presented as verbatim upstream files.
+Source hashes cover original complete files. The workspace-header hash identifies the file containing the extracted WorkspaceTile; the local hash covers its imported function and imports. The same source file's SidebarWorkspaceHeader row covers the header and its re-export of that tile. The screens/chrome hash identifies the sample-screen file containing the extracted page chrome; the local hash covers PathBar, Page, SectionLabel, EmptyState and their imports. ChatMessage's local hash reflects the omitted thumbnail branch. The color-picker hash identifies the source file containing the extracted ColorTile; the local hash covers ColorTile, its checker background and imports. Local hashes record the source after the adaptations above; compatibility bridges and exports are Corral-owned and are not presented as verbatim upstream files.
 
 | Original kit file | Local file | Source SHA-256 | Local SHA-256 |
 | --- | --- | --- | --- |
@@ -169,6 +170,8 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/input-message.tsx` | `components/ui/input-message.tsx` | `a3d34f34dd98919b828244324e53167978bd63f3aad727e1eb2f85f01a59d15b` | `900ca61753b8e2e84921c3e533f5dbb4861e6f5e89589438b76da15d6d01bc3c` |
 
 | `components/ui/file-thumbnail.tsx` | `components/ui/file-thumbnail.tsx` | `6c59cb759becc33e6f318cc31e3c533fb02b96ab79fc3bbc035e4f35c1a2be74` | `b553ae97fca9b6079b83e6ff985f2dfb6293c3386ca4f3b133ed558e4657c672` |
+
+| `components/ui/color-picker.tsx` (ColorTile extraction) | `components/ui/color-picker.tsx` | `e6e334a5d917264c9dbf701281a6bf8b4ce4cca8ec290d6fc1f96726d4df8873` | `21690a5a555a2757770b5918721a523c01113c23881b8ad1a7fa7de924a4c078` |
 
 | `components/agent/agent-graph.tsx` (node extraction) | `components/agent/agent-graph.tsx` | `53d908b6317854e5df3bd8f1b49f3f7539167b95a6247f25d4bf7368dc2004b6` | `4655e4b3e0e9db9a378ff932d3d889b356ff339d3ef24b6807bebeea87453934` |
 
