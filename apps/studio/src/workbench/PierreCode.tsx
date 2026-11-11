@@ -1,7 +1,17 @@
 import type { ReviewCommentView } from '@corral/client';
 import { cn } from '@corral/react/design-kit';
-import type { CodeViewItem, FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
-import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierre/diffs/react';
+import {
+  type CodeViewItem,
+  type FileDiffMetadata,
+  registerCustomTheme,
+  type SelectedLineRange,
+} from '@pierre/diffs';
+import {
+  CodeView,
+  type CodeViewHandle,
+  useWorkerPool,
+  WorkerPoolContextProvider,
+} from '@pierre/diffs/react';
 import HighlightWorker from '@pierre/diffs/worker/worker.js?worker';
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -9,13 +19,20 @@ import { type DiffLabels, localizeDiffLabels } from './diffLabels.ts';
 import { usePreferences } from './preferences.ts';
 import { CommentBody } from './ReviewCommentForm.tsx';
 import { prefersReducedMotion } from './reviewNavigation.ts';
+import { useAppliedPalette } from './themes/appearance.ts';
+import {
+  type DiffThemes,
+  diffThemeRegistration,
+  diffThemes,
+  NAMED_DIFF_THEMES,
+} from './themes/code.ts';
 
 // Public Pierre API only.
 const poolOptions = { workerFactory: () => new HighlightWorker(), poolSize: 2 };
-const highlighterOptions = {
-  preferredHighlighter: 'shiki-js' as const,
-  theme: { dark: 'github-dark', light: 'github-light' },
-};
+// A named theme highlights with themes whose colors are the root's syntax tokens; they are
+// resolved here and sent to the highlight workers with the pool's render options.
+for (const type of ['light', 'dark'] as const)
+  registerCustomTheme(NAMED_DIFF_THEMES[type], async () => diffThemeRegistration(type));
 // The code sits on the app's own surface in both themes, not on the highlighting theme's
 // (GitHub's slate in dark): its background is the app background, its separators the quiet
 // fill, and the added/removed tints are mixed from that background. The text uses the kit code
@@ -29,7 +46,6 @@ const surfaceCSS = `:host {
   --diffs-line-height: var(--lh-body);
 }`;
 const codeOptions = {
-  theme: highlighterOptions.theme,
   preferredHighlighter: 'shiki-js' as const,
   disableFileHeader: true,
   overflow: 'scroll' as const,
@@ -42,9 +58,27 @@ const gutterCSS = '[data-utility-button] { margin-right: 0; }';
 
 const viewerClass = 'h-[min(65vh,600px)] min-h-48 overflow-auto rounded fill-group';
 
-function CodeFrame({ children }: { children: ReactNode }) {
+/** The syntax themes in effect: GitHub light/dark, or the root tokens under a named theme. */
+function useDiffThemes(): DiffThemes {
+  return diffThemes(useAppliedPalette());
+}
+
+/** The pool is shared and keeps its first options, so a theme change is sent to it. */
+function PoolTheme({ theme }: { theme: DiffThemes }) {
+  const pool = useWorkerPool();
+  useEffect(() => {
+    void pool?.setRenderOptions({ theme }).catch(() => {});
+  }, [pool, theme]);
+  return null;
+}
+
+function CodeFrame({ theme, children }: { theme: DiffThemes; children: ReactNode }) {
   return (
-    <WorkerPoolContextProvider poolOptions={poolOptions} highlighterOptions={highlighterOptions}>
+    <WorkerPoolContextProvider
+      poolOptions={poolOptions}
+      highlighterOptions={{ preferredHighlighter: 'shiki-js', theme }}
+    >
+      <PoolTheme theme={theme} />
       {children}
     </WorkerPoolContextProvider>
   );
@@ -59,7 +93,8 @@ export function SourceCode({
   text: string;
   onSelect: (range: { start: number; end: number }) => void;
 }) {
-  const { theme } = usePreferences();
+  const { theme: themeType } = usePreferences();
+  const theme = useDiffThemes();
   const file = useMemo(() => ({ name: path, contents: text }), [path, text]);
   const [seen, setSeen] = useState({ file, version: 0 });
   if (seen.file !== file) setSeen({ file, version: seen.version + 1 });
@@ -68,11 +103,11 @@ export function SourceCode({
     [path, file, seen.version],
   );
   return (
-    <CodeFrame>
+    <CodeFrame theme={theme}>
       <CodeView
         className={viewerClass}
         items={items}
-        options={{ ...codeOptions, themeType: theme, enableLineSelection: true }}
+        options={{ ...codeOptions, theme, themeType, enableLineSelection: true }}
         onSelectedLinesChange={(selection) => {
           if (selection)
             onSelect({
@@ -121,7 +156,8 @@ export function DiffCode({
   className?: string;
 }) {
   const t = useTranslations('Review');
-  const { theme } = usePreferences();
+  const { theme: themeType } = usePreferences();
+  const theme = useDiffThemes();
   const td = useTranslations('Review.diff');
   const labels = useRef<DiffLabels | null>(null);
   labels.current = {
@@ -173,7 +209,7 @@ export function DiffCode({
     };
   }, [handle, diff]);
   return (
-    <CodeFrame>
+    <CodeFrame theme={theme}>
       <CodeView
         ref={viewer}
         className={cn('min-h-24 overflow-auto', className ?? 'max-h-[min(65vh,600px)] rounded')}
@@ -186,7 +222,8 @@ export function DiffCode({
           ...codeOptions,
           unsafeCSS: `${codeOptions.unsafeCSS}\n${gutterCSS}`,
           overflow: 'wrap',
-          themeType: theme,
+          theme,
+          themeType,
           diffStyle: layout,
           enableLineSelection: true,
           enableGutterUtility: Boolean(onPick),
