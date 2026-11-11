@@ -244,14 +244,15 @@ export function CodeEditorView(props: CodeEditorViewProps) {
           },
         });
         const stopWorkerErrors = onMonacoWorkerError(() => callbacks.current.onError?.());
-        // The root's class and tokens change on every apply; a preview draft that changes only
-        // syntax colors still goes through the applied appearance. Neither recreates the editor.
+        // Every color the editor takes from a theme is also a root token, so the root's class and
+        // style change on every apply that matters, a draft's syntax colors included. Re-theming
+        // here, after the apply, and never inside it: a re-theme within the apply left Monaco's
+        // overview ruler unpainted. Neither recreates the editor.
         const theme = new MutationObserver(() => applyEditorTheme(monaco));
         theme.observe(document.documentElement, {
           attributes: true,
           attributeFilter: ['class', 'data-theme', 'style'],
         });
-        const stopTheme = appliedAppearance.subscribe(() => applyEditorTheme(monaco));
         cleanup = () => {
           const state = instance.saveViewState();
           if (state) {
@@ -270,7 +271,6 @@ export function CodeEditorView(props: CodeEditorViewProps) {
           save.dispose();
           stopWorkerErrors();
           theme.disconnect();
-          stopTheme();
           instance.dispose();
           editorRef.current = null;
         };
