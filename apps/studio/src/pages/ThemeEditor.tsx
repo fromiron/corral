@@ -1,17 +1,20 @@
 import {
   Button,
-  ColorField,
+  ColorPickerPopover,
+  type ColorPickerSwatch,
   ColorTile,
   cn,
+  focusRing,
   fontWeights,
   Input,
-  LiveDot,
   Select,
   Tooltip,
 } from '@corral/react/design-kit';
-import { ArrowLeft, CircleAlert, CircleCheck, Info, TriangleAlert } from '@corral/react/icons';
+import { ArrowLeft, TriangleAlert } from '@corral/react/icons';
 import {
+  type ComponentProps,
   type KeyboardEvent,
+  type ReactElement,
   type ReactNode,
   useId,
   useLayoutEffect,
@@ -22,7 +25,7 @@ import {
 import { useFormatter, useTranslations } from 'use-intl';
 import { useSettingsForm } from '../workbench/SettingsLifecycle.tsx';
 import { chooseAppearance, endPreview, previewPalette } from '../workbench/themes/appearance.ts';
-import { contrastRatio, isHexColor } from '../workbench/themes/color.ts';
+import { contrastRatio } from '../workbench/themes/color.ts';
 import {
   PALETTE_NAME_MAX,
   type Palette,
@@ -39,7 +42,9 @@ import {
   type ThemeSaveError,
   updatePersonalTheme,
 } from '../workbench/themes/storage.ts';
+import { legibleText } from '../workbench/themes/tokens.ts';
 import { SettingsScroll } from './SettingsScroll.tsx';
+import { ThemeSample } from './ThemePreview.tsx';
 
 /** What the editor opens on: a copy that is not saved yet, or a saved personal theme. */
 export type ThemeEditorTarget =
@@ -70,12 +75,10 @@ type AnsiIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 
 type ColorKey = `ui.${UiColor}` | `syntax.${SyntaxColor}` | `terminal.${AnsiIndex}`;
 type Colors = Readonly<Record<ColorKey, string>>;
 
-const GROUPS: readonly { id: 'ui' | 'syntax' | 'terminal'; keys: readonly ColorKey[] }[] = [
-  { id: 'ui', keys: UI_COLORS.map((color) => `ui.${color}` as const) },
-  { id: 'syntax', keys: SYNTAX_COLORS.map((color) => `syntax.${color}` as const) },
-  { id: 'terminal', keys: ANSI.map((_, index) => `terminal.${index}` as ColorKey) },
-];
-const KEYS: readonly ColorKey[] = GROUPS.flatMap((group) => group.keys);
+const UI_KEYS: readonly ColorKey[] = UI_COLORS.map((color) => `ui.${color}` as const);
+const SYNTAX_KEYS: readonly ColorKey[] = SYNTAX_COLORS.map((color) => `syntax.${color}` as const);
+const TERMINAL_KEYS: readonly ColorKey[] = ANSI.map((_, index) => `terminal.${index}` as ColorKey);
+const KEYS: readonly ColorKey[] = [...UI_KEYS, ...SYNTAX_KEYS, ...TERMINAL_KEYS];
 
 /** The UI colors drawn as text, whose contrast with the background the editor shows. */
 const TEXT_COLORS: ReadonlySet<ColorKey> = new Set([
@@ -120,10 +123,11 @@ function labelKey(key: ColorKey): string {
 
 /**
  * The personal theme editor, in place of Settings › General while it is open
- * (docs/specs/features/themes.md, 개인 테마). Every change is drawn across the app at once as a
- * draft; nothing is stored until Save. Cancel, Escape, closing settings and leaving the section
- * all go through the settings dialog's unsaved-changes prompt when something changed, and the
- * draft never outlives the editor.
+ * (docs/specs/features/themes.md, 개인 테마). The sample of the app in the draft sits beside the
+ * colors (above them on a narrow screen); each color is a tile that opens the kit color picker.
+ * Every change is drawn across the app at once as a draft; nothing is stored until Save. Cancel,
+ * Escape, closing settings and leaving the section all go through the settings dialog's
+ * unsaved-changes prompt when something changed, and the draft never outlives the editor.
  */
 export function ThemeEditor({
   target,
@@ -134,6 +138,7 @@ export function ThemeEditor({
 }) {
   const t = useTranslations('Themes');
   const d = useTranslations('Desktop');
+  const format = useFormatter();
   const ids = useId();
   const fieldId = (key: ColorKey | 'name') => `${ids}-${key.replace('.', '-')}`;
   const titleId = `${ids}-title`;
@@ -141,8 +146,6 @@ export function ThemeEditor({
   const [name, setName] = useState(target.palette.name);
   const [base, setBase] = useState<PaletteBase>(target.palette.base);
   const [colors, setColors] = useState<Colors>(initial);
-  const [texts, setTexts] = useState<Colors>(initial);
-  const [marked, setMarked] = useState<ReadonlySet<ColorKey>>(new Set());
   const [nameInvalid, setNameInvalid] = useState<'length' | 'taken' | null>(null);
   const [failure, setFailure] = useState<ThemeSaveError | null>(null);
   const savedId = useRef(target.kind === 'edit' ? target.id : null);
@@ -161,15 +164,9 @@ export function ThemeEditor({
   const dirty =
     name !== target.palette.name ||
     base !== target.palette.base ||
-    KEYS.some((key) => colors[key] !== initial[key] || texts[key].toLowerCase() !== colors[key]);
+    KEYS.some((key) => colors[key] !== initial[key]);
 
   function persist(): boolean {
-    const invalid = KEYS.filter((key) => !isHexColor(texts[key]));
-    if (invalid.length) {
-      setMarked(new Set(invalid));
-      document.getElementById(fieldId(invalid[0] as ColorKey))?.focus();
-      return false;
-    }
     const trimmed = name.trim();
     const length = [...trimmed].length;
     if (length < 1 || length > PALETTE_NAME_MAX) {
@@ -177,7 +174,7 @@ export function ThemeEditor({
       nameField.current?.focus();
       return false;
     }
-    // Two personal themes with one name could not be told apart in the Appearance list.
+    // Two personal themes with one name could not be told apart in the Appearance gallery.
     if (
       personalThemes
         .getState()
@@ -210,38 +207,13 @@ export function ThemeEditor({
     onClose();
   }
 
-  function typeColor(key: ColorKey, text: string) {
-    setTexts((previous) => ({ ...previous, [key]: text }));
-    if (!isHexColor(text)) return;
-    setColors((previous) => ({ ...previous, [key]: text.toLowerCase() }));
-    unmark(key);
-  }
-  function pickColor(key: ColorKey, color: string) {
-    setTexts((previous) => ({ ...previous, [key]: color }));
-    setColors((previous) => ({ ...previous, [key]: color }));
-    unmark(key);
-  }
-  function leaveColor(key: ColorKey) {
-    const text = texts[key];
-    if (isHexColor(text)) setTexts((previous) => ({ ...previous, [key]: text.toLowerCase() }));
-    else setMarked((previous) => new Set(previous).add(key));
-  }
-  function unmark(key: ColorKey) {
-    setMarked((previous) => {
-      if (!previous.has(key)) return previous;
-      const next = new Set(previous);
-      next.delete(key);
-      return next;
-    });
-  }
-
   function onEscape(event: KeyboardEvent<HTMLElement>) {
     if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
     // A popup inside the editor closes itself first.
     if (
       event.target instanceof Element &&
       event.target.closest(
-        '[data-slot="select-popup"], [data-slot="menu-popup"], [data-slot="popover-popup"]',
+        '[data-slot="select-popup"], [data-slot="menu-popup"], [data-slot="popover-popup"], [data-slot="color-picker-popup"]',
       )
     )
       return;
@@ -251,13 +223,124 @@ export function ThemeEditor({
     void cancel();
   }
 
+  const label = (key: ColorKey) => t(labelKey(key));
+  // Every color of the draft once, so a related color is one press away in any picker.
+  const swatches = useMemo<ColorPickerSwatch[]>(() => {
+    const seen = new Set<string>();
+    return KEYS.flatMap((key) => {
+      const color = colors[key];
+      if (seen.has(color)) return [];
+      seen.add(color);
+      return [{ color, label: t(labelKey(key)) }];
+    });
+  }, [colors, t]);
+  const pickerLabels = {
+    area: t('area'),
+    hue: t('hue'),
+    hex: t('hex'),
+    eyedropper: t('eyedropper'),
+    invalid: t('hexInvalid', { format: HEX_FORMAT }),
+  };
+  // Marks that judge the draft are drawn in a color that reads on it, whatever it is.
+  const legible = useMemo(() => legibleText(preview), [preview]);
   const background = colors['ui.background'];
+  const contrastOf = (key: ColorKey) =>
+    TEXT_COLORS.has(key) ? contrastRatio(colors[key], background) : undefined;
+  // Shown down to the tenth, never rounded up past the 4.5:1 line.
+  const ratio = (contrast: number) =>
+    t('ratio', {
+      ratio: format.number(Math.floor(contrast * 10) / 10, {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+    });
+
+  function picker(key: ColorKey, trigger: ReactElement) {
+    const contrast = contrastOf(key);
+    return (
+      <ColorPickerPopover
+        key={key}
+        trigger={trigger}
+        popupLabel={label(key)}
+        value={colors[key]}
+        onValueChange={(hex) =>
+          setColors((previous) =>
+            previous[key] === hex.toLowerCase()
+              ? previous
+              : { ...previous, [key]: hex.toLowerCase() },
+          )
+        }
+        swatches={swatches}
+        labels={pickerLabels}
+      >
+        {contrast === undefined ? null : (
+          <p
+            data-contrast
+            className="m-0 flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 text-caption"
+            style={{ color: legible }}
+          >
+            {/* The color as text on the background, which is what the ratio judges. */}
+            <span
+              aria-hidden
+              className="inline-flex h-6 items-center rounded-md border border-border px-1.5 text-body"
+              style={{
+                backgroundColor: background,
+                color: colors[key],
+                fontVariationSettings: fontWeights.semibold,
+              }}
+            >
+              Aa
+            </span>
+            <span>{t('contrast')}</span>
+            <span className="tabular-nums">{ratio(contrast)}</span>
+            {contrast < LOW_CONTRAST ? (
+              <span className="inline-flex items-center gap-1">
+                <TriangleAlert aria-hidden className="size-3" />
+                {t('low')}
+              </span>
+            ) : null}
+          </p>
+        )}
+      </ColorPickerPopover>
+    );
+  }
+
+  function chip(key: ColorKey) {
+    const contrast = contrastOf(key);
+    const low = contrast !== undefined && contrast < LOW_CONTRAST;
+    const id = fieldId(key);
+    return picker(
+      key,
+      <ColorChip
+        data-color-tile={key}
+        name={label(key)}
+        color={colors[key]}
+        valueId={`${id}-value`}
+        mark={
+          low ? (
+            <span
+              id={`${id}-contrast`}
+              data-low-contrast
+              className="inline-flex items-center gap-1 text-caption"
+              style={{ color: legible }}
+            >
+              <TriangleAlert aria-hidden className="size-3 shrink-0" />
+              <span className="tabular-nums">{ratio(contrast)}</span>
+              <span>{t('low')}</span>
+            </span>
+          ) : undefined
+        }
+        aria-describedby={low ? `${id}-value ${id}-contrast` : `${id}-value`}
+      />,
+    );
+  }
+
   return (
-    // Escape from any of the editor's controls cancels it, as its Cancel button does.
+    // Escape from any of the editor's controls cancels it, as its back button does.
     <main
       data-theme-editor
       aria-labelledby={titleId}
-      className="flex min-h-0 flex-1 flex-col"
+      className="@container/editor flex min-h-0 flex-1 flex-col"
       onKeyDown={onEscape}
     >
       <div className="mx-auto flex w-full max-w-5xl shrink-0 items-center gap-2 px-6 pb-3">
@@ -296,75 +379,90 @@ export function ThemeEditor({
             keeps its own column below it. */}
         <div>
           <div className="settings-content">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex min-w-0 flex-col gap-1">
-                <label htmlFor={fieldId('name')} className="text-body text-muted-foreground">
-                  {t('name')}
-                </label>
-                <Input
-                  ref={nameField}
-                  id={fieldId('name')}
-                  value={name}
-                  aria-invalid={nameInvalid ? true : undefined}
-                  aria-describedby={nameInvalid ? `${fieldId('name')}-error` : undefined}
-                  onChange={(event) => {
-                    setName(event.target.value);
-                    setNameInvalid(null);
-                  }}
-                />
-                {nameInvalid ? (
-                  <p id={`${fieldId('name')}-error`} className="text-caption text-destructive">
-                    {nameInvalid === 'taken'
-                      ? t('nameTaken')
-                      : t('nameInvalid', { max: PALETTE_NAME_MAX })}
-                  </p>
-                ) : null}
+            <div className="grid gap-6 @min-[40rem]/editor:grid-cols-[minmax(0,8fr)_minmax(0,7fr)] @min-[40rem]/editor:items-start">
+              {/* The theme's name and base over its sample, which stays in view beside the
+                  colors while they scroll. */}
+              <div className="flex min-w-0 flex-col gap-4 @min-[40rem]/editor:sticky @min-[40rem]/editor:top-0">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="flex min-w-0 flex-1 basis-40 flex-col gap-1">
+                    <label htmlFor={fieldId('name')} className="text-caption text-muted-foreground">
+                      {t('name')}
+                    </label>
+                    <Input
+                      ref={nameField}
+                      id={fieldId('name')}
+                      value={name}
+                      aria-invalid={nameInvalid ? true : undefined}
+                      aria-describedby={nameInvalid ? `${fieldId('name')}-error` : undefined}
+                      onChange={(event) => {
+                        setName(event.target.value);
+                        setNameInvalid(null);
+                      }}
+                    />
+                    {nameInvalid ? (
+                      <p
+                        id={`${fieldId('name')}-error`}
+                        className="m-0 text-caption text-destructive"
+                      >
+                        {nameInvalid === 'taken'
+                          ? t('nameTaken')
+                          : t('nameInvalid', { max: PALETTE_NAME_MAX })}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-1">
+                    <span aria-hidden className="text-caption text-muted-foreground">
+                      {t('base')}
+                    </span>
+                    <Select<PaletteBase>
+                      label={t('base')}
+                      value={base}
+                      onValueChange={setBase}
+                      options={[
+                        { value: 'light', label: d('light') },
+                        { value: 'dark', label: d('dark') },
+                      ]}
+                    />
+                  </div>
+                </div>
+                <ThemeSample terminal={preview.terminal} />
               </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <span aria-hidden className="text-body text-muted-foreground">
-                  {t('base')}
-                </span>
-                <Select<PaletteBase>
-                  label={t('base')}
-                  value={base}
-                  onValueChange={setBase}
-                  className="w-full justify-between"
-                  options={[
-                    { value: 'light', label: d('light') },
-                    { value: 'dark', label: d('dark') },
-                  ]}
-                />
+              <div className="flex min-w-0 flex-col gap-6">
+                <ColorGroup id={`${ids}-ui`} label={t('groups.ui')}>
+                  <div className="-mx-1.5 grid grid-cols-[repeat(auto-fill,minmax(min(9.5rem,100%),1fr))] gap-1">
+                    {UI_KEYS.map(chip)}
+                  </div>
+                </ColorGroup>
+                <ColorGroup id={`${ids}-syntax`} label={t('groups.syntax')}>
+                  <div className="-mx-1.5 grid grid-cols-[repeat(auto-fill,minmax(min(9.5rem,100%),1fr))] gap-1">
+                    {SYNTAX_KEYS.map(chip)}
+                  </div>
+                </ColorGroup>
+                <ColorGroup id={`${ids}-terminal`} label={t('groups.terminal')}>
+                  {/* The eight colors, then their bright forms under them. */}
+                  {[0, 8].map((start) => (
+                    <div
+                      key={start}
+                      data-terminal-row={start === 0 ? 'normal' : 'bright'}
+                      className="-mx-1.5 grid grid-cols-8 gap-1"
+                    >
+                      {TERMINAL_KEYS.slice(start, start + 8).map((key) =>
+                        picker(
+                          key,
+                          <TerminalChip
+                            data-color-tile={key}
+                            name={label(key)}
+                            color={colors[key]}
+                            valueId={`${fieldId(key)}-value`}
+                            aria-describedby={`${fieldId(key)}-value`}
+                          />,
+                        ),
+                      )}
+                    </div>
+                  ))}
+                </ColorGroup>
               </div>
             </div>
-            <ThemeSample palette={preview} />
-            {GROUPS.map((group) => (
-              <fieldset key={group.id} className="flex min-w-0 flex-col">
-                <legend
-                  className="mb-3 text-caption text-muted-foreground"
-                  style={{ fontVariationSettings: fontWeights.semibold }}
-                >
-                  {t(`groups.${group.id}`)}
-                </legend>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-x-4 gap-y-3">
-                  {group.keys.map((key) => (
-                    <ColorRow
-                      key={key}
-                      id={fieldId(key)}
-                      label={t(labelKey(key))}
-                      text={texts[key]}
-                      color={colors[key]}
-                      invalid={marked.has(key)}
-                      contrast={
-                        TEXT_COLORS.has(key) ? contrastRatio(colors[key], background) : undefined
-                      }
-                      onText={(text) => typeColor(key, text)}
-                      onPick={(color) => pickColor(key, color)}
-                      onLeave={() => leaveColor(key)}
-                    />
-                  ))}
-                </div>
-              </fieldset>
-            ))}
           </div>
         </div>
       </SettingsScroll>
@@ -372,189 +470,83 @@ export function ThemeEditor({
   );
 }
 
-function ColorRow({
-  id,
-  label,
-  text,
-  color,
-  invalid,
-  contrast,
-  onText,
-  onPick,
-  onLeave,
-}: {
-  id: string;
-  label: string;
-  text: string;
-  color: string;
-  invalid: boolean;
-  contrast: number | undefined;
-  onText: (text: string) => void;
-  onPick: (color: string) => void;
-  onLeave: () => void;
-}) {
-  const t = useTranslations('Themes');
-  const format = useFormatter();
-  const described = [invalid ? `${id}-error` : null, contrast === undefined ? null : `${id}-ratio`]
-    .filter(Boolean)
-    .join(' ');
-  // Shown down to the tenth, never rounded up past the 4.5:1 line.
-  const ratio = contrast === undefined ? 0 : Math.floor(contrast * 10) / 10;
-  const low = contrast !== undefined && contrast < LOW_CONTRAST;
+function ColorGroup({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2">
-        <label htmlFor={id} className="text-body text-muted-foreground">
-          {label}
-        </label>
-        {contrast === undefined ? null : (
-          <span
-            id={`${id}-ratio`}
-            data-low-contrast={low || undefined}
-            // A low mark stays readable even when the color being judged is the secondary text.
-            className={cn(
-              'inline-flex items-center gap-1 text-caption tabular-nums',
-              low ? 'text-foreground' : 'text-muted-foreground',
-            )}
-          >
-            <span className="sr-only">{t('contrast')}</span>
-            {low ? <TriangleAlert aria-hidden className="size-3 text-warning" /> : null}
-            {t('ratio', {
-              ratio: format.number(ratio, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-            })}
-            {low ? <span>{t('low')}</span> : null}
-          </span>
-        )}
-      </div>
-      <ColorField
+    // biome-ignore lint/a11y/useSemanticElements: The tiles are buttons, not form fields.
+    <div role="group" aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
+      <h4
         id={id}
-        text={text}
-        color={color}
-        invalid={invalid}
-        pickerLabel={t('pick', { name: label })}
-        describedBy={described || undefined}
-        onTextChange={onText}
-        onColorChange={onPick}
-        onBlur={onLeave}
-      />
-      {invalid ? (
-        <p id={`${id}-error`} className="text-caption text-destructive">
-          {t('hexInvalid', { format: HEX_FORMAT })}
-        </p>
-      ) : null}
+        className="m-0 pb-1 text-caption text-muted-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
+        {label}
+      </h4>
+      {children}
     </div>
   );
 }
 
-type Role = SyntaxColor | null;
-/** A few lines that use every syntax role; the comment is the only translated part. */
-function codeLines(comment: string): (readonly [string, Role])[][] {
-  return [
-    [
-      ['// ', 'comment'],
-      [comment, 'comment'],
-    ],
-    [
-      ['const', 'keyword'],
-      [' ', null],
-      ['limit', 'variable'],
-      [' = ', null],
-      ['40', 'number'],
-      [', ', null],
-      ['strict', 'variable'],
-      [' = ', null],
-      ['true', 'constant'],
-      [';', null],
-    ],
-    [
-      ['function', 'keyword'],
-      [' ', null],
-      ['label', 'function'],
-      ['(', null],
-      ['name', 'variable'],
-      [': ', null],
-      ['string', 'type'],
-      [') {', null],
-    ],
-    [
-      ['  ', null],
-      ['return', 'keyword'],
-      [' ', null],
-      ['name', 'variable'],
-      ['.', null],
-      ['slice', 'function'],
-      ['(', null],
-      ['0', 'number'],
-      [', ', null],
-      ['limit', 'variable'],
-      [') || ', null],
-      ['"-"', 'string'],
-      [';', null],
-    ],
-    [['}', null]],
-  ];
-}
+type ChipProps = ComponentProps<'button'> & {
+  name: string;
+  color: string;
+  /** The id of the value's text, which the chip's description reads. */
+  valueId: string;
+};
 
 /**
- * The draft on the floor it will sit on: body and secondary text, the four status marks and the
- * emphasis, code in the syntax colors and the sixteen terminal colors. It reads the root tokens,
- * which hold the draft while the editor is open; the terminal colors have no token.
+ * One color: its swatch, its name and its value, pressed to open the picker (the popover trigger
+ * props arrive through `props`). A low contrast mark sits under the value.
  */
-function ThemeSample({ palette }: { palette: Palette }) {
-  const t = useTranslations('Themes');
-  const marks: [ReactNode, string][] = [
-    [<CircleAlert key="error" aria-hidden className="size-4" />, 'text-destructive'],
-    [<CircleCheck key="success" aria-hidden className="size-4" />, 'text-success'],
-    [<TriangleAlert key="warning" aria-hidden className="size-4" />, 'text-warning'],
-    [<Info key="info" aria-hidden className="size-4" />, 'text-info'],
-    [<LiveDot key="emphasis" live={false} className="size-2" />, 'text-emphasis'],
-  ];
+function ColorChip({
+  name,
+  color,
+  valueId,
+  mark,
+  className,
+  ...props
+}: ChipProps & { mark?: ReactNode }) {
   return (
-    <figure
-      role="img"
-      aria-label={t('sample')}
-      className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-surface-1 p-4"
+    <button
+      type="button"
+      aria-label={name}
+      {...props}
+      className={cn(
+        'flex min-w-0 cursor-pointer items-center gap-2.5 rounded-xl p-1.5 text-left transition-colors duration-(--duration-fast) hover:bg-hover data-[popup-open]:bg-hover',
+        focusRing,
+        className,
+      )}
     >
-      <p className="text-body text-foreground">{t('sampleBody')}</p>
-      <p className="text-body text-muted-foreground">{t('sampleMuted')}</p>
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body">
-        {marks.map(([mark, tone], index) => (
-          <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: A fixed list of five marks.
-            key={index}
-            className={cn('inline-flex items-center gap-1', tone)}
-          >
-            {mark}
-            Aa
-          </span>
-        ))}
-      </p>
-      <pre className="min-w-0 font-mono text-caption whitespace-pre-wrap text-foreground">
-        <code>
-          {codeLines(t('sampleComment')).map((line, row) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: The sample's lines never move.
-            <span key={row} className="block">
-              {line.map(([text, role], index) => (
-                <span
-                  // biome-ignore lint/suspicious/noArrayIndexKey: The sample's tokens never move.
-                  key={index}
-                  style={role ? { color: `var(--syntax-${role})` } : undefined}
-                >
-                  {text}
-                </span>
-              ))}
-            </span>
-          ))}
-        </code>
-      </pre>
-      <div className="grid grid-cols-8 gap-1">
-        {palette.terminal.map((color, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: ANSI colors are identified by position.
-          <span key={index} data-terminal-color={index} className="flex">
-            <ColorTile color={color} style={{ width: '100%', height: 16 }} />
-          </span>
-        ))}
-      </div>
-    </figure>
+      <ColorTile color={color} size={32} />
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-body text-foreground">{name}</span>
+        <span id={valueId} className="text-caption text-muted-foreground tabular-nums uppercase">
+          {color}
+        </span>
+        {mark}
+      </span>
+    </button>
+  );
+}
+
+/** A terminal color: a swatch alone, named by its tooltip and its accessible name. */
+function TerminalChip({ name, color, valueId, className, ...props }: ChipProps) {
+  return (
+    <Tooltip content={name}>
+      <button
+        type="button"
+        aria-label={name}
+        {...props}
+        className={cn(
+          'flex min-w-0 cursor-pointer rounded-xl p-1.5 transition-colors duration-(--duration-fast) hover:bg-hover data-[popup-open]:bg-hover',
+          focusRing,
+          className,
+        )}
+      >
+        <ColorTile color={color} style={{ width: '100%', height: 'auto', aspectRatio: '1' }} />
+        <span id={valueId} className="sr-only">
+          {color}
+        </span>
+      </button>
+    </Tooltip>
   );
 }

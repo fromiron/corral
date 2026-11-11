@@ -2,7 +2,6 @@ export * from './adapters/badge.tsx';
 export * from './adapters/button.tsx';
 export * from './adapters/card.tsx';
 export * from './adapters/checkbox.tsx';
-export * from './adapters/color-field.tsx';
 export * from './adapters/dialog.tsx';
 export * from './adapters/input.tsx';
 export * from './adapters/menu.tsx';

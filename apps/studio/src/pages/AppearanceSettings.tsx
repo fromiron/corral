@@ -4,11 +4,19 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
-  Select,
-  Tooltip,
+  fontWeights,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuTrigger,
+  PreviewCard,
+  PreviewCardButton,
+  PreviewCardGrid,
+  PreviewCardGroup,
 } from '@corral/react/design-kit';
-import { Download, Pencil, Trash2 } from '@corral/react/icons';
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { Ellipsis, Plus } from '@corral/react/icons';
+import { type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { usePreferences } from '../workbench/preferences.ts';
 import {
@@ -38,11 +46,14 @@ import {
   usePersonalThemes,
 } from '../workbench/themes/storage.ts';
 import type { ThemeEditorTarget } from './ThemeEditor.tsx';
+import { SystemThumbnail, ThemeThumbnail } from './ThemePreview.tsx';
 
-/** Where focus lands when the list is shown again: New theme, or a row's Edit. */
-export type ThemeListFocus = { kind: 'new' } | { kind: 'row'; id: string };
+/** Where focus lands when the gallery is shown again: the New theme tile, or a personal card. */
+export type ThemeListFocus = { kind: 'new' } | { kind: 'card'; id: string };
 
 type ImportError = ThemeSaveError | 'unreadable';
+
+const DEFAULTS = ['system', 'light', 'dark'] as const;
 
 function download(palette: Palette) {
   const url = URL.createObjectURL(
@@ -55,10 +66,25 @@ function download(palette: Palette) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** A group's name inside the gallery (the kit's section label, one level under Appearance). */
+function GroupLabel({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <h4
+      id={id}
+      className="m-0 text-caption text-muted-foreground"
+      style={{ fontVariationSettings: fontWeights.semibold }}
+    >
+      {children}
+    </h4>
+  );
+}
+
 /**
- * Settings › General's Appearance choice and, under it, the personal themes of this device
- * (docs/specs/features/themes.md, 개인 테마): New theme and Import in the list head, then a row
- * per theme with edit, export and delete. Editing opens the editor in place of General.
+ * Settings › General's Appearance: one choice among cards, each a picture of the app in that
+ * theme (docs/specs/features/themes.md). System, light and dark come first, then the built-in
+ * themes, then this device's personal themes, which carry a menu (edit, export, delete) and end
+ * with the New theme tile; Import sits beside their label. Editing opens the editor in place of
+ * General.
  */
 export function AppearanceSettings({
   onEdit,
@@ -66,7 +92,7 @@ export function AppearanceSettings({
   onFocused,
 }: {
   onEdit: (target: ThemeEditorTarget, opener: ThemeListFocus) => void;
-  /** Focus to restore once the list is back (the editor's opener). */
+  /** Focus to restore once the gallery is back (the editor's opener). */
   focus?: ThemeListFocus | null;
   onFocused?: () => void;
 }) {
@@ -75,7 +101,7 @@ export function AppearanceSettings({
   const prefs = usePreferences();
   const personal = usePersonalThemes();
   const ids = useId();
-  const list = useRef<HTMLElement>(null);
+  const gallery = useRef<HTMLElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const [pendingFocus, setPendingFocus] = useState<ThemeListFocus | null>(focus ?? null);
   const [importError, setImportError] = useState<ImportError | null>(null);
@@ -83,13 +109,27 @@ export function AppearanceSettings({
   const [deleteFailed, setDeleteFailed] = useState(false);
   const afterDelete = useRef<ThemeListFocus | null>(null);
   const full = personal.length >= PERSONAL_THEME_LIMIT;
+  const headingId = `${ids}-appearance`;
+  const builtinId = `${ids}-builtin`;
+  const personalId = `${ids}-personal`;
   const limitId = `${ids}-limit`;
   const errorId = `${ids}-import-error`;
+  const values = useMemo(
+    () => [
+      ...DEFAULTS,
+      ...BUILTIN_THEMES.map((theme) => builtinPaletteId(theme.id)),
+      ...personal.map((theme) => personalPaletteId(theme.id)),
+    ],
+    [personal],
+  );
+  const firstPersonal = DEFAULTS.length + BUILTIN_THEMES.length;
 
   const target = (where: ThemeListFocus) =>
-    list.current?.querySelector<HTMLElement>(
-      where.kind === 'row' ? `[data-theme-edit="${where.id}"]` : '[data-theme-new]',
-    ) ?? list.current?.querySelector<HTMLElement>('[data-theme-new]');
+    gallery.current?.querySelector<HTMLElement>(
+      where.kind === 'card'
+        ? `[data-preview-card-radio][data-value="${personalPaletteId(where.id)}"]`
+        : '[data-theme-new]',
+    ) ?? gallery.current?.querySelector<HTMLElement>('[data-theme-new]');
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: Runs once per focus request; the lookup and callback read the current render.
   useLayoutEffect(() => {
@@ -98,8 +138,8 @@ export function AppearanceSettings({
     element?.focus();
     setPendingFocus(null);
     onFocused?.();
-    // A dialog that just closed hands focus back once it is gone; take it again if it went
-    // nowhere (its opener left with the editor or the deleted row).
+    // A dialog or menu that just closed hands focus back once it is gone; take it again if it
+    // went nowhere (its opener left with the editor or the deleted card).
     setTimeout(() => {
       const active = document.activeElement;
       if (element?.isConnected && (!active || active === document.body)) element.focus();
@@ -123,9 +163,7 @@ export function AppearanceSettings({
     ];
     onEdit(
       { kind: 'new', palette: { ...source, name: numberedName(sourceName, taken) } },
-      {
-        kind: 'new',
-      },
+      { kind: 'new' },
     );
   }
 
@@ -139,7 +177,7 @@ export function AppearanceSettings({
       return;
     }
     if (!result.ok) setImportError(result.error);
-    else setPendingFocus({ kind: 'row', id: result.theme.id });
+    else setPendingFocus({ kind: 'card', id: result.theme.id });
   }
 
   function remove(theme: PersonalTheme) {
@@ -152,7 +190,7 @@ export function AppearanceSettings({
     }
     // Back to the light or dark of its base at once, wherever settings was opened.
     applyAppearance();
-    afterDelete.current = neighbour ? { kind: 'row', id: neighbour.id } : { kind: 'new' };
+    afterDelete.current = neighbour ? { kind: 'card', id: neighbour.id } : { kind: 'new' };
     setPendingFocus(afterDelete.current);
     setDeleting(null);
   }
@@ -162,139 +200,162 @@ export function AppearanceSettings({
     .join(' ');
   return (
     <>
-      <section className="settings-row">
-        <div>
-          <h3>{t('appearance')}</h3>
-        </div>
-        <Select<Appearance>
-          label={t('appearance')}
-          value={appearanceOf(prefs)}
-          onValueChange={(choice) => chooseAppearance(choice)}
-          options={[
-            ...(['system', 'light', 'dark'] as const).map((value) => ({
-              value,
-              label: t(value),
-            })),
-            // Theme names are proper names, shown as they are in every language.
-            ...BUILTIN_THEMES.map((theme) => ({
-              value: builtinPaletteId(theme.id),
-              label: theme.palette.name,
-              group: t('builtinThemes'),
-            })),
-            ...personal.map((theme) => ({
-              value: personalPaletteId(theme.id),
-              label: theme.palette.name,
-              group: t('personalThemes'),
-            })),
-          ]}
-        />
-      </section>
       <section
-        ref={list}
-        data-personal-themes
-        aria-labelledby={`${ids}-heading`}
-        className="settings-row flex-col items-stretch gap-3"
+        ref={gallery}
+        data-appearance
+        aria-labelledby={headingId}
+        className="flex flex-col gap-4 border-b border-border pt-1 pb-6"
       >
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-          <h3 id={`${ids}-heading`}>{t('personalThemes')}</h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="tertiary"
-              aria-disabled={full || undefined}
-              aria-describedby={importDescription || undefined}
-              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-              onClick={() => {
-                if (!full) file.current?.click();
-              }}
-            >
-              {tt('import')}
-            </Button>
-            <input
-              ref={file}
-              type="file"
-              accept=".json,application/json"
-              hidden
-              tabIndex={-1}
-              onChange={(event) => {
-                const chosen = event.target.files?.[0];
-                event.target.value = '';
-                if (chosen) void importFile(chosen);
-              }}
-            />
-            <Button
-              variant="secondary"
-              data-theme-new
-              aria-disabled={full || undefined}
-              aria-describedby={full ? limitId : undefined}
-              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-              onClick={newTheme}
-            >
-              {tt('newTheme')}
-            </Button>
-          </div>
-        </div>
-        {full ? (
-          <p id={limitId} className="text-body text-muted-foreground">
-            {tt('limit', { limit: PERSONAL_THEME_LIMIT })}
-          </p>
-        ) : null}
-        {importError ? (
-          <p id={errorId} role="alert" className="text-body text-destructive">
-            {importReason(tt, importError)}
-          </p>
-        ) : null}
-        {personal.length ? (
-          <ul className="settings-list divide-y divide-border">
-            {personal.map((theme) => (
-              <li key={theme.id} className="flex min-w-0 items-center gap-1 py-1 pr-1 pl-4">
-                <span className="min-w-0 flex-1 text-body break-words text-foreground">
-                  {theme.palette.name}
-                </span>
-                <Tooltip content={tt('edit')}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    data-theme-edit={theme.id}
-                    aria-label={tt('editNamed', { name: theme.palette.name })}
-                    onClick={() => {
-                      setImportError(null);
-                      onEdit(
-                        { kind: 'edit', id: theme.id, palette: theme.palette },
-                        { kind: 'row', id: theme.id },
-                      );
-                    }}
-                  >
-                    <Pencil />
-                  </Button>
-                </Tooltip>
-                <Tooltip content={tt('export')}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={tt('exportNamed', { name: theme.palette.name })}
-                    onClick={() => download(theme.palette)}
-                  >
-                    <Download />
-                  </Button>
-                </Tooltip>
-                <Tooltip content={tt('delete')}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={tt('deleteNamed', { name: theme.palette.name })}
-                    onClick={() => {
-                      afterDelete.current = null;
-                      setDeleteFailed(false);
-                      setDeleting(theme);
-                    }}
-                  >
-                    <Trash2 />
-                  </Button>
-                </Tooltip>
-              </li>
+        <h3 id={headingId} className="m-0 text-body text-foreground">
+          {t('appearance')}
+        </h3>
+        <PreviewCardGroup
+          value={appearanceOf(prefs)}
+          values={values}
+          onValueChange={(choice) => chooseAppearance(choice as Appearance)}
+          aria-labelledby={headingId}
+          className="gap-6"
+        >
+          <PreviewCardGrid>
+            {DEFAULTS.map((choice, index) => (
+              <PreviewCard
+                key={choice}
+                index={index}
+                value={choice}
+                label={t(choice)}
+                preview={
+                  choice === 'system' ? (
+                    <SystemThumbnail />
+                  ) : (
+                    <ThemeThumbnail palette={null} base={choice} />
+                  )
+                }
+              />
             ))}
-          </ul>
-        ) : null}
+          </PreviewCardGrid>
+          {/* biome-ignore lint/a11y/useSemanticElements: A fieldset cannot sit inside the radio group's element. */}
+          <div role="group" aria-labelledby={builtinId} className="flex flex-col gap-2">
+            <div className="flex min-h-7 items-center px-1">
+              <GroupLabel id={builtinId}>{t('builtinThemes')}</GroupLabel>
+            </div>
+            <PreviewCardGrid>
+              {BUILTIN_THEMES.map((theme, index) => (
+                <PreviewCard
+                  key={theme.id}
+                  index={DEFAULTS.length + index}
+                  value={builtinPaletteId(theme.id)}
+                  // Theme names are proper names, shown as they are in every language.
+                  label={theme.palette.name}
+                  preview={<ThemeThumbnail palette={theme.palette} base={theme.palette.base} />}
+                />
+              ))}
+            </PreviewCardGrid>
+          </div>
+          {/* biome-ignore lint/a11y/useSemanticElements: A fieldset cannot sit inside the radio group's element. */}
+          <div
+            role="group"
+            aria-labelledby={personalId}
+            data-personal-themes
+            className="flex flex-col gap-2"
+          >
+            <div className="flex min-h-7 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1">
+              <GroupLabel id={personalId}>{t('personalThemes')}</GroupLabel>
+              <Button
+                variant="ghost"
+                size="compact"
+                aria-disabled={full || undefined}
+                aria-describedby={importDescription || undefined}
+                className="-mr-1 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                onClick={() => {
+                  if (!full) file.current?.click();
+                }}
+              >
+                {tt('import')}
+              </Button>
+              <input
+                ref={file}
+                type="file"
+                accept=".json,application/json"
+                hidden
+                tabIndex={-1}
+                onChange={(event) => {
+                  const chosen = event.target.files?.[0];
+                  event.target.value = '';
+                  if (chosen) void importFile(chosen);
+                }}
+              />
+            </div>
+            {importError ? (
+              <p id={errorId} role="alert" className="m-0 px-1 text-body text-destructive">
+                {importReason(tt, importError)}
+              </p>
+            ) : null}
+            {full ? (
+              <p id={limitId} className="m-0 px-1 text-body text-muted-foreground">
+                {tt('limit', { limit: PERSONAL_THEME_LIMIT })}
+              </p>
+            ) : null}
+            <PreviewCardGrid>
+              {personal.map((theme, index) => (
+                <PreviewCard
+                  key={theme.id}
+                  index={firstPersonal + index}
+                  value={personalPaletteId(theme.id)}
+                  label={theme.palette.name}
+                  preview={<ThemeThumbnail palette={theme.palette} base={theme.palette.base} />}
+                  action={
+                    <Menu>
+                      <MenuTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-compact"
+                            aria-label={tt('actionsNamed', { name: theme.palette.name })}
+                          />
+                        }
+                      >
+                        <Ellipsis />
+                      </MenuTrigger>
+                      <MenuPopup align="end" className="min-w-40">
+                        <MenuItem
+                          onClick={() => {
+                            setImportError(null);
+                            onEdit(
+                              { kind: 'edit', id: theme.id, palette: theme.palette },
+                              { kind: 'card', id: theme.id },
+                            );
+                          }}
+                        >
+                          {tt('edit')}
+                        </MenuItem>
+                        <MenuItem onClick={() => download(theme.palette)}>{tt('export')}</MenuItem>
+                        <MenuSeparator />
+                        <MenuItem
+                          onClick={() => {
+                            afterDelete.current = null;
+                            setDeleteFailed(false);
+                            setDeleting(theme);
+                          }}
+                        >
+                          {tt('delete')}
+                        </MenuItem>
+                      </MenuPopup>
+                    </Menu>
+                  }
+                />
+              ))}
+              <PreviewCardButton
+                index={firstPersonal + personal.length}
+                data-theme-new
+                label={tt('newTheme')}
+                icon={<Plus aria-hidden className="size-5" strokeWidth={1.5} />}
+                aria-disabled={full || undefined}
+                aria-describedby={full ? limitId : undefined}
+                onClick={newTheme}
+              />
+            </PreviewCardGrid>
+          </div>
+        </PreviewCardGroup>
       </section>
       <Dialog
         open={deleting !== null}
