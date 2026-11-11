@@ -9,6 +9,7 @@ export {
   endpointModelDefaults,
   endpointProvider,
   KEYLESS_PLACEHOLDER,
+  knownEndpointModel,
   requestKeyAuth,
 } from './endpoint.ts';
 export { downloadPiPackage, inspectPiPackage } from './packages.ts';
