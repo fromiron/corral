@@ -236,7 +236,19 @@ export {
   CheckboxItem,
   CheckboxItem as KitCheckboxItem,
 } from './components/ui/checkbox-group.tsx';
-export { ColorTile, type ColorTileProps } from './components/ui/color-picker.tsx';
+export {
+  ColorPicker,
+  type ColorPickerLabels,
+  ColorPickerPopover,
+  type ColorPickerPopoverProps,
+  type ColorPickerProps,
+  type ColorPickerSwatch,
+  ColorSwatch,
+  type ColorSwatchProps,
+  ColorTile,
+  type ColorTileProps,
+  type ParsedColor,
+} from './components/ui/color-picker.tsx';
 export {
   CommandMenu,
   CommandMenuDialog,
