@@ -1,5 +1,11 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { modelSettingsTab, newConversation, openAllProjects, requestBox } from '../workbench.ts';
+import {
+  addConnection,
+  modelSettingsTab,
+  newConversation,
+  openAllProjects,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('direct settings overlay preserves work, history and nested focus', async ({
@@ -141,8 +147,11 @@ test.describe('active work and credentials', () => {
     await corral.open('/projects/default');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('link', { name: 'Models', exact: true }).click();
-    await modelSettingsTab(page, 'Profiles');
-    await expect(page.getByTestId('profile-model-a')).toContainText('Configured');
+    // Connected: the provider's row says how it is connected and how many models it gives.
+    const connections = await modelSettingsTab(page, 'Connections');
+    await expect(connections.getByRole('article', { name: 'OpenAI', exact: true })).toContainText(
+      /Codex CLI sign-in · [1-9]\d* models?/,
+    );
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     const sidebar = page.getByTestId('app-sidebar');
     await expect(sidebar.getByText('Local · live models', { exact: true })).toHaveCount(0);
@@ -230,10 +239,14 @@ test.describe('active work and credentials', () => {
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
       await dialog.getByRole('link', { name: 'Models', exact: true }).click();
-      const key = dialog.getByTestId('provider-openai').getByLabel('API key', { exact: true });
+      // A key is typed on the provider's API key face of Add connection, over Settings.
+      const face = await addConnection(page, 'OpenAI');
+      await face.getByRole('tab', { name: 'API key', exact: true }).click();
+      const key = face.getByLabel('API key', { exact: true });
       await key.fill('fixture-secret');
       await key.dispatchEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true });
       await expect(dialog).toBeVisible();
+      await expect(face).toBeVisible();
       await page.keyboard.press('Control+Alt+n');
       await page.keyboard.press('Control+.');
       await page.keyboard.press('Control+k');
@@ -245,11 +258,14 @@ test.describe('active work and credentials', () => {
       expect(unexplainedReads(reads), traffic.slice(reads).join(' ')).toBe(0);
       expect(subscriptions.filter((path) => path.includes(runId))).toHaveLength(1);
       expect(corral.server.coordinator.listRuns()).toHaveLength(1);
-      await dialog.getByRole('button', { name: 'Close settings' }).click();
+      // Leaving the typed key asks first; discarding it, then closing Settings, returns to work.
+      await face.getByRole('button', { name: 'Close', exact: true }).click();
       await page
         .getByRole('dialog', { name: 'Unsaved settings' })
         .getByRole('button', { name: 'Discard changes' })
         .click();
+      await expect(face).toBeHidden();
+      await dialog.getByRole('button', { name: 'Close settings' }).click();
       await expect(page).toHaveURL(workUrl);
       await expect(input).toHaveValue('다음 초안 日本語');
       await expect(page.getByTestId('action-required')).toBeVisible();
@@ -261,9 +277,9 @@ test.describe('active work and credentials', () => {
       ).not.toContain('fixture-secret');
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       await dialog.getByRole('link', { name: 'Models', exact: true }).click();
-      await expect(
-        dialog.getByTestId('provider-openai').getByLabel('API key', { exact: true }),
-      ).toHaveValue('');
+      const again = await addConnection(page, 'OpenAI');
+      await again.getByRole('tab', { name: 'API key', exact: true }).click();
+      await expect(again.getByLabel('API key', { exact: true })).toHaveValue('');
     } finally {
       release();
     }
@@ -312,7 +328,7 @@ test.describe('settings layout and keyboard', () => {
       .getByRole('radio', { name: 'Light', exact: true })
       .click();
     await dialog.getByRole('link', { name: 'Models', exact: true }).click();
-    await expect(dialog.getByTestId('provider-openai')).toBeVisible();
+    await expect(dialog.getByRole('article', { name: 'OpenAI', exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('settings-wide-light.png') });
     const { default: AxeBuilder } = await import('@axe-core/playwright');
     expect(
