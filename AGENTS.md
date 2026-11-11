@@ -21,7 +21,7 @@ These rules apply to every development agent making changes to Corral. This file
 
 - Before adding complexity for a speculative or vanishingly unlikely race or security edge case, explain the concrete failure mode, likelihood, and complexity cost to the user and get their buy-in. Do not silently expand scope for theoretical robustness.
 - Define normal, failure, cancellation, duplicate, and late-event cases, including counterexamples.
-- Inject external calls, time, and IDs. Do not include paid LLM or search calls in ordinary CI. Live tests require explicit opt-in and limits.
+- Inject external calls, time, and IDs. Do not include paid LLM or search calls in ordinary CI. Live tests require explicit opt-in: a person starts each run for a stated purpose and watches it. They carry no fixed request cap and are never left unattended.
 - Do not independently finalize Task completion or budget usage from Pi/LangGraph internals or the UI store. Use the Coordinator command path.
 - Every cancellation or patch must check the current attempt, scope, and revision. Do not overwrite past context or artifacts. Do not blindly retry a lost response with a new command ID.
 - Do not expose provider keys, local paths, or user message bodies in logs, screenshots, or public exports. Do not execute raw HTML in generated UI. Keep the security boundaries of managed service previews and artifact HTML previews distinct.
