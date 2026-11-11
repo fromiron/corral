@@ -518,6 +518,8 @@ function SignInFace({
     if (running?.providerId !== providerId) return;
     if (provider?.login) {
       running.seen = true;
+      // Reads without it count again from when it next leaves the lists.
+      if (missed) setMissed(0);
       return;
     }
     if (running.seen && finished(provider)) {
