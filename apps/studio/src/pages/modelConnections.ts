@@ -4,6 +4,14 @@ import type {
   ModelProfileView,
   ProviderAuthView,
 } from '@corral/client';
+import { profileReady } from '../workbench/modelReadiness.ts';
+
+/**
+ * A model this connection can call now, by the pickers' rule: known, signed in or keyed, and one
+ * a subscription sign-in may use; a named profile also needs its key.
+ */
+export const modelReady = (view: ModelProfileView) =>
+  profileReady(view) && (view.source !== 'profile' || view.keyConfigured);
 
 /** How a connected provider signs in, as its row names it. */
 export type ConnectionMethod = 'subscription' | 'oauth' | 'apiKey' | 'envKey' | 'codex' | 'keyless';
@@ -162,7 +170,7 @@ export function connectedModels(profiles: ModelProfileView[]): ConnectedModel[] 
   const seen = new Set<string>();
   const out: ConnectedModel[] = [];
   for (const view of profiles) {
-    if (view.source === 'profile' && !(view.available && view.keyConfigured)) continue;
+    if (!modelReady(view)) continue;
     const key = modelKey(view.provider, view.modelId);
     if (seen.has(key)) continue;
     seen.add(key);

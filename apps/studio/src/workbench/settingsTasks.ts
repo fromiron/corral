@@ -2,6 +2,13 @@ import { createStore } from 'zustand/vanilla';
 
 type Operation = { target: string; href: string; state: 'pending' | 'saved' | 'uncertain' };
 
+/** Refused because work for the same target is still running; forms say so in their own words. */
+export class SettingsTaskPending extends Error {
+  constructor() {
+    super('A settings operation for this target is still pending.');
+  }
+}
+
 /** Only receipts live outside forms. Payloads, keys and server errors never enter this store. */
 export function createSettingsTasks() {
   const commands = new Map<string, { current: unknown }>();
@@ -26,7 +33,7 @@ export function createSettingsTasks() {
           .getState()
           .operations.some((value) => value.target === target && value.state === 'pending')
       )
-        throw new Error('A settings operation for this target is still pending.');
+        throw new SettingsTaskPending();
       update({ target, href, state: 'pending' });
       try {
         const value = await action();

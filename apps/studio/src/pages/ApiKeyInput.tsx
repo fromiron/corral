@@ -26,9 +26,11 @@ export function ApiKeyInput({
   const id = useId();
   const [visible, setVisible] = useState(false);
   const empty = value.length === 0;
+  // Shown only while it is typed: emptied, or sent (the field is disabled while it is), it is
+  // hidden again.
   useEffect(() => {
-    if (empty) setVisible(false);
-  }, [empty]);
+    if (empty || disabled) setVisible(false);
+  }, [empty, disabled]);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <label

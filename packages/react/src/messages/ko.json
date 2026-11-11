@@ -5905,6 +5905,7 @@
     "pasteToggle": "주소를 직접 붙여 넣기",
     "pasteLabel": "브라우저가 멈춘 주소",
     "paste": "이 주소 사용",
+    "pasteRefused": "주소가 받아들여지지 않았습니다.",
     "signInFailed": "로그인을 마치지 못했습니다: {message}",
     "tryAgain": "다시 시도",
     "connect": "연결",

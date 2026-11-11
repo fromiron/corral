@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import type {
-  CatalogProvider,
-  ModelConfig,
-  ModelProfileView,
-  ModelsApi,
-  ProviderAuthView,
+import {
+  ApiError,
+  type CatalogProvider,
+  type ModelConfig,
+  type ModelProfileView,
+  type ModelsApi,
+  type ProviderAuthView,
 } from '@corral/client';
 import { DesignKitProvider } from '@corral/react/design-kit';
 import { act } from 'react';
@@ -164,7 +165,13 @@ let container: HTMLElement;
 const onMakeProfile = vi.fn();
 const onOpenProfile = vi.fn();
 
-async function show(list = providers) {
+async function show(
+  list = providers,
+  {
+    models = profiles,
+    settings = config,
+  }: { models?: ModelProfileView[]; settings?: ModelConfig } = {},
+) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -172,8 +179,8 @@ async function show(list = providers) {
           <ModelConnections
             providers={list}
             catalog={catalog}
-            profiles={profiles}
-            config={config}
+            profiles={models}
+            config={settings}
             onMakeProfile={onMakeProfile}
             onOpenProfile={onOpenProfile}
           />
@@ -184,6 +191,29 @@ async function show(list = providers) {
 }
 const row = (name: string) =>
   all('article[data-connection]').find((el) => el.getAttribute('aria-label') === name);
+const toggle = (name: string) => click(row(name)?.querySelector('[data-connection-row]'));
+const live = () =>
+  container.querySelector('[role="status"][aria-live="polite"]')?.textContent ?? '';
+const hive = (patch: Partial<ProviderAuthView> = {}) =>
+  provider({
+    providerId: 'hive',
+    name: 'Hive',
+    endpoint: 'api.hive.example',
+    methods: { oauth: false, apiKey: true },
+    signedIn: true,
+    method: 'api_key',
+    source: 'corral',
+    modelCount: 2,
+    modelFetch: { kind: 'connected', status: 200, fetchedAt: '2026-11-11T00:00:00Z' },
+    ...patch,
+  });
+const unused: ModelConfig = { ...config, modelProfiles: [] };
+const fetched = {
+  kind: 'connected' as const,
+  status: 200,
+  fetchedAt: '2026-11-11T00:00:00Z',
+  modelCount: 2,
+};
 
 beforeEach(() => {
   stubBrowser();
@@ -319,5 +349,166 @@ describe('Connections tab', () => {
     await settle();
     expect(fixture.models.refreshEndpointModels).toHaveBeenCalledWith('hive', 'r1');
     expect(fixture.refresh).toHaveBeenCalled();
+  });
+  it('offers Disconnect only for a sign-in or key Corral holds itself', async () => {
+    const borrowed = provider({
+      providerId: 'openai-codex',
+      name: 'Codex CLI',
+      methods: { oauth: true, apiKey: false },
+      signedIn: true,
+      method: 'oauth',
+      source: 'codex-cli',
+      modelCount: 0,
+    });
+    await show([...providers, borrowed]);
+    const offered = async (name: string) => {
+      await toggle(name);
+      const found = control(`Disconnect ${name}`, row(name));
+      await toggle(name);
+      return found !== undefined;
+    };
+    expect(await offered('OpenAI')).toBe(true);
+    expect(await offered('Anthropic')).toBe(true);
+    // A key from the environment and a borrowed login are not Corral's to remove.
+    expect(await offered('Google')).toBe(false);
+    await toggle('Codex CLI');
+    expect(control('Disconnect Codex CLI')).toBeUndefined();
+    expect(control('Sign in to Corral instead', row('Codex CLI'))).toBeDefined();
+  });
+
+  it('removes an endpoint from the config first and its key only after that is saved', async () => {
+    const calls: string[] = [];
+    fixture.models = {
+      saveConfig: vi.fn(async () => {
+        calls.push('saveConfig');
+        return { ...unused, modelProviders: [] };
+      }),
+      logout: vi.fn(async () => {
+        calls.push('logout');
+        return [];
+      }),
+    };
+    await show([hive()], { settings: unused });
+    await toggle('Hive');
+    await click(control('Remove Hive'));
+    await settle();
+    expect(calls).toEqual(['saveConfig', 'logout']);
+    expect(fixture.models.saveConfig).toHaveBeenCalledWith({
+      revision: 'r1',
+      modelProfiles: [],
+      modelProviders: [],
+    });
+  });
+
+  it('keeps the key of an endpoint whose removal was not saved', async () => {
+    fixture.models = {
+      saveConfig: vi.fn(async () => {
+        throw new ApiError(409, 'REVISION_CONFLICT', 'the config changed');
+      }),
+      config: vi.fn(async () => {
+        throw new Error('offline');
+      }),
+      logout: vi.fn(async () => []),
+    };
+    await show([hive()], { settings: unused });
+    await toggle('Hive');
+    await click(control('Remove Hive'));
+    await settle();
+    expect(fixture.models.logout).not.toHaveBeenCalled();
+    expect(row('Hive')?.querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it('refuses to remove an endpoint a profile uses and names the profiles', async () => {
+    fixture.models = { saveConfig: vi.fn(), logout: vi.fn() };
+    await show([hive()], {
+      settings: { ...config, modelProfiles: [{ id: 'fast', provider: 'hive', model: 'qwen-4' }] },
+    });
+    await toggle('Hive');
+    await click(control('Remove Hive'));
+    expect(fixture.models.saveConfig).not.toHaveBeenCalled();
+    expect(fixture.models.logout).not.toHaveBeenCalled();
+    expect(row('Hive')?.querySelector('[role="alert"]')?.textContent).toBe('Used by fast');
+  });
+
+  it('refreshes models again on the new revision when only the revision moved', async () => {
+    fixture.models = {
+      refreshEndpointModels: vi
+        .fn()
+        .mockRejectedValueOnce(new ApiError(409, 'REVISION_CONFLICT', 'the config changed'))
+        .mockResolvedValue(fetched),
+      config: vi.fn(async () => ({ ...config, revision: 'r2' })),
+    };
+    await show();
+    await toggle('Hive');
+    await click(control('Refresh models'));
+    await settle();
+    expect(fixture.models.refreshEndpointModels).toHaveBeenLastCalledWith('hive', 'r2');
+    expect(row('Hive')?.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('does not say an action failed when only reading the lists after it failed', async () => {
+    fixture.models = { refreshEndpointModels: vi.fn(async () => fetched) };
+    fixture.refresh = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    await show();
+    await toggle('Hive');
+    await click(control('Refresh models'));
+    await settle();
+    expect(row('Hive')?.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('clears the model filter when the list folds or shrinks below the filter', async () => {
+    await show();
+    await toggle('OpenAI');
+    const list = () => all('ul').find((el) => el.getAttribute('aria-label') === 'Models of OpenAI');
+    await type(field('Filter models', row('OpenAI')), 'mini 1');
+    expect(all('li', list()).length).toBe(4);
+    await toggle('OpenAI');
+    await toggle('OpenAI');
+    expect(field('Filter models', row('OpenAI'))?.value).toBe('');
+    expect(all('li', list()).length).toBe(14);
+    // Filtered again, then the list shrinks below the filter: no hidden filter stays applied.
+    await type(field('Filter models', row('OpenAI')), 'mini 12');
+    expect(all('li', list()).length).toBe(1);
+    await show(providers, { models: profiles.slice(0, 5) });
+    expect(field('Filter models', row('OpenAI'))).toBeUndefined();
+    expect(all('li', list()).length).toBe(5);
+    // One row keeps the list's tab stop.
+    expect(all('[data-model-action]', list()).filter((el) => el.tabIndex === 0)).toHaveLength(1);
+  });
+
+  it('keeps the list’s tab stop on a row that is still there when the list shrinks', async () => {
+    await show();
+    await toggle('OpenAI');
+    const list = () => all('ul').find((el) => el.getAttribute('aria-label') === 'Models of OpenAI');
+    const actions = () => all('[data-model-action]', list());
+    actions()[10]?.focus();
+    await act(async () => {
+      actions()[10]?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    });
+    await show(providers, { models: profiles.slice(0, 4) });
+    expect(actions().filter((el) => el.tabIndex === 0)).toHaveLength(1);
+  });
+
+  it('announces a connection that changed, not every row on first load or a busy action', async () => {
+    const pending = new Promise<never>(() => {});
+    fixture.models = { refreshEndpointModels: vi.fn(() => pending) };
+    await show();
+    expect(live()).toBe('');
+    await toggle('Hive');
+    await click(control('Refresh models'));
+    expect(live()).toBe('');
+  });
+
+  it('lists only models the connection can call, by the pickers’ rule', async () => {
+    await show(providers, {
+      models: [
+        ...profiles,
+        view({ modelId: 'gpt-6-pro', modelName: 'GPT-6 Pro', subscriptionSupported: false }),
+      ],
+    });
+    await toggle('OpenAI');
+    expect(row('OpenAI')?.textContent).not.toContain('GPT-6 Pro');
   });
 });

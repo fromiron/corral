@@ -24,14 +24,15 @@ import {
   TabsList,
 } from '@corral/react/design-kit';
 import { ArrowLeft, Download, ExternalLink, Globe } from '@corral/react/icons';
-import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { SettingsTaskPending } from '../workbench/settingsTasks.ts';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ModelImportPanel } from './ModelImportPanel.tsx';
-import { endpointIdFor, offeredToAdd } from './modelConnections.ts';
+import { endpointIdFor, modelReady, offeredToAdd } from './modelConnections.ts';
 
 /** Where the dialog opens: the directory, one provider's connect face, an address, an import. */
 export type AddConnectionStart =
@@ -48,6 +49,24 @@ type Face =
   | { face: 'found'; providerId: string };
 
 const ADDRESS = '__address';
+/** How often a face reads the lists again while it waits for them to settle. */
+const READ_EVERY = 1500;
+/** Reads after a sign-in left the list with no connection showing before it counts as ended. */
+const SETTLE_READS = 3;
+/** Reads of a found face's model list before it stops asking (it keeps saying it is reading). */
+const LIST_READS = 20;
+
+/** A sign-in the dialog follows: started by a face, or picked up from the lists. */
+interface Followed {
+  providerId: string;
+  /** The server has it: a read showed it, or starting it was answered. */
+  seen: boolean;
+  /** Picked up from the lists rather than started here. */
+  adopted: boolean;
+}
+
+const conflicted = (failure: unknown) =>
+  failure instanceof ApiError && failure.code === 'REVISION_CONFLICT';
 
 /** https anywhere; http only on this computer, where a key cannot leave it (the server agrees). */
 function addressProblem(text: string): boolean {
@@ -112,8 +131,8 @@ export function AddConnectionDialog({
   const [typed, setTyped] = useState(false);
   const confirmLeave = useSettingsForm({ dirty: typed });
 
-  // A sign-in this dialog started and has not seen finish; leaving cancels it.
-  const login = useRef<{ providerId: string; seen: boolean } | null>(null);
+  // A sign-in this dialog follows and has not seen finish; leaving cancels it.
+  const login = useRef<Followed | null>(null);
   const cancelLogin = () => {
     const running = login.current;
     login.current = null;
@@ -239,7 +258,7 @@ export function AddConnectionDialog({
   } else if (face.face === 'import') {
     body = (
       <div className="grid gap-4">
-        <ModelImportPanel />
+        <ModelImportPanel onTyped={setTyped} />
         <div className="flex justify-start">{back}</div>
       </div>
     );
@@ -304,29 +323,12 @@ export function AddConnectionDialog({
       />
     );
   } else {
-    const found = profiles
-      .filter((view) => view.provider === face.providerId && view.available)
-      .map((view) => ({ id: view.modelId, name: view.modelName ?? view.modelId }));
-    const unique = [...new Map(found.map((item) => [item.id, item])).values()];
     body = (
-      <div className="grid gap-4">
-        <ConnectionDiscovery
-          working={false}
-          items={unique}
-          labels={{
-            reading: t('reading'),
-            before: t('foundBefore'),
-            after: (count) => t('foundAfter', { count }),
-            list: t('foundList'),
-            more: (count) => t('more', { count }),
-          }}
-        />
-        <div className="flex justify-end">
-          <Button variant="primary" onClick={() => onOpenChange(false)}>
-            {t('done')}
-          </Button>
-        </div>
-      </div>
+      <FoundFace
+        providerId={face.providerId}
+        profiles={profiles}
+        onDone={() => onOpenChange(false)}
+      />
     );
   }
 
@@ -351,10 +353,68 @@ export function AddConnectionDialog({
 }
 
 /**
+ * The models a connection gave, read again until its list is there: a partial read says the list
+ * is still being read rather than that there are none.
+ */
+function FoundFace({
+  providerId,
+  profiles,
+  onDone,
+}: {
+  providerId: string;
+  profiles: ModelProfileView[];
+  onDone: () => void;
+}) {
+  const t = useTranslations('AddConnection');
+  const refresh = useModelSettingsRefresh();
+  const found = profiles
+    .filter((view) => view.provider === providerId && modelReady(view))
+    .map((view) => ({ id: view.modelId, name: view.modelName ?? view.modelId }));
+  const unique = [...new Map(found.map((item) => [item.id, item])).values()];
+  const reading = unique.length === 0;
+  const [reads, setReads] = useState(0);
+  useEffect(() => {
+    if (!reading || reads >= LIST_READS) return;
+    const timer = setTimeout(() => {
+      void refresh()
+        .catch(() => {})
+        .finally(() => setReads((n) => n + 1));
+    }, READ_EVERY);
+    return () => clearTimeout(timer);
+  }, [reading, reads, refresh]);
+  return (
+    <div className="grid gap-4">
+      <ConnectionDiscovery
+        working={reading}
+        items={unique}
+        labels={{
+          reading: t('reading'),
+          before: t('foundBefore'),
+          after: (count) => t('foundAfter', { count }),
+          list: t('foundList'),
+          more: (count) => t('more', { count }),
+        }}
+      />
+      <div className="flex justify-end">
+        <Button variant="primary" onClick={onDone}>
+          {t('done')}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The failure line of a face: the server's own reason as it gave it (such as a provider that
  * needs more than a key), or "Not saved" with what went wrong before the server answered.
  */
-function failureText(failure: unknown, t: ReturnType<typeof useTranslations<'AddConnection'>>) {
+function failureText(
+  failure: unknown,
+  t: ReturnType<typeof useTranslations<'AddConnection'>>,
+  ts: ReturnType<typeof useTranslations<'SettingsDialog'>>,
+) {
+  // The same write still running from before: said in the settings' own words.
+  if (failure instanceof SettingsTaskPending) return ts('pending');
   if (failure instanceof ApiError)
     return failure.code === 'REVISION_CONFLICT' ? t('conflict') : failure.message;
   return t('notSaved', {
@@ -372,33 +432,70 @@ function SignInFace({
 }: {
   providerId: string;
   provider: ProviderAuthView | undefined;
-  login: { current: { providerId: string; seen: boolean } | null };
+  login: { current: Followed | null };
   onTyped: (typed: boolean) => void;
   onDone: () => void;
   back: ReactNode;
 }) {
   const t = useTranslations('AddConnection');
+  const ts = useTranslations('SettingsDialog');
+  const tc = useTranslations('Connections');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
-  const runTask = useSettingsTask(`sign-in:${providerId}`);
+  // Each face's own task: a start left behind by an earlier face never blocks this one's.
+  const runTask = useSettingsTask(`sign-in:${providerId}:${useId()}`);
   const [started, setStarted] = useState<LoginView | null>(null);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The sign-in left the lists without a connection: it ended unfinished.
+  const [ended, setEnded] = useState(false);
+  // Reads since the sign-in left the lists with no connection showing yet.
+  const [missed, setMissed] = useState(0);
   const [pasting, setPasting] = useState(false);
   const [redirect, setRedirect] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => onTyped(Boolean(redirect)), [redirect, onTyped]);
 
+  // Connected by a sign-in of Corral's own: a key, or a login borrowed from another tool, that
+  // the provider already had does not count as this sign-in finishing.
+  const finished = (p: ProviderAuthView | undefined) =>
+    Boolean(p?.signedIn && p.method === 'oauth' && p.source !== 'codex-cli');
+
+  const pending = useRef(false);
   const start = async () => {
-    if (!models) return;
+    if (!models || pending.current) return;
+    pending.current = true;
+    setStarting(true);
     setError(null);
-    login.current = { providerId, seen: false };
+    setEnded(false);
+    setMissed(0);
+    setStarted(null);
+    const mine: Followed = { providerId, seen: false, adopted: false };
+    login.current = mine;
+    let view: LoginView;
     try {
-      const view = await runTask(() => models.startLogin(providerId));
-      setStarted(view);
-      await refresh();
+      view = await runTask(() => models.startLogin(providerId));
     } catch (failure) {
-      login.current = null;
-      setError(failureText(failure, t));
+      // Only this face's own sign-in stops being followed; a later face's is left alone.
+      if (login.current === mine) {
+        login.current = null;
+        setError(failureText(failure, t, ts));
+      }
+      return;
+    } finally {
+      pending.current = false;
+      setStarting(false);
     }
+    if (login.current !== mine) {
+      // Left while it started: cancel it unless another face now follows this provider.
+      if (login.current?.providerId !== providerId)
+        void models.cancelLogin(providerId).catch(() => {});
+      return;
+    }
+    // The server has it now, whether or not the next read shows it.
+    mine.seen = true;
+    setStarted(view);
+    void refresh().catch(() => {});
   };
   // Choosing subscription sign-in starts it: the provider page is the next step.
   const once = useRef(false);
@@ -407,23 +504,49 @@ function SignInFace({
     if (once.current) return;
     once.current = true;
     if (provider?.login && provider.login.state !== 'failed') {
-      login.current = { providerId, seen: true };
+      login.current = { providerId, seen: true, adopted: true };
       return;
     }
     void start();
   }, []);
 
   const view = provider?.login ?? started;
-  // The poll shows the sign-in running, then gone with the provider connected: it finished.
+  const listed = Boolean(provider?.login);
+  // The lists show the sign-in, then it is gone with the provider connected by it: it finished.
   useEffect(() => {
     const running = login.current;
     if (running?.providerId !== providerId) return;
-    if (provider?.login) running.seen = true;
-    else if (running.seen && provider?.signedIn) {
+    if (provider?.login) {
+      running.seen = true;
+      return;
+    }
+    if (running.seen && finished(provider)) {
       login.current = null;
       onDone();
     }
   });
+  // Gone from the lists with no connection showing yet: read again until it settles, then start
+  // a picked-up sign-in again, or say this one ended.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reads follow the sign-in's own state.
+  useEffect(() => {
+    const running = login.current;
+    if (running?.providerId !== providerId || !running.seen || listed || ended) return;
+    if (finished(provider)) return;
+    if (missed >= SETTLE_READS) {
+      if (running.adopted) void start();
+      else {
+        login.current = null;
+        setEnded(true);
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      void refresh()
+        .catch(() => {})
+        .finally(() => setMissed((n) => n + 1));
+    }, READ_EVERY);
+    return () => clearTimeout(timer);
+  }, [started, listed, missed, ended, provider?.signedIn, provider?.method]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -432,24 +555,34 @@ function SignInFace({
     setBusy(true);
     setError(null);
     try {
-      await runTask(() => models.submitRedirect(providerId, url));
+      const accepted = await runTask(() => models.submitRedirect(providerId, url));
+      // Sent: the address is not shown again, accepted or not.
       setRedirect('');
-      onTyped(false);
+      if (!accepted) {
+        setError(t('pasteRefused'));
+        return;
+      }
       setPasting(false);
-      await refresh();
     } catch (failure) {
-      setError(failureText(failure, t));
+      setError(failureText(failure, t, ts));
+      return;
     } finally {
       setBusy(false);
     }
+    void refresh().catch(() => {});
   };
 
   const failed = view?.state === 'failed';
+  const stopped = failed || ended;
   return (
     <div className="grid gap-4">
       {failed ? (
         <p role="alert" className="m-0 text-body text-danger">
           {t('signInFailed', { message: view.error ?? '' })}
+        </p>
+      ) : ended ? (
+        <p role="alert" className="m-0 text-body text-danger">
+          {tc('cause.signInFailed')}
         </p>
       ) : (
         <p role="status" className="m-0 shimmer-text text-body text-muted-foreground">
@@ -465,7 +598,7 @@ function SignInFace({
           {error}
         </p>
       ) : null}
-      {view?.userCode && !failed ? (
+      {view?.userCode && !stopped ? (
         <InputCopy
           value={view.userCode}
           label={t('code')}
@@ -479,7 +612,7 @@ function SignInFace({
           className="[&_mark]:text-subtitle [&_mark]:tracking-[0.12em]"
         />
       ) : null}
-      {view?.authUrl && !view.userCode && !failed ? (
+      {view?.authUrl && !view.userCode && !stopped ? (
         pasting ? (
           <form onSubmit={(event) => void submit(event)} className="flex items-end gap-2">
             <InputGroup className="min-w-0 flex-1">
@@ -492,10 +625,7 @@ function SignInFace({
                 spellCheck={false}
                 inputMode="url"
                 placeholder="http://127.0.0.1:1455/…"
-                onChange={(value) => {
-                  setRedirect(value);
-                  onTyped(Boolean(value));
-                }}
+                onChange={setRedirect}
               />
             </InputGroup>
             <Button type="submit" variant="tertiary" disabled={busy || !redirect.trim()}>
@@ -515,10 +645,10 @@ function SignInFace({
       ) : null}
       <div className="flex items-center justify-between gap-2">
         {back}
-        {failed ? (
-          <Button variant="primary" onClick={() => void start()}>
+        {stopped ? (
+          <KitButton variant="primary" loading={starting} onClick={() => void start()}>
             {t('tryAgain')}
-          </Button>
+          </KitButton>
         ) : view?.authUrl ? (
           <Button
             variant="primary"
@@ -551,12 +681,14 @@ function KeyFace({
   back: ReactNode;
 }) {
   const t = useTranslations('AddConnection');
+  const ts = useTranslations('SettingsDialog');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask(`api-key:${providerId}`);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => onTyped(Boolean(key)), [key, onTyped]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const value = key.trim();
@@ -564,29 +696,32 @@ function KeyFace({
     setBusy(true);
     setError(null);
     try {
-      await runTask(() => models.setApiKey(providerId, value, revision));
-      setKey('');
-      onTyped(false);
-      await refresh();
-      onDone();
+      await runTask(async () => {
+        try {
+          return await models.setApiKey(providerId, value, revision);
+        } catch (failure) {
+          if (!conflicted(failure)) throw failure;
+          // Something else was saved since: the key goes onto the config as it is now.
+          return await models.setApiKey(providerId, value, (await models.config()).revision);
+        }
+      });
     } catch (failure) {
+      // A key the server answered about leaves the page; one that never reached it stays to
+      // send again.
+      if (failure instanceof ApiError) setKey('');
       // The server's own reason, such as a provider that needs more than a key.
-      setError(failureText(failure, t));
+      setError(failureText(failure, t, ts));
+      return;
     } finally {
       setBusy(false);
     }
+    setKey('');
+    await refresh().catch(() => {});
+    onDone();
   };
   return (
     <form onSubmit={(event) => void submit(event)} className="grid gap-4">
-      <ApiKeyInput
-        kitLabel
-        value={key}
-        disabled={busy}
-        onChange={(value) => {
-          setKey(value);
-          onTyped(Boolean(value));
-        }}
-      />
+      <ApiKeyInput kitLabel value={key} disabled={busy} onChange={setKey} />
       {error ? (
         <p role="alert" className="m-0 text-body text-danger">
           {error}
@@ -620,6 +755,7 @@ function AddressFace({
   back: ReactNode;
 }) {
   const t = useTranslations('AddConnection');
+  const ts = useTranslations('SettingsDialog');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask('endpoint');
@@ -632,7 +768,61 @@ function AddressFace({
   const [error, setError] = useState<string | null>(null);
   // The endpoint this face saved, before the parent's config has caught up with it.
   const saved = useRef<{ endpoint: EndpointConfig; revision: string } | null>(null);
-  const changed = (next: string, before: string | undefined) => onTyped(next !== (before ?? ''));
+  // Typed input is whatever differs from the endpoint as saved, and a typed key.
+  const kept = saved.current?.endpoint ?? endpoint;
+  const typed =
+    name !== (kept?.name ?? '') ||
+    address !== (kept?.baseUrl ?? '') ||
+    access !== (kept?.access ?? 'api_key') ||
+    Boolean(key);
+  useEffect(() => onTyped(typed), [typed, onTyped]);
+
+  /** Saves the address onto `onto`, sends a typed key and fetches the model list. */
+  const connect = async (onto: ModelConfig) => {
+    if (!models) return;
+    const baseUrl = address.trim();
+    const label = name.trim() || new URL(baseUrl).host;
+    const current =
+      (saved.current &&
+        onto.modelProviders.find((entry) => entry.id === saved.current?.endpoint.id)) ??
+      saved.current?.endpoint ??
+      endpoint;
+    const known = Boolean(current && onto.modelProviders.some((entry) => entry.id === current.id));
+    let revision = known || !saved.current ? onto.revision : saved.current.revision;
+    const next: EndpointConfig = current
+      ? { ...current, name: label, baseUrl, access }
+      : {
+          id: endpointIdFor(label, takenIds),
+          name: label,
+          baseUrl,
+          access,
+          models: [],
+        };
+    const differs =
+      !current ||
+      current.name !== next.name ||
+      current.baseUrl !== next.baseUrl ||
+      current.access !== next.access;
+    if (differs) {
+      const others = onto.modelProviders.filter((entry) => entry.id !== next.id);
+      const result = await models.saveConfig({
+        revision,
+        modelProfiles: onto.modelProfiles,
+        modelProviders: [...others, next],
+      });
+      revision = result.revision;
+      saved.current = { endpoint: next, revision };
+    }
+    const typedKey = key.trim();
+    if (access === 'api_key' && typedKey) {
+      await models.setApiKey(next.id, typedKey, revision);
+      setKey('');
+    }
+    const fetched = await models.refreshEndpointModels(next.id, revision);
+    await refresh().catch(() => {});
+    if (fetched.kind === 'connected') onDone(next.id);
+    else setError(t(`fetch.${fetched.kind}`));
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -645,54 +835,18 @@ function AddressFace({
     setError(null);
     try {
       await runTask(async () => {
-        const baseUrl = address.trim();
-        const label = name.trim() || new URL(baseUrl).host;
-        const current =
-          (saved.current &&
-            config.modelProviders.find((entry) => entry.id === saved.current?.endpoint.id)) ??
-          saved.current?.endpoint ??
-          endpoint;
-        const known = Boolean(
-          current && config.modelProviders.some((entry) => entry.id === current.id),
-        );
-        let revision = known || !saved.current ? config.revision : saved.current.revision;
-        const next: EndpointConfig = current
-          ? { ...current, name: label, baseUrl, access }
-          : {
-              id: endpointIdFor(label, takenIds),
-              name: label,
-              baseUrl,
-              access,
-              models: [],
-            };
-        const differs =
-          !current ||
-          current.name !== next.name ||
-          current.baseUrl !== next.baseUrl ||
-          current.access !== next.access;
-        if (differs) {
-          const others = config.modelProviders.filter((entry) => entry.id !== next.id);
-          const result = await models.saveConfig({
-            revision,
-            modelProfiles: config.modelProfiles,
-            modelProviders: [...others, next],
-          });
-          revision = result.revision;
-          saved.current = { endpoint: next, revision };
+        try {
+          await connect(config);
+        } catch (failure) {
+          if (!conflicted(failure)) throw failure;
+          // Something else was saved since: the address goes onto the config as it is now.
+          await connect(await models.config());
         }
-        const typedKey = key.trim();
-        if (access === 'api_key' && typedKey) {
-          await models.setApiKey(next.id, typedKey, revision);
-          setKey('');
-        }
-        const fetched = await models.refreshEndpointModels(next.id, revision);
-        onTyped(false);
-        await refresh();
-        if (fetched.kind === 'connected') onDone(next.id);
-        else setError(t(`fetch.${fetched.kind}`));
       });
     } catch (failure) {
-      setError(failureText(failure, t));
+      // A key the server answered about leaves the page; one that never reached it stays.
+      if (failure instanceof ApiError) setKey('');
+      setError(failureText(failure, t, ts));
     } finally {
       setBusy(false);
     }
@@ -708,10 +862,7 @@ function AddressFace({
           disabled={busy}
           placeholder={t('namePlaceholder')}
           autoComplete="off"
-          onChange={(value) => {
-            setName(value);
-            changed(value, endpoint?.name);
-          }}
+          onChange={setName}
         />
         <InputField
           index={1}
@@ -727,13 +878,16 @@ function AddressFace({
           onChange={(value) => {
             setAddress(value);
             setInvalid(false);
-            changed(value, endpoint?.baseUrl);
           }}
         />
       </InputGroup>
       <Tabs
         value={access}
-        onValueChange={(value) => setAccess(value as EndpointConfig['access'])}
+        onValueChange={(value) => {
+          setAccess(value as EndpointConfig['access']);
+          // No key: a key typed for it does not stay behind.
+          if (value === 'none') setKey('');
+        }}
         className="w-full"
       >
         <TabsList aria-label={t('access')} className="w-full">
@@ -747,10 +901,7 @@ function AddressFace({
           value={key}
           disabled={busy}
           {...(endpoint || saved.current ? { placeholder: t('keepKey') } : {})}
-          onChange={(value) => {
-            setKey(value);
-            onTyped(Boolean(value));
-          }}
+          onChange={setKey}
         />
       ) : null}
       {error ? (

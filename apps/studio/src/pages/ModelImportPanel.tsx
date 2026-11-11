@@ -8,7 +8,7 @@ import {
   Tabs,
   TabsList,
 } from '@corral/react/design-kit';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
@@ -25,7 +25,7 @@ const SOURCES: { value: ModelImportSource; label: string }[] = [
  * Another tool's model settings, previewed then imported: a face of the add-connection dialog.
  * Commands, environment references and OAuth tokens never cross over.
  */
-export function ModelImportPanel() {
+export function ModelImportPanel({ onTyped }: { onTyped?: (typed: boolean) => void } = {}) {
   const t = useTranslations('ModelImport');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
@@ -38,7 +38,10 @@ export function ModelImportPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const runSettingsTask = useSettingsTask('models-import');
-  useSettingsForm({ dirty: Boolean(path || preview), pending: busy });
+  const typed = Boolean(path || preview);
+  useSettingsForm({ dirty: typed, pending: busy });
+  // The dialog this face is in asks before closing over a typed path or a preview.
+  useEffect(() => onTyped?.(typed), [typed, onTyped]);
   async function act(action: () => Promise<void>) {
     setBusy(true);
     setError(null);

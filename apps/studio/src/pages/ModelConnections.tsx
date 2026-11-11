@@ -1,9 +1,10 @@
-import type {
-  CatalogProvider,
-  ModelConfig,
-  ModelProfileView,
-  ProviderAuthView,
-  SourcedValue,
+import {
+  ApiError,
+  type CatalogProvider,
+  type ModelConfig,
+  type ModelProfileView,
+  type ProviderAuthView,
+  type SourcedValue,
 } from '@corral/client';
 import { providerMark } from '@corral/react';
 import {
@@ -25,12 +26,14 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { SettingsTaskPending } from '../workbench/settingsTasks.ts';
 import { AddConnectionDialog, type AddConnectionStart } from './AddConnectionDialog.tsx';
 import { ModelCatalogDialog } from './ModelCatalogDialog.tsx';
 import {
   type ConnectionAction,
   connectionState,
   modelKey,
+  modelReady,
   sortConnections,
 } from './modelConnections.ts';
 
@@ -59,39 +62,61 @@ export function ModelConnections({
   onOpenProfile: (profileId: string) => void;
 }) {
   const t = useTranslations('Connections');
+  const ts = useTranslations('SettingsDialog');
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask('model-connections');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddConnectionStart | null>(null);
   const [catalogView, setCatalogView] = useState<'show' | 'refresh' | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  // Each row acts on its own: one row's action neither blocks nor frees another's.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const act = async (providerId: string, action: () => Promise<unknown>) => {
-    setBusy(providerId);
+    setBusy((all) => new Set(all).add(providerId));
     setErrors(({ [providerId]: _, ...rest }) => rest);
     try {
-      await runTask(action);
-      await refresh();
+      await runTask(action, providerId);
     } catch (failure) {
       setErrors((all) => ({
         ...all,
-        [providerId]: t('failed', {
-          message: failure instanceof Error ? failure.message : String(failure),
-        }),
+        [providerId]:
+          failure instanceof SettingsTaskPending
+            ? ts('pending')
+            : t('failed', {
+                message: failure instanceof Error ? failure.message : String(failure),
+              }),
       }));
+      return;
     } finally {
-      setBusy(null);
+      setBusy((all) => {
+        const next = new Set(all);
+        next.delete(providerId);
+        return next;
+      });
     }
+    // Done; a list that fails to load after it does not undo that.
+    await refresh().catch(() => {});
   };
+  const conflicted = (failure: unknown) =>
+    failure instanceof ApiError && failure.code === 'REVISION_CONFLICT';
   const refreshModels = (provider: ProviderAuthView) =>
     config &&
-    act(
-      provider.providerId,
-      () =>
-        models?.refreshEndpointModels(provider.providerId, config.revision) ?? Promise.resolve(),
-    );
+    models &&
+    act(provider.providerId, async () => {
+      try {
+        return await models.refreshEndpointModels(provider.providerId, config.revision);
+      } catch (failure) {
+        if (!conflicted(failure)) throw failure;
+        // Something else was saved since (effort routing, a profile): fetch on the config as it
+        // is now.
+        return await models.refreshEndpointModels(
+          provider.providerId,
+          (await models.config()).revision,
+        );
+      }
+    });
   const run = (provider: ProviderAuthView, action: ConnectionAction) => {
     if (action === 'retry') return void refreshModels(provider);
     if (provider.endpoint) return setAdding({ face: 'address', providerId: provider.providerId });
@@ -112,14 +137,15 @@ export function ModelConnections({
       return;
     }
     void act(provider.providerId, async () => {
-      // The key goes first, while the server still knows the endpoint.
-      if (provider.method === 'api_key' && provider.source === 'corral')
-        await models.logout(provider.providerId);
+      // The config goes first, checked against the revision shown; only once it is saved does
+      // the key go (the server removes a key left for a removed endpoint).
       await models.saveConfig({
         revision: config.revision,
         modelProfiles: config.modelProfiles,
         modelProviders: config.modelProviders.filter((e) => e.id !== provider.providerId),
       });
+      if (provider.method === 'api_key' && provider.source === 'corral')
+        await models.logout(provider.providerId);
     });
   };
 
@@ -138,22 +164,19 @@ export function ModelConnections({
         : t(`cause.${state.cause}`);
     const action = state.kind === 'action' ? state.action : null;
     const logo = providerMark(provider.providerId);
+    const working = busy.has(provider.providerId);
     return {
       id: provider.providerId,
       name: provider.name,
       ...(logo ? { logo } : {}),
-      status:
-        state.kind === 'connected'
-          ? 'connected'
-          : busy === provider.providerId
-            ? 'connecting'
-            : state.status,
+      // The state stays the provider's own while an action runs; the action shows it is busy.
+      status: state.kind === 'connected' ? 'connected' : state.status,
       line,
       action: action
         ? {
             label: t(`action.${action}`),
             name: t('actionNamed', { action: t(`action.${action}`), name: provider.name }),
-            loading: busy === provider.providerId,
+            loading: working,
             run: () => run(provider, action),
           }
         : null,
@@ -163,7 +186,8 @@ export function ModelConnections({
           catalog={catalog}
           profiles={profiles}
           config={config}
-          busy={busy === provider.providerId}
+          open={expanded === provider.providerId}
+          busy={working}
           error={errors[provider.providerId] ?? null}
           onMakeProfile={onMakeProfile}
           onOpenProfile={onOpenProfile}
@@ -287,8 +311,7 @@ function modelsOf(
   const seen = new Set<string>();
   const out: ConnectionModel[] = [];
   for (const view of profiles) {
-    if (view.provider !== provider.providerId || !view.available) continue;
-    if (view.source === 'profile' && !view.keyConfigured) continue;
+    if (view.provider !== provider.providerId || !modelReady(view)) continue;
     if (seen.has(view.modelId)) continue;
     seen.add(view.modelId);
     const config = { source: 'config' as const };
@@ -322,6 +345,7 @@ function ConnectionDetails({
   catalog,
   profiles,
   config,
+  open,
   busy,
   error,
   onMakeProfile,
@@ -336,6 +360,8 @@ function ConnectionDetails({
   catalog: CatalogProvider[];
   profiles: ModelProfileView[];
   config: ModelConfig | null;
+  /** The row is expanded; folding it clears its filter. */
+  open: boolean;
   busy: boolean;
   error: string | null;
   onMakeProfile: (provider: string, modelId: string) => void;
@@ -352,15 +378,24 @@ function ConnectionDetails({
   const list = useMemo(() => modelsOf(provider, catalog, profiles), [provider, catalog, profiles]);
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState(PAGE);
-  const [focusIndex, setFocusIndex] = useState(0);
+  const [focusAt, setFocusIndex] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
-  const q = query.trim().toLowerCase();
+  // The filter is there only for a long list and only while the row is open.
+  const filtering = list.length > FILTER_FROM;
+  if (query && (!open || !filtering)) {
+    setQuery('');
+    setShown(PAGE);
+    setFocusIndex(0);
+  }
+  const q = filtering ? query.trim().toLowerCase() : '';
   const matches = q
     ? list.filter((model) =>
         q.split(/\s+/).every((word) => `${model.name} ${model.id}`.toLowerCase().includes(word)),
       )
     : list;
   const drawn = matches.slice(0, shown);
+  // A list that shrank keeps its one tab stop on a row that is still there.
+  const focusIndex = Math.min(focusAt, Math.max(0, drawn.length - 1));
   const users = (config?.modelProfiles ?? []).filter((p) => p.provider === provider.providerId);
   const own =
     provider.source === 'corral' && (provider.method === 'oauth' || provider.method === 'api_key');
@@ -399,7 +434,7 @@ function ConnectionDetails({
           {tm('codexPermissions')}
         </p>
       ) : null}
-      {list.length > FILTER_FROM ? (
+      {filtering ? (
         <InputGroup className="w-full">
           <InputField
             index={0}
@@ -518,7 +553,7 @@ function ConnectionDetails({
           })}
         </ul>
       ) : null}
-      {list.length > FILTER_FROM && q && !matches.length ? (
+      {filtering && q && !matches.length ? (
         <p className="m-0 text-caption text-muted-foreground [overflow-wrap:anywhere]">
           {t('noMatch', { query: query.trim() })}
         </p>

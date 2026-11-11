@@ -5905,6 +5905,7 @@
     "pasteToggle": "Paste the address instead",
     "pasteLabel": "Address the browser stopped on",
     "paste": "Use this address",
+    "pasteRefused": "The address was not accepted.",
     "signInFailed": "Sign-in didn’t finish: {message}",
     "tryAgain": "Try again",
     "connect": "Connect",
