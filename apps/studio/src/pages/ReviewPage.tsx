@@ -31,6 +31,7 @@ import {
   MenuTrigger,
   Select,
   Tooltip,
+  useSize,
 } from '@corral/react/design-kit';
 import { Check, ChevronDown, Eye, Info, ListFilter, Plus, Trash2 } from '@corral/react/icons';
 import type { FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
@@ -473,7 +474,6 @@ export function ReviewContent({
                 <>
                   <Button
                     variant="tertiary"
-                    size="compact"
                     onClick={() =>
                       void workspaces
                         ?.markReviewed(session.sessionId)
@@ -510,7 +510,6 @@ export function ReviewContent({
               <p className="m-0 text-body text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  size="compact"
                   render={
                     <Link
                       to="/sessions/$sessionId"
@@ -523,7 +522,6 @@ export function ReviewContent({
                 </Button>
                 <Button
                   variant="tertiary"
-                  size="compact"
                   onClick={onPrepareCopy}
                   render={
                     onPrepareCopy ? undefined : (
@@ -545,7 +543,7 @@ export function ReviewContent({
               className="flex flex-wrap items-center gap-2 p-3 text-body text-destructive"
             >
               {t('failed', { message: error })}
-              <Button variant="tertiary" size="compact" onClick={() => setVersion((n) => n + 1)}>
+              <Button variant="tertiary" onClick={() => setVersion((n) => n + 1)}>
                 {t('retry')}
               </Button>
             </div>
@@ -917,7 +915,6 @@ export function FileDiff({
       ) : (
         <Button
           variant="tertiary"
-          size="compact"
           className="self-start"
           onClick={() => setPick({ key: loadKey, range, open: true })}
         >
@@ -964,7 +961,6 @@ export function FileDiff({
             <Button
               key={value}
               variant={layout === value ? 'secondary' : 'ghost'}
-              size="compact"
               aria-pressed={layout === value}
               onClick={() => setLayout(value)}
             >
@@ -976,7 +972,6 @@ export function FileDiff({
           <Tooltip content={t('changeReviewNote')}>
             <Button
               variant={mark.pressed ? 'secondary' : 'tertiary'}
-              size="compact"
               aria-pressed={mark.pressed}
               onClick={mark.toggle}
               className="shrink-0"
@@ -1019,7 +1014,7 @@ export function FileDiff({
             </p>
           ) : layout === 'raw' ? (
             <div className={cn('flex min-h-0 flex-col gap-2', fill && 'flex-1 p-3')}>
-              <Button variant="tertiary" size="compact" onClick={download} className="self-start">
+              <Button variant="tertiary" onClick={download} className="self-start">
                 {t('downloadFile')}
               </Button>
               <pre
@@ -1256,6 +1251,7 @@ export function CommentsPanel({
   const tc = useTranslations('Composer');
   const td = useTranslations('Docking');
   const widgets = useTranslations('Widgets');
+  const stateInset = useSize().variant === 'compact' ? '-ml-1.5' : '-ml-2.5';
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces } = services;
@@ -1398,7 +1394,6 @@ export function CommentsPanel({
   const sendButton = (
     <Button
       variant={stepBack ? 'tertiary' : 'primary'}
-      size="compact"
       type="button"
       disabled={busy || startBlocked || (!pending && Boolean(active) && !steerTo)}
       onClick={() => void send()}
@@ -1440,7 +1435,7 @@ export function CommentsPanel({
                 <Tooltip content={t('deleteDraft')}>
                   <Button
                     variant="ghost"
-                    size="icon-compact"
+                    size="icon"
                     aria-label={t('deleteDraft')}
                     disabled={busy || Boolean(pending)}
                     onClick={() =>
@@ -1460,7 +1455,6 @@ export function CommentsPanel({
           {destinations.length > 1 ? (
             <Select
               label={t('sendTo')}
-              size="xs"
               value={destination}
               disabled={busy || Boolean(pending) || !runsReady}
               onValueChange={setTarget}
@@ -1493,7 +1487,6 @@ export function CommentsPanel({
               : tc('reasoningUnsupportedHint')}
           </span>
           <Button
-            size="compact"
             variant="tertiary"
             render={
               modelBlocked ? (
@@ -1531,12 +1524,11 @@ export function CommentsPanel({
                   <CommentBody body={c.body} />
                 </p>
                 {c.state === 'submitted' ? (
-                  <div className="-ml-1.5 flex gap-1">
+                  <div className={`${stateInset} flex gap-1`}>
                     {(['addressed', 'obsolete'] as const).map((state) => (
                       <Button
                         key={state}
                         variant="ghost"
-                        size="compact"
                         onClick={() =>
                           void workspaces
                             ?.setCommentState(session.sessionId, c.commentId, state)
@@ -1660,7 +1652,6 @@ export function DecisionPanel({
         {settled ? null : (
           <Button
             variant={primary ? 'primary' : 'tertiary'}
-            size="compact"
             type="button"
             disabled={busy}
             onClick={() => void act(() => decide('approved'))}
@@ -1670,14 +1661,13 @@ export function DecisionPanel({
         )}
         <Button
           variant="tertiary"
-          size="compact"
           disabled={busy}
           onClick={() => void act(() => decide('changes_requested'))}
         >
           {t('requestChanges')}
         </Button>
         <Tooltip content={t('decisionScope')}>
-          <Button variant="ghost" size="icon-compact" aria-label={t('decisionScope')}>
+          <Button variant="ghost" size="icon" aria-label={t('decisionScope')}>
             <Info aria-hidden />
           </Button>
         </Tooltip>
@@ -1696,14 +1686,13 @@ export function DecisionPanel({
                 {t('integrateHeading')}
               </h4>
               <Tooltip content={t('integrateNote')}>
-                <Button variant="ghost" size="icon-compact" aria-label={t('integrateNote')}>
+                <Button variant="ghost" size="icon" aria-label={t('integrateNote')}>
                   <Info aria-hidden />
                 </Button>
               </Tooltip>
             </div>
             <Button
               variant={plan ? 'tertiary' : 'secondary'}
-              size="compact"
               onClick={() =>
                 void act(async () => {
                   if (workspaces)
@@ -1735,7 +1724,6 @@ export function DecisionPanel({
                 </ul>
                 <Button
                   variant="primary"
-                  size="compact"
                   type="button"
                   disabled={busy || active || applying === 0}
                   onClick={() => {
@@ -1774,7 +1762,6 @@ export function DecisionPanel({
               <Tooltip content={t('revertNote')}>
                 <Button
                   variant="tertiary"
-                  size="compact"
                   disabled={busy || active}
                   onClick={() => setRevertTarget({ sessionId, integration })}
                   className="self-start"
@@ -1872,6 +1859,9 @@ function FileList({
   sinceRead?: boolean;
 }) {
   const t = useTranslations('Files');
+  // A row grows with its name: the control height of the interface density is its least.
+  const compact = useSize().variant === 'compact';
+  const rowHeight = compact ? 'min-h-7' : 'min-h-9';
   const listId = useId();
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | FileChangeView['status']>('all');
@@ -1906,12 +1896,14 @@ function FileList({
       <li key={file.path}>
         <Button
           variant={selected === file.path ? 'secondary' : 'ghost'}
-          size="sm-multiline"
           aria-current={selected === file.path ? 'true' : undefined}
           data-review-file={file.path}
           title={file.path}
           onClick={() => onChoose(file.path)}
-          className="w-full justify-start px-2 py-1 text-left"
+          className={cn(
+            'h-auto w-full justify-start whitespace-normal px-2 py-1 text-left',
+            rowHeight,
+          )}
         >
           <span
             aria-hidden
@@ -1990,12 +1982,11 @@ function FileList({
         </h3>
         <Button
           variant="ghost"
-          size="compact"
           aria-expanded={!collapsed}
           aria-controls={listId}
           disabled={files.length === 0}
           onClick={() => setFold({ file: selected, collapsed: !collapsed })}
-          className="-ml-2 @min-[880px]/review:hidden"
+          className={cn(compact ? '-ml-2' : '-ml-3', '@min-[880px]/review:hidden')}
         >
           {count}
           <ChevronDown
@@ -2008,7 +1999,7 @@ function FileList({
         </Button>
         {files.length > 0 ? (
           <Tooltip content={t('ignoredNote')}>
-            <Button variant="ghost" size="icon-compact" aria-label={t('ignoredNote')}>
+            <Button variant="ghost" size="icon" aria-label={t('ignoredNote')}>
               <Info aria-hidden />
             </Button>
           </Tooltip>
@@ -2026,7 +2017,6 @@ function FileList({
         <div className="flex items-center gap-1">
           <Input
             type="search"
-            size="compact"
             aria-label={t('filterSearch')}
             placeholder={t('filterSearch')}
             value={query}
@@ -2038,7 +2028,7 @@ function FileList({
                 render={
                   <Button
                     variant={kind !== 'all' || unreviewedOnly ? 'secondary' : 'ghost'}
-                    size="icon-compact"
+                    size="icon"
                     aria-label={t('filterFiles')}
                   />
                 }

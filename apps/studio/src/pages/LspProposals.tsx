@@ -102,7 +102,7 @@ export function LspProposals({
         </h3>
         <Button
           variant="ghost"
-          size="icon-compact"
+          size="icon"
           aria-label={t('refresh')}
           title={t('refresh')}
           onClick={() => setRefresh((current) => current + 1)}
@@ -112,7 +112,7 @@ export function LspProposals({
       </div>
       {items.map((item) => (
         <div key={item.proposalId} className="flex flex-col gap-1 border-b border-line pb-2">
-          <Button variant="tertiary" size="compact" onClick={() => setSelected(item.proposalId)}>
+          <Button variant="tertiary" onClick={() => setSelected(item.proposalId)}>
             {t('review', { title: item.title })}
           </Button>
           <p className="text-caption text-muted-foreground">

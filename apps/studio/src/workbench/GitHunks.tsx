@@ -193,7 +193,6 @@ function HunkSelection({
             <p className="text-muted-foreground">{t('empty')}</p>
           )}
           <Button
-            size="compact"
             variant="tertiary"
             className="self-start"
             disabled={disabled || submitting || !ids.length}

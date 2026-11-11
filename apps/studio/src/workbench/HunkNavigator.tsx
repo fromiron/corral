@@ -90,7 +90,7 @@ export function HunkNavigator({
       <Tooltip content={t('previousChange')} shortcut={REVIEW_MOVE_KEYS.previousChange}>
         <Button
           variant="ghost"
-          size="icon-compact"
+          size="icon"
           aria-label={t('previousChange')}
           aria-keyshortcuts={REVIEW_MOVE_KEYS.previousChange}
           disabled={hunks.length === 0 || index === 0}
@@ -102,7 +102,7 @@ export function HunkNavigator({
       <Tooltip content={t('nextChange')} shortcut={REVIEW_MOVE_KEYS.nextChange}>
         <Button
           variant="ghost"
-          size="icon-compact"
+          size="icon"
           aria-label={t('nextChange')}
           aria-keyshortcuts={REVIEW_MOVE_KEYS.nextChange}
           disabled={hunks.length === 0 || index === hunks.length - 1}

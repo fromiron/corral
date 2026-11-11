@@ -69,7 +69,6 @@ export function LineRangePopover({
                 ref={from}
                 id={`${id}-from`}
                 nativeInput
-                size="sm"
                 type="number"
                 min={1}
                 max={lineCount}
@@ -86,7 +85,6 @@ export function LineRangePopover({
               <Input
                 id={`${id}-to`}
                 nativeInput
-                size="sm"
                 type="number"
                 min={range.start}
                 max={lineCount}
@@ -95,7 +93,7 @@ export function LineRangePopover({
                 className="w-20"
               />
             </label>
-            <Button type="submit" size="compact" disabled={!valid || disabled}>
+            <Button type="submit" disabled={!valid || disabled}>
               {action}
             </Button>
           </div>
