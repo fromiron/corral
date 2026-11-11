@@ -408,7 +408,7 @@ it('retries an uncertain queued snapshot with the same command identity and incl
   expect(edited.commandId).not.toBe(first.commandId);
 });
 
-it('an explain draft with captured context requires an explicit follow-up choice before sending', async () => {
+it('an explain draft from an earlier version is sent as a next request with its captured context', async () => {
   const sessionId = 'context_explain';
   writeComposerDraft(sessionId, {
     text: 'Explain this capture',
@@ -424,14 +424,12 @@ it('an explain draft with captured context requires an explicit follow-up choice
     [],
     [{ ...active, runId: 'finished', sessionId, status: 'succeeded' }],
   );
-  const send = f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]');
-  expect(send?.disabled).toBe(true);
+  // A stored intent other than an instruction is not fixed on the draft: nothing blocks it.
+  expect(f.container.querySelector('[data-testid="intent-blocked"]')).toBeNull();
   expect(readComposerDraft(sessionId)).toMatchObject({
     text: 'Explain this capture',
     attachments: [captured],
   });
-  expect(f.startExplain).not.toHaveBeenCalled();
-  await f.click('Send as a follow-up');
   await f.click('Send');
   expect(f.startExplain).not.toHaveBeenCalled();
   expect(f.startAuto).toHaveBeenCalledWith(
@@ -593,7 +591,7 @@ it('removes one legacy same-name result while preserving the other exact draft r
   ).not.toBeNull();
 });
 
-it('names the viewed and active runs and the queue destination without changing the draft intent', async () => {
+it('names the viewed and active runs and that the request waits, without changing the draft', async () => {
   const sessionId = 'view_old_run';
   const current = { ...active, runId: 'second', sessionId };
   const previous = { ...current, runId: 'first', status: 'cancelled' as const };
@@ -609,9 +607,9 @@ it('names the viewed and active runs and the queue destination without changing 
     'Viewing Run #1 while Run #2 is active',
   );
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
-    'Send to: next run in this session · queue',
+    messages.Composer.destination.queue,
   );
-  expect(readComposerDraft(sessionId).intent).toBe('queue');
+  expect(readComposerDraft(sessionId).text).toBe('Later request');
 });
 
 it('names the selected run and role for an instruction', async () => {
@@ -625,11 +623,16 @@ it('names the selected run and role for an instruction', async () => {
     'second',
   );
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
-    'Send to: next run in this session · queue',
+    messages.Composer.destination.queue,
   );
   await f.click(messages.Sessions.intentLabel);
-  const instruction = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
-    (option) => option.textContent?.includes(messages.Sessions.intentShort.steer),
+  const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  // Two things to choose from: a next request or an instruction; no separate queue.
+  expect(options).toHaveLength(2);
+  expect(options[0]?.textContent).toContain(messages.Sessions.intentShort.next);
+  expect(options.some((option) => option.textContent?.includes('Queue'))).toBe(false);
+  const instruction = options.find((option) =>
+    option.textContent?.includes(messages.Sessions.intentShort.steer),
   );
   expect(instruction).toBeDefined();
   await act(async () => instruction?.click());
@@ -638,7 +641,7 @@ it('names the selected run and role for an instruction', async () => {
   );
 });
 
-it('keeps one plan and the same draft input when explicitly switching from queue to instruction', async () => {
+it('keeps one plan and the same draft input when explicitly switching from a next request to an instruction', async () => {
   const sessionId = 'compact_instruction';
   writeComposerDraft(sessionId, {
     text: 'Keep this request',
@@ -1232,7 +1235,7 @@ it('an instruction destination shows above the input and still describes it', as
   expect(describedBy(f.container)).toContain(line?.id);
 });
 
-it('a queue destination is said by the send mode choice; the input still describes it', async () => {
+it('a next request that will wait is said by the input description only', async () => {
   const sessionId = 'quiet_destination_queue';
   const current = { ...active, sessionId };
   writeComposerDraft(sessionId, {
@@ -1244,12 +1247,12 @@ it('a queue destination is said by the send mode choice; the input still describ
   });
   const f = await mount(sessionId, current, [], [current]);
   const line = destination(f.container);
-  expect(line?.textContent).toContain('queue');
+  expect(line?.textContent).toBe(messages.Composer.destination.queue);
   expect(line?.classList.contains('sr-only')).toBe(true);
   expect(describedBy(f.container)).toContain(line?.id);
-  expect(f.container.querySelector('[data-testid="composer-status-pills"]')?.textContent).toContain(
-    messages.Sessions.intentShort.queue,
-  );
+  expect(
+    f.container.querySelector('[data-testid="composer-status-pills"]')?.textContent,
+  ).not.toContain(messages.Sessions.intentShort.queue);
 });
 
 it('an instruction whose target ended shows that it cannot be delivered', async () => {
@@ -1267,6 +1270,80 @@ it('an instruction whose target ended shows that it cannot be delivered', async 
   expect(line?.textContent).toContain('target unavailable');
   expect(line?.classList.contains('sr-only')).toBe(false);
   expect(describedBy(f.container)).toContain(line?.id);
+});
+
+/** Types into the request box as a person does. */
+async function type(container: HTMLElement, value: string) {
+  const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]');
+  expect(input).not.toBeNull();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+      input,
+      value,
+    );
+    input?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+it('a next request typed during a run is sent after the run ends with no block and starts a run', async () => {
+  const sessionId = 'typed_during_run';
+  const ownRun = { ...active, sessionId };
+  const f = await mount(sessionId, ownRun, [], [ownRun]);
+  await type(f.container, 'After this run, write the summary');
+  expect(destination(f.container)?.textContent).toBe(messages.Composer.destination.queue);
+  // The run ends while the draft waits in the box.
+  await f.render(null, []);
+  expect(f.container.querySelector('[data-testid="intent-blocked"]')).toBeNull();
+  expect(destination(f.container)?.textContent).toBe(messages.Composer.destination.next);
+  await f.click('Send');
+  expect(f.startAuto).toHaveBeenCalledWith(
+    expect.objectContaining({ brief: 'After this run, write the summary' }),
+    expect.anything(),
+  );
+  expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+    sessionId,
+    expect.objectContaining({ intent: 'next', state: 'started', runId: 'started' }),
+  );
+});
+
+it('a next request typed while idle and sent after a run started waits behind that run', async () => {
+  const sessionId = 'typed_while_idle';
+  const f = await mount(sessionId, null);
+  await type(f.container, 'Then check the docs');
+  expect(destination(f.container)?.textContent).toBe(messages.Composer.destination.next);
+  await f.render({ ...active, sessionId }, []);
+  await f.click('Send');
+  expect(f.startAuto).not.toHaveBeenCalled();
+  expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+    sessionId,
+    expect.objectContaining({ intent: 'queue', state: 'queued', text: 'Then check the docs' }),
+  );
+});
+
+it('an instruction typed for a run that then ends stays blocked, and its draft is kept', async () => {
+  const sessionId = 'instruction_run_ended';
+  const ownRun = { ...active, sessionId };
+  const f = await mount(sessionId, ownRun, [], [ownRun]);
+  await f.click(messages.Sessions.intentLabel);
+  const instruction = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (option) => option.textContent?.includes(messages.Sessions.intentShort.steer),
+  );
+  await act(async () => instruction?.click());
+  await type(f.container, 'Use shorter sentences');
+  await f.render(null, []);
+  expect(f.container.querySelector('[data-testid="intent-blocked"]')?.textContent).toContain(
+    messages.Composer.blocked.run,
+  );
+  const send = f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]');
+  expect(send?.disabled).toBe(true);
+  expect(f.container.querySelector('textarea')?.value).toBe('Use shorter sentences');
+  expect(readComposerDraft(sessionId)).toMatchObject({
+    text: 'Use shorter sentences',
+    intent: 'steer',
+    target: 'execution',
+  });
+  expect(f.transport.sendCommand).not.toHaveBeenCalled();
+  expect(f.startAuto).not.toHaveBeenCalled();
 });
 
 it.each(['next', 'queue'] as const)(

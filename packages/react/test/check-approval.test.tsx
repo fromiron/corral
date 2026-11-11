@@ -175,6 +175,7 @@ it('command approval leads with source and launch scope, keeps transport in disc
     environmentHash: 'c'.repeat(64),
     timeoutMs: 120000,
     mode: 'service',
+    launchFingerprint: 'e'.repeat(64),
     fingerprint: 'd'.repeat(64),
     request: { command: 'Write-Output "hello"', mode: 'service' },
   };
@@ -251,6 +252,7 @@ const commandArgs = (mode: 'service' | 'foreground') => ({
   environmentHash: 'c'.repeat(64),
   timeoutMs: 120000,
   mode,
+  launchFingerprint: 'e'.repeat(64),
   fingerprint: 'd'.repeat(64),
 });
 const summaries: [string, Record<string, unknown>][] = [

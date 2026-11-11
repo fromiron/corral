@@ -257,6 +257,8 @@ describe('Coordinator model requests', () => {
     ).toBe(true);
     const approval = Object.values(s.projection().approvals).find((a) => a.status === 'pending');
     if (!approval) throw new Error('no-progress approval not created');
+    // The approval says which limit paused the run, from the fact committed right before it.
+    expect(approval.limit).toEqual({ kind: 'no_progress', used: 6, max: 6 });
     expect(
       s.send(
         'resolve_approval',

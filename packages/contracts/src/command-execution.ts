@@ -37,6 +37,13 @@ export const CommandPlan = z.strictObject({
   environmentHash: ContentHash,
   timeoutMs: z.int().min(1000).max(1800000),
   mode: z.enum(['foreground', 'service']).optional(),
+  /**
+   * The launch without this call's own operation and the working tree's contents: executable and
+   * its content hash, argv, shell, cwd, environment, timeout, mode, the working-copy identity, the
+   * source command and the call's final arguments. "Allow for this run" matches commands by it.
+   */
+  launchFingerprint: ContentHash,
+  /** This call exactly, operation and tree included: what an approval names and the broker checks. */
   fingerprint: ContentHash,
 });
 export type CommandPlan = z.infer<typeof CommandPlan>;

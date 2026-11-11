@@ -375,6 +375,11 @@ export const ApprovalRequested = event(
         toolCallId: Identifier,
         bodyRef: Identifier,
         fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+        /**
+         * The key "allow for this run" matches a later call by, when it is not `fingerprint`: a
+         * command's launch under the same tool and policy, without its call and working tree.
+         */
+        grantFingerprint: ContentHash.optional(),
         targetTree: z
           .string()
           .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
@@ -385,7 +390,9 @@ export const ApprovalRequested = event(
         (tool) =>
           tool.purpose === 'tool'
             ? tool.effectId === undefined && tool.targetTree === undefined
-            : tool.effectId !== undefined && tool.targetTree !== undefined,
+            : tool.effectId !== undefined &&
+              tool.targetTree !== undefined &&
+              tool.grantFingerprint === undefined,
         'invalid approval scope',
       )
       .optional(),
@@ -398,9 +405,15 @@ export const ApprovalResolved = event(
     decision: z.enum(['approve', 'reject']),
     actor: Identifier,
     subjectVersionIds: Ids,
-    reason: z.enum(['cancelled', 'timeout', 'execution_ended']).optional(),
+    /**
+     * Why the runtime closed it: stopped, timed out or its execution ended (rejected), or a waiting
+     * tool call covered by another approval of the Run for the run (approved).
+     */
+    reason: z.enum(['cancelled', 'timeout', 'execution_ended', 'allowed_for_run']).optional(),
     /** The route a person picked when approving a `route` approval. */
     routeId: Identifier.optional(),
+    /** How far an approved tool call reaches: this call, or also the Run's same-fingerprint calls. */
+    scope: z.enum(['once', 'run']).optional(),
   }),
 );
 /** A Join let one path continue; `any` names the steps of the branches it stopped. */
@@ -573,6 +586,19 @@ export const ToolAllowed = event(
         argumentsHash: ContentHash,
       })
       .optional(),
+  }),
+);
+/**
+ * A call passed without asking because a tool approval of this Run with `scope: run` covers its
+ * exact fingerprint; `approvalId` is that approval.
+ */
+export const ToolAuthorized = event(
+  'tool.authorized',
+  z.strictObject({
+    executionId: Identifier,
+    toolCallId: Identifier,
+    approvalId: Identifier,
+    fingerprint: ContentHash,
   }),
 );
 export const ToolBlocked = event(
@@ -833,6 +859,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   EffectSettled,
   ToolRequested,
   ToolAllowed,
+  ToolAuthorized,
   ToolBlocked,
   ToolStarted,
   ToolFinished,

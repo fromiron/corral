@@ -175,6 +175,11 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "tool.authorized",
+    "requiredContent": "executionId,toolCallId,approvalId,fingerprint",
+    "status": "payload_schema_to_implement"
+  },
+  {
     "type": "tool.blocked",
     "requiredContent": "toolCallId,reason",
     "status": "payload_schema_to_implement"

@@ -1,7 +1,13 @@
 import { ReviewArtifact } from '@corral/contracts';
 import { expect, it } from 'vitest';
 import { assertImagePayload, assertProtectedPayload } from '../src/request-record.ts';
-import { parametersOf, promptSections, systemPrompt, userPrompt } from '../src/worker-tools.ts';
+import {
+  parametersOf,
+  promptSections,
+  systemPrompt,
+  TOOL_TEXT,
+  userPrompt,
+} from '../src/worker-tools.ts';
 
 const start = {
   type: 'start',
@@ -77,6 +83,16 @@ it('supplies the configured image profile and structured generator schema to the
     properties: { size: { enum: ['1024x1024', '1536x1024', '1024x1536'] } },
     additionalProperties: false,
   });
+});
+
+it('describes update_plan as a plain checklist with no verification fields', () => {
+  const schema = JSON.stringify(parametersOf('update_plan', start));
+  expect(schema).toContain('"title"');
+  expect(schema).toContain('"status"');
+  expect(schema).not.toContain('requiresVerification');
+  expect(schema).not.toContain('evidenceRefs');
+  expect(TOOL_TEXT.update_plan).not.toMatch(/verification|run_check|resultRef|evidence/i);
+  expect(TOOL_TEXT.update_plan).toContain('does not submit or finish the task');
 });
 
 it('requires plans for multistep work only when update_plan is available', () => {

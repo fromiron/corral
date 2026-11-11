@@ -40,8 +40,8 @@ async function header(locale: 'en' | 'ko', intent: SessionIntent) {
         <ComposerHeader
           choosingAuto={false}
           onCancelAuto={() => {}}
-          // While a run is in progress the next message is queued or an instruction.
-          allowed={['queue', 'steer']}
+          // While a run is in progress the next message is a next request or an instruction.
+          allowed={['next', 'steer']}
           blocked={null}
           intent={intent}
           onChooseIntent={() => {}}
@@ -66,9 +66,14 @@ it.each(['en', 'ko'] as const)(
     const messages = locale === 'en' ? en : ko;
     const states = ['running', 'pausing', 'paused', 'awaiting_user'] as const;
     const stateWords = new Set(states.flatMap((state) => words(messages.Status[state])));
-    for (const intent of ['queue', 'steer'] as const) {
+    // A next request sent now waits behind the run (`queue`); it is still named a next request.
+    for (const [intent, choice] of [
+      ['queue', 'next'],
+      ['steer', 'steer'],
+    ] as const) {
       const line = await header(locale, intent);
-      expect(line).toContain(messages.Sessions.intentShort[intent]);
+      expect(line).toContain(messages.Sessions.intentShort[choice]);
+      expect(line).not.toContain(messages.Sessions.intentShort.queue);
       expect(words(line).filter((word) => stateWords.has(word))).toEqual([]);
     }
   },

@@ -59,6 +59,34 @@ describe('chat widget selectors', () => {
     expect(action.hasFailure).toBe(true);
     expect(actionTone(action)).toBe('warning');
   });
+  it('counts only what a person must answer: approvals, questions and unknown results', () => {
+    // The live finding: one approval waited while three tool steps had failed.
+    const waiting = actionRequired({
+      pendingApprovals: 1,
+      pendingQuestions: 0,
+      failedEffects: 3,
+      unclearEffects: 0,
+      runStatus: 'awaiting_user',
+    });
+    expect(waiting).toMatchObject({ visible: true, count: 1, summary: 'approval' });
+    expect(actionCopy(waiting)).toEqual(['actionApproval']);
+    const several = actionRequired({
+      pendingApprovals: 1,
+      pendingQuestions: 1,
+      failedEffects: 2,
+      unclearEffects: 1,
+    });
+    expect(several).toMatchObject({ count: 3, summary: 'mixed' });
+    // Failures alone are still told, without counting as items to answer.
+    expect(
+      actionRequired({
+        pendingApprovals: 0,
+        pendingQuestions: 0,
+        failedEffects: 2,
+        unclearEffects: 0,
+      }),
+    ).toMatchObject({ visible: true, count: 0, summary: 'failure', hasFailure: true });
+  });
   it('tells an ordinary question in the info tone and keeps the warning for what can go wrong', () => {
     const action = (patch: Partial<Parameters<typeof actionRequired>[0]>) =>
       actionRequired({
@@ -522,8 +550,9 @@ describe('chat widget selectors', () => {
           unclearEffects: 0,
           runStatus,
         }),
-      ).toMatchObject({ visible: true, summary: 'failure', count: 1, needsUser: false });
+      ).toMatchObject({ visible: true, summary: 'failure', count: 0, needsUser: false });
     }
+    // An unknown result is the one item to answer; the failure beside it is not counted.
     expect(
       actionRequired({
         pendingApprovals: 0,
@@ -531,7 +560,7 @@ describe('chat widget selectors', () => {
         failedEffects: 1,
         unclearEffects: 1,
       }),
-    ).toMatchObject({ summary: 'mixed', needsUser: false, hasFailure: true });
+    ).toMatchObject({ summary: 'unclear', count: 1, needsUser: false, hasFailure: true });
   });
 
   it('distinguishes active, queued, paused and failed agent states', () => {

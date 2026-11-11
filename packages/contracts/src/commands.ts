@@ -119,6 +119,11 @@ export const ResolveApprovalCommand = z.strictObject({
     subjectVersionId: Identifier,
     /** Required when approving a `route` approval, and only then. */
     routeId: Identifier.optional(),
+    /**
+     * How far approving a tool call reaches: `once` (the default) this call only, `run` also every
+     * later call of the Run with the same fingerprint. `run` only approves a tool call.
+     */
+    scope: z.enum(['once', 'run']).optional(),
   }),
 });
 export type ResolveApprovalCommand = z.infer<typeof ResolveApprovalCommand>;

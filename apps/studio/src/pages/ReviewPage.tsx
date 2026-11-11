@@ -334,7 +334,10 @@ export function ReviewContent({
     };
   }, [workspaces, session.sessionId, scopeKey, version]);
 
-  const selected = search.file ?? null;
+  // The review opens on the first file of the list as it is shown (build output folded after
+  // the rest), unless the address names one; opening it does not write the address.
+  const listed = changes && !changes.unavailable ? changes.files : [];
+  const selected = search.file ?? (listed.find((f) => !foldedFile(f)) ?? listed[0])?.path ?? null;
   const choose = (file: string) => onSearch({ file });
   const setScope = (value: string) => {
     const [kind, runId] = value.split(':');
@@ -644,6 +647,8 @@ export function ReviewContent({
                   active={active}
                   // Draft comments make sending them the next step; approving waits its turn.
                   primary={drafts === 0 && !composing}
+                  // A comparison with no changed file has nothing to approve or send back.
+                  judged={listed.length > 0}
                   barSlot={wide ? undefined : decisionSlot}
                   detailsClassName="@min-[640px]/review:col-start-2"
                 />
@@ -1563,6 +1568,7 @@ export function DecisionPanel({
   linked,
   active,
   primary = true,
+  judged = true,
   barSlot,
   detailsClassName,
 }: {
@@ -1574,6 +1580,8 @@ export function DecisionPanel({
   active: boolean;
   /** False while another step leads the review (a comment being written, or drafts to send). */
   primary?: boolean;
+  /** False when the comparison changed no file: there is no decision to make on it. */
+  judged?: boolean;
   /** Where the decision shows (the pinned row); at the top of the area without one. */
   barSlot?: HTMLElement | null | undefined;
   detailsClassName?: string;
@@ -1677,8 +1685,14 @@ export function DecisionPanel({
 
   return (
     <>
-      {pinned ? (barSlot ? createPortal(bar, barSlot) : null) : bar}
+      {!judged ? null : pinned ? (barSlot ? createPortal(bar, barSlot) : null) : bar}
       <div className={cn('flex min-w-0 flex-col gap-2 empty:hidden', detailsClassName)}>
+        {/* Without the decision, what went wrong applying or reverting is said here. */}
+        {!judged && error ? (
+          <p role="alert" className="m-0 text-caption text-destructive">
+            {error}
+          </p>
+        ) : null}
         {approved && linked ? (
           <div className="flex flex-col gap-2 fill-group p-3 text-caption">
             <div className="flex items-center gap-1">

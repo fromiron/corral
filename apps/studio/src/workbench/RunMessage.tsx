@@ -336,8 +336,9 @@ export function RunMessage({
         headed={!sessionId}
         policySettingsAction={
           sessionId ? (
+            // A way out of the card, quieter than its decisions.
             <Button
-              variant="tertiary"
+              variant="ghost"
               render={
                 <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
               }

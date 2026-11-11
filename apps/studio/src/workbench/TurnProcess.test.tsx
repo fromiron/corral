@@ -77,6 +77,80 @@ it.each(['en', 'ko'] as const)(
   },
 );
 
+it.each(['en', 'ko'] as const)(
+  'a call that passed on an approval for the run says so on its line, with no approval id (%s)',
+  (locale) => {
+    const projection = emptyProjection('run_granted');
+    projection.status = 'succeeded';
+    projection.executionOrder = ['lead'];
+    projection.executions.lead = {
+      executionId: 'lead',
+      nodeId: 'lead',
+      status: 'succeeded',
+    } as (typeof projection.executions)[string];
+    const actor = { kind: 'agent', id: 'lead' };
+    const lifecycle = (toolCallId: string, granted: boolean) => [
+      {
+        type: 'tool.requested',
+        actor,
+        payload: {
+          executionId: 'lead',
+          toolCallId,
+          name: 'run_command',
+          validatedArgs: { command: 'npm test' },
+        },
+      },
+      { type: 'tool.allowed', actor, payload: { executionId: 'lead', toolCallId } },
+      ...(granted
+        ? [
+            {
+              type: 'tool.authorized',
+              actor,
+              payload: {
+                executionId: 'lead',
+                toolCallId,
+                approvalId: 'appr_0001',
+                fingerprint: 'f'.repeat(64),
+              },
+            },
+          ]
+        : []),
+      {
+        type: 'tool.finished',
+        actor,
+        payload: { executionId: 'lead', toolCallId, resultRef: null, error: null },
+      },
+    ];
+    const events = [
+      ...lifecycle('call_first', false),
+      ...lifecycle('call_again', true),
+    ] as unknown as RunEvent[];
+    const messages = locale === 'en' ? en : ko;
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(
+      <IntlProvider locale={locale} messages={messages}>
+        <TurnProcess
+          events={events}
+          projection={projection}
+          streams={{}}
+          label={(id) => id}
+          open
+          onOpenChange={() => {}}
+        />
+      </IntlProvider>,
+    );
+    const rows = [...container.querySelectorAll('.turn-process-row')].map(
+      (row) => row.textContent ?? '',
+    );
+    const done = messages.Transcript.tool.finished;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain(`npm test · ${done}`);
+    expect(rows[0]).not.toContain(messages.Turn.allowedForRun);
+    expect(rows[1]).toContain(`npm test · ${done} · ${messages.Turn.allowedForRun}`);
+    expect(container.textContent).not.toContain('appr_0001');
+  },
+);
+
 it('shows a judged request on its row and keeps other reasoning in the request details', () => {
   const projection = emptyProjection('run_reasoning');
   projection.status = 'succeeded';
