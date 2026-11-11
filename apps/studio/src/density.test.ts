@@ -141,6 +141,9 @@ const keptSmall: { file: string; near: RegExp }[] = [
   // An approval's decision row: the kit permission card and the kit AgentRun side panel's
   // approval card keep Reject and Approve compact.
   { file: 'packages/react/src/components/ApprovalPanel.tsx', near: /<SizeScope size="compact">/ },
+  // The approval card's subject chips sit in a line of caption text above that row; a chip
+  // larger than the decision it leads to reads as the main action.
+  { file: 'packages/react/src/components/ApprovalPanel.tsx', near: /onOpenArtifact\(id\)/ },
   // The meeting records panel's head, as the kit AgentRun side panel's head.
   { file: 'apps/studio/src/workbench/MeetingRecords.tsx', near: /onWiden/ },
   { file: 'apps/studio/src/workbench/MeetingRecords.tsx', near: /'closeRecords'/ },

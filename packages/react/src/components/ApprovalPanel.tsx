@@ -459,6 +459,7 @@ export function ApprovalPanel({
                     <Button
                       key={id}
                       variant="tertiary"
+                      size="compact"
                       title={id}
                       onClick={() => onOpenArtifact(id)}
                     >
