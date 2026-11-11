@@ -30,8 +30,8 @@ async function pill(substrate: number) {
     <SurfaceProvider value={substrate}>
       <Tabs defaultValue="a">
         <TabsList aria-label="Views">
-          <TabItem value="a">Alpha</TabItem>
-          <TabItem value="b">Beta</TabItem>
+          <TabItem value="a" label="Alpha" />
+          <TabItem value="b" label="Beta" />
         </TabsList>
       </Tabs>
     </SurfaceProvider>,
