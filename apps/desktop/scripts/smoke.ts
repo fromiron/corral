@@ -337,7 +337,7 @@ try {
   // The turn the restart cut off says so once, in its own ending notice.
   const ended = restored.getByTestId('chat-timeline').getByTestId('run-ended');
   await expect(ended).toHaveAttribute('role', 'note');
-  await expect(ended).toContainText(/interrupted/i);
+  await expect(ended).toContainText('The local server restarted');
   console.log('Interrupted turn notice:', (await ended.innerText()).replace(/\s+/g, ' '));
   await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toHaveCount(0);
   await restored.getByRole('combobox', { name: 'Request', exact: true }).fill('Quit while paused');
@@ -392,12 +392,13 @@ try {
     .getByTestId('app-sidebar')
     .getByRole('link', { name: /^Desktop packaged smoke/ })
     .click();
-  await expect(
-    recovery
-      .getByTestId('chat-timeline')
-      .getByRole('note')
-      .filter({ hasText: 'Not finished (Interrupted)' }),
-  ).toHaveCount(2);
+  // Both turns the restarts cut off keep their own ending notice.
+  const cutOff = recovery.getByTestId('chat-timeline').getByTestId('run-ended');
+  await expect(cutOff).toHaveCount(2);
+  console.log(
+    'Interrupted turn notices:',
+    (await cutOff.allInnerTexts()).map((text) => text.replace(/\s+/g, ' ')),
+  );
   console.log('Checking renderer recovery');
   const rendererPid = await application.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.webContents.getOSProcessId(),
@@ -436,7 +437,7 @@ try {
           )
             return false;
           return contents.executeJavaScript(
-            'document.querySelector("[data-testid=chat-timeline]")?.textContent.includes("Interrupted") ?? false',
+            'document.querySelectorAll("[data-testid=chat-timeline] [data-testid=run-ended]").length === 2',
           );
         }),
       { timeout: 30000 },
