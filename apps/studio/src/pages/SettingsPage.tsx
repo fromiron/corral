@@ -9,6 +9,10 @@ import { formatChord, sendKeyLabel } from '../shortcuts.ts';
 import { type SettingsSection, useSettingsNavigation } from '../workbench/navigation.ts';
 import { changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { useSettingsSectionLabel } from '../workbench/SettingsNavigation.tsx';
+import { type Appearance, appearanceOf, chooseAppearance } from '../workbench/themes/appearance.ts';
+import { BUILTIN_THEMES } from '../workbench/themes/builtin.ts';
+import { builtinPaletteId, personalPaletteId } from '../workbench/themes/palette.ts';
+import { usePersonalThemes } from '../workbench/themes/storage.ts';
 import { WorkFolderSection } from './FilesViews.tsx';
 import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
 
@@ -78,7 +82,9 @@ export function SettingsPage({
   const t = useTranslations('Desktop');
   const tp = useTranslations('Preferences');
   const { serverVersion } = useServices();
-  const { theme, sendKey, notify, density } = usePreferences();
+  const prefs = usePreferences();
+  const { sendKey, notify, density } = prefs;
+  const personal = usePersonalThemes();
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
   return (
@@ -90,14 +96,27 @@ export function SettingsPage({
               <div>
                 <h3>{t('appearance')}</h3>
               </div>
-              <Select
+              <Select<Appearance>
                 label={t('appearance')}
-                value={theme}
-                onValueChange={(theme) => changePreferences({ theme })}
-                options={(['system', 'light', 'dark'] as const).map((value) => ({
-                  value,
-                  label: t(value),
-                }))}
+                value={appearanceOf(prefs)}
+                onValueChange={(choice) => chooseAppearance(choice)}
+                options={[
+                  ...(['system', 'light', 'dark'] as const).map((value) => ({
+                    value,
+                    label: t(value),
+                  })),
+                  // Theme names are proper names, shown as they are in every language.
+                  ...BUILTIN_THEMES.map((theme) => ({
+                    value: builtinPaletteId(theme.id),
+                    label: theme.palette.name,
+                    group: t('builtinThemes'),
+                  })),
+                  ...personal.map((theme) => ({
+                    value: personalPaletteId(theme.id),
+                    label: theme.palette.name,
+                    group: t('personalThemes'),
+                  })),
+                ]}
               />
             </section>
             <section className="settings-row">

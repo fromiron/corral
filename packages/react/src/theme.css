@@ -51,6 +51,17 @@
   --thread-details-panel-width: 24rem;
   --app-scrollbar-thumb: color-mix(in srgb, var(--foreground) 18%, transparent);
   --app-scrollbar-thumb-hover: color-mix(in srgb, var(--foreground) 30%, transparent);
+
+  /* Code syntax roles. The defaults are the chat code block's colors; a named theme sets all
+     eight at the root (apps/studio/src/workbench/themes). */
+  --syntax-comment: var(--muted-foreground);
+  --syntax-string: var(--success);
+  --syntax-number: var(--warning);
+  --syntax-keyword: var(--primary);
+  --syntax-function: var(--foreground);
+  --syntax-type: var(--foreground);
+  --syntax-variable: var(--foreground);
+  --syntax-constant: var(--foreground);
 }
 
 @theme inline {
@@ -82,6 +93,10 @@
   --color-info-foreground: var(--info);
   --color-placeholder: var(--muted-foreground);
   --color-secondary-label: var(--muted-foreground);
+  --color-syntax-comment: var(--syntax-comment);
+  --color-syntax-string: var(--syntax-string);
+  --color-syntax-number: var(--syntax-number);
+  --color-syntax-keyword: var(--syntax-keyword);
   --text-2xs: var(--fs-micro);
   --text-2xs--line-height: var(--lh-micro);
   --text-ui: var(--fs-body);

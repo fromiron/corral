@@ -2130,6 +2130,8 @@
     "system": "System",
     "light": "Light",
     "dark": "Dark",
+    "builtinThemes": "Built-in themes",
+    "personalThemes": "Personal themes",
     "language": "Language",
     "send": "Send request",
     "newLine": "New line",

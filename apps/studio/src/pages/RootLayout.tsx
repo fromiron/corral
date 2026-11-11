@@ -44,7 +44,7 @@ import {
   withoutSettings,
   workHref,
 } from '../workbench/navigation.ts';
-import { applyTheme, changePreferences, usePreferences } from '../workbench/preferences.ts';
+import { changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { ScheduledRunNotifications } from '../workbench/ScheduledRunNotifications.tsx';
 import { useSessionJump } from '../workbench/SessionJump.tsx';
 import { SettingsDialog } from '../workbench/SettingsDialog.tsx';
@@ -56,6 +56,8 @@ import {
 import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
 import { outsidePage, TopbarPath } from '../workbench/TopbarPath.tsx';
 import { TopbarBar, TopbarFit, TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
+import { appliedAppearance, applyAppearance } from '../workbench/themes/appearance.ts';
+import { personalThemes } from '../workbench/themes/storage.ts';
 
 export function RootLayout() {
   return (
@@ -271,17 +273,25 @@ function RootFrame() {
   useEffect(() => {
     if (mobileOpen) handedOff.current = false;
   }, [mobileOpen]);
+  // The desktop window and its title bar buttons follow the page's theme, named or not, on every
+  // apply (a preview draft included).
+  useEffect(
+    () => appliedAppearance.subscribe(({ dark }) => void desktop?.theme(dark).catch(() => {})),
+    [],
+  );
+  const { theme, palette } = prefs;
   useEffect(() => {
-    // The desktop window and its title bar buttons follow the page's theme.
-    const update = () => {
-      const dark = applyTheme(prefs.theme);
-      void desktop?.theme(dark).catch(() => {});
-    };
+    // The OS brightness (for system) and an edit of the applied personal theme repaint too.
+    const update = () => applyAppearance({ theme, palette });
     update();
     const media = matchMedia('(prefers-color-scheme: dark)');
     media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, [prefs.theme]);
+    const stop = personalThemes.subscribe(update);
+    return () => {
+      media.removeEventListener('change', update);
+      stop();
+    };
+  }, [theme, palette]);
   useEffect(() => {
     if (!prefs.sidebarOpen) setMobileOpen(false);
   }, [prefs.sidebarOpen]);
