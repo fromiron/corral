@@ -5,14 +5,14 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../../pages/FilesViews.tsx';
 import { useServices } from '../../services.tsx';
-import type { Blocked } from '../composerIntent.ts';
+import { type Blocked, type IntentChoice, intentChoice } from '../composerIntent.ts';
 import { ComposerStats } from '../widgets/ComposerStats.tsx';
 
 // The rows around the input that say what the next request is and what it would start with.
 
 /**
  * The one-line status's lead: cancelling the pre-run auto choice, and what the request is and
- * for whom. The send mode shows only when there is more than one to choose.
+ * for whom. The send mode shows only when both a next request and an instruction are possible.
  */
 export function ComposerHeader({
   choosingAuto,
@@ -29,10 +29,10 @@ export function ComposerHeader({
 }: {
   choosingAuto: boolean;
   onCancelAuto: () => void;
-  allowed: SessionIntent[];
+  allowed: IntentChoice[];
   blocked: Blocked;
   intent: SessionIntent;
-  onChooseIntent: (value: SessionIntent) => void;
+  onChooseIntent: (value: IntentChoice) => void;
   steerTarget: string;
   targets: { id: string; label: string }[];
   targetName: (id: string) => string;
@@ -55,12 +55,15 @@ export function ComposerHeader({
         <Select
           variant="chip"
           label={t('intentLabel')}
-          value={intent}
+          value={intentChoice(intent)}
           onValueChange={onChooseIntent}
           options={allowed.map((value) => ({
             value,
             label: t(`intentShort.${value}`),
-            hint: t(`intentHint.${value}`),
+            // A next request chosen while a run is going waits behind it.
+            hint: t(
+              value === 'next' && intent === 'queue' ? 'intentHint.queue' : `intentHint.${value}`,
+            ),
           }))}
         />
       ) : null}

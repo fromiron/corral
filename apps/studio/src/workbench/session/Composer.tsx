@@ -22,7 +22,6 @@ import type {
   RunSummary,
   SessionEntry,
   SessionEntryAuto,
-  SessionIntent,
   WorkSession,
 } from '@corral/core';
 import { queuedSessionCommandId, validTextAttachments } from '@corral/core';
@@ -84,7 +83,12 @@ import {
 } from '../autoChoice.ts';
 import { ComposerInput } from '../ComposerInput.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
-import { blockedReason, type IntentLock, resolveIntent } from '../composerIntent.ts';
+import {
+  type IntentChoice,
+  type IntentLock,
+  intentChoice,
+  resolveIntent,
+} from '../composerIntent.ts';
 import {
   type MentionItem,
   mentionLabel,
@@ -217,11 +221,13 @@ export function Composer({
     revision: number;
     choice: AutoModelChoice;
   } | null>(null);
-  const [chosen, setChosen] = useState<SessionIntent | null>(null);
+  const [chosen, setChosen] = useState<IntentChoice | null>(null);
   const [target, setTarget] = useState<string>('');
-  // UX-01: what the request is (and for whom) is fixed once typing starts.
+  // UX-01: an instruction (and for whom) is fixed once typing starts; a next request is not.
   const [lock, setLock] = useState<IntentLock | null>(
-    restored.text && restored.intent ? { intent: restored.intent, target: restored.target } : null,
+    restored.text && restored.intent === 'steer'
+      ? { intent: 'steer', target: restored.target }
+      : null,
   );
   // sessions are live wherever live is possible; simulation stays in the demo and
   // the team editor.
@@ -342,13 +348,10 @@ export function Composer({
   };
   const [autoStart, setAutoStart] = useRemembered(`corral:auto-queue:${session.sessionId}`, false);
 
-  // A writer keeps the working copy. Other work queues, or sends an instruction to this
-  // session's current execution. An instruction needs an execution that can still take one
-  // (none while a decision waits).
-  const allowed: SessionIntent[] = active
-    ? [...(ownActive && targets.length > 0 ? ['steer' as const] : []), 'queue']
-    : // a question about an earlier answer is an ordinary message to the conversation.
-      ['next'];
+  // A next request, or an instruction to this session's current execution. A next request sent
+  // while the session's run is going waits behind it; an instruction needs an execution that can
+  // still take one (none while a decision waits).
+  const allowed: IntentChoice[] = ownActive && targets.length > 0 ? ['next', 'steer'] : ['next'];
 
   // Executions that can still take an instruction, named by their node.
   useEffect(() => {
@@ -394,25 +397,29 @@ export function Composer({
     lock,
     targets: targets.map((x) => x.id),
     running: Boolean(ownActive),
+    waiting: Boolean(active),
   });
   const intent = resolved.intent;
   const steerTarget = resolved.target ?? '';
   const targetName = (id: string) => targetNames.current.get(id) ?? id;
 
-  /** Changes the text; the first character fixes what the request is and for whom. */
+  /** Changes the text; the first character fixes an instruction's target. */
   const write = (value: string | ((current: string) => string)) => {
     setText(value);
     if (value === '') setLock(null);
-    else if (!lock) setLock({ intent, target: intent === 'steer' ? steerTarget || null : null });
+    else if (!lock && intent === 'steer') setLock({ intent: 'steer', target: steerTarget || null });
   };
-  /** An explicit choice by the person; it becomes the new fixed intent while text is typed. */
-  const chooseIntent = (value: SessionIntent) => {
+  /** An explicit choice by the person; an instruction is fixed while text is typed. */
+  const chooseIntent = (value: IntentChoice) => {
     setChosen(value);
-    if (text)
-      setLock({
-        intent: value,
-        target: value === 'steer' ? (lock?.target ?? steerTarget) || targets[0]?.id || null : null,
-      });
+    setLock(
+      text && value === 'steer'
+        ? {
+            intent: 'steer',
+            target: (lock?.target ?? steerTarget) || targets[0]?.id || null,
+          }
+        : null,
+    );
   };
   const chooseTarget = (value: string) => {
     setTarget(value);
@@ -1191,8 +1198,9 @@ export function Composer({
     setPermissionMode(entry.permissionMode);
     setAttachments(entry.attachments ?? []);
     setImages(entry.images ?? []);
-    setChosen('queue');
-    setLock({ intent: 'queue', target: null });
+    // Sent again, it is a next request: it waits while a run is going, else it starts.
+    setChosen(null);
+    setLock(null);
     await repository.updateSessionEntry(session.sessionId, entry.entryId, {
       state: 'dismissed',
       detail: 'edited',
@@ -1325,7 +1333,7 @@ export function Composer({
   const why = (allowedHere: boolean) => (allowedHere ? undefined : tc('notNow'));
 
   useRegisterCommands('composer', [
-    ...(['next', 'queue', 'steer'] as SessionIntent[]).map(
+    ...(['next', 'steer'] as const).map(
       (value): AppCommand => ({
         id: `intent:${value}`,
         title: t(`intent.${value}`),
@@ -1439,14 +1447,11 @@ export function Composer({
           {resolved.blocked ? (
             <Banner data-testid="intent-blocked" status="warning" contrast="high">
               <BannerTitle>
-                {tc(`blocked.${blockedReason(resolved.blocked, intent)}`, {
-                  name: targetName(steerTarget),
-                  intent: t(`intentShort.${intent}`),
-                })}
+                {tc(`blocked.${resolved.blocked}`, { name: targetName(steerTarget) })}
               </BannerTitle>
               <BannerActions>
                 {allowed
-                  .filter((value) => value !== intent)
+                  .filter((value) => value !== intentChoice(intent))
                   .map((value) => (
                     <Button key={value} variant="secondary" onClick={() => chooseIntent(value)}>
                       {tc(`switchTo.${value}`)}
@@ -1510,10 +1515,6 @@ export function Composer({
               owner={refusal.owner}
               network={refusal.network}
               onRetry={() => void send()}
-              onQueue={() => {
-                setRefusal(null);
-                chooseIntent('queue');
-              }}
             />
           ) : null}
           {missingChips.length ? (
@@ -1596,7 +1597,7 @@ export function Composer({
             >
               <span>{contextMessages('nextOrQueue')}</span>
               {allowed
-                .filter((value) => value === 'next' || value === 'queue')
+                .filter((value) => value === 'next')
                 .map((value) => (
                   <Button key={value} variant="tertiary" onClick={() => chooseIntent(value)}>
                     {tc(`switchTo.${value}`)}

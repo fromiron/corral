@@ -1878,8 +1878,8 @@
     "timelineEmpty": "Nothing asked yet. Write the first request below.",
     "intentLabel": "What this is",
     "intent": {
-      "next": "Continue in this session",
-      "queue": "Queue as next task",
+      "next": "Next request",
+      "queue": "Next request, after the current run",
       "steer": "Instruction to the running run",
       "explain": "Question about the result"
     },
@@ -1940,7 +1940,7 @@
     "checked": "Checked: {name} {state}",
     "notChecked": "Not checked",
     "intentShort": {
-      "next": "Follow-up",
+      "next": "Next request",
       "queue": "Queue",
       "steer": "Instruction",
       "explain": "Question"
@@ -2460,8 +2460,8 @@
     "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
     "viewActiveRun": "View active run",
     "destination": {
-      "next": "Send to: new run in this session · follow-up",
-      "queue": "Send to: next run in this session · queue",
+      "next": "Send to: new run in this session · next request",
+      "queue": "Send to: after the current run in this session · next request",
       "steer": "Send to: Run #{number} · {name} · instruction",
       "steerUnavailable": "Instruction for {name} · target unavailable",
       "explain": "Send to: new run about the latest result · question"
@@ -2502,15 +2502,11 @@
     "ended": "{name} (ended)",
     "blocked": {
       "target": "The {name} execution has ended and no longer takes instructions. Choose another execution, or send this another way.",
-      "run": "This run has ended, so the instruction cannot be delivered. Send it another way.",
-      "intent": "This {intent} cannot be sent while another run works. Send it another way.",
-      "queueEnded": "The run has ended, so there is nothing to queue this behind. Send it another way."
+      "run": "This run has ended, so the instruction cannot be delivered. Send it another way."
     },
     "switchTo": {
-      "next": "Send as a follow-up",
-      "queue": "Move to the queue",
-      "steer": "Send as an instruction",
-      "explain": "Ask about the result"
+      "next": "Send as a next request",
+      "steer": "Send as an instruction"
     },
     "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
     "referenceGone": "(no longer exists)",
@@ -4580,7 +4576,7 @@
     "terminalSource": "Terminal output",
     "hunkSource": "File changes",
     "checkSource": "Check result",
-    "nextOrQueue": "Captured text is sent with a new request or a queued request.",
+    "nextOrQueue": "Captured text is sent with a next request.",
     "sourcePreview": "Source snapshot",
     "replacementPreview": "Review replacement",
     "confirmReplacement": "Replace capture",

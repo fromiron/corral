@@ -1878,8 +1878,8 @@
     "timelineEmpty": "아직 요청이 없습니다. 아래에 첫 요청을 쓰세요.",
     "intentLabel": "보낼 종류",
     "intent": {
-      "next": "이 세션에서 계속",
-      "queue": "다음 작업으로 대기",
+      "next": "다음 요청",
+      "queue": "다음 요청 · 지금 실행이 끝난 뒤",
       "steer": "실행 중 지시",
       "explain": "결과 질문"
     },
@@ -1940,7 +1940,7 @@
     "checked": "검사: {name} {state}",
     "notChecked": "검사 안 함",
     "intentShort": {
-      "next": "후속 작업",
+      "next": "다음 요청",
       "queue": "대기열",
       "steer": "지시",
       "explain": "질문"
@@ -2460,8 +2460,8 @@
     "viewingOtherRun": "진행 중: 실행 #{active} · 현재 보는 실행: #{viewed}",
     "viewActiveRun": "현재 실행 보기",
     "destination": {
-      "next": "보낼 대상: 이 세션의 새 실행 · 후속 요청",
-      "queue": "보낼 대상: 이 세션의 다음 실행 · 대기열",
+      "next": "보낼 대상: 이 세션의 새 실행 · 다음 요청",
+      "queue": "보낼 대상: 이 세션의 지금 실행이 끝난 뒤 · 다음 요청",
       "steer": "보낼 대상: 실행 #{number} · {name} · 지시",
       "steerUnavailable": "{name}에게 지시 · 현재 전달할 수 없음",
       "explain": "보낼 대상: 최근 결과에 대한 새 실행 · 질문"
@@ -2502,15 +2502,11 @@
     "ended": "{name} (끝남)",
     "blocked": {
       "target": "{name} 실행이 끝나 더 이상 지시를 받지 않습니다. 다른 실행을 고르거나 다른 방식으로 보내세요.",
-      "run": "이 실행이 끝나 지시를 전달할 수 없습니다. 다른 방식으로 보내세요.",
-      "intent": "다른 실행이 진행 중이라 지금은 보낼 수 없는 요청입니다({intent}). 다른 방식으로 보내세요.",
-      "queueEnded": "실행이 끝나 대기열에 넣을 수 없습니다. 다른 방식으로 보내세요."
+      "run": "이 실행이 끝나 지시를 전달할 수 없습니다. 다른 방식으로 보내세요."
     },
     "switchTo": {
-      "next": "후속 작업으로 보내기",
-      "queue": "대기열로 옮기기",
-      "steer": "지시로 보내기",
-      "explain": "결과 질문으로 보내기"
+      "next": "다음 요청으로 보내기",
+      "steer": "지시로 보내기"
     },
     "missingReferences": "더 이상 없는 참조가 {count}개 있습니다. 보내기 전에 빼세요.",
     "referenceGone": "(더 이상 없음)",
@@ -4580,7 +4576,7 @@
     "terminalSource": "터미널 출력",
     "hunkSource": "파일 변경",
     "checkSource": "검사 결과",
-    "nextOrQueue": "캡처한 텍스트는 새 요청이나 대기열 요청에 포함됩니다.",
+    "nextOrQueue": "캡처한 텍스트는 다음 요청에 포함됩니다.",
     "sourcePreview": "원본 스냅샷",
     "replacementPreview": "교체 내용 확인",
     "confirmReplacement": "캡처 교체",
