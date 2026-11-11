@@ -347,6 +347,12 @@ export function safeRelative(input: string): string {
   return parts.join('/');
 }
 
+/** A folder to list: one that names the root (`.`, `./`, empty) is the root; others as `safeRelative`. */
+export function safeFolder(input: string): string {
+  if (!isAbsolute(input) && input.split('/').every((p) => p === '' || p === '.')) return '';
+  return safeRelative(input);
+}
+
 /** Refuses a path whose existing components include a symbolic link. */
 /** Paths considered by one `@` search; larger folders say they were cut. */
 const SEARCH_CAP = 50_000;
@@ -5849,7 +5855,11 @@ export class WorkspaceService implements FileTools {
     const row = this.worktree(access.session_id);
     if (!tree || !row) throw new ToolRefusal('TARGET_NOT_FOUND', 'run input snapshot unavailable');
     const root = row.worktree_path;
-    const path = input.args.path ? safeRelative(String(input.args.path)) : '';
+    const path = !input.args.path
+      ? ''
+      : input.name === 'list_files'
+        ? safeFolder(String(input.args.path))
+        : safeRelative(String(input.args.path));
     const listing = (await git(root, ['ls-tree', '-r', '-z', '-l', tree])).stdout
       .toString('utf8')
       .split('\0')
@@ -6315,15 +6325,16 @@ export class WorkspaceService implements FileTools {
         });
       }
       case 'list_files':
-        return this.list(root, typeof input.args.path === 'string' ? input.args.path : '').catch(
-          (error: unknown) => {
-            if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
-              throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
-            if ((error as NodeJS.ErrnoException)?.code === 'ENOENT')
-              throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
-            throw error;
-          },
-        );
+        return this.list(
+          root,
+          typeof input.args.path === 'string' ? safeFolder(input.args.path) : '',
+        ).catch((error: unknown) => {
+          if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
+            throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
+          if ((error as NodeJS.ErrnoException)?.code === 'ENOENT')
+            throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
+          throw error;
+        });
       case 'read':
       case 'read_file': {
         const rel = safeRelative(String(input.args.path));
