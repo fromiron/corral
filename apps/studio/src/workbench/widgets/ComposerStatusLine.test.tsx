@@ -193,6 +193,21 @@ const leavesBelow = (element: Element | null | undefined) => {
 const byText = (root: Element | null | undefined, text: string) =>
   [...(root?.querySelectorAll('span') ?? [])].find((span) => span.textContent === text);
 
+it('counts one change and one line in the singular', async () => {
+  const view = await mount(
+    model(
+      { live: false, chips: ['changes'], changeFiles: 1, changeLines: 1, changesLabel: 'fixed' },
+      { runStatus: 'succeeded' },
+    ),
+  );
+  const chip = [...(view.line()?.querySelectorAll('a') ?? [])].find((link) =>
+    link.textContent?.includes('1 change'),
+  );
+  expect(chip?.textContent).toContain('1 change');
+  expect(chip?.textContent).toContain('1 line');
+  expect(chip?.textContent).not.toMatch(/1 changes|1 lines/);
+});
+
 // chat-widgets-contract: the plan count and the change summary are not cut at wide widths; when
 // the line is short the current step's words go first, then the change summary's line count.
 // Each part stays on one line, so nothing wraps over the Overview opener (at 390 px wide too).
