@@ -2,7 +2,7 @@ import type { MeetingHandoffReceipt, MeetingView } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
 import { Gate, simulatedReply } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { newConversation, requestBox } from '../workbench.ts';
+import { chooseModel, newConversation, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // only model replies are simulated. Creation, conversation, decisions and handoffs
@@ -65,8 +65,10 @@ async function createMeeting(page: Page, corral: Harness, development = true) {
     await dialog.getByRole('button', { name: 'Apply development roles', exact: true }).click();
   await dialog.getByRole('button', { name: 'Remove participant 3', exact: true }).click();
   if (development) {
-    await dialog.getByRole('combobox', { name: 'Participant 1 model', exact: true }).click();
-    await page.getByRole('option', { name: 'model-b', exact: true }).click();
+    await chooseModel(page, 'Participant 1 model', 'model-b');
+    await expect(
+      dialog.getByRole('button', { name: 'Participant 1 model: model-b', exact: true }),
+    ).toBeVisible();
   }
   await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);

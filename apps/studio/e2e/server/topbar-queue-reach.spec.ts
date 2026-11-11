@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { panelTab, requestBox, slash } from '../workbench.ts';
+import { panelTab, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // A held run keeps its controls in the top bar and its saved requests in the queue; both stay
@@ -160,8 +160,8 @@ test.describe('a held run', () => {
     await holdRun(page, corral);
     const box = requestBox(page);
     const texts = ['First saved', 'Second saved', 'Third saved', 'Fourth saved'];
+    // Each next request sent while the run works waits behind it (workbench.md).
     for (const text of texts) {
-      await slash(page, 'queue');
       await box.fill(text);
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect(page.getByRole('region', { name: 'Queued next tasks' })).toContainText(text);

@@ -273,17 +273,18 @@
   grid-row-start: 1;
   backdrop-filter: none;
 }
+/* A sheet opened from Settings is drawn beside the Settings dialog, not inside it. */
 @media (pointer: coarse) {
-  .settings-content [data-slot="select-trigger"],
-  .settings-content [data-slot="button"],
-  .settings-content [data-slot="input-control"] {
+  :is(.settings-content, [data-settings-sheet]) [data-slot="select-trigger"],
+  :is(.settings-content, [data-settings-sheet]) [data-slot="button"],
+  :is(.settings-content, [data-settings-sheet]) [data-slot="input-control"] {
     min-height: 44px;
   }
-  .settings-content [data-slot="input"] {
+  :is(.settings-content, [data-settings-sheet]) [data-slot="input"] {
     min-height: 42px;
   }
-  [data-settings-dialog] button,
-  [data-settings-dialog] a {
+  :is([data-settings-dialog], [data-settings-sheet]) button,
+  :is([data-settings-dialog], [data-settings-sheet]) a {
     min-height: 44px;
   }
 }

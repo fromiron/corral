@@ -3,7 +3,6 @@ import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'n
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { ensurePrivateDirectory } from '../private-files.ts';
-import { type EndpointProbeResult, probeKind } from './endpoint-probe.ts';
 
 // The model list of an added OpenAI-compatible endpoint (features/model-connections.md,
 // 엔드포인트 모델 가져오기). One GET to the saved address's `/models`, never a caller's URL,
@@ -28,8 +27,36 @@ export interface FetchedModel extends ModelValues {
   id: string;
 }
 
+/**
+ * The category of a model list fetch (features/model-connections.md, 직접 추가한 엔드포인트):
+ * the list was read, or why it was not.
+ */
+export type EndpointFetchKind =
+  | 'connected'
+  | 'authentication'
+  | 'rateLimit'
+  | 'server'
+  | 'redirect'
+  | 'unsupported'
+  | 'connection';
+
+/** The category of the HTTP status a `/models` request answered with. */
+function fetchKindOf(status: number): EndpointFetchKind {
+  return status >= 200 && status < 300
+    ? 'connected'
+    : status === 401 || status === 403
+      ? 'authentication'
+      : status === 429
+        ? 'rateLimit'
+        : status >= 500
+          ? 'server'
+          : status >= 300 && status < 400
+            ? 'redirect'
+            : 'unsupported';
+}
+
 export interface EndpointFetchResult {
-  kind: EndpointProbeResult['kind'];
+  kind: EndpointFetchKind;
   status: number | null;
   /** The list, only when it was read in full and within the limits. */
   models: FetchedModel[] | null;
@@ -126,7 +153,7 @@ export async function fetchEndpointModels(options: {
   const status = response.status;
   if (!response.ok) {
     void response.body?.cancel().catch(() => {});
-    return { kind: probeKind(status), status, models: null };
+    return { kind: fetchKindOf(status), status, models: null };
   }
   let text: string;
   try {

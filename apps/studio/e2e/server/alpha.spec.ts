@@ -208,7 +208,11 @@ test('without a model: edit, task, preview, check, review, stage, commit and pus
   // Review the change as Git sees it, then stage, commit and push.
   await panelTab(page, 'Git');
   await page.locator('[data-git-side="unstaged"][data-path="app.js"]').click();
-  await expect(page.getByTestId('file-diff')).toBeVisible();
+  // Review keeps its own first changed file open behind the Git view (workbench.md), so the
+  // diff the click opened is the Git view's.
+  await expect(
+    page.getByRole('tabpanel', { name: 'Git', exact: true }).getByTestId('file-diff'),
+  ).toBeVisible();
   await commitAndPush(page, 'app.js', 'Print two', 'feature/alpha');
   await expect
     .poll(() => git(remote, 'for-each-ref', '--format=%(refname)', 'refs/heads/feature/alpha'))

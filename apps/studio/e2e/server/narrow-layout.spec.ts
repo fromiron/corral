@@ -126,12 +126,15 @@ test('review file choices and expanded original preview remain reachable at narr
   await page.goto(`${corral.server.url}/sessions/${sessionId}/review`);
   const files = page.getByRole('navigation', { name: 'Review changes', exact: true });
   const readme = files.getByRole('button', { name: /^README.md/ });
-  // Below the three-column width the list folds into its head once a file is open.
+  // Below the three-column width the list folds into its head once a file is open, and the
+  // review opens on the first changed file (workbench.md), so it starts folded.
   const fold = files.getByRole('button', { name: /^\d+ files$/ });
   const showFiles = async () => {
     if ((await fold.isVisible()) && (await fold.getAttribute('aria-expanded')) === 'false')
       await fold.click();
   };
+  await expect(page.getByRole('region', { name: 'README.md', exact: true })).toBeVisible();
+  await showFiles();
   await reachable(readme);
   await readme.click();
   await showFiles();

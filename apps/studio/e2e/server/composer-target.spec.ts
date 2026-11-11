@@ -104,9 +104,11 @@ test('file and line references remain independent and Escape clears only an empt
     await expect(box).toHaveValue('/typed-command');
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(box).toBeInViewport();
-    await expect(box).toHaveAccessibleDescription('Send to: new run in this session · follow-up');
+    await expect(box).toHaveAccessibleDescription(
+      'Send to: new run in this session · next request',
+    );
     await expect(page.getByTestId('composer-destination')).toHaveText(
-      'Send to: new run in this session · follow-up',
+      'Send to: new run in this session · next request',
     );
     await page.screenshot({ path: testInfo.outputPath('composer-destination-narrow.png') });
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);
@@ -125,7 +127,10 @@ test.describe('viewed and active execution', () => {
     });
   };
   test.use({ agentReply: { reply: () => 'Deterministic reply', beforeReply: () => reply } });
-  test('shows the historical selection and preserves queue intent when opening the active run', async ({
+  // workbench.md: a next request is decided when it is sent, so while Run #2 works it waits behind
+  // it; choosing an instruction and then the next request again keeps the draft, and opening the
+  // active run changes neither the draft nor where it goes.
+  test('shows the historical selection and keeps a next request waiting behind the active run when opening it', async ({
     page,
     corral,
   }, testInfo) => {
@@ -156,7 +161,7 @@ test.describe('viewed and active execution', () => {
         'Viewing Run #1 while Run #2 is active',
       );
       await expect(page.getByTestId('composer-destination')).toHaveText(
-        'Send to: next run in this session · queue',
+        'Send to: after the current run in this session · next request',
       );
       const intent = page.getByRole('combobox', { name: 'What this is', exact: true });
       await intent.click();
@@ -165,18 +170,18 @@ test.describe('viewed and active execution', () => {
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
       await expect(page.getByTestId('composer-destination')).toContainText('instruction');
       await intent.click();
-      await page.getByRole('option', { name: /^Queue/ }).click();
-      await box.fill('Keep this queued request');
+      await page.getByRole('option', { name: /^Next request/ }).click();
+      await box.fill('Keep this next request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
-        'Send to: next run in this session · queue',
+        'Send to: after the current run in this session · next request',
       );
       await page.screenshot({ path: testInfo.outputPath('viewed-run-warning.png') });
       await page.getByRole('button', { name: 'View active run', exact: true }).click();
       await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
       await expect(page.getByTestId('viewed-run-warning')).toHaveCount(0);
-      await expect(box).toHaveValue('Keep this queued request');
+      await expect(box).toHaveValue('Keep this next request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
-        'Send to: next run in this session · queue',
+        'Send to: after the current run in this session · next request',
       );
       expect(corral.errors).toEqual([]);
     } finally {

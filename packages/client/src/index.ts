@@ -1372,7 +1372,7 @@ export interface LoginView {
   error: string | null;
 }
 
-/** The category of a connection check or an endpoint's `/models` fetch. */
+/** The category of an endpoint's last `/models` fetch: the list was read, or why it was not. */
 export type EndpointCheckKind =
   | 'connected'
   | 'authentication'
@@ -1402,18 +1402,6 @@ export interface ProviderAuthView {
   endpoint: string | null;
   /** A key was entered for another address than the one the workspace names now. */
   endpointChanged: boolean;
-  connectionTest?: {
-    kind:
-      | 'connected'
-      | 'authentication'
-      | 'rateLimit'
-      | 'server'
-      | 'redirect'
-      | 'unsupported'
-      | 'connection';
-    status: number | null;
-    checkedAt: string;
-  } | null;
   subscription: boolean;
   expiresAt: string | null;
   login: LoginView | null;
@@ -1731,16 +1719,6 @@ export class ModelsApi {
         goal,
         operationId: options.operationId ?? globalThis.crypto.randomUUID(),
       }),
-    });
-  }
-
-  testEndpoint(
-    providerId: string,
-    revision: string,
-  ): Promise<NonNullable<ProviderAuthView['connectionTest']>> {
-    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/probe`, {
-      method: 'POST',
-      body: JSON.stringify({ revision }),
     });
   }
 

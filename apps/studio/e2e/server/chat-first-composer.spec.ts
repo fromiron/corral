@@ -1,7 +1,7 @@
 import type { CorralSummary, WorkSession } from '@corral/core';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { newConversation, openLibrary, openProject, requestBox, slash } from '../workbench.ts';
+import { newConversation, openLibrary, openProject, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Use the real browser entry, server, adapter and Coordinator. Only the
@@ -222,12 +222,13 @@ test('a request typed while the lead waits is queued, not started', async ({ pag
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('awaiting_user');
   await expect(page.getByTestId('action-required')).toBeVisible();
-  await slash(page, 'queue');
+  // workbench.md: a next request sent while the session's run is going waits behind it; nothing
+  // has to be chosen first, the state at send time decides.
   const draft = 'Keep this queued request while I decide the next step.';
   await requestBox(page).fill(draft);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveAttribute(
     'aria-description',
-    'Send · Queue as next task',
+    'Send · Next request, after the current run',
   );
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect

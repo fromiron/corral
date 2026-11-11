@@ -52,7 +52,6 @@ import {
   endpointAddress,
   fetchEndpointModels,
 } from './endpoint-models.ts';
-import { probeEndpoint } from './endpoint-probe.ts';
 import {
   ENDPOINT_ORIGIN,
   type Endpoint,
@@ -138,18 +137,6 @@ export interface ProviderAuthView {
   endpoint: string | null;
   /** A key was entered for another address than the one the workspace names now. */
   endpointChanged: boolean;
-  connectionTest?: {
-    kind:
-      | 'connected'
-      | 'authentication'
-      | 'rateLimit'
-      | 'server'
-      | 'redirect'
-      | 'unsupported'
-      | 'connection';
-    status: number | null;
-    checkedAt: string;
-  } | null;
   /** Subscription access (no per-request price is known). */
   subscription: boolean;
   /** When the current access token stops working; refreshed before requests. */
@@ -296,12 +283,6 @@ export class ModelRegistry implements ModelResolver {
   private readonly credentialEpochs = new Map<string, number>();
   private readonly background = new Set<Promise<unknown>>();
   private readonly stopped = new AbortController();
-
-  private readonly connectionTests = new Map<
-    string,
-    NonNullable<ProviderAuthView['connectionTest']>
-  >();
-  private connectionEpoch = 0;
 
   private requests?: ModelRequestRuntime;
   configureRequests(options: RequestRuntimeOptions) {
@@ -923,8 +904,6 @@ export class ModelRegistry implements ModelResolver {
     configRevision = this.options.configRevision,
   ) {
     const before = this.options.endpoints ?? new Map<string, Endpoint>();
-    this.connectionEpoch++;
-    this.connectionTests.clear();
     this.profiles = profiles;
     this.options = { ...this.options, endpoints, ...(configRevision ? { configRevision } : {}) };
     this.catalogChanged();
@@ -1133,9 +1112,7 @@ export class ModelRegistry implements ModelResolver {
           : `${this.providerName(providerId)} needs more than an API key here. The key was not saved.`,
       );
     }
-    this.connectionEpoch++;
     this.credentialChanged(providerId);
-    this.connectionTests.delete(providerId);
     this.cancelLogin(providerId);
     await this.options.credentials.modify(providerId, async () => ({
       type: 'api_key',
@@ -1143,44 +1120,10 @@ export class ModelRegistry implements ModelResolver {
       // An endpoint key is bound to the address it was entered for.
       ...(endpoint ? { env: { [ENDPOINT_ORIGIN]: endpoint.origin } } : {}),
     }));
-    this.connectionEpoch++;
     this.credentialChanged(providerId);
-    this.connectionTests.delete(providerId);
     await this.refreshStatus(providerId);
     if (endpoint) this.fetchInBackground(providerId);
     else this.connected(providerId);
-  }
-
-  /** Test only the saved endpoint metadata route, never a caller-supplied URL or inference. */
-  async testEndpoint(providerId: string) {
-    const endpoint = this.options.endpoints?.get(providerId);
-    if (!endpoint)
-      throw new RegistryError('unsupported', 'connection tests require a configured endpoint');
-    const epoch = this.connectionEpoch;
-    const credential = await this.options.credentials.read(providerId);
-    const current = () =>
-      epoch === this.connectionEpoch &&
-      sameEndpoint(this.options.endpoints?.get(providerId), endpoint);
-    if (!current())
-      throw new RegistryError('unsupported', 'settings changed; test the connection again');
-    const apiKey =
-      !endpoint.spec.keyless &&
-      credential?.type === 'api_key' &&
-      credential.env?.[ENDPOINT_ORIGIN] === endpoint.origin
-        ? credential.key
-        : undefined;
-    const result =
-      !endpoint.spec.keyless && !apiKey
-        ? { kind: 'authentication' as const, status: null }
-        : await probeEndpoint({ baseUrl: endpoint.spec.baseUrl, ...(apiKey ? { apiKey } : {}) });
-    if (!current())
-      throw new RegistryError('unsupported', 'settings changed; test the connection again');
-    const view = {
-      ...result,
-      checkedAt: new Date(this.options.now?.() ?? Date.now()).toISOString(),
-    };
-    this.connectionTests.set(providerId, view);
-    return view;
   }
 
   private providerName(providerId: string): string {
@@ -1218,7 +1161,6 @@ export class ModelRegistry implements ModelResolver {
         methods: this.methods(providerId),
         endpoint: this.options.endpoints?.get(providerId)?.host ?? null,
         endpointChanged: status?.endpointChanged ?? false,
-        connectionTest: this.connectionTests.get(providerId) ?? null,
         subscription: status?.method === 'oauth' && this.subscription(providerId),
         expiresAt: status?.expires ? new Date(Math.max(status.expires, now)).toISOString() : null,
         login: login ? { ...login.view } : null,
@@ -1404,15 +1346,11 @@ export class ModelRegistry implements ModelResolver {
       await this.models.logout(providerId);
       return;
     }
-    this.connectionEpoch++;
     this.credentialChanged(providerId);
-    this.connectionTests.delete(providerId);
     this.cancelLogin(providerId);
     this.fetches.get(providerId)?.abort.abort();
     await this.models.logout(providerId);
-    this.connectionEpoch++;
     this.credentialChanged(providerId);
-    this.connectionTests.delete(providerId);
     await this.refreshStatus(providerId);
   }
 
@@ -1642,14 +1580,6 @@ function sameAccess(current: Endpoint | undefined, expected: Endpoint) {
     current !== undefined &&
     current.spec.baseUrl === expected.spec.baseUrl &&
     current.spec.keyless === expected.spec.keyless
-  );
-}
-
-/** The same configured endpoint, though its definition may have taken a newly fetched list. */
-function sameEndpoint(current: Endpoint | undefined, expected: Endpoint) {
-  return (
-    current !== undefined &&
-    (expected.config ? current.config === expected.config : current === expected)
   );
 }
 

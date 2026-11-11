@@ -33,31 +33,34 @@ test('model settings keep configuration distinct from endpoint reachability and 
   corral,
 }) => {
   await corral.open('/settings/models');
-  // Profiles and sign-ins are two tabs of the models settings.
-  await modelSettingsTab(page, 'Profiles');
+  // The connection's row: configured, it says how it connects until its model list is asked for.
+  const provider = page.getByRole('article', { name: 'Local server', exact: true });
+  await expect(provider).toContainText('No key · 1 model');
+  await provider.getByRole('button', { expanded: false }).click();
+  await provider.getByRole('button', { name: 'Refresh models', exact: true }).click();
+  // The fixture serves inference only; a model list 404 must not trigger inference fallback.
+  await expect(provider).toContainText('No model list here');
   await expect(
-    page.getByTestId('profile-model-a').getByText('Configured', { exact: true }),
-  ).toBeVisible();
-  await modelSettingsTab(page, 'Sign-in');
-  const provider = page.getByTestId('provider-local');
-  await provider.getByRole('button', { name: 'Test connection', exact: true }).click();
-  // The fixture serves inference only; a metadata 404 must not trigger inference fallback.
-  await expect(
-    provider.getByRole('status').filter({ hasText: 'does not support the connection check' }),
+    provider.getByRole('button', { name: 'Edit address: Local server', exact: true }),
   ).toBeVisible();
   expect(corral.endpoint?.models).toEqual([]);
+  // The model written in the settings stays listed.
+  await expect(
+    provider.getByRole('list', { name: 'Models of Local server', exact: true }),
+  ).toContainText('llama3.2');
   await corral.endpoint?.close();
-  await provider.getByRole('button', { name: 'Test connection', exact: true }).click();
-  await expect(
-    provider
-      .getByRole('status')
-      .filter({ hasText: 'Could not connect. Check the address, network, and local server.' }),
-  ).toBeVisible();
+  await provider.getByRole('button', { name: 'Refresh models', exact: true }).click();
+  await expect(provider).toContainText('Can’t reach the address');
+  const retry = provider.getByRole('button', { name: 'Try again: Local server', exact: true });
+  await expect(retry).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await provider.scrollIntoViewIfNeeded();
-  await expect(
-    provider.getByRole('button', { name: 'Test connection', exact: true }),
-  ).toBeInViewport();
+  await retry.scrollIntoViewIfNeeded();
+  await expect(retry).toBeInViewport();
   await provider.screenshot({ path: test.info().outputPath('endpoint-recovery.png') });
+  // Unreachable is not unconfigured: the profile still points at the endpoint's model.
+  const profiles = await modelSettingsTab(page, 'Profiles');
+  const model = profiles.getByRole('button', { name: /^Model of model-a: / });
+  await expect(model).toHaveAccessibleName('Model of model-a: llama3.2');
+  await expect(model).not.toContainText('Not connected');
   expect(corral.errors).toEqual([]);
 });

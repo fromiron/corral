@@ -56,7 +56,12 @@ export function ModelCatalogDialog({
     ) ?? [];
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogPopup size="lg" showCloseButton={false} className="flex flex-col gap-3">
+      <DialogPopup
+        data-settings-sheet
+        size="lg"
+        showCloseButton={false}
+        className="flex flex-col gap-3"
+      >
         <div className="flex items-center justify-between gap-3 pr-8">
           <DialogTitle>{tc('catalog')}</DialogTitle>
         </div>

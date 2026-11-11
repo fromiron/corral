@@ -1,4 +1,4 @@
-import { newConversation, requestBox, slash } from '../workbench.ts';
+import { newConversation, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -73,7 +73,7 @@ test.describe('shared automatic queue', () => {
       await requestBox(page).fill('Initial request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
-      await slash(page, 'queue');
+      // A next request sent while the run works waits behind it (workbench.md).
       await requestBox(page).fill('Run this queued item once');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await second.goto(page.url());

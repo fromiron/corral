@@ -56,7 +56,7 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
     await route.continue();
   });
   await chip.click();
-  await settings.getByRole('option', { name: /^OpenAI · Test B/ }).click();
+  await settings.getByRole('option', { name: /^Test B, model-b\b/ }).click();
   await expect(chip).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   expect(saved).toHaveLength(1);
@@ -87,7 +87,7 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await expect(page.getByTestId('reasoning-not-supported')).toBeVisible();
   await chip.click();
-  await settings.getByRole('option', { name: /^OpenAI · Test A/ }).click();
+  await settings.getByRole('option', { name: /^Test A, model-a\b/ }).click();
   await expect(chip).toContainText('Test A');
   await expect(chip).toHaveAttribute('aria-description', /Low/);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
@@ -101,7 +101,7 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
       : route.continue(),
   );
   await chip.click();
-  await settings.getByRole('option', { name: /^OpenAI · Test B/ }).click();
+  await settings.getByRole('option', { name: /^Test B, model-b\b/ }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Fixture save conflict' })).toBeVisible();
   await expect(chip).toContainText('Test A');
   await expect(chip).toHaveAttribute('aria-description', /Low/);

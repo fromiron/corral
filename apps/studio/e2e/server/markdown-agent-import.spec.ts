@@ -1,5 +1,11 @@
 import type { Page } from '@playwright/test';
-import { expectTeamSaved, openLibraryTeams, openTestRun, teamCanvas } from '../workbench.ts';
+import {
+  chooseModel,
+  expectTeamSaved,
+  openLibraryTeams,
+  openTestRun,
+  teamCanvas,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, compatibleEndpoint: true });
@@ -32,7 +38,7 @@ model: original/provider
 ---
 Read the supplied code and report the evidence.`);
   await choose(page, 'Parent agent', 'Agent 1');
-  await choose(page, 'Connected model profile', 'Local server · llama3.2');
+  await chooseModel(page, 'Connected model profile', 'llama3.2, model-a');
   await choose(page, 'Read mapping', 'read_file');
   await choose(page, 'Glob mapping', 'list_files');
   await expect(dialog.getByText('Excluded: handled by parent', { exact: true })).toHaveCount(2);
@@ -200,7 +206,7 @@ tools: [Read, Edit]
 ---
 Read the current file before applying a bounded edit.`);
   await choose(page, 'Parent agent', 'Agent 1');
-  await choose(page, 'Connected model profile', 'Local server · llama3.2');
+  await chooseModel(page, 'Connected model profile', 'llama3.2, model-a');
   await choose(page, 'Read mapping', 'read_file');
   await choose(page, 'Edit mapping', 'write_file + Hashline editing');
   await expect(dialog.getByText(/Edit selects Hashline mode/)).toBeVisible();
@@ -269,7 +275,7 @@ tools: [Bash]
 ---
 Use only the command requested by the parent.`);
   await choose(page, 'Parent agent', 'Agent 1');
-  await choose(page, 'Connected model profile', 'Local server · llama3.2');
+  await chooseModel(page, 'Connected model profile', 'llama3.2, model-a');
   await choose(page, 'Bash mapping', 'run_command');
   await expect(
     dialog.getByText(/Inherited work style: local-shell-style · r1 · trusted-native/),
