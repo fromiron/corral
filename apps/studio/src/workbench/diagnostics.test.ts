@@ -15,7 +15,6 @@ const provider = (patch: Partial<ProviderAuthView> = {}): ProviderAuthView => ({
   methods: { oauth: false, apiKey: true },
   endpoint: null,
   endpointChanged: false,
-  connectionTest: null,
   subscription: false,
   expiresAt: null,
   login: null,
@@ -79,7 +78,7 @@ const leaky: DiagnosticsReport = {
         name: `Endpoint ${MESSAGE_BODY}`,
         endpoint: 'internal.example:8443',
         method: 'oauth',
-        connectionTest: { kind: 'authentication', status: 401, checkedAt: '2026-11-09T00:00:00Z' },
+        modelFetch: { kind: 'authentication', status: 401, fetchedAt: '2026-11-09T00:00:00Z' },
         login: {
           state: 'failed',
           authUrl: 'https://auth.internal.example/?code=ghp_abcdefghijklmnop',
@@ -211,6 +210,54 @@ describe('diagnostic rows', () => {
       localAi: { state: 'loaded', view: localAi() },
     });
     expect(rows.find((value) => value.id === 'models')?.status).toBe('noModel');
+  });
+
+  it('names the category of each endpoint whose last model list fetch failed; one never fetched or fetched fine adds none', () => {
+    const endpoint = (providerId: string, modelFetch: ProviderAuthView['modelFetch']) =>
+      provider({ providerId, name: providerId, endpoint: `${providerId}.test`, modelFetch });
+    const report = (providers: ProviderAuthView[]): DiagnosticsReport => ({
+      runtime: { mode: 'server', version: '1.0.0', live: true },
+      models: { state: 'ready', providers, profiles: [profile()] },
+      folder: { state: 'no-project' },
+      pathEngine: { state: 'loaded', status: { engine: 'builtIn' } },
+      localAi: { state: 'loaded', view: localAi() },
+    });
+    const fine = [
+      endpoint('never', null),
+      endpoint('listed', { kind: 'connected', status: 200, fetchedAt: '2026-11-11T00:00:00Z' }),
+    ];
+    const failed = [
+      endpoint('refused', {
+        kind: 'authentication',
+        status: 401,
+        fetchedAt: '2026-11-11T00:00:00Z',
+      }),
+      endpoint('offline', { kind: 'connection', status: null, fetchedAt: '2026-11-11T00:00:00Z' }),
+      endpoint('also-refused', {
+        kind: 'authentication',
+        status: 403,
+        fetchedAt: '2026-11-11T00:00:00Z',
+      }),
+    ];
+    const models = (providers: ProviderAuthView[]) =>
+      diagnosticRows(report(providers)).find((row) => row.id === 'models');
+    expect(models(fine)).toMatchObject({ status: 'connected', tone: 'ok', causes: [] });
+    expect(models(fine)).not.toHaveProperty('action');
+    expect(models([...fine, ...failed])).toMatchObject({
+      status: 'connected',
+      tone: 'attention',
+      action: 'models',
+      causes: [
+        { kind: 'endpointFetch', fetch: 'authentication' },
+        { kind: 'endpointFetch', fetch: 'connection' },
+      ],
+    });
+    // The summary keeps to codes: the category, never a provider's name or address.
+    const summary = diagnosticsSummary(report([...fine, ...failed]));
+    expect(summary).toContain(
+      'model connection: connected · 1/1 models ready · 5/5 providers signed in · endpoint fetch authentication, endpoint fetch connection',
+    );
+    for (const name of ['refused', 'offline', '.test']) expect(summary).not.toContain(name);
   });
 
   it("shows the server's path engine and why it fell back", () => {

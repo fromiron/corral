@@ -142,7 +142,7 @@ describe('fetching an endpoint model list', () => {
     ]);
   });
 
-  it('does not follow a redirect and names failures like the connection check', async () => {
+  it('does not follow a redirect and names each failure by its category, without the body', async () => {
     const net = network();
     net.answer(
       () => new Response(null, { status: 302, headers: { location: 'https://sink.test/models' } }),

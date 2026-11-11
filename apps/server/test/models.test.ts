@@ -451,12 +451,6 @@ describe('API keys and OpenAI-compatible endpoints', () => {
       expect(local).toMatchObject({ signedIn: false, endpointChanged: true });
       const result = await finish(moved);
       expect(result.status).toBe('refused');
-      const { revision } = (await moved.json('/model-config')).body;
-      const probe = await moved.json('/model-auth/local/probe', {
-        method: 'POST',
-        body: JSON.stringify({ revision }),
-      });
-      expect(probe.body).toMatchObject({ kind: 'authentication', status: null });
       expect(second.authorizations).toEqual([]);
     } finally {
       await first.close();
@@ -464,7 +458,25 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     }
   });
 
-  it('tests endpoint metadata explicitly, rejects stale settings and never forwards a key through a redirect', async () => {
+  it('the separate connection check is gone: its route answers 404 and /model-auth carries no result of it', async () => {
+    const context = await start(
+      makeFake(),
+      LOCAL_PROFILES,
+      endpointConfig('https://example.test/v1', 'api_key'),
+    );
+    const { revision } = (await context.json('/model-config')).body;
+    const probe = await context.json('/model-auth/local/probe', {
+      method: 'POST',
+      body: JSON.stringify({ revision }),
+    });
+    expect(probe.status).toBe(404);
+    expect(probe.body.error.code).toBe('TARGET_NOT_FOUND');
+    const auth = (await context.json('/model-auth')).body as Record<string, unknown>[];
+    expect(auth.map((view) => view.providerId)).toContain('local');
+    for (const view of auth) expect(view).not.toHaveProperty('connectionTest');
+  });
+
+  it('the model list fetch over HTTP sends one GET with the key, never follows a redirect and answers a result late past a key change with 409', async () => {
     const seen: { path: string; method: string; authorization: string | undefined }[] = [];
     let status = 200;
     let hold: ((reply: () => void) => void) | undefined;
@@ -494,72 +506,74 @@ describe('API keys and OpenAI-compatible endpoints', () => {
         endpointConfig(`http://127.0.0.1:${address.port}/v1`, 'api_key'),
       );
       const { revision } = (await context.json('/model-config')).body;
-      const probe = (rev = revision) =>
-        context.json('/model-auth/local/probe', {
+      const refresh = () =>
+        context.json('/model-auth/local/models/refresh', {
           method: 'POST',
-          body: JSON.stringify({ revision: rev }),
+          body: JSON.stringify({ revision }),
         });
       // Saving a key also fetches the model list once, in the background
       // (features/model-connections.md); wait for that fetch to settle.
-      const fetched = async (kind: string) => {
+      const fetched = async (kind: string, fetchedStatus: number) => {
         for (let i = 0; i < 200; i++) {
           const view = (await context.json('/model-auth')).body[0];
-          if (view.modelFetch?.kind === kind) return view.modelFetch;
+          if (view.modelFetch?.kind === kind && view.modelFetch.status === fetchedStatus)
+            return view.modelFetch;
           await new Promise((r) => setTimeout(r, 10));
         }
         throw new Error(`no ${kind} model fetch`);
       };
-      const listed = {
+      const listed = (key: string) => ({
         path: '/v1/models',
         method: 'GET',
-        authorization: 'Bearer fixture-probe-secret',
-      };
-      expect((await probe('stale')).status).toBe(409);
-      expect((await probe()).body).toMatchObject({ kind: 'authentication', status: null });
-      expect(seen).toEqual([]);
-      await setKey(context.json, 'local', 'fixture-probe-secret');
-      // The fixture answers a body that is no model list.
-      expect(await fetched('unsupported')).toMatchObject({ status: 200 });
-      expect(seen).toEqual([listed]);
-      expect((await probe()).body).toMatchObject({
-        kind: 'connected',
-        status: 200,
-        checkedAt: expect.any(String),
+        authorization: `Bearer ${key}`,
       });
-      expect(seen).toEqual([listed, listed]);
+      // No key yet: authentication, and nothing is sent.
+      expect((await refresh()).body).toMatchObject({
+        kind: 'authentication',
+        status: null,
+        modelCount: 0,
+      });
+      expect(seen).toEqual([]);
+      await setKey(context.json, 'local', 'fixture-fetch-secret');
+      // The fixture answers a body that is no model list.
+      await fetched('unsupported', 200);
+      expect(seen).toEqual([listed('fixture-fetch-secret')]);
       status = 302;
-      expect((await probe()).body).toMatchObject({ kind: 'redirect', status: 302 });
-      expect(seen).toHaveLength(3);
-      expect((await context.json('/model-auth')).body[0].connectionTest.kind).toBe('redirect');
-      await setKey(context.json, 'local', 'replacement-probe-secret');
-      expect(await fetched('redirect')).toMatchObject({ status: 302 });
-      expect(seen).toHaveLength(4);
+      expect((await refresh()).body).toMatchObject({ kind: 'redirect', status: 302 });
+      expect(seen).toEqual([listed('fixture-fetch-secret'), listed('fixture-fetch-secret')]);
       expect(seen.some((request) => request.path.includes('credential-sink'))).toBe(false);
-      expect((await context.json('/model-auth')).body[0].connectionTest).toBeNull();
-      expect(context.responses.join('\n')).not.toMatch(
-        /fixture-probe-secret|private provider response|replacement-probe-secret/,
-      );
+      expect((await context.json('/model-auth')).body[0].modelFetch).toMatchObject({
+        kind: 'redirect',
+        status: 302,
+      });
       status = 200;
       let release: (() => void) | undefined;
       let entered: (() => void) | undefined;
       const received = new Promise<void>((resolve) => {
         entered = resolve;
       });
-      // Only the probe is held; the model fetch the next key save starts is answered at once.
+      // Only this refresh is held; the fetch the next key save starts is answered at once.
       hold = (send) => {
         hold = undefined;
         release = send;
         entered?.();
       };
-      const pending = probe();
+      const pending = refresh();
       await received;
       try {
-        await setKey(context.json, 'local', 'new-key-during-probe');
+        await setKey(context.json, 'local', 'new-key-during-fetch');
       } finally {
         release?.();
       }
-      expect((await pending).status).toBe(501);
-      expect((await context.json('/model-auth')).body[0].connectionTest).toBeNull();
+      const late = await pending;
+      expect(late.status).toBe(409);
+      expect(late.body.error.code).toBe('REVISION_CONFLICT');
+      // What the endpoint shows is the fetch made with the new key.
+      await fetched('unsupported', 200);
+      expect(seen.at(-1)).toEqual(listed('new-key-during-fetch'));
+      expect(context.responses.join('\n')).not.toMatch(
+        /fixture-fetch-secret|private provider response|new-key-during-fetch/,
+      );
     } finally {
       await new Promise<void>((resolve, reject) =>
         endpoint.close((error) => (error ? reject(error) : resolve())),

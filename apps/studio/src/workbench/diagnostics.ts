@@ -1,4 +1,5 @@
 import type {
+  EndpointCheckKind,
   LocalAiView,
   ModelProfileView,
   PathEngineStatus,
@@ -12,7 +13,8 @@ import { profileReady } from './modelReadiness.ts';
 /** Why path search runs on the built-in engine although FFF was wanted. */
 export type PathEngineFallback = NonNullable<PathEngineStatus['reason']>;
 
-type EndpointTest = NonNullable<ProviderAuthView['connectionTest']>['kind'];
+/** Why an endpoint's last model list fetch read no list. */
+type EndpointFetchFailure = Exclude<EndpointCheckKind, 'connected'>;
 
 export interface DiagnosticsReport {
   runtime: { mode: 'server' | 'browser'; version: string | null; live: boolean };
@@ -33,7 +35,7 @@ export type DiagnosticTone = 'ok' | 'attention' | 'error' | 'neutral';
 export type DiagnosticCause =
   | { kind: 'noModel' }
   | { kind: 'modelsFailed' }
-  | { kind: 'endpoint'; test: EndpointTest }
+  | { kind: 'endpointFetch'; fetch: EndpointFetchFailure }
   | { kind: 'endpointChanged' }
   | { kind: 'folderMissing' }
   | { kind: 'notGit' }
@@ -87,17 +89,17 @@ function modelsRow(models: DiagnosticsReport['models']): DiagnosticRow {
     signedIn: models.providers.filter((provider) => provider.signedIn).length,
     providers: models.providers.length,
   };
-  const tests = [
+  // An endpoint never fetched (modelFetch null) or fetched fine gives no cause.
+  const failures = [
     ...new Set(
-      models.providers.flatMap((provider) =>
-        provider.connectionTest && provider.connectionTest.kind !== 'connected'
-          ? [provider.connectionTest.kind]
-          : [],
-      ),
+      models.providers.flatMap((provider) => {
+        const kind = provider.modelFetch?.kind;
+        return kind && kind !== 'connected' ? [kind] : [];
+      }),
     ),
   ];
   const causes: DiagnosticCause[] = [
-    ...tests.map((test) => ({ kind: 'endpoint' as const, test })),
+    ...failures.map((fetch) => ({ kind: 'endpointFetch' as const, fetch })),
     ...(models.providers.some((provider) => provider.endpointChanged)
       ? [{ kind: 'endpointChanged' as const }]
       : []),
@@ -242,8 +244,8 @@ const STATUS: Record<string, string> = {
 
 function causeCode(cause: DiagnosticCause): string {
   switch (cause.kind) {
-    case 'endpoint':
-      return `endpoint test ${cause.test}`;
+    case 'endpointFetch':
+      return `endpoint fetch ${cause.fetch}`;
     case 'pathFallback':
       return `fallback ${cause.reason}`;
     default:

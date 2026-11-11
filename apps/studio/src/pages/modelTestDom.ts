@@ -106,7 +106,6 @@ export const provider = (patch: Partial<ProviderAuthView>): ProviderAuthView => 
   methods: { oauth: true, apiKey: true },
   endpoint: null,
   endpointChanged: false,
-  connectionTest: null,
   subscription: false,
   expiresAt: null,
   login: null,
