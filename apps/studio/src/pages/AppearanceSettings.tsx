@@ -214,7 +214,7 @@ export function AppearanceSettings({
           values={values}
           onValueChange={(choice) => chooseAppearance(choice as Appearance)}
           aria-labelledby={headingId}
-          className="gap-6"
+          className="-mx-1 gap-6"
         >
           <PreviewCardGrid>
             {DEFAULTS.map((choice, index) => (

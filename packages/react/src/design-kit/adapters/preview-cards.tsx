@@ -294,7 +294,7 @@ function PreviewCard({
             className={cn('pointer-events-none absolute inset-0 border border-border', shape.bg)}
           />
         </div>
-        <span className={cn('flex min-h-7 items-center px-1', action ? 'pr-8' : null)}>
+        <span className={cn('flex min-h-7 items-center', action ? 'pr-8' : null)}>
           <CardName chosen={chosen}>{label}</CardName>
         </span>
       </div>
@@ -345,7 +345,7 @@ function PreviewCardButton({ index, label, icon, className, ...props }: PreviewC
       >
         {icon}
       </span>
-      <span className="flex min-h-7 items-center px-1">
+      <span className="flex min-h-7 items-center">
         <span className="line-clamp-2 break-words text-body text-muted-foreground transition-colors duration-80 group-hover/preview:text-foreground group-aria-disabled/preview:text-muted-foreground group-aria-disabled/preview:opacity-50">
           {label}
         </span>
