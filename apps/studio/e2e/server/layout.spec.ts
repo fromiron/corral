@@ -9,22 +9,22 @@ import { expect, test } from './harness.ts';
 test.describe('model profiles', () => {
   // Profiles appear when the workspace has model configuration (as in models.spec.ts).
   test.use({ live: true });
-  test('#75 model profile fields keep visible titles and a visible remove action', async ({
+  test('#75 model profile rows show their name and model and a visible remove action', async ({
     page,
     corral,
   }) => {
     await corral.open('/settings/models');
-    await editModels(page);
-    const editor = page.getByRole('region', { name: 'Edit models' });
-    await expect(editor.getByText('Profile name', { exact: true }).first()).toBeVisible();
-    await expect(editor.getByText('Provider', { exact: true }).first()).toBeVisible();
-    await expect(editor.getByText('Model', { exact: true }).first()).toBeVisible();
+    const editor = await editModels(page);
+    // A row is the profile's name and its model (features/model-connections.md, 프로필): both
+    // read as visible text, not as placeholders.
+    await expect(editor.getByText('model-a', { exact: true })).toBeVisible();
+    const model = editor.getByRole('button', { name: /^Model of model-a: / });
+    await expect(model).toBeVisible();
+    await expect(model).not.toHaveText('');
+    // The remove action is on the row at rest, not only on hover.
     const remove = editor.getByRole('button', { name: 'Remove model-a', exact: true });
-    await expect(remove).toHaveText('Remove');
-    // The accessible names stay on the controls.
-    await expect(
-      editor.getByRole('combobox', { name: 'Model of model-a', exact: true }),
-    ).toBeVisible();
+    await expect(remove).toBeInViewport();
+    await expect(remove).toHaveCSS('opacity', '1');
     expect(corral.errors).toEqual([]);
   });
 });
@@ -189,7 +189,7 @@ test.describe('long settings pages', () => {
     const tabs = page
       .getByRole('tablist', { name: 'Model settings', exact: true })
       .getByRole('tab');
-    const names = ['Sign-in', 'Profiles', 'Local AI & judgment', 'Images', 'Usage'];
+    const names = ['Connections', 'Profiles', 'Local AI & judgment', 'Images', 'Usage'];
     await expect(tabs).toHaveCount(names.length);
     for (const [index, name] of names.entries())
       await expect(tabs.nth(index)).toHaveAccessibleName(name);

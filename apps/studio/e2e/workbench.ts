@@ -215,8 +215,8 @@ export async function openTextSearch(page: Page, query = '', m: SearchLabels = e
 export const openFolderSettings = (page: Page) => openSettings(page, 'Folders & tools');
 
 /**
- * In Settings › Models: shows one of its tabs (Sign-in, Profiles, Local AI & judgment, Images,
- * Usage) and returns its panel.
+ * In Settings › Models: shows one of its tabs (Connections, Profiles, Local AI & judgment,
+ * Images, Usage) and returns its panel.
  */
 export async function modelSettingsTab(page: Page, name: string) {
   const tab = page
@@ -227,13 +227,61 @@ export async function modelSettingsTab(page: Page, name: string) {
   return page.getByRole('tabpanel', { name, exact: true });
 }
 
-/** In Settings › Models: opens the model profiles editor from the Profiles tab. */
+/**
+ * In Settings › Models: opens Add connection from the Connections tab and returns its dialog.
+ * With `provider` (a name in its directory, such as `OpenAI` or `OpenAI-compatible address`),
+ * picks it and returns the dialog on that provider's face, which is titled by its name.
+ */
+export async function addConnection(page: Page, provider?: string) {
+  const panel = await modelSettingsTab(page, 'Connections');
+  await panel.getByRole('button', { name: 'Add connection', exact: true }).click();
+  const directory = page.getByRole('dialog', { name: 'Add connection', exact: true });
+  await expect(
+    directory.getByRole('textbox', { name: 'Search providers', exact: true }),
+  ).toBeFocused();
+  if (!provider) return directory;
+  const escaped = provider.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // A row reads its name, then how it connects (and whether it is connected already).
+  await directory
+    .getByRole('group', { name: 'Providers', exact: true })
+    .getByRole('button', { name: new RegExp(`^${escaped}(?: |$)`) })
+    .click();
+  const face = page.getByRole('dialog', { name: provider, exact: true });
+  await expect(face).toBeVisible();
+  return face;
+}
+
+/**
+ * In Settings › Models: shows the Profiles tab and returns its list of named profiles, which is
+ * edited in place (each row a name and a model; Save and Cancel show once something changed).
+ */
 export async function editModels(page: Page) {
-  await modelSettingsTab(page, 'Profiles');
-  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
-  const editor = page.getByRole('region', { name: 'Edit models' });
+  const panel = await modelSettingsTab(page, 'Profiles');
+  const editor = panel.getByRole('region', { name: 'Profiles', exact: true });
   await expect(editor).toBeVisible();
   return editor;
+}
+
+/**
+ * Chooses a model in a form's model field (a team role, a meeting participant, a run override,
+ * the Markdown agent import): the field opens the searchable list of models, whose search takes
+ * the focus, and the option is picked by its name (the model's name, then the profile's when it
+ * differs, then Image input when that is confirmed). Returns once the list has closed.
+ */
+export async function chooseModel(page: Page, field: string, option: string | RegExp) {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await page.getByRole('button', { name: new RegExp(`^${escaped}: `) }).click();
+  const list = page.getByRole('dialog', { name: field, exact: true });
+  await expect(
+    list.getByRole('combobox', { name: en.ModelSelect.search, exact: true }),
+  ).toBeFocused();
+  await list
+    .getByRole(
+      'option',
+      typeof option === 'string' ? { name: option, exact: true } : { name: option },
+    )
+    .click();
+  await expect(list).toBeHidden();
 }
 
 /** Closes the settings dialog and waits for it to leave. */
