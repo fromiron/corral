@@ -1420,7 +1420,7 @@ export function Composer({
         <>
           {intent !== 'steer' ? <TerminalWriterNotice sessionId={session.sessionId} /> : null}
           {viewingOtherRun ? (
-            <Banner data-testid="viewed-run-warning" status="warning" size="compact">
+            <Banner data-testid="viewed-run-warning" status="warning">
               <BannerTitle>
                 {tc('viewingOtherRun', {
                   viewed: runNumber(selectedRunId),
@@ -1429,11 +1429,7 @@ export function Composer({
               </BannerTitle>
               {onViewRun ? (
                 <BannerActions>
-                  <Button
-                    size="compact"
-                    variant="secondary"
-                    onClick={() => onViewRun(active.runId)}
-                  >
+                  <Button variant="secondary" onClick={() => onViewRun(active.runId)}>
                     {tc('viewActiveRun')}
                   </Button>
                 </BannerActions>
@@ -1441,7 +1437,7 @@ export function Composer({
             </Banner>
           ) : null}
           {resolved.blocked ? (
-            <Banner data-testid="intent-blocked" status="warning" contrast="high" size="compact">
+            <Banner data-testid="intent-blocked" status="warning" contrast="high">
               <BannerTitle>
                 {tc(`blocked.${blockedReason(resolved.blocked, intent)}`, {
                   name: targetName(steerTarget),
@@ -1452,12 +1448,7 @@ export function Composer({
                 {allowed
                   .filter((value) => value !== intent)
                   .map((value) => (
-                    <Button
-                      key={value}
-                      variant="secondary"
-                      size="compact"
-                      onClick={() => chooseIntent(value)}
-                    >
+                    <Button key={value} variant="secondary" onClick={() => chooseIntent(value)}>
                       {tc(`switchTo.${value}`)}
                     </Button>
                   ))}
@@ -1465,18 +1456,17 @@ export function Composer({
             </Banner>
           ) : null}
           {notReady.length ? (
-            <Banner data-testid="models-not-ready" status="warning" contrast="high" size="compact">
+            <Banner data-testid="models-not-ready" status="warning" contrast="high">
               <BannerTitle>
                 {tc('models.notReady', {
                   roles: notReady.map((r) => `${r.name} (${r.profileId})`).join(', '),
                 })}
               </BannerTitle>
               <BannerActions>
-                <Button size="compact" render={<Link {...navigation.link('models')} />}>
+                <Button render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
                 <Button
-                  size="compact"
                   variant="tertiary"
                   render={<a href="/demo" target="_blank" rel="noreferrer" />}
                 >
@@ -1486,16 +1476,15 @@ export function Composer({
             </Banner>
           ) : null}
           {autoBlocked ? (
-            <Banner data-testid="models-not-ready" status="warning" contrast="high" size="compact">
+            <Banner data-testid="models-not-ready" status="warning" contrast="high">
               <BannerTitle>
                 {t('autoNotReady', { model: autoProfile?.label ?? autoChoice.modelProfile })}
               </BannerTitle>
               <BannerActions>
-                <Button size="compact" render={<Link {...navigation.link('models')} />}>
+                <Button render={<Link {...navigation.link('models')} />}>
                   {tc('models.connect')}
                 </Button>
                 <Button
-                  size="compact"
                   variant="tertiary"
                   render={<a href="/demo" target="_blank" rel="noreferrer" />}
                 >
@@ -1609,12 +1598,7 @@ export function Composer({
               {allowed
                 .filter((value) => value === 'next' || value === 'queue')
                 .map((value) => (
-                  <Button
-                    key={value}
-                    variant="tertiary"
-                    size="compact"
-                    onClick={() => chooseIntent(value)}
-                  >
+                  <Button key={value} variant="tertiary" onClick={() => chooseIntent(value)}>
                     {tc(`switchTo.${value}`)}
                   </Button>
                 ))}
@@ -1898,7 +1882,6 @@ export function Composer({
             <li key={corral.corralId}>
               <Button
                 variant="tertiary"
-                size="compact"
                 disabled={busy}
                 onClick={() => {
                   void updateTeam(corral.corralId);

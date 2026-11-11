@@ -14,8 +14,10 @@ export function CopyTextButton({ text, code = false }: { text: string; code?: bo
   return (
     <span className="inline-flex items-center gap-2">
       <Tooltip content={status === 'copied' ? t('copied') : label}>
+        {/* Over a code block the button sits inside the block, so it stays small; under a
+            message it takes the interface density. */}
         <Button
-          size="icon-compact"
+          size={code ? 'icon-compact' : 'icon'}
           variant="ghost"
           aria-label={label}
           onClick={async () => {

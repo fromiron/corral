@@ -143,7 +143,7 @@ export function OverviewWidgets({
     return (
       <div role="alert" className="flex flex-col items-start gap-2 p-4 text-body">
         <p>{t('readError')}</p>
-        <Button size="compact" variant="secondary" onClick={model.retryRead}>
+        <Button variant="secondary" onClick={model.retryRead}>
           {t('retry')}
         </Button>
       </div>
@@ -173,7 +173,6 @@ export function OverviewWidgets({
           <Button
             ref={back}
             variant="ghost"
-            size="compact"
             className="self-start"
             aria-label={t('back')}
             onClick={() => choose(null)}
@@ -235,12 +234,11 @@ function AttentionWidget({ model }: { model: ChatWidgetModel }) {
     .map((key) => (key === 'actionMixed' ? t(key, { count: model.action.count }) : t(key)))
     .join(' · ');
   return (
-    <Banner status={actionTone(model.action)} size="compact" role="note">
+    <Banner status={actionTone(model.action)} role="note">
       <BannerTitle>{label}</BannerTitle>
       <BannerActions>
         <Button
           variant="secondary"
-          size="compact"
           render={<RunLink model={model} respond={model.action.needsUser} />}
         >
           {t('actionOpen')}
@@ -324,7 +322,6 @@ function ContextWidget({ model, open }: { model: ChatWidgetModel; open: () => vo
         : null;
   return (
     <Card
-      size="compact"
       data-testid="context-usage-chip"
       label={t('openDetail', { name: t('context') })}
       onClick={open}
@@ -361,7 +358,7 @@ function UsageWidget({ usage, open }: { usage: UsageSummary; open: () => void })
   const t = useTranslations('Widgets.overview');
   const format = useFormatter();
   return (
-    <Card size="compact" label={t('openDetail', { name: t('usage') })} onClick={open}>
+    <Card label={t('openDetail', { name: t('usage') })} onClick={open}>
       <Frame icon={Coins} title={t('usage')}>
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
@@ -469,7 +466,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
           {(costLines.length ? costLines : [tb('costSimulated')]).join(' · ')}
         </p>
       ) : null}
-      <Button size="compact" variant="secondary" render={<RunLink model={model} />}>
+      <Button variant="secondary" render={<RunLink model={model} />}>
         {t('openRun')}
       </Button>
     </div>
@@ -488,7 +485,6 @@ function ResultsWidget({ model }: { model: ChatWidgetModel }) {
         {model.results.map((result) => (
           <Card
             key={result.id}
-            size="compact"
             label={result.label}
             onClick={() =>
               void navigate({
@@ -528,7 +524,6 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
   return (
     <CardGroup orientation="inline">
       <Card
-        size="compact"
         label={t('openChanges')}
         onClick={() =>
           void navigate({
@@ -611,7 +606,6 @@ function AgentsWidget({ model, open }: { model: ChatWidgetModel; open: () => voi
     <AgentCard className="grid gap-3 p-3">
       <Button
         data-testid="agent-activity-chip"
-        size="compact"
         variant="ghost"
         aria-label={t('openDetail', { name: t('agents') })}
         onClick={open}

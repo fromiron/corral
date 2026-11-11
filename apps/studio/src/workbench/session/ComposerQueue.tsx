@@ -101,12 +101,7 @@ export function ComposerQueue({
           renderActions={(item) => {
             const entry = entryFor(item);
             return entry ? (
-              <Button
-                variant="ghost"
-                size="compact"
-                disabled={startDisabled}
-                onClick={() => onStart(entry)}
-              >
+              <Button variant="ghost" disabled={startDisabled} onClick={() => onStart(entry)}>
                 {t('startNow')}
               </Button>
             ) : null;

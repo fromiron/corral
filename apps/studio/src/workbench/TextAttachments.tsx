@@ -106,7 +106,6 @@ export function TextAttachmentPicker({
         {!inputRef ? (
           <Button
             type="button"
-            size="compact"
             variant="ghost"
             disabled={disabled || !enabled || loading || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
             onClick={() => input.current?.click()}
@@ -119,7 +118,6 @@ export function TextAttachmentPicker({
             <Button
               key={textAttachmentKey(item)}
               type="button"
-              size="compact"
               variant="tertiary"
               disabled={disabled || loading}
               aria-label={t('removeAttachment', { name: item.name })}

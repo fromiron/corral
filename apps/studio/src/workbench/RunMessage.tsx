@@ -32,6 +32,7 @@ import {
   ThinkingStepsContent,
   ThinkingStepsHeader,
   Tooltip,
+  useSize,
 } from '@corral/react/design-kit';
 import { ChevronRight, FileText, LoaderCircle, PanelRight, Pause } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
@@ -72,6 +73,7 @@ export function RunMessage({
   const tw = useTranslations('Widgets');
   const tm = useTranslations('MessageBody');
   const ts = useTranslations('Status');
+  const lineCompact = useSize().variant === 'compact';
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const [disclosure, setDisclosure] = useState<{
     runId: string;
@@ -317,7 +319,7 @@ export function RunMessage({
         // No process to fold: a state other than plain work still shows beside the run number.
         <TurnLine>
           {['created', 'validating', 'running'].includes(projection.status) ? null : (
-            <span className="py-1.5 pl-2.5">
+            <span className={lineCompact ? 'py-1.5 pl-2.5' : 'py-2 pl-3'}>
               {ts.has(projection.status) ? ts(projection.status) : projection.status}
             </span>
           )}
@@ -335,7 +337,6 @@ export function RunMessage({
         policySettingsAction={
           sessionId ? (
             <Button
-              size="compact"
               variant="tertiary"
               render={
                 <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
@@ -356,7 +357,6 @@ export function RunMessage({
                 ? 'warning'
                 : 'default'
           }
-          size="compact"
           role="note"
         >
           <BannerTitle>
@@ -465,7 +465,6 @@ export function RunMessage({
         <ThinkingSteps
           id={`work-log-${runId}`}
           className="work-log w-full"
-          size="compact"
           open={expanded}
           onOpenChange={(open) => setDisclosure({ runId, density: chatDensity, open })}
         >
@@ -530,7 +529,6 @@ export function RunMessage({
         <ThinkingIndicator
           data-testid="reply-pending"
           aria-live="off"
-          size="compact"
           className="px-0"
           labels={{ status: pendingWord, words: [pendingWord] }}
         />
@@ -583,7 +581,7 @@ export function RunMessage({
       {resultError ? (
         <p role="alert" className="flex items-center gap-2 text-caption text-danger">
           {t('resultUnavailable')}
-          <Button variant="tertiary" size="compact" onClick={() => setRetry((value) => value + 1)}>
+          <Button variant="tertiary" onClick={() => setRetry((value) => value + 1)}>
             {t('retryResult')}
           </Button>
         </p>
@@ -624,10 +622,11 @@ export function RunMessage({
  * place in the tab order either way.
  */
 export function TurnActions({ children }: { children: ReactNode }) {
+  const compact = useSize().variant === 'compact';
   return (
     <div
       data-testid="turn-actions"
-      className="turn-actions -ml-1.5 flex min-h-7 flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none"
+      className={`turn-actions ${compact ? '-ml-1.5 min-h-7' : '-ml-2.5 min-h-9'} flex flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none`}
     >
       {children}
     </div>
@@ -685,7 +684,7 @@ function ChatResult({
         {readable ? (
           <Tooltip content={tr('openResults')}>
             <Button
-              size="icon-compact"
+              size="icon"
               variant="ghost"
               aria-label={tr('openResults')}
               render={<Link {...location} search={search(result.artifactVersionId)} />}

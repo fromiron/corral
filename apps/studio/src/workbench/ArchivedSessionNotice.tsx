@@ -33,11 +33,11 @@ export function ArchivedSessionNotice({ session }: { session: WorkSession }) {
     }
   };
   return (
-    <Banner status="info" size="compact" className="shrink-0">
+    <Banner status="info" className="shrink-0">
       <BannerTitle>{t('archived')}</BannerTitle>
       <p>{t('archivedSending')}</p>
       <BannerActions>
-        <Button variant="tertiary" size="compact" disabled={busy} onClick={() => void restore()}>
+        <Button variant="tertiary" disabled={busy} onClick={() => void restore()}>
           {t('restoreSession')}
         </Button>
       </BannerActions>

@@ -80,7 +80,7 @@ export function MessageBranch({
       {icon ? (
         <Tooltip content={t(requestStart ? 'requestOpen' : 'open')}>
           <Button
-            size="icon-compact"
+            size="icon"
             variant="ghost"
             aria-label={t(requestStart ? 'requestOpen' : 'open')}
             disabled={disabled}
@@ -90,7 +90,7 @@ export function MessageBranch({
           </Button>
         </Tooltip>
       ) : (
-        <Button size="compact" variant="ghost" disabled={disabled} onClick={() => setOpen(true)}>
+        <Button variant="ghost" disabled={disabled} onClick={() => setOpen(true)}>
           {t(requestStart ? 'requestOpen' : 'open')}
         </Button>
       )}

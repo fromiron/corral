@@ -363,7 +363,7 @@ export function ChatView({
             <Tooltip content={t('toLatest')}>
               <Button
                 aria-label={t('toLatest')}
-                size="icon-compact"
+                size="icon"
                 variant="tertiary"
                 className="pointer-events-auto rounded-full"
                 onClick={() => {

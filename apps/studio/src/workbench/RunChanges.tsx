@@ -39,7 +39,6 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
     <div className="flex flex-wrap items-center gap-2 text-caption">
       <Button
         variant="tertiary"
-        size="compact"
         data-testid="run-change-summary"
         render={
           <Link
@@ -60,7 +59,7 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
         <span className="text-muted-foreground">{t('uncountedChanges', { count: unknown })}</span>
       ) : null}
       {error ? (
-        <Button variant="ghost" size="compact" onClick={() => setRetry((value) => value + 1)}>
+        <Button variant="ghost" onClick={() => setRetry((value) => value + 1)}>
           {t('retryChanges')}
         </Button>
       ) : null}
