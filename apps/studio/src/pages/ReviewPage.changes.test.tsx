@@ -553,15 +553,50 @@ it('marks only files written outside Corral, with a badge whose tooltip names th
 });
 
 it('shows the shared empty view where there is no diff to read', async () => {
-  const chosen = await mount({ search: { scope: 'session' }, files: ['a.ts'] });
-  const choose = chosen.container.querySelector('[data-slot="empty-view"]');
-  expect(choose?.textContent).toContain('Files.chooseFile');
-  expect(choose?.closest('section')?.getAttribute('aria-label')).toBe('Files.chooseFile');
-  for (const cleanup of cleanups.splice(0)) await cleanup();
   const none = await mount({ search: { scope: 'session' }, files: [] });
   const empty = none.container.querySelector('[data-testid="no-changes"]');
   expect(empty?.getAttribute('data-slot')).toBe('empty-view');
   expect(empty?.textContent).toContain('Files.nothingChanged');
+  expect(none.container.textContent).not.toContain('Files.chooseFile');
+});
+
+it('opens with the first changed file of the list, or the file the address names', async () => {
+  // Build output is folded below the other files, so the first file shown is `b.ts`.
+  const opened = await mount({
+    search: { scope: 'session' },
+    files: ['dist/out.js', 'b.ts', 'c.ts'],
+  });
+  const shown = () => opened.container.querySelector('section[aria-label]');
+  expect(shown()?.getAttribute('aria-label')).toBe('b.ts');
+  expect(shown()?.querySelector('[data-testid="diff"]')).not.toBeNull();
+  expect(opened.fileButton('b.ts')?.getAttribute('aria-current')).toBe('true');
+  expect(opened.container.textContent).not.toContain('Files.chooseFile');
+  // Opening it is not a choice the address records.
+  expect(opened.searches).toEqual([]);
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+  const named = await mount({
+    search: { scope: 'session', file: 'c.ts' },
+    files: ['dist/out.js', 'b.ts', 'c.ts'],
+  });
+  expect(named.container.querySelector('section[aria-label]')?.getAttribute('aria-label')).toBe(
+    'c.ts',
+  );
+  expect(named.fileButton('c.ts')?.getAttribute('aria-current')).toBe('true');
+});
+
+it('offers no decision on a comparison with no changed files', async () => {
+  for (const width of [1200, 600]) {
+    reviewWidth(width);
+    const view = await mount({ search: { scope: 'session' }, files: [] });
+    expect(view.container.querySelector('[data-testid="review-decision"]')).toBeNull();
+    expect(view.button('Review.approve')).toBeUndefined();
+    expect(view.button('Review.requestChanges')).toBeUndefined();
+    for (const cleanup of cleanups.splice(0)) await cleanup();
+  }
+  // With a change to judge, both decisions are there.
+  const changed = await mount({ search: { scope: 'session' }, files: ['a.ts'] });
+  expect(changed.button('Review.approve')).toBeDefined();
+  expect(changed.button('Review.requestChanges')).toBeDefined();
 });
 
 it('reads the changes again when shown again or when a run moves, keeping the place when nothing changed', async () => {
@@ -691,12 +726,11 @@ it('moves between files with the list and the brace keys, stopping at the ends',
     act(async () => {
       target.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey: true, bubbles: true }));
     });
+  // The review opens on the first file, so the next one is the second.
   const first = view.fileButton('a.ts');
   if (!first) throw new Error('Missing file row');
+  expect(first.getAttribute('aria-current')).toBe('true');
   await press('}', first);
-  expect(view.searches.at(-1)).toEqual({ file: 'a.ts' });
-  expect(document.activeElement).toBe(view.fileButton('a.ts'));
-  await press('}', document.activeElement as Element);
   expect(view.searches.at(-1)).toEqual({ file: 'b.ts' });
   expect(document.activeElement).toBe(view.fileButton('b.ts'));
   await press('}', document.activeElement as Element);
