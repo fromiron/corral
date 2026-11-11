@@ -22,6 +22,8 @@ export function stubBrowser() {
       disconnect() {}
     },
   );
+  // jsdom lays nothing out; scrolling a row into view is a no-op there.
+  Element.prototype.scrollIntoView ??= () => {};
 }
 
 const all = <T extends Element = HTMLElement>(selector: string, root: ParentNode = document.body) =>

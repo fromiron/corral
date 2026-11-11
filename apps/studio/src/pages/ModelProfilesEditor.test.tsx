@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
-import { ApiError, type ModelConfig, type ModelProfileView, type ModelsApi } from '@corral/client';
+import {
+  ApiError,
+  type ModelConfig,
+  type ModelProfileView,
+  type ModelsApi,
+  type ProfileConfig,
+} from '@corral/client';
+import { SCHEMA_VERSION } from '@corral/contracts';
+import { parseWorkspaceConfig } from '@corral/core';
 import { DesignKitProvider } from '@corral/react/design-kit';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -91,6 +99,17 @@ async function choose(trigger: Element | undefined, option: string) {
   await click(all('[role="option"]').find((el) => el.getAttribute('aria-label') === option));
   await settle();
 }
+/** Profiles as the server sends them: parsed by the config schema, so in its field order. */
+function fromServer(list: object[]): ProfileConfig[] {
+  const parsed = parseWorkspaceConfig({ schemaVersion: SCHEMA_VERSION, modelProfiles: list });
+  if (!parsed.ok) throw new Error(parsed.errors.join('; '));
+  return parsed.config.modelProfiles ?? [];
+}
+const saveBar = () => document.body.querySelector('[data-save-bar]');
+const advance = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 
 beforeEach(() => {
   stubBrowser();
@@ -273,5 +292,251 @@ describe('Profiles tab', () => {
     );
     // No always-on paragraphs: no revision, no "Base limit" line.
     expect(document.body.textContent).not.toMatch(/Config revision|Base limit|Blank uses/);
+  });
+
+  it('counts a saved profile unchanged in whatever order the server gives its fields', async () => {
+    // Written in another order than the schema's; the server answers in the schema's.
+    const saved = fromServer([
+      {
+        compaction: { keepRecentTokens: 20_000, reserveTokens: 8_000 },
+        contextWindow: 200_000,
+        workerIsolation: 'linux-bwrap',
+        model: 'gpt-6-luna',
+        provider: 'openai',
+        id: 'isolated',
+      },
+      { cacheRetention: 'long', model: 'o9', provider: 'openai', id: 'cached' },
+      { compaction: { reserveTokens: 4_000 }, model: 'o9', provider: 'openai', id: 'compact' },
+    ]);
+    const start: ModelConfig = { ...config, modelProfiles: saved };
+    await show({ config: start });
+    expect(saveBar()).toBeNull();
+
+    // After a save, the answer is the saved state: nothing is left unsaved.
+    fixture.models.saveConfig = vi.fn(async (change: { modelProfiles: ProfileConfig[] }) => ({
+      ...start,
+      revision: 'r2',
+      modelProfiles: fromServer(change.modelProfiles),
+    })) as unknown as ModelsApi['saveConfig'];
+    await click(control('Advanced settings of cached'));
+    await type(
+      all<HTMLInputElement>('[data-profile-id="cached"] [data-field="contextWindow"] input')[0],
+      '64000',
+    );
+    expect(visibleText(saveBar())).toContain('1 unsaved change');
+    await click(control('Save'));
+    await settle();
+    expect(fixture.models.saveConfig).toHaveBeenCalledTimes(1);
+    const after = (fixture.models.saveConfig as ReturnType<typeof vi.fn>).mock.results[0]
+      ?.value as Promise<ModelConfig>;
+    const savedConfig = await after;
+    await show({ config: savedConfig });
+    expect(saveBar()).toBeNull();
+
+    // A newer config with nothing edited here is taken as it comes.
+    await show({
+      config: {
+        ...savedConfig,
+        revision: 'r3',
+        modelProfiles: [
+          ...savedConfig.modelProfiles,
+          ...fromServer([{ id: 'newer', provider: 'openai', model: 'o9' }]),
+        ],
+      },
+    });
+    expect(all('[data-profile-id]').map((el) => el.getAttribute('data-profile-id'))).toEqual([
+      'isolated',
+      'cached',
+      'compact',
+      'newer',
+    ]);
+    expect(saveBar()).toBeNull();
+  });
+
+  it('saves again on the new revision when only the revision moved', async () => {
+    fixture.models.saveConfig = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(409, 'REVISION_CONFLICT', 'the config changed'))
+      .mockImplementation(async (change: { modelProfiles: ProfileConfig[] }) => ({
+        ...config,
+        revision: 'r3',
+        modelProfiles: change.modelProfiles,
+      }));
+    // Something else saved (effort routing, say): the profiles are as they were.
+    fixture.models.config = vi.fn(async () => ({ ...config, revision: 'r2' }));
+    await show();
+    await click(control('Add profile'));
+    await choose(undefined, 'o9');
+    await click(control('Save'));
+    await settle();
+    expect(fixture.models.config).toHaveBeenCalled();
+    expect(fixture.models.saveConfig).toHaveBeenCalledTimes(2);
+    expect(fixture.models.saveConfig).toHaveBeenLastCalledWith({
+      revision: 'r2',
+      modelProfiles: [
+        { id: 'gpt-6-luna', provider: 'openai', model: 'gpt-6-luna' },
+        { id: 'o9', provider: 'openai', model: 'o9' },
+      ],
+      modelProviders: [],
+    });
+    expect(document.body.textContent).not.toContain('Profiles changed elsewhere');
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('says profiles changed elsewhere only when they did, and starts again from the latest', async () => {
+    fixture.models.saveConfig = vi
+      .fn()
+      .mockRejectedValue(new ApiError(409, 'REVISION_CONFLICT', 'the config changed'));
+    fixture.models.config = vi.fn(async () => ({
+      ...config,
+      revision: 'r2',
+      modelProfiles: [
+        ...config.modelProfiles,
+        { id: 'other', provider: 'github-copilot', model: 'claude-opus' },
+      ],
+    }));
+    await show();
+    await click(control('Add profile'));
+    await choose(undefined, 'o9');
+    await click(control('Save'));
+    await settle();
+    expect(fixture.models.saveConfig).toHaveBeenCalledTimes(1);
+    expect(saveBar()?.querySelector('[role="alert"]')?.textContent).toContain(
+      'Profiles changed elsewhere',
+    );
+    // The edits are still here.
+    expect(nameField(2)?.value).toBe('o9');
+    // The page has not read the new config yet; starting again uses the one just read.
+    await click(control('Start from the latest'));
+    expect(all('[data-profile-id]').map((el) => el.getAttribute('data-profile-id'))).toEqual([
+      'gpt-6-luna',
+      'other',
+    ]);
+    expect(nameField(2)).toBeUndefined();
+    expect(saveBar()).toBeNull();
+  });
+
+  it('says why Save is off when a new profile has no name, tied to the name field', async () => {
+    await show();
+    await click(control('Add profile'));
+    await choose(undefined, 'o9');
+    await type(nameField(2), '');
+    expect((control('Save') as HTMLButtonElement | undefined)?.disabled).toBe(true);
+    const described = nameField(2)?.getAttribute('aria-describedby');
+    expect(described).toBeTruthy();
+    expect(document.getElementById(described ?? '')?.textContent).toBe(
+      'Start with a letter, then letters, digits or - _ . :',
+    );
+  });
+
+  it('drops a preview that no longer describes the draft', async () => {
+    let fail = false;
+    fixture.models.previewConfig = vi.fn(async () => {
+      if (fail) throw new Error('offline');
+      return {
+        revision: 'r1',
+        effectiveProfiles: {
+          'gpt-6-luna': {
+            policy: {
+              version: 2,
+              contextWindow: 200_000,
+              reserveTokens: 16_384,
+              keepRecentTokens: 20_000,
+              sources: {
+                contextWindow: 'profile',
+                reserveTokens: 'adaptive',
+                keepRecentTokens: 'adaptive',
+              },
+              baseContextWindow: 400_000,
+              baseSource: 'catalog',
+              warnings: ['reserve_below_output'],
+              configRevision: 'r1',
+            },
+            errors: [],
+          },
+        },
+      };
+    }) as unknown as ModelsApi['previewConfig'];
+    await show();
+    await click(control('Advanced settings of gpt-6-luna'));
+    const context = field('Context window');
+    const reserve = () => field('Summary reserve');
+    await type(context, '200000');
+    await advance(250);
+    expect(reserve()?.placeholder).toBe('16,384 · model-based default');
+    // A value that does not read is not previewed, and the last preview goes with it.
+    await type(context, 'abc');
+    await advance(250);
+    expect(reserve()?.placeholder).toBe('Default');
+    expect(reserve()?.closest('[data-field]')?.textContent).not.toContain(
+      'below the request output cap',
+    );
+    await type(context, '200000');
+    await advance(250);
+    expect(reserve()?.placeholder).toBe('16,384 · model-based default');
+    // Nor does a preview that failed leave the one before it in place.
+    fail = true;
+    await type(context, '300000');
+    await advance(250);
+    expect(reserve()?.placeholder).toBe('Default');
+  });
+
+  it('puts each refusal of a joined answer next to its own profile', async () => {
+    fixture.models.saveConfig = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(
+          400,
+          'SCHEMA_INVALID',
+          'modelProfiles.0.contextWindow: above the model limit; modelProfiles.1: reserve must be below the context window; modelProviders: too many endpoints',
+        ),
+      );
+    await show();
+    await click(control('Add profile'));
+    await choose(undefined, 'Claude Opus');
+    await click(control('Save'));
+    await settle();
+    const [first, second] = all('[data-profile-row]');
+    expect(first?.querySelector('[role="alert"]')?.textContent).toBe(
+      'Not saved: above the model limit',
+    );
+    expect(second?.querySelector('[role="alert"]')?.textContent).toBe(
+      'Not saved: reserve must be below the context window',
+    );
+    expect(saveBar()?.querySelector('[role="alert"]')?.textContent).toBe(
+      'modelProviders: too many endpoints',
+    );
+  });
+
+  it('does not say a save failed when only reading the lists after it failed', async () => {
+    fixture.models.saveConfig = vi.fn(async (change: { modelProfiles: ProfileConfig[] }) => ({
+      ...config,
+      revision: 'r2',
+      modelProfiles: change.modelProfiles,
+    })) as unknown as ModelsApi['saveConfig'];
+    fixture.refresh = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    await show();
+    await click(control('Add profile'));
+    await choose(undefined, 'o9');
+    await click(control('Save'));
+    await settle();
+    expect(fixture.models.saveConfig).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).not.toContain('Not saved');
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
+    // The next edit counts as an edit, not as a save that failed.
+    await click(control('Add profile'));
+    await choose(undefined, 'Claude Opus');
+    expect(saveBar()?.querySelector('[role="alert"]')).toBeNull();
+    expect(visibleText(saveBar())).toContain('1 unsaved change');
+  });
+
+  it('tells the page once it has made the profile a request asked for', async () => {
+    const onRequestHandled = vi.fn();
+    await show({ request: { provider: 'openai', model: 'o9', nonce: 7 }, onRequestHandled });
+    await settle();
+    expect(nameField(2)?.value).toBe('o9');
+    expect(onRequestHandled).toHaveBeenCalledWith(7);
   });
 });

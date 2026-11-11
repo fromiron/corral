@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 import type { ModelsApi } from '@corral/client';
-import { act, type ReactNode, useState } from 'react';
+import { act, type ReactNode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ModelSettingsPage } from './ModelSettingsPage.tsx';
 
-const fixture = vi.hoisted(() => ({ models: {} as ModelsApi }));
+const fixture = vi.hoisted(() => ({
+  models: {} as ModelsApi,
+  applied: [] as number[],
+  // The providers the Connections tab was first drawn with.
+  firstProviders: null as number | null,
+}));
 vi.mock('../services.tsx', () => ({
   useServices: () => ({ mode: 'server', live: true, models: fixture.models }),
 }));
@@ -37,37 +42,61 @@ vi.mock('./SettingsPage.tsx', () => ({
   ),
 }));
 // The tabs' own screens have their own tests; here they only show what the page hands them.
-vi.mock('./ModelConnections.tsx', () => ({
-  ModelConnections: ({
-    onMakeProfile,
-    onOpenProfile,
-  }: {
-    onMakeProfile: (provider: string, model: string) => void;
-    onOpenProfile: (profileId: string) => void;
-  }) => (
-    <div data-testid="connections">
-      <button type="button" onClick={() => onMakeProfile('openai', 'o9')}>
-        make o9
-      </button>
-      <button type="button" onClick={() => onOpenProfile('model-a')}>
-        open model-a
-      </button>
-    </div>
-  ),
-}));
+vi.mock('./ModelConnections.tsx', async () => {
+  const { useModelSettingsRefresh } = await import('../workbench/modelSettings.tsx');
+  return {
+    ModelConnections: ({
+      providers,
+      onMakeProfile,
+      onOpenProfile,
+    }: {
+      providers: unknown[];
+      onMakeProfile: (provider: string, model: string) => void;
+      onOpenProfile: (profileId: string) => void;
+    }) => {
+      const refresh = useModelSettingsRefresh();
+      fixture.firstProviders ??= providers.length;
+      return (
+        <div data-testid="connections">
+          <button type="button" onClick={() => onMakeProfile('openai', 'o9')}>
+            make o9
+          </button>
+          <button type="button" onClick={() => onOpenProfile('model-a')}>
+            open model-a
+          </button>
+          <button type="button" onClick={() => void refresh().catch(() => {})}>
+            read the lists again
+          </button>
+        </div>
+      );
+    },
+  };
+});
 vi.mock('./ModelProfilesEditor.tsx', () => ({
+  // Like the editor, it makes the profile a request asks for once per mount and says so.
   ModelProfilesEditor: ({
     request,
     focus,
+    onRequestHandled,
   }: {
-    request?: { provider: string; model: string } | null;
+    request?: { provider: string; model: string; nonce: number } | null;
     focus?: { profileId: string } | null;
+    onRequestHandled?: (nonce: number) => void;
   }) => {
     const [draft, setDraft] = useState('');
+    const [made, setMade] = useState<string[]>([]);
+    const handled = useRef<number | null>(null);
+    useEffect(() => {
+      if (!request || handled.current === request.nonce) return;
+      handled.current = request.nonce;
+      fixture.applied.push(request.nonce);
+      setMade((list) => [...list, `${request.provider}/${request.model}`]);
+      onRequestHandled?.(request.nonce);
+    });
     return (
       <div data-testid="profiles">
         <input aria-label="draft" value={draft} onChange={(e) => setDraft(e.target.value)} />
-        <span data-testid="request">{request ? `${request.provider}/${request.model}` : ''}</span>
+        <span data-testid="request">{made.join(',')}</span>
         <span data-testid="focus">{focus?.profileId ?? ''}</span>
       </div>
     );
@@ -101,9 +130,11 @@ async function render() {
       disconnect() {}
     },
   );
+  fixture.applied = [];
+  fixture.firstProviders = null;
   fixture.models = {
     profiles: async () => [],
-    auth: async () => [],
+    auth: async () => [{ providerId: 'openai', name: 'OpenAI' }],
     catalog: async () => [],
     config: async () => ({
       revision: 'r1',
@@ -207,6 +238,48 @@ it('a model made into a profile, or a profile opened, takes the person to the Pr
     await act(async () => button('open model-a')?.click());
     expect(tabs()[1]?.getAttribute('aria-selected')).toBe('true');
     expect(container.querySelector('[data-testid="focus"]')?.textContent).toBe('model-a');
+  } finally {
+    await page.unmount();
+  }
+});
+
+it('keeps the Profiles tab and its draft when one read of the config fails, and makes a request once', async () => {
+  const page = await render();
+  try {
+    const { container, tabs, button } = page;
+    await act(async () => button('make o9')?.click());
+    expect(fixture.applied).toHaveLength(1);
+    const draft = () => container.querySelector<HTMLInputElement>('input[aria-label="draft"]');
+    await act(async () => {
+      const input = draft();
+      if (!input) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        input,
+        'typed-but-unsaved',
+      );
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const config = fixture.models.config;
+    fixture.models.config = async () => {
+      throw new Error('offline');
+    };
+    await act(async () => tabs()[0]?.click());
+    await act(async () => button('read the lists again')?.click());
+    expect(draft()?.value).toBe('typed-but-unsaved');
+    fixture.models.config = config;
+    await act(async () => button('read the lists again')?.click());
+    expect(draft()?.value).toBe('typed-but-unsaved');
+    // The request was made into a profile once, not again on a later read.
+    expect(fixture.applied).toHaveLength(1);
+  } finally {
+    await page.unmount();
+  }
+});
+
+it('draws the Connections tab once the lists are read, so its first rows are not news', async () => {
+  const page = await render();
+  try {
+    expect(fixture.firstProviders).toBe(1);
   } finally {
     await page.unmount();
   }

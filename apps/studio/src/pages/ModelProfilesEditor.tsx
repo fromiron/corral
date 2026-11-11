@@ -120,7 +120,43 @@ function profileOf(row: Row): ProfileConfig | null {
   };
 }
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** Equal values, whatever order their fields are in; an absent field and `undefined` are one. */
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((item, index) => same(item, b[index]));
+  }
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  const fields = (value: object) =>
+    Object.entries(value).filter(([, item]) => item !== undefined) as [string, unknown][];
+  const left = fields(a);
+  const right = new Map(fields(b));
+  return left.length === right.size && left.every(([key, item]) => same(item, right.get(key)));
+}
+
+/** A save refused because the profiles themselves changed elsewhere; `latest` is what is there. */
+class ProfilesMoved extends Error {
+  readonly latest: ModelConfig;
+  constructor(latest: ModelConfig) {
+    super('REVISION_CONFLICT');
+    this.latest = latest;
+  }
+}
+
+/** The server's refusal, split into each profile's own reasons and the rest. */
+function refusalsOf(message: string, rows: Row[]) {
+  const perRow: Record<string, string[]> = {};
+  const rest: string[] = [];
+  for (const part of message.split('; ')) {
+    // The server names a profile by its place in what was sent.
+    const at = /^modelProfiles\.(\d+)(?:\.[\w.]+)?:\s*(.*)$/s.exec(part);
+    const row = at ? rows[Number(at[1])] : undefined;
+    if (row && at) perRow[row.uid] = [...(perRow[row.uid] ?? []), at[2] ?? part];
+    else rest.push(part);
+  }
+  return { perRow, rest };
+}
 
 /**
  * The Profiles tab: named profiles only, each a name, a model and its advanced settings.
@@ -131,11 +167,14 @@ export function ModelProfilesEditor({
   profiles,
   request,
   focus,
+  onRequestHandled,
 }: {
   config: ModelConfig;
   profiles: ModelProfileView[];
   request?: ProfileRequest | null;
   focus?: ProfileFocus | null;
+  /** Called with a request's nonce once its profile is in the draft. */
+  onRequestHandled?: (nonce: number) => void;
 }) {
   const t = useTranslations('ProfileEditor');
   const tc = useTranslations('ProfileContext');
@@ -150,9 +189,14 @@ export function ModelProfilesEditor({
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-  const [conflict, setConflict] = useState(false);
+  // The profiles changed elsewhere; `latest` is the config read when the save was refused.
+  const [conflict, setConflict] = useState<{ latest: ModelConfig | null } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [preview, setPreview] = useState<Record<string, ProfileContextResolution> | undefined>();
+  // The server's effective values for one draft, by the draft they describe.
+  const [preview, setPreview] = useState<{
+    key: string;
+    value: Record<string, ProfileContextResolution>;
+  } | null>(null);
 
   const chosen = rows.filter((row) => row.model);
   const draft = chosen.map(profileOf);
@@ -174,9 +218,10 @@ export function ModelProfilesEditor({
     );
     setRowErrors({});
     setError(null);
-    setConflict(false);
-    setPreview(undefined);
+    setConflict(null);
+    setPreview(null);
   };
+  // The page's config revision last seen; a new one is taken while nothing is edited.
   const [seen, setSeen] = useState(config.revision);
   if (config.revision !== seen) {
     setSeen(config.revision);
@@ -211,16 +256,34 @@ export function ModelProfilesEditor({
           controller.signal,
         )
         .then((result) => {
-          if (!controller.signal.aborted) setPreview(result.effectiveProfiles);
+          if (!controller.signal.aborted)
+            setPreview({ key: draftKey, value: result.effectiveProfiles });
         })
-        .catch(() => {});
+        .catch(() => {
+          // A failed preview leaves no older one standing in for this draft.
+          if (!controller.signal.aborted) setPreview(null);
+        });
     }, 200);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
   }, [draftKey, models, base]);
-  const effective = dirty ? (preview ?? base.effectiveProfiles) : base.effectiveProfiles;
+  /**
+   * The effective values a row shows: the saved ones while nothing changed, the preview of this
+   * very draft, or, until it arrives, the saved ones only for a row still as it was saved.
+   */
+  const resolutionOf = (row: Row): ProfileContextResolution | undefined => {
+    const id = row.id.trim();
+    if (!id) return undefined;
+    if (!dirty) return base.effectiveProfiles?.[id];
+    if (preview && preview.key === draftKey) return preview.value[id];
+    const at = chosen.indexOf(row);
+    const profile = at >= 0 ? draft[at] : null;
+    return row.original && profile && same(profile, row.original)
+      ? base.effectiveProfiles?.[id]
+      : undefined;
+  };
 
   // What a profile can point at: every model of a connected provider.
   const options = useMemo<ModelOption[]>(
@@ -330,6 +393,7 @@ export function ModelProfilesEditor({
         ),
       },
     ]);
+    onRequestHandled?.(request.nonce);
     requestAnimationFrame(() => {
       const input = listRef.current?.querySelector<HTMLElement>(
         `[data-profile-row="${row.uid}"] input`,
@@ -356,42 +420,78 @@ export function ModelProfilesEditor({
     setSaving(true);
     setError(null);
     setRowErrors({});
-    setConflict(false);
+    setConflict(null);
     // Endpoints saved elsewhere since this draft began are kept; profiles changed elsewhere are a
     // conflict the server reports.
     const onto = same(config.modelProfiles, base.modelProfiles) ? config : base;
     const modelProfiles = draft as ProfileConfig[];
+    const sent = chosen;
+    const send = (target: ModelConfig) =>
+      models.saveConfig({
+        revision: target.revision,
+        modelProfiles,
+        modelProviders: target.modelProviders,
+      });
+    const conflicted = (failure: unknown) =>
+      failure instanceof ApiError && failure.code === 'REVISION_CONFLICT';
+    let saved: ModelConfig;
     try {
-      const saved = await runTask(() =>
-        models.saveConfig({
-          revision: onto.revision,
-          modelProfiles,
-          modelProviders: onto.modelProviders,
-        }),
-      );
-      reset(saved);
-      setSeen(saved.revision);
-      await refresh();
-      return true;
+      saved = await runTask(async () => {
+        try {
+          return await send(onto);
+        } catch (failure) {
+          if (!conflicted(failure)) throw failure;
+          // Something else was saved since this draft began: read what is there now.
+          const latest = await models.config();
+          if (!same(latest.modelProfiles, base.modelProfiles)) throw new ProfilesMoved(latest);
+          // Only the revision moved (effort routing, an endpoint): the edits go onto it.
+          try {
+            return await send(latest);
+          } catch (again) {
+            if (conflicted(again)) throw new ProfilesMoved(await models.config());
+            throw again;
+          }
+        }
+      });
     } catch (failure) {
-      if (failure instanceof ApiError && failure.code === 'REVISION_CONFLICT') setConflict(true);
-      else {
+      if (failure instanceof ProfilesMoved || conflicted(failure)) {
+        setConflict({ latest: failure instanceof ProfilesMoved ? failure.latest : null });
+        void refresh().catch(() => {});
+      } else {
         const message = failure instanceof Error ? failure.message : String(failure);
-        // The server names the profile by its place in what was sent.
-        const at = /^modelProfiles\.(\d+)(?:\.[\w.]+)?:\s*(.*)$/s.exec(message);
-        const row = at ? chosen[Number(at[1])] : undefined;
-        if (row) setRowErrors({ [row.uid]: t('refused', { message: at?.[2] ?? message }) });
+        const { perRow, rest } = refusalsOf(message, sent);
+        setRowErrors(
+          Object.fromEntries(
+            Object.entries(perRow).map(([uid, reasons]) => [
+              uid,
+              t('refused', { message: reasons.join('; ') }),
+            ]),
+          ),
+        );
         // A reason the server gave, such as a model list still loading, is shown as it is.
-        else setError(failure instanceof ApiError ? message : t('refused', { message }));
+        if (rest.length)
+          setError(
+            failure instanceof ApiError
+              ? rest.join('; ')
+              : t('refused', { message: rest.join('; ') }),
+          );
       }
       return false;
     } finally {
       setSaving(false);
     }
+    reset(saved);
+    // The save is done; a list that fails to load after it does not undo that.
+    await refresh().catch(() => {});
+    return true;
   };
   const cancel = () => {
     reset(config);
-    setSeen(config.revision);
+    setPicking(null);
+  };
+  // Starting again takes the config read when the save was refused, not an older one.
+  const reload = () => {
+    reset(conflict?.latest ?? config);
     setPicking(null);
   };
   useSettingsForm({ dirty, pending: saving, save });
@@ -410,10 +510,12 @@ export function ModelProfilesEditor({
       <div ref={listRef} className="flex flex-col">
         {rows.map((row, index) => {
           const name = row.id.trim() || t('nameOf', { n: index + 1 });
-          const resolution = row.id.trim() ? effective?.[row.id.trim()] : undefined;
+          const resolution = resolutionOf(row);
           const policy = resolution?.policy ?? null;
           const expanded = open.has(row.uid);
-          const problem = row.id ? nameProblem(row) : null;
+          // A new row's name, once it has a model: an empty one is a problem too.
+          const problem = row.id || row.model ? nameProblem(row) : null;
+          const problemId = `${row.uid}-name-problem`;
           const fold = `${row.uid}-advanced`;
           const custom = Boolean(
             row.contextWindow || row.reserveTokens || row.keepRecentTokens || row.workerIsolation,
@@ -435,6 +537,7 @@ export function ModelProfilesEditor({
                   <Input
                     aria-label={t('nameOf', { n: index + 1 })}
                     aria-invalid={problem ? true : undefined}
+                    aria-describedby={problem ? problemId : undefined}
                     value={row.id}
                     disabled={saving}
                     autoComplete="off"
@@ -500,7 +603,11 @@ export function ModelProfilesEditor({
                   <X aria-hidden />
                 </Button>
               </div>
-              {problem ? <p className="m-0 pt-1 text-caption text-danger">{problem}</p> : null}
+              {problem ? (
+                <p id={problemId} className="m-0 pt-1 text-caption text-danger">
+                  {problem}
+                </p>
+              ) : null}
               {rowErrors[row.uid] ? (
                 <p role="alert" className="m-0 pt-1 text-caption text-danger">
                   {rowErrors[row.uid]}
@@ -614,7 +721,7 @@ export function ModelProfilesEditor({
               className="m-0 mr-auto flex flex-wrap items-center gap-2 text-caption text-danger"
             >
               {t('conflict')}
-              <Button variant="ghost" size="compact" onClick={cancel}>
+              <Button variant="ghost" size="compact" onClick={reload}>
                 {t('reload')}
               </Button>
             </p>

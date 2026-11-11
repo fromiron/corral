@@ -27,7 +27,7 @@ const MODEL_TABS = ['connections', 'profiles', 'judgment', 'images', 'usage'] as
 export function ModelSettingsPage() {
   const t = useTranslations('Models');
   const { models, mode, live } = useServices();
-  const { profiles, providers, catalog, config, refresh, error, loading } =
+  const { profiles, providers, catalog, config, refresh, error, loading, loaded } =
     useModelSettings(models);
   // A key saved or removed below changes which decision APIs the judgment can use.
   const [apiKeys, setApiKeys] = useState(0);
@@ -40,7 +40,8 @@ export function ModelSettingsPage() {
   // Every tab stays mounted while hidden, so an unsaved key, sign-in or profile edit survives a
   // tab change and the leave guard still sees it.
   const panels: Record<(typeof MODEL_TABS)[number], ReactNode> = {
-    connections: (
+    // Drawn once the lists are read, so the rows it starts with are not announced as new.
+    connections: loaded ? (
       <ModelConnections
         providers={providers}
         catalog={catalog}
@@ -55,7 +56,7 @@ export function ModelSettingsPage() {
           toProfiles();
         }}
       />
-    ),
+    ) : null,
     profiles: (
       <div id="models-profiles" tabIndex={-1} className="outline-none">
         {config ? (
@@ -64,6 +65,9 @@ export function ModelSettingsPage() {
             profiles={profiles}
             request={request}
             focus={focus}
+            onRequestHandled={(nonce) =>
+              setRequest((current) => (current?.nonce === nonce ? null : current))
+            }
           />
         ) : null}
       </div>
