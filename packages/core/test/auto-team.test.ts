@@ -2,11 +2,13 @@ import {
   AUTO_TEMPLATE_VERSION,
   AUTO_TEMPLATES,
   type AutoModelChoice,
+  CorralDefinition,
   DEFAULT_LIMITS,
   type RunEvent,
 } from '@corral/contracts';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   autoDefinition,
   Coordinator,
@@ -416,4 +418,76 @@ describe('per-request reasoning', () => {
     );
     expect(strict.startRefusal('model-a', 'live', { mode: 'fixed', level: 'low' })).toBeNull();
   });
+});
+
+// A session's completion criteria are read by the server when it admits the request; the
+// client never sends them, so they are start context and not part of the request identity.
+describe('session completion criteria', () => {
+  const saved = CorralDefinition.parse(researchTeam);
+  const criteriaStarter = (s: ReturnType<typeof setup>) =>
+    createAutoStarter({
+      startRun: (r) => s.coordinator.startRun(r),
+      previousStart: (commandId, requestHash, original) => {
+        const result = s.coordinator.startResult(commandId, requestHash, original);
+        return result ? { ...result, autoRoute: null } : null;
+      },
+      corral: () => ({ definition: saved, definitionRevision: 1 }),
+    });
+  const teams = [undefined, 'none', 'auto', { corralId: 'corral_saved' }] as const;
+  const criteriaOf = (s: ReturnType<typeof setup>, runId: string | null) =>
+    s.coordinator.getRunSnapshot(runId ?? '')?.definition.input.criteria;
+
+  it.each(teams)('every way of working runs with the session criteria (team %j)', async (team) => {
+    const s = setup();
+    const starter = criteriaStarter(s);
+    const result = await starter.start(
+      { ...request('cmd_criteria'), sessionId: 'session_c', ...(team ? { team } : {}) },
+      { fileTools: false, sessionCriteria: ['Name the sources', 'Keep it short'] },
+    );
+    expect(result.receipt.status).toBe('applied');
+    expect(criteriaOf(s, result.runId)).toEqual(['Name the sources', 'Keep it short']);
+    expect(saved.input.criteria).not.toEqual(['Name the sources', 'Keep it short']);
+  });
+
+  it.each(teams)(
+    'empty or absent session criteria start the same definition (team %j)',
+    async (team) => {
+      const hashes = [];
+      for (const context of [{ fileTools: false }, { fileTools: false, sessionCriteria: [] }]) {
+        const s = setup();
+        const result = await criteriaStarter(s).start(
+          { ...request('cmd_none'), sessionId: 'session_c', ...(team ? { team } : {}) },
+          context,
+        );
+        hashes.push(s.coordinator.getRunSnapshot(result.runId ?? '')?.definitionHash);
+      }
+      expect(hashes[0]).toMatch(/^[0-9a-f]{64}$/);
+      expect(hashes[1]).toBe(hashes[0]);
+    },
+  );
+
+  it('criteria the request carries (a meeting handoff) win over the session criteria', async () => {
+    const s = setup();
+    const result = await criteriaStarter(s).start(
+      { ...request('cmd_handoff'), sessionId: 'session_c', criteria: ['Adopted in the meeting'] },
+      { fileTools: false, sessionCriteria: ['Session line'] },
+    );
+    expect(criteriaOf(s, result.runId)).toEqual(['Adopted in the meeting']);
+  });
+
+  it.each(teams)(
+    'a resend keeps what the first admission used and starts nothing new (team %j)',
+    async (team) => {
+      const s = setup();
+      const starter = criteriaStarter(s);
+      const body = { ...request('cmd_resend'), sessionId: 'session_c', ...(team ? { team } : {}) };
+      const first = await starter.start(body, { fileTools: false, sessionCriteria: ['First'] });
+      await waitForProjection(s.transport, first.runId ?? '', (p) => p.status === 'succeeded');
+      const again = await starter.start(body, { fileTools: false, sessionCriteria: ['Changed'] });
+      expect(again.receipt).toEqual(first.receipt);
+      expect(again.runId).toBe(first.runId);
+      expect(s.coordinator.listRuns()).toHaveLength(1);
+      expect(criteriaOf(s, first.runId)).toEqual(['First']);
+    },
+  );
 });

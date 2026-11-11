@@ -1,4 +1,4 @@
-import type { HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
+import type { HarnessBindingRef, HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
 import {
   ApprovalPanel,
@@ -236,6 +236,7 @@ function Editor({
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const teams = useSavedTeams(record, draft.definition);
+  const resolvesHarness = useHarnessResolver();
   const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
   const [statsOn, setStatsOn] = useState(false);
   const revision = saved.record.definitionRevision;
@@ -443,6 +444,7 @@ function Editor({
               profiles={profiles}
               teams={teams.references}
               resolveTeam={teams.resolve}
+              resolvesHarness={resolvesHarness}
               onOpenTeam={(corralId) =>
                 void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
               }
@@ -490,6 +492,43 @@ function Editor({
         </div>
       </div>
     </StudioStoresProvider>
+  );
+}
+
+/**
+ * Whether a work style a copied role names is one this installation keeps. Saved revisions stay,
+ * so any revision up to a profile's latest resolves. The browser demo has no work styles.
+ */
+function useHarnessResolver(): ((ref: HarnessBindingRef) => boolean) | undefined {
+  const { harnesses } = useServices();
+  const [latest, setLatest] = useState<ReadonlyMap<string, number> | null>(null);
+  useEffect(() => {
+    if (!harnesses) return;
+    let live = true;
+    // As the role's work style setting does: read again when work styles may have changed.
+    const refresh = () =>
+      void harnesses.profileManagement().then(
+        (profiles) =>
+          live &&
+          setLatest(new Map(profiles.map((profile) => [profile.profileId, profile.revision]))),
+        // A failed read keeps what was read before; with nothing read, nothing resolves.
+        () => {},
+      );
+    refresh();
+    window.addEventListener('focus', refresh);
+    window.addEventListener('corral:harness-changed', refresh);
+    return () => {
+      live = false;
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('corral:harness-changed', refresh);
+    };
+  }, [harnesses]);
+  return useMemo(
+    () =>
+      latest
+        ? (ref: HarnessBindingRef) => (latest.get(ref.profileId) ?? 0) >= ref.revision
+        : undefined,
+    [latest],
   );
 }
 

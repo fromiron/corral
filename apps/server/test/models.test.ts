@@ -597,7 +597,7 @@ describe('team drafts from a goal', () => {
   it('tells the model to ask for a final approval only when the goal asks for one', () => {
     const line = DRAFT_SYSTEM_PROMPT.split('\n').find((l) => l.startsWith('- finalApproval:'));
     expect(line).toBe(
-      '- finalApproval: true only when the goal asks for a person to approve the final result, otherwise false',
+      '- finalApproval: true or false; false unless the goal itself asks that a person approve the result before it is final',
     );
   });
 

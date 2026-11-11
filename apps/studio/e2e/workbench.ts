@@ -83,12 +83,7 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
   });
   const home = page.url();
   await openLibrary(page, 'Templates');
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: name })
-    .getByRole('button', { name: 'Edit this team' })
-    .click();
+  await page.getByRole('button', { name: `Edit a copy of ${name}`, exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   // Back through the library to the project, as a person would.

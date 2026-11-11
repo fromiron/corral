@@ -8,12 +8,7 @@ test('compares runs with readable narrow figures and accessible identities', asy
   await page.getByRole('link', { name: 'Choose two runs', exact: true }).click();
   await expect(page.getByRole('tab', { name: /^Runs/ })).toHaveAttribute('aria-selected', 'true');
   await openLibrary(page, 'Templates');
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Edit this team' })
-    .click();
+  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   for (const brief of ['Compare two pens.', 'Compare three pens.']) {

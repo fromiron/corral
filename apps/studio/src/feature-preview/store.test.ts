@@ -1,5 +1,5 @@
 import { beforeEach, expect, it } from 'vitest';
-import { BROWSER_STEPS, SAMPLE_PULLS, SAMPLE_TASKS } from './fixture.ts';
+import { BROWSER_STEPS, SAMPLE_PULLS } from './fixture.ts';
 import {
   answerPull,
   initialPreviewState,
@@ -7,14 +7,13 @@ import {
   previewStore,
   resetPreviews,
   runBrowserStep,
-  setTaskStatus,
   showBrowserStep,
 } from './store.ts';
 
 // The preview store holds only what a person changed in the sample flows; the fixture stays the
 // definition of the sample data, and Reset returns to it (docs/specs/features/feature-preview.md).
 
-const pristine = JSON.stringify({ SAMPLE_TASKS, SAMPLE_PULLS, BROWSER_STEPS });
+const pristine = JSON.stringify({ SAMPLE_PULLS, BROWSER_STEPS });
 const withoutResets = () => {
   const { resets: _resets, ...state } = previewStore.getState();
   return state;
@@ -28,27 +27,15 @@ beforeEach(() => resetPreviews());
 
 const open = SAMPLE_PULLS.find((pull) => pull.state === 'open');
 const merged = SAMPLE_PULLS.find((pull) => pull.state === 'merged');
-const task = SAMPLE_TASKS.find((item) => item.status !== 'merged');
 
 it('starts from the fixture, with nothing simulated yet', () => {
   expect(withoutResets()).toEqual(fixtureState());
   const state = previewStore.getState();
-  for (const item of SAMPLE_TASKS) expect(state.board.statuses[item.id]).toBe(item.status);
-  expect(state.board.changes).toEqual([]);
+  // Only the pull request review and browser QA flows keep state; there is no task board.
+  expect(Object.keys(state).sort()).toEqual(['browser', 'resets', 'review']);
   expect(state.review.answers).toEqual({});
   expect(state.review.comments).toEqual({});
   expect(state.browser.progress).toBe(0);
-});
-
-it('records a status change as simulated, once, and only for a known task', () => {
-  if (!task) throw new Error('fixture has no open task');
-  setTaskStatus(task.id, 'merged');
-  setTaskStatus(task.id, 'merged');
-  setTaskStatus('no-such-task', 'merged');
-  const { board } = previewStore.getState();
-  expect(board.statuses[task.id]).toBe('merged');
-  expect(board.changes).toEqual([{ taskId: task.id, from: task.status, to: 'merged' }]);
-  expect(Object.keys(board.statuses).sort()).toEqual(SAMPLE_TASKS.map((item) => item.id).sort());
 });
 
 it('keeps a posted comment trimmed, and ignores an empty one or an unknown pull request', () => {
@@ -95,14 +82,13 @@ it('runs the browser QA steps only in order, each once, and shows only a reached
 });
 
 it('returns to the fixture state on reset, without touching the fixture', () => {
-  if (!task || !open) throw new Error('fixture needs a task and an open pull request');
+  if (!open) throw new Error('fixture needs an open pull request');
   const before = previewStore.getState().resets;
-  setTaskStatus(task.id, 'cancelled');
   postComment(open.number, 'A note', 1);
   answerPull(open.number, { kind: 'approved' });
   for (const step of BROWSER_STEPS) runBrowserStep(step);
   resetPreviews();
   expect(withoutResets()).toEqual(fixtureState());
   expect(previewStore.getState().resets).toBe(before + 1);
-  expect(JSON.stringify({ SAMPLE_TASKS, SAMPLE_PULLS, BROWSER_STEPS })).toBe(pristine);
+  expect(JSON.stringify({ SAMPLE_PULLS, BROWSER_STEPS })).toBe(pristine);
 });

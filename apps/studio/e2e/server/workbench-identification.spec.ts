@@ -75,7 +75,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await corral.open('/projects/default');
     const details = await openConversationDetails(page);
-    const name = details.getByRole('textbox', { name: 'Session name', exact: true });
+    const name = details.getByRole('textbox', { name: 'Name', exact: true });
     for (const field of [name, details.getByRole('textbox', { name: 'Purpose', exact: true })]) {
       await expect(field).toBeVisible();
       await expect.poll(() => boundaryContrast(field)).toBeGreaterThan(1);

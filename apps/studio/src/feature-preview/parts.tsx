@@ -1,7 +1,7 @@
-import { KitBadge, useNow } from '@corral/react/design-kit';
+import { KitBadge } from '@corral/react/design-kit';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import { PREVIEW_NOW, SAMPLE_SESSIONS, type SampleRun } from './fixture.ts';
+import { SAMPLE_SESSIONS, type SampleRun } from './fixture.ts';
 import { useSample } from './labels.ts';
 
 /** The mark on every result a person's action produced in a preview. */
@@ -30,14 +30,4 @@ export function useRunName() {
   const say = useSample();
   return (linked: SampleRun) =>
     t('session', { title: say(SAMPLE_SESSIONS[linked.session].title), run: linked.run });
-}
-
-/**
- * Places a sample instant on the clock kit parts count from (useNow, epoch ms): the flow opens at
- * the fixed reference time and runs on from there, so a live sample run reads as it did at that
- * moment and keeps counting. It never ticks itself; Reset remounts the flow and starts it again.
- */
-export function usePreviewClock() {
-  const opened = useNow(1000, false);
-  return (sampleAt: number) => opened + (sampleAt - PREVIEW_NOW);
 }

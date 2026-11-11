@@ -559,8 +559,12 @@
     "runsHeading": "Runs",
     "runsEmpty": "No runs yet.",
     "runStarted": "Started {time}",
-    "templatesHeading": "Start from a template",
-    "useTemplate": "Edit this team",
+    "emptyHint": "A team saves the roles a conversation can start with.",
+    "readOnly": "Read-only",
+    "templateRoles": "Roles",
+    "editCopy": "Edit a copy",
+    "templateNewConversation": "New conversation with {name}",
+    "templateEditCopy": "Edit a copy of {name}",
     "saveCopyTitle": "Save a team copy",
     "copyName": "Team name",
     "saveCopyEdit": "Save copy and edit",
@@ -574,6 +578,26 @@
         "name": "Single agent",
         "body": "One agent answers the brief. The smallest Corral that runs."
       },
+      "implement-review": {
+        "name": "Implement and review",
+        "body": "Makes the change, then fixes it until the review passes, for up to two rounds."
+      },
+      "plan-implement-review": {
+        "name": "Plan, implement and review",
+        "body": "Plans the change first, then implements it until the review passes, for up to two rounds."
+      },
+      "bug-fix": {
+        "name": "Bug fix",
+        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds."
+      },
+      "parallel-review": {
+        "name": "Parallel code review",
+        "body": "Reviews correctness and security at the same time, then merges the findings."
+      },
+      "tech-decision": {
+        "name": "Technical decision",
+        "body": "Researches two options at the same time and writes a comparison that recommends one."
+      },
       "blank": {
         "name": "Empty",
         "body": "An empty canvas: drag nodes from the palette and connect them."
@@ -584,13 +608,11 @@
       }
     },
     "draftFromGoal": "Draft from a goal",
-    "startWithTemplate": "Start a session with this team",
     "suggestedTeam": "{name} (suggested, made when you start)",
     "startChat": "Start chat",
     "newConversation": "New conversation",
     "newConversationMenu": "More ways to start a conversation",
     "detailsFirst": "Set name, purpose and team first…",
-    "taskBoardPreview": "Task board preview",
     "pending": "{count, plural, one {# pending} other {# pending}}",
     "folder": {
       "loading": "Checking the folder…",
@@ -613,8 +635,7 @@
       "copyMissing": "Copy missing",
       "noCopies": "No session working copies",
       "loading": "Loading…"
-    },
-    "previewBadge": "Preview"
+    }
   },
   "Editor": {
     "name": "Team name",
@@ -1298,6 +1319,11 @@
     "templates": {
       "research-team": "Research team",
       "starter": "Single agent",
+      "implement-review": "Implement and review",
+      "plan-implement-review": "Plan, implement and review",
+      "bug-fix": "Bug fix",
+      "parallel-review": "Parallel code review",
+      "tech-decision": "Technical decision",
       "blank": "Empty"
     },
     "goCorrals": "Go to project home",
@@ -1385,11 +1411,13 @@
     "suggest": "Suggest a team",
     "ask": "Ask the model",
     "asking": "Asking the model…",
-    "askHint": "Uses one model request with your sign-in.",
+    "askCost": "1 request",
+    "retry": "Try again",
+    "unusable": "The model did not give a usable team.",
+    "patternLabel": "Team shape",
     "patterns": {
-      "single": "One agent",
-      "write_review": "Plan, then write and review",
-      "research_write_review": "Research, then write and review"
+      "write_review": "Write and review",
+      "research_write_review": "Research, write and review"
     },
     "nameLabel": "Team name",
     "briefLabel": "Brief",
@@ -1459,6 +1487,172 @@
       }
     },
     "noModelCall": "No model call"
+  },
+  "TeamTemplates": {
+    "presets": {
+      "implement": {
+        "name": "Implementation",
+        "duty": "Make the change the brief asks for in the working copy. In a later round, fix what the review asked for."
+      },
+      "plan": {
+        "name": "Plan",
+        "duty": "Read the brief and the code it touches, then write a short plan: the steps, the files to change and how the result will be checked."
+      },
+      "review": {
+        "name": "Review",
+        "duty": "Check the change against the brief and the criteria. Pass it, or say exactly what to fix and why."
+      },
+      "investigate": {
+        "name": "Cause investigation",
+        "duty": "Find the cause of the problem in the brief: reproduce it, trace it to the code and note the evidence. Do not fix it yet."
+      },
+      "correctness_review": {
+        "name": "Correctness review",
+        "duty": "Check the change for logic errors, missed edge cases and missing tests. Tie each finding to specific code."
+      },
+      "security_review": {
+        "name": "Security review",
+        "duty": "Check the change for security problems. Record the affected code, evidence, impact and uncertainty of each finding."
+      },
+      "research": {
+        "name": "Research",
+        "duty": "Collect the facts and sources the question needs, noting where each one came from."
+      },
+      "write": {
+        "name": "Writing",
+        "duty": "Write the result from the inputs you were given, keeping each claim tied to its source."
+      }
+    },
+    "labels": {
+      "loop": "Review loop",
+      "decision": "Review decision",
+      "join": "Join",
+      "output": "Output"
+    },
+    "templates": {
+      "starter": {
+        "brief": "Compare two options using primary sources.",
+        "criteria": {
+          "inputs": "Say which inputs were used."
+        },
+        "roles": {
+          "agent_1_role": {
+            "name": "Agent 1",
+            "duty": "Answer the brief clearly and say which inputs you used."
+          }
+        },
+        "nodes": {
+          "agent_1": "Agent 1",
+          "output_1": "Output"
+        }
+      },
+      "research-team": {
+        "brief": "Compare SQLite and PostgreSQL for a small team's internal tool.",
+        "criteria": {
+          "sources": "Name the source behind each main claim.",
+          "balance": "Cover both strengths and limits."
+        },
+        "roles": {
+          "researcher": {
+            "name": "Researcher",
+            "duty": "Plan the research, split it between helpers and merge their notes."
+          },
+          "helper": {
+            "name": "Research Helper",
+            "duty": "Collect sources for the part of the brief you were handed."
+          },
+          "writer": {
+            "name": "Writer",
+            "duty": "Write the comparison from the research notes and any review."
+          },
+          "reviewer": {
+            "name": "Reviewer",
+            "duty": "Review the exact draft you were given against the criteria."
+          }
+        },
+        "nodes": {
+          "research": "Research",
+          "helper": "Research Helper",
+          "respond": "Source Responder",
+          "review_loop": "Review loop",
+          "write": "Writer",
+          "review": "Reviewer",
+          "review_decision": "Review decision",
+          "approval": "Final approval",
+          "output": "Output"
+        }
+      },
+      "implement-review": {
+        "brief": "Add input validation to the sign-up form.",
+        "criteria": {
+          "request": "Do what the brief asks, and nothing it does not.",
+          "checked": "Say what changed and how it was checked."
+        }
+      },
+      "plan-implement-review": {
+        "brief": "Add a CSV export to the reports page.",
+        "criteria": {
+          "plan": "Follow the plan, or say where and why the work left it.",
+          "request": "Do what the brief asks, and nothing it does not.",
+          "checked": "Say what changed and how it was checked."
+        }
+      },
+      "bug-fix": {
+        "brief": "The settings dialog loses unsaved changes when the window is resized.",
+        "criteria": {
+          "cause": "Name the cause and its evidence before changing code.",
+          "fix": "Fix the cause, not only the symptom, and say how the fix was checked."
+        },
+        "roles": {
+          "fix": {
+            "name": "Fix",
+            "duty": "Fix the cause the investigation found, in the working copy. In a later round, fix what the review asked for."
+          }
+        }
+      },
+      "parallel-review": {
+        "brief": "Review the changes on the current branch.",
+        "criteria": {
+          "evidence": "Tie each finding to specific code and evidence.",
+          "certainty": "Separate confirmed problems from unverified concerns."
+        },
+        "roles": {
+          "scope": {
+            "name": "Scope",
+            "duty": "Read the change and list what the reviewers must look at: the files, the behavior that changed and the risky parts."
+          },
+          "synthesis": {
+            "name": "Synthesis",
+            "duty": "Merge the two reviews into one report: remove duplicates, keep the evidence of each finding and order them by severity."
+          }
+        }
+      },
+      "tech-decision": {
+        "brief": "Choose between SQLite and PostgreSQL for the team's internal tool.",
+        "criteria": {
+          "same": "Compare the options on the same points, with sources.",
+          "recommend": "Recommend one option and say what would change the choice."
+        },
+        "roles": {
+          "frame": {
+            "name": "Framing",
+            "duty": "Frame the decision: the question, the two options to compare (A and B) and what matters in choosing."
+          },
+          "research_a": {
+            "name": "Option A research",
+            "duty": "Research option A from the framing: what it does well, its limits and its costs, with sources."
+          },
+          "research_b": {
+            "name": "Option B research",
+            "duty": "Research option B from the framing: what it does well, its limits and its costs, with sources."
+          },
+          "compare": {
+            "name": "Comparison",
+            "duty": "Compare the two options point by point from the research, and end with a recommendation."
+          }
+        }
+      }
+    }
   },
   "ModelConfig": {
     "heading": "Edit models",
@@ -1642,6 +1836,7 @@
     "heading": "Sessions",
     "new": "New session",
     "titleLabel": "Title (optional)",
+    "nameLabel": "Name",
     "objectiveLabel": "Purpose",
     "teamLabel": "Corral",
     "noTeam": "No team yet",
@@ -1722,6 +1917,7 @@
     "delivery": "Delivery: {status}",
     "connectionLost": "The server cannot be reached, so run states are unknown. They are not assumed finished or cancelled.",
     "retry": "Try again",
+    "reviewLoadFailed": "Couldn't load items to review.",
     "checked": "Checked: {name} {state}",
     "notChecked": "Not checked",
     "intentShort": {
@@ -1731,7 +1927,7 @@
       "explain": "Question"
     },
     "editTeam": "Open team design",
-    "objectivePlaceholder": "What should this session work on?",
+    "objectivePlaceholder": "A note that is not sent to agents",
     "appliesAt": "at its next model request",
     "autoTeam": "Default chat",
     "runSettings": "Run settings",
@@ -1773,17 +1969,16 @@
     "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed.",
     "archivedSending": "Sending a message keeps this session archived.",
     "restoreSession": "Restore session",
-    "statusFilter": "Session status",
     "archiveEmpty": "Archive empty session: {title}",
     "keyboardHint": "Use ↑ and ↓ to move between sessions.",
     "listState": {
-      "all": "All statuses",
-      "running": "In progress",
       "attention": "Needs attention",
-      "completed": "Completed",
+      "review": "Review",
+      "running": "In progress",
       "ready": "No run yet",
-      "empty": "Empty session",
-      "cancelled": "Cancelled"
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "empty": "Empty session"
     },
     "restoreNamed": "Restore session: {title}",
     "listSessionUnavailable": "This session is no longer available.",
@@ -1800,7 +1995,23 @@
     "emptyTitle": "No sessions yet",
     "connectModel": "Connect a model",
     "noMatches": "No sessions match this search.",
-    "meeting": "Meeting"
+    "meeting": "Meeting",
+    "fact": {
+      "checks_passed": "Checks passed",
+      "changed_after_checks": "Changed after checks",
+      "approved": "Approved",
+      "changes_requested": "Changes requested",
+      "applied": "Applied"
+    },
+    "evidenceLoadFailed": "Couldn't load checks, decisions and applying.",
+    "reviewAndEvidenceLoadFailed": "Couldn't load items to review, checks, decisions or applying.",
+    "criteria": {
+      "label": "Completion criteria",
+      "placeholder": "Example: all tests pass",
+      "tooMany": "Completion criteria have up to {max} lines.",
+      "tooLong": "Line {line} is longer than {max} characters.",
+      "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
+    }
   },
   "Files": {
     "folderHeading": "Project source folder",
@@ -3185,8 +3396,6 @@
     "openRunDetails": "Open execution details",
     "closeControls": "Close controls",
     "firstRequestHint": "Leave the team on Auto or choose one, then write your request in the session.",
-    "sessionName": "Session name",
-    "optionalPurposeHint": "A long-term purpose is optional. It is never sent automatically.",
     "addToWorkStyle": "Connect in Work styles",
     "connectWorkStyle": "Connect a work style",
     "finishConnecting": "Done configuring usage",
@@ -3701,68 +3910,8 @@
     "list": "Previews",
     "name": "Preview",
     "feature": {
-      "taskBoard": "Task board",
       "prReview": "PR review",
       "browserQa": "Browser QA"
-    },
-    "board": {
-      "detail": "Task details",
-      "session": "Linked session",
-      "noSession": "Not linked yet",
-      "branch": "Branch",
-      "status": "Status",
-      "moved": "Moved to {status}",
-      "none": "No task open"
-    },
-    "tasks": {
-      "filterTasks": "Filter tasks",
-      "filterCount": "{filter}, {count, plural, one {# task} other {# tasks}}",
-      "empty": "Nothing in this view. Try another filter.",
-      "list": "Tasks",
-      "status": {
-        "queued": "Queued",
-        "running": "Running",
-        "ready": "Ready for review",
-        "merged": "Done",
-        "failed": "Failed",
-        "cancelled": "Cancelled"
-      },
-      "filter": {
-        "all": "All",
-        "running": "Running",
-        "review": "Ready for review",
-        "merged": "Done"
-      },
-      "change": {
-        "added": "Added",
-        "modified": "Modified",
-        "deleted": "Deleted",
-        "renamed": "Renamed"
-      },
-      "checks": {
-        "passed": "Checks passed",
-        "failed": "Checks failed"
-      },
-      "files": "{count, plural, one {# file} other {# files}}",
-      "lineStats": "{added, plural, one {# line} other {# lines}} added, {removed, plural, one {# line} other {# lines}} removed",
-      "fileStats": "{added} added, {removed} removed",
-      "cancel": "Cancel",
-      "retry": "Retry",
-      "pullRequest": "Pull request {number}{state, select, open {, open} draft {, draft} closed {, closed} other {}}",
-      "pullRequestShort": "PR #{number}{state, select, open { open} draft { draft} closed { closed} other {}}",
-      "steps": "Steps",
-      "noSteps": "Waiting for the agent to start.",
-      "changedFiles": "Changed files",
-      "noFiles": "No files changed yet.",
-      "stepFailed": " (failed)",
-      "stepActive": " (in progress)",
-      "started": "{title} started.",
-      "ready": "{title} is ready for review.",
-      "failed": "{title} failed.",
-      "failedWith": "{title} failed: {error}.",
-      "cancelled": "Cancelled {title}.",
-      "merged": "{title} is done.",
-      "pullRequestOpened": "Pull request {number} opened."
     },
     "pull": {
       "list": "Pull requests",
@@ -5466,7 +5615,8 @@
       "mixedBoxes": "Only steps in the same box can be wrapped together.",
       "notABox": "Only a Loop or a Team defined here can hold steps.",
       "noPredecessor": "Only a step that something leads to can be split.",
-      "oneAgentOnly": "Split one agent in the flow at a time."
+      "oneAgentOnly": "Split one agent in the flow at a time.",
+      "roleNeedsAgent": "Choose one agent to copy a role onto."
     },
     "outline": "Team structure",
     "addStep": "Add a step",
@@ -5553,6 +5703,11 @@
       "parallel": "Runs a copy beside it and joins the two"
     },
     "withNewAgent": "With a new agent",
+    "importRole": "Import role…",
+    "importRoleTitle": "Import role",
+    "rolePresets": "Role presets",
+    "roleSearch": "Find a role…",
+    "workStyleDropped": "Copied without its work style, which is not available here.",
     "problemsList": "Problems",
     "noProblems": "Nothing to fix.",
     "openTeam": "Open this team",

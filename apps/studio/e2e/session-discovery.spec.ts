@@ -7,13 +7,15 @@ test('saved details are shown again before a quick new conversation starts', asy
   await page.getByRole('button', { name: 'More ways to start a conversation' }).click();
   await page.getByRole('menuitem', { name: /^Set name, purpose and team first/ }).click();
   const details = page.getByRole('dialog', { name: 'New conversation', exact: true });
-  await details.getByRole('textbox', { name: 'Session name' }).fill('Visible name');
+  await details.getByRole('textbox', { name: 'Name', exact: true }).fill('Visible name');
   await details.getByRole('textbox', { name: 'Purpose' }).fill('Visible purpose');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
   // The quick ways to start show the saved details first instead of starting with them.
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
-  await expect(details.getByRole('textbox', { name: 'Session name' })).toHaveValue('Visible name');
+  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue(
+    'Visible name',
+  );
   await expect(details.getByRole('textbox', { name: 'Purpose' })).toHaveValue('Visible purpose');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
@@ -21,7 +23,9 @@ test('saved details are shown again before a quick new conversation starts', asy
     .getByTestId('app-sidebar')
     .getByRole('link', { name: 'New conversation', exact: true })
     .click();
-  await expect(details.getByRole('textbox', { name: 'Session name' })).toHaveValue('Visible name');
+  await expect(details.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue(
+    'Visible name',
+  );
   await expect(page).not.toHaveURL(/\/sessions\//);
 });
 
@@ -33,7 +37,7 @@ test('closed saved details still show that a name or purpose is saved', async ({
   const details = page.getByRole('menuitem', { name: /^Set name, purpose and team first/ });
   await more.click();
   await details.click();
-  await page.getByRole('textbox', { name: 'Session name' }).fill('Visible name');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Visible name');
   await page.keyboard.press('Escape');
   await more.click();
   await expect(details).toContainText('Visible name');
@@ -58,15 +62,20 @@ test('archiving keeps the draft and explains that explicit sending keeps the arc
 });
 
 test('project session list distinguishes and archives empty sessions', async ({ page }) => {
-  await page.goto('/');
-  await newConversation(page);
-  await page.goto('/');
-  await page.getByRole('combobox', { name: 'Session status' }).click();
-  await page.getByRole('option', { name: 'Empty session', exact: true }).click();
-  await page.getByRole('button', { name: /Archive empty session/ }).click();
+  // The project's New conversation starts an empty session at once.
+  await page.goto('/projects/default');
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions\//);
+  await page.goto('/projects/default');
+  // Empty sessions have their own group, collapsed until opened.
+  const empty = page.getByRole('list', { name: 'Empty session', exact: true });
+  await expect(empty).toBeHidden();
+  await page.locator('summary', { hasText: 'Empty session' }).click();
+  await empty.getByRole('button', { name: /Archive empty session/ }).click();
   await expect(page.getByRole('button', { name: /Archive empty session/ })).toHaveCount(0);
   await page.getByRole('button', { name: /Show archived/ }).click();
-  await expect(page.getByRole('list', { name: 'Sessions', exact: true })).toContainText('Archived');
+  // The archived row is the one that can be restored; it repeats no state word.
+  await expect(empty.getByRole('button', { name: /^Restore session: / })).toBeVisible();
 });
 
 test('sidebar session links remain keyboard reachable and row menu returns focus', async ({

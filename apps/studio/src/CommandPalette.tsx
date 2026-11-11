@@ -40,7 +40,7 @@ import {
   shortcutFor,
   shortcutLabel,
 } from './shortcuts.ts';
-import { createFromTemplate, WORKSPACE_TEMPLATES } from './templates.ts';
+import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './templates.ts';
 import { openNewMeeting } from './workbench/NewMeeting.tsx';
 import {
   SETTINGS_GROUPS,
@@ -373,12 +373,12 @@ export function Palette({
 }) {
   const navigation = useSettingsNavigation();
   const t = useTranslations('CommandPalette');
-  const tw = useTranslations('Workspace');
   const tp = useTranslations('Projects');
   const ts = useTranslations('SessionSearch');
   const ti = useTranslations('RunIdentity');
   const status = useTranslations('Status');
   const format = useFormatter();
+  const templateText = useTemplateText();
   const navigate = useNavigate();
   const services = useServices();
   const [query, setQuery] = useState(initialQuery);
@@ -507,7 +507,7 @@ export function Palette({
           const created = await createFromTemplate(
             services.repository,
             id,
-            tw('newName'),
+            templateText,
             currentProject(),
           );
           if (created.ok)
@@ -618,8 +618,8 @@ export function Palette({
     services,
     navigate,
     t,
-    tw,
     tp,
+    templateText,
     onHelp,
     navigation.link,
   ]);

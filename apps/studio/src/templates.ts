@@ -1,16 +1,252 @@
-import { FILE_TOOLS } from '@corral/contracts';
-import { type CorralRepository, type CorralSummary, DEFAULT_PROJECT_ID } from '@corral/core';
+import { type CorralDefinition, FILE_TOOLS, type TeamPattern } from '@corral/contracts';
+import {
+  type CorralRepository,
+  type CorralSummary,
+  compileDefinition,
+  DEFAULT_PROJECT_ID,
+  isTemplatePattern,
+  PATTERN_TEMPLATES,
+  type PlanStep,
+  type RolePresetId,
+  type RoleWording,
+  rolePrompt,
+  TEAM_TEMPLATE_IDS,
+  TEAM_TEMPLATE_ROLES,
+  type TeamTemplateId,
+  type TeamTemplateLabels,
+  type TeamTemplateWording,
+  type TeamWording,
+  teamTemplate,
+} from '@corral/core';
 import { emptyDraft } from '@corral/react';
+import { useMemo } from 'react';
+import { useMessages } from 'use-intl';
 import { type DemoTemplateId, templateForWorkspace } from './demo/templates.ts';
 import type { WorkspacesClient } from './demo/workspaces-client.ts';
 
-export type WorkspaceTemplateId = DemoTemplateId | 'blank';
+export type WorkspaceTemplateId = DemoTemplateId | TeamTemplateId | 'blank';
 
+/** The library's templates in the order it shows them (docs/specs/features/library.md). */
 export const WORKSPACE_TEMPLATES: readonly WorkspaceTemplateId[] = [
-  'research-team',
   'starter',
+  'implement-review',
+  'plan-implement-review',
+  'bug-fix',
+  'parallel-review',
+  'tech-decision',
+  'research-team',
   'blank',
 ];
+
+const isTeamTemplate = (id: WorkspaceTemplateId): id is TeamTemplateId =>
+  (TEAM_TEMPLATE_IDS as readonly string[]).includes(id);
+
+/** The wording of a template the demo also opens: every role and node, by id. */
+interface DemoWording {
+  name: string;
+  brief: string;
+  criteria: string[];
+  roles: Record<string, RoleWording>;
+  nodes: Record<string, string>;
+}
+
+/** The messages a template is written in: its name, and its roles' names and duties. */
+interface TemplateMessages {
+  Workspace: { newName: string; template: Record<string, { name: string }> };
+  TeamTemplates: {
+    presets: Record<RolePresetId, RoleWording>;
+    labels: TeamTemplateLabels;
+    templates: Record<
+      TeamTemplateId,
+      { brief: string; criteria: Record<string, string>; roles?: Record<string, RoleWording> }
+    > &
+      Record<
+        DemoTemplateId,
+        {
+          brief: string;
+          criteria: Record<string, string>;
+          roles: Record<string, RoleWording>;
+          nodes: Record<string, string>;
+        }
+      >;
+  };
+}
+
+/** What a template needs from the screen language. */
+export interface TemplateText {
+  /** A blank team's name. */
+  blankName: string;
+  /** The wording of a template built from role presets. */
+  wording: (id: TeamTemplateId) => TeamTemplateWording;
+  /** The wording of a template the demo also opens, which the demo keeps in English. */
+  demo: (id: DemoTemplateId) => DemoWording;
+}
+
+/** A template's own role wording, else its preset's. */
+export function templateText(messages: unknown): TemplateText {
+  const { Workspace, TeamTemplates } = messages as TemplateMessages;
+  return {
+    blankName: Workspace.newName,
+    demo: (id) => {
+      const own = TeamTemplates.templates[id];
+      return {
+        name: Workspace.template[id]?.name ?? id,
+        brief: own.brief,
+        criteria: Object.values(own.criteria),
+        roles: own.roles,
+        nodes: own.nodes,
+      };
+    },
+    wording: (id) => {
+      const own = TeamTemplates.templates[id];
+      const presets: Readonly<Record<string, RolePresetId>> = TEAM_TEMPLATE_ROLES[id];
+      return {
+        name: Workspace.template[id]?.name ?? id,
+        brief: own.brief,
+        criteria: Object.values(own.criteria),
+        roles: Object.fromEntries(
+          Object.entries(presets).map(([roleId, preset]) => [
+            roleId,
+            own.roles?.[roleId] ?? TeamTemplates.presets[preset],
+          ]),
+        ) as TeamTemplateWording['roles'],
+        labels: TeamTemplates.labels,
+      };
+    },
+  };
+}
+
+export function useTemplateText(): TemplateText {
+  const messages = useMessages();
+  return useMemo(() => templateText(messages), [messages]);
+}
+
+/**
+ * The words a draft from a goal uses: the draft's own three patterns, and the five template
+ * patterns worded as the library templates of the same name.
+ */
+export function draftWording(messages: unknown): TeamWording {
+  const { TeamDraft, TeamTemplates } = messages as {
+    TeamDraft: { wording: TeamWording };
+    TeamTemplates: { labels: TeamTemplateLabels };
+  };
+  const text = templateText(messages);
+  const templates = Object.fromEntries(
+    Object.entries(PATTERN_TEMPLATES).map(([pattern, id]) => {
+      const { roles, criteria } = text.wording(id);
+      return [pattern, { roles, criteria }];
+    }),
+  ) as NonNullable<TeamWording['templates']>;
+  return {
+    ...TeamDraft.wording,
+    labels: { ...TeamDraft.wording.labels, join: TeamTemplates.labels.join },
+    templates,
+  };
+}
+
+/**
+ * A pattern's name, the same as its template card's on the Library page: the single agent card
+ * for single, the template's card for the five; the two without a card have the draft's names.
+ */
+export function patternName(messages: unknown, pattern: TeamPattern): string {
+  const { TeamDraft, Workspace } = messages as {
+    TeamDraft: { patterns: Record<string, string> };
+    Workspace: { template: Record<string, { name: string } | undefined> };
+  };
+  const card =
+    pattern === 'single'
+      ? 'starter'
+      : isTemplatePattern(pattern)
+        ? PATTERN_TEMPLATES[pattern]
+        : null;
+  return card
+    ? (Workspace.template[card]?.name ?? pattern)
+    : (TeamDraft.patterns[pattern] ?? pattern);
+}
+
+/** The definition a template saves, under `corralId`. */
+export function templateDefinition(
+  id: WorkspaceTemplateId,
+  corralId: string,
+  text: TemplateText,
+): CorralDefinition {
+  if (id === 'blank') return emptyDraft('untitled', text.blankName).definition;
+  if (isTeamTemplate(id)) return teamTemplate(id, corralId, text.wording(id));
+  return demoDefinition(id, corralId, text.demo(id));
+}
+
+/** The demo's team with the same structure, worded in the screen language. */
+function demoDefinition(
+  id: DemoTemplateId,
+  corralId: string,
+  wording: DemoWording,
+): CorralDefinition {
+  const { definition } = templateForWorkspace(id, corralId);
+  return {
+    ...definition,
+    name: wording.name,
+    input: { ...definition.input, brief: wording.brief, criteria: wording.criteria },
+    roles: definition.roles.map((role) => {
+      const own = wording.roles[role.id];
+      if (!own) return role;
+      // The single agent's prompt is its duty alone, as a new agent's is.
+      return {
+        ...role,
+        name: own.name,
+        prompt: id === 'starter' ? own.duty : rolePrompt(own.duty),
+      };
+    }),
+    nodes: definition.nodes.map((node) => ({
+      ...node,
+      label: wording.nodes[node.id] ?? node.label,
+    })),
+  };
+}
+
+/**
+ * The role names in execution order, one entry per step. Roles that run at the same time (the
+ * branches of one port) share a step; a role that runs again later is not repeated.
+ */
+export function roleSteps(definition: CorralDefinition): string[][] {
+  const compiled = compileDefinition(definition);
+  if (!compiled.ok) return [];
+  const { plan } = compiled;
+  const branchOf = new Map<string, string>();
+  for (const step of Object.values(plan.steps))
+    for (const [port, targets] of Object.entries(portsOf(step)))
+      if (targets.length > 1)
+        for (const target of targets) branchOf.set(target.nodeId, `${step.nodeId}:${port}`);
+  const steps: { fork: string | null; names: string[] }[] = [];
+  const seen = new Set<string>();
+  for (const nodeId of plan.order) {
+    const step = plan.steps[nodeId];
+    if (step?.kind !== 'agent' || seen.has(step.roleId)) continue;
+    seen.add(step.roleId);
+    const name = definition.roles.find((role) => role.id === step.roleId)?.name ?? step.roleId;
+    const fork = branchOf.get(nodeId) ?? null;
+    const last = steps.at(-1);
+    if (fork && last?.fork === fork) last.names.push(name);
+    else steps.push({ fork, names: [name] });
+  }
+  return steps.map((step) => step.names);
+}
+
+function portsOf(step: PlanStep): Record<string, { nodeId: string }[]> {
+  switch (step.kind) {
+    case 'agent':
+      return { out: step.next, error: step.error };
+    case 'decision':
+      return step.branches;
+    case 'loop':
+      return { body: step.body, next: step.next, exhausted: step.exhausted };
+    case 'team':
+      return { body: step.body, next: step.next };
+    case 'join':
+      return { out: step.next };
+    case 'output':
+      return {};
+  }
+}
 
 export function templateCopyName(
   name: string,
@@ -29,15 +265,14 @@ export function templateCopyName(
 export async function createFromTemplate(
   repository: CorralRepository,
   id: WorkspaceTemplateId,
-  blankName: string,
+  text: TemplateText,
   projectId?: string,
   copyName?: string,
 ): Promise<{ ok: true; corralId: string } | { ok: false; message: string }> {
   const suffix = globalThis.crypto.randomUUID().slice(0, 8);
-  const draft =
-    id === 'blank'
-      ? { definition: emptyDraft('untitled', blankName).definition }
-      : { definition: templateForWorkspace(id, `${id.replace('-', '_')}_${suffix}`).definition };
+  const draft = {
+    definition: templateDefinition(id, `${id.replaceAll('-', '_')}_${suffix}`, text),
+  };
   const name = copyName?.trim() || draft.definition.name;
   const uniqueName = templateCopyName(
     name,
@@ -68,7 +303,7 @@ export async function createDemoExamples(
   text: {
     projects: [string, string];
     sessions: [string, string, string, string, string, string];
-    teamName: string;
+    templates: TemplateText;
   },
 ): Promise<string | null> {
   const plan: { name: string; template: WorkspaceTemplateId; sessions: string[] }[] = [
@@ -83,7 +318,7 @@ export async function createDemoExamples(
     const team = await createFromTemplate(
       repository,
       entry.template,
-      text.teamName,
+      text.templates,
       project.project.projectId,
     );
     const sessionIds: string[] = [];

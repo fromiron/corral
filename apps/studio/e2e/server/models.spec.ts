@@ -249,7 +249,8 @@ test('asks the signed-in model for a team draft once and opens it after review',
   await page.getByRole('button', { name: 'Draft from a goal' }).click();
   const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
   await dialog.getByLabel('What should the team do?').fill('Announce the new API');
-  await expect(dialog).toContainText('Uses one model request');
+  // The button itself says what asking costs.
+  await expect(dialog.getByRole('button', { name: 'Ask the model' })).toContainText('1 request');
   const draftRequest = page.waitForRequest(
     (request) => request.url().endsWith('/api/v1/team-drafts') && request.method() === 'POST',
   );

@@ -60,9 +60,7 @@ test('an explicit optional Corral choice and draft survive project navigation', 
       .getByRole('tab', { name: 'Templates', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await page
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Start a session with this team', exact: true })
+    .getByRole('button', { name: 'New conversation with Single agent', exact: true })
     .click();
   // The project's new conversation opens with the team chosen and the saved purpose, unstarted.
   await expect(details.getByRole('combobox', { name: 'Corral', exact: true })).toContainText(

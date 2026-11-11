@@ -68,7 +68,7 @@ describe('list screens outside a project', () => {
     for (const view of ['', '/teams', '/templates', '/resources'])
       expect(workHref(`/library${view}?project=a#list`)).toBe(`/library${view}?project=a#list`);
     expect(workHref('/preview')).toBe('/preview');
-    expect(workHref('/preview/task-board?newSession=true')).toBe('/preview/task-board');
+    expect(workHref('/preview/pr-review?newSession=true')).toBe('/preview/pr-review');
     expect(validateSettingsSearch({ returnTo: '/library/resources' })).toEqual({
       returnTo: '/library/resources',
     });
