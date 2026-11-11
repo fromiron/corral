@@ -388,6 +388,29 @@ it('keeps an answered decision until its success receipt, then focuses the next 
   expect(document.activeElement?.textContent).toBe('Needs you');
 });
 
+it('keeps the way to an answered decision’s run once the item has left the list', async () => {
+  let listed = [decisionA];
+  const { stores, rowButton, detail, click, buttonIn } = await mount({
+    inbox: async () => listed,
+  });
+  await click(rowButton('Fix login'));
+  await click(buttonIn(detail(), 'Continue with this version'));
+  const run = stores.get('run_a');
+  listed = [];
+  await act(async () => {
+    run?.store.setState({ projection: answered('run_a') });
+    run?.sent[0]?.resolve(applied('run_a'));
+  });
+  await flush();
+  expect(rowButton('Fix login')).toBeUndefined();
+  expect(detail()?.textContent).toContain('This item was handled.');
+  // Nothing waits there now, so the run opens as its record, not its response area.
+  const links = [...(detail()?.querySelectorAll('a') ?? [])];
+  expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+    ['Open run', '/sessions/s_a?panel=run&view=run&run=run_a'],
+  ]);
+});
+
 it('treats Escape, close and choosing another item as neither a denial nor a cancel', async () => {
   const { stores, rowButton, detail, click, buttonIn } = await mount({
     inbox: async () => [decisionA, decisionB],
