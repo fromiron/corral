@@ -25,6 +25,12 @@ vi.mock('@tanstack/react-router', () => ({
       className={className}
       // The address the link would open, from an empty one.
       data-search={JSON.stringify(typeof search === 'function' ? search({}) : (search ?? {}))}
+      // The same, from this run's address at a past point with a result open.
+      data-search-from-past={JSON.stringify(
+        typeof search === 'function'
+          ? search({ run: 'run_plan', atSeq: 1, result: 'result_1' })
+          : (search ?? {}),
+      )}
     >
       {children}
     </a>
@@ -390,6 +396,11 @@ it("names the waiting question in the notice and links to its run's response are
     execution: 'exec_failed',
   });
   expect(JSON.parse(failure?.getAttribute('data-search') ?? '{}')).not.toHaveProperty('respond');
+  // The step is shown as it is now: a past point or an open result would hide it.
+  const fromPast = JSON.parse(failure?.getAttribute('data-search-from-past') ?? '{}');
+  expect(fromPast).toMatchObject({ run: 'run_plan', execution: 'exec_failed' });
+  expect(fromPast).not.toHaveProperty('atSeq');
+  expect(fromPast).not.toHaveProperty('result');
   // An unconfirmed outcome is not something to answer either: its link opens the run and says so.
   await view.update(
     model(
