@@ -7,6 +7,7 @@ export * from './adapters/dialog.tsx';
 export * from './adapters/input.tsx';
 export * from './adapters/menu.tsx';
 export * from './adapters/popover.tsx';
+export * from './adapters/preview-cards.tsx';
 export * from './adapters/scroll-area.tsx';
 export * from './adapters/select.tsx';
 export * from './adapters/separator.tsx';
