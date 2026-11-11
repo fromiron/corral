@@ -1,4 +1,5 @@
 import type { AutoModelChoice } from '@corral/contracts';
+import { profileChoices } from '@corral/react';
 import { type ModelOption, ModelPicker, type ModelPickerChoice } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 import { reasoningFrom, reasoningValue } from './autoChoice.ts';
@@ -23,8 +24,7 @@ export function AutoModelMenu({
 }) {
   const t = useTranslations('Sessions'),
     tq = useTranslations('Reasoning'),
-    tc = useTranslations('Composer'),
-    tm = useTranslations('Models');
+    tc = useTranslations('Composer');
   const profile = profiles.find((p) => p.profileId === value.modelProfile);
   const effort =
     value.reasoning?.mode === 'fixed'
@@ -72,19 +72,11 @@ export function AutoModelMenu({
     },
   ];
   const requested = reasoningValue(value.reasoning);
-  const models: ModelOption[] = profiles.map((item) => ({
-    id: item.profileId,
-    name: item.label,
-    description: item.available
-      ? `${item.modelId ?? item.profileId} · ${tm(
-          item.imageInput === true
-            ? 'imageSupported'
-            : item.imageInput === false
-              ? 'textOnly'
-              : 'imageUnknown',
-        )}`
-      : tc('modelPicker.unavailable'),
-  }));
+  // Named profiles first, then one group per connected provider (features/model-connections.md).
+  const models: ModelOption[] = profileChoices(profiles, {
+    profiles: tc('modelPicker.profiles'),
+    unavailable: tc('modelPicker.unavailable'),
+  });
   if (!profile)
     models.unshift({
       id: value.modelProfile,
@@ -113,6 +105,10 @@ export function AutoModelMenu({
         empty: tc('modelPicker.empty'),
       }}
       footerText={tc('nextRequest')}
+      search={{
+        label: tc('modelPicker.search'),
+        noMatch: (query) => tc('modelPicker.noMatch', { query }),
+      }}
       reasoning={
         showReasoning
           ? {

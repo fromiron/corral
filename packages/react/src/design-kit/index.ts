@@ -134,6 +134,23 @@ export {
   type AgentTreeNode,
 } from './components/agent/agent-tree.tsx';
 export {
+  ConnectedMark,
+  type Connection,
+  ConnectionDirectory,
+  type ConnectionDirectoryEntry,
+  type ConnectionDirectoryProps,
+  ConnectionDiscovery,
+  type ConnectionDiscoveryProps,
+  ConnectionMark,
+  type ConnectionRowAction,
+  ConnectionSheet,
+  type ConnectionSheetProps,
+  type ConnectionStatus,
+  Connections,
+  type ConnectionsLabels,
+  type ConnectionsProps,
+} from './components/agent/connections.tsx';
+export {
   type DecisionNode,
   type DecisionOption,
   DecisionTree,
@@ -157,6 +174,7 @@ export {
   type ModelPickerLabels,
   type ModelPickerProps,
   type ModelPickerReasoning,
+  type ModelPickerSearch,
 } from './components/agent/model-picker.tsx';
 export {
   type PlanStep,

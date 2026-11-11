@@ -124,8 +124,9 @@ export const KeyboardAndContainment: Story = {
     const dialog = await page.findByRole('dialog', { name: 'Model settings' });
     await waitFor(() => expect(dialog).toBeVisible());
     expect(canvas.getByTestId('composer-scroll').contains(dialog)).toBe(false);
-    const models = within(dialog).getByRole('listbox', { name: 'Model' });
-    await waitFor(() => expect(models).toHaveFocus());
+    // The search field takes the focus; the arrows move through the list under it.
+    const search = within(dialog).getByRole('combobox', { name: 'Search models' });
+    await waitFor(() => expect(search).toHaveFocus());
     await userEvent.keyboard('{ArrowDown}{Enter}');
     await expect(args.onChange).toHaveBeenCalledWith({
       modelProfile: 'second',

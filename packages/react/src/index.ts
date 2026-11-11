@@ -16,6 +16,12 @@ export { FailureNotice } from './components/FailureNotice.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { InteractionPanel } from './components/InteractionPanel.tsx';
 export { MessageBody } from './components/MessageBody.tsx';
+export {
+  ModelSelect,
+  type ProfileChoice,
+  profileChoices,
+  providerMark,
+} from './components/ModelSelect.tsx';
 export { PathCrumb } from './components/PathCrumb.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReasoningSelect } from './components/ReasoningSelect.tsx';
