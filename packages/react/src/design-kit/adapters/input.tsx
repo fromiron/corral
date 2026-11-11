@@ -3,6 +3,7 @@
 import { Input as InputPrimitive } from '@base-ui/react/input';
 import type * as React from 'react';
 
+import { useSizeVariant } from '../lib/size-context.tsx';
 import { cn } from './utils.ts';
 
 type InputProps = Omit<InputPrimitive.Props & React.RefAttributes<HTMLInputElement>, 'size'> & {
@@ -14,12 +15,15 @@ type InputProps = Omit<InputPrimitive.Props & React.RefAttributes<HTMLInputEleme
 
 function Input({
   className,
-  size = 'default',
+  size: sizeProp,
   font = 'default',
   unstyled = false,
   nativeInput = false,
   ...props
 }: InputProps) {
+  // No size takes the step of the surrounding size scope (the person's interface density).
+  const scope = useSizeVariant();
+  const size = sizeProp ?? scope;
   const inputClassName = cn(
     'w-full min-w-0 rounded-[inherit] px-3 text-body outline-none placeholder:text-muted-foreground pointer-coarse:text-base',
     unstyled ? 'h-9' : 'h-[calc(var(--control-height)-2px)]',
