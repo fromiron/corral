@@ -103,7 +103,7 @@ const KEY_NEEDS: Readonly<Record<string, { what: string; env: string }>> = {
   },
 };
 
-/** Corral's own sign-in to this provider makes a borrowed Codex CLI login no connection. */
+/** Corral's own subscription sign-in to this provider makes a borrowed Codex CLI login no connection. */
 const OPENAI = 'openai';
 
 /** How a provider is reached: `none` is a keyless local endpoint. */
@@ -463,16 +463,19 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /**
-   * A borrowed Codex CLI login while Corral has its own OpenAI sign-in: it still serves a profile
-   * that names it, but it is not a connection and lists no models, so the same models are not
-   * offered twice (features/model-connections.md, 연결).
+   * A borrowed Codex CLI login while Corral has its own OpenAI subscription sign-in: it still
+   * serves a profile that names it, but it is not a connection and lists no models, so the same
+   * models are not offered twice. Beside an API key it stays a connection: a key and a
+   * subscription are different access (features/model-connections.md, 연결).
    */
   private shadowedLogin(providerId: string): boolean {
     if (providerId === OPENAI) return false;
     const layered = sourceAware(this.options.credentials);
     if (layered?.sourceOf(providerId) !== 'codex-cli') return false;
     const openai = this.status.get(OPENAI);
-    return Boolean(openai?.method && openai.stored && layered.sourceOf(OPENAI) === 'corral');
+    return Boolean(
+      openai?.method === 'oauth' && openai.stored && layered.sourceOf(OPENAI) === 'corral',
+    );
   }
 
   /** Signed in and counted as a connection: its models are listed without a profile. */

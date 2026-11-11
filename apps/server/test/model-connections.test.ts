@@ -560,7 +560,11 @@ describe('the borrowed Codex CLI login', () => {
       }));
       await registry.refreshStatus();
     };
-    return { registry, signInToOpenAI };
+    const saveOpenAIKey = async () => {
+      await own.modify('openai', async () => ({ type: 'api_key', key: 'openai-key-secret' }));
+      await registry.refreshStatus();
+    };
+    return { registry, signInToOpenAI, saveOpenAIKey };
   }
   const connections = (registry: ModelRegistry) =>
     registry
@@ -583,6 +587,30 @@ describe('the borrowed Codex CLI login', () => {
     const stored = registry.resolve('openai-codex:gpt-x', 'live');
     expect(stored).toMatchObject({ ok: false, code: 'CAPABILITY_DENIED' });
     expect(stored.ok ? '' : stored.reason).toMatch(/OpenAI sign-in/);
+    expect(JSON.stringify([registry.authView(), registry.profilesView()])).not.toMatch(
+      /secret|FAKE|acct-test/,
+    );
+  });
+
+  it('stays a connection beside an OpenAI API key: a key and a subscription are different access', async () => {
+    const { registry, saveOpenAIKey } = await withCodexLogin();
+    await saveOpenAIKey();
+    expect(connections(registry).sort()).toEqual([
+      'openai-codex:gpt-x',
+      'openai-codex:gpt-y',
+      'openai:gpt-x',
+      'openai:gpt-y',
+    ]);
+    expect(
+      registry
+        .authView()
+        .map((view) => [view.providerId, view.source])
+        .sort(),
+    ).toEqual([
+      ['openai', 'corral'],
+      ['openai-codex', 'codex-cli'],
+    ]);
+    expect(registry.resolve('openai-codex:gpt-x', 'live')).toMatchObject({ ok: true });
     expect(JSON.stringify([registry.authView(), registry.profilesView()])).not.toMatch(
       /secret|FAKE|acct-test/,
     );
