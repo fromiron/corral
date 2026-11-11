@@ -132,6 +132,8 @@ import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import { defaultD1Engine } from './local-ai.ts';
 import { MeetingHandoffService, registerMeetingHandoffRoutes } from './meeting-handoffs.ts';
+import { ModelCatalogService } from './models/catalog-service.ts';
+import { EndpointModelCache } from './models/endpoint-models.ts';
 import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
   assertOutsideWorkspace,
@@ -245,6 +247,11 @@ export interface LiveModels {
   getDeviceId(): string;
   /** Models a subscription sign-in may call (pi-ai's ChatGPT-account catalog for OpenAI). */
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
+  /**
+   * Requests for model metadata: an endpoint's `/models` and the models.dev catalog. Never a
+   * model request. Tests pass one that stays on this computer.
+   */
+  fetch?: typeof fetch;
   /** The agent adapter for live runs; it asks the registry for each request's token. */
   agents(
     registry: ModelRegistry,
@@ -469,9 +476,20 @@ async function createCorralServer(
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
   let registry: ModelRegistry | null = null;
+  // models.dev metadata and fetched endpoint lists, both in the user's config directory.
+  const modelCatalog = options.live
+    ? new ModelCatalogService(
+        join(options.live.configDir, 'model-catalog-v1.json'),
+        options.live.fetch ?? fetch,
+      )
+    : null;
   if (options.live) {
     assertOutsideWorkspace(options.live.configDir, workspace.root);
-    const endpoints = endpointsFrom(workspace.config.modelProviders);
+    const endpointModels = new EndpointModelCache(
+      join(options.live.configDir, 'endpoint-models-v1.json'),
+    );
+    // A restart uses the cached lists and sends nothing.
+    const endpoints = endpointsFrom(workspace.config.modelProviders, endpointModels);
     registerEndpoints(options.live.models, endpoints);
     registry = new ModelRegistry(
       options.live.models,
@@ -486,9 +504,18 @@ async function createCorralServer(
           : {}),
         endpoints,
         configRevision: workspace.configRevision,
+        currentConfigRevision: () => configRevision(workspace.root),
+        endpointModels: {
+          cache: endpointModels,
+          catalog: modelCatalog,
+          ...(options.live.fetch ? { fetch: options.live.fetch } : {}),
+        },
       },
     );
+    const started = registry;
+    resources.defer(() => started.close());
     await registry.refreshStatus();
+    registry.refreshDynamicProviders();
   }
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
@@ -1093,7 +1120,9 @@ async function createCorralServer(
   const registryFailure = (reply: FastifyReply, error: unknown) =>
     error instanceof RegistryError && error.code === 'unsupported'
       ? fail(reply, 'COMMAND_NOT_SUPPORTED', error.message)
-      : fail(reply, 'TARGET_NOT_FOUND', 'no model profile uses this provider');
+      : error instanceof RegistryError && error.code === 'conflict'
+        ? fail(reply, 'REVISION_CONFLICT', error.message)
+        : fail(reply, 'TARGET_NOT_FOUND', 'no such model provider');
   const noLive = (reply: FastifyReply) =>
     fail(reply, 'COMMAND_NOT_SUPPORTED', 'this server has no live model connection');
   app.post<ProviderParams>('/api/v1/model-auth/:providerId/login', async (request, reply) => {
@@ -1155,9 +1184,31 @@ async function createCorralServer(
   });
   app.delete<ProviderParams>('/api/v1/model-auth/:providerId', async (request, reply) => {
     if (!registry) return noLive(reply);
-    await registry.logout(request.params.providerId);
+    try {
+      await registry.logout(request.params.providerId);
+    } catch (error) {
+      return registryFailure(reply, error);
+    }
     return registry.authView();
   });
+  // An added endpoint's model list again from its saved address; never a caller's URL.
+  app.post<ProviderParams>(
+    '/api/v1/model-auth/:providerId/models/refresh',
+    async (request, reply) => {
+      if (!registry) return noLive(reply);
+      const body = parse(z.strictObject({ revision: z.string().min(1).max(100) }), request, reply);
+      if (!body) return reply;
+      try {
+        // The target first, then the revision; neither refusal sends anything.
+        registry.assertEndpoint(request.params.providerId);
+        if (body.revision !== configRevision(workspace.root))
+          return fail(reply, 'REVISION_CONFLICT', 'the config changed before the model refresh');
+        return await registry.refreshEndpointModels(request.params.providerId);
+      } catch (error) {
+        return registryFailure(reply, error);
+      }
+    },
+  );
 
   // ── local AI (settings panel) ─────────────────────────────────────
   const noLocalAi = (reply: FastifyReply) =>
@@ -1315,14 +1366,15 @@ async function createCorralServer(
       revision: snapshot.revision,
       effectiveProfiles: registry.contextPolicies(
         snapshot.config.modelProfiles ?? registry.profileConfigs(),
-        endpointsFrom(snapshot.config.modelProviders),
+        registry.endpointsFor(snapshot.config.modelProviders),
         snapshot.revision,
       ),
     };
   });
   const modelConfigBody = z.strictObject({
     revision: z.string().min(1).max(100),
-    modelProfiles: z.array(z.unknown()).max(20),
+    // Profiles have no count limit; the request body limit still applies.
+    modelProfiles: z.array(z.unknown()),
     modelProviders: z.array(z.unknown()).max(10),
   });
   app.post('/api/v1/model-config/preview', async (request, reply) => {
@@ -1339,7 +1391,7 @@ async function createCorralServer(
       revision: body.revision,
       effectiveProfiles: registry.contextPolicies(
         parsed.config.modelProfiles ?? [],
-        endpointsFrom(parsed.config.modelProviders),
+        registry.endpointsFor(parsed.config.modelProviders),
         body.revision,
       ),
     };
@@ -1355,7 +1407,7 @@ async function createCorralServer(
       { modelProfiles: body.modelProfiles, modelProviders: body.modelProviders },
       body.revision,
       (config) => {
-        const next = endpointsFrom(config.modelProviders);
+        const next = current.endpointsFor(config.modelProviders);
         return [
           ...endpointClashes(live.models, next),
           ...current.unknownProviders(config.modelProfiles ?? [], next),
@@ -1376,7 +1428,7 @@ async function createCorralServer(
     }
     workspace.config = written.config;
     workspace.configRevision = written.revision;
-    const endpoints = endpointsFrom(written.config.modelProviders);
+    const endpoints = current.endpointsFor(written.config.modelProviders);
     registerEndpoints(live.models, endpoints);
     await current.reconfigure(
       written.config.modelProfiles ?? DEFAULT_PROFILES,
@@ -1392,7 +1444,12 @@ async function createCorralServer(
     };
   });
 
-  registerModelImportRoutes(app, { workspace, registry, live: options.live });
+  registerModelImportRoutes(app, {
+    workspace,
+    registry,
+    live: options.live,
+    catalog: modelCatalog,
+  });
   registerPreviewRoutes(app, previews, previewTools);
   const projectServices = registerProjectRoutes(app, { root: workspace.root, repository: corrals });
   registerVoiceRoutes(app, {

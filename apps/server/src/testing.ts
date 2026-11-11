@@ -45,6 +45,11 @@ export function fakeOpenAI(
     imageInput?: boolean;
     /** Deterministic slow streaming for cancellation and follow-scroll browser tests. */
     tokensPerSecond?: number;
+    /**
+     * Model metadata requests (endpoint `/models`, models.dev). By default only this computer is
+     * reached: a test endpoint on 127.0.0.1 answers, anything else fails as offline.
+     */
+    fetch?: typeof fetch;
   } = {},
 ) {
   const seen = {
@@ -188,6 +193,7 @@ export function fakeOpenAI(
     models,
     credentials,
     configDir,
+    fetch: options.fetch ?? localOnlyFetch,
     // What a subscription sign-in may call, like pi-ai's ChatGPT (Codex) catalog.
     subscriptionModels: (providerId) =>
       providerId === 'openai' ? new Set(['gpt-test-a', 'gpt-test-b']) : null,
@@ -327,5 +333,13 @@ export function fakeOpenAI(
     setResponses: (steps: Parameters<typeof faux.setResponses>[0]) => faux.setResponses(steps),
   };
 }
+
+/** Requests to this computer only; tests and the E2E harness never reach the network. */
+const localOnlyFetch: typeof fetch = async (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))
+    throw new TypeError('fetch failed: offline test server');
+  return fetch(input, init);
+};
 
 export { type FauxResponseStep, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
