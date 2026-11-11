@@ -23,7 +23,8 @@ const LANGUAGES = new Set([
   'go',
   'rust',
 ]);
-// A small lexical aid, not a parser: unknown languages retain escaped plain source.
+// A small lexical aid, not a parser: unknown languages retain escaped plain source. The colors are
+// the syntax tokens (theme.css), which a named theme sets.
 // One linear pass and React text nodes keep incomplete streaming fences safe.
 const KEYWORDS = new Set(
   'const let var function return if else for while class import from export async await new throw try catch def print True False None true false null undefined public private static void int string select SELECT FROM WHERE'.split(
@@ -42,24 +43,24 @@ function highlighted(text: string, language: string): ReactNode {
     if (text.startsWith('//', cursor) || char === '#') {
       const end = text.indexOf('\n', cursor);
       cursor = end < 0 ? text.length : end;
-      color = 'text-muted-foreground';
+      color = 'text-syntax-comment';
     } else if (text.startsWith('/*', cursor)) {
       const end = text.indexOf('*/', cursor + 2);
       cursor = end < 0 ? text.length : end + 2;
-      color = 'text-muted-foreground';
+      color = 'text-syntax-comment';
     } else if (char === '"' || char === "'" || char === '`') {
       cursor++;
       while (cursor < text.length) {
         if (text[cursor] === '\\') cursor = Math.min(cursor + 2, text.length);
         else if (text[cursor++] === char) break;
       }
-      color = 'text-success';
+      color = 'text-syntax-string';
     } else if (char && /[0-9]/.test(char)) {
       while (cursor < text.length && /[0-9.]/.test(text[cursor] ?? '')) cursor++;
-      color = 'text-warning';
+      color = 'text-syntax-number';
     } else if (char && /[A-Za-z_$]/.test(char)) {
       while (cursor < text.length && /[A-Za-z0-9_$]/.test(text[cursor] ?? '')) cursor++;
-      if (KEYWORDS.has(text.slice(start, cursor))) color = 'font-semibold text-primary';
+      if (KEYWORDS.has(text.slice(start, cursor))) color = 'font-semibold text-syntax-keyword';
     } else cursor++;
     if (color) {
       if (plain < start) parts.push(text.slice(plain, start));
