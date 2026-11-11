@@ -121,6 +121,7 @@ export function buildTurnProcess(
         requested.set(event.payload.toolCallId, event);
       } else if (
         event.type === 'tool.allowed' ||
+        event.type === 'tool.authorized' ||
         event.type === 'tool.blocked' ||
         event.type === 'tool.started' ||
         event.type === 'tool.finished'

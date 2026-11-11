@@ -923,6 +923,7 @@
     "done": "{step} approved ({subject})",
     "doneBare": "{step} approved",
     "doneTool": "Allowed once: {call}",
+    "doneToolRun": "Allowed for this run: {call}",
     "doneCheck": "Check run once",
     "doneLsp": "Query run once",
     "doneLimit": "{limit}: continued",
@@ -979,8 +980,10 @@
     "approveLsp": "Run this query once",
     "rejectLsp": "Decline this query",
     "toolHeading": "Tool permission",
-    "toolOnce": "Allow this exact call once. Save rules separately in Work styles for future runs.",
+    "toolOnce": "Allows this call only.",
+    "toolRun": "Allows this exact call again until this run ends; any change asks again.",
     "approveTool": "Allow once",
+    "approveToolRun": "Allow for this run",
     "rejectTool": "Deny",
     "toolIdentity": "Tool identity and call fingerprint",
     "toolPolicyRevision": "Policy revision {revision}",
@@ -1286,6 +1289,7 @@
     "effectSettled": "Work ended ({outcome})",
     "toolRequested": "{node} called {name}",
     "toolAllowed": "Tool call allowed",
+    "toolAuthorized": "Tool call allowed for this run",
     "toolBlocked": "Tool call refused: {reason}",
     "toolStarted": "Tool running",
     "toolFinished": "Tool finished",
@@ -5428,7 +5432,8 @@
     "requestGenerating": "Generating response",
     "requestFinished": "Response complete",
     "requestUnconfirmed": "Response completion not recorded",
-    "stepDetails": "Details of {step}"
+    "stepDetails": "Details of {step}",
+    "allowedForRun": "Allowed for this run"
   },
   "RunMonitor": {
     "backToWork": "Back to work",

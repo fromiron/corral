@@ -1,7 +1,8 @@
 import type { CheckPlan } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { type RunProjection, toolPermissionPlan } from '@corral/core';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fireEvent, fn, within } from 'storybook/test';
+import { Button } from '../design-kit/index.ts';
 import { projectionWith, sessionStore } from '../stories/fixtures.tsx';
 import { ApprovalPanel } from './ApprovalPanel.tsx';
 
@@ -44,13 +45,63 @@ const outputApproval: Approval = {
   status: 'pending',
 };
 
+const commandPermission = toolPermissionPlan(
+  { snapshotHash: 'c'.repeat(64), policyRevision: 1 },
+  {
+    name: 'run_command',
+    source: 'corral',
+    schemaHash: 'd'.repeat(64),
+    exposure: 'direct',
+    sideEffect: 'external',
+  },
+  {
+    operationId: 'command_1',
+    hostId: 'local',
+    sessionId: 'session_1',
+    workspaceBindingId: 'binding_1',
+    worktreeId: 'worktree_1',
+    rootIdentity: 'a'.repeat(64),
+    tree: 'b'.repeat(40),
+    shellId: 'bash',
+    command: 'npm test',
+    executable: 'bash',
+    argv: ['-lc', 'npm test'],
+    cwd: '.',
+    environmentHash: 'c'.repeat(64),
+    timeoutMs: 120000,
+    mode: 'foreground',
+    fingerprint: 'd'.repeat(64),
+    request: { command: 'npm test' },
+  },
+);
+
+const toolApproval: Approval = {
+  approvalId: 'approval_tool',
+  kind: 'user_action',
+  subjectVersionIds: ['tool_body'],
+  criteriaVersionId: null,
+  status: 'pending',
+  tool: {
+    purpose: 'tool',
+    executionId: 'exec_writer',
+    attemptNo: 1,
+    toolCallId: 'tool_2',
+    bodyRef: 'tool_body',
+    fingerprint: commandPermission.fingerprint,
+    deadline: '2099-10-18T00:00:00.000Z',
+  },
+};
+
 function store(approvals: Approval[], resolveApproval = fn()) {
   return sessionStore({
     projection: projectionWith({
       status: 'awaiting_user',
       approvals: Object.fromEntries(approvals.map((a) => [a.approvalId, a])),
     }),
-    artifactTexts: { check_body: JSON.stringify(plan) },
+    artifactTexts: {
+      check_body: JSON.stringify(plan),
+      tool_body: JSON.stringify(commandPermission),
+    },
     resolveApproval: async (...args: unknown[]) => {
       resolveApproval(...args);
       return { status: 'applied' } as never;
@@ -90,6 +141,32 @@ export const ButtonsOnly: Story = {
   },
 };
 
+const allowed = fn();
+
+/**
+ * A tool call: Allow once is the main decision, Allow for this run sits beside it, and the rules
+ * of later runs are a way out of the card.
+ */
+export const ToolPermission: Story = {
+  args: {
+    session: store([toolApproval], allowed),
+    policySettingsAction: (
+      <Button variant="ghost" render={<a href="#rules" />}>
+        Tool rules for future runs
+      </Button>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('npm test')).toBeVisible();
+    const run = canvas.getByRole('button', { name: 'Allow for this run' });
+    await expect(canvas.getByRole('button', { name: 'Allow once' })).toBeEnabled();
+    await expect(run).toBeEnabled();
+    fireEvent.click(run);
+    await expect(allowed).toHaveBeenCalledWith('approval_tool', 'approve', { scope: 'run' });
+  },
+};
+
 /** The one-row strip beside the results view. */
 export const Compact: Story = {
   args: { compact: true },
@@ -115,7 +192,7 @@ export const RouteChoice: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText('Choose a route')).toBeVisible();
     fireEvent.click(canvas.getByRole('button', { name: 'Ship it' }));
-    await expect(routed).toHaveBeenCalledWith('approval_route', 'approve', 'ship');
+    await expect(routed).toHaveBeenCalledWith('approval_route', 'approve', { routeId: 'ship' });
   },
 };
 

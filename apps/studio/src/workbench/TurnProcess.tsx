@@ -305,6 +305,7 @@ export function TurnProcess({
                     description={[
                       row.artifact ? t('artifactTarget', row.artifact) : row.target,
                       tt(`tool.${row.status}`),
+                      row.allowedForRun ? t('allowedForRun') : null,
                     ]
                       .filter(Boolean)
                       .join(' · ')}

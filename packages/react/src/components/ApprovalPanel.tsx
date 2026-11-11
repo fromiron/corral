@@ -248,7 +248,8 @@ export function ApprovalPanel({
       const name = plan?.descriptor.name ?? toolCalls?.[approval.tool.toolCallId]?.name;
       const subject = plan ? callSubject(plan) : null;
       const tool = name ? toolLabel(name) : t('toolHeading');
-      return t('doneTool', { call: subject ? `${tool} · ${subject}` : tool });
+      const call = subject ? `${tool} · ${subject}` : tool;
+      return t(approval.scope === 'run' ? 'doneToolRun' : 'doneTool', { call });
     }
     if (approval.tool) {
       const name = checkPlans[approval.tool.bodyRef]?.name;
@@ -266,15 +267,19 @@ export function ApprovalPanel({
     const nodeId = executions?.[executionId]?.nodeId;
     return nodes?.find((node) => node.id === nodeId)?.label ?? null;
   };
-  const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
+  const decide = async (
+    approvalId: string,
+    decision: 'approve' | 'reject',
+    options?: { routeId?: string; scope?: 'run' },
+  ) => {
     // Focus in this decision's card is handed on when the card leaves.
     handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
       ? { approvalId, chat: section.current?.closest('[data-chat-view]') ?? null }
       : null;
     setBusy(true);
     try {
-      const receipt = routeId
-        ? await session.getState().resolveApproval(approvalId, decision, routeId)
+      const receipt = options
+        ? await session.getState().resolveApproval(approvalId, decision, options)
         : await session.getState().resolveApproval(approvalId, decision);
       setRefused(receipt.error ? receipt : null);
       // Refused: the card stays, and so does the person's focus.
@@ -291,6 +296,79 @@ export function ApprovalPanel({
   // run screen's approval card, the decision row is compact at every interface density.
   const decisionButtons = (approval: (typeof approvals)[number]) => (
     <SizeScope size="compact">{decisionRow(approval)}</SizeScope>
+  );
+  /** Decline, then approve; a tool call also offers approving it for the run. */
+  const answers = (approval: (typeof approvals)[number]) => (
+    <>
+      <Button
+        variant="tertiary"
+        disabled={busy}
+        data-approval-action="decline"
+        onClick={() => void decide(approval.approvalId, 'reject')}
+      >
+        {approval.tool
+          ? t(
+              approval.tool.purpose === 'tool'
+                ? 'rejectTool'
+                : approval.tool.purpose === 'lsp'
+                  ? 'rejectLsp'
+                  : 'rejectCheck',
+            )
+          : approval.limit
+            ? t('limit.reject')
+            : t(`rejectAs.${copyKey(approval)}`)}
+      </Button>
+      {approval.tool?.purpose === 'tool' ? (
+        // The same call again needs no answer until the run ends; any change asks again.
+        <Button
+          variant="secondary"
+          data-approval-action="run"
+          disabled={busy || !toolPlans[approval.tool.bodyRef]}
+          title={t('toolRun')}
+          onClick={() => void decide(approval.approvalId, 'approve', { scope: 'run' })}
+        >
+          {t('approveToolRun')}
+        </Button>
+      ) : null}
+      <Button
+        data-approval-action="primary"
+        disabled={
+          busy ||
+          !!(
+            approval.tool &&
+            !(approval.tool.purpose === 'tool'
+              ? toolPlans[approval.tool.bodyRef]
+              : checkPlans[approval.tool.bodyRef])
+          )
+        }
+        title={
+          approval.tool
+            ? t(
+                approval.tool.purpose === 'tool'
+                  ? 'toolOnce'
+                  : approval.tool.purpose === 'lsp'
+                    ? 'lspOnce'
+                    : 'checkOnce',
+              )
+            : approval.limit
+              ? t('limit.then')
+              : t(`then.${copyKey(approval)}`)
+        }
+        onClick={() => void decide(approval.approvalId, 'approve')}
+      >
+        {approval.tool
+          ? t(
+              approval.tool.purpose === 'tool'
+                ? 'approveTool'
+                : approval.tool.purpose === 'lsp'
+                  ? 'approveLsp'
+                  : 'approveCheck',
+            )
+          : approval.limit
+            ? t('limit.approve')
+            : t(`approveAs.${copyKey(approval)}`)}
+      </Button>
+    </>
   );
   const decisionRow = (approval: (typeof approvals)[number]) =>
     approval.kind === 'route' ? (
@@ -312,72 +390,23 @@ export function ApprovalPanel({
             // The first route is the card's main action when focus is handed to it.
             data-approval-action={index === 0 ? 'primary' : 'route'}
             title={t('then.route')}
-            onClick={() => void decide(approval.approvalId, 'approve', route.id)}
+            onClick={() => void decide(approval.approvalId, 'approve', { routeId: route.id })}
           >
             {route.label}
           </Button>
         ))}
       </>
-    ) : (
+    ) : approval.tool?.purpose === 'tool' ? (
       <>
-        <Button
-          variant="tertiary"
-          disabled={busy}
-          data-approval-action="decline"
-          onClick={() => void decide(approval.approvalId, 'reject')}
-        >
-          {approval.tool
-            ? t(
-                approval.tool.purpose === 'tool'
-                  ? 'rejectTool'
-                  : approval.tool.purpose === 'lsp'
-                    ? 'rejectLsp'
-                    : 'rejectCheck',
-              )
-            : approval.limit
-              ? t('limit.reject')
-              : t(`rejectAs.${copyKey(approval)}`)}
-        </Button>
-        <Button
-          data-approval-action="primary"
-          disabled={
-            busy ||
-            !!(
-              approval.tool &&
-              !(approval.tool.purpose === 'tool'
-                ? toolPlans[approval.tool.bodyRef]
-                : checkPlans[approval.tool.bodyRef])
-            )
-          }
-          title={
-            approval.tool
-              ? t(
-                  approval.tool.purpose === 'tool'
-                    ? 'toolOnce'
-                    : approval.tool.purpose === 'lsp'
-                      ? 'lspOnce'
-                      : 'checkOnce',
-                )
-              : approval.limit
-                ? t('limit.then')
-                : t(`then.${copyKey(approval)}`)
-          }
-          onClick={() => void decide(approval.approvalId, 'approve')}
-        >
-          {approval.tool
-            ? t(
-                approval.tool.purpose === 'tool'
-                  ? 'approveTool'
-                  : approval.tool.purpose === 'lsp'
-                    ? 'approveLsp'
-                    : 'approveCheck',
-              )
-            : approval.limit
-              ? t('limit.approve')
-              : t(`approveAs.${copyKey(approval)}`)}
-        </Button>
-        {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
+        {policySettingsAction ? (
+          // The rules of later runs are a way out of the card, apart from its decisions.
+          <span className="mr-auto flex">{policySettingsAction}</span>
+        ) : null}
+        {/* The decisions wrap as one group, so a narrow card never parts them. */}
+        <span className="flex flex-wrap justify-end gap-2">{answers(approval)}</span>
       </>
+    ) : (
+      answers(approval)
     );
 
   return (
@@ -597,7 +626,6 @@ function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefin
           </pre>
         </>
       )}
-      <p className="text-muted-foreground">{t('toolOnce')}</p>
       <Accordion>
         <AccordionItem value="identity">
           <AccordionTrigger>{t('toolIdentity')}</AccordionTrigger>

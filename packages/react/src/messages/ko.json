@@ -923,6 +923,7 @@
     "done": "{step} 승인함 ({subject})",
     "doneBare": "{step} 승인함",
     "doneTool": "한 번 허용함: {call}",
+    "doneToolRun": "이 실행 동안 허용함: {call}",
     "doneCheck": "검사 한 번 실행함",
     "doneLsp": "질의 한 번 실행함",
     "doneLimit": "{limit}: 계속함",
@@ -979,8 +980,10 @@
     "approveLsp": "이 질의 한 번 실행",
     "rejectLsp": "질의 거절",
     "toolHeading": "도구 실행 승인",
-    "toolOnce": "표시된 인자로 이번 호출만 허용합니다. 다음 실행의 규칙은 작업 방식에서 따로 저장하세요.",
-    "approveTool": "이번 호출 허용",
+    "toolOnce": "이 호출만 허용합니다.",
+    "toolRun": "이 실행이 끝날 때까지 똑같은 호출은 다시 묻지 않고 허용합니다. 하나라도 다르면 다시 묻습니다.",
+    "approveTool": "이번만 허용",
+    "approveToolRun": "이 실행 동안 허용",
     "rejectTool": "거절",
     "toolIdentity": "도구 식별 정보와 호출 지문",
     "toolPolicyRevision": "정책 revision {revision}",
@@ -1286,6 +1289,7 @@
     "effectSettled": "작업 종료({outcome})",
     "toolRequested": "{node}이(가) {name} 호출",
     "toolAllowed": "도구 호출 허용",
+    "toolAuthorized": "이 실행 동안 허용된 도구 호출",
     "toolBlocked": "도구 호출 거절: {reason}",
     "toolStarted": "도구 실행 중",
     "toolFinished": "도구 완료",
@@ -5428,7 +5432,8 @@
     "requestGenerating": "응답 생성 중",
     "requestFinished": "응답 완료",
     "requestUnconfirmed": "응답 완료 기록 없음",
-    "stepDetails": "{step} 상세"
+    "stepDetails": "{step} 상세",
+    "allowedForRun": "이 실행 동안 허용됨"
   },
   "RunMonitor": {
     "backToWork": "작업으로 돌아가기",

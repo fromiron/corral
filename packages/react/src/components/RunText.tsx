@@ -93,6 +93,8 @@ export function describeEvent(
       return of('toolRequested', { node: actor, name: str(p.name) });
     case 'tool.allowed':
       return of('toolAllowed');
+    case 'tool.authorized':
+      return of('toolAuthorized');
     case 'tool.blocked':
       return of('toolBlocked', { reason: str(p.reason) });
     case 'tool.started':

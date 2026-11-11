@@ -56,6 +56,8 @@ export type TranscriptEntry =
       resultRef: string | null;
       /** The validated arguments as recorded; large values are already size-and-hash stubs. */
       args: Record<string, unknown>;
+      /** It passed without asking on an earlier approval of this run for the same call. */
+      allowedForRun?: true;
     }
   | {
       kind: 'question';
@@ -168,6 +170,7 @@ export function buildTranscript(
         break;
       }
       case 'tool.allowed':
+      case 'tool.authorized':
       case 'tool.blocked':
       case 'tool.started':
       case 'tool.finished': {
@@ -222,7 +225,7 @@ export function buildTranscript(
 type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
 type ToolUpdate = Extract<
   RunEvent,
-  { type: 'tool.allowed' | 'tool.blocked' | 'tool.started' | 'tool.finished' }
+  { type: 'tool.allowed' | 'tool.authorized' | 'tool.blocked' | 'tool.started' | 'tool.finished' }
 >;
 
 function toolEntry(event: Extract<RunEvent, { type: 'tool.requested' }>): ToolEntry {
@@ -243,6 +246,9 @@ function updateTool(tool: ToolEntry, event: ToolUpdate): void {
   switch (event.type) {
     case 'tool.allowed':
       tool.status = 'allowed';
+      return;
+    case 'tool.authorized':
+      tool.allowedForRun = true;
       return;
     case 'tool.blocked':
       tool.status = 'blocked';
@@ -271,6 +277,7 @@ export function executionToolEntries(events: readonly RunEvent[]): Map<string, T
       byExecution.set(event.payload.executionId, list);
     } else if (
       event.type === 'tool.allowed' ||
+      event.type === 'tool.authorized' ||
       event.type === 'tool.blocked' ||
       event.type === 'tool.started' ||
       event.type === 'tool.finished'
