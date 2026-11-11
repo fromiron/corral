@@ -127,6 +127,15 @@ describe('built-in themes', () => {
         ).toBeGreaterThanOrEqual(3);
       });
 
+      it.each(['--accent', '--tint', '--tint-hover'])(
+        'keeps text at 4.5:1 on the %s fill of buttons and rows',
+        (fill) => {
+          expect(
+            contrastRatio(tokens['--foreground'] as string, tokens[fill] as string),
+          ).toBeGreaterThanOrEqual(4.5);
+        },
+      );
+
       it('takes syntax and terminal colors unchanged from its source file', async () => {
         const original = await source(theme.source);
         for (const [key, scope] of Object.entries(SCOPES))

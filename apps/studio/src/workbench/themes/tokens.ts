@@ -4,15 +4,31 @@ import { type Palette, SYNTAX_COLORS } from './palette.ts';
 const WHITE = '#ffffff';
 
 /**
+ * How much of the text color goes into a fill that carries text (a secondary button, the open
+ * file's row, a gray badge): the kit's own step, in hundredths, less where the theme's text is
+ * too dim to stay at 4.5:1 on it, and never under a step that still shows.
+ */
+function textFillAmount(background: string, foreground: string, most: number): number {
+  const least = 6;
+  for (let amount = most; amount > least; amount--)
+    if (contrastRatio(foreground, mix(background, foreground, amount / 100)) >= 4.5)
+      return amount / 100;
+  return least / 100;
+}
+
+/**
  * The one function from a theme's values to the root's color tokens (DESIGN.md, Colors). Built-in
  * and personal themes both go through it. Tokens it does not write keep the kit's own values,
  * which either derive from these (border, scrollbar, `background`, `card`, `primary` and the
- * other aliases) or follow the base through the `.light`/`.dark` scope (overlays, shadows,
- * scrim, checkerboard). Every value is a lower-case `#rrggbb`.
+ * other aliases) or follow the base through the `.light`/`.dark` scope (hover and pressed
+ * overlays, shadows, scrim, checkerboard). Every value is a lower-case `#rrggbb`.
  */
 export function paletteTokens(palette: Palette): Readonly<Record<string, string>> {
   const { ui, base } = palette;
   const dark = base === 'dark';
+  const textFill = (most: number) =>
+    mix(ui.background, ui.foreground, textFillAmount(ui.background, ui.foreground, most));
+  const tint = textFillAmount(ui.background, ui.foreground, dark ? 25 : 8);
   // Dark: each elevation adds a little of the text color, as the kit's additive white ladder.
   // Light: the floor, a sunken step, then raised surfaces nearer white (the kit's flat white).
   const surface = (step: number) =>
@@ -30,7 +46,11 @@ export function paletteTokens(palette: Palette): Readonly<Record<string, string>
     // Quiet fill: the sunken step in dark; a little darker than the floor in light (as the kit).
     '--muted': dark ? surface(2) : mix(ui.background, ui.foreground, 0.045),
     '--muted-foreground': ui.muted,
-    '--accent': mix(ui.background, ui.foreground, dark ? 0.22 : 0.09),
+    '--accent': textFill(dark ? 22 : 9),
+    // The kit's tint pair is white (or black) over the surface; here an opaque fill, with hover
+    // nearer the floor than rest, as the kit's.
+    '--tint': mix(ui.background, ui.foreground, tint),
+    '--tint-hover': mix(ui.background, ui.foreground, tint * 0.8),
     '--selected': ui.selection,
     '--ring': mix(ui.background, ui.foreground, dark ? 0.16 : 0.1),
     '--input': mix(ui.background, ui.foreground, dark ? 0.16 : 0.1),
@@ -61,6 +81,8 @@ export const PALETTE_TOKENS: readonly string[] = [
   '--muted',
   '--muted-foreground',
   '--accent',
+  '--tint',
+  '--tint-hover',
   '--selected',
   '--ring',
   '--input',

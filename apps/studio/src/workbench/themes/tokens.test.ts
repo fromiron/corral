@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contrastRatio } from './color.ts';
+import { contrastRatio, mix } from './color.ts';
 import type { Palette } from './palette.ts';
 import { PALETTE_TOKENS, paletteTokens } from './tokens.ts';
 
@@ -85,6 +85,35 @@ describe('the one token function', () => {
     }
   });
 
+  it('fills buttons and rows with the most text color that keeps the text at 4.5:1, and never with none', () => {
+    // Dim text, as One Dark Pro's, takes a lighter fill than the kit's white-over-dark tint.
+    const dim: Palette = {
+      ...dark,
+      ui: { ...dark.ui, background: '#282c34', foreground: '#abb2bf' },
+    };
+    for (const palette of [dark, light, dim]) {
+      const tokens = paletteTokens(palette);
+      for (const fill of ['--accent', '--tint', '--tint-hover'])
+        expect(
+          contrastRatio(palette.ui.foreground, tokens[fill] as string),
+          `${palette.name} ${fill}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      // Hover sits between the floor and the resting fill, as the kit's pair does.
+      expect(contrastRatio(tokens['--tint-hover'] as string, palette.ui.background)).toBeLessThan(
+        contrastRatio(tokens['--tint'] as string, palette.ui.background),
+      );
+    }
+    // Bright text keeps the kit's full step.
+    expect(paletteTokens(dark)['--tint']).toBe(mix('#202020', '#f0f0f0', 0.25));
+    expect(paletteTokens(dark)['--accent']).toBe(mix('#202020', '#f0f0f0', 0.22));
+    // Text the theme itself puts under 4.5:1 (its owner's call) still gets a fill: the least step.
+    const faint: Palette = { ...dark, ui: { ...dark.ui, foreground: '#505050' } };
+    const tokens = paletteTokens(faint);
+    expect(tokens['--tint']).toBe(mix('#202020', '#505050', 0.06));
+    for (const fill of ['--accent', '--tint', '--tint-hover'])
+      expect(tokens[fill]).not.toBe(faint.ui.background);
+  });
+
   it('puts the text with the higher contrast on a filled error surface', () => {
     expect(paletteTokens(dark)['--destructive-contrast']).toBe('#202020');
     const pale = { ...light, ui: { ...light.ui, error: '#b00020' } };
@@ -108,8 +137,6 @@ describe('the one token function', () => {
       // Surface-relative overlays and the shadow recipes follow the base through the scope class.
       '--hover',
       '--active',
-      '--tint',
-      '--tint-hover',
       '--overlay',
       '--shadow-color',
       '--dm-hi-base',
