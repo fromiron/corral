@@ -159,7 +159,7 @@ export function fakeOpenAI(
     }),
   );
 
-  // Anthropic as pi-ai has it: an API key, and a subscription OAuth Corral must never start.
+  // Anthropic as pi-ai has it: an API key, and a browser subscription sign-in.
   const anthropic = createFauxCore({
     provider: 'anthropic',
     models: [{ id: 'claude-test', name: 'Claude Test' }],
@@ -173,8 +173,23 @@ export function fakeOpenAI(
         oauth: {
           name: 'Anthropic (Claude Pro/Max)',
           isSubscription: true,
-          async login() {
-            throw new Error('Corral must not start Anthropic subscription sign-in');
+          async login(interaction) {
+            interaction.notify({
+              type: 'auth_url',
+              url: 'https://auth.example.test/anthropic/authorize?state=s1',
+            });
+            const redirect = await interaction.prompt({
+              type: 'manual_code',
+              message: 'Paste the redirect URL',
+              signal: interaction.signal,
+            });
+            if (!redirect.includes('code=ok')) throw new Error('OAuth state mismatch');
+            return {
+              type: 'oauth',
+              access: 'anthropic-access-secret',
+              refresh: 'anthropic-refresh-secret',
+              expires: Date.now() + 3_600_000,
+            };
           },
           async refresh(credential) {
             return credential;

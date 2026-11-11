@@ -8,7 +8,7 @@ import { type EndpointProbeResult, probeKind } from './endpoint-probe.ts';
 // The model list of an added OpenAI-compatible endpoint (features/model-connections.md,
 // 엔드포인트 모델 가져오기). One GET to the saved address's `/models`, never a caller's URL,
 // with the key bound to that origin only and no redirects. Only the listed fields are read;
-// the cache keeps the origin, the time and each model's id, limits and abilities.
+// the cache keeps, by address, the time and each model's id, limits and abilities.
 
 export const ENDPOINT_MODEL_LIMITS = {
   timeoutMs: 10_000,
@@ -152,7 +152,6 @@ const Values = z.strictObject({
   imageInput: z.boolean().optional(),
 });
 const CachedEndpointSchema = z.strictObject({
-  origin: z.string().min(1).max(500),
   fetchedAt: z.iso.datetime(),
   models: z
     .array(
@@ -167,47 +166,61 @@ const CachedEndpointSchema = z.strictObject({
     .max(ENDPOINT_MODEL_LIMITS.maxModels),
 });
 export type CachedEndpoint = z.infer<typeof CachedEndpointSchema>;
+/** Lists by the address they were fetched from; a file in an earlier shape is no cache. */
 const CacheFile = z.strictObject({
-  version: z.literal(1),
-  endpoints: z.record(z.string().min(1).max(120), CachedEndpointSchema),
+  version: z.literal(2),
+  endpoints: z.record(z.string().min(1).max(600), CachedEndpointSchema),
 });
 
-/** Where an endpoint's last fetched list is read from. */
+/** The address a list belongs to: the saved base URL, as its `/models` request is built. */
+export function endpointAddress(baseUrl: string): string {
+  return new URL(baseUrl).href.replace(/\/+$/, '');
+}
+
+/** Where an endpoint's last fetched list is read from, by the endpoint's saved base URL. */
 export interface EndpointModelSource {
-  read(providerId: string, origin: string): CachedEndpoint | null;
+  read(baseUrl: string): CachedEndpoint | null;
 }
 
 /**
  * Fetched endpoint lists in the user's config directory, outside the workspace and apart from
- * the credentials file. Read once when the server starts; a list belongs to the origin it was
- * fetched from and is not used for another.
+ * the credentials file. Read when the server starts; a list belongs to the address it was
+ * fetched from, whatever endpoint id names that address, and is not used for another. A write
+ * merges its one entry into the file's current content, so lists other servers wrote stay.
  */
 export class EndpointModelCache implements EndpointModelSource {
   private readonly file: string;
-  private entries: Record<string, CachedEndpoint> = {};
+  private entries: Record<string, CachedEndpoint>;
 
   constructor(file: string) {
     this.file = file;
+    this.entries = this.load();
+  }
+
+  private load(): Record<string, CachedEndpoint> {
     try {
-      if (!existsSync(file) || statSync(file).size > 16 * 1024 * 1024) return;
-      const parsed = CacheFile.safeParse(JSON.parse(readFileSync(file, 'utf8')));
-      if (parsed.success) this.entries = parsed.data.endpoints;
+      if (!existsSync(this.file) || statSync(this.file).size > 16 * 1024 * 1024) return {};
+      const parsed = CacheFile.safeParse(JSON.parse(readFileSync(this.file, 'utf8')));
+      return parsed.success ? parsed.data.endpoints : {};
     } catch {
       /* An unreadable cache is no cache; the next fetch writes a new one. */
+      return {};
     }
   }
 
-  read(providerId: string, origin: string): CachedEndpoint | null {
-    const entry = Object.hasOwn(this.entries, providerId) ? this.entries[providerId] : undefined;
-    return entry?.origin === origin ? entry : null;
+  read(baseUrl: string): CachedEndpoint | null {
+    const address = endpointAddress(baseUrl);
+    return Object.hasOwn(this.entries, address) ? (this.entries[address] ?? null) : null;
   }
 
-  write(providerId: string, entry: CachedEndpoint) {
-    const next = { ...this.entries, [providerId]: CachedEndpointSchema.parse(entry) };
+  write(baseUrl: string, entry: CachedEndpoint) {
+    const parsed = CachedEndpointSchema.parse(entry);
+    const next = { ...this.load(), [endpointAddress(baseUrl)]: parsed };
+    // Kept in use until the server stops even if the file cannot be written.
     this.entries = next;
     ensurePrivateDirectory(dirname(this.file));
     const temporary = `${this.file}.${randomUUID()}.tmp`;
-    writeFileSync(temporary, JSON.stringify({ version: 1, endpoints: next }), {
+    writeFileSync(temporary, JSON.stringify({ version: 2, endpoints: next }), {
       mode: 0o600,
       flag: 'wx',
     });

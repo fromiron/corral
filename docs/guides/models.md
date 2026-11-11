@@ -6,12 +6,12 @@
 
 | 방법 | 쓰는 곳 | 비고 |
 |---|---|---|
-| 구독 로그인 | OpenAI(ChatGPT), GitHub Copilot 등 Pi가 구독 로그인을 지원하는 공급자 | 공급자 페이지에서 직접 로그인. 토큰은 서버가 갱신. 그 구독이 부를 수 있는 모델만 나온다 |
+| 구독 로그인 | OpenAI(ChatGPT), Anthropic(Claude), GitHub Copilot 등 Pi가 구독 로그인을 지원하는 공급자 | 공급자 페이지에서 직접 로그인. 토큰은 서버가 갱신. 그 구독이 부를 수 있는 모델만 나온다 |
 | Codex CLI 로그인 | `openai-codex` | Corral 로그인이 없고 `~/.codex/auth.json`(또는 `$CODEX_HOME`)이 있으면 읽기 전용으로 사용. 갱신·수정하지 않으므로 만료되면 `codex`를 다시 실행 |
 | API 키 입력 | API 키를 받는 공급자(OpenAI, Anthropic 등)와 사용자 정의 엔드포인트 | Models 화면에 입력. 다시 보여 주지 않으며 "키 지우기"로 삭제 |
 | 환경 변수 | 같음 | 예: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. 입력한 키가 있으면 그것이 우선 |
 
-Anthropic 구독(Pro/Max) 로그인은 지원하지 않는다. Anthropic은 API 키로 연결한다.
+구독 로그인과 API 키 중 무엇을 쓸지는 사용자가 정한다. 구독을 다른 앱에서 쓰는 것을 허용하는지는 공급자의 약관을 따른다.
 
 ## 프로필
 

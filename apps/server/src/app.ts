@@ -504,7 +504,6 @@ async function createCorralServer(
           : {}),
         endpoints,
         configRevision: workspace.configRevision,
-        currentConfigRevision: () => configRevision(workspace.root),
         endpointModels: {
           cache: endpointModels,
           catalog: modelCatalog,

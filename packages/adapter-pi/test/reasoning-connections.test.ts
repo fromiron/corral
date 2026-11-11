@@ -120,7 +120,7 @@ describe('reasoning for added OpenAI-compatible endpoints', () => {
     models: [{ id: 'vendor/thinker', contextWindow: 64000, maxOutput: 8000, reasoning }],
   });
 
-  for (const baseUrl of ['https://router.example.test/v1', 'https://llm.chutes.ai/v1'])
+  for (const baseUrl of ['https://router.example.test/v1', 'http://127.0.0.1:8080/v1'])
     it(`offers low, medium and high, sends reasoning_effort, and omits it for the provider default (${new URL(baseUrl).host})`, async () => {
       const model = endpointProvider('router', spec(baseUrl, true)).getModels()[0]!;
       const capabilities = modelReasoningCapabilities(model);
@@ -148,6 +148,66 @@ describe('reasoning for added OpenAI-compatible endpoints', () => {
         expect(() => verifyReasoningWire(model, capped, resolution(level), 4096)).toThrow('output');
       }
     });
+
+  it('a host Pi recognizes by address keeps Pi’s own format and levels, and each offered level is sent (OpenRouter)', async () => {
+    const model = endpointProvider(
+      'router',
+      spec('https://openrouter.ai/api/v1', true),
+    ).getModels()[0]!;
+    expect(model.api).toBe('openai-completions');
+    expect(model.compat).toBeUndefined();
+    expect(model.thinkingLevelMap).toBeUndefined();
+    const capabilities = modelReasoningCapabilities(model);
+    expect(capabilities.levels).toEqual(getSupportedThinkingLevels(model));
+    expect(capabilities.levels).toEqual(['off', 'minimal', 'low', 'medium', 'high']);
+    expect(capabilities.providerDefault).toBe(true);
+    for (const level of [...capabilities.levels, null]) {
+      const chosen = reasoningRequest(model, { maxTokens: 4096 }, resolution(level));
+      const body = await payloadOf(completions, chosen.model, chosen.options);
+      // Pi's OpenRouter format: a nested reasoning object, never OpenAI's reasoning_effort.
+      expect(body).not.toHaveProperty('reasoning_effort');
+      if (level === null) expect(body).not.toHaveProperty('reasoning');
+      else expect(body.reasoning).toEqual({ effort: level === 'off' ? 'none' : level });
+      expect(verifyReasoningWire(model, body, resolution(level), 4096)).toEqual(
+        level === null ? { kind: 'omitted', value: null } : { kind: 'effort', value: level },
+      );
+    }
+  });
+
+  for (const baseUrl of [
+    'https://api.x.ai/v1',
+    'https://api.moonshot.ai/v1',
+    'https://gateway.ai.cloudflare.com/v1/account/gateway/compat',
+    'https://integrate.api.nvidia.com/v1',
+  ])
+    it(`a host Pi sends no reasoning level to offers no levels, only the provider default (${new URL(baseUrl).host})`, async () => {
+      const model = endpointProvider('router', spec(baseUrl, true)).getModels()[0]!;
+      const capabilities = modelReasoningCapabilities(model);
+      expect(capabilities.levels).toEqual([]);
+      expect(capabilities.providerDefault).toBe(true);
+      // Pi still serializes for the host itself: no forced OpenAI compat.
+      expect(model.compat).toBeUndefined();
+      const chosen = reasoningRequest(model, { maxTokens: 4096 }, resolution(null));
+      const body = await payloadOf(completions, chosen.model, chosen.options);
+      for (const omitted of ['reasoning_effort', 'reasoning', 'thinking', 'enable_thinking'])
+        expect(body).not.toHaveProperty(omitted);
+    });
+
+  it('the Hive mapping is unchanged by host recognition', () => {
+    const model = endpointProvider('hive', {
+      ...spec('https://api-cdn.thehive.ai/api/v3', true),
+      models: [
+        {
+          id: 'deepseek-ai/deepseek-v4.1-flash-1017',
+          contextWindow: 1_000_000,
+          maxOutput: 4096,
+          reasoning: true,
+        },
+      ],
+    }).getModels()[0]!;
+    expect(model.compat).toMatchObject({ thinkingFormat: 'openai', supportsReasoningEffort: true });
+    expect(modelReasoningCapabilities(model).levels).toEqual(['off', 'low', 'high', 'max']);
+  });
 
   it('reasoning: false in the definition offers no levels and sends no reasoning field', async () => {
     const model = endpointProvider(

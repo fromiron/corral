@@ -1,10 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { endpointProvider, modelReasoningCapabilities } from '@corral/adapter-pi';
 import { type ModelProviderConfig, parseWorkspaceConfig } from '@corral/core';
 import { type Credential, type CredentialStore, createModels } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ModelCatalogService } from '../src/models/catalog-service.ts';
+import { connectionProfileId } from '../src/models/connection-models.ts';
 import {
   ENDPOINT_MODEL_LIMITS,
   EndpointModelCache,
@@ -291,7 +293,6 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
       configDir?: string;
       net?: ReturnType<typeof network>;
       catalog?: ModelCatalogService | null;
-      revision?: { value: string };
     } = {},
   ) {
     const configDir = options.configDir ?? temp();
@@ -302,19 +303,17 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
       credentials,
       authContext: { env: async () => undefined, fileExists: async () => false },
     });
-    const revision = options.revision ?? { value: 'rev-1' };
     const endpoints = endpointsFrom(options.configs ?? [ROUTER], cache);
     registerEndpoints(models, endpoints);
     const registry = new ModelRegistry(models, [], {
       credentials,
       getDeviceId: () => 'device',
       endpoints,
-      configRevision: revision.value,
-      currentConfigRevision: () => revision.value,
+      configRevision: 'rev-1',
       endpointModels: { cache, catalog: options.catalog ?? null, fetch: net.fetch },
       now: () => Date.UTC(2026, 10, 11),
     });
-    return { registry, net, credentials, cache, models, configDir, revision };
+    return { registry, net, credentials, cache, models, configDir };
   }
 
   const key = (
@@ -446,23 +445,78 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     });
   });
 
-  it('drops a late result when the key or the config revision changes during the fetch', async () => {
-    const { registry, net, credentials, revision } = setup();
+  it('drops a late result when the key changes during the fetch', async () => {
+    const { registry, net, credentials } = setup();
     key(credentials, 'k');
-    let held = net.hold();
-    let pending = registry.refreshEndpointModels('router');
-    await held.arrived;
-    revision.value = 'rev-2';
-    held.release(list([{ id: 'late' }]));
-    await expect(pending).rejects.toMatchObject({ code: 'conflict' });
-    held = net.hold();
-    pending = registry.refreshEndpointModels('router');
+    const held = net.hold();
+    const pending = registry.refreshEndpointModels('router');
     await held.arrived;
     await registry.setApiKey('router', 'replacement-key');
     held.release(list([{ id: 'late' }]));
     await expect(pending).rejects.toMatchObject({ code: 'conflict' });
     await registry.idle();
     expect(registry.profilesView().map((view) => view.modelId)).not.toContain('late');
+  });
+
+  it('keeps a fetch result across a config save that leaves the endpoint’s address and access alone', async () => {
+    const { registry, net, credentials, models } = setup();
+    key(credentials, 'k');
+    net.answer(() => list([{ id: 'alpha' }]));
+    await registry.refreshEndpointModels('router');
+    const held = net.hold();
+    const pending = registry.refreshEndpointModels('router');
+    await held.arrived;
+    // Profiles, the endpoint's name and its written models change; its address and access do not.
+    const next = registry.endpointsFor([
+      { ...ROUTER, name: 'Renamed', models: [{ id: 'written', contextWindow: 9000 }] },
+    ]);
+    registerEndpoints(models, next);
+    await registry.reconfigure(
+      [{ id: 'chosen', provider: 'router', model: 'written' }],
+      next,
+      'rev-2',
+    );
+    held.release(list([{ id: 'alpha' }, { id: 'late' }]));
+    await expect(pending).resolves.toMatchObject({ kind: 'connected', modelCount: 3 });
+    await registry.idle();
+    expect(net.seen).toHaveLength(2);
+    expect(
+      registry
+        .catalog()
+        .find((provider) => provider.providerId === 'router')
+        ?.models.map((model) => [model.id, model.limits?.contextWindow.value]),
+    ).toEqual([
+      ['alpha', 32000],
+      ['late', 32000],
+      ['written', 9000],
+    ]);
+    expect(registry.catalog().find((provider) => provider.providerId === 'router')?.name).toBe(
+      'Renamed',
+    );
+  });
+
+  it('saving fetches when the endpoint is new, its address or access changed, or its address has no list yet', async () => {
+    const { registry, net, credentials, models } = setup({ configs: [] });
+    key(credentials, 'k');
+    const save = async (configs: ModelProviderConfig[]) => {
+      const next = registry.endpointsFor(configs);
+      registerEndpoints(models, next);
+      await registry.reconfigure([], next, 'rev');
+      await registry.idle();
+      return net.seen.length;
+    };
+    net.answer(() => {
+      throw new Error('offline');
+    });
+    expect(await save([ROUTER])).toBe(1); // new
+    // The address has no list (the fetch failed): saving it unchanged fetches again.
+    expect(await save([{ ...ROUTER, name: 'Renamed' }])).toBe(2);
+    net.answer(() => list([{ id: 'alpha' }]));
+    expect(await save([{ ...ROUTER, name: 'Renamed' }])).toBe(3);
+    // Now it has one: an unchanged address and access fetch nothing.
+    expect(await save([{ ...ROUTER, name: 'Again' }])).toBe(3);
+    expect(await save([{ ...ROUTER, access: 'none' }])).toBe(4);
+    expect(net.seen.at(-1)).toMatchObject({ authorization: null });
   });
 
   it('a key bound to another origin is never sent; no request is made', async () => {
@@ -605,7 +659,7 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     });
   });
 
-  it('a prepared request survives other models joining the list but not a change to its own model', async () => {
+  it('a prepared request survives other models joining the list', async () => {
     const { registry, net, credentials, models } = setup();
     key(credentials, 'k');
     net.answer(() => list([{ id: 'alpha', context_length: 60000 }]));
@@ -623,9 +677,118 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     registerEndpoints(models, next);
     await registry.reconfigure([], next, 'rev-2');
     expect(() => registry.endpointOf(resolved.snapshot)).not.toThrow();
-    net.answer(() => list([{ id: 'alpha', context_length: 61000 }, { id: 'gamma' }]));
+  });
+
+  /** A Run started on `alpha` as the endpoint listed it: 60,000 context and reasoning. */
+  async function runningAlpha() {
+    const context = setup();
+    key(context.credentials, 'k');
+    context.net.answer(() =>
+      list([{ id: 'alpha', context_length: 60000, supported_parameters: ['reasoning'] }]),
+    );
+    await context.registry.refreshEndpointModels('router');
+    const resolved = context.registry.resolve('router:alpha', 'live');
+    if (!resolved.ok) throw new Error(resolved.reason);
+    return { ...context, snapshot: resolved.snapshot };
+  }
+
+  it('a running Run keeps the definition it started with across a refresh that changes its context window; the worker receives it', async () => {
+    const { registry, net, snapshot } = await runningAlpha();
+    net.answer(() => list([{ id: 'alpha', context_length: 61000 }]));
     await registry.refreshEndpointModels('router');
-    expect(() => registry.endpointOf(resolved.snapshot)).toThrow(/endpoint configuration changed/);
+    // New runs see the refreshed values.
+    expect(registry.profilesView().map((view) => [view.modelId, view.contextWindow])).toEqual([
+      ['alpha', 61000],
+    ]);
+    // What the adapter hands the worker is the definition pinned at run start.
+    const pinned = registry.endpointOf(snapshot);
+    expect(pinned?.baseUrl).toBe('https://router.example.test/v1');
+    expect(pinned?.models).toEqual([
+      { id: 'alpha', contextWindow: 60000, maxOutput: 4096, reasoning: true },
+    ]);
+    const worker = endpointProvider('router', pinned!).getModels()[0]!;
+    expect(modelReasoningCapabilities(worker).identity).toBe(snapshot.reasoning?.identity);
+    expect(registry.modelBroker(snapshot).model).toMatchObject({
+      id: 'alpha',
+      contextWindow: 60000,
+      reasoning: true,
+    });
+    await expect(registry.credentials(snapshot)).resolves.toBe('k');
+  });
+
+  it('a running Run keeps its model when a refresh drops it from the list', async () => {
+    const { registry, net, snapshot } = await runningAlpha();
+    net.answer(() => list([{ id: 'gamma' }]));
+    await registry.refreshEndpointModels('router');
+    expect(registry.profilesView().map((view) => view.modelId)).toEqual(['gamma']);
+    expect(registry.endpointOf(snapshot)?.models.map((model) => model.id)).toEqual(['alpha']);
+    expect(registry.modelBroker(snapshot).model).toMatchObject({
+      id: 'alpha',
+      contextWindow: 60000,
+    });
+    await expect(registry.credentials(snapshot)).resolves.toBe('k');
+    // A new run cannot start on a model the endpoint no longer lists.
+    expect(registry.resolve('router:alpha', 'live').ok).toBe(false);
+  });
+
+  it('what a person writes in the config still refuses the prepared request; a rename does not', async () => {
+    for (const change of [
+      { baseUrl: 'https://elsewhere.example.test/v1' },
+      { access: 'none' as const },
+      { cacheRetention: 'long' as const },
+      { sessionAffinity: 'headers' as const },
+      { models: [{ id: 'alpha', contextWindow: 50000 }] },
+    ]) {
+      const { registry, models, snapshot } = await runningAlpha();
+      const next = registry.endpointsFor([{ ...ROUTER, ...change }]);
+      registerEndpoints(models, next);
+      await registry.reconfigure([], next, 'rev-2');
+      const label = JSON.stringify(change);
+      expect(() => registry.endpointOf(snapshot), label).toThrow(/endpoint configuration changed/);
+      expect(() => registry.modelBroker(snapshot), label).toThrow(/endpoint configuration changed/);
+      await expect(registry.credentials(snapshot), label).rejects.toThrow(
+        /endpoint configuration changed/,
+      );
+    }
+    const { registry, models, snapshot } = await runningAlpha();
+    const renamed = registry.endpointsFor([{ ...ROUTER, name: 'Renamed router' }]);
+    registerEndpoints(models, renamed);
+    await registry.reconfigure([], renamed, 'rev-2');
+    expect(registry.endpointOf(snapshot)?.models[0]).toMatchObject({ contextWindow: 60000 });
+  });
+
+  it('the list and a stored choice agree on which model an id means when two pairs make the same id', async () => {
+    const configs: ModelProviderConfig[] = [
+      {
+        id: 'loc',
+        name: 'Loc',
+        baseUrl: 'http://127.0.0.1:1111/v1',
+        access: 'none',
+        models: [{ id: 'x:m' }],
+      },
+      {
+        id: 'loc:x',
+        name: 'Loc X',
+        baseUrl: 'http://127.0.0.1:2222/v1',
+        access: 'none',
+        models: [{ id: 'm' }, { id: 'other' }],
+      },
+    ];
+    const { registry, models } = setup({ configs });
+    const endpoints = registry.endpointsFor(configs);
+    registerEndpoints(models, endpoints);
+    // A named profile on the second endpoint comes first in the provider order.
+    await registry.reconfigure([{ id: 'p', provider: 'loc:x', model: 'other' }], endpoints, 'rev');
+    await registry.idle();
+    expect(connectionProfileId('loc', 'x:m')).toBe(connectionProfileId('loc:x', 'm'));
+    const listed = registry.profilesView().filter((view) => view.profileId === 'loc:x:m');
+    expect(listed).toHaveLength(1);
+    const resolved = registry.resolve('loc:x:m', 'live');
+    if (!resolved.ok) throw new Error(resolved.reason);
+    expect([resolved.snapshot.provider, resolved.snapshot.modelId]).toEqual([
+      listed[0]!.provider,
+      listed[0]!.modelId,
+    ]);
   });
 
   it('refreshing a provider that is not an endpoint is refused without a request', async () => {
@@ -636,7 +799,55 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     expect(net.seen).toEqual([]);
   });
 
-  it('server start makes no request even when the cache is old', async () => {
+  it('two workspaces naming the same endpoint id at different addresses keep each other’s lists', async () => {
+    const configDir = temp();
+    const at = (port: number): ModelProviderConfig => ({
+      ...ROUTER,
+      id: 'local',
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+    });
+    // Both servers start before either one fetches.
+    const one = setup({ configDir, configs: [at(1111)] });
+    const two = setup({ configDir, configs: [at(2222)] });
+    key(one.credentials, 'k', 'http://127.0.0.1:1111', 'local');
+    key(two.credentials, 'k', 'http://127.0.0.1:2222', 'local');
+    one.net.answer(() => list([{ id: 'one-model' }]));
+    two.net.answer(() => list([{ id: 'two-model' }]));
+    await one.registry.refreshEndpointModels('local');
+    await two.registry.refreshEndpointModels('local');
+    // Restarted, each finds its own list by its address and sends nothing.
+    for (const [port, model] of [
+      [1111, 'one-model'],
+      [2222, 'two-model'],
+    ] as const) {
+      const net = network();
+      const again = setup({ configDir, net, configs: [at(port)] });
+      key(again.credentials, 'k', `http://127.0.0.1:${port}`, 'local');
+      await again.registry.refreshStatus();
+      expect(again.registry.profilesView().map((view) => view.modelId)).toEqual([model]);
+      expect(net.seen).toEqual([]);
+    }
+  });
+
+  it('a cache write merges its one entry into what the file holds now; entries are found by address', () => {
+    const file = join(temp(), 'endpoint-models-v1.json');
+    const first = new EndpointModelCache(file);
+    // Read before the first one wrote anything.
+    const second = new EndpointModelCache(file);
+    const entry = (id: string) => ({
+      fetchedAt: '2026-11-11T00:00:00.000Z',
+      models: [{ id, response: {}, catalog: {} }],
+    });
+    first.write('https://a.example.test/v1', entry('a'));
+    second.write('https://b.example.test/v1/', entry('b'));
+    const fresh = new EndpointModelCache(file);
+    expect(fresh.read('https://a.example.test/v1')?.models.map((m) => m.id)).toEqual(['a']);
+    expect(fresh.read('https://b.example.test/v1')?.models.map((m) => m.id)).toEqual(['b']);
+    expect(fresh.read('https://a.example.test/v2')).toBeNull();
+    expect(fresh.read('https://a.example.test')).toBeNull();
+  });
+
+  it('a cache file in the earlier shape is ignored', async () => {
     const configDir = temp();
     writeFileSync(
       join(configDir, 'endpoint-models-v1.json'),
@@ -645,6 +856,29 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
         endpoints: {
           router: {
             origin: 'https://router.example.test',
+            fetchedAt: '2020-01-01T00:00:00.000Z',
+            models: [{ id: 'alpha', response: { contextWindow: 7000 }, catalog: {} }],
+          },
+        },
+      }),
+    );
+    const net = network();
+    const { registry, credentials } = setup({ configDir, net });
+    key(credentials, 'k');
+    await registry.refreshStatus();
+    expect(registry.profilesView()).toEqual([]);
+    expect(registry.authView()[0]).toMatchObject({ modelFetch: null });
+    expect(net.seen).toEqual([]);
+  });
+
+  it('server start makes no request even when the cache is old', async () => {
+    const configDir = temp();
+    writeFileSync(
+      join(configDir, 'endpoint-models-v1.json'),
+      JSON.stringify({
+        version: 2,
+        endpoints: {
+          'https://router.example.test/v1': {
             fetchedAt: '2020-01-01T00:00:00.000Z',
             models: [{ id: 'alpha', response: { contextWindow: 7000 }, catalog: {} }],
           },
