@@ -1,6 +1,6 @@
 import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { StatusDot } from '@corral/react';
+import { CorralSymbol, CorralWordmark, StatusDot } from '@corral/react';
 import {
   Button,
   cn,
@@ -30,7 +30,6 @@ import {
   SidebarWorkspaceHeader,
   Tooltip,
   useSize,
-  WorkspaceTile,
 } from '@corral/react/design-kit';
 import {
   BookOpen,
@@ -500,8 +499,12 @@ export const Sidebar = memo(function Sidebar({
           <div className="min-w-0 flex-1">
             <SidebarWorkspaceHeader
               name={
-                <span className="flex min-w-0 gap-x-1.5">
-                  <span className="min-w-0 truncate">Corral</span>
+                <span className="flex min-w-0 items-center gap-x-1.5">
+                  {/* The wordmark is the picture of the name; the text is what is read. */}
+                  <span aria-hidden="true" className="flex shrink-0">
+                    <CorralWordmark className="h-3.5 w-auto" />
+                  </span>
+                  <span className="sr-only">Corral</span>
                   {noModel || !connectionWord ? null : (
                     <span
                       data-testid="sidebar-connection"
@@ -513,7 +516,7 @@ export const Sidebar = memo(function Sidebar({
                   )}
                 </span>
               }
-              tile={<WorkspaceTile>c</WorkspaceTile>}
+              tile={<CorralSymbol className="block h-5 w-auto text-foreground" />}
               labels={{
                 menu: shell('workspace'),
                 switchWorkspace: shell('workspaceMenuState', { state: connection }),

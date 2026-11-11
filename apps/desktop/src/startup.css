@@ -16,15 +16,9 @@ main {
   text-align: center;
 }
 .mark {
+  display: block;
   margin: auto;
-  width: 48px;
-  height: 48px;
-  border: 1px solid #599d84;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-  color: #8cbaa8;
+  height: 56px;
 }
 h1 {
   font-weight: 500;
