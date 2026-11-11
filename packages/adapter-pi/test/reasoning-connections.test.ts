@@ -174,6 +174,25 @@ describe('reasoning for added OpenAI-compatible endpoints', () => {
     }
   });
 
+  for (const baseUrl of [
+    'https://api.x.ai/v1',
+    'https://api.moonshot.ai/v1',
+    'https://gateway.ai.cloudflare.com/v1/account/gateway/compat',
+    'https://integrate.api.nvidia.com/v1',
+  ])
+    it(`a host Pi sends no reasoning level to offers no levels, only the provider default (${new URL(baseUrl).host})`, async () => {
+      const model = endpointProvider('router', spec(baseUrl, true)).getModels()[0]!;
+      const capabilities = modelReasoningCapabilities(model);
+      expect(capabilities.levels).toEqual([]);
+      expect(capabilities.providerDefault).toBe(true);
+      // Pi still serializes for the host itself: no forced OpenAI compat.
+      expect(model.compat).toBeUndefined();
+      const chosen = reasoningRequest(model, { maxTokens: 4096 }, resolution(null));
+      const body = await payloadOf(completions, chosen.model, chosen.options);
+      for (const omitted of ['reasoning_effort', 'reasoning', 'thinking', 'enable_thinking'])
+        expect(body).not.toHaveProperty(omitted);
+    });
+
   it('the Hive mapping is unchanged by host recognition', () => {
     const model = endpointProvider('hive', {
       ...spec('https://api-cdn.thehive.ai/api/v3', true),
