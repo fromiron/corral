@@ -26,7 +26,7 @@ import { desktop } from '../desktop.tsx';
 import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../projects.ts';
 import { projectsRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
-import { createDemoExamples } from '../templates.ts';
+import { createDemoExamples, useTemplateText } from '../templates.ts';
 import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { type GitCloneDraft, GitCloneFolder } from '../workbench/GitCloneFolder.tsx';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
@@ -39,6 +39,7 @@ const NO_CLONE: GitCloneDraft = { source: '', destination: '' };
  */
 export function ProjectsPage() {
   const t = useTranslations('Projects');
+  const templates = useTemplateText();
   const tw = useTranslations('Workspace');
   const shell = useTranslations('Shell');
   // The studio's one relative time: "Just now" under a minute, as every other list says.
@@ -113,7 +114,7 @@ export function ProjectsPage() {
         t('exampleSession5'),
         t('exampleSession6'),
       ],
-      teamName: tw('newName'),
+      templates,
     });
     projectsChanged();
     if (first) await navigate({ to: '/projects/$projectId', params: { projectId: first } });

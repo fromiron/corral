@@ -22,8 +22,9 @@ import { bySidebarOrder } from './sessionOrder.ts';
 const crumb = 'min-w-0 gap-1 px-2';
 
 // The open page registers its own session actions with their revision checks
-// (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those.
-const SESSION_ACTIONS = ['session:rename', 'session:pin', 'session:archive'];
+// (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those. A
+// meeting registers no completion criteria.
+const SESSION_ACTIONS = ['session:rename', 'session:criteria', 'session:pin', 'session:archive'];
 
 function latestRun(runs: readonly RunSummary[], sessionId: string) {
   let latest: RunSummary | undefined;

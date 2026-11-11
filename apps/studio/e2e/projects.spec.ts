@@ -34,12 +34,7 @@ async function singleAgentRun(page: Page) {
     .getByRole('navigation', { name: 'Current location' })
     .innerText();
   await openLibrary(page, 'Templates');
-  await page
-    .getByRole('region', { name: 'Start from a template' })
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Edit this team' })
-    .click();
+  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await startTestRun(page);

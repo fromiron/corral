@@ -668,6 +668,17 @@ DROP TABLE IF EXISTS layouts;
         db.exec('ALTER TABLE corrals DROP COLUMN layout_revision');
     },
   },
+  {
+    // a work session's completion criteria, one line per item; existing sessions have none.
+    name: '0040_session_criteria',
+    sql: '-- the column is added below, once, so running this step again changes nothing.',
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(work_sessions)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'criteria_json'))
+        db.exec(`ALTER TABLE work_sessions ADD COLUMN criteria_json TEXT NOT NULL DEFAULT '[]'
+  CHECK (json_valid(criteria_json) AND json_type(criteria_json) = 'array')`);
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

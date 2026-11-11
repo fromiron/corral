@@ -7,7 +7,7 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
 }) => {
   await corral.open('/');
   const details = await openConversationDetails(page);
-  await details.getByRole('textbox', { name: 'Session name' }).fill('Reentry fixture');
+  await details.getByRole('textbox', { name: 'Name', exact: true }).fill('Reentry fixture');
   await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(requestBox(page)).toBeVisible();
   await expect(page).toHaveTitle('Reentry fixture · Corral Studio');

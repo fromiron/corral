@@ -1,7 +1,6 @@
-import type { AgentTaskStatus } from '@corral/react/design-kit';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import { BROWSER_STEPS, type BrowserStep, SAMPLE_PULLS, SAMPLE_TASKS } from './fixture.ts';
+import { BROWSER_STEPS, type BrowserStep, SAMPLE_PULLS } from './fixture.ts';
 
 // The feature previews' own state (docs/specs/features/feature-preview.md): only what a person
 // changed in a sample flow, on top of the fixture. Nothing outside the previews reads it, so no
@@ -9,13 +8,6 @@ import { BROWSER_STEPS, type BrowserStep, SAMPLE_PULLS, SAMPLE_TASKS } from './f
 
 export type PullTab = 'changes' | 'checks' | 'comments';
 export type PullAnswer = { kind: 'approved' } | { kind: 'fixes'; feedback: string };
-
-/** A simulated status change, in the order it was made. */
-export interface BoardChange {
-  taskId: string;
-  from: AgentTaskStatus;
-  to: AgentTaskStatus;
-}
 
 /** A simulated comment. */
 export interface PostedComment {
@@ -25,14 +17,8 @@ export interface PostedComment {
 }
 
 export interface PreviewState {
-  /** How many times Reset was pressed: each flow starts over, its clock included. */
+  /** How many times Reset was pressed: each flow starts over. */
   resets: number;
-  board: {
-    statuses: Record<string, AgentTaskStatus>;
-    /** The task open in the detail, or null. */
-    selected: string | null;
-    changes: BoardChange[];
-  };
   review: {
     selected: number;
     tab: PullTab;
@@ -51,11 +37,6 @@ export interface PreviewState {
 export function initialPreviewState(): PreviewState {
   return {
     resets: 0,
-    board: {
-      statuses: Object.fromEntries(SAMPLE_TASKS.map((task) => [task.id, task.status])),
-      selected: SAMPLE_TASKS[0]?.id ?? null,
-      changes: [],
-    },
     review: {
       selected: SAMPLE_PULLS[0]?.number ?? 0,
       tab: 'changes',
@@ -77,28 +58,7 @@ export function resetPreviews() {
   previewStore.setState((state) => ({ ...initialPreviewState(), resets: state.resets + 1 }), true);
 }
 
-const knownTask = (id: string) => SAMPLE_TASKS.some((task) => task.id === id);
 const pull = (number: number) => SAMPLE_PULLS.find((item) => item.number === number);
-
-export function selectTask(id: string | null) {
-  if (id !== null && !knownTask(id)) return;
-  previewStore.setState((state) => ({ board: { ...state.board, selected: id } }));
-}
-
-/** A simulated status change; the same status again, or an unknown task, changes nothing. */
-export function setTaskStatus(id: string, to: AgentTaskStatus) {
-  previewStore.setState((state) => {
-    const from = state.board.statuses[id];
-    if (from === undefined || from === to) return state;
-    return {
-      board: {
-        ...state.board,
-        statuses: { ...state.board.statuses, [id]: to },
-        changes: [...state.board.changes, { taskId: id, from, to }],
-      },
-    };
-  });
-}
 
 export function selectPull(number: number) {
   if (!pull(number)) return;

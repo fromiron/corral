@@ -89,6 +89,19 @@ describe('Korean messages (UX-A5)', () => {
     );
   });
 
+  it('names role import in both languages', () => {
+    const keys = [
+      'TeamEditor.importRole',
+      'TeamEditor.importRoleTitle',
+      'TeamEditor.rolePresets',
+      'TeamEditor.roleSearch',
+      'TeamEditor.workStyleDropped',
+      'TeamEditor.rejected.roleNeedsAgent',
+    ];
+    expect(keys.filter((key) => !enLeaves.has(key))).toEqual([]);
+    expect(keys.filter((key) => !koLeaves.has(key))).toEqual([]);
+  });
+
   it('has every English key and no other', () => {
     expect([...koLeaves.keys()].sort()).toEqual([...enLeaves.keys()].sort());
   });

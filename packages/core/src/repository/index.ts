@@ -132,6 +132,12 @@ export interface WorkSession {
   /** True only until the first request names a session explicitly created without a user title. */
   autoTitle?: boolean;
   objective: string;
+  /**
+   * The completion criteria every request admitted in this session runs with, one line each.
+   * Empty means the team's or the auto default, as without criteria. A meeting has none.
+   * Stores always return it; only sessions saved in a browser before criteria existed lack it.
+   */
+  criteria?: string[];
   pinned: boolean;
   revision: number;
   createdAt: string;
@@ -142,9 +148,18 @@ export interface WorkSession {
   meeting?: MeetingState;
 }
 
+/** 0 to 20 lines of 1 to 200 characters each, trimmed; a blank line is refused, not stored. */
+export const SESSION_CRITERIA_MAX = 20;
+export const SESSION_CRITERION_MAX = 200;
+export const SessionCriteria = z
+  .array(z.string().trim().min(1).max(SESSION_CRITERION_MAX))
+  .max(SESSION_CRITERIA_MAX);
+
 export interface SessionChange {
   title?: string;
   objective?: string;
+  /** replaces the session's completion criteria; [] clears them. */
+  criteria?: string[];
   corralId?: string | null;
   auto?: AutoModelChoice | null;
   pinned?: boolean;
@@ -236,15 +251,7 @@ export interface CorralRepository {
   /** Pinned first, then most recently active. */
   listSessions(projectId: string): Promise<WorkSession[]>;
   getSession(sessionId: string): Promise<WorkSession | null>;
-  createSession(input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    /** creates a meeting with these participants. */
-    meeting?: MeetingConfig;
-  }): Promise<SessionResult>;
+  createSession(input: NewSession): Promise<SessionResult>;
   updateSession(sessionId: string, change: SessionChange): Promise<SessionResult>;
   addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult>;
   /** Only the state, run and detail of an entry change; its text never does. */
@@ -259,17 +266,29 @@ const TITLE_MAX = 120;
 const ENTRY_MAX = 20_000;
 const ENTRIES_MAX = 1_000;
 
+export interface NewSession {
+  projectId: string;
+  title: string;
+  autoTitle?: boolean;
+  objective?: string;
+  /** a work session's completion criteria; a meeting refuses any. */
+  criteria?: string[];
+  corralId?: string | null;
+  /** creates a meeting with these participants. */
+  meeting?: MeetingConfig;
+}
+
+const CRITERIA_INVALID = `Completion criteria have up to ${SESSION_CRITERIA_MAX} lines of 1 to ${SESSION_CRITERION_MAX} characters.`;
+const MEETING_CRITERIA = 'A meeting has no completion criteria.';
+
 export function planSessionCreate(
-  input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    meeting?: MeetingConfig;
-  },
+  input: NewSession,
   context: { now: string; sessionId: string },
 ): SessionResult {
+  const criteria = SessionCriteria.safeParse(input.criteria ?? []);
+  if (!criteria.success) return { ok: false, error: 'invalid', message: CRITERIA_INVALID };
+  if (input.meeting !== undefined && criteria.data.length)
+    return { ok: false, error: 'invalid', message: MEETING_CRITERIA };
   const objective = (input.objective ?? '').trim();
   // A session may start from its purpose alone; the title is then its first line.
   const title = (input.title.trim() || objective.split('\n')[0]?.slice(0, 60) || '').trim();
@@ -296,6 +315,7 @@ export function planSessionCreate(
       title,
       autoTitle: input.autoTitle === true,
       objective,
+      criteria: criteria.data,
       pinned: false,
       revision: 1,
       createdAt: context.now,
@@ -330,6 +350,12 @@ export function planSessionUpdate(
     return { ok: false, error: 'invalid', message: 'Only a meeting keeps a valid meeting state.' };
   if (current.meeting && change.corralId)
     return { ok: false, error: 'invalid', message: 'A meeting does not run a chosen team.' };
+  const criteria =
+    change.criteria === undefined ? undefined : SessionCriteria.safeParse(change.criteria);
+  if (criteria && !criteria.success)
+    return { ok: false, error: 'invalid', message: CRITERIA_INVALID };
+  if (current.meeting && criteria?.data.length)
+    return { ok: false, error: 'invalid', message: MEETING_CRITERIA };
   const title = change.title?.trim();
   if (title !== undefined && (!title || title.length > TITLE_MAX))
     return {
@@ -348,6 +374,7 @@ export function planSessionUpdate(
       ...current,
       ...(title !== undefined ? { title, autoTitle: false } : {}),
       ...(change.objective !== undefined ? { objective: change.objective.trim() } : {}),
+      ...(criteria ? { criteria: criteria.data } : {}),
       ...(change.corralId !== undefined ? { corralId: change.corralId } : {}),
       ...(change.auto !== undefined ? { auto: change.auto } : {}),
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),

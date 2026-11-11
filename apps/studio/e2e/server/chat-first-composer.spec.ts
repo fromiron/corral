@@ -168,12 +168,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
 }) => {
   await corral.open('/');
   await openLibrary(page, 'Templates');
-  await page
-    .getByRole('region', { name: 'Start from a template', exact: true })
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Edit this team', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   const saved = await savedCorrals(page);

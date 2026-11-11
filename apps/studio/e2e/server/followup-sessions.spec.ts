@@ -98,11 +98,13 @@ for (const locale of ['en', 'ko'] as const) {
           name: locale === 'en' ? 'Show archived (2)' : '보관한 세션 보기(2)',
         })
         .click();
+      // The list is grouped by state, and the empty-session group starts closed.
+      // The tab's name gains its count once a session is back.
+      const panel = page.getByRole('tabpanel', { name: new RegExp(`^${m.Sessions.heading}`) });
+      for (const closed of await panel.locator('details:not([open]) > summary').all())
+        await closed.click();
       for (const session of sessions) {
-        const row = page
-          .getByRole('list', { name: m.Sessions.heading, exact: true })
-          .getByRole('listitem')
-          .filter({ hasText: session.title });
+        const row = panel.getByRole('listitem').filter({ hasText: session.title });
         await row.getByRole('button', { name: new RegExp(m.Sessions.restoreSession) }).click();
         await expect(
           page

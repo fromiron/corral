@@ -93,10 +93,9 @@ for (const locale of ['en', 'ko'] as const) {
       .click();
     await page
       .getByRole('button', {
-        name: locale === 'en' ? 'Edit this team' : '팀 편집해서 쓰기',
+        name: locale === 'en' ? `Edit a copy of ${name}` : `${name} 사본 편집`,
         exact: true,
       })
-      .first()
       .click();
     const dialog = page.getByRole('dialog', {
       name: locale === 'en' ? 'Save a team copy' : '팀 사본 저장',

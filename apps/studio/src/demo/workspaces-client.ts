@@ -195,5 +195,7 @@ export function createDemoWorkspaces(
       );
       return [...items, ...facts];
     },
+    /** The demo has no server workspace; Studio does not read evidence there. */
+    sessionEvidence: async () => [],
   };
 }
