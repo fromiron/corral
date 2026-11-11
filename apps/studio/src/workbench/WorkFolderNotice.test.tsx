@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import { WorkFolderNotice } from './WorkFolderNotice.tsx';
+import { useWorkingCopyMissing, WorkingCopyChip } from './WorkFolderNotice.tsx';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 const fixture = vi.hoisted(() => ({ worktree: vi.fn(), workspaceId: 'host' }));
@@ -17,113 +17,96 @@ afterEach(() => {
   fixture.workspaceId = 'host';
 });
 
-it('remembers dismissal across requests and remounts while preserving the file setup action', async () => {
+/** The composer row as the conversation fills it: the chip only while the copy is missing. */
+function Row({
+  sessionId,
+  revision,
+  onSetup,
+}: {
+  sessionId: string;
+  revision: string;
+  onSetup(): void;
+}) {
+  const missing = useWorkingCopyMissing(sessionId, revision);
+  return missing ? <WorkingCopyChip onSetup={onSetup} /> : null;
+}
+
+async function mount() {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  fixture.worktree.mockResolvedValue(null);
-  const setup = vi.fn();
   const container = document.createElement('div');
   document.body.append(container);
-  let root = createRoot(container);
-  const render = async (revision: string) =>
+  const root = createRoot(container);
+  const render = async (sessionId: string, revision: string, onSetup = () => {}) =>
     act(async () =>
-      root.render(<WorkFolderNotice sessionId="one" revision={revision} onSetup={setup} />),
+      root.render(<Row sessionId={sessionId} revision={revision} onSetup={onSetup} />),
     );
-  try {
-    await render('');
-    const dismiss = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="hideWorkingCopyNotice"]',
-    );
-    expect(dismiss).not.toBeNull();
-    dismiss?.focus();
-    await act(async () => dismiss?.click());
-    await vi.waitFor(() =>
-      expect(container.querySelector('[data-testid="work-folder-notice"]')).toBeNull(),
-    );
-    const compactSetup = container.querySelector<HTMLButtonElement>(
-      '[data-testid="work-folder-setup"]',
-    );
-    expect(compactSetup?.textContent).toBe('prepareWorkingCopy');
-    expect(document.activeElement).toBe(compactSetup);
-    await act(async () => compactSetup?.click());
-    expect(setup).toHaveBeenCalledOnce();
-    await render('run:running');
-    await render('run:succeeded');
-    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-    expect(container.textContent).not.toContain('noWorkingCopy');
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await render('run:succeeded');
-    expect(container.textContent).not.toContain('noWorkingCopy');
-    expect(container.textContent).toContain('prepareWorkingCopy');
-  } finally {
+  const dispose = async () => {
     await act(async () => root.unmount());
     container.remove();
+  };
+  return { container, render, dispose };
+}
+
+it('marks a missing copy with one chip that opens file setup and stays after requests', async () => {
+  fixture.worktree.mockResolvedValue(null);
+  const setup = vi.fn();
+  const { container, render, dispose } = await mount();
+  try {
+    await render('one', '', setup);
+    const chip = container.querySelector('button');
+    expect(chip?.textContent).toBe('noWorkingCopy');
+    // The visible words lead the name; the name also says what pressing it does.
+    expect(chip?.getAttribute('aria-label')).toBe('noWorkingCopy · prepareWorkingCopy');
+    // One control: no dismiss button, no second sentence.
+    expect(container.querySelectorAll('button')).toHaveLength(1);
+    await act(async () => chip?.click());
+    expect(setup).toHaveBeenCalledOnce();
+    await render('one', 'run:running', setup);
+    await render('one', 'run:succeeded', setup);
+    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
+    expect(container.textContent).toBe('noWorkingCopy');
+  } finally {
+    await dispose();
   }
 });
 
-it('keeps dismissal within its workspace, session and missing copy generation', async () => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  const container = document.createElement('div');
-  const root = createRoot(container);
+it('follows the copy: shown while missing or removed, gone once a copy exists', async () => {
   const copy = { bindingId: 'folder', copyGeneration: 1, missing: true, removedAt: null };
   fixture.worktree.mockResolvedValue(copy);
-  const render = async (sessionId: string) =>
-    act(async () =>
-      root.render(<WorkFolderNotice sessionId={sessionId} revision="" onSetup={() => {}} />),
-    );
+  const { container, render, dispose } = await mount();
   try {
-    await render('one');
-    const dismiss = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="hideWorkingCopyNotice"]',
-    );
-    expect(dismiss).not.toBeNull();
-    await act(async () => dismiss?.click());
-    await vi.waitFor(() => expect(container.textContent).not.toContain('noWorkingCopy'));
-    await render('two');
-    expect(container.textContent).toContain('noWorkingCopy');
-    await render('one');
-    await vi.waitFor(() => expect(container.textContent).not.toContain('noWorkingCopy'));
-    fixture.workspaceId = 'other-host';
-    await render('one');
-    expect(container.textContent).toContain('noWorkingCopy');
-    fixture.workspaceId = 'host';
-    await render('one');
-    await vi.waitFor(() => expect(container.textContent).not.toContain('noWorkingCopy'));
+    await render('one', '');
+    expect(container.textContent).toBe('noWorkingCopy');
     fixture.worktree.mockResolvedValue({ ...copy, copyGeneration: 2, missing: false });
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
     expect(container.textContent).toBe('');
     fixture.worktree.mockResolvedValue({
       ...copy,
       copyGeneration: 2,
+      missing: false,
       removedAt: '2026-10-30T00:00:00Z',
     });
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-    expect(container.textContent).toContain('noWorkingCopy');
+    expect(container.textContent).toBe('noWorkingCopy');
+    fixture.workspaceId = 'other-host';
+    fixture.worktree.mockResolvedValue({ ...copy, missing: false });
+    await render('two', '');
+    expect(container.textContent).toBe('');
   } finally {
-    await act(async () => root.unmount());
+    await dispose();
   }
 });
 
-it('keeps file setup available after requests and refreshes when a copy is created', async () => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+it('never reads a failed lookup as no copy', async () => {
   fixture.worktree.mockResolvedValue(null);
-  const setup = vi.fn();
-  const container = document.createElement('div');
-  const root = createRoot(container);
+  const { container, render, dispose } = await mount();
   try {
-    await act(async () =>
-      root.render(<WorkFolderNotice sessionId="one" revision="run:succeeded" onSetup={setup} />),
-    );
-    expect(container.textContent).toContain('noWorkingCopy');
-    await act(async () => container.querySelector('button')?.click());
-    expect(setup).toHaveBeenCalledOnce();
-    fixture.worktree.mockResolvedValue({ missing: false, removedAt: null });
-    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-    expect(container.textContent).toBe('');
+    await render('one', '');
+    expect(container.textContent).toBe('noWorkingCopy');
     fixture.worktree.mockRejectedValue(new Error('offline'));
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
     expect(container.textContent).toBe('');
   } finally {
-    await act(async () => root.unmount());
+    await dispose();
   }
 });

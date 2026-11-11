@@ -1,5 +1,5 @@
 import type { ModelAttemptPage } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -39,10 +39,9 @@ export function ModelUsagePanel() {
   };
   return (
     <section id="models-usage" aria-labelledby="models-usage-heading" className="space-y-3">
-      <h3 id="models-usage-heading" className="font-semibold">
+      <h3 id="models-usage-heading" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('heading')}
       </h3>
-      <p className="text-sm text-muted-foreground">{t('description')}</p>
       <Button variant="tertiary" size="compact" disabled={busy} onClick={() => void load()}>
         {t(page ? 'refresh' : 'load')}
       </Button>
@@ -55,11 +54,16 @@ export function ModelUsagePanel() {
       {page?.items.length === 0 ? <p>{t('empty')}</p> : null}
       {page?.items.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-body">
             <thead>
               <tr>
                 {['request', 'status', 'input', 'output', 'cache', 'cost'].map((key) => (
-                  <th key={key} scope="col" className="p-2 font-medium">
+                  <th
+                    key={key}
+                    scope="col"
+                    className="p-2"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
                     {t(key)}
                   </th>
                 ))}
@@ -68,11 +72,15 @@ export function ModelUsagePanel() {
             <tbody>
               {page.items.map((row) => (
                 <tr key={row.attemptId} className="border-t border-border">
-                  <th scope="row" className="p-2 font-normal">
+                  <th
+                    scope="row"
+                    className="p-2"
+                    style={{ fontVariationSettings: fontWeights.normal }}
+                  >
                     <div>
                       {row.provider} · {row.modelId}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-caption text-muted-foreground">
                       {t(`purpose.${row.intent.purpose}`)} ·{' '}
                       {format.dateTime(new Date(row.startedAt), {
                         dateStyle: 'short',

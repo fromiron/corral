@@ -1,6 +1,6 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -9,6 +9,8 @@ import {
   type AgentTreeLabels,
   type AgentTreeNode,
   Button,
+  cn,
+  fontWeights,
   formatClock,
   Select,
 } from '../design-kit/index.ts';
@@ -60,12 +62,12 @@ export function RunView({
   return (
     <div className="flex flex-col gap-3">
       {startError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('rejected', { message: startError.message })}
         </p>
       ) : null}
       {definitionError ? (
-        <p role="alert" className="text-xs text-warning">
+        <p role="alert" className="text-caption text-warning">
           {t('definitionUnavailable')}{' '}
           <Button
             type="button"
@@ -81,7 +83,7 @@ export function RunView({
         </p>
       ) : null}
       {streamError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('streamError', { message: streamError })}
         </p>
       ) : null}
@@ -89,18 +91,18 @@ export function RunView({
         <>
           <RunActions key={projection.runId} session={session} />
           {simulatedHarness ? (
-            <p className="text-xs text-muted-foreground">{t('harnessSimulation')}</p>
+            <p className="text-caption text-muted-foreground">{t('harnessSimulation')}</p>
           ) : null}
           <UsageInspector session={session} prices={prices} />
           <HarnessDetails session={session} />
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-caption">
             <span className="text-muted-foreground">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">
               <StatusBadge status={projection.status} />
             </span>
           </div>
           {projection.statusReason ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {t('reasonPrefix')}{' '}
               <RunReason
                 code={projection.statusReason}
@@ -146,11 +148,17 @@ export function RunOutput({
   const result = useRunDisplay(session, (s) =>
     resultId ? s.projection?.artifacts[resultId] : undefined,
   );
+  // Until there is output the run's status badge says it is still working; nothing is added.
+  if (outputText === null && !(onOpenResults && finals.length > 0)) return null;
   return (
     <div className="flex flex-col gap-1">
-      {heading ? <h3 className="text-xs font-semibold">{t('output')}</h3> : null}
+      {heading ? (
+        <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('output')}
+        </h3>
+      ) : null}
       {onOpenResults && finals.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-caption">
           {finals.length > 1 ? (
             <span className="text-muted-foreground">
               {tr('finalCount', { count: finals.length })}
@@ -173,9 +181,7 @@ export function RunOutput({
           })}
         </div>
       ) : null}
-      {outputText === null ? (
-        <p className="text-xs text-muted-foreground">{t('outputPending')}</p>
-      ) : (
+      {outputText === null ? null : (
         <div
           data-testid="run-output"
           className={`overflow-auto rounded-md fill-group p-2 ${heading ? 'max-h-64' : ''}`}
@@ -288,13 +294,19 @@ export function ExecutionTree({
   onSteer,
   selectedExecutionId = null,
   compact = false,
+  wideCards = false,
   now,
   rounds,
+  titled = true,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
   compact?: boolean;
+  /** Show the bar's title. Inside a tab whose label names the executions, only the counts stay. */
+  titled?: boolean;
+  /** Cards widen to the room their branches have, for a tree that owns a wide view. */
+  wideCards?: boolean;
   /** The inspected rounds when other views of the work flow share them; otherwise its own. */
   rounds?: RoundInspection;
   /** Fixed clock for a past view, ms. Omitted, open spans run to the present. */
@@ -311,6 +323,22 @@ export function ExecutionTree({
   const definition = useStore(session, (s) => s.definition);
   const streams = useRunDisplay(session, (s) => s.streams);
   const own = useRoundInspection(projection, selectedExecutionId);
+  // The tree's own width sets how wide its cards can be.
+  const [treeElement, treeRef] = useState<HTMLDivElement | null>(null);
+  const [treeWidth, setTreeWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!wideCards || !treeElement) return;
+    // A scrollbar coming and going must not resize the cards back and forth.
+    const measure = () =>
+      setTreeWidth((current) =>
+        Math.abs(treeElement.clientWidth - current) < 24 ? current : treeElement.clientWidth,
+      );
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(treeElement);
+    return () => observer.disconnect();
+  }, [wideCards, treeElement]);
   const { selected: selectedIterations, choose } = rounds ?? own;
   const intervals = useMemo(
     () => new Map(executionIntervals(events).map((row) => [row.executionId, row])),
@@ -474,9 +502,12 @@ export function ExecutionTree({
     const model = projection.modelProfiles[execution.modelProfile];
     const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
     const handoffs = executionHandoffs(projection, id);
-    // A card names what its execution made, then where it sits among rounds and attempts.
+    // A card names what its execution made, then where it sits among rounds and attempts. A
+    // version already sent somewhere is named once, by its chip below.
     const made = handoffs.flatMap((handoff) =>
-      handoff.kind === 'artifact' ? [`${handoff.name} v${handoff.version}`] : [],
+      handoff.kind === 'artifact' && !handoff.targets.length
+        ? [`${handoff.name} v${handoff.version}`]
+        : [],
     );
     const task = [
       made.join(', ') || null,
@@ -559,17 +590,44 @@ export function ExecutionTree({
   };
   return (
     <AgentTree
+      ref={treeRef}
       root={root}
       title={tree('title')}
       selectedId={selectedExecutionId}
       onSelect={(agent) => onSteer(agent.id)}
       labels={labels}
       size="compact"
-      // The column shrinks to the panel; cards truncate instead of widening it.
-      className="grid-cols-[minmax(0,1fr)]"
+      cardWidth={wideCards ? fittedCardWidth(root, treeWidth) : TREE.card}
+      // The column shrinks to the panel; cards truncate instead of widening it. Untitled, the
+      // bar's first two parts (spark mark and title) step aside; the tree keeps the name.
+      className={cn(
+        'grid-cols-[minmax(0,1fr)]',
+        !titled && '[&>header>span:nth-child(-n+2)]:hidden',
+      )}
       {...(now === undefined ? {} : { now })}
     />
   );
+}
+
+/** The kit AgentTree's card width, gap between branches and indent per level. */
+const TREE = { card: 216, widest: 320, gap: 8, indent: 32 } as const;
+
+/**
+ * Cards as wide as the tree's columns allow, so names read whole on a wide page: the first
+ * level's branches share the width, each taking its indents, between the kit's card width and a
+ * readable maximum. Too narrow for the kit's width, the tree stacks as before.
+ */
+function fittedCardWidth(root: AgentTreeNode, width: number): number {
+  const depth = (node: AgentTreeNode): number =>
+    Math.max(0, ...(node.children ?? []).map((child) => depth(child) + 1));
+  const branches = root.children ?? [];
+  if (!width || !branches.length) return TREE.card;
+  const indents = branches.reduce(
+    (sum, branch) => sum + TREE.indent * Math.max(1, depth(branch)),
+    0,
+  );
+  const share = (width - TREE.gap * (branches.length - 1) - indents) / branches.length;
+  return Math.round(Math.min(TREE.widest, Math.max(TREE.card, share)));
 }
 
 /** What a card adds under its summary: wait targets, the error and a streaming response. */
@@ -623,7 +681,9 @@ function ExecutionDetail({
         <FailureNotice message={execution.error} cancelled={execution.status === 'cancelled'} />
       ) : null}
       {!compact && live?.completed ? (
-        <p className="mt-1 font-medium">{t('completedResponse')}</p>
+        <p className="mt-1" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('completedResponse')}
+        </p>
       ) : null}
       {!compact && live?.text ? (
         <p

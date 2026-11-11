@@ -12,8 +12,11 @@ import { ComparePage } from './pages/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { HarnessDefaultsPage } from './pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
+import { InboxPage, validateInboxSearch } from './pages/InboxPage.tsx';
+import { LibraryPage, validateLibrarySearch } from './pages/LibraryPage.tsx';
 import { McpSettingsPage } from './pages/McpSettingsPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
+import { PreviewPage, validatePreviewSearch } from './pages/PreviewPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
@@ -21,7 +24,6 @@ import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { ScheduledPage } from './pages/ScheduledPage.tsx';
 import { SessionPage } from './pages/SessionPage.tsx';
-import { SettingsPage } from './pages/SettingsPage.tsx';
 import { VaultSettingsPage } from './pages/VaultSettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
@@ -34,17 +36,19 @@ import {
 } from './workbench/navigation.ts';
 import {
   reviewSessionSearch,
+  runSessionSearch,
   validateEditorSearch,
   validateReviewSearch,
   validateRunSearch,
   validateSessionSearch,
 } from './workbench/panels/routes.ts';
+import { SettingsContent } from './workbench/SettingsContent.tsx';
 
 export { type SessionSearch, validateSessionSearch } from './workbench/panels/routes.ts';
 
 // Routes from product contract §4.1.
 
-const rootRoute = createRootRouteWithContext<{ services: StudioServices }>()({
+const rootRoute = createRootRouteWithContext<{ services: StudioServices; runLookupMs: number }>()({
   component: RootLayout,
   validateSearch: validateSettingsOverlay,
   notFoundComponent: NotFoundView,
@@ -80,11 +84,78 @@ const schedulesRoute = createRoute({
   component: ScheduledPage,
 });
 
+// Screens outside any project. Each keeps the root's settings dialog search (`?settings=`).
+
+/** Needs you: what waits on the person across projects. */
+export const inboxRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/inbox',
+  validateSearch: validateInboxSearch,
+  component: InboxPage,
+});
+
+/** The library: saved teams, templates and resources, filtered by `?project=`. */
+export const libraryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library',
+  validateSearch: validateLibrarySearch,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: '/library/teams', search, replace: true });
+  },
+});
+export const libraryTeamsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/teams',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="teams" />,
+});
+export const libraryTemplatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/templates',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="templates" />,
+});
+export const libraryResourcesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/resources',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="resources" />,
+});
+
+/** Feature previews: the list, or one sample flow; an unknown feature shows the list. */
+export const previewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/preview',
+  validateSearch: validatePreviewSearch,
+  component: () => <PreviewPage />,
+});
+export const previewFeatureRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/preview/$feature',
+  validateSearch: validatePreviewSearch,
+  component: () => <PreviewPage feature={previewFeatureRoute.useParams().feature} />,
+});
+
 /** One project's Corrals and runs: what `/` showed before projects. */
 export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
   validateSearch: draftSearch,
+  // Teams live in the library now: the old Teams link and "draft a team" land there, replacing.
+  beforeLoad: ({ location, params, search }) => {
+    if (location.hash.replace(/^#/, '') === 'corrals')
+      throw redirect({
+        to: '/library/teams',
+        search: { project: params.projectId, ...validateSettingsOverlay({ ...search }) },
+        replace: true,
+      });
+    if (search.draft)
+      throw redirect({
+        to: '/library/templates',
+        search: { project: params.projectId, draft: true },
+        replace: true,
+      });
+  },
   loader: async ({ context, params }) => {
     const [projects, allCorrals, allRuns] = await Promise.all([
       context.services.repository.listProjects(),
@@ -213,11 +284,50 @@ export const editorRoute = createRoute({
   component: EditorPage,
 });
 
+/** How long arriving at `/runs/:runId` waits for its session before opening the run page. */
+const RUN_LOOKUP_MS = 1500;
+
+/** The run's session, or null when it has none, is not listed, or the list fails or is late. */
+async function runSession(services: StudioServices, runId: string, waitMs: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  const lookup = services.transport.listRuns().then(
+    (runs) => runs.find((run) => run.runId === runId)?.sessionId ?? null,
+    () => null,
+  );
+  try {
+    return await Promise.race([lookup, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const runRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/runs/$runId',
   // `view` and `result` keep the Results view and its chosen version in the address.
   validateSearch: validateRunSearch,
+  // A session's run belongs to that session's run history: the address replaces itself there
+  // with what it showed. Only arriving looks it up; the page's own search changes do not. A run
+  // with no session, an unlisted run or a failed lookup keeps this page and never guesses one.
+  // The runtime has no per-run lookup that names the session, so the run list answers; a list
+  // slower than the wait opens this page, and its late answer moves nothing.
+  beforeLoad: async ({ context, params, search, cause }) => {
+    if (cause !== 'enter') return;
+    const sessionId = await runSession(context.services, params.runId, context.runLookupMs);
+    if (sessionId)
+      throw redirect({
+        to: '/sessions/$sessionId',
+        params: { sessionId },
+        search: {
+          ...runSessionSearch(params.runId, search),
+          ...validateSettingsOverlay({ ...search }),
+        },
+        replace: true,
+      });
+  },
   component: RunPage,
 });
 
@@ -233,21 +343,24 @@ function settingsDialog(section: string, search: SettingsSearch) {
   return redirect({ href: `${url.pathname}${url.search}${url.hash}`, replace: true });
 }
 
+/** Sections `/settings` names by `?section=` rather than by its own path. */
+const SEARCH_SECTIONS = ['general', 'workspace', 'shortcuts', 'about', 'diagnostics'] as const;
+type SearchSection = (typeof SEARCH_SECTIONS)[number];
 export const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
   validateSearch: (
     search: Record<string, unknown>,
-  ): SettingsSearch & { section?: 'general' | 'workspace' | 'shortcuts' | 'about' } => ({
+  ): SettingsSearch & { section?: SearchSection } => ({
     ...validateSettingsSearch(search),
-    ...(['general', 'workspace', 'shortcuts', 'about'].includes(String(search.section))
-      ? { section: search.section as 'general' | 'workspace' | 'shortcuts' | 'about' }
+    ...(SEARCH_SECTIONS.includes(search.section as SearchSection)
+      ? { section: search.section as SearchSection }
       : {}),
   }),
   beforeLoad: ({ search }) => {
     throw settingsDialog(search.section ?? 'general', search);
   },
-  component: () => <SettingsPage section={settingsRoute.useSearch().section} />,
+  component: () => <SettingsContent section={settingsRoute.useSearch().section ?? 'general'} />,
 });
 
 export const harnessSettingsRoute = createRoute({
@@ -354,11 +467,21 @@ function createPerformanceRoute() {
   });
 }
 
-export function createStudioRouter(services: StudioServices) {
+export function createStudioRouter(
+  services: StudioServices,
+  { runLookupMs = RUN_LOOKUP_MS }: { runLookupMs?: number } = {},
+) {
   return createRouter({
     routeTree: rootRoute.addChildren([
       indexRoute,
       schedulesRoute,
+      inboxRoute,
+      libraryRoute,
+      libraryTeamsRoute,
+      libraryTemplatesRoute,
+      libraryResourcesRoute,
+      previewRoute,
+      previewFeatureRoute,
       projectsRoute,
       workspaceRoute,
       sessionRoute,
@@ -378,7 +501,7 @@ export function createStudioRouter(services: StudioServices) {
       compareRoute,
       ...(import.meta.env.MODE === 'performance' ? [createPerformanceRoute()] : []),
     ]),
-    context: { services },
+    context: { services, runLookupMs },
     defaultPreload: false,
   });
 }

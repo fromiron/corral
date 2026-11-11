@@ -103,7 +103,8 @@ for (const locale of ['en', 'ko']) {
       await page.keyboard.press('Control+k');
       const palette = page.getByRole('dialog');
       await palette.getByRole('combobox').fill(m.Commands.restore);
-      await palette.getByRole('option').filter({ hasText: m.Commands.restore }).click();
+      // The command itself, not the palette's closing search for the same words.
+      await palette.getByRole('option', { name: new RegExp(`^${m.Commands.restore} `) }).click();
       await expect(notice).toHaveCount(0);
       await expect(
         page.getByTestId('app-sidebar').locator(`a[href="/sessions/${id}?compose=true"]`),

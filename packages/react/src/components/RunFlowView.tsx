@@ -9,6 +9,7 @@ import {
   AgentHandoff,
   Button,
   DecisionTree,
+  fontWeights,
   type HandoffAgent,
   type HandoffCard,
   Select,
@@ -224,7 +225,10 @@ export function RunFlowView({
               <AgentCard key={loop.nodeId} data-testid="run-flow-loop" className="grid gap-3 p-3.5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="grid gap-1">
-                    <h3 className="flex items-center gap-2 text-sm font-medium">
+                    <h3
+                      className="flex items-center gap-2 text-subtitle"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
                       <RotateCcw size={16} aria-hidden />
                       {loopText('title', { name: loop.label })}
                     </h3>
@@ -348,7 +352,7 @@ export function RunFlowView({
         </section>
       ) : (
         <section className="grid gap-3" aria-label={t('relationships')}>
-          <p className="text-sm text-muted-foreground">{t('noRelationships')}</p>
+          <p className="text-body text-muted-foreground">{t('noRelationships')}</p>
           <div className="flex flex-wrap gap-2">
             {agents.flatMap((node) =>
               node.executionIds.map((id) => (
@@ -371,7 +375,9 @@ export function RunFlowView({
       )}
       {flow.decisions.length > 0 && (
         <section className="grid gap-4" aria-label={t('decisions')}>
-          <h3 className="text-sm font-medium">{t('decisions')}</h3>
+          <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('decisions')}
+          </h3>
           {flow.decisions.map((decision) => (
             <DecisionDetail
               key={decision.id}
@@ -382,11 +388,13 @@ export function RunFlowView({
       )}
       {remaining.length > 0 && (
         <section className="grid gap-2" aria-label={t('otherRelationships')}>
-          <h3 className="text-sm font-medium">{t('otherRelationships')}</h3>
+          <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('otherRelationships')}
+          </h3>
           {remaining.map((edge) => (
             <AgentCard
               key={edge.id}
-              className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"
+              className="flex flex-wrap items-center gap-2 px-3 py-2 text-body"
             >
               <span>{flow.nodes.find((node) => node.id === edge.from)?.label}</span>
               <span className="text-caption text-muted-foreground">
@@ -399,7 +407,9 @@ export function RunFlowView({
       )}
       {artifacts.length > 0 && (
         <section className="grid gap-2" aria-label={t('artifacts')}>
-          <h3 className="text-sm font-medium">{t('artifacts')}</h3>
+          <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('artifacts')}
+          </h3>
           {artifacts.map((artifact) => {
             const author = flow.edges.find(
               (edge) => edge.kind === 'author' && edge.to === artifact.id,
@@ -421,7 +431,10 @@ export function RunFlowView({
                 className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap gap-2 text-sm font-medium">
+                  <div
+                    className="flex flex-wrap gap-2 text-subtitle"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
                     <span className="break-words">{artifact.label}</span>
                     {artifact.status === 'final' && (
                       <span className="text-caption text-success">{t('final')}</span>
@@ -483,7 +496,9 @@ export function RunFlowDecisions({
   if (!projection || !decisions.length) return null;
   return (
     <section className="grid gap-4" aria-label={t('decisions')} data-testid="run-flow-decisions">
-      <h3 className="text-sm font-medium">{t('decisions')}</h3>
+      <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('decisions')}
+      </h3>
       {decisions.map((decision) => (
         <DecisionDetail
           key={decision.id}
@@ -565,7 +580,9 @@ export function DecisionDetail({
         <ObservedTime value={decision.recordedAt} />
         {decision.evidenceRefs.length > 0 ? (
           <div className="grid gap-1">
-            <h4 className="font-medium text-foreground">{t('evidence')}</h4>
+            <h4 className="text-foreground" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {t('evidence')}
+            </h4>
             <ul className="grid gap-1">
               {decision.evidenceRefs.map((ref) => (
                 <EvidenceSummary
@@ -583,7 +600,7 @@ export function DecisionDetail({
           <p>{t('reviewVerdict', { verdict: optionLabel(decision.reviewVerdict) })}</p>
         )}
         {decision.issues.length > 0 && (
-          <ul className="list-inside list-disc">
+          <ul className="list-outside list-disc pl-5">
             {[...new Set(decision.issues)].map((issue) => (
               <li key={issue}>{issue}</li>
             ))}
@@ -633,7 +650,7 @@ function EvidenceSummary({
   return (
     <li className="grid gap-1 rounded bg-muted/40 px-2.5 py-2" data-evidence-id={evidence.id}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium text-foreground">
+        <span className="text-foreground" style={{ fontVariationSettings: fontWeights.semibold }}>
           {t(`evidenceKind.${evidence.kind}`)} · {name}
         </span>
         {artifact && canReadArtifactBody(projection, evidence.id) && (

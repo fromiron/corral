@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import type { Locator, Page } from '@playwright/test';
+import { newConversation } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 async function reachable(target: Locator) {
@@ -72,7 +73,7 @@ for (const width of [390, 636, 967])
     corral,
   }, testInfo) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionUrl = page.url();
     await page.setViewportSize({ width, height: 757 });
@@ -125,31 +126,46 @@ test('review file choices and expanded original preview remain reachable at narr
   await page.goto(`${corral.server.url}/sessions/${sessionId}/review`);
   const files = page.getByRole('navigation', { name: 'Review changes', exact: true });
   const readme = files.getByRole('button', { name: /^README.md/ });
+  // Below the three-column width the list folds into its head once a file is open.
+  const fold = files.getByRole('button', { name: /^\d+ files$/ });
+  const showFiles = async () => {
+    if ((await fold.isVisible()) && (await fold.getAttribute('aria-expanded')) === 'false')
+      await fold.click();
+  };
   await reachable(readme);
   await readme.click();
+  await showFiles();
   await reachable(files.getByRole('button', { name: /^other.txt/ }));
   await files.getByRole('button', { name: /^other.txt/ }).click();
+  await showFiles();
   await readme.click();
-  const parts = page.getByRole('region', { name: 'Selected changes', exact: true });
-  await parts.getByRole('button', { name: 'Select changed parts', exact: true }).click();
-  await parts.getByRole('checkbox', { name: /Part 1/ }).check();
-  await parts.getByRole('button', { name: 'Preview original-folder changes', exact: true }).click();
-  const apply = parts.getByRole('button', { name: 'Approve and apply to original', exact: true });
+  const parts = page.getByRole('region', { name: 'Apply or revert a part', exact: true });
+  await parts.getByRole('button', { name: 'Apply or revert a part', exact: true }).click();
+  await parts
+    .getByRole('checkbox', { name: /^Lines? \d/ })
+    .first()
+    .check();
+  await parts.getByRole('button', { name: 'Preview applying to the folder', exact: true }).click();
+  const apply = parts.getByRole('button', { name: 'Approve and apply to the folder', exact: true });
   for (const width of [967, 1179, 636, 1600]) {
     await page.setViewportSize({ width, height: 757 });
     for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme });
       await reachable(apply);
-      const comments = page.locator('#comments-heading');
+      const comments = page.getByTestId('review-comments');
       const applyBox = await apply.boundingBox();
       const commentBox = await comments.boundingBox();
+      // The partial apply sits with the decision, never over the comments.
       expect(
         applyBox &&
           commentBox &&
-          (applyBox.y + applyBox.height <= commentBox.y ||
+          (applyBox.y >= commentBox.y + commentBox.height ||
+            applyBox.y + applyBox.height <= commentBox.y ||
+            applyBox.x >= commentBox.x + commentBox.width ||
             applyBox.x + applyBox.width <= commentBox.x),
       ).toBe(true);
       await reachable(comments);
+      await showFiles();
       await reachable(readme);
       await page.screenshot({ path: testInfo.outputPath(`review-${width}-${colorScheme}.png`) });
     }
@@ -164,7 +180,7 @@ test('line navigation reveals the selection above the bottom dock', async ({
   const { sessionId } = await fixture(page, corral);
   await page.setViewportSize({ width: 1179, height: 757 });
   await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
-  await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
   const editorPanel = page.getByTestId('dock-document-panel');
   await expect(editorPanel.locator('.monaco-editor')).toBeVisible();
   await page.getByRole('banner').getByRole('button', { name: 'Terminal', exact: true }).click();
@@ -195,22 +211,35 @@ test('line navigation reveals the selection above the bottom dock', async ({
     await page.getByRole('button', { name: `Open README.md:${line}`, exact: true }).click();
     await expectLine(line);
   }
-  for (const line of [7, 9, 35, 2]) {
+  // Go to lines lives in the document's more menu and opens a small range popover.
+  const goTo = page.getByRole('dialog', { name: 'Go to lines', exact: true });
+  const openGoTo = async () => {
     await editorPanel
-      .getByRole('spinbutton', { name: 'From line', exact: true })
-      .fill(String(line));
-    await editorPanel.getByRole('spinbutton', { name: 'To line', exact: true }).fill(String(line));
-    await editorPanel.getByRole('button', { name: 'Go to lines', exact: true }).click();
+      .getByRole('button', { name: 'More actions for README.md', exact: true })
+      .click();
+    await page.getByRole('menuitem', { name: 'Go to lines…', exact: true }).click();
+    await expect(goTo).toBeVisible();
+  };
+  const goToLine = async (line: number) => {
+    await openGoTo();
+    await goTo.getByRole('spinbutton', { name: 'From line', exact: true }).fill(String(line));
+    await goTo.getByRole('spinbutton', { name: 'To line', exact: true }).fill(String(line));
+    await goTo.getByRole('button', { name: 'Go to lines', exact: true }).click();
+    await expect(goTo).toBeHidden();
+  };
+  for (const line of [7, 9, 35, 2]) {
+    await goToLine(line);
     await expectLine(line);
-    await expect(
-      editorPanel.getByRole('spinbutton', { name: 'From line', exact: true }),
-    ).toHaveValue(String(line));
+    await openGoTo();
+    await expect(goTo.getByRole('spinbutton', { name: 'From line', exact: true })).toHaveValue(
+      String(line),
+    );
+    await page.keyboard.press('Escape');
+    await expect(goTo).toBeHidden();
   }
   await page.screenshot({ path: testInfo.outputPath('editor-with-bottom-dock.png') });
   await page.getByRole('button', { name: 'Close pane: Terminal', exact: true }).click();
-  await editorPanel.getByRole('spinbutton', { name: 'From line', exact: true }).fill('9');
-  await editorPanel.getByRole('spinbutton', { name: 'To line', exact: true }).fill('9');
-  await editorPanel.getByRole('button', { name: 'Go to lines', exact: true }).click();
+  await goToLine(9);
   await expectLine(9);
 });
 
@@ -223,8 +252,8 @@ test('filename search keeps the entered filename readable at 636px', async ({
   await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
   const field = page.getByRole('textbox', { name: 'Filter files', exact: true });
   await field.fill('README.md');
-  await expect(page.getByRole('button', { name: 'Open README.md', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open other.txt', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('treeitem', { name: 'README.md', exact: true })).toBeVisible();
+  await expect(page.getByRole('treeitem', { name: 'other.txt', exact: true })).toHaveCount(0);
   await expect.poll(() => field.evaluate((input) => input.scrollLeft)).toBe(0);
   await testInfo.attach('filename-field-size', {
     body: JSON.stringify(await field.boundingBox()),

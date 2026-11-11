@@ -10,6 +10,8 @@ import { DockDocumentPanel } from './DockDocumentPanel.tsx';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { type DocumentBuffer, type DocumentStore, documentKey } from './documents/store.ts';
 
+Element.prototype.getAnimations ??= () => [];
+
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     params,
@@ -81,8 +83,40 @@ function owner(documents: Record<string, DocumentBuffer>, openedKey: string) {
     },
   ) as unknown as DocumentStore;
 }
-async function mounted(content: React.ReactNode, check: (container: HTMLDivElement) => void) {
+/** Opens the document's more menu, chooses a row and returns the popover it opened. */
+async function fromMoreMenu(container: HTMLElement, row: string) {
+  const trigger = container.querySelector<HTMLElement>('[aria-label^="More actions for"]');
+  expect(trigger).not.toBeNull();
+  await act(async () => trigger?.click());
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (node) => node.getAttribute('aria-label') === row,
+  );
+  expect(item).toBeDefined();
+  await act(async () => item?.click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+}
+const popoverButton = (name: string) =>
+  [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+    (button) => button.textContent === name,
+  );
+async function mounted(
+  content: React.ReactNode,
+  check: (container: HTMLDivElement) => void | Promise<void>,
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -94,7 +128,7 @@ async function mounted(content: React.ReactNode, check: (container: HTMLDivEleme
         </IntlProvider>,
       );
     });
-    check(container);
+    await check(container);
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -106,12 +140,14 @@ it('external tab ownership skips view retain and a missing conversation referenc
   const store = owner({ [key]: buffer() }, key);
   await mounted(
     <DocumentPanel owner={store} documentKey={key} viewId="dock-tab" manageView={false} />,
-    (container) => {
+    async (container) => {
       expect(store.retainView).not.toHaveBeenCalled();
       const buttons = Array.from(container.querySelectorAll('button'));
       expect(buttons.find((button) => button.textContent === 'Save')?.disabled).toBe(false);
-      expect(buttons.find((button) => button.textContent === 'Reference lines')?.disabled).toBe(
-        true,
+      await fromMoreMenu(container, 'Reference lines…');
+      expect(popoverButton('Reference lines')?.disabled).toBe(true);
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+        messages.Documents.otherSessionReference,
       );
     },
   );
@@ -159,12 +195,10 @@ it('a retained file cannot reference the current copy until target readback comp
         viewId="dock-tab"
         onReference={() => {}}
       />,
-      (container) => {
-        const reference = Array.from(container.querySelectorAll('button')).find(
-          (button) => button.textContent === 'Reference lines',
-        );
-        expect(reference?.disabled).toBe(true);
+      async (container) => {
         expect(container.querySelector('a')).toBeNull();
+        await fromMoreMenu(container, 'Reference lines…');
+        expect(popoverButton('Reference lines')?.disabled).toBe(true);
       },
     );
   } finally {

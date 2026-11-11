@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
-import type { ProjectSummary, WorkSession } from '@corral/core';
-import { SidebarProvider } from '@corral/react/design-kit';
+import type { InboxItemView } from '@corral/client';
+import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
+import { DesignKitProvider, SidebarProvider } from '@corral/react/design-kit';
 import { act, type ComponentProps, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { Sidebar } from './Sidebar.tsx';
+import { shortcutLabel } from '../shortcuts.ts';
+import { Sidebar, sidebarRowHeights } from './Sidebar.tsx';
 
 const fixture = vi.hoisted(() => ({
   collapsed: {} as Record<string, boolean>,
   pathname: '/projects/alpha',
   scrollToIndex: vi.fn<(index: number) => void>(),
   virtualCount: 0,
+  navigate: vi.fn(),
+  services: { repository: {}, mode: 'demo', live: false } as Record<string, unknown>,
+  profiles: [] as { available: boolean }[] | null,
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
@@ -27,7 +32,7 @@ vi.mock('@tanstack/react-router', () => ({
   }) => (
     <a {...props} href={to.replace(/\$(\w+)/g, (_match, key: string) => params?.[key] ?? key)} />
   ),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => fixture.navigate,
   useRouter: () => ({ invalidate: vi.fn(async () => {}) }),
   useRouterState: ({
     select,
@@ -36,7 +41,7 @@ vi.mock('@tanstack/react-router', () => ({
   }) => select({ location: { pathname: fixture.pathname, href: fixture.pathname } }),
 }));
 vi.mock('../services.tsx', () => ({
-  useServices: () => ({ repository: {}, mode: 'demo', live: false }),
+  useServices: () => fixture.services,
 }));
 vi.mock('../desktop.tsx', () => ({ desktop: null }));
 vi.mock('../shortcutBindings.ts', async (original) => ({
@@ -47,9 +52,11 @@ vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: () => useState(fixture.collapsed),
 }));
 vi.mock('./navigation.ts', () => ({
-  useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+  useSettingsNavigation: () => ({
+    link: (section: string) => ({ to: '/', search: { settings: section } }),
+  }),
 }));
-vi.mock('./useModels.ts', () => ({ useModelProfiles: () => [] }));
+vi.mock('./useModels.ts', () => ({ useModelProfiles: () => fixture.profiles }));
 
 interface VirtualOptions {
   count: number;
@@ -86,6 +93,7 @@ vi.mock('@tanstack/react-virtual', () => ({
             return item;
           });
         },
+        measure: () => {},
         scrollToIndex: (index: number) => {
           fixture.scrollToIndex(index);
           setStart(Math.max(0, index - 3));
@@ -120,7 +128,8 @@ const sessions: WorkSession[] = Array.from({ length: 500 }, (_, index) => ({
   archivedAt: null,
   entries: [],
 }));
-const model: ComponentProps<typeof Sidebar>['model'] = {
+type Model = ComponentProps<typeof Sidebar>['model'];
+const model: Model = {
   projects: [project('alpha', 'Alpha'), project('beta', 'Beta')],
   sessions,
   corrals: [],
@@ -137,6 +146,9 @@ const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {
   fixture.collapsed = {};
   fixture.pathname = '/projects/alpha';
+  fixture.navigate.mockClear();
+  fixture.services = { repository: {}, mode: 'demo', live: false };
+  fixture.profiles = [];
   fixture.virtualCount = 0;
   fixture.scrollToIndex.mockClear();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -165,7 +177,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount() {
+async function mount(overrides: Partial<Model> = {}, density: 'default' | 'compact' = 'default') {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -176,9 +188,11 @@ async function mount() {
   await act(async () => {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <SidebarProvider persist={false} shortcut={null} mobileBreakpoint={0}>
-          <Sidebar model={model} />
-        </SidebarProvider>
+        <DesignKitProvider size={density}>
+          <SidebarProvider persist={false} shortcut={null} mobileBreakpoint={0}>
+            <Sidebar model={{ ...model, ...overrides }} />
+          </SidebarProvider>
+        </DesignKitProvider>
       </IntlProvider>,
     );
   });
@@ -187,15 +201,6 @@ async function mount() {
 
 function conversationLinks(container: HTMLElement) {
   return [...container.querySelectorAll<HTMLAnchorElement>('a[href^="/sessions/"]')];
-}
-
-async function filter(container: HTMLElement, text: string) {
-  const input = container.querySelector<HTMLInputElement>('input[type="search"]');
-  if (!input) throw new Error('Missing conversation filter');
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, text);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
 }
 
 it('keeps 500 conversations virtualized under their project and puts pinned conversations first', async () => {
@@ -265,18 +270,361 @@ it('keeps list navigation away from conversation actions and opens their menu wi
   expect(document.activeElement?.getAttribute('href')).not.toBe('/sessions/session_0');
 });
 
-it('temporarily reveals a collapsed project for an objective match and restores its collapse on clear', async () => {
-  fixture.collapsed = { alpha: true };
+const run = (sessionId: string, status: RunSummary['status'], startedAt: string): RunSummary => ({
+  runId: `${sessionId}:${startedAt}`,
+  sessionId,
+  projectId: 'alpha',
+  corralId: 'team',
+  status,
+  startedAt,
+});
+const attention = (kind: InboxItemView['kind'], sessionId: string): InboxItemView => ({
+  kind,
+  sessionId,
+  sessionTitle: sessionId,
+  runId: null,
+  detail: null,
+  ...(kind === 'uncertain_terminal' ? { terminalId: `${sessionId}_pty` } : {}),
+});
+
+/** Text a person reads: the kit draws each label twice, once hidden to reserve its bold width. */
+function visibleText(element: Element | null | undefined) {
+  if (!element) return undefined;
+  const copy = element.cloneNode(true) as Element;
+  for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+  return copy.textContent?.trim();
+}
+
+function primaryMenu(container: HTMLElement) {
+  const menus = [...container.querySelectorAll<HTMLElement>('[data-sidebar="content"] ul')];
+  const primary = menus.find((menu) => menu.querySelector('a[href="/inbox"]'));
+  if (!primary) throw new Error('Missing primary menu');
+  return primary;
+}
+
+it('shows exactly the four primary entries without a group name, and drops the old rows', async () => {
   const container = await mount();
-  expect(container.querySelector('a[href="/sessions/session_250"]')).toBeNull();
-  const toggle = () => container.querySelector('[aria-label="Toggle Alpha sessions"]');
-  expect(toggle()?.getAttribute('aria-expanded')).toBe('false');
-  await filter(container, 'Objective needle');
-  expect(container.querySelector('a[href="/sessions/session_250"]')).not.toBeNull();
-  expect(toggle()?.getAttribute('aria-expanded')).toBe('true');
-  expect(container.querySelector('a[href="/projects/beta"]')).toBeNull();
-  await filter(container, '');
-  expect(container.querySelector('a[href="/sessions/session_250"]')).toBeNull();
-  expect(toggle()?.getAttribute('aria-expanded')).toBe('false');
-  expect(container.querySelector('a[href="/projects/beta"]')).not.toBeNull();
+  const primary = primaryMenu(container);
+  const rows = [...primary.querySelectorAll<HTMLElement>(':scope > [data-sidebar="menu-item"]')];
+  expect(rows.map((row) => visibleText(row.querySelector('a')))).toEqual([
+    'New conversation',
+    'Needs you',
+    'Library',
+    'Automation',
+  ]);
+  expect(rows.map((row) => row.querySelector('a')?.getAttribute('href'))).toEqual([
+    '/projects/alpha',
+    '/inbox',
+    '/library/teams',
+    '/schedules',
+  ]);
+  expect(
+    primary.closest('[data-sidebar="group"]')?.querySelector('[data-sidebar="group-label"]'),
+  ).toBeNull();
+  const sidebar = container.querySelector('[data-testid="app-sidebar"]');
+  for (const removed of ['Pending actions', 'Schedules', 'All projects', 'New project'])
+    expect(sidebar?.textContent).not.toContain(removed);
+});
+
+it('counts a waiting run and a terminal to check in the Needs you badge, not queued or unreviewed items', async () => {
+  const container = await mount({
+    runs: [
+      run('session_0', 'awaiting_user', '2026-11-01T00:00:00Z'),
+      run('session_1', 'running', '2026-11-01T00:00:00Z'),
+    ],
+    terminalAttention: [
+      attention('uncertain_terminal', 'session_499'),
+      attention('queued', 'session_2'),
+      attention('unreviewed', 'session_3'),
+    ],
+    // The current project's inbox also holds a queued request and an unreviewed file.
+    inbox: 4,
+  });
+  const needsYou = container.querySelector<HTMLAnchorElement>('a[href="/inbox"]');
+  expect(visibleText(needsYou)).toBe('Needs you');
+  const badge = needsYou
+    ?.closest('[data-sidebar="menu-item"]')
+    ?.querySelector('[data-sidebar="menu-badge"]');
+  expect(badge?.textContent).toBe('2');
+});
+
+it('keeps Needs you without a number when nothing waits', async () => {
+  const container = await mount({ inbox: 3 });
+  const needsYou = container.querySelector<HTMLAnchorElement>('a[href="/inbox"]');
+  expect(needsYou).not.toBeNull();
+  expect(
+    needsYou?.closest('[data-sidebar="menu-item"]')?.querySelector('[data-sidebar="menu-badge"]'),
+  ).toBeNull();
+});
+
+it('marks the primary entry for the path active', async () => {
+  fixture.pathname = '/library/resources';
+  const container = await mount();
+  expect(container.querySelector('a[href="/library/teams"]')?.getAttribute('aria-current')).toBe(
+    'page',
+  );
+  expect(container.querySelector('a[href="/inbox"]')?.getAttribute('aria-current')).toBeNull();
+});
+
+it('opens the palette in session search from the read-only field, carrying the typed character', async () => {
+  const container = await mount();
+  const requests: unknown[] = [];
+  const listen = (event: Event) => requests.push((event as CustomEvent).detail);
+  window.addEventListener('corral:open-palette', listen);
+  try {
+    const field = container.querySelector<HTMLInputElement>(
+      '[data-testid="session-search-field"] input',
+    );
+    if (!field) throw new Error('Missing search field');
+    expect(field.readOnly).toBe(true);
+    await act(async () => field.click());
+    await act(async () => {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    });
+    expect(requests).toEqual([
+      { mode: 'sessions', query: '' },
+      { mode: 'sessions', query: 'm' },
+      { mode: 'sessions', query: '' },
+    ]);
+  } finally {
+    window.removeEventListener('corral:open-palette', listen);
+  }
+});
+
+it('marks a meeting with its own icon and keeps the active row menu visible', async () => {
+  fixture.pathname = '/sessions/session_0';
+  const meeting = {
+    ...(sessions[1] as WorkSession),
+    meeting: { config: { version: 1, participants: [], secretary: { modelProfile: 'm' } } },
+  } as unknown as WorkSession;
+  const container = await mount({
+    sessions: sessions.map((session) => (session.sessionId === 'session_1' ? meeting : session)),
+  });
+  const icon = (id: string) =>
+    container.querySelector(`a[href="/sessions/${id}"] svg`)?.getAttribute('class') ?? '';
+  expect(icon('session_1')).not.toBe(icon('session_0'));
+  const action = (title: string) =>
+    container.querySelector(`button[aria-label="Actions for ${title}"]`);
+  expect(action('Conversation 0')?.hasAttribute('data-show-on-hover')).toBe(false);
+  expect(action('Pinned conversation')?.hasAttribute('data-show-on-hover')).toBe(true);
+});
+
+it('starts a meeting in a project from its row menu', async () => {
+  const container = await mount();
+  const requests: unknown[] = [];
+  const listen = (event: Event) => requests.push((event as CustomEvent).detail);
+  window.addEventListener('corral:new-meeting', listen);
+  try {
+    const trigger = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Alpha project menu"]',
+    );
+    if (!trigger) throw new Error('Missing project actions');
+    await act(async () => trigger.click());
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (row) => visibleText(row) === 'New meeting',
+    );
+    if (!item) throw new Error('Missing New meeting');
+    await act(async () => item.click());
+    expect(requests).toEqual(['alpha']);
+  } finally {
+    window.removeEventListener('corral:new-meeting', listen);
+  }
+});
+
+/** The header's Corral menu button. */
+function corralMenu(container: HTMLElement) {
+  const button = container.querySelector<HTMLElement>(
+    '[data-sidebar="header"] [data-sidebar="menu-button"]',
+  );
+  if (!button) throw new Error('Missing the Corral menu');
+  return button;
+}
+
+/** Hovers `element` long enough for a tooltip to open; returns what the page then reads. */
+async function hover(element: Element) {
+  await act(async () => {
+    element.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mouseenter'));
+    element.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+  return document.body.textContent ?? '';
+}
+
+const occurrences = (text: string, part: string) => text.split(part).length - 1;
+
+it.each([
+  ['a demo', { mode: 'browser', live: false }, [], 'Demo · simulated', 'Demo'],
+  [
+    'a simulated local server',
+    { mode: 'server', live: false },
+    [],
+    'Local · simulated',
+    'Simulated',
+  ],
+] as const)(
+  'names the connection state of %s once, as the header’s word',
+  async (_name, services, profiles, state, word) => {
+    fixture.services = { repository: {}, ...services };
+    fixture.profiles = [...profiles];
+    const container = await mount();
+    const menu = corralMenu(container);
+    // The row reads Corral and one whole word; the full state is only the button's name.
+    expect(visibleText(menu)).toBe(`Corral${word}`);
+    const mark = menu.querySelector('[data-testid="sidebar-connection"]');
+    expect(mark?.textContent).toBe(word);
+    // The word keeps its width; the name before it gives way first.
+    expect(mark?.className).toContain('shrink-0');
+    expect(menu.getAttribute('aria-label')).toContain(state);
+    // No card, tooltip, menu line or second mark on the tile says it again.
+    expect(container.querySelector('[data-testid="sidebar-status"]')).toBeNull();
+    expect(menu.querySelector('.rounded-full')).toBeNull();
+    const read = await hover(menu);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(occurrences(read, word)).toBe(1);
+    // The full state is longer than the word, and only the button's name holds it.
+    expect(read).not.toContain(state);
+    await act(async () => menu.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    const popup = document.querySelector('[role="menu"]');
+    expect(popup?.querySelector('[data-slot="menu-label"]')).toBeNull();
+    expect(
+      [...(popup?.querySelectorAll('[role="menuitem"]') ?? [])].map((item) => visibleText(item)),
+    ).toEqual([messages.Shell.allProjects, messages.Shell.newProject]);
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+  },
+);
+
+// workbench.md: the sidebar does not keep a badge for a normal model connection; the header's
+// word is only for no model, the demo and simulation.
+it('shows no state word or mark for a live server with a model', async () => {
+  fixture.services = { repository: {}, mode: 'server', live: true };
+  fixture.profiles = [{ available: true }];
+  const container = await mount();
+  const menu = corralMenu(container);
+  expect(visibleText(menu)).toBe('Corral');
+  expect(container.querySelector('[data-testid="sidebar-connection"]')).toBeNull();
+  expect(menu.querySelector('.rounded-full')).toBeNull();
+  expect(document.body.textContent).not.toContain(messages.Shell.connected);
+  // The menu's name keeps the state for screen readers, as it does for the other states.
+  expect(menu.getAttribute('aria-label')).toBe(
+    messages.Shell.workspaceMenuState.replace('{state}', messages.Shell.connected),
+  );
+  const read = await hover(menu);
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(read).not.toContain(messages.Shell.connected);
+});
+
+it('without a model, the header word is the one control that opens model settings', async () => {
+  fixture.services = { repository: {}, mode: 'server', live: true };
+  fixture.profiles = [];
+  const container = await mount();
+  const word = container.querySelector<HTMLElement>('[data-testid="sidebar-connection"]');
+  expect(word?.tagName).toBe('BUTTON');
+  expect(visibleText(word)).toBe(messages.Shell.stateNoModel);
+  // Its name says where it leads and keeps the word it shows.
+  expect(word?.getAttribute('aria-label')).toBe(messages.Shell.openModelSettings);
+  expect(messages.Shell.openModelSettings).toContain(messages.Shell.stateNoModel);
+  // Beside the Corral menu, not a button inside its button.
+  expect(corralMenu(container).contains(word)).toBe(false);
+  expect(visibleText(corralMenu(container))).toBe('Corral');
+  expect(container.querySelector('[data-testid="sidebar-status"]')).toBeNull();
+  const read = await hover(corralMenu(container));
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  expect(occurrences(read, messages.Shell.stateNoModel)).toBe(1);
+  expect(read).not.toContain(messages.Shell.noModel);
+  await act(async () => word?.click());
+  expect(fixture.navigate).toHaveBeenLastCalledWith({ to: '/', search: { settings: 'models' } });
+});
+
+it('names New conversation once: its tooltip holds only the shortcut', async () => {
+  const container = await mount();
+  const link = [...primaryMenu(container).querySelectorAll('a')].find(
+    (item) => visibleText(item) === messages.Shell.newConversation,
+  );
+  if (!link) throw new Error('Missing New conversation');
+  // The kit draws a row's label twice (once hidden, to reserve its bold width).
+  const before = occurrences(document.body.textContent ?? '', messages.Shell.newConversation);
+  const read = await hover(link);
+  const tip = document.querySelector('[role="tooltip"]');
+  expect(tip?.textContent).toBe(shortcutLabel('session.new'));
+  expect(occurrences(read, messages.Shell.newConversation)).toBe(before);
+});
+
+it('opens the projects page at its new-project form from the Corral menu', async () => {
+  const container = await mount();
+  await act(async () => corralMenu(container).click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const create = items.find((item) => item.textContent?.includes(messages.Shell.newProject));
+  const all = items.find((item) => item.textContent?.includes(messages.Shell.allProjects));
+  expect(create).toBeDefined();
+  await act(async () => create?.click());
+  expect(fixture.navigate).toHaveBeenLastCalledWith({ to: '/projects', hash: 'new-project' });
+  await act(async () => corralMenu(container).click());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  await act(async () =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+      .find((item) => item.textContent?.includes(messages.Shell.allProjects))
+      ?.click(),
+  );
+  expect(all).toBeDefined();
+  expect(fixture.navigate).toHaveBeenLastCalledWith({ to: '/projects' });
+});
+
+it.each([
+  ['default', { project: 32, session: 44, empty: 28 }],
+  ['compact', { project: 28, session: 36, empty: 24 }],
+] as const)(
+  'lays the virtual list out at the %s density’s row heights, two full lines per session',
+  async (density, heights) => {
+    expect(sidebarRowHeights(density === 'compact')).toEqual(heights);
+    const container = await mount(
+      { projects: [project('alpha', 'Alpha'), project('beta', 'Beta'), project('empty', 'Empty')] },
+      density,
+    );
+    const row = container.querySelector<HTMLElement>('a[href="/sessions/session_0"]');
+    const item = row?.closest<HTMLElement>('[data-sidebar-index]');
+    expect(item?.style.height).toBe(`${heights.session}px`);
+    // The row is drawn at the height the list positions it by.
+    expect(row?.className).toContain(density === 'compact' ? 'h-9' : 'h-11');
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-sidebar="menu-sub-item"]')];
+    const tops = rows.map((entry) => Number.parseFloat(entry.style.top));
+    expect(tops.slice(1).map((top, index) => top - (tops[index] ?? 0))).toEqual(
+      rows.slice(1).map(() => heights.session),
+    );
+    // The list's whole height: three projects, 500 sessions, one empty project's line.
+    const list = container.querySelector<HTMLElement>('[data-sidebar-index]')?.parentElement;
+    expect(list?.style.height).toBe(
+      `${3 * heights.project + 500 * heights.session + heights.empty}px`,
+    );
+  },
+);
+
+it('puts a session’s title and its state line on full lines of their own, the state led by its dot', async () => {
+  const container = await mount({
+    runs: [run('session_0', 'awaiting_user', '2026-11-01T00:00:00Z')],
+  });
+  const waiting = container.querySelector('a[href="/sessions/session_0"]');
+  const lines = [...(waiting?.querySelectorAll('[data-session-line]') ?? [])];
+  expect(lines).toHaveLength(2);
+  expect(lines[0]?.textContent).toBe('Conversation 0');
+  expect(lines[1]?.textContent).toContain(messages.Status.awaiting_user);
+  expect(lines[1]?.querySelector('[data-status="awaiting_user"]')).not.toBeNull();
+  // Neither line borrows a tighter line height than its type role's.
+  for (const line of lines) expect(line?.className).not.toMatch(/leading-\d/);
+  // The row carries no separate badge: the state is said once.
+  expect(
+    waiting
+      ?.closest('[data-sidebar="menu-sub-item"]')
+      ?.querySelector('[data-sidebar="menu-badge"]'),
+  ).toBeNull();
+  const idle = container.querySelector('a[href="/sessions/session_1"]');
+  expect(idle?.querySelector('[data-status]')).toBeNull();
 });

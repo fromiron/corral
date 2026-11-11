@@ -14,14 +14,10 @@ const bindingKey = (value: HarnessDefault) =>
 
 export function HarnessDefaultsPage({ scope }: { scope: 'personal' | 'project' }) {
   const navigation = useSettingsNavigation();
-  const n = useTranslations('Navigation');
   const scopeId = scope === 'personal' ? 'default' : navigation.projectId;
   return (
     <SettingsLayout active={scope === 'personal' ? 'defaults' : 'project-defaults'}>
       <main className="settings-content">
-        <h2 className="text-2xl font-semibold">
-          {n(scope === 'personal' ? 'personalDefaults' : 'projectDefaults')}
-        </h2>
         <ScopeLadder current={scope} />
         {scopeId ? (
           <DefaultsEditor key={`${scope}:${scopeId}`} scope={scope} scopeId={scopeId} />
@@ -94,15 +90,12 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
   }
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        {t(scope === 'personal' ? 'personalDefaultHint' : 'projectDefaultHint')}
-      </p>
       {!api ? (
         <p>{t('localOnly')}</p>
       ) : (
         <>
           {error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {error}
             </p>
           ) : null}
@@ -155,7 +148,7 @@ function DefaultsEditor({ scope, scopeId }: { scope: 'personal' | 'project'; sco
               {r('cancel')}
             </Button>
           </div>
-          <p role="status" className="text-sm">
+          <p role="status" className="text-body">
             {busy ? t('busy') : notice}
           </p>
         </>

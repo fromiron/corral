@@ -1,4 +1,5 @@
 import type { Locator } from '@playwright/test';
+import { editModels, modelSettingsTab } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, reducedMotion: 'reduce' });
@@ -36,6 +37,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(project).toContainText('My project');
 
     await page.getByRole('link', { name: 'Models', exact: true }).click();
+    await modelSettingsTab(page, 'Profiles');
     const panel = page.getByRole('region', { name: 'Import model settings' });
     const source = panel.getByRole('combobox', { name: 'Source', exact: true });
     const path = panel.getByLabel('Configuration file (optional)');
@@ -92,6 +94,7 @@ test.describe('touch settings controls', () => {
   test.use({ hasTouch: true, deviceScaleFactor: 1.5, viewport: { width: 390, height: 844 } });
   test('standalone settings keep touch inputs and actions aligned', async ({ page, corral }) => {
     await corral.open('/settings/models');
+    await modelSettingsTab(page, 'Profiles');
     const panel = page.getByRole('region', { name: 'Import model settings' });
     for (const control of [
       panel.getByRole('combobox', { name: 'Source', exact: true }),
@@ -135,7 +138,7 @@ test('API key reveal controls keep a gap and the input height in both settings f
   expect.soft(Math.abs(button.y - input.y)).toBeLessThan(1);
   expect.soft(Math.abs(button.height - input.height)).toBeLessThan(1);
 
-  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  await editModels(page);
   const editor = page.getByRole('region', { name: 'Edit models', exact: true });
   await editor.getByRole('button', { name: 'Add endpoint', exact: true }).click();
   await editor.getByRole('combobox', { name: 'Access of endpoint 1', exact: true }).click();

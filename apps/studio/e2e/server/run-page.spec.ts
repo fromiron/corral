@@ -2,7 +2,7 @@ import definition from '../../../../examples/research-brief.corral.json' with { 
 import approvalDefinition from '../../../../examples/research-team.corral.json' with {
   type: 'json',
 };
-import { openResult, panelTab, requestBox } from '../workbench.ts';
+import { newConversation, openResult, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function startRun(
@@ -51,12 +51,14 @@ async function finishedRun(
   page: import('@playwright/test').Page,
   corral: { open(path?: string): Promise<void> },
 ) {
-  const { runId } = await startRun(page, corral);
+  const { runId, sessionId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
+  // A session's run opens in that session's run history.
+  await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}\\?.*run=${runId}`));
   await expect(page.getByTestId('run-status')).toContainText('Succeeded');
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
-  return new URL(page.url()).pathname;
+  return `/runs/${runId}`;
 }
 
 test('a run completed behind conversation fits its graph when opened and then preserves the chosen zoom', async ({
@@ -74,7 +76,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
     'aria-selected',
     'true',
   );
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   const graph = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(graph).toBeVisible();
   await panelTab(page, 'Conversation');
@@ -98,9 +100,11 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect
     .poll(() => corral.server.coordinator.getSnapshot(nextRunId).projection.status)
     .toBe('succeeded');
-  await expect(page.getByTestId('composer-status-pills')).toContainText('Run #2');
+  // The composer says it is the last run; the turn's link carries its number.
+  await expect(page.getByTestId('composer-status-pills')).toContainText('Last run');
+  await expect(page.getByTestId('turn-run').last()).toHaveText('Run #2');
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
   await expect(graph).toBeVisible();
   await expect
@@ -137,7 +141,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
   const preferred = await viewport.getAttribute('style');
   await panelTab(page, 'Conversation');
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   expect(corral.errors).toEqual([]);
@@ -187,7 +191,7 @@ test('switching workspace views and reading a result preserves selection, scroll
   await finishedRun(page, corral);
   const monitor = page.getByTestId('run-monitor');
   const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   const flow = monitor.locator('[data-run-workspace-view="flow"]');
   await expect(flow.getByRole('tree')).toBeVisible();
   const side = page.getByTestId('run-side');
@@ -233,6 +237,9 @@ test('switching workspace views and reading a result preserves selection, scroll
   await expect(document.getByTestId('result-body')).toBeVisible();
   await expect(graph).toBeHidden();
   await document.getByRole('button', { name: 'Back to work', exact: true }).click();
+  // Back returns to the Results view the result was opened from; the graph kept its state.
+  await expect(monitor.locator('[data-run-workspace-view="results"]')).toBeVisible();
+  await views.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', transform ?? '');
   await expect.poll(() => side.evaluate((element) => element.scrollTop)).toBe(sideTop);
@@ -240,7 +247,7 @@ test('switching workspace views and reading a result preserves selection, scroll
     'aria-selected',
     'true',
   );
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect.poll(() => flow.evaluate((element) => element.scrollTop)).toBe(flowTop);
   await expect(
     flow
@@ -340,7 +347,8 @@ test.describe('active graph preview', () => {
       await steer.click();
       const reins = monitor.getByTestId('run-instructions');
       await expect(reins).toBeVisible();
-      await expect(reins).toBeFocused();
+      // A running execution takes instructions, so focus lands in the instruction box.
+      await expect(reins.getByLabel('Instruction', { exact: true })).toBeFocused();
       await expect(reins).toContainText('Agent execution 1');
       await expect(monitor.getByTestId('run-side')).toBeHidden();
       expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
@@ -361,7 +369,7 @@ test.describe('active graph preview', () => {
 test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
   await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await page
     .getByTestId('run-work-flow')
     .getByRole('button', { name: /^Research Helper · exec_/ })
@@ -377,13 +385,14 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
       .locator('[data-agent-id="helper"]')
       .getByRole('button'),
   ).toHaveAttribute('aria-pressed', 'true');
+  // The side shows the chosen execution again. It has finished, so it offers no instruction:
+  // what was sent to it is read in its call conversation (execution-monitor.md: "지시하기는 끝나지
+  // 않은 실행에만 제공하며, 끝난 실행에 보냈던 지시와 전달 여부는 그 실행의 호출 대화에서 본다").
   const side = page.getByTestId('run-side');
-  await side.getByRole('button', { name: 'Reins', exact: true }).click();
-  const reins = page.getByTestId('run-instructions');
-  await expect(reins).toContainText('Research Helper');
-  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
-  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await expect(side).toContainText('Research Helper');
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(
     page
       .getByTestId('run-work-flow')
@@ -432,7 +441,14 @@ test('a long multiline request keeps graph, events and run information reachable
     await expect(eventsTab).toBeInViewport({ ratio: 1 });
     await expect(info).toBeInViewport({ ratio: 1 });
     const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
-    await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+    // Too narrow for the map's names to read, the graph view starts as its list.
+    if (viewport.width < 640) {
+      await expect(monitor.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(graph.getByRole('table', { name: 'Agents', exact: true })).toBeInViewport();
+    } else await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
     await eventsTab.click();
     await expect(monitor.locator('[data-run-workspace-view="events"]')).toBeVisible();
     await graphTab.click();
@@ -470,6 +486,104 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
 });
 
+test('the waiting pill opens the run’s response area, even in a narrow window', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  // An approval alone is decided in its turn's card; the composer has no notice for it, and the
+  // top bar's pill (only the run's number at this width) is the way to the response area.
+  const pill = page.getByRole('banner').getByTestId('dock-open-active-run');
+  await expect(pill).toHaveAttribute('data-state', 'waiting', { timeout: 30_000 });
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  await pill.click();
+  const response = page.locator(`[data-run-response="${started.runId}"]`);
+  await expect(response).toBeVisible();
+  await expect(response).toBeFocused();
+  // The request is answered once: it does not stay in the address.
+  await expect(page).not.toHaveURL(/respond=/);
+  // Closed by hand, the same request does not come back.
+  await page.getByTestId('run-side').getByRole('button', { name: 'Close details' }).click();
+  await expect(response).toBeHidden();
+  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+/**
+ * The session screen's main area as a person reads it: the top bar and the workbench, without
+ * the sidebar and without screen-reader-only text.
+ */
+function mainText(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const hidden = [...document.querySelectorAll<HTMLElement>('.sr-only')];
+    for (const node of hidden) node.style.setProperty('display', 'none', 'important');
+    const text = [
+      document.querySelector<HTMLElement>('[role="banner"], header'),
+      document.querySelector<HTMLElement>('section[aria-label="Workbench layout"]'),
+    ]
+      .map((node) => node?.innerText ?? '')
+      .join('\n');
+    for (const node of hidden) node.style.removeProperty('display');
+    return text;
+  });
+}
+
+test('a waiting approval shows its state once (the pill) and its decision once (the card)', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const card = page.locator('[data-testid^="approval-"]');
+  await expect(card.getByRole('button', { name: 'Continue with this version' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole('banner').getByTestId('dock-open-active-run')).toContainText(
+    'Waiting for you',
+  );
+  const shown = await mainText(page);
+  // "Waiting for you", not the start of "Waiting for your decision".
+  expect(shown.match(/Waiting for you(?!r)/g)).toHaveLength(1);
+  expect(shown.match(/Your decision/g)).toHaveLength(1);
+  expect(shown.match(/Continue with this version/g)).toHaveLength(1);
+  expect(shown).not.toContain('Reason:');
+  expect(shown).not.toContain('Approval needed');
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  expect(corral.errors).toEqual([]);
+});
+
+test('a decision sent from the conversation’s card hands focus on instead of dropping it', async ({
+  page,
+  corral,
+}) => {
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const decide = page
+    .locator('[data-testid^="approval-"]')
+    .getByRole('button', { name: 'Continue with this version' });
+  await expect(decide).toBeVisible({ timeout: 30_000 });
+  await decide.focus();
+  await page.keyboard.press('Enter');
+  await expect(decide).toHaveCount(0);
+  // The card left: focus goes to the next waiting card's main action if the final output
+  // already waits, else to the request box; never to the page.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) return 'page';
+        if (active.matches('[data-testid="chat-composer"] textarea')) return 'request';
+        if (active.textContent === 'Confirm as final result') return 'final';
+        return active.outerHTML.slice(0, 120);
+      }),
+    )
+    .toMatch(/^(request|final)$/);
+  expect(corral.errors).toEqual([]);
+});
+
 test('ACTION-01 opens one scoped response host and keeps later typing focus', async ({
   page,
   corral,
@@ -477,9 +591,10 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
   const action = page.getByTestId('dock-open-active-run');
-  await expect(action).toContainText('response needed');
+  await expect(action).toContainText('Waiting for you');
+  await expect(action).not.toContainText('Respond');
   await action.click();
-  await page.getByTestId('run-respond').click();
+  // The waiting pill leads to the response area, which opens and takes focus by itself.
   const response = page.locator('[data-run-response]');
   await expect(response).toBeFocused();
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
@@ -516,7 +631,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await route.continue();
   });
   try {
-    await panelTab(page, 'Execution history');
+    await panelTab(page, 'Runs');
     const posted = page.waitForRequest(
       (request) =>
         request.url().endsWith('/commands') && request.postDataJSON()?.type === 'resolve_approval',
@@ -529,7 +644,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),
     ).toHaveCount(1);
-    await expect(action).toContainText('response needed');
+    await expect(action).toContainText('Waiting for you');
     await expect(input).toHaveValue('Keep typing while the run continues');
     await expect(input).toBeFocused();
   } finally {
@@ -565,7 +680,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   );
   await page.emulateMedia({ colorScheme: 'light' });
   await page.reload();
-  const historyTab = page.getByRole('tab', { name: 'Execution history', exact: true });
+  const historyTab = page.getByRole('tab', { name: 'Runs', exact: true });
   await expect(historyTab).toBeVisible();
   await historyTab.click();
   const flow = page.getByRole('group', { name: 'Run graph', exact: true });
@@ -593,7 +708,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
     localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' })),
   );
   await page.reload();
-  await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+  await page.getByRole('tab', { name: 'Runs', exact: true }).click();
   await expect(flow).toHaveCSS('color-scheme', 'light');
   const lightSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(lightSurface).not.toBe(darkSurface);
@@ -689,7 +804,7 @@ test.describe('cancel recovery', () => {
     corral,
   }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     holdLifecycleReplies = true;
     await requestBox(page).fill('Retry this cancelled request');
     await page.getByRole('button', { name: 'Send', exact: true }).click();

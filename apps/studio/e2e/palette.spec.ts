@@ -22,14 +22,14 @@ test('Ctrl+K opens the command palette; typing filters and Enter runs the comman
   await input.press('Enter');
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
   await expect(page.getByRole('heading', { name: 'Research team', level: 1 })).toBeVisible();
-  await expect(page.locator('[data-team-canvas] [data-node]')).toHaveCount(9);
+  await expect(page.locator('[data-team-canvas] [data-node]')).toHaveCount(8);
 });
 
 test('the palette closes with Escape, and an IME composition Enter does not run a command', async ({
   page,
 }) => {
   await page.goto('/');
-  const opener = page.getByRole('button', { name: 'Start chat', exact: true });
+  const opener = page.getByRole('button', { name: 'New conversation', exact: true });
   await opener.focus();
   // `/` opens the current project; the page must stay exactly where it is.
   const before = page.url();

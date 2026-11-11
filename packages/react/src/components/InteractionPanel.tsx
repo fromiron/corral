@@ -2,18 +2,33 @@ import {
   type EventOf,
   ExtensionUiNotice,
   ExtensionUiRequest,
+  type RunEvent,
   type UserAnswers,
   UserInputRequest,
   validUserAnswers,
 } from '@corral/contracts';
-import { pendingInteractions } from '@corral/core';
-import { useEffect, useRef, useState } from 'react';
+import { pendingInteractions, type RunProjection } from '@corral/core';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, Input, Select } from '../design-kit/index.ts';
+import { Check, Copy } from '../design-kit/icons.ts';
+import { Button, fontWeights, Input, Select, Tooltip } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import { FirstRow, RowAction } from './FirstRow.tsx';
 
-export function InteractionPanel({ session }: { session: RunSessionStore }) {
+/** Whether the panel shows: a question or extension prompt waits, or an extension said something. */
+export const interactionShown = (events: readonly RunEvent[], projection: RunProjection | null) =>
+  pendingInteractions(events, projection).some((item) => item.kind !== 'approval') ||
+  events.some((event) => event.type === 'extension.ui_notified');
+
+export function InteractionPanel({
+  session,
+  action,
+}: {
+  session: RunSessionStore;
+  /** A control of the host's frame, at the end of the first row (see ApprovalPanel). */
+  action?: ReactNode;
+}) {
   const events = useStore(session, (s) => s.events);
   const projection = useStore(session, (s) => s.projection);
   const bodies = useStore(session, (s) => s.artifactTexts);
@@ -53,9 +68,22 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
     };
   }, [session, refs, retry]);
   if (!pending.length && !notices.length) return null;
+  const shownNotices = notices.flatMap((event) => {
+    const text = bodies[event.payload.bodyRef];
+    if (!text) return [];
+    try {
+      const notice = ExtensionUiNotice.parse(JSON.parse(text));
+      return notice.text ? [{ event, notice }] : [];
+    } catch {
+      return [];
+    }
+  });
   return (
-    <section aria-label={t('extensionUi')} className="flex flex-col gap-2">
-      {pending.map((event) =>
+    <section
+      aria-label={pending.length ? t('extensionUi') : t('extensionNotice')}
+      className="flex flex-col gap-2"
+    >
+      {pending.map((event, index) =>
         event.type === 'user_input.requested' ? (
           <UserQuestionPrompt
             key={event.payload.requestId}
@@ -67,6 +95,7 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
               setFailedRefs(new Set());
               setRetry((n) => n + 1);
             }}
+            action={index === 0 ? action : undefined}
           />
         ) : (
           <ExtensionPrompt
@@ -83,28 +112,24 @@ export function InteractionPanel({ session }: { session: RunSessionStore }) {
               });
               setRetry((current) => current + 1);
             }}
+            action={index === 0 ? action : undefined}
           />
         ),
       )}
-      {notices.map((event) => {
-        const text = bodies[event.payload.bodyRef];
-        if (!text) return null;
-        let notice: ExtensionUiNotice;
-        try {
-          notice = ExtensionUiNotice.parse(JSON.parse(text));
-        } catch {
-          return null;
-        }
-        return notice.text ? (
+      {shownNotices.map(({ event, notice }, index) => (
+        <FirstRow key={event.eventId} action={!pending.length && index === 0 ? action : undefined}>
           <p
-            key={event.eventId}
             role="status"
-            className={`text-xs ${notice.level === 'info' ? 'text-muted-foreground' : 'text-warning'}`}
+            className={`text-caption ${notice.level === 'info' ? 'text-muted-foreground' : 'text-warning'}`}
           >
             {t('extensionNotice')} · {notice.text}
           </p>
-        ) : null;
-      })}
+        </FirstRow>
+      ))}
+      {/* Notices whose text is not kept show nothing; the host's control still has its place. */}
+      {!pending.length && !shownNotices.length && action ? (
+        <FirstRow action={action}>{null}</FirstRow>
+      ) : null}
     </section>
   );
 }
@@ -115,12 +140,14 @@ function ExtensionPrompt({
   text,
   loadFailed,
   retry,
+  action,
 }: {
   session: RunSessionStore;
   event: EventOf<'extension.ui_requested'>;
   text: string | undefined;
   loadFailed: boolean;
   retry(): void;
+  action?: ReactNode;
 }) {
   const t = useTranslations('Harness');
   const format = useFormatter();
@@ -158,11 +185,18 @@ function ExtensionPrompt({
   }
   return (
     <article
-      className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/5 p-3 text-sm"
+      className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
       data-testid={`extension-ui-${event.payload.requestId}`}
     >
-      <p className="text-xs font-medium text-muted-foreground">{t('extensionUi')}</p>
-      <h3 className="font-medium">
+      <FirstRow action={action}>
+        <p
+          className="text-caption text-muted-foreground"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {t('extensionUi')}
+        </p>
+      </FirstRow>
+      <h3 style={{ fontVariationSettings: fontWeights.semibold }}>
         {request?.title ??
           t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')}
       </h3>
@@ -171,11 +205,12 @@ function ExtensionPrompt({
           {t('retryPrompt')}
         </Button>
       ) : null}
-      <p className="text-2xs text-muted-foreground">
-        {event.payload.executionId} · {t('attempt', { attempt: event.payload.attemptNo })} ·{' '}
-        {event.payload.requestId}
-      </p>
-      <p className="text-xs text-muted-foreground">
+      <ExecutionLine
+        session={session}
+        executionId={event.payload.executionId}
+        attemptNo={event.payload.attemptNo}
+      />
+      <p className="text-caption text-muted-foreground">
         {t('expires', {
           time: format.dateTime(new Date(event.payload.deadline), {
             hour: '2-digit',
@@ -238,7 +273,7 @@ function ExtensionPrompt({
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
@@ -252,18 +287,25 @@ function UserQuestionPrompt({
   text,
   loadFailed,
   retry,
+  action,
 }: {
   session: RunSessionStore;
   event: EventOf<'user_input.requested'>;
   text?: string;
   loadFailed: boolean;
   retry(): void;
+  action?: ReactNode;
 }) {
   const t = useTranslations('Harness');
   const form = useRef<HTMLFormElement>(null);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const headingId = useId();
   const [values, setValues] = useState<Record<string, UserAnswers[number]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // With two or more questions, one question per step and then a review step (index = count).
+  const [step, setStep] = useState(0);
+  const moved = useRef(false);
   let request: UserInputRequest | null = null;
   try {
     request = text ? UserInputRequest.parse(JSON.parse(text)) : null;
@@ -271,6 +313,18 @@ function UserQuestionPrompt({
     /* Invalid records are not answerable. */
   }
   const answers = request?.questions.map((q) => values[q.id] ?? { questionId: q.id }) ?? [];
+  const count = request?.questions.length ?? 0;
+  const stepped = count >= 2;
+  const reviewing = stepped && step >= count;
+  useEffect(() => {
+    void step;
+    // Only a step change moves focus; the first render leaves it where the person is.
+    if (moved.current) stepHeading.current?.focus();
+  }, [step]);
+  const goTo = (index: number) => {
+    moved.current = true;
+    setStep(Math.max(0, Math.min(count, index)));
+  };
   async function submit() {
     const state = session.getState();
     if (
@@ -311,6 +365,78 @@ function UserQuestionPrompt({
       setBusy(false);
     }
   }
+  const questionFieldset = (q: UserInputRequest['questions'][number], hidden = false) => {
+    const value = values[q.id] ?? { questionId: q.id };
+    return (
+      <fieldset key={q.id} disabled={busy} hidden={hidden} className="flex flex-col gap-2">
+        <legend style={{ fontVariationSettings: fontWeights.semibold }}>{q.prompt}</legend>
+        {q.description ? (
+          <p className="whitespace-pre-wrap break-words text-muted-foreground">{q.description}</p>
+        ) : null}
+        {q.options?.map((option) => (
+          <label key={option.id} className="flex cursor-pointer items-start gap-2 rounded p-1">
+            <input
+              type={q.kind === 'multiple' ? 'checkbox' : 'radio'}
+              name={`${event.payload.requestId}_${q.id}`}
+              value={option.id}
+              checked={value.optionIds?.includes(option.id) ?? false}
+              onChange={(e) =>
+                setValues((current) => ({
+                  ...current,
+                  [q.id]:
+                    q.kind === 'single'
+                      ? { questionId: q.id, optionIds: [option.id] }
+                      : {
+                          ...value,
+                          optionIds: e.target.checked
+                            ? [...(value.optionIds ?? []), option.id]
+                            : value.optionIds?.filter((id) => id !== option.id),
+                        },
+                }))
+              }
+            />
+            <span>
+              {option.label}
+              {option.recommended ? ` (${t('recommended')})` : ''}
+              {option.description ? (
+                <span className="block text-caption text-muted-foreground">
+                  {option.description}
+                </span>
+              ) : null}
+            </span>
+          </label>
+        ))}
+        {q.kind === 'text' || q.allowFreeText ? (
+          <label
+            className="flex flex-col gap-1"
+            htmlFor={`${event.payload.requestId}-${q.id}-text`}
+          >
+            {/* A lone text field sits right under its prompt; beside options it names itself. */}
+            <span className={q.options?.length ? undefined : 'sr-only'}>{t('yourAnswer')}</span>
+            <Input
+              id={`${event.payload.requestId}-${q.id}-text`}
+              nativeInput
+              value={value.text ?? ''}
+              maxLength={12000}
+              onChange={(e) => {
+                const content = e.target.value;
+                setValues((current) => ({
+                  ...current,
+                  [q.id]: {
+                    questionId: q.id,
+                    ...(q.kind === 'multiple' && value.optionIds?.length
+                      ? { optionIds: value.optionIds }
+                      : {}),
+                    ...(content.trim() ? { text: content } : {}),
+                  },
+                }));
+              }}
+            />
+          </label>
+        ) : null}
+      </fieldset>
+    );
+  };
   return (
     <form
       ref={form}
@@ -318,19 +444,21 @@ function UserQuestionPrompt({
         if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
           event.preventDefault();
       }}
-      className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 p-3 text-sm"
+      className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
       onSubmit={(e) => {
         e.preventDefault();
-        void submit();
+        // A question step's submit (Next, or Enter in a text answer) only moves on.
+        if (stepped && !reviewing) goTo(step + 1);
+        else void submit();
       }}
       aria-label={t('userQuestions')}
     >
-      <p role="status" className="text-xs font-medium text-muted-foreground">
-        {t('userQuestions')}
-      </p>
-      <p className="text-2xs text-muted-foreground">
-        {event.payload.executionId} · {t('attempt', { attempt: event.payload.attemptNo })}
-      </p>
+      <ExecutionLine
+        session={session}
+        executionId={event.payload.executionId}
+        attemptNo={event.payload.attemptNo}
+        action={action}
+      />
       {!request ? (
         <>
           <p>{t(loadFailed || text !== undefined ? 'questionUnavailable' : 'loadingPrompt')}</p>
@@ -338,94 +466,178 @@ function UserQuestionPrompt({
             {t('retryPrompt')}
           </Button>
         </>
-      ) : (
-        request.questions.map((q) => {
-          const value = values[q.id] ?? { questionId: q.id };
-          return (
-            <fieldset key={q.id} disabled={busy} className="flex flex-col gap-2">
-              <legend className="font-medium">{q.prompt}</legend>
-              {q.description ? (
-                <p className="whitespace-pre-wrap break-words text-muted-foreground">
-                  {q.description}
-                </p>
-              ) : null}
-              {q.options?.map((option) => (
-                <label
-                  key={option.id}
-                  className="flex cursor-pointer items-start gap-2 rounded p-1"
-                >
-                  <input
-                    type={q.kind === 'multiple' ? 'checkbox' : 'radio'}
-                    name={`${event.payload.requestId}_${q.id}`}
-                    value={option.id}
-                    checked={value.optionIds?.includes(option.id) ?? false}
-                    onChange={(e) =>
-                      setValues((current) => ({
-                        ...current,
-                        [q.id]:
-                          q.kind === 'single'
-                            ? { questionId: q.id, optionIds: [option.id] }
-                            : {
-                                ...value,
-                                optionIds: e.target.checked
-                                  ? [...(value.optionIds ?? []), option.id]
-                                  : value.optionIds?.filter((id) => id !== option.id),
-                              },
-                      }))
-                    }
-                  />
-                  <span>
-                    {option.label}
-                    {option.recommended ? ` (${t('recommended')})` : ''}
-                    {option.description ? (
-                      <span className="block text-xs text-muted-foreground">
-                        {option.description}
-                      </span>
-                    ) : null}
-                  </span>
-                </label>
+      ) : stepped ? (
+        <>
+          <h3
+            ref={stepHeading}
+            id={headingId}
+            tabIndex={-1}
+            className="text-caption text-muted-foreground tabular-nums outline-none"
+          >
+            {reviewing
+              ? t('reviewAnswers')
+              : t('questionStep', { current: step + 1, total: count })}
+          </h3>
+          {/* Every question keeps its native fieldset; only the current step is shown. */}
+          {request.questions.map((q, index) => questionFieldset(q, index !== step))}
+          {reviewing ? (
+            <ul aria-labelledby={headingId} className="flex flex-col divide-y divide-border">
+              {request.questions.map((q, index) => (
+                <ReviewRow
+                  key={q.id}
+                  question={q}
+                  answer={values[q.id]}
+                  busy={busy}
+                  onEdit={() => goTo(index)}
+                />
               ))}
-              {q.kind === 'text' || q.allowFreeText ? (
-                <label
-                  className="flex flex-col gap-1"
-                  htmlFor={`${event.payload.requestId}-${q.id}-text`}
-                >
-                  {t('yourAnswer')}
-                  <Input
-                    id={`${event.payload.requestId}-${q.id}-text`}
-                    nativeInput
-                    value={value.text ?? ''}
-                    maxLength={12000}
-                    onChange={(e) => {
-                      const content = e.target.value;
-                      setValues((current) => ({
-                        ...current,
-                        [q.id]: {
-                          questionId: q.id,
-                          ...(q.kind === 'multiple' && value.optionIds?.length
-                            ? { optionIds: value.optionIds }
-                            : {}),
-                          ...(content.trim() ? { text: content } : {}),
-                        },
-                      }));
-                    }}
-                  />
-                </label>
-              ) : null}
-            </fieldset>
-          );
-        })
+            </ul>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {step > 0 ? (
+              <Button
+                type="button"
+                size="compact"
+                variant="tertiary"
+                disabled={busy}
+                onClick={() => goTo(step - 1)}
+              >
+                {t('previousQuestion')}
+              </Button>
+            ) : null}
+            {reviewing ? (
+              <Button
+                type="submit"
+                size="compact"
+                disabled={busy || !validUserAnswers(request, answers)}
+              >
+                {t('sendAnswer')}
+              </Button>
+            ) : (
+              <Button type="submit" size="compact">
+                {t('nextQuestion')}
+              </Button>
+            )}
+          </div>
+        </>
+      ) : (
+        request.questions.map((q) => questionFieldset(q))
       )}
-      {request ? (
+      {request && !stepped ? (
         <Button type="submit" size="compact" disabled={busy || !validUserAnswers(request, answers)}>
           {t('sendAnswer')}
         </Button>
       ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
     </form>
+  );
+}
+
+/**
+ * Who is asking, in the person's words: the agent, its round and attempt. The exact execution id
+ * stays one copy away for a report.
+ */
+function ExecutionLine({
+  session,
+  executionId,
+  attemptNo,
+  action,
+}: {
+  session: RunSessionStore;
+  executionId: string;
+  attemptNo: number;
+  action?: ReactNode;
+}) {
+  const t = useTranslations('Harness');
+  const definition = useStore(session, (s) => s.definition);
+  const execution = useStore(session, (s) => s.projection?.executions[executionId]);
+  const round = useStore(session, (s) =>
+    execution?.iterationId ? s.projection?.iterations[execution.iterationId]?.no : undefined,
+  );
+  const [copied, setCopied] = useState(false);
+  const agent = execution
+    ? (definition?.nodes.find((node) => node.id === execution.nodeId)?.label ?? execution.nodeId)
+    : null;
+  const words = [
+    agent,
+    round ? t('round', { round }) : null,
+    t('attempt', { attempt: attemptNo }),
+  ].filter(Boolean);
+  return (
+    <p className="flex min-w-0 items-center gap-1 text-caption text-muted-foreground">
+      <RowAction action={action} />
+      <span className="min-w-0 truncate">{words.join(' · ')}</span>
+      <Tooltip content={copied ? t('executionIdCopied') : executionId}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-compact"
+          aria-label={t('copyExecutionId')}
+          onClick={() =>
+            void navigator.clipboard?.writeText(executionId).then(
+              () => setCopied(true),
+              () => setCopied(false),
+            )
+          }
+        >
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      </Tooltip>
+      <span role="status" className="sr-only">
+        {copied ? t('executionIdCopied') : ''}
+      </span>
+    </p>
+  );
+}
+
+/** One question on the review step: its answer, or that an answer is still required. */
+function ReviewRow({
+  question,
+  answer,
+  busy,
+  onEdit,
+}: {
+  question: UserInputRequest['questions'][number];
+  answer: UserAnswers[number] | undefined;
+  busy: boolean;
+  onEdit(): void;
+}) {
+  const t = useTranslations('Harness');
+  const given = answer ?? { questionId: question.id };
+  // Every question needs an answer; this is the shared rule, asked about this one question.
+  const missing = !validUserAnswers({ key: question.id, questions: [question] }, [given]);
+  const summary = [
+    ...(question.options ?? [])
+      .filter((option) => given.optionIds?.includes(option.id))
+      .map((option) => option.label),
+    ...(given.text ? [given.text] : []),
+  ].join(', ');
+  return (
+    <li className="flex items-start gap-2 py-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="break-words" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {question.prompt}
+        </span>
+        {missing ? (
+          <span className="text-warning">{t('answerMissing')}</span>
+        ) : (
+          <span className="whitespace-pre-wrap break-words text-muted-foreground">{summary}</span>
+        )}
+      </div>
+      <Button
+        type="button"
+        size="compact"
+        variant="ghost"
+        disabled={busy}
+        aria-label={t('editAnswerFor', { question: question.prompt })}
+        onClick={onEdit}
+      >
+        {t('editAnswer')}
+      </Button>
+    </li>
   );
 }

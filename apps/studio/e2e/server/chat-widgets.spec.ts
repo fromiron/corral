@@ -52,7 +52,7 @@ function updatePlan(corral: Harness, completed: number, expectedRevision = compl
 
 async function session(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
 }
 
@@ -170,7 +170,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     ).toHaveAttribute('aria-description', /^From next request · /);
     await send(page, 'Review and update the chat layout in several steps.');
     const plan = page.getByTestId('composer-work-plan');
-    const toggle = plan.getByRole('button', { name: /Work plan/ });
+    const toggle = page.getByTestId('work-plan-toggle');
     await expect(toggle).toContainText('0/7 done');
     const pills = page.getByTestId('composer-status-pills');
     await expect(pills).toBeVisible();
@@ -179,6 +179,11 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(page).toHaveURL(new RegExp(`run=${current(corral).runId}`));
     await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
     await panelTab(page, 'Conversation');
+    // A new plan is one line: its count and current step. The person expands it.
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toContainText(titles[0] ?? '');
+    await expect(plan.getByRole('listitem')).toHaveCount(0);
+    await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(plan.getByRole('listitem')).toHaveCount(5);
     await expect(page.getByTestId('run-monitor')).toBeHidden();
@@ -202,9 +207,10 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(inspector).toContainText('System prompt');
     await expect(inspector).toContainText('Built-in tools');
     await expect(inspector).toContainText('Messages');
+    // Escape steps back from the detail to the widgets, onto the card that opened it.
     await page.keyboard.press('Escape');
     await expect(inspector).toBeHidden();
-    await expect(context).toBeFocused();
+    await expect(context.getByRole('button', { name: 'Open Context details' })).toBeFocused();
     await closeOverview(page);
     expect(
       subscriptions.filter((path) => path.includes(`/runs/${current(corral).runId}/events`)),
@@ -256,7 +262,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     ).toHaveLength(2);
     expect(liveBody.items[2].status).toBe('in_progress');
     ask.release();
-    const question = page.getByRole('form', { name: 'Waiting for your answer' });
+    const question = page.getByRole('form', { name: 'Waiting for you' });
     await expect(page.getByTestId('action-required')).toBeVisible();
     // Faux responses do not serialize a provider request or invoke onPayload.
     // Their assembled context must not be promoted to a complete measurement.
@@ -264,10 +270,7 @@ test('live plans, context, manual collapse and an answer use the primary session
       /Context about \d+%/,
     );
     await closeOverview(page);
-    await page
-      .getByTestId('action-required')
-      .getByText('Go to the request', { exact: true })
-      .click();
+    await page.getByTestId('action-required').getByText('Respond', { exact: true }).click();
     await page.getByTestId('run-respond').click();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);
@@ -383,7 +386,7 @@ test.describe('serialized provider context', () => {
     await closeOverview(page);
     await page.getByTestId('action-required').getByRole('link').click();
     await page.getByTestId('run-respond').click();
-    const question = page.getByRole('form', { name: 'Waiting for your answer' });
+    const question = page.getByRole('form', { name: 'Waiting for you' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();
     await panelTab(page, 'Conversation');
@@ -416,8 +419,7 @@ test('inspecting the current result preserves the draft while a newer result rep
   ]);
   try {
     await send(page, 'Update the layout with a new result.');
-    const plan = page.getByTestId('composer-work-plan');
-    const toggle = plan.getByRole('button', { name: /Work plan/ });
+    const toggle = page.getByTestId('work-plan-toggle');
     await expect(toggle).toContainText('0/7 done');
     const activeRunId = current(corral).runId;
     expect(activeRunId).not.toBe(earlierRunId);
@@ -481,7 +483,7 @@ test('inspecting the current result preserves the draft while a newer result rep
   }
 });
 
-test('a finished checklist does not finish its run, and only automatic disclosure collapses on success', async ({
+test('a finished checklist does not finish its run, and the plan stays one line unless opened', async ({
   page,
   corral,
 }) => {
@@ -502,11 +504,11 @@ test('a finished checklist does not finish its run, and only automatic disclosur
     await session(page, corral);
     await send(page, 'Complete the checklist and then submit its result.');
     const plan = page.getByTestId('composer-work-plan');
-    const toggle = plan.getByRole('button', { name: /Work plan/ });
+    const toggle = page.getByTestId('work-plan-toggle');
     await expect(toggle).toContainText('0/7 done');
     completePlan.release();
     await expect(toggle).toContainText('7/7');
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(toggle).toContainText('run still going');
     expect(current(corral).projection.status).toBe('running');
     completeRun.release();

@@ -1,20 +1,32 @@
 'use client';
 
 // Shared building blocks for the agent components: the run-status vocabulary
-// and its glyphs, the agent/tool identity marks, and the small live readouts
-// (meter, sparkline, live dot, keycap). Every agent component imports from
-// here, so a status color or avatar change lands everywhere at once.
+// and its glyphs, the agent/tool identity marks, the small live readouts
+// (meter, sparkline, live dot, keycap), and the motion helpers every panel
+// reuses (measured collapse, rolling text, disclosure chevron, drawn check).
+// Every agent component imports from here, so a status color, avatar, or
+// fold timing change lands everywhere at once.
 
-import { motion, useReducedMotion } from 'motion/react';
-import { type CSSProperties, forwardRef, type HTMLAttributes, type ReactNode, useId } from 'react';
-import { initials } from '../../lib/agent-format.ts';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import {
+  type CSSProperties,
+  forwardRef,
+  type HTMLAttributes,
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { formatCount, initials } from '../../lib/agent-format.ts';
 import { type AgentLogoName, agentLogos, isAgentLogoName } from '../../lib/agent-logos.tsx';
 import { Elevated } from '../../lib/elevated.tsx';
 import { fontWeights } from '../../lib/font-weight.ts';
-import type { IconComponent } from '../../lib/icon-context.tsx';
+import { type IconComponent, type IconComponentProps, useIcons } from '../../lib/icon-context.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
 import { SizeProvider, type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
-import { loop, spring } from '../../lib/springs.ts';
+import { loop, spring, tween } from '../../lib/springs.ts';
 import { SURFACE_BG } from '../../lib/surface-classes.ts';
 import { useSurface } from '../../lib/surface-context.tsx';
 import { cn } from '../../lib/utils.ts';
@@ -424,6 +436,257 @@ const AgentCard = forwardRef<HTMLDivElement, AgentCardProps>(
 );
 AgentCard.displayName = 'AgentCard';
 
+// ─── Motion helpers ──────────────────────────────────────────────────────────
+
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+type CollapseProps = Omit<
+  HTMLAttributes<HTMLDivElement>,
+  'children' | 'onAnimationStart' | 'onDrag' | 'onDragStart' | 'onDragEnd'
+> & {
+  /** Shown at the content's measured height, or folded to 0. Defaults to
+   *  `true`: the box then just springs to follow its content's height. */
+  open?: boolean;
+  /** The content rises 4px into place as it opens. */
+  lift?: boolean;
+  /** Sets `hidden` once fully closed, so a closed fold adds no width
+   *  (e.g. a panel under a header pill). */
+  hideWhenClosed?: boolean;
+  /** Class on the inner, measured element. */
+  innerClassName?: string;
+  children: ReactNode;
+};
+
+/**
+ * Height collapse: measures the content and springs to its pixel height (never
+ * `"auto"`), fading with it; closed content is `inert`. Re-measures on resize,
+ * so growing content stays in step. Don't nest two of these.
+ */
+function Collapse({
+  open = true,
+  lift = false,
+  hideWhenClosed = false,
+  innerClassName,
+  className,
+  children,
+  ...props
+}: CollapseProps) {
+  const reduce = useReducedMotion() ?? false;
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const [shown, setShown] = useState(open);
+  if (open && !shown) setShown(true);
+
+  useIsoLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    // A `hidden` fold has no boxes and reports 0; keep the last real height.
+    const measure = () => {
+      if (el.getClientRects().length) setHeight(el.offsetHeight);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Re-measure before paint on open, so the spring targets a fresh height.
+  useIsoLayoutEffect(() => {
+    const el = innerRef.current;
+    if (open && el?.getClientRects().length) setHeight(el.offsetHeight);
+  }, [open]);
+
+  const transition = reduce ? { duration: 0 } : open ? spring.moderate : spring.moderate.exit;
+  return (
+    <motion.div
+      className={cn('overflow-hidden', className)}
+      initial={false}
+      animate={{ height: open ? (height ?? 'auto') : 0, opacity: open ? 1 : 0 }}
+      transition={transition}
+      inert={!open || undefined}
+      hidden={hideWhenClosed && !open && !shown}
+      onAnimationComplete={hideWhenClosed ? () => !open && setShown(false) : undefined}
+      {...props}
+    >
+      {lift && !reduce ? (
+        <motion.div
+          ref={innerRef}
+          className={innerClassName}
+          initial={false}
+          animate={{ y: open ? 0 : 4 }}
+          transition={transition}
+        >
+          {children}
+        </motion.div>
+      ) : (
+        <div ref={innerRef} className={innerClassName}>
+          {children}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+interface RollProps {
+  /** Changing it rolls the old content out and the new content in. */
+  id: string | number;
+  /** `1` rolls up (default), `-1` rolls down (e.g. a count going down). */
+  direction?: 1 | -1;
+  /** Class on the clipping box. */
+  className?: string;
+  /** Class on each rolling copy (e.g. `flex items-center gap-2`). */
+  innerClassName?: string;
+  children: ReactNode;
+}
+
+/** Text that rolls when its `id` changes: status words, the current step, a
+ *  count. Old and new share one grid cell, so the box never jumps. Crossfades
+ *  without movement under reduced motion. */
+function Roll({ id, direction = 1, className, innerClassName, children }: RollProps) {
+  const reduce = useReducedMotion() ?? false;
+  const offset = (d: number) => (reduce ? 0 : `${70 * d}%`);
+  return (
+    <span className={cn('relative inline-grid min-w-0 overflow-hidden align-bottom', className)}>
+      <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+        <motion.span
+          key={id}
+          custom={direction}
+          className={cn('col-start-1 row-start-1 min-w-0', innerClassName)}
+          variants={{
+            enter: (d: number) => ({ opacity: 0, y: offset(d) }),
+            center: { opacity: 1, y: 0, transition: spring.moderate },
+            exit: (d: number) => ({ opacity: 0, y: offset(-d), transition: spring.moderate.exit }),
+          }}
+          initial="enter"
+          animate="center"
+          exit="exit"
+        >
+          {children}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+interface RollNumberProps {
+  value: number;
+  /** Text for the value; defaults to `formatCount` (`1,312`). */
+  format?: (value: number) => string;
+  className?: string;
+}
+
+/** A number that rolls up when it grows and down when it shrinks. */
+function RollNumber({ value, format = formatCount, className }: RollNumberProps) {
+  const [prev, setPrev] = useState(value);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  if (prev !== value) {
+    setPrev(value);
+    setDirection(value > prev ? 1 : -1);
+  }
+  return (
+    <Roll id={value} direction={direction} className={cn('tabular-nums', className)}>
+      {format(value)}
+    </Roll>
+  );
+}
+
+/** The chevron on a disclosure: points down, turns up when `open`, and its
+ *  stroke goes from 1.5 to 2 while open. Muted by default; pass
+ *  `className="text-current"` to follow the button's own (hover) color. */
+function DisclosureChevron({
+  open,
+  size = 14,
+  className,
+}: {
+  open: boolean;
+  size?: number;
+  className?: string;
+}) {
+  const icons = useIcons();
+  const Icon = icons['chevron-down'];
+  return (
+    <motion.span
+      aria-hidden
+      className={cn(
+        'pointer-events-none grid shrink-0 place-items-center text-muted-foreground',
+        className,
+      )}
+      initial={false}
+      animate={{ rotate: open ? 180 : 0 }}
+      transition={spring.moderate}
+    >
+      <Icon size={size} strokeWidth={open ? 2 : 1.5} />
+    </motion.span>
+  );
+}
+
+interface DrawnCheckProps {
+  size?: number;
+  strokeWidth?: number;
+  /** Seconds before the stroke starts drawing. */
+  delay?: number;
+  className?: string;
+  style?: CSSProperties;
+}
+
+/** A check mark whose stroke draws in once (slow tween); static under reduced
+ *  motion. Colors with `currentColor`. */
+function DrawnCheck({
+  size = 16,
+  strokeWidth = 2.2,
+  delay = 0,
+  className,
+  style,
+}: DrawnCheckProps) {
+  const reduce = useReducedMotion() ?? false;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={cn('shrink-0', className)}
+      style={style}
+    >
+      <motion.path
+        d="M5 12.5L9.5 17L19 7"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={reduce ? false : { pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ ...tween.slow, delay: reduce ? 0 : delay }}
+      />
+    </svg>
+  );
+}
+
+/** A check in a circle, as an icon component (connected, allowed, passed). */
+function CircleCheck({ size = 16, strokeWidth = 1.5, className }: IconComponentProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={cn('shrink-0', className)}
+    >
+      <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth={strokeWidth} />
+      <path
+        d="M8 12.4l2.7 2.7 5.3-5.4"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // ─── Live readouts ───────────────────────────────────────────────────────────
 
 interface MeterProps extends HTMLAttributes<HTMLDivElement> {
@@ -433,11 +696,16 @@ interface MeterProps extends HTMLAttributes<HTMLDivElement> {
   color?: string;
   /** Accessible label; omit to hide the meter from assistive tech. */
   label?: string;
+  /** Sweeps a sheen across the fill while something is live (stops under
+   *  reduced motion). The fill then clips instead of scaling, so the band
+   *  keeps its shape. */
+  live?: boolean;
 }
 
-/** A thin progress bar; the fill scales (transform only) on the moderate spring. */
+/** A thin progress bar; the fill scales (transform only) on the moderate
+ *  spring, or clips with a sheen when `live`. */
 const Meter = forwardRef<HTMLDivElement, MeterProps>(
-  ({ value, color = 'var(--foreground)', label, className, ...props }, ref) => {
+  ({ value, color = 'var(--foreground)', label, live = false, className, ...props }, ref) => {
     const v = Math.max(0, Math.min(1, value));
     return (
       // biome-ignore lint/a11y/useAriaPropsSupportedByRole: the label is set only with role="progressbar".
@@ -452,13 +720,25 @@ const Meter = forwardRef<HTMLDivElement, MeterProps>(
         aria-hidden={label ? undefined : true}
         {...props}
       >
-        <motion.div
-          className="absolute inset-0 origin-left rounded-full"
-          style={{ backgroundColor: color }}
-          initial={false}
-          animate={{ scaleX: v }}
-          transition={spring.moderate}
-        />
+        {live ? (
+          <motion.div
+            className="absolute inset-0 overflow-hidden rounded-full"
+            style={{ backgroundColor: color }}
+            initial={false}
+            animate={{ clipPath: `inset(0 ${(1 - v) * 100}% 0 0 round 9999px)` }}
+            transition={spring.moderate}
+          >
+            <span className="sheen block size-full" />
+          </motion.div>
+        ) : (
+          <motion.div
+            className="absolute inset-0 origin-left rounded-full"
+            style={{ backgroundColor: color }}
+            initial={false}
+            animate={{ scaleX: v }}
+            transition={spring.moderate}
+          />
+        )}
       </div>
     );
   },
@@ -597,7 +877,11 @@ export type {
   AgentStatusIconProps,
   AgentStatusLabelProps,
   AgentTone,
+  CollapseProps,
+  DrawnCheckProps,
   MeterProps,
+  RollNumberProps,
+  RollProps,
   SparklineProps,
   ToolStackProps,
 };
@@ -611,10 +895,16 @@ export {
   agentStatusBadgeColor,
   agentStatusColor,
   agentStatusLabels,
+  CircleCheck,
+  Collapse,
+  DisclosureChevron,
+  DrawnCheck,
   Keycap,
   LiveDot,
   MetaDot,
   Meter,
+  Roll,
+  RollNumber,
   resolveMark,
   SizeScope,
   Sparkline,

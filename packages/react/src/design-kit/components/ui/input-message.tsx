@@ -1164,9 +1164,10 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
             className={cn(
               'flex flex-wrap items-center justify-between',
               // Compact scales every button in the row (slots are
-              // consumer-authored) down to 24px.
+              // consumer-authored) down to 24px. The model chip keeps 24px as its least
+              // height: a name it cannot fit takes another line instead of being cut.
               compactStep
-                ? 'gap-1.5 [&_button]:h-6 [&_button.w-7]:w-6 [&_button]:text-[length:var(--fs-caption-compact,11px)] [&_button]:leading-[var(--lh-caption-compact,14px)]'
+                ? 'gap-1.5 [&_button:not([data-slot=model-picker-trigger])]:h-6 [&_[data-slot=model-picker-trigger]]:min-h-6 [&_button.w-7]:w-6 [&_button]:text-[length:var(--fs-caption-compact,11px)] [&_button]:leading-[var(--lh-caption-compact,14px)]'
                 : 'gap-2',
             )}
           >

@@ -1,6 +1,14 @@
 import { FAKE_CODEX_ACCESS, FAKE_REDIRECT_OK } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { addAgentAndOutput, openTestRun, teamCanvas } from '../workbench.ts';
+import {
+  addAgentAndOutput,
+  editModels,
+  modelSettingsTab,
+  openLibrary,
+  openLibraryTeams,
+  openTestRun,
+  teamCanvas,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 /** Models live under Settings (Workbench polish: one way into settings). */
@@ -15,7 +23,7 @@ async function openModels(page: Page) {
 test.use({ live: true });
 
 async function agentToOutput(page: Page) {
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.getByRole('button', { name: 'New team' }).click();
   await addAgentAndOutput(page);
   await openTestRun(page);
@@ -103,7 +111,7 @@ test.describe('a borrowed Codex CLI login', () => {
     await expect(openai.getByTestId('auth-status')).toContainText(
       'Using your Codex CLI login (read only)',
     );
-    await expect(openai).toContainText('Corral does not renew it');
+    await expect(openai).toContainText('When it expires, run codex to sign in again.');
     await expect(openai).toContainText('Current token valid until');
     // Signing out of Codex happens in Codex; a Corral sign-in can take over instead.
     await expect(openai.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
@@ -237,11 +245,12 @@ test('asks the signed-in model for a team draft once and opens it after review',
     });
   }, FAKE_REDIRECT_OK);
   await page.reload();
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibrary(page, 'Templates');
   await page.getByRole('button', { name: 'Draft from a goal' }).click();
   const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
   await dialog.getByLabel('What should the team do?').fill('Announce the new API');
-  await expect(dialog).toContainText('Uses one model request');
+  // The button itself says what asking costs.
+  await expect(dialog.getByRole('button', { name: 'Ask the model' })).toContainText('1 request');
   const draftRequest = page.waitForRequest(
     (request) => request.url().endsWith('/api/v1/team-drafts') && request.method() === 'POST',
   );
@@ -254,6 +263,7 @@ test('asks the signed-in model for a team draft once and opens it after review',
   await expect(teamCanvas(page).locator('[data-node]', { hasText: 'Copywriter' })).toHaveCount(1);
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   await openModels(page);
+  await modelSettingsTab(page, 'Usage');
   const usage = page.getByRole('region', { name: 'Model request history' });
   await usage.getByRole('button', { name: 'Load history', exact: true }).click();
   await expect(usage.getByRole('table')).toContainText('Subscription');
@@ -281,7 +291,7 @@ test.describe('editing models on the Models page', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    await page.getByRole('button', { name: 'Edit models' }).click();
+    await editModels(page);
     const editor = page.getByRole('region', { name: 'Edit models' });
     await editor.getByRole('button', { name: 'Add endpoint' }).click();
     await editor.getByLabel('Endpoint id 1').fill('hive');
@@ -327,17 +337,20 @@ test.describe('editing models on the Models page', () => {
     expect(JSON.stringify(stored)).not.toContain('fixture-inline-key');
     await editor.getByRole('button', { name: 'Save models' }).click();
     await expect(editor).toHaveCount(0);
+    // Endpoint sign-in cards are on the Sign-in tab; the editor is on Profiles.
+    await modelSettingsTab(page, 'Sign-in');
     await expect(page.getByTestId('provider-hive').getByTestId('auth-status')).toContainText(
       'Using the API key you entered',
     );
     expect(await page.content()).not.toContain('fixture-inline-key');
     // #88: once saved, the key has one home, the endpoint's sign-in card.
-    await page.getByRole('button', { name: 'Edit models' }).click();
+    await editModels(page);
     await expect(editor.getByLabel('Endpoint id 1')).toHaveValue('hive');
     await expect(editor.getByLabel('API key', { exact: true })).toHaveCount(0);
     await editor
       .getByRole('button', { name: 'Change the key on the Hive card', exact: true })
       .click();
+    // Product gap: the card is on the hidden Sign-in tab and the button does not switch to it.
     await expect(page.getByTestId('provider-hive')).toBeFocused();
     expect(corral.errors.filter((e) => !e.includes('503'))).toEqual([]);
   });
@@ -347,7 +360,7 @@ test.describe('editing models on the Models page', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    await page.getByRole('button', { name: 'Edit models' }).click();
+    await editModels(page);
     const editor = page.getByRole('region', { name: 'Edit models' });
     await editor.getByRole('button', { name: 'Add endpoint' }).click();
     await editor.getByLabel('Endpoint id 1').fill('local');
@@ -369,12 +382,15 @@ test.describe('editing models on the Models page', () => {
       });
       if (!response.ok) throw new Error('fixture config update failed');
     });
-    // Signing in refreshes the parent loader while the editor stays mounted.
+    // Signing in refreshes the parent loader while the editor stays mounted on its hidden
+    // Profiles tab (every model settings tab stays mounted).
+    await modelSettingsTab(page, 'Sign-in');
     await page
       .getByTestId('provider-openai')
       .getByRole('button', { name: 'Sign in', exact: true })
       .click();
     await expect(page.getByRole('link', { name: 'Open the sign-in page' })).toBeVisible();
+    await modelSettingsTab(page, 'Profiles');
     await editor.getByRole('button', { name: 'Save models' }).click();
     await expect(editor.getByRole('alert')).toContainText('Models changed');
     await expect(editor.getByLabel('Endpoint name 1')).toHaveValue('Keep my draft');
@@ -388,7 +404,7 @@ test.describe('editing models on the Models page', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    await page.getByRole('button', { name: 'Edit models' }).click();
+    await editModels(page);
     const editor = page.getByRole('region', { name: 'Edit models' });
     await editor.getByRole('combobox', { name: 'Model of model-a', exact: true }).click();
     await page.getByRole('option', { name: 'Test B', exact: true }).click();
@@ -411,7 +427,7 @@ test.describe('editing models on the Models page', () => {
     await expect(page.getByTestId('provider-ollama')).toContainText('No key needed');
     await page.reload();
     await expect(page.getByTestId('profile-model-a')).toContainText('openai/gpt-test-b');
-    await page.getByRole('button', { name: 'Edit models' }).click();
+    await editModels(page);
     await expect(page.getByRole('switch', { name: 'Linux isolation · model-b' })).toBeChecked();
     expect(corral.errors).toEqual([]);
   });
@@ -421,7 +437,7 @@ test.describe('editing models on the Models page', () => {
     corral,
   }) => {
     await corral.open('/settings/models');
-    await page.getByRole('button', { name: 'Edit models' }).click();
+    await editModels(page);
     const editor = page.getByRole('region', { name: 'Edit models' });
     await editor.getByRole('button', { name: 'Add endpoint' }).click();
     await editor.getByLabel('Endpoint id 1').fill('lan');
@@ -438,7 +454,7 @@ test.describe('editing models on the Models page', () => {
 
 test('profile context preview, explicit zero and round-trip', async ({ page, corral }) => {
   await corral.open('/settings/models');
-  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  await editModels(page);
   const editor = page.getByRole('region', { name: 'Edit models' });
   await editor.getByLabel('Context window · model-a').fill('64000');
   await editor.getByLabel('Summary reserve · model-a').fill('0');
@@ -450,7 +466,7 @@ test('profile context preview, explicit zero and round-trip', async ({ page, cor
   await editor.getByRole('button', { name: 'Save models' }).click();
   await expect(editor).toHaveCount(0);
   await page.reload();
-  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  await editModels(page);
   await expect(editor.getByLabel('Summary reserve · model-a')).toHaveValue('0');
   await expect(editor.getByLabel('Recent history · model-a')).toHaveValue('0');
   const saved = await page.evaluate(async () => (await fetch('/api/v1/model-config')).json());
@@ -495,7 +511,7 @@ test('endpoint renaming keeps original model metadata', async ({ page, corral })
     if (!result.ok) throw new Error('fixture save failed');
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Edit models', exact: true }).click();
+  await editModels(page);
   const editor = page.getByRole('region', { name: 'Edit models' });
   await editor.getByLabel('Endpoint id 1').fill('renamed');
   await editor.getByRole('button', { name: 'Save models' }).click();

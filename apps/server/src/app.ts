@@ -116,6 +116,7 @@ import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
 import { registerGitAdvancedRoutes } from './files/git-advanced-routes.ts';
+import { type FffModule, FffPathEngine } from './files/path-engine.ts';
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { McpCredentials } from './harness/mcp-credentials.ts';
@@ -228,6 +229,11 @@ export interface ServerOptions {
   worktreeRoot?: string;
   /** Opt-in only for a local launcher; remote and generic servers leave this off. */
   allowSharedDevelopment?: boolean;
+  /**
+   * FFF's native module for path search ranking: launchers pass `loadFff`, tests a fake. Without
+   * it path search uses only the built-in engine.
+   */
+  fff?: () => Promise<FffModule>;
 }
 
 export interface LiveModels {
@@ -315,11 +321,14 @@ const CreateCorral = z.strictObject({
   projectId: Identifier.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
+// Bounded here; the session rules (20 lines of 1 to 200 characters) answer with their reason.
+const CriteriaBody = z.array(z.string().max(2_000)).max(100).optional();
 const CreateSession = z.strictObject({
   projectId: Identifier,
   title: z.string().max(200),
   autoTitle: z.boolean().optional(),
   objective: z.string().max(20_000).optional(),
+  criteria: CriteriaBody,
   corralId: Identifier.nullable().optional(),
   /** creates a meeting with these participants. */
   meeting: MeetingConfig.optional(),
@@ -327,6 +336,7 @@ const CreateSession = z.strictObject({
 const UpdateSession = z.strictObject({
   title: z.string().max(200).optional(),
   objective: z.string().max(20_000).optional(),
+  criteria: CriteriaBody,
   corralId: Identifier.nullable().optional(),
   auto: AutoModelChoice.nullable().optional(),
   pinned: z.boolean().optional(),
@@ -491,6 +501,15 @@ async function createCorralServer(
     worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
+    ...(options.fff
+      ? {
+          pathEngine: new FffPathEngine({
+            load: options.fff,
+            clock,
+            dataDir: join(workspace.root, '.corral', 'path-search'),
+          }),
+        }
+      : {}),
     debugPreview: async (sessionId, leaseId, target, open) => {
       const current = () =>
         canonicalJson(files.developmentState(sessionId).target) === canonicalJson(target);
@@ -836,6 +855,7 @@ async function createCorralServer(
     version: packageJson.version,
     backendSessionId,
     live: registry !== null,
+    pathEngine: await files.pathEngineStatus(),
   }));
   // Stored with the workspace so a new loopback port does not reset an explicit choice.
   const modeChoices = z.record(z.string().min(1).max(512), z.enum(['mock', 'live']));
@@ -1807,7 +1827,17 @@ async function createCorralServer(
     now: () => clock.nowIso(),
     id: () => `schedule_${crypto.randomUUID().replaceAll('-', '')}`,
     repository: corrals,
-    start: (request, signal) => autoStarter.start(request, { fileTools: false, signal }),
+    // a scheduled request is admitted like a typed one: with the session's current criteria.
+    start: async (request, signal) => {
+      const sessionCriteria = request.sessionId
+        ? (await corrals.getSession(request.sessionId))?.criteria
+        : undefined;
+      return autoStarter.start(request, {
+        fileTools: false,
+        signal,
+        ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+      });
+    },
     previous: recordedAuto,
     isRunActive: (id) => {
       const run = coordinator.listRuns().find((item) => item.runId === id);
@@ -1872,6 +1902,8 @@ async function createCorralServer(
     if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
       const resend = coordinator.hasStartCommand(body.commandId);
+      // A resend returns its first start, so the session is read for a new admission only.
+      let sessionCriteria: string[] | undefined;
       if (!resend) {
         const session = await corrals.getSession(body.sessionId);
         if (!session) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
@@ -1881,6 +1913,7 @@ async function createCorralServer(
             'CAPABILITY_DENIED',
             'A meeting starts answers through its rounds only.',
           );
+        sessionCriteria = session.criteria;
       }
       const work = autoStarter.start(
         {
@@ -1898,7 +1931,11 @@ async function createCorralServer(
           ...(body.team ? { team: body.team } : {}),
           ...(body.references ? { references: body.references } : {}),
         },
-        { fileTools: false, signal: dropped.signal },
+        {
+          fileTools: false,
+          signal: dropped.signal,
+          ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+        },
       );
       if (!autoRequests.has(body.commandId)) {
         const pending = { sessionId: body.sessionId, controller: dropped, work };
@@ -2238,14 +2275,23 @@ async function createCorralServer(
         })
         .safeParse(request.query);
       if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'q and limit are invalid');
+      const dropped = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableEnded) dropped.abort();
+      };
+      reply.raw.once('close', onClose);
+      if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
       try {
         return await files.searchPaths(
           { kind, id: request.params.id },
           query.data.q,
           query.data.limit,
+          dropped.signal,
         );
       } catch (error) {
         return workspaceFail(reply, error);
+      } finally {
+        reply.raw.off('close', onClose);
       }
     });
     app.get<{ Params: { id: string } }>(`${base}/file`, async (request, reply) => {
@@ -2970,6 +3016,12 @@ async function createCorralServer(
       coordinator.listRuns(),
     );
   });
+  app.get<ProjectParams>(
+    '/api/v1/projects/:projectId/session-evidence',
+    async (request, reply) =>
+      review.sessionEvidence(request.params.projectId) ??
+      fail(reply, 'TARGET_NOT_FOUND', 'no such project'),
+  );
 
   // ── Work sessions ───────────────────────────────────────────────────
   const sessionReply = (reply: FastifyReply, result: SessionResult, created: boolean) => {

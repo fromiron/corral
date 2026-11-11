@@ -3,8 +3,11 @@ import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@co
 import { StatusDot } from '@corral/react';
 import {
   Button,
+  cn,
+  fontWeights,
   Sidebar as KitSidebar,
   Menu,
+  MenuGroup,
   MenuItem,
   MenuPopup,
   MenuTrigger,
@@ -24,28 +27,39 @@ import {
   SidebarMenuSubItem,
   type SidebarRailProps,
   SidebarSearchField,
-  SidebarSeparator,
+  SidebarWorkspaceHeader,
   Tooltip,
   useSize,
   WorkspaceTile,
 } from '@corral/react/design-kit';
 import {
+  BookOpen,
   ChevronDown,
   Clock3,
   Ellipsis,
   Folder,
-  FolderPlus,
   Inbox,
+  MessageCircle,
   PanelLeft,
   Pin,
   Settings,
+  Sparkles,
   SquarePen,
-  TextSearch,
+  Users,
 } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
+import { openPalette } from '../commandRegistry.ts';
 import { desktop } from '../desktop.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import {
@@ -57,6 +71,7 @@ import {
 import { useServices } from '../services.tsx';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
+import { openNewMeeting } from './NewMeeting.tsx';
 import { useSettingsNavigation, workHref } from './navigation.ts';
 import {
   inboxNotificationTargets,
@@ -66,13 +81,12 @@ import {
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { watchRunList } from './runList.ts';
-import { SessionSearchDialog } from './SessionSearchDialog.tsx';
 import {
   completedScheduleRuns,
   type ScheduledRunOutcome,
   scheduledRunOutcomes,
 } from './scheduledRuns.ts';
-import { sessionListState, uncertainSessionTerminal } from './sessionList.ts';
+import { needsYouCount, sessionListState, uncertainSessionTerminal } from './sessionList.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
 import { useModelProfiles } from './useModels.ts';
 import { useSessionAge } from './useSessionAge.ts';
@@ -226,6 +240,33 @@ export function useCorralSidebar() {
 
 const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
 
+/**
+ * Row heights of the project list, per density. A session row holds its title and one line of
+ * state and time, each at its type role's full line height, so neither line is clipped. The
+ * virtual list positions rows by these, so the rows are drawn at exactly these heights.
+ */
+export function sidebarRowHeights(compact: boolean) {
+  return compact
+    ? { project: 28, session: 36, empty: 24 }
+    : { project: 32, session: 44, empty: 28 };
+}
+const SESSION_ROW = { default: 'h-11', compact: 'h-9' } as const;
+
+/** Tab or Escape out of a row menu puts focus back on that row's trigger (workbench.md). */
+function returnFocusOnClose(
+  event: KeyboardEvent<HTMLElement>,
+  open: boolean,
+  trigger: string,
+  close: () => void,
+) {
+  if (!open || !['Tab', 'Escape'].includes(event.key)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const button = event.currentTarget.querySelector<HTMLElement>(trigger);
+  close();
+  requestAnimationFrame(() => button?.focus());
+}
+
 export const Sidebar = memo(function Sidebar({
   model,
   mobile = false,
@@ -240,6 +281,7 @@ export const Sidebar = memo(function Sidebar({
   const tw = useTranslations('Workbench');
   const tp = useTranslations('Projects');
   const ts = useTranslations('Sessions');
+  const shell = useTranslations('Shell');
   const studio = useTranslations('Studio');
   const ago = useSessionAge();
   const status = useTranslations('Status');
@@ -250,14 +292,10 @@ export const Sidebar = memo(function Sidebar({
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const settingsNavigation = useSettingsNavigation();
-  const [query, setQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchText = useTranslations('SessionSearch');
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const needle = query.trim().toLocaleLowerCase();
   const [collapsed, setCollapsed] = useRemembered<Record<string, boolean>>(
     'corral:sidebar-collapsed:v1',
     {},
@@ -265,9 +303,14 @@ export const Sidebar = memo(function Sidebar({
   const scroll = useRef<HTMLElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
-  const compact = useSize().variant === 'compact';
-  const projectHeight = compact ? 28 : 32;
-  const sessionHeight = compact ? 24 : 28;
+  const size = useSize();
+  const compact = size.variant === 'compact';
+  const heights = useMemo(() => sidebarRowHeights(compact), [compact]);
+  const projectHeight = heights.project;
+  const waiting = useMemo(
+    () => needsYouCount(model.sessions, model.runs, model.terminalAttention),
+    [model.sessions, model.runs, model.terminalAttention],
+  );
   const rows = useMemo(() => {
     const result: (
       | { kind: 'project'; project: ProjectSummary }
@@ -276,23 +319,20 @@ export const Sidebar = memo(function Sidebar({
     )[] = [];
     const groups = new Map<string, WorkSession[]>();
     for (const session of model.sessions) {
-      if (needle && !`${session.title}\n${session.objective}`.toLocaleLowerCase().includes(needle))
-        continue;
       const group = groups.get(session.projectId) ?? [];
       group.push(session);
       groups.set(session.projectId, group);
     }
     for (const project of model.projects) {
       const sessions = groups.get(project.projectId) ?? [];
-      if (needle && !sessions.length) continue;
       result.push({ kind: 'project', project });
-      if (!needle && collapsed?.[project.projectId] === true) continue;
+      if (collapsed?.[project.projectId] === true) continue;
       sessions.sort(bySidebarOrder);
       for (const session of sessions) result.push({ kind: 'session', session });
       if (!sessions.length) result.push({ kind: 'empty', id: project.projectId });
     }
     return result;
-  }, [model.projects, model.sessions, needle, collapsed]);
+  }, [model.projects, model.sessions, collapsed]);
   // Keep one virtual range across projects, but retain the source tree ancestry
   // for every mounted conversation. A project header remains with its visible
   // children even when that header itself is above the viewport.
@@ -310,17 +350,17 @@ export const Sidebar = memo(function Sidebar({
         groups.push({ project: row.project, index, start: offset, size: 0 });
       const group = groups.at(-1);
       if (!group) continue;
-      const height = row.kind === 'project' ? projectHeight : sessionHeight;
+      const height = heights[row.kind];
       group.size += height;
       byIndex[index] = group;
       offset += height;
     }
     return { groups, byIndex };
-  }, [rows, projectHeight, sessionHeight]);
+  }, [rows, heights]);
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroll.current,
-    estimateSize: (index) => (rows[index]?.kind === 'project' ? projectHeight : sessionHeight),
+    estimateSize: (index) => heights[rows[index]?.kind ?? 'session'],
     scrollMargin,
     overscan: 8,
     getItemKey: (index) => {
@@ -336,8 +376,8 @@ export const Sidebar = memo(function Sidebar({
     const viewport = scroll.current;
     const menu = list.current;
     if (!viewport || !menu) return;
-    // The source Workspace group and project label share this scroller. Their
-    // measured height is the virtual list's origin, not another scroll surface.
+    // The primary menu and project label share this scroller. Their measured
+    // height is the virtual list's origin, not another scroll surface.
     const measure = () =>
       setScrollMargin(
         menu.getBoundingClientRect().top -
@@ -350,6 +390,13 @@ export const Sidebar = memo(function Sidebar({
     observer.observe(content ?? menu);
     return () => observer.disconnect();
   }, []);
+  // A density change resizes every row: the virtual list lays them out again.
+  const laidOut = useRef(heights);
+  useLayoutEffect(() => {
+    if (laidOut.current === heights) return;
+    laidOut.current = heights;
+    virtual.measure();
+  }, [heights, virtual]);
   const virtualItems = virtual.getVirtualItems();
   const visibleGroups = new Map<(typeof tree.groups)[number], typeof virtualItems>();
   for (const item of virtualItems) {
@@ -367,11 +414,11 @@ export const Sidebar = memo(function Sidebar({
   const sessionTabIndex = mountedRows.some((row) => row.index === activeIndex)
     ? activeIndex
     : mountedRows.find((row) => rows[row.index]?.kind === 'session')?.index;
-  // Navigate/search brings the selected session into view; background data changes do not.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only intentional navigation/search scrolls the sidebar
+  // Navigation brings the selected session into view; background data changes do not.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only intentional navigation scrolls the sidebar
   useLayoutEffect(() => {
     if (hasActive) virtual.scrollToIndex(activeIndex, { align: 'auto' });
-  }, [path, needle, hasActive, virtual]);
+  }, [path, hasActive, virtual]);
 
   const update = async (
     session: WorkSession,
@@ -400,84 +447,143 @@ export const Sidebar = memo(function Sidebar({
     }
   };
 
+  // One reading of whether requests reach a real model, said once: the header's word, which
+  // only no model, the demo and simulation have; a normal connection shows none. The full form
+  // is only the Corral menu's accessible name.
+  const noModel = mode === 'server' && live && !connected;
+  const connection =
+    mode !== 'server'
+      ? studio('demoShort')
+      : !live
+        ? studio('serverShort')
+        : connected
+          ? shell('connected')
+          : shell('noModel');
+  const connectionWord =
+    mode !== 'server'
+      ? shell('stateDemo')
+      : !live
+        ? shell('stateSimulated')
+        : connected
+          ? null
+          : shell('stateNoModel');
+  // The word always shows whole: the name before it is what gives way in a narrow sidebar.
+  const word = 'shrink-0 whitespace-nowrap text-muted-foreground';
+  const newShortcut = shortcutLabel('session.new');
+  const newConversation = (
+    <SidebarMenuButton
+      icon={SquarePen}
+      render={
+        <Link
+          to="/projects/$projectId"
+          params={{ projectId: model.current }}
+          search={{ newSession: true }}
+        />
+      }
+    >
+      {shell('newConversation')}
+    </SidebarMenuButton>
+  );
+
   return (
     <KitSidebar
       data-testid="app-sidebar"
-      variant="sidebar"
+      variant="inset"
       collapsible={mobile ? 'none' : 'offcanvas'}
       rail={!mobile}
       railProps={railProps}
-      bordered={!mobile}
       style={mobile ? { width: '100%' } : undefined}
       className="h-full min-h-0"
     >
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton render={<Link to="/" aria-label={studio('nav')} />}>
-              <WorkspaceTile>c</WorkspaceTile>
-              <span className="truncate text-foreground">Corral</span>
-            </SidebarMenuButton>
-            <SidebarMenuActions>
-              <Tooltip content={tw('newSession')} shortcut={shortcutLabel('session.new')}>
-                <SidebarMenuAction
-                  aria-label={tw('newSession')}
-                  render={
-                    <Link
-                      to="/projects/$projectId"
-                      params={{ projectId: model.current }}
-                      search={{ newSession: true }}
-                    />
-                  }
-                >
-                  <SquarePen />
-                </SidebarMenuAction>
-              </Tooltip>
-              <Tooltip content={tw('collapseSidebar')} shortcut={shortcutLabel('view.sidebar')}>
-                <SidebarMenuAction
-                  aria-label={tw('collapseSidebar')}
-                  onClick={() => changePreferences({ sidebarOpen: false })}
-                >
-                  <PanelLeft />
-                </SidebarMenuAction>
-              </Tooltip>
-            </SidebarMenuActions>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <div data-testid="session-search-field" className="relative">
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <SidebarWorkspaceHeader
+              name={
+                <span className="flex min-w-0 gap-x-1.5">
+                  <span className="min-w-0 truncate">Corral</span>
+                  {noModel || !connectionWord ? null : (
+                    <span
+                      data-testid="sidebar-connection"
+                      className={word}
+                      style={{ fontVariationSettings: fontWeights.normal }}
+                    >
+                      {connectionWord}
+                    </span>
+                  )}
+                </span>
+              }
+              tile={<WorkspaceTile>c</WorkspaceTile>}
+              labels={{
+                menu: shell('workspace'),
+                switchWorkspace: shell('workspaceMenuState', { state: connection }),
+                toggleSidebar: tw('expandSidebar'),
+              }}
+              menu={
+                <MenuGroup>
+                  <MenuItem index={0} onClick={() => void navigate({ to: '/projects' })}>
+                    {shell('allProjects')}
+                  </MenuItem>
+                  {/* The projects page focuses its new-project form for this hash. */}
+                  <MenuItem
+                    index={1}
+                    onClick={() => void navigate({ to: '/projects', hash: 'new-project' })}
+                  >
+                    {shell('newProject')}
+                  </MenuItem>
+                </MenuGroup>
+              }
+            />
+          </div>
+          {noModel ? (
+            // Without a model the word is the way to connect one: beside the menu, not in it.
+            <Button
+              data-testid="sidebar-connection"
+              variant="ghost"
+              size="compact"
+              aria-label={shell('openModelSettings')}
+              className="shrink-0 px-1.5"
+              onClick={() => void navigate(settingsNavigation.link('models'))}
+            >
+              <span className={word} style={{ fontVariationSettings: fontWeights.normal }}>
+                {connectionWord}
+              </span>
+            </Button>
+          ) : null}
+          <Tooltip content={tw('collapseSidebar')} shortcut={shortcutLabel('view.sidebar')}>
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={tw('collapseSidebar')}
+              onClick={() => changePreferences({ sidebarOpen: false })}
+            >
+              <PanelLeft />
+            </Button>
+          </Tooltip>
+        </div>
+        <div data-testid="session-search-field">
+          {/* A doorway to the palette: it never holds text of its own. */}
           <SidebarSearchField
-            type="search"
+            readOnly
             shortcut={null}
-            aria-label={tw('searchSessions')}
-            aria-description={searchText('sidebarScope')}
-            placeholder={tw('searchSessions')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (mode === 'server' && e.key === 'Enter' && !e.nativeEvent.isComposing)
-                setSearchOpen(true);
+            aria-label={shell('searchSessions')}
+            aria-haspopup="dialog"
+            placeholder={shell('search')}
+            onClick={() => openPalette({ mode: 'sessions', query: '' })}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              const printable =
+                event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+              const ime = event.key === 'Process' || event.keyCode === 229;
+              if (!printable && !ime && event.key !== 'Enter') return;
+              event.preventDefault();
+              openPalette({ mode: 'sessions', query: printable ? event.key.trim() : '' });
             }}
           />
-          {mode === 'server' ? (
-            <Tooltip content={searchText('title')}>
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label={searchText('title')}
-                className="absolute top-1/2 right-1 -translate-y-1/2"
-                onClick={() => setSearchOpen(true)}
-              >
-                <TextSearch />
-              </Button>
-            </Tooltip>
-          ) : null}
         </div>
       </SidebarHeader>
-      {mode === 'server' ? (
-        <SessionSearchDialog open={searchOpen} onOpenChange={setSearchOpen} initialQuery={query} />
-      ) : null}
       {model.error ? (
-        <p role="alert" className="px-4 py-1 text-xs text-danger">
+        <p role="alert" className="px-4 py-1 text-caption text-danger">
           {model.error}
         </p>
       ) : null}
@@ -492,46 +598,52 @@ export const Sidebar = memo(function Sidebar({
           }}
         >
           <SidebarGroup>
-            <SidebarGroupLabel>{tw('sidebarNavigation')}</SidebarGroupLabel>
             <SidebarMenu>
-              {model.inbox > 0 ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    icon={Inbox}
-                    render={
-                      <Link to="/projects/$projectId" params={{ projectId: model.current }} />
-                    }
-                  >
-                    {tw('needsYou', { count: model.inbox })}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : null}
+              <SidebarMenuItem>
+                {newShortcut ? (
+                  // The row already says what it does; its tooltip adds only the shortcut.
+                  <Tooltip content={null} shortcut={newShortcut}>
+                    {newConversation}
+                  </Tooltip>
+                ) : (
+                  newConversation
+                )}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  icon={Inbox}
+                  isActive={path === '/inbox'}
+                  aria-description={
+                    waiting ? shell('needsYouCount', { count: waiting }) : undefined
+                  }
+                  render={<Link to="/inbox" />}
+                >
+                  {shell('needsYou')}
+                </SidebarMenuButton>
+                {waiting > 0 ? (
+                  <SidebarMenuBadge aria-hidden="true">{waiting}</SidebarMenuBadge>
+                ) : null}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  icon={BookOpen}
+                  isActive={path === '/library' || path.startsWith('/library/')}
+                  render={<Link to="/library/teams" />}
+                >
+                  {shell('library')}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   icon={Clock3}
                   isActive={path === '/schedules'}
                   render={<Link to="/schedules" />}
                 >
-                  {t('schedules')}
+                  {shell('automation')}
                 </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  icon={Folder}
-                  isActive={path === '/projects'}
-                  render={<Link to="/projects" />}
-                >
-                  {tw('allProjects')}
-                </SidebarMenuButton>
-                <Tooltip content={t('newProject')}>
-                  <SidebarMenuAction aria-label={t('newProject')} render={<Link to="/projects" />}>
-                    <FolderPlus />
-                  </SidebarMenuAction>
-                </Tooltip>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          <SidebarSeparator />
           <SidebarGroup>
             <SidebarGroupLabel>{tw('sidebarProjects')}</SidebarGroupLabel>
             {/* Whole-list navigation must include rows the virtualizer has not mounted. */}
@@ -580,37 +692,68 @@ export const Sidebar = memo(function Sidebar({
             >
               {[...visibleGroups].map(([group, items]) => {
                 const project = group.project;
-                const folded = !needle && collapsed?.[project.projectId] === true;
+                const name = projectName(project, tp('defaultName'));
+                const folded = collapsed?.[project.projectId] === true;
+                const projectActive = path === `/projects/${project.projectId}`;
+                const projectMenu = `project:${project.projectId}`;
                 return (
                   <SidebarMenuItem
                     key={project.projectId}
                     data-sidebar-index={group.index}
                     style={{ position: 'absolute', top: group.start, left: 0, width: '100%' }}
+                    onKeyDownCapture={(event) =>
+                      returnFocusOnClose(
+                        event,
+                        openMenu === projectMenu,
+                        '[data-project-menu]',
+                        () => setOpenMenu(null),
+                      )
+                    }
                   >
                     <SidebarMenuButton
                       icon={Folder}
-                      isActive={path === `/projects/${project.projectId}`}
+                      isActive={projectActive}
                       render={
                         <Link to="/projects/$projectId" params={{ projectId: project.projectId }} />
                       }
                     >
-                      {projectName(project, tp('defaultName'))}
+                      {name}
                     </SidebarMenuButton>
-                    <Tooltip
-                      content={t('toggleProject', {
-                        name: projectName(project, tp('defaultName')),
-                      })}
-                    >
-                      <SidebarMenuAction
-                        aria-label={t('toggleProject', {
-                          name: projectName(project, tp('defaultName')),
-                        })}
-                        aria-expanded={!folded}
-                        onClick={() => setCollapsed({ ...collapsed, [project.projectId]: !folded })}
+                    <SidebarMenuActions showOnHover={!projectActive}>
+                      <Menu
+                        open={openMenu === projectMenu}
+                        onOpenChange={(open) => setOpenMenu(open ? projectMenu : null)}
                       >
-                        <ChevronDown className={folded ? '-rotate-90' : undefined} />
-                      </SidebarMenuAction>
-                    </Tooltip>
+                        <Tooltip content={shell('projectActions', { name })}>
+                          <MenuTrigger
+                            render={
+                              <SidebarMenuAction
+                                data-project-menu
+                                aria-label={shell('projectActions', { name })}
+                              />
+                            }
+                          >
+                            <Ellipsis />
+                          </MenuTrigger>
+                        </Tooltip>
+                        <MenuPopup align="start" side="right">
+                          <MenuItem onClick={() => openNewMeeting(project.projectId)}>
+                            {shell('newMeeting')}
+                          </MenuItem>
+                        </MenuPopup>
+                      </Menu>
+                      <Tooltip content={t('toggleProject', { name })}>
+                        <SidebarMenuAction
+                          aria-label={t('toggleProject', { name })}
+                          aria-expanded={!folded}
+                          onClick={() =>
+                            setCollapsed({ ...collapsed, [project.projectId]: !folded })
+                          }
+                        >
+                          <ChevronDown className={folded ? '-rotate-90' : undefined} />
+                        </SidebarMenuAction>
+                      </Tooltip>
+                    </SidebarMenuActions>
                     <SidebarMenuSub open={!folded} style={{ height: group.size - projectHeight }}>
                       {items.map((item) => {
                         const row = rows[item.index];
@@ -629,7 +772,10 @@ export const Sidebar = memo(function Sidebar({
                             <li
                               key={item.key}
                               style={position}
-                              className="px-2 text-caption text-muted-foreground"
+                              className={cn(
+                                size.type.caption,
+                                'flex items-center px-2 text-muted-foreground',
+                              )}
                             >
                               {tw('noSessions')}
                             </li>
@@ -653,27 +799,27 @@ export const Sidebar = memo(function Sidebar({
                           <SidebarMenuSubItem
                             key={item.key}
                             data-sidebar-index={item.index}
+                            data-session-kind={session.meeting ? 'meeting' : 'session'}
                             style={position}
-                            onKeyDownCapture={(event) => {
-                              if (
-                                openMenu !== session.sessionId ||
-                                !['Tab', 'Escape'].includes(event.key)
+                            onKeyDownCapture={(event) =>
+                              returnFocusOnClose(
+                                event,
+                                openMenu === session.sessionId,
+                                '[data-session-menu]',
+                                () => setOpenMenu(null),
                               )
-                                return;
-                              event.preventDefault();
-                              event.stopPropagation();
-                              const trigger =
-                                event.currentTarget.querySelector<HTMLElement>(
-                                  '[data-session-menu]',
-                                );
-                              setOpenMenu(null);
-                              requestAnimationFrame(() => trigger?.focus());
-                            }}
+                            }
                           >
                             <SidebarMenuSubButton
                               tabIndex={item.index === sessionTabIndex ? 0 : -1}
                               aria-describedby="session-list-keys"
                               isActive={active}
+                              // Two full lines: the icon sits on the title's line.
+                              className={cn(
+                                SESSION_ROW[size.variant],
+                                'items-start py-1 [&>svg]:mt-0.5',
+                              )}
+                              icon={session.meeting ? Users : MessageCircle}
                               render={
                                 <Link
                                   to="/sessions/$sessionId"
@@ -684,9 +830,33 @@ export const Sidebar = memo(function Sidebar({
                                 />
                               }
                             >
-                              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                <span className="truncate leading-3.5">{session.title}</span>
-                                <span className="truncate text-micro leading-3 text-muted-foreground">
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span
+                                  data-session-line="title"
+                                  className={cn(size.type.body, 'truncate')}
+                                  style={{
+                                    fontVariationSettings: active
+                                      ? fontWeights.semibold
+                                      : fontWeights.normal,
+                                  }}
+                                >
+                                  {session.title}
+                                </span>
+                                <span
+                                  data-session-line="state"
+                                  className={cn(
+                                    size.type.caption,
+                                    'truncate text-muted-foreground',
+                                  )}
+                                >
+                                  {/* The state's colour leads its word; the row needs no badge. */}
+                                  {run || terminal ? (
+                                    <span className="mr-1.5 inline-flex align-middle">
+                                      <StatusDot
+                                        status={terminal ? 'awaiting_user' : (run?.status ?? '')}
+                                      />
+                                    </span>
+                                  ) : null}
                                   {terminal ? `${ts('terminalNeedsAttention')} · ` : null}
                                   {run
                                     ? `${status(run.status)} · `
@@ -696,13 +866,10 @@ export const Sidebar = memo(function Sidebar({
                                   {ago(session.updatedAt)}
                                 </span>
                               </span>
-                              {session.pinned ? <Pin size={12} /> : null}
+                              {session.pinned ? (
+                                <Pin size={12} className="mt-1 shrink-0 text-muted-foreground" />
+                              ) : null}
                             </SidebarMenuSubButton>
-                            {run ? (
-                              <SidebarMenuBadge>
-                                <StatusDot status={run.status} label={status(run.status)} />
-                              </SidebarMenuBadge>
-                            ) : null}
                             <Menu
                               open={openMenu === session.sessionId}
                               onOpenChange={(open) => setOpenMenu(open ? session.sessionId : null)}
@@ -711,7 +878,9 @@ export const Sidebar = memo(function Sidebar({
                                 <MenuTrigger
                                   render={
                                     <SidebarMenuAction
-                                      showOnHover
+                                      // The open conversation keeps its menu in view.
+                                      showOnHover={!active}
+                                      className="top-1/2 -translate-y-1/2"
                                       data-session-menu
                                       aria-label={t('sessionActions', { title: session.title })}
                                     />
@@ -747,28 +916,24 @@ export const Sidebar = memo(function Sidebar({
               })}
             </SidebarMenu>
           </SidebarGroup>
-          {needle &&
-          !model.sessions.some((s) =>
-            `${s.title}\n${s.objective}`.toLocaleLowerCase().includes(needle),
-          ) ? (
-            <div className="p-3 text-xs text-muted-foreground">
-              <p>{t('noMatches')}</p>
-              {mode === 'server' ? (
-                <Button variant="ghost" size="compact" onClick={() => setSearchOpen(true)}>
-                  {searchText('searchBody')}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
         </SidebarContent>
       </nav>
       {error && !editing ? (
-        <p role="alert" className="px-3 text-xs text-danger">
+        <p role="alert" className="px-3 text-caption text-danger">
           {error}
         </p>
       ) : null}
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              icon={Sparkles}
+              isActive={path === '/preview' || path.startsWith('/preview/')}
+              render={<Link to="/preview" />}
+            >
+              {shell('featurePreviews')}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               icon={Settings}
@@ -778,33 +943,6 @@ export const Sidebar = memo(function Sidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        {mode === 'server' && live && connected ? null : (
-          <Tooltip
-            side="top"
-            content={
-              mode === 'server'
-                ? live
-                  ? studio('liveNoModelNote')
-                  : studio('serverNote')
-                : studio('demoNote')
-            }
-          >
-            <button
-              type="button"
-              onClick={() =>
-                live && !connected ? void navigate(settingsNavigation.link('models')) : null
-              }
-              className="flex items-center gap-1.5 rounded px-2 py-1 text-2xs text-muted-foreground"
-            >
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-warning" />
-              {mode === 'server'
-                ? live
-                  ? studio('liveNoModel')
-                  : studio('serverShort')
-                : studio('demoShort')}
-            </button>
-          </Tooltip>
-        )}
       </SidebarFooter>
       <RenameSessionDialog
         title={editing?.title ?? null}

@@ -71,6 +71,26 @@ describe('shared work plan snapshots', () => {
     expect(await screen.findByText(messages.WorkPlan.unavailable)).toBeVisible();
   });
 
+  it('the panel lists the plan items without a paragraph about what progress means', async () => {
+    const ref = await reference();
+    const session = sessionStore({
+      runId: 'run_1',
+      projection: projectionWith({
+        runId: 'run_1',
+        currentCriteriaVersionId: body.criteriaVersionId,
+        workPlans: { execution_1: ref },
+      }),
+      artifactTexts: { [ref.bodyRef]: JSON.stringify(body) },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <WorkPlanPanel session={session} />
+      </IntlProvider>,
+    );
+    expect(await screen.findByText('Verify the change')).toBeVisible();
+    expect(screen.queryByText(/Plan progress is separate/)).not.toBeInTheDocument();
+  });
+
   it('deduplicates composer and detail reads without merging runs or transports', async () => {
     const ref = await reference();
     const loading = deferred<string | null>();

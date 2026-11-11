@@ -4,23 +4,18 @@ import {
   Banner,
   BannerTitle,
   Button,
+  cn,
   Dialog,
   DialogPopup,
   DialogTitle,
-  Sidebar as KitSidebar,
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuTrigger,
+  fontWeights,
   SidebarProvider,
   type SidebarRailProps,
   Tooltip,
   TooltipProvider,
+  useShape,
 } from '@corral/react/design-kit';
-import { ChevronDown, PanelLeft, RefreshCw, Search } from '@corral/react/icons';
+import { PanelLeft, RefreshCw, Search } from '@corral/react/icons';
 import {
   type ErrorComponentProps,
   Link,
@@ -33,21 +28,19 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
-import { useRegisterCommands } from '../commandRegistry.ts';
+import { OPEN_PALETTE, useRegisterCommands } from '../commandRegistry.ts';
 import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
-import { projectName } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { SESSION_MISSING } from '../sessionConnection.ts';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
-import { SessionMenu } from '../workbench/Breadcrumbs.tsx';
 import { documentStore } from '../workbench/documents/store.ts';
 import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
+import { NEW_MEETING, NewMeetingHost } from '../workbench/NewMeeting.tsx';
 import {
   SettingsNavigationContext,
   standaloneSettingsLink,
   validateSettingsOverlay,
-  validateSettingsSearch,
   withoutSettings,
   workHref,
 } from '../workbench/navigation.ts';
@@ -60,9 +53,9 @@ import {
   SettingsLifecycle,
   SettingsOperationStatus,
 } from '../workbench/SettingsLifecycle.tsx';
-import { SettingsNavigation, settingsSection } from '../workbench/SettingsNavigation.tsx';
 import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
-import { TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
+import { outsidePage, TopbarPath } from '../workbench/TopbarPath.tsx';
+import { TopbarBar, TopbarFit, TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
 
 export function RootLayout() {
   return (
@@ -94,11 +87,7 @@ function RootFrame() {
   const tw = useTranslations('Workbench');
   const tp = useTranslations('CommandPalette');
   const tn = useTranslations('Navigation');
-  const td = useTranslations('Desktop');
-  const th = useTranslations('Harness');
-  const tr = useTranslations('Resources');
   const commands = useTranslations('Commands');
-  const projectsText = useTranslations('Projects');
   const prefs = usePreferences();
   const location = useRouterState({ select: (s) => s.location });
   // Run/Inbox/desktop notifications live for the frame, including settings and narrow dialogs.
@@ -111,45 +100,31 @@ function RootFrame() {
         definition?: { name: string };
       }
     | undefined;
-  const settings = location.pathname.startsWith('/settings');
   const overlaySearch = validateSettingsOverlay(location.search);
-  const overlay = !settings && Boolean(overlaySearch.settings) && Boolean(workHref(location.href));
+  const overlay = Boolean(overlaySearch.settings) && Boolean(workHref(location.href));
   const selectedRun = sidebar.runs.find(
     (run) => location.pathname === `/runs/${encodeURIComponent(run.runId)}`,
   );
-  const projectId =
-    settings || location.pathname === '/projects'
-      ? undefined
-      : (data?.project?.projectId ??
-        data?.session?.projectId ??
-        data?.projectId ??
-        (selectedRun
-          ? (selectedRun.projectId ??
-            sidebar.sessions.find((session) => session.sessionId === selectedRun.sessionId)
-              ?.projectId ??
-            sidebar.corrals.find((team) => team.corralId === selectedRun.corralId)?.projectId)
-          : undefined));
+  const outside = outsidePage(location.pathname);
+  const projectId = outside
+    ? undefined
+    : (data?.project?.projectId ??
+      data?.session?.projectId ??
+      data?.projectId ??
+      (selectedRun
+        ? (selectedRun.projectId ??
+          sidebar.sessions.find((session) => session.sessionId === selectedRun.sessionId)
+            ?.projectId ??
+          sidebar.corrals.find((team) => team.corralId === selectedRun.corralId)?.projectId)
+        : undefined));
   const project = sidebar.projects.find((item) => item.projectId === projectId) ?? data?.project;
   useSessionJump(sidebar.sessions, projectId);
-  const [lastWork, setLastWork] = useState<{ href: string; projectId?: string } | null>(null);
-  const search = validateSettingsSearch(location.search);
-  const settingsProjectId = sidebar.projects.find(
-    (item) =>
-      item.projectId === (search.projectId ?? (search.returnTo ? undefined : lastWork?.projectId)),
-  )?.projectId;
-  const returnTo =
-    search.returnTo ??
-    lastWork?.href ??
-    (settingsProjectId ? `/projects/${encodeURIComponent(settingsProjectId)}` : '/projects');
   const entryProjectId = overlay
     ? sidebar.projects.find(
         (item) => item.projectId === (overlaySearch.settingsProject ?? projectId),
       )?.projectId
-    : settings
-      ? settingsProjectId
-      : projectId;
+    : projectId;
   const workLocation = workHref(location.href) ?? '/projects';
-  const entryReturnTo = settings ? returnTo : workLocation;
   const closeSettings = () => {
     const state = location.state as typeof location.state & {
       settingsOwner?: string;
@@ -189,16 +164,18 @@ function RootFrame() {
   const settingsNavigation = {
     projects: sidebar.projects,
     projectId: entryProjectId,
-    returnTo: overlay ? workLocation : returnTo,
-    search: { ...(entryProjectId ? { projectId: entryProjectId } : {}), returnTo: entryReturnTo },
+    returnTo: workLocation,
+    search: { ...(entryProjectId ? { projectId: entryProjectId } : {}), returnTo: workLocation },
     overlay,
     section: overlay ? overlaySearch.settings : undefined,
     close: overlay ? closeSettings : undefined,
     link: (section: string, targetProject = entryProjectId) => {
-      if (settings || !workHref(location.href))
+      // A screen that cannot hold the dialog (such as Automation) takes the settings address,
+      // which the router replaces with the dialog over Projects.
+      if (!workHref(location.href))
         return standaloneSettingsLink(section, {
           ...(targetProject ? { projectId: targetProject } : {}),
-          returnTo: entryReturnTo,
+          returnTo: workLocation,
         });
       return {
         to: location.pathname,
@@ -230,38 +207,13 @@ function RootFrame() {
         }
       : undefined,
   };
-  useEffect(() => {
-    if (!settings && !overlay)
-      setLastWork({ href: workLocation, ...(projectId ? { projectId } : {}) });
-  }, [settings, overlay, workLocation, projectId]);
-  const section = settingsSection(location.pathname, location.search.section);
-  const settingsTitle = !settings
+  // Outside a project the path is the screen's own name; inside, project then this page.
+  const pageTitle = outside
     ? ''
-    : section === 'defaults' || section === 'project-defaults'
-      ? tn(section === 'defaults' ? 'personalDefaults' : 'projectDefaults')
-      : section === 'harness'
-        ? th('heading')
-        : ['skills', 'hooks', 'mcp'].includes(section)
-          ? tr(section)
-          : section === 'workspace'
-            ? tn('projectFolder')
-            : td(section);
-  const pageTitle = settings
-    ? settingsTitle
-    : (data?.session?.title ??
-      data?.definition?.name ??
-      (location.pathname === '/projects'
-        ? projectsText('allProjects')
-        : selectedRun
-          ? tn('runDetails')
-          : location.pathname === '/demo'
-            ? tn('demo')
-            : ''));
-  const activeRuns = sidebar.runs.filter(
-    (run) => !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(run.status),
-  );
+    : (data?.session?.title ?? data?.definition?.name ?? (selectedRun ? tn('runDetails') : ''));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
+  const shape = useShape();
   useRegisterCommands('sidebar', [
     {
       id: 'view:sidebar',
@@ -301,6 +253,24 @@ function RootFrame() {
     void location.href;
     setMobileOpen(false);
   }, [location.href]);
+  // The narrow sidebar gives way to the palette or new-meeting dialog it opened, and leaves
+  // focus to that dialog instead of pulling it back to the sidebar button.
+  const handedOff = useRef(false);
+  useEffect(() => {
+    const handOff = () => {
+      handedOff.current = true;
+      setMobileOpen(false);
+    };
+    window.addEventListener(OPEN_PALETTE, handOff);
+    window.addEventListener(NEW_MEETING, handOff);
+    return () => {
+      window.removeEventListener(OPEN_PALETTE, handOff);
+      window.removeEventListener(NEW_MEETING, handOff);
+    };
+  }, []);
+  useEffect(() => {
+    if (mobileOpen) handedOff.current = false;
+  }, [mobileOpen]);
   useEffect(() => {
     // The desktop window and its title bar buttons follow the page's theme.
     const update = () => {
@@ -334,210 +304,142 @@ function RootFrame() {
     <TooltipProvider>
       <SettingsNavigationContext.Provider value={settingsNavigation}>
         <TopbarSlotContext.Provider value={topbarSlots}>
-          <SidebarProvider
-            className="app-shell min-h-0"
-            data-sidebar-open={prefs.sidebarOpen}
-            persist={false}
-            shortcut={null}
-            mobileBreakpoint={0}
-            open={prefs.sidebarOpen}
-            onOpenChange={(sidebarOpen) => changePreferences({ sidebarOpen })}
-            width={`${prefs.sidebarWidth}px`}
-            onWidthChange={(width) => changePreferences({ sidebarWidth: Number.parseFloat(width) })}
-            minWidth={220}
-            maxWidth={420}
-          >
-            {narrow ? (
-              <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-                <DialogPopup
-                  className="mobile-sidebar-dialog"
-                  position="left"
-                  showCloseButton={false}
-                  bottomStickOnMobile={false}
-                  finalFocus={sidebarTrigger}
-                >
-                  <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
-                  {settings ? (
-                    <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
-                  ) : (
+          <TopbarFit>
+            <SidebarProvider
+              className="app-shell min-h-0"
+              data-sidebar-open={prefs.sidebarOpen}
+              persist={false}
+              shortcut={null}
+              mobileBreakpoint={0}
+              open={prefs.sidebarOpen}
+              onOpenChange={(sidebarOpen) => changePreferences({ sidebarOpen })}
+              width={`${prefs.sidebarWidth}px`}
+              onWidthChange={(width) =>
+                changePreferences({ sidebarWidth: Number.parseFloat(width) })
+              }
+              minWidth={220}
+              maxWidth={420}
+            >
+              {narrow ? (
+                <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+                  <DialogPopup
+                    className="mobile-sidebar-dialog"
+                    position="left"
+                    showCloseButton={false}
+                    bottomStickOnMobile={false}
+                    finalFocus={() => (handedOff.current ? false : sidebarTrigger.current)}
+                  >
+                    <DialogTitle className="sr-only">{tw('expandSidebar')}</DialogTitle>
                     <Sidebar model={sidebar} mobile />
-                  )}
-                </DialogPopup>
-              </Dialog>
-            ) : settings ? (
-              <KitSidebar railProps={railProps} className="h-full min-h-0">
-                <SettingsNavigation inbox={sidebar.inbox} currentProject={sidebar.current} />
-              </KitSidebar>
-            ) : (
-              <Sidebar model={sidebar} railProps={railProps} />
-            )}
-            <div className="app-main">
-              {/* biome-ignore lint/a11y/noStaticElementInteractions: a title bar's double click is a pointer convenience; the window menu does the same */}
-              <header className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
-                <h1 className="sr-only">{t('title')}</h1>
-                <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
-                  <Button
-                    ref={sidebarTrigger}
-                    variant="ghost"
-                    size="icon-compact"
-                    aria-label={tw('expandSidebar')}
-                    className="app-sidebar-trigger"
-                    onClick={() => {
-                      changePreferences({ sidebarOpen: true });
-                      setMobileOpen((v) => !v);
-                    }}
-                  >
-                    <PanelLeft />
-                  </Button>
-                </Tooltip>
-                <nav
-                  aria-label={tn('location')}
-                  className="flex min-w-0 items-center gap-1.5 text-ui"
-                >
-                  {settings ? (
-                    <span className="shrink-0 text-muted-foreground">{td('settings')}</span>
-                  ) : (
-                    <ProjectSwitcher projects={sidebar.projects} projectId={projectId} />
-                  )}
-                  {pageTitle ? (
-                    <>
-                      {settings || project ? (
-                        <span aria-hidden="true" className="text-muted-foreground/50">
-                          /
-                        </span>
-                      ) : null}
-                      {openSessionId && projectId && data?.session ? (
-                        <SessionMenu
-                          sessions={sidebar.sessions}
-                          runs={sidebar.runs}
-                          projectId={projectId}
-                          sessionId={decodeURIComponent(openSessionId)}
-                          title={pageTitle}
-                          onOpen={(sessionId) =>
-                            void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-                          }
-                        />
-                      ) : (
-                        <h2 className="truncate font-medium">{pageTitle}</h2>
-                      )}
-                    </>
-                  ) : null}
-                  <span ref={setCrumbsSlot} className="contents" />
-                </nav>
-                {settings && activeRuns.length ? (
-                  <Menu>
-                    <MenuTrigger render={<Button variant="ghost" size="compact" />}>
-                      {tn('activeRun')} ({activeRuns.length})
-                    </MenuTrigger>
-                    <MenuPopup>
-                      {activeRuns.map((run) => (
-                        <MenuItem
-                          key={run.runId}
-                          onClick={() =>
-                            void navigate({
-                              to: '/runs/$runId',
-                              params: { runId: run.runId },
-                            })
-                          }
-                        >
-                          {sidebar.sessions.find((session) => session.sessionId === run.sessionId)
-                            ?.title ?? run.runId}{' '}
-                          · {run.runId}
-                        </MenuItem>
-                      ))}
-                    </MenuPopup>
-                  </Menu>
+                  </DialogPopup>
+                </Dialog>
+              ) : (
+                <Sidebar model={sidebar} railProps={railProps} />
+              )}
+              {/* The kit's SidebarInset recipe, on a div: each page renders its own <main>. Beside
+                  the inset sidebar the work sits one surface up; a narrow drawer leaves the floor. */}
+              <div
+                className={cn(
+                  'app-main relative overflow-hidden bg-background',
+                  'peer-data-[variant=inset]:m-2 peer-data-[variant=inset]:peer-data-[side=left]:ml-0',
+                  'peer-data-[variant=inset]:peer-data-[state=collapsed]:peer-data-[side=left]:ml-2',
+                  'transition-[margin] duration-(--duration-fast)',
+                  shape.bgRadius >= 20
+                    ? 'peer-data-[variant=inset]:rounded-3xl'
+                    : 'peer-data-[variant=inset]:rounded-xl',
+                  'peer-data-[variant=inset]:bg-surface-2 peer-data-[variant=inset]:shadow-surface-2',
+                )}
+              >
+                {/* A title bar's double click is a pointer convenience; the window menu does the same. */}
+                <TopbarBar className="app-topbar" onDoubleClick={onTopbarDoubleClick}>
+                  {/* The outline's one h1: a list page's own title stands in for it (index.css). */}
+                  <h1 className="app-name sr-only">{t('title')}</h1>
+                  <Tooltip content={tw('expandSidebar')} shortcut={shortcutLabel('view.sidebar')}>
+                    <Button
+                      ref={sidebarTrigger}
+                      variant="ghost"
+                      size="icon-compact"
+                      aria-label={tw('expandSidebar')}
+                      className="app-sidebar-trigger"
+                      onClick={() => {
+                        changePreferences({ sidebarOpen: true });
+                        setMobileOpen((v) => !v);
+                      }}
+                    >
+                      <PanelLeft />
+                    </Button>
+                  </Tooltip>
+                  <TopbarPath
+                    pathname={location.pathname}
+                    projects={sidebar.projects}
+                    projectId={projectId}
+                    project={project}
+                    pageTitle={pageTitle}
+                    sessions={sidebar.sessions}
+                    runs={sidebar.runs}
+                    sessionId={
+                      openSessionId && data?.session ? decodeURIComponent(openSessionId) : undefined
+                    }
+                    onOpenSession={(sessionId) =>
+                      void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+                    }
+                    crumbs={setCrumbsSlot}
+                  />
+                  <div
+                    ref={setViewsSlot}
+                    data-topbar-part="views"
+                    className="app-topbar-views ml-auto flex shrink-0 items-center"
+                  />
+                  <div
+                    ref={setSlot}
+                    data-topbar-part="actions"
+                    className="app-topbar-actions flex shrink-0 items-center gap-1"
+                  />
+                  <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
+                    <Button
+                      variant="ghost"
+                      size="icon-compact"
+                      aria-label={tp('button')}
+                      onClick={() => window.dispatchEvent(new Event('corral:open-palette'))}
+                    >
+                      <Search />
+                    </Button>
+                  </Tooltip>
+                </TopbarBar>
+                <SettingsOperationStatus />
+                <ScheduledRunNotifications
+                  results={sidebar.scheduledResults}
+                  dismiss={sidebar.dismissScheduled}
+                />
+                {sessionMissing ? (
+                  <Banner status="warning" size="compact">
+                    <BannerTitle>{t('sessionMissing')}</BannerTitle>
+                  </Banner>
                 ) : null}
-                <div ref={setViewsSlot} className="ml-auto flex shrink-0 items-center" />
-                <div ref={setSlot} className="flex shrink-0 items-center gap-1" />
-                <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
-                  <Button
-                    variant="ghost"
-                    size="icon-compact"
-                    aria-label={tp('button')}
-                    onClick={() => window.dispatchEvent(new Event('corral:open-palette'))}
-                  >
-                    <Search />
-                  </Button>
-                </Tooltip>
-              </header>
-              <SettingsOperationStatus />
-              <ScheduledRunNotifications
-                results={sidebar.scheduledResults}
-                dismiss={sidebar.dismissScheduled}
-              />
-              {sessionMissing ? (
-                <Banner status="warning" size="compact">
-                  <BannerTitle>{t('sessionMissing')}</BannerTitle>
-                </Banner>
-              ) : null}
-              <div className="app-outlet">
-                <Outlet />
-                {!overlay ? <SettingsLeavePrompt /> : null}
+                <div className="app-outlet">
+                  <Outlet />
+                  {!overlay ? <SettingsLeavePrompt /> : null}
+                </div>
               </div>
-            </div>
-            <CommandLayer />
-            {overlay && overlaySearch.settings ? (
-              <SettingsDialog
-                section={overlaySearch.settings}
-                inbox={sidebar.inbox}
-                currentProject={sidebar.current}
+              <CommandLayer
+                sessions={sidebar.sessions}
+                projects={sidebar.projects}
+                projectId={projectId}
+                fallbackFocus={sidebarTrigger}
               />
-            ) : null}
-          </SidebarProvider>
+              <NewMeetingHost />
+              {overlay && overlaySearch.settings ? (
+                <SettingsDialog
+                  section={overlaySearch.settings}
+                  inbox={sidebar.inbox}
+                  currentProject={sidebar.current}
+                />
+              ) : null}
+            </SidebarProvider>
+          </TopbarFit>
         </TopbarSlotContext.Provider>
       </SettingsNavigationContext.Provider>
     </TooltipProvider>
-  );
-}
-
-/** The project Studio works in; choosing one opens it, or the list of all. */
-function ProjectSwitcher({
-  projects,
-  projectId,
-}: {
-  projects: ProjectSummary[];
-  projectId?: string;
-}) {
-  const t = useTranslations('Projects');
-  const n = useTranslations('Navigation');
-  const navigate = useNavigate();
-  const options = projects.filter((p) => !p.archivedAt || p.projectId === projectId);
-  const chosen = options.find((p) => p.projectId === projectId);
-  return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="compact"
-            aria-label={n('switchProject')}
-            className="min-w-0 max-w-52 gap-1 px-2 font-medium"
-          />
-        }
-      >
-        <span className="truncate">
-          {chosen ? projectName(chosen, t('defaultName')) : t('allProjects')}
-        </span>
-        <ChevronDown className="size-3.5 text-muted-foreground" />
-      </MenuTrigger>
-      <MenuPopup align="start" className="min-w-56">
-        <MenuRadioGroup
-          value={chosen ? projectId : ''}
-          onValueChange={(value) =>
-            void navigate({ to: '/projects/$projectId', params: { projectId: String(value) } })
-          }
-        >
-          {options.map((p) => (
-            <MenuRadioItem key={p.projectId} value={p.projectId} closeOnClick>
-              {projectName(p, t('defaultName'))}
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
-        <MenuSeparator />
-        <MenuItem onClick={() => void navigate({ to: '/projects' })}>{t('allProjects')}</MenuItem>
-      </MenuPopup>
-    </Menu>
   );
 }
 
@@ -545,7 +447,9 @@ export function NotFoundView() {
   const t = useTranslations('Studio');
   return (
     <main className="flex flex-col items-start gap-3 p-6">
-      <h2 className="text-lg font-semibold">{t('notFound')}</h2>
+      <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('notFound')}
+      </h2>
       <Button variant="ghost" size="compact" render={<Link to="/" />}>
         {t('backToCorrals')}
       </Button>
@@ -559,7 +463,7 @@ export function ErrorView({ error }: ErrorComponentProps) {
   if (error instanceof ApiError && error.code === 'SESSION_INVALID') return <SessionMissingView />;
   return (
     <main role="alert" className="flex flex-col items-start gap-3 p-6">
-      <h2 className="text-lg font-semibold">
+      <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
         {t('error', { message: error instanceof Error ? error.message : String(error) })}
       </h2>
       <div className="flex gap-2">
@@ -580,8 +484,10 @@ export function SessionMissingView() {
   const t = useTranslations('Studio');
   return (
     <main className="flex flex-col items-start gap-3 p-6">
-      <h1 className="text-base font-semibold">{t('title')}</h1>
-      <p role="alert" className="text-sm text-danger">
+      <h1 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h1>
+      <p role="alert" className="text-body text-danger">
         {t('sessionMissing')}
       </p>
       <Button variant="secondary" onClick={() => window.location.reload()}>

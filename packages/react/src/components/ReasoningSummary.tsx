@@ -26,7 +26,7 @@ export function ReasoningSummary({ call, open }: { call: Call; open: boolean }) 
     return (
       <span
         data-testid="reasoning-summary"
-        className="text-xs text-muted-foreground"
+        className="text-caption text-muted-foreground"
         title={resolution.preparationId}
       >
         {t('route.off')}
@@ -43,7 +43,7 @@ export function ReasoningSummary({ call, open }: { call: Call; open: boolean }) 
   return (
     <span
       data-testid="reasoning-summary"
-      className="text-xs text-muted-foreground"
+      className="text-caption text-muted-foreground"
       title={resolution.preparationId}
     >
       {t('label')}: {requested} → {resolution.resolved ?? t('provider_default')}
@@ -192,15 +192,15 @@ function RouteSummary({
             size="sm-multiline"
             data-testid="reasoning-summary"
             title={resolution.preparationId}
-            className="text-xs text-muted-foreground"
+            className="text-caption text-muted-foreground"
           />
         }
       >
         {line}
       </PopoverTrigger>
       <PopoverPopup width="md">
-        <PopoverTitle className="text-sm font-semibold">{t('route.detail')}</PopoverTitle>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        <PopoverTitle>{t('route.detail')}</PopoverTitle>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
           {rows.map(([term, value]) => (
             <div key={term} className="contents">
               <dt className="text-muted-foreground">{term}</dt>

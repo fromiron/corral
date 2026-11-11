@@ -1,7 +1,7 @@
 // The composer's text box with one menu for `/` commands and `@` references, after
 // keyboard first, IME safe. The renderer only reads names; picking a file grants nothing.
 import { rankFuzzy } from '@corral/core';
-import { type InputMessageInputProps, Kbd } from '@corral/react/design-kit';
+import { fontWeights, type InputMessageInputProps, Kbd } from '@corral/react/design-kit';
 import { Bot, File, FileText, Folder, History, type LucideIcon, Slash } from '@corral/react/icons';
 import {
   type KeyboardEvent,
@@ -198,14 +198,17 @@ export function ComposerInput({
               className="dropdown-glass z-[130] overflow-auto rounded-xl p-1 shadow-popup"
             >
               {rows.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                <p className="px-2 py-1.5 text-caption text-muted-foreground">
                   {kind === 'slash' ? t('noCommand') : t('noReference')}
                 </p>
               ) : null}
               {groups.map((group) => (
                 // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
                 <div key={group.title} role="group" aria-label={group.title}>
-                  <p className="px-2 pt-1.5 pb-0.5 text-2xs font-medium text-muted-foreground">
+                  <p
+                    className="px-2 pt-1.5 pb-0.5 text-2xs text-muted-foreground"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
                     {group.title}
                   </p>
                   {group.rows.map((row) => {
@@ -234,14 +237,15 @@ export function ComposerInput({
                           event.preventDefault();
                           choose(row);
                         }}
-                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${selected === at ? 'bg-subtle' : ''} ${row.kind === 'command' && row.command.disabled ? 'opacity-50' : ''}`}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-caption ${selected === at ? 'bg-subtle' : ''} ${row.kind === 'command' && row.command.disabled ? 'opacity-50' : ''}`}
                       >
                         <Icon
                           className="size-4 shrink-0 text-muted-foreground"
                           aria-hidden="true"
                         />
                         <span
-                          className={`max-w-[45%] shrink-0 truncate font-medium ${row.kind === 'mention' && (row.item.kind === 'file' || row.item.kind === 'folder') ? 'font-mono' : ''}`}
+                          className={`max-w-[45%] shrink-0 truncate ${row.kind === 'mention' && (row.item.kind === 'file' || row.item.kind === 'folder') ? 'font-mono' : ''}`}
+                          style={{ fontVariationSettings: fontWeights.semibold }}
                         >
                           {name}
                         </span>

@@ -1,9 +1,10 @@
 /* Copy-in kit values stay in design-kit/tokens.css; Corral roles live here. */
 @import "./design-kit/tokens.css";
 
+/* Same selectors as the kit's theme blocks, so these roles win when the theme class is set. */
 :root,
-.light,
-.dark {
+.light:not(.react-flow),
+.dark:not(.react-flow) {
   /* Small secondary/status text and focus need stronger contrast on light surfaces. */
   --destructive: light-dark(#b91c1c, #fca5a5);
   --destructive-contrast: light-dark(#ffffff, #171717);
@@ -11,7 +12,9 @@
   --warning: light-dark(#92400e, #fcd34d);
   --info: light-dark(#1d4ed8, #93c5fd);
   --focus-ring: light-dark(#2563eb, #6b97ff);
-  --emphasis: light-dark(#3568d4, #6b97ff);
+  /* Light emphasis text must also pass 4.5:1 on its own 14% fill (the timeline "Now" chip). */
+  --emphasis: light-dark(#2f5fc4, #6b97ff);
+  --emphasis-hover: light-dark(#2954b3, #5c89f2);
   --muted-foreground: light-dark(#666666, #b8b8b8);
 
   --primary: var(--foreground);
@@ -170,7 +173,8 @@
 }
 
 @media (forced-colors: active) {
-  [data-slot="menu-popup"] {
+  [data-slot="menu-popup"],
+  [data-slot="model-picker-popup"] {
     outline: 1px solid CanvasText;
   }
 
@@ -197,6 +201,17 @@
     font-family: var(--font-sans);
     font-size: var(--fs-body);
     line-height: var(--lh-body);
+    /* Korean wraps between words, never inside one; a word longer than its line still breaks. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  /* Code, paths and diffs are not prose: they wrap by their own rules. */
+  code,
+  kbd,
+  pre,
+  samp {
+    word-break: normal;
   }
 
   :focus-visible {
@@ -276,7 +291,7 @@
   }
 }
 .flow-dash.flow-dash-slow {
-  stroke-dasharray: 2 8;
+  stroke-dasharray: 3 7;
   animation: flow-dash-slow 4.5s linear infinite;
 }
 /* Without motion the dashes stop, so a mark at each midpoint carries the direction. */

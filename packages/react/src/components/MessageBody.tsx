@@ -4,14 +4,23 @@ import { Button } from '../design-kit/index.ts';
 import { CopyTextButton } from './CopyTextButton.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
-/** Collapse the preview only: copy always includes the original, complete message. */
+/**
+ * A message's text. Only the preview folds: copy always takes the original, complete message.
+ * A host that lays its actions out elsewhere (a row under a bubble or an answer) passes
+ * `copy={false}` and renders `CopyTextButton` there.
+ */
 export function MessageBody({
   text,
   markdown = false,
+  size,
+  copy = true,
   actions,
 }: {
   text: string;
   markdown?: boolean;
+  /** The Markdown type step; see SafeMarkdown. */
+  size?: 'compact' | 'reader' | 'chat';
+  copy?: boolean;
   actions?: React.ReactNode;
 }) {
   const t = useTranslations('MessageBody');
@@ -22,29 +31,31 @@ export function MessageBody({
   const preview =
     long && !expanded ? `${text.slice(0, 2400).split('\n').slice(0, 32).join('\n')}…` : text;
   return (
-    <div className="min-w-0 space-y-2">
+    <div className="flex min-w-0 flex-col gap-2">
       <div id={id}>
         {markdown ? (
-          <SafeMarkdown text={preview} />
+          <SafeMarkdown text={preview} {...(size ? { size } : {})} />
         ) : (
           <p className="whitespace-pre-wrap wrap-anywhere">{preview}</p>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {long ? (
-          <Button
-            size="compact"
-            variant="ghost"
-            aria-expanded={expanded}
-            aria-controls={id}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {t(expanded ? 'showLess' : 'showMore')}
-          </Button>
-        ) : null}
-        <CopyTextButton text={text} />
-        {actions}
-      </div>
+      {long || copy || actions ? (
+        <div className="flex flex-wrap items-center gap-1">
+          {long ? (
+            <Button
+              size="compact"
+              variant="ghost"
+              aria-expanded={expanded}
+              aria-controls={id}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {t(expanded ? 'showLess' : 'showMore')}
+            </Button>
+          ) : null}
+          {copy ? <CopyTextButton text={text} /> : null}
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -10,7 +10,7 @@ test('renders safe code, copies exact text, and edits a collapsed request as a n
 }) => {
   await corral.open('/');
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   const source = 'const message: string = "<script>safe</script>";\n';
   corral.fake?.answerWith(
     `**Readable answer**\n\n\`\`\`ts\n${source}\`\`\`\n\n[unsafe](javascript:alert(1))`,
@@ -29,12 +29,16 @@ test('renders safe code, copies exact text, and edits a collapsed request as a n
   await result.getByRole('button', { name: 'Copy code', exact: true }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(source);
   await expect(timeline).not.toContainText('END-OF-REQUEST');
-  await timeline.getByRole('button', { name: 'Copy message', exact: true }).first().click();
+  const copyRequest = timeline.getByRole('button', { name: 'Copy message', exact: true }).first();
+  await copyRequest.hover({ force: true });
+  await copyRequest.click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(request);
   await timeline.getByRole('button', { name: 'Show full message', exact: true }).click();
   await expect(timeline).toContainText('END-OF-REQUEST');
   const runs = corral.server.coordinator.listRuns();
-  await timeline.getByRole('button', { name: 'Edit as new request', exact: true }).click();
+  const editRequest = timeline.getByRole('button', { name: 'Edit as new request', exact: true });
+  await editRequest.hover({ force: true });
+  await editRequest.click();
   await expect(requestBox(page)).toHaveValue(request);
   expect(corral.server.coordinator.listRuns()).toEqual(runs);
   await page.reload();
@@ -49,7 +53,7 @@ test.describe('incomplete response', () => {
     corral,
   }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await page.getByRole('button', { name: 'New conversation', exact: true }).click();
     corral.fake?.answerWith(
       `**Saved partial reply**\n\n${'Still writing a long response. '.repeat(1000)}`,
     );
@@ -58,7 +62,7 @@ test.describe('incomplete response', () => {
     const partial = page.getByTestId('live-text');
     await expect(partial.locator('strong')).toHaveText('Saved partial reply');
     await page
-      .getByTestId('chat-composer')
+      .getByRole('region', { name: 'Active run controls', exact: true })
       .getByRole('button', { name: 'Cancel whole run', exact: true })
       .click();
     const dialog = page.getByRole('dialog');

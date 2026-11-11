@@ -5,7 +5,7 @@ test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true })
 
 test('attachment inputs survive their menu, the draft and a reload', async ({ page, corral }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await requestBox(page).fill('Keep my draft');
   await page.getByRole('button', { name: 'Attachments', exact: true }).click({ timeout: 3000 });
   const chooser = page.waitForEvent('filechooser');
@@ -29,7 +29,7 @@ test('independent choices preserve effort and block conflicting saves or unsuppo
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await requestBox(page).fill('Keep this request');
   const chip = page.getByRole('button', { name: 'Model', exact: true });
   const settings = page.getByRole('dialog', { name: 'Model settings', exact: true });

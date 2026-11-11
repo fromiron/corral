@@ -1,4 +1,4 @@
-import type { CorralDefinition, ModelProfileSnapshot } from '@corral/contracts';
+import type { CorralDefinition, ModelProfileSnapshot, RunEvent } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { Profiler } from 'react';
@@ -467,6 +467,77 @@ describe('RunCanvas', () => {
     expect(screen.queryByText('Private question body')).toBeNull();
   });
 
+  it('says whether a waiting agent waits for an answer or an approval', async () => {
+    const { definition } = team();
+    const waiting = (executionId: string, nodeId: string) =>
+      execution(executionId, nodeId, { status: 'waiting_approval' });
+    const session = sessionStore({
+      runId: 'run_canvas',
+      definition,
+      projection: projectionWith({
+        status: 'awaiting_user',
+        executions: { asker: waiting('asker', 'write'), tool: waiting('tool', 'research') },
+        executionOrder: ['asker', 'tool'],
+        nodeExecutions: { write: ['asker'], research: ['tool'] },
+        approvals: {
+          approval_tool: {
+            approvalId: 'approval_tool',
+            kind: 'user_action',
+            subjectVersionIds: ['tool_body'],
+            criteriaVersionId: null,
+            status: 'pending',
+            tool: {
+              purpose: 'tool',
+              executionId: 'tool',
+              attemptNo: 1,
+              toolCallId: 'tool_1',
+              bodyRef: 'tool_body',
+              fingerprint: 'f'.repeat(64),
+              deadline: '2099-10-18T00:00:00.000Z',
+            },
+          },
+        },
+      }),
+      events: [
+        {
+          schemaVersion: '0.1',
+          eventId: 'event_ask',
+          runId: 'run_canvas',
+          runSeq: 1,
+          recordedAt: '2026-10-18T00:00:00.000Z',
+          actor: { kind: 'runtime', id: 'runtime' },
+          causedByEventIds: [],
+          type: 'user_input.requested',
+          payload: {
+            requestId: 'user_1',
+            executionId: 'asker',
+            attemptNo: 1,
+            bodyRef: 'body_user',
+            schemaHash: 'b'.repeat(64),
+            deadline: '2099-10-18T00:01:00.000Z',
+          },
+        } as RunEvent,
+      ],
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunCanvas
+          session={session}
+          definition={definition}
+          selectedNodeId={null}
+          onSelectNode={() => {}}
+        />
+      </IntlProvider>,
+    );
+    await act(async () => {});
+    const label = (id: string) => document.querySelector(`[data-agent-id="${id}"]`)?.textContent;
+    // An answer owed reads as the glossary's Waiting for you; an approval keeps its own word.
+    expect(label('write')).toContain(messages.Canvas.nodeStatus.waiting);
+    expect(label('write')).not.toContain('approval');
+    expect(label('research')).toContain(messages.Canvas.nodeStatus.waiting_approval);
+    expect(label('research')).not.toContain(messages.Canvas.nodeStatus.waiting);
+  });
+
   it('shows an empty state instead of a definition graph when no agent work was observed', async () => {
     const { definition } = team();
     renderCanvas(definition, projectionWith({}));
@@ -656,6 +727,18 @@ describe('RunCanvas', () => {
     expect(state('research', 'helper')).toBe('settled');
     expect(state('research', 'review')).toBe('failed');
     expect(legend()).toEqual(['Failed', 'Finished']);
+    // An ended run whose relations all finished has one state: the lines say it, no legend.
+    await act(async () =>
+      harness.session.setState({
+        projection: {
+          ...live,
+          status: 'succeeded',
+          executions: { ...live.executions, reviewer: { ...reviewer, status: 'succeeded' } },
+        },
+      }),
+    );
+    expect(state('research', 'review')).toBe('settled');
+    expect(screen.queryByRole('list', { name: 'Observed relationships' })).toBeNull();
   });
 
   it('labels the selected agent relations with kind, count and direction', async () => {

@@ -1,5 +1,10 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
+import {
+  canReadArtifactBody,
+  canReleaseArtifactBodies,
+  pendingInteractions,
+  type RunProjection,
+} from '@corral/core';
 import {
   estimateRunCost,
   type RunCostEstimate,
@@ -22,6 +27,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../../pages/Workbench.tsx';
 import { useModelPrices } from '../../prices.ts';
 import { useServices } from '../../services.tsx';
+import { useQuestionNotice } from '../questionNotice.ts';
 import { readRunView } from '../readRunView.ts';
 import { contextCalls } from './contextCalls.ts';
 import {
@@ -32,11 +38,12 @@ import {
   changesPresentation,
   currentAgentExecutions,
   effectAttention,
+  failedToolExecutionId,
   fileChangeSignals,
   type PlanRef,
   presentContext,
+  runToolRows,
   selectPresentedPlan,
-  toolRows,
   type UsageSummary,
   usageSummary,
   viewedRun,
@@ -75,6 +82,8 @@ export interface ChatWidgetModel {
   /** The list-price estimate, or why there is none; null before the run is read. */
   cost: RunCostEstimate | null;
   action: ReturnType<typeof actionRequired>;
+  /** The waiting questions' notice (first title, count from two), once the first is read. */
+  questionNotice: string | null;
   failedExecutionId: string | null;
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
@@ -94,7 +103,13 @@ export interface ChatWidgetModel {
   notice: string;
 }
 
+type PlanProgressStatus = Extract<
+  ReturnType<typeof useWorkPlanSnapshot>['status'],
+  { plan: unknown }
+>;
+
 const ChatWidgetContext = createContext<ChatWidgetModel | null>(null);
+const NO_TEXTS: Readonly<Record<string, string>> = {};
 
 export function useChatWidget() {
   return useContext(ChatWidgetContext);
@@ -307,7 +322,7 @@ function useChatWidgetState(
     },
     [presentationRunId, usingLive, session, transport],
   );
-  const { status: planStatus, retry: retryPlan } = useWorkPlanSnapshot({
+  const { status: readPlan, retry: retryPlan } = useWorkPlanSnapshot({
     runId: presentationRunId,
     ref,
     currentCriteriaVersionId: projection?.currentCriteriaVersionId ?? null,
@@ -317,8 +332,41 @@ function useChatWidgetState(
     cacheScope: usingLive ? session : transport,
     text,
   });
+  // A settled run releases its plan body. The chip keeps the count it last read for this plan
+  // revision, or is not shown; a released body is never a load error.
+  const planKey =
+    presentationRunId && ref
+      ? [
+          presentationRunId,
+          ref.scope,
+          ref.executionId,
+          ref.attemptNo,
+          ref.revision,
+          ref.bodyHash,
+        ].join('|')
+      : null;
+  const [lastPlan, setLastPlan] = useState<{ key: string; status: PlanProgressStatus } | null>(
+    null,
+  );
+  if (
+    planKey &&
+    'plan' in readPlan &&
+    (lastPlan?.key !== planKey ||
+      lastPlan.status.plan !== readPlan.plan ||
+      lastPlan.status.state !== readPlan.state)
+  ) {
+    setLastPlan({ key: planKey, status: readPlan });
+  }
+  const planStatus: ReturnType<typeof useWorkPlanSnapshot>['status'] =
+    projection &&
+    (readPlan.state === 'loading' || readPlan.state === 'error') &&
+    canReleaseArtifactBodies(projection)
+      ? lastPlan && lastPlan.key === planKey
+        ? { ...lastPlan.status, runFinished: true }
+        : { state: 'hidden' }
+      : readPlan;
   // Loading and error details must remain expandable so their scoped Retry is reachable.
-  const open = Boolean(ref) && workPlanOpen(preference, projection?.status ?? 'running');
+  const open = Boolean(ref) && workPlanOpen(preference);
   const calls = useMemo(
     () =>
       contextCalls(
@@ -382,6 +430,11 @@ function useChatWidgetState(
   );
   const interactions =
     runOpen && projection ? pendingInteractions(view?.events ?? [], projection) : [];
+  const questionNotice = useQuestionNotice(
+    interactions.flatMap((item) => (item.kind === 'approval' ? [] : [item])),
+    view?.artifactTexts ?? NO_TEXTS,
+    loadPlan,
+  );
   const action = actionRequired({
     pendingApprovals: interactions.filter((item) => item.kind === 'approval').length,
     pendingQuestions: interactions.filter((item) => item.kind !== 'approval').length,
@@ -392,16 +445,10 @@ function useChatWidgetState(
     planStatus.state === 'ready' && selectedChoice?.live
       ? planStatus.plan.items.find((item) => item.status === 'in_progress')
       : undefined;
-  const tools = toolRows(
-    Object.values(projection?.toolCalls ?? {}).map((call) => ({
-      toolCallId: call.toolCallId,
-      name: call.name,
-      phase: call.phase ?? call.status,
-      effect: call.effectId ? projection?.effects[call.effectId]?.outcome : null,
-    })),
-  );
+  const tools = runToolRows(projection);
   const currentTool = tools.find((row) => row.tone === 'running') ?? null;
   const resultText = useTranslations('Results');
+  const turnText = useTranslations('Turn');
   const listed = projection ? runResults(projection) : null;
   const resultItems = (
     listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? [])
@@ -436,7 +483,12 @@ function useChatWidgetState(
       now,
       planTitle: activeItem?.title ?? null,
       planVisible: open && Boolean(activeItem),
-      toolName: currentTool?.name ?? null,
+      // The tool is named as the work log names it (Wait, not await_tasks).
+      toolName: currentTool
+        ? turnText.has(`tool.${currentTool.name}`)
+          ? turnText(`tool.${currentTool.name}`)
+          : currentTool.name
+        : null,
       failed: action.hasFailure,
       needsUser: action.needsUser,
     }),
@@ -529,9 +581,8 @@ function useChatWidgetState(
     usage: usageSummary(projection),
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
-    failedExecutionId:
-      projection?.toolCalls[tools.find((row) => row.tone === 'failed')?.id ?? '']?.executionId ??
-      null,
+    questionNotice,
+    failedExecutionId: failedToolExecutionId(projection, tools),
     activity,
     plan: {
       open,

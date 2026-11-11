@@ -35,7 +35,7 @@ describe('bounded loop flow', () => {
     expect(screen.getAllByTestId('run-flow-loop')).toHaveLength(1);
     expect(screen.getByText('100 observed rounds · max 3')).toBeInTheDocument();
     expect(screen.getAllByTestId('decision-detail')).toHaveLength(1);
-    const artifacts = screen.getByRole('region', { name: 'Created artifacts' });
+    const artifacts = screen.getByRole('region', { name: 'Created results' });
     expect(within(artifacts).queryByText('Draft round 1')).toBeNull();
     expect(within(artifacts).getByText('Draft round 100')).toBeInTheDocument();
     expect(container.querySelectorAll('[data-selected="true"]')).toHaveLength(1);
@@ -48,7 +48,7 @@ describe('bounded loop flow', () => {
     const { session, projection, onSelectExecution, loadArtifact } = renderFlow();
     await user.click(screen.getByRole('combobox', { name: 'Round for Review' }));
     await user.click(await screen.findByRole('option', { name: 'Round 2' }));
-    const artifacts = screen.getByRole('region', { name: 'Created artifacts' });
+    const artifacts = screen.getByRole('region', { name: 'Created results' });
     expect(within(artifacts).getByText('Draft round 2')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open Draft round 2' })).toBeNull();
     expect(onSelectExecution).not.toHaveBeenCalled();
@@ -69,7 +69,7 @@ describe('bounded loop flow', () => {
     renderFlow('writer_2');
     expect(screen.getByRole('combobox', { name: 'Round for Review' })).toHaveTextContent('Round 2');
     expect(
-      within(screen.getByRole('region', { name: 'Created artifacts' })).getByText('Draft round 2'),
+      within(screen.getByRole('region', { name: 'Created results' })).getByText('Draft round 2'),
     ).toBeInTheDocument();
     expect(screen.getAllByTestId('decision-detail')).toHaveLength(1);
   });
@@ -89,9 +89,7 @@ describe('bounded loop flow', () => {
     const newer = fixture(101).projection;
     act(() => session.setState({ projection: newer }));
     expect(
-      within(screen.getByRole('region', { name: 'Created artifacts' })).getByText(
-        'Draft round 101',
-      ),
+      within(screen.getByRole('region', { name: 'Created results' })).getByText('Draft round 101'),
     ).toBeInTheDocument();
     expect(onSelectExecution).not.toHaveBeenCalled();
   });

@@ -22,13 +22,16 @@ function safeUrl(url: string): string {
   return cleaned && SAFE_SCHEMES.test(cleaned) ? cleaned : '';
 }
 
-/** `reader` is the Results view's larger type; `compact` fits side panels. */
+/**
+ * `reader` is the Results view's larger type; `compact` fits side panels; `chat` is a
+ * conversation answer: the kit's chat text size in the foreground color, with reading leading.
+ */
 export function SafeMarkdown({
   text,
   size = 'compact',
 }: {
   text: string;
-  size?: 'compact' | 'reader';
+  size?: 'compact' | 'reader' | 'chat';
 }) {
   const t = useTranslations('Markdown');
   const reader = size === 'reader';
@@ -43,7 +46,7 @@ export function SafeMarkdown({
   }
   return (
     <div
-      className={`corral-markdown typeset min-w-0 max-w-full wrap-anywhere ${reader ? '[--typeset-body:var(--text-reader)] [--typeset-body-leading:var(--text-reader--line-height)]' : 'typeset-compact'}`}
+      className={`corral-markdown typeset min-w-0 max-w-full wrap-anywhere ${reader ? '[--typeset-body:var(--text-reader)] [--typeset-body-leading:var(--text-reader--line-height)]' : size === 'chat' ? 'text-foreground [--typeset-body:var(--fs-subtitle)] [--typeset-body-leading:var(--lh-title)]' : 'typeset-compact'}`}
     >
       <Markdown
         skipHtml
@@ -68,7 +71,7 @@ export function SafeMarkdown({
               }
             })();
             return (
-              <span className="rounded fill-control px-1 text-xs text-muted-foreground">
+              <span className="rounded fill-control px-1 text-caption text-muted-foreground">
                 {t('imageNotLoaded', { alt: alt || t('image'), host: host || '—' })}
               </span>
             );

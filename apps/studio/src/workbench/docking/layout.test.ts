@@ -9,6 +9,8 @@ import {
   type DockDocumentDescriptor,
   type DockPanel,
   documentTabLabel,
+  INITIAL_PANELS,
+  initialLayout,
   layoutStorageKey,
   MAX_DOCUMENTS,
   parseLayout,
@@ -334,4 +336,25 @@ it('one tab per team, only for this project, and never a file document in disgui
   expect(restored.panels.find((entry) => entry.id === 'graph:foreign')?.descriptor.kind).toBe(
     'unknown',
   );
+});
+
+const leaves = (node: GridNode): { id: string; views: string[] }[] => {
+  if (node.type === 'branch') return (node.data as GridNode[]).flatMap(leaves);
+  const { id, views } = node.data as { id: string; views: string[] };
+  return [{ id, views }];
+};
+
+it('a new dock from 960px gives the file tree its own group; narrower docks keep one group', () => {
+  // Narrow: today's single group, where a document opens as a tab beside the tree.
+  expect(initialLayout(959)).toEqual(createPresetLayout('conversation', INITIAL_PANELS));
+  expect(initialLayout(0)).toEqual(createPresetLayout('conversation', INITIAL_PANELS));
+  // Wide: the tree alone in its own group, so documents open in a group beside it.
+  const wide = initialLayout(960);
+  const groups = leaves(wide.grid.root);
+  expect(groups).toEqual([{ id: 'tree', views: ['context:files'] }]);
+  expect(Object.keys(wide.panels)).toEqual(['context:files']);
+  // It is an ordinary saved arrangement once written.
+  const reloaded = parseLayout(envelope(wide), target.hostId, target.projectId);
+  expect(reloaded.recovered).toBe(false);
+  expect(reloaded.layout && leaves(reloaded.layout.grid.root)).toEqual(groups);
 });

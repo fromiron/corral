@@ -1,4 +1,4 @@
-import { requestBox, slash } from '../workbench.ts';
+import { newConversation, requestBox, slash } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -9,7 +9,7 @@ test('an idle second tab discovers a remote request and answer without replacing
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const originalPath = new URL(page.url()).pathname;
   const second = await context.newPage();
@@ -23,7 +23,7 @@ test('an idle second tab discovers a remote request and answer without replacing
     await expect(second.getByTestId('chat-timeline')).toContainText('The remote request finished.');
     await expect(requestBox(second)).toHaveValue('Keep this unsent draft');
     await page.goto(`${corral.server.url}/`);
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const otherPath = new URL(page.url()).pathname;
     expect(otherPath).not.toBe(originalPath);
@@ -69,7 +69,7 @@ test.describe('shared automatic queue', () => {
     const second = await context.newPage();
     try {
       await corral.open('/');
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await newConversation(page);
       await requestBox(page).fill('Initial request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');

@@ -2,7 +2,9 @@ export { type DiffLine, diffLines } from './artifacts/diff.ts';
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
+export { CommandReceipts } from './components/CommandReceipts.tsx';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
+export { EmptyView, type EmptyViewAction } from './components/EmptyView.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {
   ExecutionToolGroup,
@@ -13,9 +15,11 @@ export { FailureNotice } from './components/FailureNotice.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
 export { InteractionPanel } from './components/InteractionPanel.tsx';
 export { MessageBody } from './components/MessageBody.tsx';
+export { PathCrumb } from './components/PathCrumb.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningSummary } from './components/ReasoningSummary.tsx';
+export { RecipeStatusPanel } from './components/RecipeStatusPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
 export { RoutingTally } from './components/RoutingTally.tsx';
 export { RunActions } from './components/RunActions.tsx';
@@ -121,6 +125,7 @@ export {
   type TurnProcess,
   turnSummary,
 } from './run/turn-process.ts';
+export { type AgentUsage, usageByAgent } from './run/usage-by-agent.ts';
 export {
   useWorkPlanSnapshot,
   type WorkPlanRef,

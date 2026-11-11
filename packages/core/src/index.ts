@@ -82,6 +82,7 @@ export * from './runner.ts';
 export * from './session-runs.ts';
 export * from './store/run-store.ts';
 export * from './team-draft.ts';
+export * from './team-templates.ts';
 export { toolDescriptorHash, toolPermissionPlan, validToolPermissionPlan } from './tool-policy.ts';
 export * from './transport.ts';
 export * from './usage.ts';

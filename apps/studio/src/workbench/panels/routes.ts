@@ -6,6 +6,11 @@ export interface RunDetailSearch {
   artifact?: string | undefined;
   view?: 'results' | 'run' | undefined;
   result?: string | undefined;
+  /**
+   * An explicit request to answer this run (the conversation's notice, the waiting run control,
+   * a notification): the run page opens its response area and consumes the request once.
+   */
+  respond?: true | undefined;
 }
 export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   review?: true | undefined;
@@ -48,6 +53,7 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     out.panel = search.panel as SessionPanel;
   if (search.tab === 'run') out.panel = 'run';
   if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
+  if (out.panel === 'run' && search.respond === true) out.respond = true;
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
   for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
     const value = text(search[key]);
@@ -81,6 +87,7 @@ export function validateRunSearch(search: Record<string, unknown>): RunDetailSea
     ...(typeof search.artifact === 'string' ? { artifact: search.artifact } : {}),
     ...(search.view === 'results' || search.view === 'run' ? { view: search.view } : {}),
     ...(typeof search.result === 'string' ? { result: search.result } : {}),
+    ...(search.respond === true ? { respond: true as const } : {}),
   };
 }
 
@@ -95,6 +102,18 @@ export function validateReviewSearch(search: Record<string, unknown>): ReviewSea
     ...(typeof search.runId === 'string' ? { runId: search.runId } : {}),
     ...(typeof search.file === 'string' ? { file: search.file } : {}),
   };
+}
+
+/**
+ * A session run's own address opens its session's run history on the same run, keeping the
+ * view, the result or artifact being read and the inspected execution.
+ */
+export function runSessionSearch(runId: string, search: RunDetailSearch): SessionSearch {
+  return validateSessionSearch({
+    panel: 'run',
+    run: runId,
+    ...validateRunSearch({ ...search }),
+  });
 }
 
 /** Legacy review links select the same Changes view as in-session review. */
@@ -138,6 +157,8 @@ export function resolveSessionSearch(url: SessionSearch, remembered: unknown): S
     remembered && typeof remembered === 'object' ? (remembered as Record<string, unknown>) : {},
   );
   delete saved.compose;
+  // A request to respond is answered once; a remembered one would answer a later visit.
+  delete saved.respond;
   return validateSessionSearch({
     ...(!explicitTarget ? saved : {}),
     ...selection,
@@ -150,6 +171,8 @@ export function patchSessionSearch(
 ): SessionSearch {
   return validateSessionSearch({
     ...current,
+    // Only the change that asks to respond carries the request.
+    respond: undefined,
     ...('run' in patch && patch.run !== current.run
       ? {
           execution: undefined,

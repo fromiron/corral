@@ -1,5 +1,5 @@
 import type { ModelCatalogMetadata, ModelImportPreview, ModelImportSource } from '@corral/client';
-import { Button, Checkbox, Input, Select } from '@corral/react/design-kit';
+import { Button, Checkbox, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -43,10 +43,15 @@ export function ModelImportPanel() {
     ) ?? [];
   return (
     <section aria-labelledby={heading} className="settings-surface flex flex-col gap-3">
-      <h3 id={heading} className="text-sm font-semibold">
+      <h3
+        id={heading}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
-      <p className="text-sm text-muted-foreground">{t('intro')}</p>
+      {/* What never crosses over from the other agent. */}
+      <p className="text-body text-muted-foreground">{t('excluded')}</p>
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {
@@ -60,7 +65,7 @@ export function ModelImportPanel() {
           });
         }}
       >
-        <div className="flex flex-col gap-1 text-sm">
+        <div className="flex flex-col gap-1 text-body">
           <span>{t('source')}</span>
           <Select
             label={t('source')}
@@ -82,7 +87,7 @@ export function ModelImportPanel() {
         </div>
         <label
           htmlFor={`${heading}-path`}
-          className="flex min-w-0 basis-full flex-col gap-1 text-sm sm:flex-1 sm:basis-auto"
+          className="flex min-w-0 basis-full flex-col gap-1 text-body sm:flex-1 sm:basis-auto"
         >
           {t('path')}
           <Input
@@ -104,14 +109,14 @@ export function ModelImportPanel() {
       {preview ? (
         <div className="flex flex-col gap-3">
           {!preview.candidates.length ? (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p role="status" className="text-body text-muted-foreground">
               {t('empty')}
             </p>
           ) : null}
           {preview.candidates.map((candidate) => (
             <div
               key={candidate.id}
-              className="flex flex-col gap-1 border-t border-line pt-2 text-sm"
+              className="flex flex-col gap-1 border-t border-line pt-2 text-body"
             >
               <Checkbox
                 label={`${candidate.provider} / ${candidate.model} — ${t(candidate.change)}`}
@@ -122,7 +127,7 @@ export function ModelImportPanel() {
                 }
               />
               {candidate.previous ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-caption text-muted-foreground">
                   {t('previous', {
                     model: `${candidate.previous.provider} / ${candidate.previous.model}`,
                     endpoint: candidate.previous.endpoint ?? '—',
@@ -130,13 +135,13 @@ export function ModelImportPanel() {
                 </p>
               ) : null}
               {candidate.endpoint ? (
-                <p className="break-all text-xs text-muted-foreground">{candidate.endpoint}</p>
+                <p className="break-all text-caption text-muted-foreground">{candidate.endpoint}</p>
               ) : null}
               {candidate.reason ? (
-                <p className="text-xs text-muted-foreground">{candidate.reason}</p>
+                <p className="text-caption text-muted-foreground">{candidate.reason}</p>
               ) : null}
               {candidate.warnings.map((warning) => (
-                <p key={warning} className="text-xs text-muted-foreground">
+                <p key={warning} className="text-caption text-muted-foreground">
                   {warning}
                 </p>
               ))}
@@ -211,18 +216,18 @@ export function ModelImportPanel() {
       </div>
       {catalogVisible ? (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-muted-foreground">{t('metadataOnly')}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">{t('metadataOnly')}</p>
+          <p className="text-caption text-muted-foreground">
             {metadata?.fetchedAt
               ? `${metadata.fetchedAt} · ${metadata.stale ? t('stale') : t('current')} · ${metadata.hash?.slice(0, 12)}`
               : t('noCache')}
           </p>
           {metadata?.error ? (
-            <p role="status" className="text-xs text-muted-foreground">
+            <p role="status" className="text-caption text-muted-foreground">
               {metadata.error}
             </p>
           ) : null}
-          <label htmlFor={`${heading}-filter`} className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${heading}-filter`} className="flex flex-col gap-1 text-body">
             {t('filter')}
             <Input
               id={`${heading}-filter`}
@@ -232,7 +237,7 @@ export function ModelImportPanel() {
             />
           </label>
           <div className="max-h-64 overflow-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-caption">
               <thead>
                 <tr>
                   <th>{t('model')}</th>
@@ -256,17 +261,17 @@ export function ModelImportPanel() {
             </table>
           </div>
           {matches.length > 100 ? (
-            <p className="text-xs text-muted-foreground">{t('filterMore')}</p>
+            <p className="text-caption text-muted-foreground">{t('filterMore')}</p>
           ) : null}
         </div>
       ) : null}
       {message ? (
-        <p role="status" className="text-sm">
+        <p role="status" className="text-body">
           {message}
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}

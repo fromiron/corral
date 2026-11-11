@@ -8,8 +8,11 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Switch,
+  Tooltip,
 } from '@corral/react/design-kit';
+import { GitBranch } from '@corral/react/icons';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -22,11 +25,14 @@ export function MessageBranch({
   artifactVersionId,
   requestStart,
   disabled,
+  icon = false,
 }: {
   runId: string;
   artifactVersionId?: string;
   requestStart?: true;
   disabled: boolean;
+  /** An icon button for a message's action row; its name stays the same. */
+  icon?: boolean;
 }) {
   const t = useTranslations('MessageBranch');
   const { workspaces, mode } = useServices();
@@ -71,9 +77,23 @@ export function MessageBranch({
   if (mode !== 'server') return null;
   return (
     <>
-      <Button size="compact" variant="ghost" disabled={disabled} onClick={() => setOpen(true)}>
-        {t(requestStart ? 'requestOpen' : 'open')}
-      </Button>
+      {icon ? (
+        <Tooltip content={t(requestStart ? 'requestOpen' : 'open')}>
+          <Button
+            size="icon-compact"
+            variant="ghost"
+            aria-label={t(requestStart ? 'requestOpen' : 'open')}
+            disabled={disabled}
+            onClick={() => setOpen(true)}
+          >
+            <GitBranch />
+          </Button>
+        </Tooltip>
+      ) : (
+        <Button size="compact" variant="ghost" disabled={disabled} onClick={() => setOpen(true)}>
+          {t(requestStart ? 'requestOpen' : 'open')}
+        </Button>
+      )}
       <Dialog
         open={open}
         onOpenChange={(value) => {
@@ -87,7 +107,7 @@ export function MessageBranch({
               {t(requestStart ? 'requestDescription' : 'description')}
             </DialogDescription>
           </DialogHeader>
-          <DialogPanel className="space-y-3 text-sm">
+          <DialogPanel className="space-y-3 text-body">
             <Switch
               label={t('contextOnly')}
               checked={contextOnly}
@@ -150,7 +170,7 @@ export function MessageBranch({
             ) : null}
             {siblings.length ? (
               <div>
-                <p className="font-medium">{t('siblings')}</p>
+                <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('siblings')}</p>
                 <ul>
                   {siblings.map((item) => (
                     <li key={item.sessionId}>

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
@@ -51,6 +53,20 @@ it('keeps unset as its own policy without showing fixed-effort controls or prete
   expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent('Default');
   expect(screen.queryByRole('tablist')).toBeNull();
   expect(screen.queryByRole('switch')).toBeNull();
+});
+
+it('outlines its popup in forced colors, as the menu popup is', () => {
+  show(false);
+  const popup = screen.getByRole('dialog', { name: 'Model settings' });
+  expect(popup).toHaveAttribute('data-slot', 'model-picker-popup');
+  // The popup's own outline-none would leave it without an edge where backgrounds are dropped.
+  const theme = readFileSync(join(import.meta.dirname, '../src/theme.css'), 'utf8');
+  const outlined =
+    /@media \(forced-colors: active\) \{\s*([^{]+)\{\s*outline: 1px solid CanvasText;/.exec(
+      theme,
+    )?.[1];
+  expect(outlined).toContain('[data-slot="menu-popup"]');
+  expect(outlined).toContain('[data-slot="model-picker-popup"]');
 });
 
 it('labels an empty simulated picker without replacing a saved missing model value', () => {

@@ -100,7 +100,7 @@ export function RunStatsFigures({
               {label(figure)}
             </PopoverTrigger>
             <PopoverPopup width="sm" padding="compact" side="bottom" align="start">
-              <PopoverTitle className={cn(size.type.caption, 'px-2 pt-1 pb-2 font-semibold')}>
+              <PopoverTitle className={cn(size.type.caption, 'px-2 pt-1 pb-2')}>
                 {node.label} · {label(figure)}
               </PopoverTitle>
               <ul className="grid gap-0.5">

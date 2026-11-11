@@ -13,6 +13,21 @@ export * from './adapters/skeleton.tsx';
 export * from './adapters/textarea.tsx';
 export * from './adapters/tooltip.tsx';
 export { cn } from './adapters/utils.ts';
+export {
+  type AgentCheckpoint,
+  AgentCheckpoints,
+  type AgentCheckpointsLabels,
+  type AgentCheckpointsProps,
+} from './components/agent/agent-checkpoints.tsx';
+export {
+  AgentFindings,
+  type AgentFindingsLabels,
+  type AgentFindingsProps,
+  type Finding,
+  type FindingSeverity,
+  type FindingsAgent,
+  SeverityMark,
+} from './components/agent/agent-findings.tsx';
 export { AgentGraphNode, type AgentGraphNodeProps } from './components/agent/agent-graph.tsx';
 export {
   AgentHandoff,
@@ -42,15 +57,50 @@ export {
   AgentStatusIcon,
   type AgentStatusIconProps,
   AgentStatusLabel,
+  CircleCheck,
+  Collapse,
+  type CollapseProps,
+  DisclosureChevron,
+  DrawnCheck,
+  type DrawnCheckProps,
   Keycap,
   LiveDot,
   MetaDot,
   Meter,
   type MeterProps,
+  Roll,
+  RollNumber,
+  type RollNumberProps,
+  type RollProps,
   SizeScope,
   Sparkline,
   ToolStack,
 } from './components/agent/agent-primitives.tsx';
+export {
+  type AgentRoutine,
+  AgentRoutines,
+  type AgentRoutinesLabels,
+  type AgentRoutinesProps,
+  describeSchedule,
+  type RoutineActiveRun,
+  type RoutineDestination,
+  type RoutineDraft,
+  type RoutineFrequency,
+  type RoutineModel,
+  type RoutineRun,
+  type RoutineRunStatus,
+  type RoutineSchedule,
+  type RoutineSource,
+} from './components/agent/agent-routines.tsx';
+export {
+  AgentStatusPill,
+  type AgentStatusPillLabels,
+  type AgentStatusPillProps,
+  type AgentStatusPillState,
+  type AgentStatusPillStep,
+  type AgentStatusPillStepState,
+  type AgentStatusPillToggleInfo,
+} from './components/agent/agent-status-pill.tsx';
 export {
   AgentSteering,
   type AgentSteeringLabels,
@@ -62,6 +112,22 @@ export {
   type SteerStep,
 } from './components/agent/agent-steering.tsx';
 export {
+  type AgentTask,
+  type AgentTaskDraft,
+  type AgentTaskFile,
+  type AgentTaskFileChange,
+  type AgentTaskModel,
+  type AgentTaskPullRequest,
+  type AgentTaskRepo,
+  type AgentTaskStatus,
+  type AgentTaskStep,
+  type AgentTaskStepState,
+  AgentTasks,
+  type AgentTasksFilter,
+  type AgentTasksLabels,
+  type AgentTasksProps,
+} from './components/agent/agent-tasks.tsx';
+export {
   AgentTree,
   type AgentTreeLabels,
   type AgentTreeNode,
@@ -72,6 +138,16 @@ export {
   DecisionTree,
   type DecisionTreeProps,
 } from './components/agent/decision-tree.tsx';
+export {
+  type DiffFile,
+  type DiffHunk,
+  type DiffLine,
+  type DiffLineType,
+  DiffReview,
+  type DiffReviewLabels,
+  type DiffReviewProps,
+  type DiffReviewState,
+} from './components/agent/diff-review.tsx';
 export {
   type ModelEffort,
   type ModelOption,
@@ -96,7 +172,28 @@ export {
   type ToolCallLabels,
   type ToolCallStatus,
 } from './components/agent/tool-call-card.tsx';
+export {
+  EmptyState,
+  Page,
+  PathBar,
+  type PathBarLabels,
+  SectionLabel,
+} from './components/blocks/page-chrome.tsx';
+export {
+  collapsedStackHeight,
+  QUEUE_CARD_H,
+  QUEUE_CARD_H_COMPACT,
+  QueuedStack,
+  type QueuedStackLabels,
+  type QueuedStackProps,
+  useQueueCardHeight,
+} from './components/blocks/queued-stack.tsx';
 export { SidebarSearchField } from './components/sidebar-app/search-field.tsx';
+export {
+  SidebarWorkspaceHeader,
+  type SidebarWorkspaceHeaderLabels,
+  type SidebarWorkspaceHeaderProps,
+} from './components/sidebar-app/workspace-header.tsx';
 export { WorkspaceTile } from './components/sidebar-app/workspace-tile.tsx';
 export {
   Accordion,
@@ -160,6 +257,11 @@ export {
   DialogTitle as KitDialogTitle,
 } from './components/ui/dialog.tsx';
 export {
+  InputCopy,
+  type InputCopyLabels,
+  type InputCopyProps,
+} from './components/ui/input-copy.tsx';
+export {
   InputField,
   InputField as KitInputField,
   InputGroup,
@@ -169,6 +271,7 @@ export {
   InputMessage,
   type InputMessageInputProps,
   type InputMessageProps,
+  type QueuedMessage,
 } from './components/ui/input-message.tsx';
 export {
   RadioGroup,
@@ -205,6 +308,11 @@ export {
 } from './components/ui/tabs.tsx';
 export { TabsSubtle, TabsSubtleItem, TabsSubtlePanel } from './components/ui/tabs-subtle.tsx';
 export {
+  ThinkingIndicator,
+  type ThinkingIndicatorLabels,
+  type ThinkingIndicatorProps,
+} from './components/ui/thinking-indicator.tsx';
+export {
   ThinkingStep,
   ThinkingStepDetails,
   ThinkingStepSource,
@@ -213,7 +321,12 @@ export {
   ThinkingStepsContent,
   ThinkingStepsHeader,
 } from './components/ui/thinking-steps.tsx';
+export { useControllable } from './hooks/use-controllable.ts';
 export { useNow } from './hooks/use-now.ts';
 export { formatClock, formatCost, formatTimeOfDay } from './lib/agent-format.ts';
+export { Elevated } from './lib/elevated.tsx';
+export { focusRing } from './lib/focus.ts';
+export { fontWeights } from './lib/font-weight.ts';
+export { useShape } from './lib/shape-context.tsx';
 export { useSize } from './lib/size-context.tsx';
 export { UIProvider as DesignKitProvider } from './lib/ui-provider.tsx';

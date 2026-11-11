@@ -313,7 +313,7 @@ SQLite에 정의 revision, 실행 이벤트, Task/Execution 투영, 입력 스�
 
 ### 10.2 기본 보안
 
-localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않는다. 시작 시 발급한 세션, Host/Origin 검사, 상태 변경 요청의 CSRF 방어, rate/size 제한을 적용한다. API 키와 OAuth 토큰은 backend 환경/서버 측 credential store에서만 읽으며 Corral JSON·SQLite·클라이언트 번들·이벤트 payload·export·로그에 저장하지 않는다. OAuth 로그인은 provider 자체 흐름에서 사용자가 완료한다.
+localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않는다. 시작 시 발급한 세션, Host/Origin 검사, 상태 변경 요청의 CSRF 방어, rate/size 제한을 적용한다. API 키와 OAuth 토큰은 backend 환경/서버 측 credential store에서만 읽으며 Corral JSON·SQLite·클라이언트 번들·이벤트 payload·export·로그에 저장하지 않는다. 유일한 예외는 사람이 고른 키를 금고 암호로 암호화해 담는 [설정 금고](desktop-contract.md#abs-13--암호화-설정-금고) 내보내기다. OAuth 로그인은 provider 자체 흐름에서 사용자가 완료한다.
 
 외부 decision provider(v0.2)는 live Run에서 workspace의 명시적 opt-in이 있을 때만 쓴다. mock Run·공개 데모·CI에서는 시작 시 거절한다. 보내는 입력은 정해진 특징 값과 UTF-8 1,500자 이하 발췌로 제한하고, 전송 전에 그 사실을 effect로 기록한다. 이벤트·export에는 발췌 본문 대신 hash만 남긴다.
 

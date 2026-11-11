@@ -4,23 +4,11 @@ import { startTestRun } from './workbench.ts';
 // The Run page on the in-browser demo team. Demo runs live in the page's worker,
 // so these tests reach the Run page through the app's own link instead of reloading.
 
-const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
-  const card = page.locator('[data-testid^="approval-"]').filter({ hasText: kind });
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  // UX-11: each step's button says what approving it does.
-  await card
-    .getByRole('button', {
-      name: kind === 'Final output' ? 'Confirm as final result' : 'Continue with this version',
-    })
-    .click();
-};
-
 async function finishedTeamRun(page: Page) {
   await page.goto('/demo?delay=150');
   await startTestRun(page);
-  await approve(page, 'Your decision');
-  await approve(page, 'Final output');
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  // The demo team asks for no approval, so its run finishes by itself.
+  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
   await expect(graph(page)).toBeVisible();
@@ -37,7 +25,12 @@ test('the first view of a completed run fits every observed agent above the resu
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await finishedTeamRun(page);
-  await expect(page.getByRole('region', { name: 'Results', exact: true })).toBeVisible();
+  // The results are a view of their own beside the graph, not a strip under it.
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Execution views' })
+      .getByRole('tab', { name: 'Results', exact: true }),
+  ).toBeVisible();
   const stage = graph(page).locator('[data-graph-pane]');
   await expect(stage.locator('[data-agent-id]')).toHaveCount(5);
   await expect
@@ -105,7 +98,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
   // A finished execution takes no new instructions; what it was sent is in its conversation.
   await expect(side.getByRole('heading', { name: 'Writer', exact: true })).toBeVisible();
   await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
-  await monitor.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await monitor.getByRole('tab', { name: 'Workflow', exact: true }).click();
   // The work flow card of the chosen execution is marked as the current one.
   const activity = page.getByTestId('run-work-flow');
   await expect(
@@ -115,7 +108,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
       .first(),
   ).toBeVisible();
 
-  // Work flow and graph are alternative views of the same explicit execution selection.
+  // Workflow and graph are alternative views of the same explicit execution selection.
   await activity
     .getByRole('button', { name: /^Research · exec_/ })
     .first()

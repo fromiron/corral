@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
-import { Button, Select } from '../design-kit/index.ts';
+import { Button, fontWeights, Select } from '../design-kit/index.ts';
 import { compileDraft } from '../editor/model.ts';
 import type { SavedRevision } from '../run/session.ts';
 
@@ -87,7 +87,11 @@ export function RunControls({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
-        <h2 id="run-heading" className="text-sm font-semibold">
+        <h2
+          id="run-heading"
+          className="text-subtitle"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
           {t('heading')}
         </h2>
         <Button
@@ -108,13 +112,13 @@ export function RunControls({
         </Button>
       </div>
       {/* What a test run creates, before it starts (#77 GA-03). */}
-      <p data-testid="run-scope" className="text-xs text-muted-foreground">
+      <p data-testid="run-scope" className="text-caption text-muted-foreground">
         {t(beforeStart ? 'scopeSaved' : 'scopeDraft')}
       </p>
       {startFrom ? (
         <div
           data-testid="start-from"
-          className="flex flex-wrap items-center justify-between gap-2 rounded border border-primary/50 bg-primary/10 px-2 py-1 text-xs"
+          className="flex flex-wrap items-center justify-between gap-2 rounded border border-primary/50 bg-primary/10 px-2 py-1 text-caption"
         >
           <span>{t('startFrom', { label: startFrom.label, runId: startFrom.runId })}</span>
           <Button type="button" onClick={onClearStartFrom} variant="ghost" size="compact">
@@ -123,7 +127,7 @@ export function RunControls({
         </div>
       ) : null}
       {liveAvailable || mode === 'live' ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-caption">
           <span className="text-muted-foreground">{t('agents')}</span>
           <Select
             label={t('agents')}
@@ -138,16 +142,16 @@ export function RunControls({
         </div>
       ) : null}
       {unavailable ? (
-        <p role="alert" className="text-xs text-muted-foreground">
+        <p role="alert" className="text-caption text-muted-foreground">
           {t('liveUnavailable')}
         </p>
       ) : null}
       {!compiled.runnable ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {compiled.definition ? t('notRunnableHere') : t('notRunnable')}
         </p>
       ) : needsSession ? (
-        <p className="text-xs text-muted-foreground">{t('checksNeedSession')}</p>
+        <p className="text-caption text-muted-foreground">{t('checksNeedSession')}</p>
       ) : null}
     </div>
   );

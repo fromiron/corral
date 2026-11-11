@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { openResult, startTestRun } from '../workbench.ts';
+import { openLibraryTeams, openResult, startTestRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
@@ -9,7 +9,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
@@ -72,7 +72,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   if (!finalId) throw new Error('Expected a confirmed final output');
   const finalText = corral.server.coordinator.getArtifactText(run.runId, finalId);
   if (!finalText) throw new Error('Expected confirmed output text');
-  await results.getByRole('radio', { name: 'Source', exact: true }).click();
+  await results.getByRole('tab', { name: 'Source', exact: true }).click();
   await expect(results.getByTestId('result-body')).toHaveText(finalText);
   await expect(results.getByRole('article', { name: 'draft v2', exact: true })).toContainText(
     'Submitted',

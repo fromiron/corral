@@ -1,3 +1,4 @@
+import { DiagnosticsSettingsPage } from '../pages/DiagnosticsSettingsPage.tsx';
 import { HarnessDefaultsPage } from '../pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from '../pages/HarnessSettingsPage.tsx';
 import { McpSettingsPage } from '../pages/McpSettingsPage.tsx';
@@ -25,6 +26,8 @@ export function SettingsContent({ section }: { section: string }) {
       return <McpSettingsPage />;
     case 'vault':
       return <VaultSettingsPage />;
+    case 'diagnostics':
+      return <DiagnosticsSettingsPage />;
     case 'workspace':
     case 'shortcuts':
     case 'about':

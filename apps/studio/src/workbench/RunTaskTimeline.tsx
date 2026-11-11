@@ -42,6 +42,8 @@ export function RunTaskTimeline({
   const t = useTranslations('RunMonitor.taskTimeline');
   const status = useTranslations('Status');
   const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
+  // Waiting for the person or paused, the axis stops at the last record, as the agent lanes do.
+  const held = projection?.status === 'awaiting_user' || projection?.status === 'paused';
   const board = useMemo(() => {
     if (!projection || !events.length) return null;
     const first = events[0];
@@ -97,14 +99,17 @@ export function RunTaskTimeline({
     return { steps, startedAt, lastAt, attempts };
   }, [events, projection, definition, live, status]);
   if (!board?.steps.length)
-    return <p className="p-3 text-sm text-muted-foreground">{t('empty')}</p>;
+    return <p className="p-3 text-body text-muted-foreground">{t('empty')}</p>;
   return (
     <section aria-label={t('title')} className="flex flex-col gap-3 p-3">
       <PlanVsActual
+        // The title only names the board's list: the By task tab shows the view's name and the
+        // run header the elapsed time, so the kit's header stays hidden, as the lanes' does.
         title={t('title')}
+        className="[&>header]:hidden"
         steps={board.steps}
         startedAt={board.startedAt}
-        {...(live ? {} : { now: board.lastAt })}
+        {...(live && !held ? {} : { now: board.lastAt })}
         size="compact"
         selectedStepId={selected ? (projection?.executions[selected]?.taskId ?? null) : null}
         {...(onSelect

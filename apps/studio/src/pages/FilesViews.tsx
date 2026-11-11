@@ -1,16 +1,11 @@
-import type {
-  InboxItemView,
-  VerifyCommand,
-  WorkspaceBindingView,
-  WorktreeView,
-} from '@corral/client';
-import { Button, Input, Switch, Textarea } from '@corral/react/design-kit';
+import type { VerifyCommand, WorkspaceBindingView, WorktreeView } from '@corral/client';
+import { EmptyView, type EmptyViewAction } from '@corral/react';
+import { Button, fontWeights, Input, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
-import { CheckpointPanel } from '../workbench/CheckpointPanel.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
@@ -46,24 +41,41 @@ const formatChecks = (checks: VerifyCommand[]) =>
     .map((c) => `${c.name} = ${c.argv.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`)
     .join('\n');
 
+/**
+ * The project's linked folder: undefined while it is read, null when there is none. An answer
+ * counts only for the project it was asked for and only if no later read started, so switching
+ * projects never shows the previous project's folder.
+ */
 export function useBinding(projectId: string | null) {
   const { workspaces } = useServices();
-  const [binding, setBinding] = useState<WorkspaceBindingView | null | undefined>(undefined);
+  const [read, setRead] = useState<{
+    projectId: string | null;
+    binding: WorkspaceBindingView | null;
+  } | null>(null);
+  const latest = useRef(0);
   const reload = useCallback(async () => {
-    if (!workspaces || !projectId) return setBinding(null);
-    try {
-      setBinding(await workspaces.binding(projectId));
-    } catch {
-      setBinding(null);
+    const request = ++latest.current;
+    let binding: WorkspaceBindingView | null = null;
+    if (workspaces && projectId) {
+      try {
+        binding = await workspaces.binding(projectId);
+      } catch {
+        binding = null;
+      }
     }
+    if (request === latest.current) setRead({ projectId, binding });
   }, [workspaces, projectId]);
   useEffect(() => {
     void reload();
     // Linking, unlinking or trusting elsewhere (settings overlay) changes what this shows.
     const changed = () => void reload();
     window.addEventListener(WORKSPACE_CHANGED, changed);
-    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+    return () => {
+      window.removeEventListener(WORKSPACE_CHANGED, changed);
+      latest.current += 1;
+    };
   }, [reload]);
+  const binding = read && read.projectId === projectId ? read.binding : undefined;
   return { binding, reload };
 }
 
@@ -104,8 +116,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
 
   return (
     <fieldset disabled={pending} className="flex min-w-0 flex-col gap-6">
-      <p className="text-sm text-muted-foreground">{t('folderIntro')}</p>
-      {mode === 'browser' ? <p className="text-sm text-warning">{t('demoFolder')}</p> : null}
+      {mode === 'browser' ? <p className="text-body text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
         <form onSubmit={link} className="settings-row">
           <div>
@@ -115,6 +126,8 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                 {path}
               </p>
             ) : null}
+            {/* What linking grants, beside the action that grants it. */}
+            <p>{t('linkObservesOnly')}</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
             {mode === 'server' && !desktop ? (
@@ -198,14 +211,19 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                   void act(() => workspaces.configure(projectId, { trusted: !binding.trusted }))
                 }
               />
-              <p className="text-xs">{t('trustHint')}</p>
+              <p className="text-caption">{t('trustHint')}</p>
             </div>
           ) : null}
           {binding.trusted ? (
             <section className="settings-surface flex flex-col gap-3">
               <div>
-                <h3 className="text-sm font-medium">{t('checksHeading')}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">{t('checksHint')}</p>
+                <h3
+                  className="text-subtitle"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
+                  {t('checksHeading')}
+                </h3>
+                <p className="mt-1 text-caption text-muted-foreground">{t('checksHint')}</p>
               </div>
               <Textarea
                 rows={3}
@@ -238,7 +256,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
         </>
       )}
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
@@ -289,205 +307,90 @@ export function WorkingCopyPanel({
       setBusy(false);
     }
   };
+  // Without a copy this is an empty view with its one next step: link the folder, trust it,
+  // or make the copy.
+  if (!worktree) {
+    const folderSettings = <Link {...navigation.link('workspace', projectId)} />;
+    // The button names the commit the copy starts from. The one thing it cannot say is that
+    // uncommitted changes in the folder stay behind, so that is told only when there are some.
+    const left = binding?.status?.changed ?? 0;
+    const next: { text?: string; action: EmptyViewAction } = !binding
+      ? { text: t('noFolder'), action: { label: t('openFolderSettings'), render: folderSettings } }
+      : !binding.trusted
+        ? { text: t('notTrusted'), action: { label: t('openTrust'), render: folderSettings } }
+        : {
+            ...(left > 0 ? { text: t('createHint', { changed: left }) } : {}),
+            action: {
+              label: t('create', { head: binding.status?.head ?? 'HEAD' }),
+              disabled: busy,
+              onClick: () => void act(() => workspaces.createWorktree(sessionId)),
+            },
+          };
+    return (
+      <section aria-label={t('copyHeading')} className="flex flex-col gap-2">
+        <EmptyView title={t('noCopyTitle')} text={next.text} action={next.action} />
+        {error ? (
+          <p role="alert" className="m-0 text-center text-caption text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </section>
+    );
+  }
   return (
     <section
       aria-labelledby="copy-heading"
-      className="flex flex-col gap-2 rounded-md fill-group p-3 text-sm"
+      className="flex flex-col gap-2 rounded-md fill-group p-3 text-body"
     >
-      <h3 id="copy-heading" className="text-sm font-semibold">
+      <h3
+        id="copy-heading"
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('copyHeading')}
       </h3>
       {worktree?.missing ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('copyMissing')}
         </p>
       ) : null}
-      {worktree && !worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
-      {worktree ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {t('ready', { commit: worktree.baseCommit.slice(0, 8) })}
-          </span>
-          <Button
-            variant="primary"
-            size="compact"
-            render={<Link to="/sessions/$sessionId/review" params={{ sessionId }} />}
-          >
-            {t('review')}
-          </Button>
-          <Button
-            type="button"
-            variant="tertiary"
-            size="compact"
-            disabled={busy}
-            onClick={() => setRemoving(true)}
-          >
-            {t('remove')}
-          </Button>
-          <CopyRemovalDialog
-            open={removing}
-            sessionId={sessionId}
-            projectId={projectId}
-            onClose={() => setRemoving(false)}
-            onRemoved={() => {
-              setRemoving(false);
-              void act(async () => {});
-            }}
-          />
-        </div>
-      ) : !binding ? (
-        <div className="flex flex-col items-start gap-1.5">
-          <p className="text-xs text-muted-foreground">{t('noFolder')}</p>
-          <Button
-            variant="tertiary"
-            size="compact"
-            render={<Link {...navigation.link('workspace', projectId)} />}
-          >
-            {t('openFolderSettings')}
-          </Button>
-        </div>
-      ) : !binding.trusted ? (
-        // The next step is an action, not a note: trust lives with the project's folder settings.
-        <div className="flex flex-col items-start gap-1.5">
-          <p className="text-xs text-warning">{t('notTrusted')}</p>
-          <Button
-            variant="tertiary"
-            size="compact"
-            render={<Link {...navigation.link('workspace', projectId)} />}
-          >
-            {t('openTrust')}
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <p className="text-xs text-muted-foreground">{t('copyIntro')}</p>
-          <p className="text-xs text-warning">
-            {t('createHint', { changed: binding.status?.changed ?? 0 })}
-          </p>
-          <Button
-            variant="tertiary"
-            size="compact"
-            type="button"
-            disabled={busy}
-            onClick={() => void act(() => workspaces.createWorktree(sessionId))}
-            className="self-start"
-          >
-            {t('create', { head: binding.status?.head ?? 'HEAD' })}
-          </Button>
-        </div>
-      )}
-      {worktree && !worktree.missing ? (
-        <CheckpointPanel key={sessionId} sessionId={sessionId} />
-      ) : null}
+      {!worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-caption text-muted-foreground">
+          {t('ready', { commit: worktree.baseCommit.slice(0, 8) })}
+        </span>
+        <Button
+          variant="primary"
+          size="compact"
+          render={<Link to="/sessions/$sessionId/review" params={{ sessionId }} />}
+        >
+          {t('review')}
+        </Button>
+        <Button
+          type="button"
+          variant="tertiary"
+          size="compact"
+          disabled={busy}
+          onClick={() => setRemoving(true)}
+        >
+          {t('remove')}
+        </Button>
+        <CopyRemovalDialog
+          open={removing}
+          sessionId={sessionId}
+          projectId={projectId}
+          onClose={() => setRemoving(false)}
+          onRemoved={() => {
+            setRemoving(false);
+            void act(async () => {});
+          }}
+        />
+      </div>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
-    </section>
-  );
-}
-
-/** What needs a person in this project; it empties as things are handled. */
-export function InboxSection({
-  projectId,
-  onItems,
-}: {
-  projectId: string;
-  onItems?: (items: InboxItemView[]) => void;
-}) {
-  const t = useTranslations('Review');
-  const tr = useTranslations('Recipe');
-  const { workspaces } = useServices();
-  const [items, setItems] = useState<InboxItemView[]>([]);
-  useEffect(() => {
-    setItems([]);
-    onItems?.([]);
-    if (!workspaces) return;
-    let live = true;
-    const load = () =>
-      workspaces.inbox(projectId).then(
-        (list) => {
-          if (!live) return;
-          setItems(list);
-          onItems?.(list);
-        },
-        () => {},
-      );
-    void load();
-    const timer = setInterval(load, 5000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [workspaces, projectId, onItems]);
-  if (items.length === 0) return null;
-  return (
-    <section
-      aria-labelledby="inbox-heading"
-      className="flex flex-col gap-2 rounded-md border border-warning p-3"
-    >
-      <h2 id="inbox-heading" className="text-sm font-semibold">
-        {t('inboxHeading')} ({items.length})
-      </h2>
-      <p className="text-xs text-muted-foreground">{t('inboxScope')}</p>
-      <ul className="flex flex-col gap-1 text-sm">
-        {items.map((item, index) => (
-          <li
-            // biome-ignore lint/suspicious/noArrayIndexKey: items repeat per session and kind
-            key={`${item.kind}-${item.sessionId}-${index}`}
-            className="flex flex-wrap items-center justify-between gap-2"
-          >
-            <span>
-              <span className="font-medium">{item.sessionTitle}</span> ·{' '}
-              {t(`inbox.${item.kind}`, {
-                detail:
-                  item.kind === 'recipe_stopped'
-                    ? tr(`reasons.${item.detail}`)
-                    : (item.detail ?? ''),
-              })}
-            </span>
-            {item.kind === 'uncertain_terminal' && item.terminalId ? (
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: item.sessionId }}
-                search={{ panel: 'terminal', terminal: item.terminalId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            ) : item.kind === 'recipe_stopped' && item.runId ? (
-              <Link to="/runs/$runId" params={{ runId: item.runId }} className="text-xs underline">
-                {t('open')}
-              </Link>
-            ) : item.kind === 'decision' && item.runId ? (
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: item.sessionId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            ) : item.kind === 'queued' ? (
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: item.sessionId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            ) : (
-              <Link
-                to="/sessions/$sessionId/review"
-                params={{ sessionId: item.sessionId }}
-                className="text-xs underline"
-              >
-                {t('open')}
-              </Link>
-            )}
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }

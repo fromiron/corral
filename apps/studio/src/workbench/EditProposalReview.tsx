@@ -39,15 +39,84 @@ interface Props {
   target: WorkspaceTarget;
   proposal?: FileEditProposal | null;
   onConsumed?(): void;
+  /** A new number opens the list from elsewhere, such as a document's more menu. */
+  historyRequest?: number;
+  /** False leaves the opening control to the caller. */
+  trigger?: boolean;
 }
 const unsafe = (entry: DocumentBuffer) =>
   entry.dirty || entry.saving || entry.pendingSave !== null || entry.conflict !== null;
+const pendingOf = (target: WorkspaceTarget, items: FileEditProposalSummary[]) => {
+  const scope = canonicalJson(target);
+  return items.filter(
+    (item) => canonicalJson(item.target) === scope && !item.dismissed && !item.operationId,
+  ).length;
+};
+// Every open document of a session asks at once; one list read answers them all.
+const listReads = new Map<string, Promise<FileEditProposalSummary[]>>();
+
+/**
+ * How many proposals for this copy still wait for review, or 0 while unknown. A read only
+ * reports; applying or dismissing stays in the review dialog.
+ */
+export function usePendingProposals(
+  api: Pick<FileEditClient, 'fileEditProposals'> | undefined,
+  target: WorkspaceTarget | undefined,
+  revision = 0,
+) {
+  const [pending, setPending] = useState<{ scope: string; count: number } | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const changed = () => setTick((value) => value + 1);
+    window.addEventListener(WORKSPACE_CHANGED, changed);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+  }, []);
+  const scope = target ? canonicalJson(target) : '';
+  const sessionId = target?.sessionId;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The target is read through its scope; a new object for the same copy reads nothing again.
+  useEffect(() => {
+    void tick;
+    void revision;
+    if (!api || !target || !sessionId || typeof api.fileEditProposals !== 'function') return;
+    let live = true;
+    let read = listReads.get(sessionId);
+    if (!read) {
+      read = api.fileEditProposals(sessionId);
+      listReads.set(sessionId, read);
+      const settled = read;
+      const forget = () => {
+        if (listReads.get(sessionId) === settled) listReads.delete(sessionId);
+      };
+      void read.then(forget, forget);
+    }
+    void read.then(
+      (items) => {
+        if (live) setPending({ scope, count: pendingOf(target, items) });
+      },
+      () => {
+        if (live) setPending({ scope, count: 0 });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, sessionId, scope, tick, revision]);
+  return pending?.scope === scope ? pending.count : 0;
+}
 
 export function EditProposals(props: Props) {
   return <ProposalReview key={canonicalJson(props.target)} {...props} />;
 }
 
-function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
+function ProposalReview({
+  api,
+  owner,
+  target,
+  proposal,
+  onConsumed,
+  historyRequest,
+  trigger = true,
+}: Props) {
   const t = useTranslations('EditProposals');
   const scope = canonicalJson(target);
   const { documents } = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState);
@@ -173,6 +242,14 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
       if (isCurrent(revision)) setBusy(false);
     }
   };
+  // Only a change of the number is a request; mounting with one already set opens nothing.
+  const handledRequest = useRef(historyRequest);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Only a new request number opens the list.
+  useEffect(() => {
+    if (historyRequest === handledRequest.current) return;
+    handledRequest.current = historyRequest;
+    if (historyRequest) void history();
+  }, [historyRequest]);
   const act = async (action: 'apply' | 'dismiss' | 'inverse' | 'check' | 'reconcile') => {
     if (!detail || busy) return;
     const revision = ++epoch.current;
@@ -273,9 +350,11 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
     operation.result.outcomes.some((outcome) => outcome.state !== 'applied');
   return (
     <>
-      <Button size="compact" variant="tertiary" disabled={busy} onClick={() => void history()}>
-        {t('history')}
-      </Button>
+      {trigger ? (
+        <Button size="compact" variant="tertiary" disabled={busy} onClick={() => void history()}>
+          {t('history')}
+        </Button>
+      ) : null}
       <Dialog
         open={open}
         onOpenChange={(value) => {
@@ -289,18 +368,18 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
           <DialogTitle>{detail?.title ?? t('history')}</DialogTitle>
           <DialogDescription>{t('hint')}</DialogDescription>
           {error || operation?.result.error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {error || operation?.result.error?.message}
             </p>
           ) : null}
           {busy ? (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p role="status" className="text-body text-muted-foreground">
               {t('busy')}
             </p>
           ) : null}
           {detail ? (
             <>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
                 <span role="status">{t(`states.${state}`)}</span>
                 <span>{t(`sources.${detail.source.kind}`)}</span>
                 <span className="font-mono" title={detail.hash}>
@@ -331,7 +410,9 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                 ))}
               </ul>
               {file ? (
-                <Suspense fallback={<p className="text-xs text-muted-foreground">{t('busy')}</p>}>
+                <Suspense
+                  fallback={<p className="text-caption text-muted-foreground">{t('busy')}</p>}
+                >
                   <FileDiff
                     path={file.path}
                     loadKey={`${detail.hash}:${file.path}`}
@@ -343,12 +424,12 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                 </Suspense>
               ) : null}
               {blocked ? (
-                <p role="alert" className="text-sm text-warning">
+                <p role="alert" className="text-body text-warning">
                   {t('drafts')}
                 </p>
               ) : null}
               {partial || operation?.state === 'uncertain' ? (
-                <p className="text-sm text-warning">{t('partial')}</p>
+                <p className="text-body text-warning">{t('partial')}</p>
               ) : null}
               <div className="flex flex-wrap gap-2">
                 {!operationId && !detail.dismissed ? (
@@ -403,7 +484,7 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                     >
                       {value.title}
                     </Button>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-caption text-muted-foreground">
                       {t(
                         value.dismissed
                           ? 'states.dismissed'
@@ -416,7 +497,7 @@ function ProposalReview({ api, owner, target, proposal, onConsumed }: Props) {
                   </li>
                 ))
               ) : (
-                <li className="text-sm text-muted-foreground">{t('empty')}</li>
+                <li className="text-body text-muted-foreground">{t('empty')}</li>
               )}
             </ul>
           ) : null}

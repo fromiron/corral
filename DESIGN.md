@@ -19,12 +19,12 @@ themes:
     focus: "#6B97FF"
 typography:
   body-md:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Inter, Pretendard Variable, system-ui, sans-serif"
     fontSize: 13px
     lineHeight: 20px
     fontWeight: 400
   body-compact:
-    fontFamily: "Inter, system-ui, sans-serif"
+    fontFamily: "Inter, Pretendard Variable, system-ui, sans-serif"
     fontSize: 12px
     lineHeight: 18px
     fontWeight: 400
@@ -38,7 +38,7 @@ rounded:
 
 ## Overview
 
-Corral is a dense workspace for conversations, agent teams and development tasks. Use the supplied design kit's neutral surfaces, restrained controls and composable components to make the work prominent. Preserve the existing navigation, D&D canvas, Reins controls, settings, editor and recovery paths.
+Corral is a dense workspace for conversations, agent teams and development tasks. Use the supplied design kit's neutral surfaces, restrained controls and composable components to make the work prominent. Navigation follows the kit's screen shell (one sidebar with a workspace header, search, an unlabeled primary menu, labeled project groups and a footer) and its page frame (a one-line path bar, then title, toolbar and content). Preserve the D&D canvas, Reins controls, settings, editor and recovery paths.
 
 The purpose of adopting the kit is to improve the design. Preserve functionality, user data and accessibility, not the old appearance. Let the kit's composition, spacing, typography and surfaces replace inconsistent local styling.
 
@@ -68,7 +68,7 @@ The design kit is copied into this repository. Building Corral does not read ano
 | Role | Light | Dark | Use |
 |---|---|---|---|
 | `background` / `surface-1` | #FAFAFA | #171717 | Workspace floor |
-| `surface-2` | #FCFCFC | #1E1E1E | Sidebar and grouped settings |
+| `surface-2` | #FCFCFC | #1E1E1E | The workspace content beside the sidebar (kit inset), and grouped settings |
 | `card` / `surface-3` | #FFFFFF | #252525 | Focused field surface; popup level above a page-level context |
 | `surface-4` | #FFFFFF | #2C2C2C | Explicit raised work surfaces |
 | `surface-5` | #FFFFFF | #333333 | Dialog level above a page-level context |
@@ -83,7 +83,7 @@ The design kit is copied into this repository. Building Corral does not read ano
 | `warning` | #92400E | #FCD34D | Warning state with an explanation |
 | `info` | #1D4ED8 | #93C5FD | Informational state |
 | `focus-ring` | #2563EB | #6B97FF | Keyboard focus |
-| `emphasis` | #3568D4 | #6B97FF | The kit's one accent: live, selected, in-progress and switch-on states |
+| `emphasis` | #2F5FC4 | #6B97FF | The kit's one accent: live, selected, in-progress and switch-on states |
 
 `border` mixes 12% foreground into transparency. `hover`, `active`, `tint` and `tint-hover` are surface-relative overlays from the kit. Dialogs use the kit's black scrim: 40% in light mode and 80% in dark mode through `dialog-scrim`. Never use the dark theme's white interactive overlay as a page mask. Do not substitute the muted background token for secondary text. Primary actions use foreground on background; focus blue is not a second CTA style, and `emphasis` marks state rather than actions. Status hues stay for outcomes and notices.
 
@@ -95,7 +95,7 @@ Theme choice supports light, dark and system. `light-dark()` resolves the palett
 
 ## Typography
 
-Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`; the supplied kit includes no font files, so Inter is used only where available and the system font is the fallback. Do not add a remote font request implicitly. Code, paths, diffs and the terminal retain a monospace family.
+Use the kit's six semantic roles. Font family is `Inter, "Pretendard Variable", system-ui, sans-serif`. The kit ships no font files, so the studio bundles the Inter variable font for Latin and the Pretendard Variable font for Hangul only (by `unicode-range`), and serves both from its own origin; the system font is the fallback while they load. Do not add a remote font request. Code, paths, diffs and the terminal retain a monospace family.
 
 | Role | Size / line height | Typical use |
 |---|---|---|
@@ -106,19 +106,19 @@ Use the kit's six semantic roles. Font family is `Inter, system-ui, sans-serif`;
 | `caption` | 12 / 16px | Secondary labels and metadata |
 | `micro` | 11 / 14px | Sparse status annotations |
 
-Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Long conversation output retains the established 15 / 28px reader role as an explicit reading-density exception. Preserve Korean and English labels without clipping or forced single-line paragraphs.
+Compact controls use the kit's 12 / 18px body scale. Headings use medium or semibold weight; body text uses regular weight. Do not uppercase every section label. Conversation answers use the kit chat prose (14 / 22px) in the foreground color, so the answer is the most prominent thing in a turn. Preserve Korean and English labels without clipping or forced single-line paragraphs. Because Inter and Pretendard Variable are bundled, the kit's `font-variation-settings` weights render on every machine, in Korean as well as Latin. Korean interface text uses one register: statements end in the 합니다 form ("저장했습니다", "세션이 없습니다"), and instructions use the 하세요 form ("모델을 연결하세요"). The 해요 form ("없어요", "열려요") is not used. Numbers are written in full with grouping (2,400, not 2.4천).
 
 Editable fields use the 16px `--fs-field-touch` size on coarse pointers to prevent iOS focus zoom, preserving their existing line height.
 
 ## Layout, Spacing and Shape
 
-Use one workspace grammar: sidebar, top bar, task content and contextual panels. Settings remain an overlay on the current work. Do not change task ownership or introduce a second navigation system as part of visual styling.
+Use one workspace grammar: sidebar, path bar, task content and contextual panels. The sidebar's primary menu (new conversation, Needs you, Library, Automation) and project groups are the only navigation system; pages do not add their own side navigation. List pages (Needs you, Library, Automation, feature previews, a project's workspace) compose the kit page frame: the path bar, which is the only place the page is named, a toolbar row of kit Tabs or filters, then content at the wide or narrow measure. Outside the sidebar a name, a state or a count shows once per screen: a tab is not repeated as a heading inside it, a chosen row is not repeated as the first line of its detail, and no sentence restates the control beside it. Intro lines under headings, helper text that rewords a label and headings over a single control are not used; text a person needs before an irreversible or permission-granting action, errors with a cause and a next step, and the simulated and sample-data marks stay. An empty conversation follows the kit home composition: a centered title above the composer and its start suggestions. Settings remain an overlay on the current work, including over Library. A chosen row in a list or table (Needs you, Library, Automation, settings lists) uses one treatment: the fill of the sidebar's active row with the row's own radius, distinct from hover and from keyboard focus in both themes. Button fills (`secondary`) are not used for rows. The contract lives in [workbench.md](docs/specs/workbench.md#전역-셸과-화면-틀).
 
 A session uses the supplied kit's default Tabs, TabsList, TabItem and TabPanel for Conversation, Files, Changes and Execution history. Conversation and history are always available; file work adds Files and Changes in the same row. Keep the source component's appearance, spacing, selection, hover, motion and focus behavior unchanged. Conversation contains messages and the composer, Files owns the document dock and its auxiliary tools, Changes owns Git and review, and history reuses the Run screen. Never place file editing under Conversation or repeat these primary views in document tab strips. Switching views preserves drafts, documents and processes. Dock groups retain their controls for opening, arranging and closing files and auxiliary views. Page-level display preferences, such as conversation density, belong in the page menu rather than above the content.
 
 Execution history follows the AgentRun separation of roles: the central workspace owns the graph (default), work flow, timeline, events and readable results; the right panel owns one selected execution/node, a pending decision or explicitly opened run information. Do not stack results, a global plan and execution details in the right panel. Keep view switches beside the run header, preserve hidden views' state, and open Reins explicitly in the central workspace without retargeting a draft on inspection. The interaction contract lives in [execution monitoring](docs/specs/features/execution-monitor.md).
 
-Use Tailwind's existing 4px spacing unit: 4–8px for related controls, 12–16px within components, and 24px between sections. Let the page own outer padding; avoid stacking page padding with another full-size wrapper. Preserve the established 640px settings and 1024px sidebar boundaries, task-specific workbench container queries, and the 46rem conversation measure. Narrow layouts must keep primary actions and recovery controls reachable.
+Use Tailwind's existing 4px spacing unit: 4–8px for related controls, 12–16px within components, and 24px between sections. Let the page own outer padding; avoid stacking page padding with another full-size wrapper. Preserve the established 640px settings and 1024px sidebar boundaries, task-specific workbench container queries, and the kit chat measure (a 680px conversation column and a 744px composer including gutters). Narrow layouts must keep primary actions and recovery controls reachable.
 
 Controls use an 8px radius; panels and popup containers use 12px. A menu item inset 4px inside a 12px popup uses 8px corners. Independent inputs inside a card keep their own 8px radius; do not treat them as concentric surfaces. Compact badges and keycaps may use 4px. Avatars, status dots and explicitly pill-shaped chips remain circular exceptions.
 
@@ -142,6 +142,11 @@ The source kit keeps all eight elevation levels. Menus rise two levels and dialo
 | `RadioGroup`, `RadioItem` | Each option has one visible focus owner and one announced radio state. Value-mode native plumbing stays fully hidden, including any generated inputs; it cannot create nested focus targets. Arrow keys select the next row, and Tab leaves the group. |
 | `Card` | Compose Header, Title, Description, Content, Action and Footer slots only when the content needs them. Cards are transparent by default; a surface or boundary must express grouping or selection. |
 | `Sidebar` | Keep the source Provider/shell, Header, Content, Footer, labeled Groups, Menu/MenuSub hierarchy and resize Rail. Corral controls its persisted width and open state through a small provider bridge; source persistence and shortcuts remain disabled. Preserve routes, virtualized sessions, search, context actions and the existing mobile dialog; see [workbench.md](docs/specs/workbench.md). |
+| Workspace header, page frame | `WorkspaceHeader` heads the sidebar with Corral, the connection state and a menu for all projects and a new project. `PathBar`, `Page`, `SectionLabel` and `EmptyState` come from the kit's screen chrome without its sample data. A path item that switches project or session stays a menu. |
+| `AgentStatusPill` | The session's run control in the path bar. Corral passes the state, the activity label, the visible run number, the clock and pause/resume/stop. Stop goes through the existing cancel confirmation. Steps, inline approve/deny and progress are not used; while waiting, the pill opens the exact Run's response area. |
+| `QueuedStack` | Saved queued requests above the composer with start now, edit and remove. Drag reordering is off because the stored order cannot be changed. |
+| `AgentCheckpoints`, `AgentRoutines` | Display existing checkpoints and schedules. Rewind opens the existing restore preview and confirmation; routine actions are limited to the schedule operations the server supports. |
+| Preview-only kit parts | `DiffReview` and `AgentFindings` appear only in [feature previews](docs/specs/features/feature-preview.md) with sample data. `DecisionInbox`, `PermissionRequest` and `AskUserQuestions` are not used: their optimistic answers, Escape/Enter decisions and number-key commits conflict with the receipt-bound response contract. |
 | Settings navigation | Use the kit's settings-dialog composition: 13rem grouped icon sidebar with its own title, scrolling section content, close action, and a narrow-screen section selector. |
 | `Dialog` | Rise four surface levels above the current context, capped at level 8, with the source shadow and scrim. Preserve close controls, focus trapping/return, unsaved-change handling and narrow-screen scrolling. |
 | `Menu`, `Popover`, select popup | Rise two surface levels above the current context, capped at level 8; use a 12px container and 8px inset items. Preserve keyboard navigation, selection, Escape and focus return. |
@@ -158,7 +163,7 @@ A Button's native root owns pointer and touch activation. Its decorative surface
 
 Corral uses Base UI 1.9.0 and Motion 14.1.0, pinned from the kit's declared ranges, with Lucide icons and the kit's shape, size, surface and hover helpers. `DesignKitProvider` applies user-preferred reduced motion at the app and Storybook roots. Next.js routing, PDF support and alternate icon libraries are not imported. Adopt an additional kit component when a real screen needs it, checking its dependencies and interactions first.
 
-Selection inside a list uses the `secondary` Button treatment on the chosen row and `ghost` on the others, with `aria-pressed` or `aria-current`; segmented tabs use the same pair. Corral-specific exceptions are functional, not alternative designs: graph handles and drag geometry, revision-bound Reins/approval commands, virtualized timelines and file/search rows, listbox options inside the request input, sanitized Markdown and isolated artifact previews, and schema question choices whose native disabled fieldset, form name/value and option descriptions are not expressed by the supplied CheckboxItem API. Their surrounding controls and content still compose the kit. Input/Textarea bridges preserve native events, refs and external labels where the kit's string-value InputField API cannot substitute directly.
+A list of Buttons that picks one (a file list, a settings list) keeps `ghost` Buttons with `aria-pressed` or `aria-current`, and the chosen one takes the shared chosen-row fill described above (the sidebar's active fill), not the `secondary` fill; segmented tabs keep the kit's own pair. Corral-specific exceptions are functional, not alternative designs: graph handles and drag geometry, revision-bound Reins/approval commands, virtualized timelines and file/search rows, listbox options inside the request input, sanitized Markdown and isolated artifact previews, and schema question choices whose native disabled fieldset, form name/value and option descriptions are not expressed by the supplied CheckboxItem API. Their surrounding controls and content still compose the kit. Input/Textarea bridges preserve native events, refs and external labels where the kit's string-value InputField API cannot substitute directly.
 
 ## Motion and Accessibility
 

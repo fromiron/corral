@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { requestBox } from '../workbench.ts';
+import { closeSettings, openFolderSettings, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('file and line references remain independent and Escape clears only an empty command trigger', async ({
@@ -30,14 +30,12 @@ test('file and line references remain independent and Escape clears only an empt
     );
     await corral.open('/');
     await page.setViewportSize({ width: 1262, height: 833 });
-    await page.getByRole('tab', { name: /^Project folder/ }).click();
-    await page.getByLabel('Folder path on this computer').fill(original);
-    await page.getByRole('button', { name: 'Link folder', exact: true }).click();
-    await expect(page.getByRole('tabpanel', { name: 'Project folder', exact: true })).toContainText(
-      'no uncommitted changes',
-    );
-    await page.getByRole('tab', { name: /^Sessions/ }).click();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    const folder = await openFolderSettings(page);
+    await folder.getByLabel('Folder path on this computer').fill(original);
+    await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
+    await expect(folder).toContainText('no uncommitted changes');
+    await closeSettings(page);
+    await page.getByRole('button', { name: 'New conversation', exact: true }).click();
     const box = requestBox(page);
     await box.fill('@README');
     await page
@@ -46,9 +44,12 @@ test('file and line references remain independent and Escape clears only an empt
       .filter({ hasText: 'README.md' })
       .click();
     await page.getByRole('button', { name: 'Open file viewer', exact: true }).click();
-    await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
-    await page.getByLabel('To line', { exact: true }).fill('3');
-    await page.getByRole('button', { name: 'Reference lines', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
+    await page.getByRole('button', { name: 'More actions for README.md', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reference lines…', exact: true }).click();
+    const reference = page.getByRole('dialog', { name: 'Reference lines', exact: true });
+    await reference.getByLabel('To line', { exact: true }).fill('3');
+    await reference.getByRole('button', { name: 'Reference lines', exact: true }).click();
     await page
       .getByRole('complementary', { name: 'File viewer', exact: true })
       .getByRole('button', { name: 'Close file viewer', exact: true })
@@ -102,7 +103,11 @@ test('file and line references remain independent and Escape clears only an empt
     await box.press('Escape');
     await expect(box).toHaveValue('/typed-command');
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByTestId('composer-destination')).toBeInViewport();
+    await expect(box).toBeInViewport();
+    await expect(box).toHaveAccessibleDescription('Send to: new run in this session · follow-up');
+    await expect(page.getByTestId('composer-destination')).toHaveText(
+      'Send to: new run in this session · follow-up',
+    );
     await page.screenshot({ path: testInfo.outputPath('composer-destination-narrow.png') });
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);
     expect(corral.errors).toEqual([]);
@@ -127,7 +132,7 @@ test.describe('viewed and active execution', () => {
     holdReply();
     try {
       await corral.open('/');
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await page.getByRole('button', { name: 'New conversation', exact: true }).click();
       const box = requestBox(page);
       await box.fill('First request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -186,7 +191,7 @@ test.describe('viewed and active execution', () => {
     holdReply();
     try {
       await corral.open('/');
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await page.getByRole('button', { name: 'New conversation', exact: true }).click();
       const box = requestBox(page);
       await box.fill('First request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -212,7 +217,7 @@ test.describe('viewed and active execution', () => {
       );
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
-      await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+      await page.getByRole('tab', { name: 'Runs', exact: true }).click();
       await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(first.runId);
 
       const cancellations: { runId: string; type: string }[] = [];

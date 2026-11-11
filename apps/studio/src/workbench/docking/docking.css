@@ -30,7 +30,6 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.375rem;
-  background: var(--color-surface);
 }
 .corral-dock-toolbar [role="combobox"] {
   max-width: 13rem;
@@ -50,17 +49,18 @@
   min-width: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  background: var(--color-surface);
 }
 .corral-dock-content-fixed {
   display: flex;
   flex-direction: column;
   overflow: clip;
 }
+/* The dock is drawn on the surface it sits on (the kit inset beside the sidebar, or the floor
+   in a narrow window), so its own backgrounds stay clear instead of painting another step. */
 .corral-dock-theme {
-  --dv-background-color: var(--color-surface);
-  --dv-group-view-background-color: var(--color-surface);
-  --dv-tabs-and-actions-container-background-color: var(--color-surface);
+  --dv-background-color: transparent;
+  --dv-group-view-background-color: transparent;
+  --dv-tabs-and-actions-container-background-color: transparent;
   --dv-tabs-and-actions-container-height: 40px;
   --dv-tabs-and-actions-container-font-size: var(--fs-caption);
   --dv-activegroup-visiblepanel-tab-background-color: var(--tint);

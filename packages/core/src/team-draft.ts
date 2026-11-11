@@ -1,18 +1,52 @@
 import {
   type CorralDefinition,
   DEFAULT_LIMITS,
+  hasReviewLoop,
+  type PatternSlot,
   TEAM_LIMITS,
+  TEAM_SLOTS,
   type TeamPattern,
   type TeamPlan,
-  type TeamSlot,
 } from '@corral/contracts';
+import { rolePrompt } from './role-prompt.ts';
+import {
+  type RoleWording,
+  type TeamTemplateId,
+  type TeamTemplateWording,
+  teamTemplate,
+} from './team-templates.ts';
 
 // goal → team plan → Corral. The local suggestion reads the goal's words; the plan
 // becomes a definition whose tools, bindings, Loop ports and limits are fixed by the pattern.
 
+export { rolePrompt };
+
+/** The three patterns drafted here; auto mode uses their shapes. */
+export type BasePattern = 'single' | 'write_review' | 'research_write_review';
+type BaseSlot = PatternSlot<BasePattern>;
+/** The five patterns that are the library templates of the same name. */
+export type TemplatePattern = Exclude<TeamPattern, BasePattern>;
+
+export const PATTERN_TEMPLATES: Readonly<Record<TemplatePattern, TeamTemplateId>> = {
+  implement_review: 'implement-review',
+  plan_implement_review: 'plan-implement-review',
+  bug_fix: 'bug-fix',
+  parallel_review: 'parallel-review',
+  tech_decision: 'tech-decision',
+};
+
+export const isTemplatePattern = (pattern: TeamPattern): pattern is TemplatePattern =>
+  pattern in PATTERN_TEMPLATES;
+
+/** A template pattern's words: its roles by slot and its default criteria. */
+export interface PatternWording<P extends TemplatePattern = TemplatePattern> {
+  roles: Record<PatternSlot<P>, RoleWording>;
+  criteria: readonly string[];
+}
+
 /** Words the local suggestion uses, from the Studio's messages (`TeamDraft.wording`). */
 export interface TeamWording {
-  roles: Record<TeamSlot, { name: string; duty: string }>;
+  roles: Record<BaseSlot, { name: string; duty: string }>;
   /** Default criteria: answer the brief; name sources (used by the review patterns). */
   criteria: { direct: string; sources: string };
   /** Labels of the steps the pattern adds. */
@@ -23,18 +57,26 @@ export interface TeamWording {
     roles: Pick<TeamWording['roles'], 'researcher' | 'writer' | 'reviewer'>;
     criteria: { evidence: string; verification: string; approval: string };
   };
+  /**
+   * The template patterns' words, from the library templates (`TeamTemplates`). Without them
+   * the local suggestion picks among the three base patterns only.
+   */
+  templates?: { [P in TemplatePattern]: PatternWording<P> };
 }
 
 export interface TeamLabels {
   loop: string;
   decision: string;
   output: string;
+  /** The Join where the parallel patterns' branches meet. */
+  join?: string;
 }
 
 const ENGLISH_LABELS: TeamLabels = {
   loop: 'Review loop',
   decision: 'Review decision',
   output: 'Output',
+  join: 'Join',
 };
 
 export interface TeamDraft {
@@ -51,11 +93,69 @@ const PULL_REQUEST = /\b(pull[ -]?request|pr)\b|풀\s*리퀘스트|풀\s*리퀘/
 const REVIEW = /\b(review\w*|check\w*|audit\w*)\b|검토|검사|확인|점검/i;
 const SUGGESTED_NAME_LENGTH = 48;
 
-const SLOTS: Record<TeamPattern, TeamSlot[]> = {
-  single: ['worker'],
-  write_review: ['planner', 'writer', 'reviewer'],
-  research_write_review: ['researcher', 'writer', 'reviewer'],
-};
+// The template patterns, reached only from words that leave little doubt.
+const REVIEW_CODE = /\b(review\w*|audit\w*|inspect\w*)\b|검토|리뷰|점검/i;
+const CODE =
+  /\b(code|codebase|prs?|pull[ -]?requests?|diffs?|branch\w*|commits?|modules?|middleware|functions?|endpoints?|implementation|repo\w*|librar\w*|components?|handlers?)\b|코드|브랜치|커밋|모듈|함수|미들웨어|구현|엔드포인트|라이브러리|컴포넌트/i;
+const NO_CHANGE =
+  /\b(without (chang|modif|edit|touch|fix)\w*|(don['’]?t|do not|never) (change|modify|edit|touch|fix)\w*|read[- ]only|findings only|only report\w*|report (the )?findings|no (changes|edits|fixes))\b|고치지\s*말|수정하지\s*말|바꾸지\s*말|변경하지\s*말|건드리지\s*말|손대지\s*말|읽기\s*전용/i;
+const CORRECTNESS = /\b(correctness|logic errors?)\b|정확성|논리\s*오류/i;
+const BUG =
+  /\b(bugs?|crash\w*|errors?|exceptions?|fail\w*|broken|regressions?|flaky|intermittent\w*|timeouts?|hangs?|freez\w*|leaks?)\b|버그|오류|에러|장애|크래시|죽는|죽어|깨지|깨져|실패|안\s?되|멈추|멈춰|타임아웃|먹통/i;
+const FIX = /\b(fix\w*|repair\w*|resolv\w*|patch\w*)\b|고쳐|고치|수정해|해결/i;
+const DECISION =
+  /\b(decid\w*|decisions?|choos\w*|chose|pick|select|which (one|option|is better)|should (we|i)|recommend\w*|trade-?offs?)\b|결정|선택|고를|고르|골라|할지|추천|권해|권하/i;
+const OPTIONS =
+  /\b(between|or|vs\.?|versus|both|options?|alternatives?|either)\b|중\s*(에|에서)?\s*(무엇|어느|뭘|뭐|하나|어떤)|아니면|두\s*(안|가지|방안|옵션|후보)|둘\s*중|대신/i;
+/** Korean names two alternatives by their endings alone: "유지할지 바꿀지". */
+function twoAlternatives(brief: string) {
+  let count = 0;
+  for (const match of brief.matchAll(/([가-힣])지(?![가-힣])/g)) {
+    // A syllable that ends in ㄹ: its final-consonant index is 8.
+    if (((match[1]?.charCodeAt(0) ?? 0) - 0xac00) % 28 === 8) count += 1;
+  }
+  return count >= 2;
+}
+const IMPLEMENT =
+  /\b(implement\w*|add|adds|adding|build|builds|building|develop|developing|introduce|integrat\w*|refactor\w*)\b|구현|추가|개발|도입|연동|리팩터|리팩토링/i;
+const PLAN_FIRST =
+  /\b(plan\w*|design\w*|migrat\w*|stages?|staged|step[- ]by[- ]step|phases?|phased|incremental\w*|roadmap|architect\w*)\b|설계|계획|마이그레이션|이관|옮기|옮겨|단계|아키텍처/i;
+const DOCUMENT =
+  /\b(documents?|docs?|reports?|articles?|essays?|posts?|announcements?|proposals?|blogs?|e-?mails?|letters?|memos?|newsletters?|readme|faq|slides?|decks?|guides?|manuals?)\b|안내문|보고서|문서|제안서|기획서|이메일|편지|공지|슬라이드|가이드|매뉴얼/i;
+/** Writing a document: never a code pattern, whatever the document is about. */
+const WRITE = /\b(write|writing|draft\w*|summar\w*)\b|작성|써\s*줘|써줘|요약/i;
+const SOFTWARE =
+  /\b(pages?|screens?|forms?|buttons?|toggles?|apps?|features?|cach\w*|database|db|tests?|settings|ui|cli|validation|login|sign[- ]?up|export|import|search)\b|화면|양식|폼|버튼|토글|앱|기능|캐시|데이터베이스|테스트|설정|로그인|가입|내보내기|검색/i;
+
+const isSecurityReview = (brief: string) =>
+  SECURITY.test(brief) && PULL_REQUEST.test(brief) && REVIEW.test(brief);
+
+/** The choice among the three base patterns; auto mode's local rule. */
+export function basePatternFromGoal(goal: string): BasePattern {
+  const brief = goal.trim();
+  return isSecurityReview(brief) || RESEARCH.test(brief)
+    ? 'research_write_review'
+    : WRITING.test(brief)
+      ? 'write_review'
+      : 'single';
+}
+
+function templatePatternFromGoal(brief: string): TemplatePattern | null {
+  const keepsCode = NO_CHANGE.test(brief);
+  if (REVIEW_CODE.test(brief) && CODE.test(brief) && (keepsCode || CORRECTNESS.test(brief)))
+    return 'parallel_review';
+  // A security PR review is a recognized task of its own (docs/specs/features/canvas.md).
+  if (isSecurityReview(brief)) return null;
+  if (DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
+    return 'tech_decision';
+  const document = DOCUMENT.test(brief);
+  if (document && WRITE.test(brief)) return null;
+  // Fixing changes code; finding a cause without fixing it is research.
+  if (BUG.test(brief) && FIX.test(brief) && !keepsCode) return 'bug_fix';
+  if (IMPLEMENT.test(brief) && !(document && !SOFTWARE.test(brief)))
+    return PLAN_FIRST.test(brief) ? 'plan_implement_review' : 'implement_review';
+  return null;
+}
 
 function cut(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -64,44 +164,87 @@ function cut(text: string, max: number): string {
   return `${(space > max / 2 ? head.slice(0, space) : head).trimEnd()}…`;
 }
 
+/** A pattern's roles and settings in the given words; criteria are its defaults. */
+function patternParts(
+  pattern: TeamPattern,
+  wording: TeamWording,
+): Pick<TeamPlan, 'criteria' | 'roles' | 'reviewRounds' | 'finalApproval'> {
+  const rounds = hasReviewLoop(pattern) ? { reviewRounds: 2 } : {};
+  if (!isTemplatePattern(pattern)) {
+    const slots: readonly BaseSlot[] = TEAM_SLOTS[pattern];
+    return {
+      criteria:
+        pattern === 'single'
+          ? [wording.criteria.direct]
+          : [wording.criteria.direct, wording.criteria.sources],
+      roles: slots.map((slot) => ({ slot, ...wording.roles[slot] })),
+      ...rounds,
+      finalApproval: false,
+    };
+  }
+  const words = wording.templates?.[pattern] as PatternWording | undefined;
+  if (!words) throw new Error(`no wording for the ${pattern} pattern`);
+  const roles = words.roles as Readonly<Record<string, RoleWording | undefined>>;
+  return {
+    criteria: [...words.criteria],
+    roles: TEAM_SLOTS[pattern].map((slot) => {
+      const named = roles[slot];
+      if (!named) throw new Error(`the ${pattern} wording has no ${slot}`);
+      return { slot, name: named.name, duty: named.duty };
+    }),
+    ...rounds,
+    finalApproval: false,
+  };
+}
+
+/**
+ * The plan with another pattern: its roles, settings and criteria become the pattern's defaults,
+ * its name and brief stay. `keepCriteria` keeps criteria the person wrote by hand.
+ */
+export function planWithPattern(
+  plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria'>,
+  pattern: TeamPattern,
+  wording: TeamWording,
+  { keepCriteria = false }: { keepCriteria?: boolean } = {},
+): TeamPlan {
+  const parts = patternParts(pattern, wording);
+  return {
+    name: plan.name,
+    pattern,
+    brief: plan.brief,
+    ...parts,
+    criteria: keepCriteria ? [...plan.criteria] : parts.criteria,
+  };
+}
+
 /** The local suggestion: no model call. Null for an empty goal. */
 export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | null {
   const brief = goal.trim();
   if (!brief) return null;
-  const securityReview = SECURITY.test(brief) && PULL_REQUEST.test(brief) && REVIEW.test(brief);
-  const task = securityReview ? wording.securityReview : undefined;
   const pattern: TeamPattern =
-    securityReview || RESEARCH.test(brief)
-      ? 'research_write_review'
-      : WRITING.test(brief)
-        ? 'write_review'
-        : 'single';
+    (wording.templates ? templatePatternFromGoal(brief) : null) ?? basePatternFromGoal(brief);
+  const task =
+    pattern === 'research_write_review' && isSecurityReview(brief)
+      ? wording.securityReview
+      : undefined;
   const firstLine = brief.split('\n')[0]?.replace(/\s+/g, ' ') ?? brief;
   const firstSentence = firstLine.split(/[.!?](?:\s|$)/)[0] || firstLine;
+  const parts = patternParts(pattern, wording);
   return {
     name: task?.name ?? cut(firstSentence, SUGGESTED_NAME_LENGTH),
     pattern,
     brief: cut(brief, TEAM_LIMITS.brief),
-    criteria:
-      (task ? Object.values(task.criteria) : undefined) ??
-      (pattern === 'single'
-        ? [wording.criteria.direct]
-        : [wording.criteria.direct, wording.criteria.sources]),
-    roles: SLOTS[pattern].map((slot) => ({
-      slot,
-      ...(task && slot in task.roles
-        ? task.roles[slot as keyof typeof task.roles]
-        : wording.roles[slot]),
+    criteria: (task ? Object.values(task.criteria) : undefined) ?? parts.criteria,
+    roles: parts.roles.map((role) => ({
+      ...role,
+      ...(task && role.slot in task.roles ? task.roles[role.slot as keyof typeof task.roles] : {}),
     })),
-    ...(pattern === 'single' ? {} : { reviewRounds: 2 }),
-    finalApproval: pattern !== 'single',
+    ...(parts.reviewRounds === undefined ? {} : { reviewRounds: parts.reviewRounds }),
+    finalApproval: parts.finalApproval,
   };
 }
 
-const prompt = (duty: string) =>
-  `${duty} Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result. Do not hide tool failures or missing evidence.`;
-
-const CONTRACT: Record<TeamSlot, CorralDefinition['roles'][number]['outputContract']> = {
+const CONTRACT: Record<BaseSlot, CorralDefinition['roles'][number]['outputContract']> = {
   worker: 'draft',
   planner: 'notes',
   researcher: 'notes',
@@ -109,26 +252,63 @@ const CONTRACT: Record<TeamSlot, CorralDefinition['roles'][number]['outputContra
   reviewer: 'review',
 };
 
+/**
+ * A template pattern as its library template: structure and tools from the template, the words
+ * from the plan. Review rounds and the final approval follow the plan where the pattern lets it.
+ */
+function templateDraft(
+  plan: TeamPlan,
+  pattern: TemplatePattern,
+  corralId: string,
+  labels: TeamLabels,
+): CorralDefinition {
+  const definition = teamTemplate(PATTERN_TEMPLATES[pattern], corralId, {
+    name: plan.name,
+    brief: plan.brief,
+    criteria: plan.criteria,
+    roles: Object.fromEntries(
+      plan.roles.map(({ slot, name, duty }) => [slot, { name, duty }]),
+    ) as TeamTemplateWording['roles'],
+    labels: {
+      loop: labels.loop,
+      decision: labels.decision,
+      join: labels.join ?? 'Join',
+      output: labels.output,
+    },
+  });
+  return {
+    ...definition,
+    nodes: definition.nodes.map((node) => {
+      if (node.type === 'loop' && plan.reviewRounds !== undefined)
+        return { ...node, maxIterations: plan.reviewRounds };
+      if (node.type === 'output') return { ...node, requireApproval: plan.finalApproval };
+      return node;
+    }),
+  };
+}
+
 /** The plan as a Corral. Tools and wiring come from the pattern alone. */
 export function draftFromPlan(
   plan: TeamPlan,
   corralId: string,
   labels: TeamLabels = ENGLISH_LABELS,
 ): TeamDraft {
-  const role = (slot: TeamSlot): CorralDefinition['roles'][number] => {
+  if (isTemplatePattern(plan.pattern))
+    return { definition: templateDraft(plan, plan.pattern, corralId, labels) };
+  const role = (slot: BaseSlot): CorralDefinition['roles'][number] => {
     const planned = plan.roles.find((r) => r.slot === slot);
     if (!planned) throw new Error(`the plan has no ${slot}`);
     return {
       id: slot,
       name: planned.name,
-      prompt: prompt(planned.duty),
+      prompt: rolePrompt(planned.duty),
       modelProfile: slot === 'reviewer' ? 'model-b' : 'model-a',
       allowedWorkTools: ['write_artifact' as const],
       allowedCollaborationTools: ['read_artifact' as const, 'submit_result' as const],
       outputContract: CONTRACT[slot],
     };
   };
-  const label = (slot: TeamSlot) => plan.roles.find((r) => r.slot === slot)?.name ?? slot;
+  const label = (slot: BaseSlot) => plan.roles.find((r) => r.slot === slot)?.name ?? slot;
   const base = {
     schemaVersion: '0.1' as const,
     id: corralId,
@@ -170,7 +350,7 @@ export function draftFromPlan(
   }
 
   // The first step (research or an outline) feeds the review Loop.
-  const first: TeamSlot = plan.pattern === 'research_write_review' ? 'researcher' : 'planner';
+  const first: BaseSlot = plan.pattern === 'research_write_review' ? 'researcher' : 'planner';
   const firstNode = first === 'researcher' ? 'research' : 'plan';
   const nodes: CorralDefinition['nodes'] = [
     {

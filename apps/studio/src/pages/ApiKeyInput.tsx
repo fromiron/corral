@@ -8,10 +8,13 @@ export function ApiKeyInput({
   value,
   onChange,
   disabled = false,
+  describedBy,
 }: {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** The id of a line that says more about the key, read as the field's description. */
+  describedBy?: string;
 }) {
   const t = useTranslations('Models');
   const id = useId();
@@ -22,7 +25,7 @@ export function ApiKeyInput({
   }, [empty]);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <label htmlFor={id} className="text-xs text-muted-foreground">
+      <label htmlFor={id} className="text-caption text-muted-foreground">
         {t('apiKeyLabel')}
       </label>
       <div className="flex items-stretch gap-2">
@@ -33,6 +36,7 @@ export function ApiKeyInput({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
+          aria-describedby={describedBy}
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}

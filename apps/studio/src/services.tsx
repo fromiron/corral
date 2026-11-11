@@ -11,6 +11,7 @@ import {
   type MeetingsClient,
   ModelsApi,
   openSession,
+  type PathEngineStatus,
   probeServer,
   RestCorralRepository,
   RunModesApi,
@@ -48,6 +49,8 @@ import { sessionFetch } from './sessionConnection.ts';
 export interface StudioServices {
   mode: 'server' | 'browser';
   serverVersion?: string;
+  /** The server's path search engine now; the browser demo has only the built-in one. */
+  pathEngine?: () => Promise<PathEngineStatus>;
   workspaceId?: string;
   repository: CorralRepository;
   transport: RuntimeTransport;
@@ -167,6 +170,11 @@ export async function createStudioServices(): Promise<StudioServices> {
     return {
       mode: 'server',
       serverVersion: health.version,
+      pathEngine: async () => {
+        const current = await probeServer(http);
+        if (!current) throw new Error('SERVER_UNAVAILABLE');
+        return current.pathEngine;
+      },
       workspaceId: 'workspaceId' in choices ? choices.workspaceId : undefined,
       repository: new RestCorralRepository(http),
       transport,
@@ -256,9 +264,12 @@ export async function createStudioServices(): Promise<StudioServices> {
     },
     startAuto: async (request, signal) => {
       const copy = await workspaces.worktree(request.sessionId).catch(() => null);
+      // As on the server: the stored session's criteria, read when the request is admitted.
+      const sessionCriteria = (await repository.getSession(request.sessionId))?.criteria;
       return autoStarter.start(request, {
         fileTools: Boolean(copy),
         ...(signal ? { signal } : {}),
+        ...(sessionCriteria?.length ? { sessionCriteria } : {}),
       });
     },
     // The in-browser runtime runs inline definitions itself.

@@ -9,8 +9,8 @@ import {
   ToolPermissionPlan,
 } from '@corral/contracts';
 import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
-import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
   Accordion,
@@ -22,10 +22,12 @@ import {
   Banner,
   BannerTitle,
   Button,
+  fontWeights,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { InteractionPanel } from './InteractionPanel.tsx';
-import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
+import { FirstRow, RowAction } from './FirstRow.tsx';
+import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
+import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
 /** A Loop that stopped for a stall is asked about in its own words. */
@@ -45,7 +47,9 @@ export function ApprovalPanel({
   compact = false,
   showPlan = true,
   showRelatedPanels = true,
+  headed = true,
   policySettingsAction,
+  action,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
@@ -57,11 +61,33 @@ export function ApprovalPanel({
   showPlan?: boolean;
   /** Conversation turns already own their workflow and question surfaces. */
   showRelatedPanels?: boolean;
+  /**
+   * False when the host already names this area or its state (the Run page's panel, Needs you's
+   * detail, a session conversation under the top bar's waiting pill): no visible heading is
+   * added, and the region keeps its name.
+   */
+  headed?: boolean;
   /** Navigation only: never grants broader permission to this call. */
   policySettingsAction?: ReactNode;
+  /**
+   * A control of the host's frame (the Run page's close), set at the end of the area's first row
+   * (the first card's heading row, or the first line above it) so it never takes a row of its
+   * own. For hosts that leave the plan out (`showPlan` false).
+   */
+  action?: ReactNode;
 }) {
   const t = useTranslations('Approvals');
   const headingId = useId();
+  // Which part draws the area's first row, and so carries the host's control.
+  const lead = useStore(session, (s) =>
+    !action || !showRelatedPanels
+      ? 'approvals'
+      : recipeStatusShown(s.events)
+        ? 'recipe'
+        : interactionShown(s.events, s.projection)
+          ? 'interaction'
+          : 'approvals',
+  );
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
   const nodes = useStore(session, (s) => s.definition?.nodes);
@@ -122,16 +148,58 @@ export function ApprovalPanel({
     if (criteriaId) void session.getState().loadArtifact(criteriaId);
   }, [session, criteriaId]);
 
+  // A decision sent while focus was in its card hands focus on once the card has left and the
+  // decision's receipt is in (the buttons are enabled again), as an answered question does: to
+  // the next waiting card's main action (its decline when that action cannot be taken), else, in
+  // a chat view, to the request box. Focus the person moved elsewhere stays; other hosts (the Run
+  // page, Needs you) place focus themselves once nothing waits.
+  const section = useRef<HTMLElement>(null);
+  const handoff = useRef<{ approvalId: string; chat: Element | null } | null>(null);
+  useEffect(() => {
+    const owned = handoff.current;
+    if (!owned || busy || approvals.some((approval) => approval.approvalId === owned.approvalId))
+      return;
+    const frame = requestAnimationFrame(() => {
+      handoff.current = null;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      const next = section.current?.querySelector<HTMLElement>('[data-approval]');
+      const target =
+        next?.querySelector<HTMLButtonElement>('[data-approval-action="primary"]:not(:disabled)') ??
+        next?.querySelector<HTMLButtonElement>('[data-approval-action]:not(:disabled)') ??
+        (owned.chat?.isConnected
+          ? owned.chat.querySelector<HTMLTextAreaElement>('[data-testid=chat-composer] textarea')
+          : null);
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [approvals, busy]);
+
+  const related = showRelatedPanels ? (
+    <>
+      <RecipeStatusPanel
+        session={session}
+        onOpenArtifact={onOpenArtifact}
+        action={lead === 'recipe' ? action : undefined}
+      />
+      <InteractionPanel session={session} action={lead === 'interaction' ? action : undefined} />
+    </>
+  ) : null;
   if (approvals.length === 0)
     return (
       <>
-        {showRelatedPanels ? (
-          <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-        ) : null}
-        {showRelatedPanels ? <InteractionPanel session={session} /> : null}
+        {related}
+        {/* Nothing else to stand beside: the host's control keeps its place. */}
+        {lead === 'approvals' && action ? <FirstRow action={action}>{null}</FirstRow> : null}
         {showPlan ? <WorkPlanPanel session={session} /> : null}
       </>
     );
+  const shownDone = compact ? [] : done;
+  // The first row that shows: the visible heading, the first decision already made, or the
+  // first card's heading row.
+  const approvalsAction = lead === 'approvals' ? action : undefined;
+  const headingAction = headed && !compact ? approvalsAction : undefined;
+  const doneAction = headingAction ? undefined : approvalsAction;
+  const cardAction = headingAction || shownDone.length ? undefined : approvalsAction;
   const label = (id: string) =>
     artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
   /** What waits; a breakpoint names the step it holds. */
@@ -140,12 +208,18 @@ export function ApprovalPanel({
       step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
     });
   const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
+    // Focus in this decision's card is handed on when the card leaves.
+    handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
+      ? { approvalId, chat: section.current?.closest('[data-chat-view]') ?? null }
+      : null;
     setBusy(true);
     try {
       const receipt = routeId
         ? await session.getState().resolveApproval(approvalId, decision, routeId)
         : await session.getState().resolveApproval(approvalId, decision);
       setRefused(receipt.error ? receipt : null);
+      // Refused: the card stays, and so does the person's focus.
+      if (receipt.error && handoff.current?.approvalId === approvalId) handoff.current = null;
     } catch {
       // The session preserves the unconfirmed receipt; approval stays pending.
     } finally {
@@ -163,16 +237,19 @@ export function ApprovalPanel({
           variant="tertiary"
           size="compact"
           disabled={busy}
+          data-approval-action="decline"
           onClick={() => void decide(approval.approvalId, 'reject')}
         >
           {t('rejectAs.route')}
         </Button>
-        {(approval.routes ?? []).map((route) => (
+        {(approval.routes ?? []).map((route, index) => (
           <Button
             key={route.id}
             variant="secondary"
             size="compact"
             disabled={busy}
+            // The first route is the card's main action when focus is handed to it.
+            data-approval-action={index === 0 ? 'primary' : 'route'}
             title={t('then.route')}
             onClick={() => void decide(approval.approvalId, 'approve', route.id)}
           >
@@ -186,6 +263,7 @@ export function ApprovalPanel({
           variant="tertiary"
           size="compact"
           disabled={busy}
+          data-approval-action="decline"
           onClick={() => void decide(approval.approvalId, 'reject')}
         >
           {approval.tool
@@ -200,6 +278,7 @@ export function ApprovalPanel({
         </Button>
         <Button
           size="compact"
+          data-approval-action="primary"
           disabled={
             busy ||
             !!(
@@ -238,23 +317,33 @@ export function ApprovalPanel({
 
   return (
     <>
-      {showRelatedPanels ? (
-        <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-      ) : null}
-      {showRelatedPanels ? <InteractionPanel session={session} /> : null}
+      {related}
       {showPlan ? <WorkPlanPanel session={session} /> : null}
-      <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
-        <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
-          {t('heading')}
-        </h3>
+      <section
+        ref={section}
+        {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
+        className={`flex flex-col gap-2 ${className ?? ''}`}
+      >
+        {headed ? (
+          <FirstRow action={headingAction}>
+            <h3
+              id={headingId}
+              className={compact ? 'sr-only' : 'text-ui'}
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
+              {t('heading')}
+            </h3>
+          </FirstRow>
+        ) : null}
         {/* UX-11: decisions already made in this run stay in view, so the next one reads as a
           new step rather than a retry of the last. */}
-        {(compact ? [] : done).map((approval) => (
+        {shownDone.map((approval, index) => (
           <p
             key={approval.approvalId}
             data-testid={`approved-${approval.approvalId}`}
             className="flex items-center gap-1.5 text-caption text-muted-foreground"
           >
+            {index === 0 ? <RowAction action={doneAction} /> : null}
             <AgentStatusIcon status="done" size={12} />
             {t('done', {
               step: kindText(approval),
@@ -262,10 +351,11 @@ export function ApprovalPanel({
             })}
           </p>
         ))}
-        {approvals.map((approval) => (
+        {approvals.map((approval, index) => (
           <AgentCard
             key={approval.approvalId}
             data-testid={`approval-${approval.approvalId}`}
+            data-approval={approval.approvalId}
             role="article"
             aria-label={t('heading')}
             className="text-caption"
@@ -277,13 +367,17 @@ export function ApprovalPanel({
                   : 'flex items-start gap-2.5 px-4 pt-3.5 pr-3.5'
               }
             >
+              {index === 0 && !compact ? <RowAction action={cardAction} /> : null}
               <AgentStatusIcon
                 status="waiting"
                 size={14}
                 className={compact ? undefined : 'mt-0.5 self-start'}
               />
               <div className="grid min-w-0 flex-1">
-                <p className="text-body font-medium text-foreground [overflow-wrap:anywhere]">
+                <p
+                  className="text-body text-foreground [overflow-wrap:anywhere]"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
                   {approval.tool
                     ? t(
                         approval.tool.purpose === 'tool'
@@ -302,6 +396,7 @@ export function ApprovalPanel({
               </div>
               {compact ? (
                 <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {index === 0 ? <RowAction action={cardAction} /> : null}
                   {decisionButtons(approval)}
                 </div>
               ) : null}
@@ -402,19 +497,18 @@ export function ApprovalPanel({
 
 function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefined }) {
   const t = useTranslations('Approvals');
-  const ko = useLocale().startsWith('ko');
   if (!plan)
     return (
       <p role={plan === null ? 'alert' : 'status'}>
         {t(plan === null ? 'checkUnavailable' : 'checkLoading')}
       </p>
     );
-  const summary = permissionSummary(plan, ko);
+  const summary = permissionSummary(plan, t);
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {summary ?? (
         <>
-          <p className="font-medium">
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>
             {plan.descriptor.name} · {plan.descriptor.source}
           </p>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2">
@@ -458,7 +552,10 @@ const shellNames = {
 };
 
 /** Summaries only change presentation. The verified body/fingerprint still authorizes the exact call. */
-function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
+function permissionSummary(
+  plan: ToolPermissionPlan,
+  t: ReturnType<typeof useTranslations<'Approvals'>>,
+) {
   if (plan.descriptor.source !== 'corral') return null;
   if (plan.descriptor.name === 'write_file' || plan.descriptor.name === 'write') {
     const args = plan.arguments;
@@ -473,7 +570,9 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="font-medium">{ko ? '쓸 파일 내용' : 'Proposed file content'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('toolSummary.proposedFileContent')}
+        </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre
           data-testid="file-approval-content"
@@ -489,17 +588,19 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="font-medium">{ko ? '요청한 교체 내용' : 'Requested replacements'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('toolSummary.requestedReplacements')}
+        </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <ol className="max-h-80 space-y-3 overflow-auto">
           {parsed.data.edits.map((edit, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the fingerprint fixes this immutable ordered edit list.
             <li key={`${plan.fingerprint}:${index}`}>
-              <p className="text-muted-foreground">{ko ? '교체 전' : 'Before'}</p>
+              <p className="text-muted-foreground">{t('toolSummary.before')}</p>
               <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.oldText}
               </pre>
-              <p className="text-muted-foreground">{ko ? '교체 후' : 'After'}</p>
+              <p className="text-muted-foreground">{t('toolSummary.after')}</p>
               <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.newText}
               </pre>
@@ -517,32 +618,22 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!source) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="command-approval-summary">
-        <p className="font-medium">{ko ? '명령 실행' : 'Run command'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('toolSummary.runCommand')}</p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {source}
         </pre>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <dt className="text-muted-foreground">{ko ? '셸' : 'Shell'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.shell')}</dt>
           <dd>{shellNames[command.shellId]}</dd>
-          <dt className="text-muted-foreground">{ko ? '작업 폴더' : 'Working directory'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.workingDirectory')}</dt>
           <dd className="break-words font-mono">
-            {command.cwd === '.'
-              ? ko
-                ? '세션 작업 사본의 루트'
-                : 'Session working-copy root'
-              : command.cwd}
+            {command.cwd === '.' ? t('toolSummary.workingCopyRoot') : command.cwd}
           </dd>
-          <dt className="text-muted-foreground">{ko ? '실행 방식' : 'Mode'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.mode')}</dt>
           <dd>
-            {command.mode === 'service'
-              ? ko
-                ? '서비스'
-                : 'Service'
-              : ko
-                ? '완료까지 실행'
-                : 'Foreground'}
+            {t(command.mode === 'service' ? 'toolSummary.service' : 'toolSummary.foreground')}
           </dd>
-          <dt className="text-muted-foreground">{ko ? '시간 제한' : 'Timeout'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.timeout')}</dt>
           <dd>{command.timeoutMs / 1000} s</dd>
         </dl>
       </div>
@@ -553,7 +644,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="hashline-approval-summary">
-        <p className="font-medium">{ko ? '파일 변경' : 'Edit file'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('toolSummary.editFile')}</p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {parsed.data.ops}

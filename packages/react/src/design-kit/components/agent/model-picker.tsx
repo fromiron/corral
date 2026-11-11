@@ -457,8 +457,9 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
             aria-label={labels.trigger(triggerName)}
             aria-description={triggerDescription}
             disabled={disabled}
+            data-slot="model-picker-trigger"
             className={cn(
-              'inline-flex h-7 max-w-full items-center gap-1.5 px-1.5 text-muted-foreground transition-colors duration-160 hover:bg-hover hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed',
+              'inline-flex min-h-7 max-w-full items-center gap-1.5 px-1.5 py-1 text-left text-muted-foreground transition-colors duration-160 hover:bg-hover hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed',
               focusRing,
               open && 'bg-hover text-foreground',
               shape.button,
@@ -470,7 +471,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
               <AnimatePresence initial={false} mode="popLayout">
                 <motion.span
                   key={current?.id}
-                  className="truncate"
+                  className="[overflow-wrap:anywhere]"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: spring.fast.exit }}
@@ -519,6 +520,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
                 aria-label={labels.settings}
                 initialFocus={listRef}
                 finalFocus={triggerRef}
+                data-slot="model-picker-popup"
                 className="w-[min(320px,calc(100vw-32px))] outline-none [--model-picker-enter-y:4px] data-[side=bottom]:[--model-picker-enter-y:-4px]"
               >
                 <motion.div

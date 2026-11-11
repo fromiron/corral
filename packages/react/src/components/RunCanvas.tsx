@@ -1,7 +1,16 @@
 import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { pendingInteractions, type RunProjection } from '@corral/core';
 import { motion, useReducedMotion } from 'motion/react';
-import { type ReactNode, useCallback, useId, useMemo, useRef, useState } from 'react';
+import {
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -23,16 +32,24 @@ import { cn } from '../design-kit/lib/utils.ts';
 import {
   buildRunAgentGraph,
   type RunAgentGraph,
+  type RunAgentGraphNode,
   type RunAgentGraphRelation,
 } from '../run/agent-graph.ts';
-import { type AgentGraphPosition, layoutRunAgents } from '../run/agent-graph-layout.ts';
-import { type AgentGraphRoute, routeRelation } from '../run/agent-graph-routes.ts';
+import {
+  type AgentGraphPosition,
+  labelRect,
+  layoutRunAgents,
+  markRect,
+  TILE,
+} from '../run/agent-graph-layout.ts';
+import { type AgentGraphRoute, openMidpoint, routeRelation } from '../run/agent-graph-routes.ts';
 import { type ObservedAgentModel, observedAgentModels } from '../run/agent-models.ts';
-import { useRunDisplay } from '../run/display.tsx';
+import { type RunDisplaySnapshot, useRunDisplay } from '../run/display.tsx';
 import type { NodeRunStatus } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { ArrowRight, X } from '../ui/icons.ts';
-import { type Bounds, useGraphViewport, ZoomControls } from './GraphViewport.tsx';
+import { type Bounds, type FitRule, useGraphViewport, ZoomControls } from './GraphViewport.tsx';
+import { type AgentPresentation, RunAgentList } from './RunAgentList.tsx';
 
 /**
  * The kit legend's Call, Answer (data), Needs you and Failed colours for work in progress;
@@ -48,8 +65,58 @@ const stateColors: Record<RelationState, string> = {
 };
 const relationStates: RelationState[] = ['call', 'data', 'ask', 'failed', 'settled'];
 
-// Node tile geometry from AgentGraphNode: a 160px column whose mark centre sits 28px down.
-const TILE = { halfWidth: 80, markCenter: 28, labelBottom: 100 } as const;
+/**
+ * A fit frames the agents with a margin and may enlarge a small run, so four agents read large
+ * while twenty still fit (down to the stage's smallest zoom).
+ */
+export const RUN_GRAPH_FIT: FitRule = { padding: 40, maxZoom: 1.25 };
+/** Room above a mark for its breathing halo and selected scale. */
+const HALO = 8;
+
+/** An answer owed reads as the glossary's Waiting for you, short enough for a node's line. */
+const waitingWords = {
+  answer: 'waiting',
+  approval: 'waiting_approval',
+  you: 'waiting',
+} as const satisfies Record<Awaited, string>;
+
+/** The quick view's size on screen, px: the kit's medium popover and a typical height. */
+const QUICK_VIEW = { width: 320, height: 260, gap: 6 } as const;
+type QuickViewSide = 'right' | 'left' | 'bottom' | 'top';
+
+/**
+ * The side of an agent its quick view opens on: the first, from the right, where it hides no
+ * other agent's mark, so the next agent stays one click away. Crowded on every side, right.
+ */
+export function quickViewSide(
+  id: string,
+  positions: ReadonlyMap<string, AgentGraphPosition>,
+  zoom: number,
+): QuickViewSide {
+  const at = positions.get(id);
+  if (!at) return 'right';
+  const mark = TILE.markHalf * zoom;
+  const { width, height, gap } = QUICK_VIEW;
+  const x = at.x * zoom;
+  const y = at.y * zoom;
+  const areas: [QuickViewSide, number, number, number, number][] = [
+    ['right', x + mark + gap, x + mark + gap + width, y - mark, y - mark + height],
+    ['left', x - mark - gap - width, x - mark - gap, y - mark, y - mark + height],
+    ['bottom', x - mark, x - mark + width, y + mark + gap, y + mark + gap + height],
+    ['top', x - mark, x - mark + width, y - mark - gap - height, y - mark - gap],
+  ];
+  const others = [...positions].filter(([other]) => other !== id).map(([, p]) => p);
+  const free = areas.find(([, x0, x1, y0, y1]) =>
+    others.every(
+      (p) =>
+        p.x * zoom + mark <= x0 ||
+        p.x * zoom - mark >= x1 ||
+        p.y * zoom + mark <= y0 ||
+        p.y * zoom - mark >= y1,
+    ),
+  );
+  return free?.[0] ?? 'right';
+}
 
 function kitStatus(status: NodeRunStatus): AgentStatus {
   if (['active', 'model', 'tool', 'finalizing'].includes(status)) return 'running';
@@ -85,15 +152,45 @@ function graphBounds(positions: Iterable<AgentGraphPosition>): Bounds | null {
   return {
     minX: Math.min(...points.map((p) => p.x)) - TILE.halfWidth,
     maxX: Math.max(...points.map((p) => p.x)) + TILE.halfWidth,
-    minY: Math.min(...points.map((p) => p.y)) - TILE.markCenter - 8,
+    minY: Math.min(...points.map((p) => p.y)) - TILE.markHalf - HALO,
     maxY: Math.max(...points.map((p) => p.y)) + TILE.labelBottom,
   };
 }
+
+/** What an agent waiting on the person waits for: an answer, an approval, or both kinds. */
+type Awaited = 'answer' | 'approval' | 'you';
 
 interface GraphSnapshot {
   graph: RunAgentGraph;
   models: Record<string, ObservedAgentModel[]>;
   ended: boolean;
+  awaiting: Record<string, Awaited>;
+}
+
+/** For each waiting agent, what the person owes it, from the run's pending interactions. */
+function awaitingOf(
+  graph: RunAgentGraph,
+  projection: RunProjection | null,
+  events: RunDisplaySnapshot['events'],
+): Record<string, Awaited> {
+  const waiting = graph.nodes.filter((node) => node.summary.counts.waiting_approval);
+  if (!projection || !waiting.length) return {};
+  const kinds = new Map<string, Set<Awaited>>();
+  for (const item of pendingInteractions(events, projection)) {
+    const executionId =
+      item.kind === 'approval' ? item.approval.tool?.executionId : item.event.payload.executionId;
+    const nodeId = executionId ? projection.executions[executionId]?.nodeId : undefined;
+    if (!nodeId) continue;
+    const kind: Awaited =
+      item.kind === 'approval' ? 'approval' : item.kind === 'question' ? 'answer' : 'you';
+    kinds.set(nodeId, (kinds.get(nodeId) ?? new Set()).add(kind));
+  }
+  return Object.fromEntries(
+    waiting.map((node) => {
+      const own = kinds.get(node.id);
+      return [node.id, own?.size === 1 ? ([...own][0] as Awaited) : 'you'];
+    }),
+  );
 }
 
 interface Edge {
@@ -110,18 +207,30 @@ interface Edge {
 export function RunCanvas({
   session,
   definition,
+  display = 'map',
   selectedNodeId,
   onSelectNode,
   renderNodePreview,
+  onFitWidthZoom,
 }: {
   session: RunSessionStore;
   definition: CorralDefinition;
+  /**
+   * The relationship map, or the same agents as a list. The map stays mounted while the list
+   * is shown, so its position and zoom survive the switch.
+   */
+  display?: 'map' | 'list';
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null, trigger?: HTMLElement | null) => void;
   renderNodePreview?: (
     nodeId: string,
     context: { close: () => void; trigger: HTMLElement | null },
   ) => ReactNode;
+  /**
+   * For each fit the map makes on its own (its first display, as the page settles), the zoom
+   * that fits the graph's width, before it is painted; a fit the person asks for is not reported.
+   */
+  onFitWidthZoom?: (zoom: number) => void;
 }) {
   const t = useTranslations('RunCanvas');
   const statusText = useTranslations('Canvas.nodeStatus');
@@ -138,10 +247,12 @@ export function RunCanvas({
   };
   const readGraph = useMemo(() => {
     let previous: RunProjection | null | undefined;
+    let previousEvents: RunDisplaySnapshot['events'] | undefined;
     let serialized = '';
-    return ({ projection }: { projection: RunProjection | null }) => {
-      if (projection === previous && serialized) return serialized;
+    return ({ projection, events }: RunDisplaySnapshot) => {
+      if (projection === previous && events === previousEvents && serialized) return serialized;
       previous = projection;
+      previousEvents = events;
       const graph = buildRunAgentGraph(projection, definition);
       const models = Object.fromEntries(
         graph.nodes.map((node) => [node.id, observedAgentModels(projection, node.executionIds)]),
@@ -150,12 +261,13 @@ export function RunCanvas({
         graph,
         models,
         ended: !!projection && TERMINAL_RUN_STATUSES.has(projection.status),
+        awaiting: awaitingOf(graph, projection, events),
       });
       return serialized;
     };
   }, [definition]);
   const signature = useRunDisplay(session, readGraph);
-  const { graph, models, ended } = useMemo(
+  const { graph, models, ended, awaiting } = useMemo(
     () => JSON.parse(signature) as GraphSnapshot,
     [signature],
   );
@@ -170,10 +282,26 @@ export function RunCanvas({
   const { pane, viewport, fit, zoomAt, paneHandlers } = useGraphViewport({
     bounds: () => graphBounds(placed.current.values()),
     ready: hasNodes && !readingInitialHistory,
+    fitRule: RUN_GRAPH_FIT,
+    // Fit on first display and on request only; new agents and a panel opening keep the view.
+    fitOnce: true,
     onMove: () => previewHandle.close(),
     // A press on the empty stage that did not pan dismisses the quick view.
     onTap: () => previewHandle.close(),
+    ...(onFitWidthZoom
+      ? { onAutoFit: (_view: unknown, across: number) => onFitWidthZoom(across) }
+      : {}),
   });
+
+  // A quick view belongs to the display it opened from; switching displays closes it.
+  const shownDisplay = useRef(display);
+  useEffect(() => {
+    if (shownDisplay.current === display) return;
+    shownDisplay.current = display;
+    // Focus stays on the control that switched; the closed view's trigger may be gone.
+    setRestorePreviewFocus(false);
+    previewHandle.close();
+  }, [display, previewHandle]);
 
   const adjacent = useMemo(() => {
     const set = new Set([selectedNodeId]);
@@ -195,6 +323,8 @@ export function RunCanvas({
       groups.set(key, [...(groups.get(key) ?? []), relation]);
     }
     const leads = new Set(graph.nodes.filter((node) => node.lead).map((node) => node.id));
+    // A direction mark sits on a stretch of its line that no mark or label covers.
+    const covered = [...positions.values()].flatMap((at) => [markRect(at), labelRect(at)]);
     return [...groups].map(([id, relations]) => {
       const first = relations[0] as RunAgentGraphRelation;
       const description = relations
@@ -202,18 +332,20 @@ export function RunCanvas({
           t('relationCount', { kind: t(`relation.${relation.kind}`), count: relation.count }),
         )
         .join(' · ');
+      const route = routeRelation({
+        source: first.source,
+        target: first.target,
+        from: positions.get(first.source) ?? { x: 0, y: 0 },
+        to: positions.get(first.target) ?? { x: 0, y: 0 },
+        leads,
+        opposite: groups.has(JSON.stringify([first.target, first.source])),
+      });
+      const mark = openMidpoint(route, covered);
       return {
         id,
         source: first.source,
         target: first.target,
-        route: routeRelation({
-          source: first.source,
-          target: first.target,
-          from: positions.get(first.source) ?? { x: 0, y: 0 },
-          to: positions.get(first.target) ?? { x: 0, y: 0 },
-          leads,
-          opposite: groups.has(JSON.stringify([first.target, first.source])),
-        }),
+        route: { ...route, label: mark.point, angle: mark.angle },
         state: relationState(relations),
         description,
         label: t('relationship', {
@@ -225,27 +357,53 @@ export function RunCanvas({
     });
   }, [graph, positions, nameOf, t]);
 
+  // One reading of each agent for both displays: the map's node and the list's row.
+  const present = useCallback(
+    (node: RunAgentGraphNode): AgentPresentation & { logo?: AgentMark } => {
+      const recordedModels = models[node.id] ?? [];
+      const model =
+        recordedModels.length > 1
+          ? t(recordedModels.every((model) => model.identified) ? 'models' : 'profiles', {
+              count: recordedModels.length,
+            })
+          : recordedModels[0]?.name;
+      const provider = recordedModels.length === 1 ? recordedModels[0]?.provider : null;
+      const logo = providerMark(provider);
+      const summary = node.summary;
+      const unsettled = ended && !['done', 'failed', 'cancelled', 'idle'].includes(summary.status);
+      return {
+        ...(model ? { model } : {}),
+        ...(logo ? { logo } : {}),
+        status: unsettled ? 'stopped' : kitStatus(summary.status),
+        statusLabel: !node.executionIds.length
+          ? t('requested')
+          : unsettled
+            ? t('unsettled')
+            : summary.status === 'waiting_approval'
+              ? statusText(waitingWords[awaiting[node.id] ?? 'you'])
+              : statusText(summary.status),
+      };
+    },
+    [models, ended, awaiting, t, statusText],
+  );
+  const triggerFor = useCallback(
+    (nodeId: string, button: ReactElement) => (
+      <PopoverTrigger
+        id={`${previewId}-${nodeId}`}
+        handle={previewHandle}
+        payload={nodeId}
+        render={button}
+      />
+    ),
+    [previewId, previewHandle],
+  );
+
   const nodeLayer = useMemo(
     () =>
       graph.nodes.map((node, index) => {
         const position = positions.get(node.id) ?? { x: 0, y: 0 };
-        const recordedModels = models[node.id] ?? [];
-        const model =
-          recordedModels.length > 1
-            ? t(recordedModels.every((model) => model.identified) ? 'models' : 'profiles', {
-                count: recordedModels.length,
-              })
-            : recordedModels[0]?.name;
-        const provider = recordedModels.length === 1 ? recordedModels[0]?.provider : null;
-        const logo = providerMark(provider);
+        const { model, logo, status, statusLabel: label } = present(node);
         const summary = node.summary;
-        const unsettled =
-          ended && !['done', 'failed', 'cancelled', 'idle'].includes(summary.status);
-        const label = !node.executionIds.length
-          ? t('requested')
-          : unsettled
-            ? t('unsettled')
-            : statusText(summary.status);
         const details = [
           ...(node.executionIds.length > 1
             ? [statusText('executions', { count: node.executionIds.length })]
@@ -259,7 +417,6 @@ export function RunCanvas({
             ? [statusText('previousFailures', { count: summary.previousFailures })]
             : []),
         ].join(' · ');
-        const triggerId = `${previewId}-${node.id}`;
         return (
           <div
             key={node.id}
@@ -273,7 +430,7 @@ export function RunCanvas({
             <motion.div
               data-run-status={summary.status}
               className="absolute"
-              style={{ left: -TILE.halfWidth, top: -TILE.markCenter }}
+              style={{ left: -TILE.halfWidth, top: -TILE.markHalf }}
               initial={reduce ? false : { opacity: 0, scale: 0.4 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ ...spring.moderate, delay: reduce ? 0 : Math.min(index, 8) * 0.07 }}
@@ -282,7 +439,7 @@ export function RunCanvas({
                 name={node.label}
                 {...(model ? { model } : {})}
                 {...(logo ? { logo } : {})}
-                status={unsettled ? 'stopped' : kitStatus(summary.status)}
+                status={status}
                 statusLabel={label}
                 detail={details}
                 label={[node.label, model, label, details].filter(Boolean).join(' · ')}
@@ -294,18 +451,7 @@ export function RunCanvas({
                 selected={selectedNodeId === node.id}
                 dimmed={!!selectedNodeId && !adjacent.has(node.id)}
                 onClick={(event) => onSelectNode(node.id, event.currentTarget)}
-                renderTrigger={
-                  hasPreview
-                    ? (button) => (
-                        <PopoverTrigger
-                          id={triggerId}
-                          handle={previewHandle}
-                          payload={node.id}
-                          render={button}
-                        />
-                      )
-                    : undefined
-                }
+                renderTrigger={hasPreview ? (button) => triggerFor(node.id, button) : undefined}
               />
             </motion.div>
           </div>
@@ -314,16 +460,13 @@ export function RunCanvas({
     [
       graph.nodes,
       positions,
-      models,
-      ended,
+      present,
       edges,
       selectedNodeId,
       adjacent,
       onSelectNode,
-      t,
       statusText,
-      previewId,
-      previewHandle,
+      triggerFor,
       hasPreview,
       reduce,
     ],
@@ -355,7 +498,7 @@ export function RunCanvas({
                 d={edge.route.d}
                 fill="none"
                 stroke={color}
-                strokeOpacity={settled ? 0.55 : 1}
+                strokeOpacity={settled ? 0.8 : 1}
                 strokeWidth={1.5}
                 strokeLinecap="round"
                 className={flowing ? cn('flow-dash', settled && 'flow-dash-slow') : undefined}
@@ -385,12 +528,32 @@ export function RunCanvas({
   const selectedRelations = selectedNodeId
     ? edges.filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId)
     : [];
-  const shownStates = relationStates.filter((state) => edges.some((edge) => edge.state === state));
+  // The legend lists the states on screen; an ended run with one state needs no key for it.
+  const onScreen = relationStates.filter((state) => edges.some((edge) => edge.state === state));
+  const shownStates = ended && onScreen.length === 1 ? [] : onScreen;
   return (
     // The source AgentGraph names its stage as a group; a fieldset would imply form controls.
     // biome-ignore lint/a11y/useSemanticElements: a labelled group of agent buttons, not a form.
     <div className="flex h-full w-full flex-col p-3" role="group" aria-label={t('label')}>
-      <AgentCard className="flex min-h-0 flex-1 flex-col">
+      {display === 'list' ? (
+        <AgentCard className="min-h-0 flex-1 overflow-auto p-2">
+          {readingInitialHistory || !hasNodes ? (
+            <p className="grid h-full place-items-center text-caption text-muted-foreground">
+              {t(readingInitialHistory ? 'loading' : 'empty')}
+            </p>
+          ) : (
+            <RunAgentList
+              session={session}
+              nodes={graph.nodes}
+              present={present}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={onSelectNode}
+              {...(hasPreview ? { trigger: triggerFor } : {})}
+            />
+          )}
+        </AgentCard>
+      ) : null}
+      <AgentCard className="flex min-h-0 flex-1 flex-col" hidden={display === 'list'}>
         <div
           ref={pane}
           data-graph-pane
@@ -489,7 +652,7 @@ export function RunCanvas({
             return node ? (
               <PopoverPopup
                 width="md"
-                side="right"
+                side={quickViewSide(node.id, positions, viewport?.k ?? 1)}
                 align="start"
                 padding="compact"
                 finalFocus={restorePreviewFocus}

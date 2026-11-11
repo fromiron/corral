@@ -5,6 +5,7 @@ import {
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
+  Tooltip,
 } from '@corral/react/design-kit';
 import { ArrowDown } from '@corral/react/icons';
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
@@ -24,7 +25,7 @@ export function ChatDensityMenu() {
     <MenuSub>
       <MenuSubTrigger>
         {t('chatDensity')}
-        <span className="ml-auto truncate pl-3 text-xs text-muted-foreground">
+        <span className="ml-auto truncate pl-3 text-caption text-muted-foreground">
           {t(
             chatDensity === 'results'
               ? 'densityResults'
@@ -83,9 +84,13 @@ export function ChatView({
 }) {
   const t = useTranslations('Desktop');
   const centered = centerEmpty && items.length === 0 && !expandedHeader;
+  const headerInFlow = !expandedHeader && !centered;
   const timeline = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  // Where the view last put the end in view itself; its scroll event may arrive after the turn
+  // has grown again, which is not the reader leaving the end.
+  const followedTop = useRef(Number.POSITIVE_INFINITY);
   const restoreTop = useRef<number | null>(null);
   const restoreAnchor = useRef<{ id: string; offset: number } | null>(null);
   const readingAnchor = useRef<{ id: string; offset: number } | null>(null);
@@ -117,6 +122,7 @@ export function ChatView({
     if (!box || !body) return;
     const key = `corral:chat-scroll:${sessionId}`;
     follow.current = true;
+    followedTop.current = Number.POSITIVE_INFINITY;
     restoreTop.current = null;
     restoreAnchor.current = null;
     readingAnchor.current = null;
@@ -155,7 +161,10 @@ export function ChatView({
       } else if (restoreTop.current !== null) {
         box.scrollTop = restoreTop.current;
         if (box.scrollHeight - box.clientHeight >= restoreTop.current) restoreTop.current = null;
-      } else if (follow.current) box.scrollTop = box.scrollHeight;
+      } else if (follow.current) {
+        box.scrollTop = box.scrollHeight;
+        followedTop.current = box.scrollTop;
+      }
       setAtEnd(box.scrollHeight - box.scrollTop - box.clientHeight < 48);
     };
     const remember = () => {
@@ -224,6 +233,8 @@ export function ChatView({
   const readPosition = () => {
     const box = timeline.current;
     if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
+    // Still where the view put the end: the content grew below, the reader did not move up.
+    if (follow.current && box.scrollTop >= followedTop.current - 1) return;
     follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
     const top = box.getBoundingClientRect().top;
     const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
@@ -242,11 +253,15 @@ export function ChatView({
       data-empty-centered={centered || undefined}
       className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col ${centered ? 'overflow-y-auto' : 'overflow-clip'}`}
     >
-      {header ? (
+      {/* Expanded records read in their own area, and an empty session keeps its notices at
+          the top. With messages, notices are part of the conversation flow (below). */}
+      {header && !headerInFlow ? (
         <div
-          className={`px-5 pt-3 has-[>div:empty]:hidden ${expandedHeader ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-1/2 min-h-0 shrink overflow-y-auto'}`}
+          className={`px-3 pt-3 has-[>div:empty]:hidden sm:px-6 ${expandedHeader ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-1/2 min-h-0 shrink overflow-y-auto'}`}
         >
-          <div className="mx-auto w-full max-w-(--chat-content-max-width)">{header}</div>
+          <div className="mx-auto flex w-full max-w-(--chat-composer-width) flex-col gap-2">
+            {header}
+          </div>
         </div>
       ) : null}
       <section
@@ -276,8 +291,17 @@ export function ChatView({
       >
         <div
           ref={content}
-          className={`mx-auto w-full max-w-(--chat-content-max-width) px-5 pt-4 ${centered ? 'pb-2' : 'pb-6'}`}
+          className={`mx-auto w-full max-w-(--chat-column-width) px-4 sm:px-6 ${centered ? '' : 'pt-6 pb-2'}`}
         >
+          {header && headerInFlow ? (
+            // One line in the flow: it scrolls away with the messages and never covers them.
+            <div
+              data-testid="chat-header"
+              className="mb-6 flex flex-col gap-2 empty:hidden has-[>div:empty]:hidden"
+            >
+              {header}
+            </div>
+          ) : null}
           {items.length ? (
             <ol
               aria-label={t('conversation')}
@@ -297,6 +321,7 @@ export function ChatView({
                     aria-setsize={items.length}
                     data-index={index}
                     data-chat-item={item.id}
+                    data-latest={index === items.length - 1 || undefined}
                     aria-current={item.id === messageId ? 'location' : undefined}
                     className={
                       item.id === messageId ? 'rounded-lg ring-2 ring-focus-ring' : undefined
@@ -330,28 +355,36 @@ export function ChatView({
       </section>
       <div
         data-testid="chat-composer"
-        className={`chat-composer relative flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-4 pt-2 pb-4 sm:px-5 ${centered ? 'mb-auto' : ''}`}
+        className={`chat-composer relative flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-4 sm:px-6 ${centered ? 'mb-auto pt-6' : 'pt-2'}`}
       >
         {!expandedHeader && !atEnd ? (
-          <div className="pointer-events-none absolute right-5 bottom-full z-20 pb-3">
-            <Button
-              aria-label={t('toLatest')}
-              size="icon-compact"
-              variant="tertiary"
-              className="pointer-events-auto rounded-full"
-              onClick={() => {
-                restoreTop.current = null;
-                restoreAnchor.current = null;
-                readingAnchor.current = null;
-                follow.current = true;
-                if (timeline.current) timeline.current.scrollTop = timeline.current.scrollHeight;
-              }}
-            >
-              <ArrowDown />
-            </Button>
+          // Centered over the composer, where the conversation continues.
+          <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 flex justify-center pb-3">
+            <Tooltip content={t('toLatest')}>
+              <Button
+                aria-label={t('toLatest')}
+                size="icon-compact"
+                variant="tertiary"
+                className="pointer-events-auto rounded-full"
+                onClick={() => {
+                  restoreTop.current = null;
+                  restoreAnchor.current = null;
+                  readingAnchor.current = null;
+                  follow.current = true;
+                  if (timeline.current) {
+                    timeline.current.scrollTop = timeline.current.scrollHeight;
+                    followedTop.current = timeline.current.scrollTop;
+                  }
+                }}
+              >
+                <ArrowDown />
+              </Button>
+            </Tooltip>
           </div>
         ) : null}
-        <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">{composer}</div>
+        <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">
+          <div className="mx-auto w-full max-w-(--chat-composer-width)">{composer}</div>
+        </div>
       </div>
       {aside === undefined ? null : (
         <aside data-testid="chat-overview" className="chat-overview">

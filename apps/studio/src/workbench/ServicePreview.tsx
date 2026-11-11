@@ -1,10 +1,13 @@
 import type { UserTaskView, WorkspacePreview, WorktreeCommandView } from '@corral/client';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
+import { workHref } from './navigation.ts';
 import { PreviewFeedback } from './PreviewFeedback.tsx';
+import { type PreviewOutput, PreviewView } from './PreviewView.tsx';
 
 /** Select an owned command, never an arbitrary localhost address. */
 export function ServicePreview({ sessionId, projectId }: { sessionId: string; projectId: string }) {
@@ -17,12 +20,16 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
   );
   const current = useRef(context);
   current.current = context;
-  const [commands, setCommands] = useState<{ id: string; label: string }[]>([]);
+  const [commands, setCommands] = useState<
+    { id: string; label: string; kind: PreviewOutput['kind'] }[]
+  >([]);
   const [operationId, select] = useState('');
   const [port, setPort] = useState('5173');
-  const [opened, setOpened] = useState<{ context: typeof context; lease: WorkspacePreview } | null>(
-    null,
-  );
+  const [opened, setOpened] = useState<{
+    context: typeof context;
+    lease: WorkspacePreview;
+    output: PreviewOutput | null;
+  } | null>(null);
   const lease = opened?.context === context ? opened.lease : null;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,12 +65,14 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
             .filter((task) => task.state === 'running')
             .map((task) => ({
               id: task.operationId,
+              kind: 'task' as const,
               label: `${task.packageManager} run ${task.script}`,
             })),
           ...items
             .filter((item) => item.state === 'running')
             .map((item) => ({
               id: item.id,
+              kind: 'command' as const,
               label: `${item.command ?? item.shellId} · ${item.cwd}`,
             })),
         ]);
@@ -85,11 +94,21 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
     },
     [opened, context],
   );
-  if (mode !== 'server' || !commands.length) return null;
+  if (mode !== 'server') return <BrowserQaPreviewLink />;
+  // The Preview tab is this pane's own view, so an idle one says why it is empty.
+  if (!commands.length)
+    return (
+      <>
+        <p className="text-caption text-muted-foreground">{t('noService')}</p>
+        <BrowserQaPreviewLink />
+      </>
+    );
   const selected = commands.find((item) => item.id === operationId)?.id ?? commands[0]?.id ?? '';
   return (
     <section aria-label={t('service')} className="flex flex-col gap-2 border-b border-line pb-2">
-      <h3 className="text-xs font-medium">{t('service')}</h3>
+      <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('service')}
+      </h3>
       <Select
         label={t('operation')}
         size="xs"
@@ -98,7 +117,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
         disabled={pending}
         options={commands.map((item) => ({ value: item.id, label: item.label }))}
       />
-      <label htmlFor={portId} className="flex items-center gap-2 text-xs">
+      <label htmlFor={portId} className="flex items-center gap-2 text-caption">
         {t('port')}
         <Input
           id={portId}
@@ -136,7 +155,13 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
                 return;
               }
               await desktop.openPreview(sessionId, next.leaseId);
-              if (alive.current && current.current === context) setOpened({ context, lease: next });
+              const chosen = commands.find((item) => item.id === selected);
+              if (alive.current && current.current === context)
+                setOpened({
+                  context,
+                  lease: next,
+                  output: chosen ? { kind: chosen.kind, operationId: chosen.id } : null,
+                });
               else await workspaces.stopPreview(sessionId, next.leaseId);
             } catch (reason) {
               if (next) await workspaces.stopPreview(sessionId, next.leaseId).catch(() => {});
@@ -150,7 +175,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
           {t('openInteractive')}
         </Button>
       ) : (
-        <p className="text-xs text-muted-foreground">{t('desktopOnly')}</p>
+        <p className="text-caption text-muted-foreground">{t('desktopOnly')}</p>
       )}
       {lease ? (
         <Button
@@ -168,6 +193,9 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
           {t('close')}
         </Button>
       ) : null}
+      {lease && opened ? (
+        <PreviewView sessionId={sessionId} lease={lease} output={opened.output} />
+      ) : null}
       {lease ? (
         <PreviewFeedback
           key={`${workspaceId}:${sessionId}:${lease.leaseId}`}
@@ -177,10 +205,36 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
         />
       ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
+      <BrowserQaPreviewLink />
     </section>
+  );
+}
+
+/**
+ * The browser QA feature preview, which returns here. Only a link: this pane never shows the
+ * preview's sample page, snapshot or screenshot (docs/specs/features/feature-preview.md).
+ */
+function BrowserQaPreviewLink() {
+  const t = useTranslations('Preview');
+  const returnTo = workHref(useRouterState({ select: (state) => state.location.href }));
+  return (
+    <Button
+      variant="ghost"
+      size="compact"
+      className="self-start"
+      render={
+        <Link
+          to="/preview/$feature"
+          params={{ feature: 'browser-qa' }}
+          search={returnTo ? { returnTo } : {}}
+        />
+      }
+    >
+      {t('browserQaPreview')}
+    </Button>
   );
 }

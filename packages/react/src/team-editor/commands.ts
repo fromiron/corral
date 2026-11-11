@@ -1,4 +1,11 @@
-import type { ControlEdge, CorralDefinition, CorralNode, TargetPort } from '@corral/contracts';
+import type {
+  AgentRole,
+  ControlEdge,
+  CorralDefinition,
+  CorralNode,
+  HarnessBindingRef,
+  TargetPort,
+} from '@corral/contracts';
 import {
   boxBoundaryViolation,
   DECISION_RULE,
@@ -56,17 +63,23 @@ export type EditRejection =
   | 'mixedBoxes'
   | 'notABox'
   | 'noPredecessor'
-  | 'oneAgentOnly';
+  | 'oneAgentOnly'
+  | 'roleNeedsAgent';
 
 export type EditResult =
   | { ok: true; draft: EditorDraft; nodeId?: string }
   | { ok: false; reason: EditRejection };
 
-/** Another saved team, added as a Team box that runs that team's saved revision. */
+/**
+ * Another saved team of the project at its latest saved revision: added as a Team box that runs
+ * that revision, or a place to copy a role from.
+ */
 export interface TeamReference {
   corralId: string;
   definitionRevision: number;
   name: string;
+  /** The roles of that revision, once the host has read them. */
+  roles?: readonly AgentRole[];
 }
 
 export interface PortRequest {
@@ -773,6 +786,75 @@ function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
         })),
       ],
       [],
+    ),
+  };
+}
+
+// ── roles ────────────────────────────────────────────────────────────────────
+
+export interface RoleImportOptions {
+  /** Whether a work style reference resolves here; one that does not is left out. */
+  resolvesHarness?: ((ref: HarnessBindingRef) => boolean) | undefined;
+}
+
+export type RoleImportResult =
+  | { ok: true; draft: EditorDraft; nodeId: string; droppedHarness: boolean }
+  | { ok: false; reason: EditRejection };
+
+/**
+ * Copies a role onto one agent under a new role id: its instructions, model, reasoning, tools,
+ * output contract and work style. The agent keeps its name, inputs, connections and call links.
+ * Other agents that ran its previous role keep that role; a previous role no agent runs any
+ * more goes, as it does when its agent is removed. With nothing selected, a new agent named
+ * after the role is added at `at` first. The source is only read and never linked: a model
+ * profile is kept as it is, and a work style this place cannot resolve is left out.
+ */
+export function importRole(
+  draft: EditorDraft,
+  source: AgentRole,
+  ids: readonly string[],
+  at: Placement = { kind: 'empty' },
+  options: RoleImportOptions = {},
+): RoleImportResult {
+  let next = draft;
+  let targetId = ids.length === 1 ? (ids[0] as string) : null;
+  if (ids.length === 0) {
+    const created = placeStep(draft, 'agent', at);
+    if (!created.ok) return created;
+    next = created.draft;
+    targetId = created.nodeId as string;
+  }
+  const target = targetId ? nodesOf(next.definition).get(targetId) : undefined;
+  if (target?.type !== 'agent') return { ok: false, reason: 'roleNeedsAgent' };
+  const label = ids.length === 0 ? source.name : target.label;
+  const { id: roleId, counters } = nextId(next, 'role');
+  const {
+    id: _sourceId,
+    name: _sourceName,
+    harness,
+    ...fields
+  } = JSON.parse(JSON.stringify(source)) as AgentRole;
+  const keep = harness !== undefined && (options.resolvesHarness?.(harness) ?? false);
+  const role: AgentRole = { id: roleId, name: label, ...fields, ...(keep ? { harness } : {}) };
+  const previous = target.roleId;
+  const nodes = next.definition.nodes.map((n) =>
+    n.id === target.id ? { ...target, label, roleId } : n,
+  );
+  const stillUsed = nodes.some((n) => n.type === 'agent' && n.roleId === previous);
+  // The copy takes the previous role's place in the list, or sits right after it.
+  const roles = next.definition.roles.flatMap((r) =>
+    r.id !== previous ? [r] : stillUsed ? [r, role] : [role],
+  );
+  if (!roles.includes(role)) roles.push(role);
+  const { planOwnerRoleId, ...definition } = next.definition;
+  const owner = planOwnerRoleId === previous && !stillUsed ? undefined : planOwnerRoleId;
+  return {
+    ok: true,
+    nodeId: target.id,
+    droppedHarness: harness !== undefined && !keep,
+    draft: withDefinition(
+      { ...next, counters },
+      { ...definition, ...(owner ? { planOwnerRoleId: owner } : {}), nodes, roles },
     ),
   };
 }

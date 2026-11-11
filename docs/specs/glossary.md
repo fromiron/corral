@@ -4,7 +4,7 @@
 
 | 개념 | 화면 이름 (EN / KO) | 코드·URL 이름 | 화면에 쓰지 않는 이름 |
 |---|---|---|---|
-| 요청과 그 실행을 담는 작업 단위 | Conversation / 대화 | `session`, `/sessions/$id` | 채팅방 |
+| 요청과 그 실행을 담는 작업 단위 | Conversation / 대화 | `session`, `/sessions/$id` | 채팅방, 작업 보드, Task board, 백로그 |
 | 요청 하나로 시작한 처리 | Run / 실행 | `run`, `/runs/$id` | 작업, 잡 |
 | 실행 안의 역할별 처리 | Execution / 실행 단위 | `execution` | — |
 | 저장한 역할 구성 | Corral(팀) / Corral(팀) | `corral`, `team` | 워크플로 |
@@ -13,12 +13,22 @@
 | 한 프로젝트의 기본 작업 방식 | Project default work style / 프로젝트 기본 작업 방식 | `project-defaults`, scope `project` | Default work style(한정사 없이) |
 | 작업 방식이 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → 팀 역할 → 이번 실행 | `ScopeLadder` | 3단 설명 |
 | 실행 결과물 | Results / 결과 | 패널 `artifacts`, 슬래시 `/results` | Artifacts |
-| 실행이 쓰는 격리 사본 | Session working copy / 세션 작업 복사본 | `worktree`, scope `session` | 세션 복사본(축약) |
+| 실행이 쓰는 격리 사본 | Session working copy / 세션 작업 사본 | `worktree`, scope `session` | 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
 | 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
 | 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | — |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
+| 실행이 사람의 답을 기다리는 상태 | Waiting for you / 응답 대기 | run status `awaiting_user` | 결정 대기, Response needed / 응답 필요, Waiting for your answer / 답변을 기다리고 있습니다, 내 답변 대기, 답을 기다리는 중, 사용자를 기다리는 중 |
+| 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 대화 안내, 실행 기록 머리, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
+| 다시 쓰는 팀·템플릿·리소스 모음 | Library / 라이브러리 | `/library`, `features/library.md` | 자료실 |
+| 예약 실행 화면 | Automation / 자동화 | `/schedules`, `ScheduledPage` | 스케줄러 |
+| 프로젝트 세션 탭의 상태별 배치 | Needs attention / 확인 필요, Review / 검토, In progress / 진행 중, No run yet / 실행 전, Completed / 완료, Cancelled / 취소됨, Empty session / 빈 세션 | `sessionGroups` | Task status, To do, In review, Done |
+| 세션의 일이 끝났다고 볼 조건 목록 | Completion criteria / 완료 기준 | `WorkSession.criteria`, run input `criteria` | Definition of done, 체크리스트, 기준 충족 |
+| 샘플 데이터로 보이는 미구현 흐름 | Feature preview / 기능 미리보기 | `/preview`, `feature-preview` | 데모(시뮬레이션 실행과 구분) |
+| 프로젝트의 원본 폴더·작업 사본 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
+| 경로로 파일 찾아 열기 | Quick open / 빠른 열기 | `quickOpen` | 파일 검색(내용 검색과 구분) |
+| 세션 검사 명령의 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
 | 실행 일시정지·재개·취소 | Active run controls / 진행 중 실행 제어 | `DockRunControls` | — |
 | 모델의 사고량 | Reasoning effort / 추론 노력 | `reasoning` | — |
 | 자동 추론 요청의 수준을 판정 엔진이 고르는 설정 | Effort mode / 추론 판정 | `EffortRoutingSettings` | Automatic reasoning, 추론 노력 자동 선택 |

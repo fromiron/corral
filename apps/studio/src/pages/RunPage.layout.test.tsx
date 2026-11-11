@@ -9,15 +9,24 @@ import type {
 import { applyEvent, emptyProjection } from '@corral/core';
 import { createRunSession, type RunSessionStore } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
-import { act, type ReactNode, useState } from 'react';
+import { act, type ReactNode, useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {}, replays: 0, pending: 0, batch: 'a' }));
+const fixture = vi.hoisted(() => ({
+  services: {},
+  replays: 0,
+  pending: 0,
+  batch: 'a',
+  // The zoom the canvas's automatic fit reports while its map shows; null reports none.
+  fitZoom: null as number | null,
+}));
 vi.mock('@corral/core', async (original) => {
   const module = await original<typeof import('@corral/core')>();
   return {
@@ -33,6 +42,11 @@ vi.mock('@corral/core', async (original) => {
 });
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({ runRoute: {} }));
+// The real response area, observed: Needs you renders the same component.
+vi.mock('../workbench/RunResponseArea.tsx', async (original) => {
+  const module = await original<typeof import('../workbench/RunResponseArea.tsx')>();
+  return { ...module, RunResponseArea: vi.fn(module.RunResponseArea) };
+});
 vi.mock('../workbench/RunStatusCards.tsx', () => ({
   ExecutionContext: () => null,
   RunStatusCards: () => (
@@ -63,34 +77,56 @@ vi.mock('@corral/react', async (original) => {
         <textarea aria-label="Instruction" />
       </section>
     ),
-    RunFlowView: () => <output data-testid="run-flow">Work flow</output>,
-    ApprovalPanel: ({ onOpenArtifact }: { onOpenArtifact: (id: string) => void }) => (
-      <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
-        Approval evidence
-      </button>
+    RunFlowView: () => <output data-testid="run-flow">Workflow</output>,
+    // Like the real panel, it sets the host's control on its first row.
+    ApprovalPanel: ({
+      onOpenArtifact,
+      action,
+    }: {
+      onOpenArtifact: (id: string) => void;
+      action?: ReactNode;
+    }) => (
+      <p data-testid="approval-first-row">
+        {action}
+        <button type="button" onClick={() => onOpenArtifact('artv_evidence')}>
+          Approval evidence
+        </button>
+      </p>
     ),
     RunCanvas: ({
       definition,
       session,
+      display,
       onSelectNode,
       selectedNodeId,
       renderNodePreview,
+      onFitWidthZoom,
     }: {
       definition: CorralDefinition;
       session: RunSessionStore;
+      display?: 'map' | 'list';
       onSelectNode: (nodeId: string, trigger?: HTMLElement | null) => void;
       selectedNodeId: string | null;
       renderNodePreview?: (
         nodeId: string,
         controls: { close: () => void; trigger: HTMLElement | null },
       ) => ReactNode;
+      onFitWidthZoom?: (zoom: number) => void;
     }) => {
       const [preview, setPreview] = useState<{ id: string; trigger: HTMLElement } | null>(null);
+      // Like the real stage, the map fits itself only while it shows, again as the page settles.
+      const observed = useStore(session, (state) => state.projection);
+      useLayoutEffect(() => {
+        void observed;
+        if (display !== 'list' && fixture.fitZoom !== null) onFitWidthZoom?.(fixture.fitZoom);
+      }, [display, observed, onFitWidthZoom]);
       return (
         <div>
           <output data-testid="layout">
             {JSON.stringify({ definition, runId: session.getState().runId })}
           </output>
+          {/* The real canvas draws the list rows with the same trigger as the map's nodes. */}
+          <output data-testid="graph-display">{display ?? 'map'}</output>
           {['worker', 'reviewer'].map((id) => (
             <button
               key={id}
@@ -136,6 +172,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   fixture.pending = 0;
   fixture.batch = 'a';
+  fixture.fitZoom = null;
 });
 
 async function mount(
@@ -305,10 +342,10 @@ it('keeps Run info open while quickly checking an agent', async () => {
   expect(container.querySelector('[data-testid="node-preview"]')).not.toBeNull();
 });
 
-it.each(['Run info', 'Needs your input'] as const)(
+it.each(['Run info', 'Waiting for you'] as const)(
   'keeps %s open when a deep-linked execution arrives during history replay',
   async (label) => {
-    if (label === 'Needs your input') fixture.pending = 1;
+    if (label === 'Waiting for you') fixture.pending = 1;
     const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
     const control =
       label === 'Run info'
@@ -824,6 +861,29 @@ it('does not reopen a completed approval panel when a later decision appears', a
   expect(side?.hidden).toBe(true);
 });
 
+it('sets the response area close on the area first row, never on a row of its own', async () => {
+  fixture.pending = 1;
+  const { container } = await mount('inline_team', null, {});
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  const respond = container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]');
+  respond?.focus();
+  await act(async () => respond?.click());
+  const closes = side?.querySelectorAll<HTMLButtonElement>('button[aria-label="Close details"]');
+  expect(closes).toHaveLength(1);
+  const close = closes?.[0];
+  // The response area's first row carries it; its heading stays for screen readers only.
+  expect(close?.closest('[data-run-response]')).not.toBeNull();
+  expect(close?.closest('[data-testid="approval-first-row"]')?.textContent).toContain(
+    'Approval evidence',
+  );
+  expect(side?.querySelector('h2')?.className).toContain('sr-only');
+  await act(async () => {
+    close?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(side?.hidden).toBe(true);
+});
+
 it('returns focus to Run info after closing it even if a node was selected earlier', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container } = await mount('inline_team', null, {});
@@ -948,6 +1008,198 @@ it('a finished execution offers no instruction screen', async () => {
   const labels = [...(side?.querySelectorAll('button') ?? [])].map((b) => b.textContent?.trim());
   expect(labels).not.toContain('Reins');
   expect(labels).not.toContain('Give instruction');
+});
+
+/** The run failed: worker's execution ended with the recorded error, the run with `reason`. */
+async function failRun(
+  run: RunSessionStore,
+  {
+    reason,
+    error,
+    executions = true,
+  }: { reason: string | null; error?: string; executions?: boolean },
+) {
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  const failed: ExecutionView = {
+    ...graphExecution('exec_worker', 'worker'),
+    status: 'failed',
+    activity: null,
+    error: error ?? null,
+  };
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        status: 'failed',
+        statusReason: reason,
+        ...(executions
+          ? {
+              executionOrder: ['exec_worker'],
+              executions: { exec_worker: failed },
+              nodeExecutions: { worker: ['exec_worker'] },
+            }
+          : {}),
+      },
+    }),
+  );
+}
+
+const header = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="run-header"]');
+const endReason = (container: HTMLElement) =>
+  header(container)?.querySelector<HTMLElement>('[data-testid="run-end-reason"]') ?? null;
+const failureEntry = (container: HTMLElement) =>
+  [...(header(container)?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent === 'Open the failed execution',
+  );
+
+it('a failed team run names which agent failed beside its state and opens the failed execution', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {}, undefined, false, [
+    'worker',
+    'reviewer',
+  ]);
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model request failed: HTTP 500 (SERVER)',
+  });
+  // The same words as Run info's reason, once, in the header beside the state.
+  expect(endReason(container)?.textContent).toBe('worker failed');
+  const entry = failureEntry(container);
+  expect(entry).toBeDefined();
+  await act(async () => entry?.click());
+  expect(navigations.at(-1)?.patch).toMatchObject({ execution: 'exec_worker' });
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.hidden).toBe(false);
+  // The detail leads its failure with the recorded reason, open, not behind a closed disclosure.
+  const failure = side?.querySelector<HTMLElement>('[data-testid="execution-failure"]');
+  expect(failure).not.toBeNull();
+  expect(failure?.querySelector('p')?.textContent).toBe(
+    'The model provider is temporarily unavailable.',
+  );
+  expect(failure?.querySelector('details')?.open).toBe(true);
+  expect(failure?.textContent).toContain('the model request failed: HTTP 500 (SERVER)');
+});
+
+it('a failed one-agent run does not restate its state as that agent failing', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  // The assistant can call a helper, but the helper never ran: the run had one agent.
+  const base = linearCorral(['worker', 'helper'], 'inline_team');
+  const definition = {
+    ...base,
+    nodes: base.nodes.map((node) =>
+      node.id === 'helper' && node.type === 'agent'
+        ? { ...node, invocation: 'callable' as const }
+        : node,
+    ),
+  };
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    {},
+    undefined,
+    false,
+    undefined,
+    definition,
+  );
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model request failed: HTTP 500 (SERVER)',
+  });
+  // The state chip says Failed and the entry opens what failed; worker failed adds nothing.
+  expect(endReason(container)).toBeNull();
+  expect(header(container)?.textContent).not.toContain('worker failed');
+  expect(failureEntry(container)).toBeDefined();
+});
+
+it('a failed execution of unknown cause keeps the recorded text verbatim under a localized label', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model worker reported a request failure',
+  });
+  const failure = container.querySelector<HTMLElement>(
+    '[data-testid="run-side"] [data-testid="execution-failure"]',
+  );
+  // No code the catalogs can name: the server's sentence is the detail, never the headline.
+  const lines = [...(failure?.querySelectorAll('p') ?? [])].map((p) => p.textContent);
+  expect(lines).toEqual([messages.Failure.recorded, 'the model worker reported a request failure']);
+  // Nothing is left folded away, and the recorded text is not repeated below it.
+  expect(failure?.querySelector('details:not([open])')).toBeNull();
+  expect(failure?.textContent?.split('the model worker reported a request failure')).toHaveLength(
+    2,
+  );
+});
+
+it('a failed run without a recorded reason still opens its failed execution', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await failRun(run, { reason: null });
+  expect(endReason(container)).toBeNull();
+  expect(failureEntry(container)).toBeDefined();
+});
+
+it('a failed run with no failed execution names its reason and offers no entry', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await failRun(run, { reason: 'internal_error: Error: secret detail', executions: false });
+  expect(endReason(container)?.textContent).toBe('An internal error stopped the run');
+  expect(header(container)?.textContent).not.toContain('secret detail');
+  expect(failureEntry(container)).toBeUndefined();
+});
+
+it('a run its review recipe stopped says why once, in the recipe panel with its rounds', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  const recipe = {
+    loopNodeId: 'review_loop',
+    recipeId: 'recipe_1',
+    revision: 1,
+    recipeHash: 'a'.repeat(64),
+    criteriaVersionId: 'criteria_1',
+  };
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `evt_${runSeq}`,
+      runId: 'run_layout',
+      runSeq,
+      recordedAt: '2026-10-26T09:06:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  await act(async () =>
+    run.setState({
+      events: [
+        event(1, 'recipe.evaluated', {
+          ...recipe,
+          iterationId: 'iteration_1',
+          candidateVersionId: 'candidate_1',
+          reviewVersionId: 'review_1',
+          checkReportIds: [],
+          tree: null,
+          verdict: 'revise',
+        }),
+        event(2, 'recipe.stopped', {
+          ...recipe,
+          reason: 'attempt_limit',
+          candidateVersionId: 'candidate_1',
+        }),
+      ],
+    }),
+  );
+  await failRun(run, { reason: 'review_recipe:attempt_limit', executions: false });
+  const panel = header(container)?.querySelector<HTMLElement>('[data-testid="recipe-status"]');
+  expect(panel?.textContent).toContain('Generation attempt limit reached');
+  expect(panel?.textContent).toContain('Revise');
+  // The reason is said once, in words, never as its code.
+  expect(endReason(container)).toBeNull();
+  expect(header(container)?.textContent).not.toContain('review_recipe');
+  expect(header(container)?.textContent?.split('Generation attempt limit reached')).toHaveLength(2);
 });
 
 it('workspace changes inspected executions without silently retargeting an instruction draft', async () => {
@@ -1158,12 +1410,13 @@ it('primary views retain the graph when switching and keep the active view on a 
   };
   expect(tabs().map((el) => el.textContent)).toEqual([
     expect.stringContaining('Graph'),
-    expect.stringContaining('Work flow'),
+    expect.stringContaining('Workflow'),
     expect.stringContaining('Timeline'),
     expect.stringContaining('Events 0'),
+    expect.stringContaining('Results'),
   ]);
   const graph = container.querySelector('[data-testid="layout"]');
-  await tab('Work flow');
+  await tab('Workflow');
   expect(container.querySelector('[data-testid="run-work-flow"]')?.closest('[hidden]')).toBeNull();
   await tab('Graph');
   expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
@@ -1191,7 +1444,7 @@ it('keeps the timeline view selection across primary workspace switches', async 
     el.textContent?.includes('By task'),
   );
   expect(taskTab?.getAttribute('aria-selected')).toBe('true');
-  await tab('Work flow');
+  await tab('Workflow');
   await tab('Timeline');
   expect(taskTab?.isConnected).toBe(true);
   expect(taskTab?.getAttribute('aria-selected')).toBe('true');
@@ -1233,6 +1486,21 @@ it('the right panel shows what needs the person only while something waits', asy
   expect(idlePanel?.hidden).toBe(false);
   expect(idlePanel?.querySelector('[data-testid="run-needs-you"]')).toBeNull();
   expect(idlePanel?.textContent).not.toContain('Nothing needs you');
+});
+
+it('answers through the shared run response area, leaving receipts to the run header', async () => {
+  fixture.pending = 1;
+  const area = vi.mocked(RunResponseArea);
+  area.mockClear();
+  const { container, run } = await mount('inline_team', null);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]')?.click(),
+  );
+  expect(area.mock.calls.some(([props]) => props.session === run)).toBe(true);
+  expect(area.mock.calls.every(([props]) => !props.receipts)).toBe(true);
+  expect(
+    container.querySelector('[data-testid="run-side"] [data-testid="run-needs-you"]'),
+  ).not.toBeNull();
 });
 
 it('pending decisions stay reachable and replace the inspector rather than stacking with details', async () => {
@@ -1608,13 +1876,84 @@ it('turns the waiting status into the one way to respond', async () => {
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
 });
 
-it('opens Needs your input once when a new decision arrives and the side is free', async () => {
+it('keeps the response area for what an extension says after its prompt is answered', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const target = { requestId: 'request_1', executionId: 'exec_worker', attemptNo: 1 };
+  const hash = 'b'.repeat(64);
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `evt_${runSeq}`,
+      runId: 'run_layout',
+      runSeq,
+      recordedAt: '2026-10-26T09:06:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const asked = event(1, 'extension.ui_requested', {
+    ...target,
+    kind: 'confirm',
+    bodyRef: 'prompt_1',
+    bodyHash: hash,
+    deadline: '2026-10-26T09:16:00.000Z',
+  });
+  const answered = event(2, 'extension.ui_answered', {
+    ...target,
+    answerRef: 'answer_1',
+    answerHash: hash,
+  });
+  const said = event(3, 'extension.ui_notified', {
+    executionId: 'exec_worker',
+    kind: 'notify',
+    key: 'notice',
+    level: 'info',
+    bodyRef: 'notice_1',
+    bodyHash: hash,
+  });
+  const { container, run } = await mount('inline_team', null, {});
+  await act(async () => run.setState({ events: [asked] }));
+  await waitFor(run, 1);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Answered while the run goes on: the extension may still reply where it asked.
+  await act(async () => run.setState({ events: [asked, answered] }));
+  await waitFor(run, 0);
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Its reply holds the area while its text is kept; the area is named for it, not as waiting.
+  await act(async () => run.setState({ events: [asked, answered, said] }));
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('h2')?.textContent).toBe(messages.Harness.extensionNotice);
+  // The run ended and released the notice's text: nothing is left to show, so the area closes.
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () => run.setState({ projection: { ...projection, status: 'succeeded' } }));
+  expect(side(container)?.hidden).toBe(true);
+
+  // A decision with no extension behind it still closes the area once it is answered.
+  for (const done of cleanup.splice(0)) await done();
+  const plain = await mount('inline_team', null, {});
+  await waitFor(plain.run, 1);
+  expect(side(plain.container)?.hidden).toBe(false);
+  await waitFor(plain.run, 0);
+  expect(side(plain.container)?.hidden).toBe(true);
+});
+
+it('opens the response area once when a new decision arrives and the side is free', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run } = await mount('inline_team', null, {});
   const focused = document.activeElement;
   await waitFor(run, 1);
   expect(side(container)?.hidden).toBe(false);
-  expect(side(container)?.querySelector('h2')?.textContent).toBe('Needs your input');
+  // The header's status already says it: the panel's heading keeps the state's name for the
+  // outline but shows no title of its own.
+  const heading = side(container)?.querySelector('h2');
+  expect(heading?.textContent).toBe(messages.Status.awaiting_user);
+  expect(heading?.classList.contains('sr-only')).toBe(true);
+  expect(
+    side(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
+  ).toBe(messages.Status.awaiting_user);
   expect(document.activeElement).toBe(focused);
   // Closed by the person: the same decision does not bring it back.
   await act(async () =>
@@ -1643,4 +1982,408 @@ it('does not take over Run info or a narrow page for a new decision', async () =
   const narrow = await mount('inline_team', null, {});
   await waitFor(narrow.run, 1);
   expect(side(narrow.container)?.hidden).toBe(true);
+});
+
+const frames = (count = 2) =>
+  act(async () => {
+    for (let i = 0; i < count; i++)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+const responseArea = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="run-side"] [data-run-response]');
+
+it('a request to respond opens the response area on a narrow page and focuses it, once', async () => {
+  // Narrow: a decision alone never takes the page over, but an explicit request does.
+  fixture.pending = 1;
+  const area = vi.mocked(RunResponseArea);
+  area.mockClear();
+  const arriving = await mount('inline_team', null, { view: 'run', respond: true });
+  await frames();
+  expect(side(arriving.container)?.hidden).toBe(false);
+  expect(arriving.container.querySelector<HTMLElement>('[data-testid="run-column"]')?.hidden).toBe(
+    true,
+  );
+  expect(document.activeElement).toBe(responseArea(arriving.container));
+  // Answering stays on the shared response area and its run store.
+  expect(area.mock.calls.some(([props]) => props.session === arriving.run)).toBe(true);
+  // The request is consumed in place, once, without a history entry of its own.
+  expect(arriving.navigations.filter(({ patch }) => 'respond' in patch)).toStrictEqual([
+    { patch: { respond: undefined }, options: { replace: true } },
+  ]);
+  // Closed by hand, the same decision does not bring it back.
+  await act(async () =>
+    side(arriving.container)
+      ?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')
+      ?.click(),
+  );
+  expect(side(arriving.container)?.hidden).toBe(true);
+  await waitFor(arriving.run, 1);
+  expect(side(arriving.container)?.hidden).toBe(true);
+});
+
+it('a request to respond reaches a run page that is already open, closing what is in the way', async () => {
+  fixture.pending = 1;
+  const { container, navigate, navigations } = await mount('inline_team', null, {
+    artifact: 'artv_evidence',
+  });
+  expect(side(container)?.hidden).toBe(true);
+  await navigate({ respond: true });
+  await frames();
+  expect(side(container)?.hidden).toBe(false);
+  expect(container.querySelector<HTMLElement>('[data-testid="run-document"]')?.hidden).toBe(true);
+  expect(document.activeElement).toBe(responseArea(container));
+  expect(navigations.filter(({ patch }) => 'respond' in patch)).toStrictEqual([
+    {
+      patch: { respond: undefined, artifact: undefined, result: undefined, view: undefined },
+      options: { replace: true },
+    },
+  ]);
+});
+
+it('a request to respond that finds nothing waiting leaves the page as it was', async () => {
+  const { container, run, navigate, navigations } = await mount('inline_team', null, {});
+  // Until the history is read, the request waits for what it may find.
+  await act(async () => run.setState({ initialLoadSeq: null }));
+  await navigate({ respond: true });
+  await frames();
+  expect(navigations).toEqual([]);
+  await act(async () => run.setState({ initialLoadSeq: undefined }));
+  await frames();
+  expect(side(container)?.hidden).toBe(true);
+  expect(navigations).toStrictEqual([
+    { patch: { respond: undefined }, options: { replace: true } },
+  ]);
+  // A decision arriving later on a narrow page follows the ordinary rule.
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+});
+
+it('a decision first seen behind a document opens the response area when the document closes', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigate } = await mount('inline_team', null, { result: 'artv_result' });
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+  await navigate({ result: undefined, view: undefined });
+  expect(side(container)?.hidden).toBe(false);
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // Once opened for it, closing it by hand is final for that decision.
+  await act(async () =>
+    side(container)?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')?.click(),
+  );
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+});
+
+it('a response area opened by hand stays closed once closed, even after Run info was in the way', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await act(async () =>
+    [...container.querySelectorAll('button')].find((el) => el.textContent === 'Run info')?.click(),
+  );
+  await waitFor(run, 1);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]')?.click(),
+  );
+  expect(side(container)?.querySelector('[data-testid="run-needs-you"]')?.closest('[hidden]')).toBe(
+    null,
+  );
+  await act(async () =>
+    side(container)?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')?.click(),
+  );
+  await waitFor(run, 1);
+  expect(side(container)?.hidden).toBe(true);
+});
+
+const viewTab = (container: HTMLElement, name: string) =>
+  [...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]')].find(
+    (el) => el.textContent?.startsWith(name),
+  );
+
+const chooseDisplay = async (container: HTMLElement, name: string) => {
+  const toggle = container.querySelector<HTMLElement>('[role="group"][aria-label="Graph display"]');
+  expect(toggle).not.toBeNull();
+  const option = [...(toggle?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent === name,
+  );
+  expect(option).toBeDefined();
+  await act(async () => option?.click());
+  return option;
+};
+
+it('switches the graph between its map and list, keeping the choice across views and new events', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  const display = () => container.querySelector('[data-testid="graph-display"]')?.textContent;
+  expect(display()).toBe('map');
+  const list = await chooseDisplay(container, 'List');
+  expect(display()).toBe('list');
+  expect(list?.getAttribute('aria-pressed')).toBe('true');
+  await act(async () => viewTab(container, 'Workflow')?.click());
+  await act(async () => viewTab(container, 'Graph')?.click());
+  expect(display()).toBe('list');
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  expect(display()).toBe('list');
+  const map = await chooseDisplay(container, 'Map');
+  expect(display()).toBe('map');
+  expect(map?.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('starts the graph as its list when fitting the map across a narrow stage would make the names unreadable', async () => {
+  fixture.fitZoom = 0.43;
+  const { container } = await mount('inline_team', null, {});
+  expect(container.querySelector('[data-testid="graph-display"]')?.textContent).toBe('list');
+  const toggle = container.querySelector('[role="group"][aria-label="Graph display"]');
+  const pressed = toggle?.querySelector('[aria-pressed="true"]');
+  expect(pressed?.textContent).toBe('List');
+});
+
+it('keeps the map once the person picks it on a narrow stage, across new events and views', async () => {
+  fixture.fitZoom = 0.43;
+  const { container, run } = await mount('inline_team', null, {});
+  const display = () => container.querySelector('[data-testid="graph-display"]')?.textContent;
+  expect(display()).toBe('list');
+  await chooseDisplay(container, 'Map');
+  expect(display()).toBe('map');
+  // The map fits itself again as the page settles; the person's choice stands.
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  expect(display()).toBe('map');
+  await act(async () => viewTab(container, 'Workflow')?.click());
+  await act(async () => viewTab(container, 'Graph')?.click());
+  expect(display()).toBe('map');
+});
+
+it('starts with the map when fitting it across the stage keeps the names readable', async () => {
+  fixture.fitZoom = 1;
+  const { container, run } = await mount('inline_team', null, {});
+  const display = () => container.querySelector('[data-testid="graph-display"]')?.textContent;
+  expect(display()).toBe('map');
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  expect(display()).toBe('map');
+});
+
+it('choosing a list row is choosing its node and keeps the open right panel', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await populateGraph(run, [graphExecution('exec_worker', 'worker')]);
+  await chooseDisplay(container, 'List');
+  const info = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Run info',
+  );
+  await act(async () => info?.click());
+  const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+  expect(side?.querySelector('[data-testid="run-facts"]')).not.toBeNull();
+  const before = navigations.length;
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  expect(side?.hidden).toBe(false);
+  expect(side?.querySelector('[data-testid="run-facts"]')).not.toBeNull();
+  expect(navigations).toHaveLength(before);
+  expect(container.querySelector('[data-testid="node-preview"]')?.textContent).toContain('worker');
+});
+
+async function withResults(run: RunSessionStore, status: 'succeeded' | 'running' = 'succeeded') {
+  await populateGraph(run, [
+    { ...graphExecution('exec_worker', 'worker'), iterationId: 'round_2', status: 'succeeded' },
+  ]);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  const version = (id: string, name: string, number: number): ArtifactVersionView => ({
+    artifactVersionId: id,
+    artifactId: name.toLowerCase(),
+    version: number,
+    parentVersionId: null,
+    name,
+    contract: 'draft',
+    contentHash: `hash_${id}`,
+    byteLength: 10,
+    authorExecutionId: 'exec_worker',
+    modelCallId: null,
+    contextSnapshotId: null,
+    submitted: true,
+    configRevision: 0,
+    criteriaVersionId: null,
+    inputArtifactVersionIds: [],
+  });
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        status,
+        iterations: {
+          round_2: {
+            iterationId: 'round_2',
+            loopNodeId: 'loop',
+            no: 2,
+            criteriaVersionId: 'criteria',
+            parentIterationId: null,
+            outcome: null,
+          },
+        },
+        artifacts: {
+          artv_draft_1: version('artv_draft_1', 'Draft', 1),
+          artv_draft_2: version('artv_draft_2', 'Draft', 2),
+          artv_report: version('artv_report', 'Report', 1),
+        },
+        output: { nodeId: 'output', artifactVersionIds: ['artv_report'] },
+      },
+    }),
+  );
+}
+
+it('lists every result version with its source execution and opens it in the centre, then Back returns to the list', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigations } = await mount('inline_team', null, {});
+  await withResults(run);
+  // No results-only strip: what the run made is read in its own view.
+  const column = container.querySelector<HTMLElement>('[data-testid="run-column"]');
+  expect(
+    [...(column?.querySelectorAll<HTMLElement>('[aria-label="Results"]') ?? [])].filter(
+      (element) =>
+        element.dataset.testid !== 'run-document' &&
+        !element.closest('[data-run-workspace-view="results"]'),
+    ),
+  ).toEqual([]);
+  await act(async () => viewTab(container, 'Results')?.click());
+  const view = container.querySelector<HTMLElement>('[data-run-workspace-view="results"]');
+  expect(view?.closest('[hidden]')).toBeNull();
+  const rows = [...(view?.querySelectorAll<HTMLElement>('[data-result-version]') ?? [])];
+  expect(rows.map((row) => row.dataset.resultVersion)).toEqual([
+    'artv_report',
+    'artv_draft_2',
+    'artv_draft_1',
+  ]);
+  // One table: the column header shows once and each kind of result is a labelled group of rows.
+  expect(view?.querySelectorAll('table')).toHaveLength(1);
+  expect(view?.querySelectorAll('thead tr')).toHaveLength(1);
+  const groups = [...(view?.querySelectorAll('tbody') ?? [])];
+  expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+    'Final results',
+    'Work in between',
+  ]);
+  expect(groups[0]?.querySelector('th[scope="rowgroup"]')?.textContent).toBe('Final results1');
+  // Made by names the agent, the run's execution that made the version, its round and attempt.
+  for (const row of rows) {
+    expect(row.textContent).toContain('worker · execution 1 · Round 2 · Attempt 1');
+    expect(row.textContent).not.toMatch(/token|cost|\$/i);
+  }
+  expect(rows[0]?.textContent).toContain('Report');
+  expect(rows[0]?.textContent).toContain('v1');
+  expect(rows[1]?.textContent).toContain('v2');
+  const open = rows[0]?.querySelector<HTMLButtonElement>('button');
+  open?.focus();
+  await act(async () => {
+    open?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(navigations.at(-1)?.patch.result).toBe('artv_report');
+  const reader = container.querySelector<HTMLElement>('[data-testid="run-document"]');
+  expect(reader?.hidden).toBe(false);
+  expect(reader?.querySelector('[data-testid="results"]')).not.toBeNull();
+  await act(async () => {
+    [...(reader?.querySelectorAll('button') ?? [])]
+      .find((el) => el.textContent?.includes('Back to work'))
+      ?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+  expect(reader?.hidden).toBe(true);
+  expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
+  expect(view?.closest('[hidden]')).toBeNull();
+  expect(document.activeElement).toBe(open);
+});
+
+it('opens an intermediate version with the artifact reader and Back returns to the list', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run, navigate } = await mount('inline_team', null, {});
+  // While the run goes on, the latest draft is still readable; the earlier one is not.
+  await withResults(run, 'running');
+  await act(async () => viewTab(container, 'Results')?.click());
+  expect(container.querySelector('[data-result-version="artv_draft_1"] button')).toBeNull();
+  expect(container.querySelector('[data-result-version="artv_draft_1"]')?.textContent).toContain(
+    'Text no longer kept',
+  );
+  const draft = container.querySelector<HTMLButtonElement>(
+    '[data-result-version="artv_draft_2"] button',
+  );
+  await act(async () => draft?.click());
+  expect(
+    container.querySelector('[data-testid="run-document"] [data-testid="artifact"]')?.textContent,
+  ).toBe('artv_draft_2');
+  // Browser Back drops the version from the address.
+  await navigate({ artifact: undefined });
+  expect(container.querySelector<HTMLElement>('[data-testid="run-document"]')?.hidden).toBe(true);
+  expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
+});
+
+it('names the run by its request, or its team when nothing was requested, without its number', async () => {
+  // The path bar names the run by its number; the header does not repeat it.
+  const asked = await mount('inline_team', null, {}, 'Summarise the release');
+  expect(asked.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
+    'Summarise the release',
+  );
+  const unnamed = await mount('inline_team', null, {});
+  expect(unnamed.container.querySelector('[data-testid="run-header"] h2')?.textContent).toBe(
+    'Linear worker',
+  );
+  expect(unnamed.container.querySelector('[data-testid="run-header"]')?.textContent).not.toMatch(
+    /#\d/,
+  );
+});
+
+it('reads run usage only in Run info › Usage, split by agent', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const { container, run } = await mount('inline_team', null, {});
+  await populateGraph(run, [
+    { ...graphExecution('exec_worker', 'worker'), status: 'succeeded', modelCallIds: ['call_a'] },
+  ]);
+  const projection = run.getState().projection;
+  if (!projection) throw new Error('Missing projection');
+  await act(async () =>
+    run.setState({
+      projection: {
+        ...projection,
+        modelCalls: {
+          call_a: {
+            modelCallId: 'call_a',
+            executionId: 'exec_worker',
+            contextSnapshotId: 'ctx',
+            profile: 'model-a',
+            configRevision: 0,
+            directiveIds: [],
+            inputArtifactVersionIds: [],
+            finished: true,
+            usage: {
+              inputTokens: 10,
+              outputTokens: 321,
+              cachedInputTokens: null,
+              reasoningTokens: null,
+            },
+            rawUsage: null,
+            certainty: 'reported',
+          },
+        },
+      },
+    }),
+  );
+  const info = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Run info',
+  );
+  await act(async () => info?.click());
+  const usageTab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((el) =>
+    el.textContent?.includes('Usage'),
+  );
+  expect(usageTab).toBeDefined();
+  await act(async () => usageTab?.click());
+  const table = container.querySelector('table[aria-label="Usage by agent"]');
+  expect(table?.closest('[hidden]')).toBeNull();
+  expect(table?.textContent).toContain('worker');
+  expect(table?.textContent).toContain('321');
+  // The usage panel is the only place on the run page with the run's usage.
+  const shown = [...container.querySelectorAll<HTMLElement>('*')].filter(
+    (element) =>
+      element.children.length === 0 &&
+      element.textContent?.includes('321') &&
+      !element.closest('[role="tabpanel"][data-value="usage"], [data-run-usage]'),
+  );
+  expect(shown).toEqual([]);
 });

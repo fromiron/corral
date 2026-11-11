@@ -1,11 +1,13 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/contracts';
-import { Button, Input, Switch } from '@corral/react/design-kit';
+import { EmptyView } from '@corral/react';
+import { Button, cn, fontWeights, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { McpEditor, mcpDraft } from '../workbench/harness/McpEditor.tsx';
 import { operationId } from '../workbench/harness/Target.tsx';
@@ -23,7 +25,9 @@ export function McpSettingsPage() {
       {harnesses && projectId ? (
         <McpManager key={projectId} api={harnesses} projectId={projectId} />
       ) : !harnesses ? (
-        <p className="p-8">{t('localOnly')}</p>
+        <main className="settings-content">
+          <p className="text-body text-muted-foreground">{t('localOnly')}</p>
+        </main>
       ) : null}
     </SettingsLayout>
   );
@@ -113,76 +117,90 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
       }
     }
   }
+  const servers = config?.mcpServers ?? [];
+  const shownServers = servers.filter((server) =>
+    server.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
+  );
+  // No server registered: one empty state that carries the Add action.
+  const none = loaded && servers.length === 0;
+  // The first saved server replaces the empty state and the Add focus went back to; focus moves
+  // on to the Add above the list.
+  const wasNone = useRef(none);
+  useLayoutEffect(() => {
+    if (wasNone.current && !none && document.activeElement === document.body) add.current?.focus();
+    wasNone.current = none;
+  }, [none]);
   return (
     <main className="settings-content">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{t('mcp')}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{t('mcpIntro')}</p>
-      </div>
-      <section className="settings-row">
-        <div>
-          <h3>{t('add')}</h3>
-        </div>
-        <Button ref={add} disabled={!loaded} onClick={() => setEditor({})}>
-          <Plus size={16} />
-          {t('add')}
-        </Button>
-      </section>
-      <section className="settings-row">
-        <div>
-          <h3>{t('search')}</h3>
-        </div>
-        <Input
-          className="sm:w-72"
-          aria-label={t('search')}
-          placeholder={t('search')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <section aria-label={t('mcp')} className="flex flex-wrap items-center gap-3">
+        {none ? null : (
+          <Input
+            className="min-w-0 flex-1 sm:max-w-72"
+            aria-label={t('search')}
+            placeholder={t('search')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        )}
+        {none ? (
+          <EmptyView
+            className="w-full"
+            title={t('emptyMcp')}
+            action={{ label: t('add'), onClick: () => setEditor({}), ref: add }}
+          />
+        ) : (
+          <Button ref={add} className="ml-auto" disabled={!loaded} onClick={() => setEditor({})}>
+            <Plus size={16} />
+            {t('add')}
+          </Button>
+        )}
       </section>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}{' '}
           <Link {...navigation.link('workspace')} className="text-primary">
             {h('manageChecks')}
           </Link>
         </p>
       ) : null}
-      <div className="flex flex-col gap-6">
-        <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('mcp')}>
-          {!loaded ? (
-            <p role="status" className="p-5 text-sm">
-              {h('busy')}
-            </p>
-          ) : !config?.mcpServers?.length ? (
-            <p className="p-5 text-sm text-muted-foreground">{t('noServers')}</p>
-          ) : (
-            <ul className="flex flex-col">
-              {config.mcpServers
-                .filter((server) =>
-                  server.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-                )
-                .map((server) => (
+      <div className="flex flex-col gap-6 empty:hidden">
+        {none ? null : (
+          <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('mcp')}>
+            {!loaded ? (
+              <p role="status" className="p-5 text-body text-muted-foreground">
+                {h('busy')}
+              </p>
+            ) : !shownServers.length ? (
+              <p className="p-5 text-body text-muted-foreground">{t('noMatches')}</p>
+            ) : (
+              <ul className="flex flex-col">
+                {shownServers.map((server) => (
                   <li key={server.id}>
                     <Button
-                      variant={selection === server.id ? 'secondary' : 'ghost'}
+                      variant="ghost"
                       aria-pressed={selection === server.id}
                       onClick={() => {
                         setSelection(server.id);
                       }}
-                      className="h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left"
+                      className={cn(
+                        'h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left',
+                        selection === server.id && CHOSEN_BUTTON_ROW,
+                      )}
                     >
-                      <span className="font-medium">{server.name}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span style={{ fontVariationSettings: fontWeights.semibold }}>
+                        {server.name}
+                      </span>
+                      <span className="text-caption text-muted-foreground">
                         {server.transport === 'http' ? 'HTTP' : h('mcpStdio')} ·{' '}
                         {t(server.enabled === false ? 'disabled' : 'enabled')}
                       </span>
                     </Button>
                   </li>
                 ))}
-            </ul>
-          )}
-        </section>
+              </ul>
+            )}
+          </section>
+        )}
         {selected && config ? (
           <section className="flex flex-col gap-6" aria-label={t('details')}>
             <section className="settings-row">
@@ -227,7 +245,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                   );
                 }}
               />
-              <p className="text-xs">{t('mcpEnableHint')}</p>
+              <p className="text-caption">{t('mcpEnableHint')}</p>
             </div>
             <McpConnection
               key={`${config.revision}:${selected.id}`}
@@ -239,25 +257,25 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
             />
             {verified ? (
               <section className="settings-surface flex flex-col gap-3">
-                <h3 className="text-sm font-medium">
+                <h3 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
                   {t('probeObserved', {
                     time: new Date(verified.observedAt).toLocaleTimeString(),
                     count: verified.tools.length,
                   })}
                 </h3>
                 {!verified.tools.length ? (
-                  <p className="text-sm text-muted-foreground">{t('probeEmpty')}</p>
+                  <p className="text-body text-muted-foreground">{t('probeEmpty')}</p>
                 ) : (
-                  <ul className="flex flex-col gap-2 text-sm">
+                  <ul className="flex flex-col gap-2 text-body">
                     {verified.tools.map((tool) => (
                       <li key={tool.name}>
                         {tool.title}
-                        <p className="text-xs text-muted-foreground">{tool.description}</p>
+                        <p className="text-caption text-muted-foreground">{tool.description}</p>
                       </li>
                     ))}
                   </ul>
                 )}
-                <p className="text-xs text-muted-foreground">{t('toolDiscoveryHint')}</p>
+                <p className="text-caption text-muted-foreground">{t('toolDiscoveryHint')}</p>
               </section>
             ) : null}
             <section className="settings-row">
@@ -281,15 +299,15 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
               </Button>
             </section>
           </section>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t('selectItem')}</p>
-        )}
+        ) : null}
       </div>
       {history.length ? (
         <section className="flex flex-col gap-3">
           <div>
-            <h3 className="text-sm font-medium">{t('removedServers')}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{t('mcpRestored')}</p>
+            <h3 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {t('removedServers')}
+            </h3>
+            <p className="mt-1 text-caption text-muted-foreground">{t('mcpRestored')}</p>
           </div>
           <ul className="flex flex-col gap-3">
             {history.map((item) => (
@@ -297,7 +315,7 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
                 key={`${item.server.id}:${item.configRevision}`}
                 className="flex flex-wrap items-center justify-between gap-3 py-3"
               >
-                <span className="text-sm">
+                <span className="text-body">
                   {item.server.name} · r{item.configRevision}
                 </span>
                 <div className="flex gap-2">

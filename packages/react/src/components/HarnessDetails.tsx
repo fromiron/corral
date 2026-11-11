@@ -1,5 +1,6 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { fontWeights } from '../design-kit/index.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 
@@ -33,11 +34,16 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
   if (!harnesses && !requests.length && !uiHistory.length) return null;
   return (
     <details className="mb-4 rounded-lg fill-group p-3" data-testid="harness-details">
-      <summary className="cursor-pointer text-sm font-semibold">{t('applied')}</summary>
+      <summary
+        className="cursor-pointer text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
+        {t('applied')}
+      </summary>
       <div className="mt-3 flex flex-col gap-3">
         {uiHistory.length ? (
           <details>
-            <summary className="cursor-pointer text-xs">{t('uiHistory')}</summary>
+            <summary className="cursor-pointer text-caption">{t('uiHistory')}</summary>
             <ul className="text-2xs">
               {uiHistory.map((event) => (
                 <li key={event.eventId}>
@@ -50,14 +56,14 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
         ) : null}
         {Object.entries(harnesses ?? {}).map(([roleId, snapshot]) => (
           <section key={roleId} className="flex flex-col gap-1 border-b border-line pb-3">
-            <h3 className="text-sm font-medium">
+            <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
               {definition?.roles.find((role) => role.id === roleId)?.name ?? roleId} ·{' '}
               {snapshot.binding.profileId} · r{snapshot.binding.revision}
             </h3>
-            <p className="text-xs">{t(snapshot.policy)}</p>
+            <p className="text-caption">{t(snapshot.policy)}</p>
             {snapshot.layers?.length ? (
-              <dl className="text-xs">
-                <dt className="font-medium">{t('layers')}</dt>
+              <dl className="text-caption">
+                <dt style={{ fontVariationSettings: fontWeights.semibold }}>{t('layers')}</dt>
                 {snapshot.layers.map((layer) => (
                   <dd key={layer.scope}>
                     {t(layer.scope)} · {layer.binding.profileId} · r{layer.binding.revision}
@@ -65,18 +71,18 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
                 ))}
               </dl>
             ) : null}
-            <p className="break-words text-xs text-muted-foreground">
+            <p className="break-words text-caption text-muted-foreground">
               {t('allowedTools')}: {snapshot.allowedTools.join(', ') || t('noTools')}
             </p>
             {snapshot.policy === 'trusted-native' ? (
-              <p className="text-xs text-warning">{t('nativeWarning')}</p>
+              <p className="text-caption text-warning">{t('nativeWarning')}</p>
             ) : null}
             {snapshot.resources.map((resource, index) => (
               <div key={`${resource.hash}:${resource.entry ?? index}`}>
-                <p className="text-xs">
+                <p className="text-caption">
                   {resource.name} · {resource.version}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-caption text-muted-foreground">
                   {resource.skillName} {resource.skillMode ? t(resource.skillMode) : ''}
                 </p>
                 <code className="break-all text-2xs">{resource.hash}</code>
@@ -89,7 +95,7 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
         ))}
         {loads.map((event) => (
           <details key={event.eventId}>
-            <summary className="cursor-pointer text-xs">
+            <summary className="cursor-pointer text-caption">
               {event.executionId} ·{' '}
               {event.type === 'harness.loaded'
                 ? t('loaded')
@@ -98,7 +104,7 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
                   : t('loadFailed')}
             </summary>
             {event.type !== 'harness.load_failed' ? (
-              <ul className="text-xs">
+              <ul className="text-caption">
                 {event.payload.tools.map((tool) => (
                   <li key={tool.name}>
                     {tool.name} · {tool.source} · {tool.sideEffect}
@@ -113,18 +119,20 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
                 )}
               </ul>
             ) : (
-              <p className="text-xs text-danger">{event.payload.code}</p>
+              <p className="text-caption text-danger">{event.payload.code}</p>
             )}
           </details>
         ))}
-        <h3 className="text-xs font-semibold">{t('requests', { count: requests.length })}</h3>
+        <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('requests', { count: requests.length })}
+        </h3>
         <div className="max-h-80 overflow-auto">
           {requests.slice(-200).map((event) => {
             const request = event.payload;
             const payload = payloads.get(request.modelCallId);
             return (
               <details key={event.eventId} className="border-b border-line py-2">
-                <summary className="cursor-pointer text-xs">
+                <summary className="cursor-pointer text-caption">
                   {request.modelCallId} · {request.purpose} · {request.contextBytes} B
                 </summary>
                 <div className="flex flex-col gap-1 p-2 text-2xs">
@@ -160,7 +168,7 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
           })}
         </div>
         {native.map((event) => (
-          <p key={event.eventId} className="text-xs text-warning">
+          <p key={event.eventId} className="text-caption text-warning">
             {tools.get(event.payload.toolCallId) ?? event.payload.toolCallId} · {t('unmanaged')} ·{' '}
             {event.payload.executionId}
           </p>

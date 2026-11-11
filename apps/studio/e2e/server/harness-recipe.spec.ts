@@ -1,5 +1,5 @@
 import definition from '../../../../examples/research-team.corral.json' with { type: 'json' };
-import { teamNode } from '../workbench.ts';
+import { expectTeamSaved, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('pins a review recipe in the Loop editor and explains its stop in the Run and Inbox', async ({
@@ -35,7 +35,7 @@ test('pins a review recipe in the Loop editor and explains its stop in the Run a
   await page.getByRole('button', { name: 'Pin review recipe', exact: true }).click();
   await expect(page.getByText('Pinned recipe revision 1', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expectTeamSaved(page);
   const runId = await page.evaluate(async ({ corralId, sessionId }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const record = await (await fetch(`/api/v1/corrals/${corralId}`)).json();
@@ -63,9 +63,11 @@ test('pins a review recipe in the Loop editor and explains its stop in the Run a
   await expect(page.getByTestId('run-status').first()).toContainText('Failed');
   await expect(page.getByTestId('recipe-status')).toContainText('Generation attempt limit reached');
   await expect(page.getByTestId('recipe-status')).toContainText('Revise');
-  await page.goto(`${corral.server.url}/`);
+  await page.goto(`${corral.server.url}/inbox`);
   await expect(
-    page.getByText('Review stopped: Generation attempt limit reached', { exact: false }),
+    page
+      .getByRole('list', { name: 'Waiting & stopped', exact: true })
+      .getByText('Review stopped: Generation attempt limit reached', { exact: false }),
   ).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

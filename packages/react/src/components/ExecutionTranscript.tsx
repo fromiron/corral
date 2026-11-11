@@ -9,6 +9,7 @@ import {
   KitBadge as Badge,
   KitButton as Button,
   KitChatMessage as ChatMessage,
+  fontWeights,
   type ToolCall,
   ToolCallCard,
   ToolCallGroup,
@@ -31,12 +32,15 @@ export function ExecutionTranscript({
   executionId,
   onOpenArtifact,
   compact = false,
+  failureShown = false,
 }: {
   session: RunSessionStore;
   executionId: string;
   onOpenArtifact?: (artifactVersionId: string) => void;
   /** Fold each model reply until the reader opens it. The full run page stays expanded. */
   compact?: boolean;
+  /** The host already leads with why the execution failed; its end keeps only the outcome. */
+  failureShown?: boolean;
 }) {
   const t = useTranslations('Transcript');
   const events = useRunDisplay(session, (s) => s.events);
@@ -90,6 +94,7 @@ export function ExecutionTranscript({
             labelOf={labelOf}
             {...(onOpenArtifact ? { onOpenArtifact } : {})}
             compact={compact}
+            failureShown={failureShown}
           />
         ),
       )}
@@ -273,11 +278,13 @@ function Entry({
   labelOf,
   onOpenArtifact,
   compact = false,
+  failureShown = false,
 }: {
   entry: TranscriptEntry;
   labelOf: (nodeId: string) => string;
   onOpenArtifact?: (id: string) => void;
   compact?: boolean;
+  failureShown?: boolean;
 }) {
   const t = useTranslations('Transcript');
   switch (entry.kind) {
@@ -292,7 +299,7 @@ function Entry({
     case 'instruction':
       return (
         <ChatMessage from="user" data-testid={`transcript-instruction-${entry.directiveId}`}>
-          <p className="font-medium">{t('you')}</p>
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('you')}</p>
           <p className="whitespace-pre-wrap">{entry.text}</p>
           <p className="text-muted-foreground">{t(`instruction.${entry.status}`)}</p>
         </ChatMessage>
@@ -336,7 +343,9 @@ function Entry({
     case 'question':
       return (
         <ChatMessage from="assistant">
-          <p className="font-medium">{t('asked', { target: labelOf(entry.targetNodeId) })}</p>
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('asked', { target: labelOf(entry.targetNodeId) })}
+          </p>
           <p className="whitespace-pre-wrap">{entry.body}</p>
           {entry.answer ? (
             <div className="mt-4 space-y-2">
@@ -366,6 +375,8 @@ function Entry({
         </p>
       );
     case 'settled':
+      // The host's cause line above already says this execution failed: no second "Failed".
+      if (failureShown && entry.outcome === 'failed') return null;
       return (
         <div
           className={`text-center text-caption ${entry.outcome === 'succeeded' ? 'text-success' : 'text-danger'}`}

@@ -154,10 +154,9 @@ export function workPlanPreferenceKey(input: {
 }
 
 /** Auto opens while the run is not a success. A manual open or closed choice stays. */
-export function workPlanOpen(preference: 'auto' | 'open' | 'closed', runStatus: string) {
-  if (preference === 'open') return true;
-  if (preference === 'closed') return false;
-  return runStatus !== 'succeeded';
+export function workPlanOpen(preference: 'auto' | 'open' | 'closed') {
+  // A plan starts as one line (count and current step); the person chooses to expand it.
+  return preference === 'open';
 }
 
 export interface ExecutionFact {
@@ -466,6 +465,14 @@ const unclearCopy = {
   termination: 'actionStopUnconfirmed',
 } as const;
 
+/**
+ * The attention banner's kit status: a question only asks, so it reads in the info tone; an
+ * approval, a failure or an unclear effect keeps the warning.
+ */
+export function actionTone(action: ReturnType<typeof actionRequired>): 'info' | 'warning' {
+  return action.summary === 'question' ? 'info' : 'warning';
+}
+
 /** Widgets message keys for the attention banner; several unclear causes are each named. */
 export function actionCopy(action: ReturnType<typeof actionRequired>) {
   if (!action.visible) return [];
@@ -563,6 +570,38 @@ export function toolRows(
     rows.set(call.toolCallId, { id: call.toolCallId, name: call.name, tone });
   }
   return [...rows.values()];
+}
+
+/** The calls of a run as tool rows, each call's effect outcome beside its phase. */
+export function runToolRows(projection: RunProjection | null) {
+  return toolRows(
+    Object.values(projection?.toolCalls ?? {}).map((call) => ({
+      toolCallId: call.toolCallId,
+      name: call.name,
+      phase: call.phase ?? call.status,
+      effect: call.effectId ? projection?.effects[call.effectId]?.outcome : null,
+    })),
+  );
+}
+
+/** The execution of the run's first failed tool call: where its failed steps are reviewed. */
+export function failedToolExecutionId(
+  projection: RunProjection | null,
+  rows = runToolRows(projection),
+): string | null {
+  const id = rows.find((row) => row.tone === 'failed')?.id;
+  return (id ? projection?.toolCalls[id]?.executionId : null) ?? null;
+}
+
+/**
+ * The run's failed execution, for the one way to its detail: the latest execution that ended
+ * failed, else the execution of its first failed tool call. None when nothing failed.
+ */
+export function failedExecutionId(projection: RunProjection | null): string | null {
+  const failed = projection?.executionOrder
+    .filter((id) => projection.executions[id]?.status === 'failed')
+    .at(-1);
+  return failed ?? failedToolExecutionId(projection);
 }
 
 export type WidgetChip = 'context' | 'environment' | 'agents' | 'changes';
@@ -819,15 +858,14 @@ export function viewedRun(input: {
 }
 
 /**
- * Whether the composer shows its run status pill. A live run's status and controls belong to the
- * top bar, so the pill appears only when the person is needed, when the state cannot be read,
- * and for an ended run.
+ * Whether the composer's one-line status shows the run's state. A live run's state and controls
+ * belong to the top bar's pill, even while it needs the person (the attention notice links to
+ * it), so the line shows it only for an ended run and when the state cannot be read.
  */
 export function composerShowsRunStatus(input: {
   runStatus: string | null;
   readState: 'empty' | 'loading' | 'ready' | 'error';
-  needsAction: boolean;
 }): boolean {
-  if (input.needsAction || input.readState === 'error') return true;
+  if (input.readState === 'error') return true;
   return input.runStatus !== null && (TERMINAL_RUN_STATUSES as Set<string>).has(input.runStatus);
 }

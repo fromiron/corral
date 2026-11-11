@@ -14,6 +14,7 @@ import {
   CardGroup,
   CardHeader,
   CardMedia,
+  fontWeights,
   KitCardTitle,
   Meter,
   Popover,
@@ -22,6 +23,7 @@ import {
   Sparkline,
 } from '@corral/react/design-kit';
 import {
+  ArrowLeft,
   Bot,
   Brain,
   ChevronDown,
@@ -33,8 +35,8 @@ import {
   type LucideIcon,
 } from '@corral/react/icons';
 import { useNavigate } from '@tanstack/react-router';
-import type { ReactElement, ReactNode } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { useFormatter, useLocale, useTranslations } from 'use-intl';
 import {
   AgentsDetail,
   ContextDetail,
@@ -45,6 +47,7 @@ import {
 } from './ChatWidgets.tsx';
 import {
   actionCopy,
+  actionTone,
   type OverviewWidget,
   overviewWidgets,
   type UsageSummary,
@@ -57,13 +60,26 @@ export function OverviewAccess() {
   return model?.runId ? <OverviewPopover model={model} /> : null;
 }
 
+/** The widgets whose detail opens in Overview's own place. */
+export type OverviewDetail = 'context' | 'usage' | 'agents';
+
 /** A single explicit entry to supporting information, without a permanent side column. */
 export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
+  const [detail, setDetail] = useState<OverviewDetail | null>(null);
   if (!model.runId) return null;
   return (
-    <div className="session-widget-access ml-auto justify-end">
-      <Popover>
+    <div className="session-widget-access ml-auto shrink-0 justify-end">
+      <Popover
+        onOpenChange={(open, change) => {
+          if (open) setDetail(null);
+          // Escape steps back from a detail to the widgets first; the next one closes Overview.
+          else if (detail && change.reason === 'escape-key') {
+            change.cancel();
+            setDetail(null);
+          }
+        }}
+      >
         <PopoverTrigger data-testid="session-summary-trigger" className={chipClass}>
           <LayoutGrid size={14} aria-hidden="true" />
           {t('overview.heading')}
@@ -73,10 +89,10 @@ export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
           data-testid="session-summary-popup"
           align="end"
           side="top"
-          width="md"
+          width={detail === 'context' ? 'lg' : 'md'}
           padding="none"
         >
-          <OverviewWidgets model={model} />
+          <OverviewWidgets model={model} detail={detail} onDetail={setDetail} />
         </PopoverPopup>
       </Popover>
     </div>
@@ -85,10 +101,42 @@ export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
 
 /**
  * Kit components for the next useful action, observed work, then supporting resources.
- * A card opens its existing detail in place; audit detail stays in the Run pane.
+ * A card opens its existing detail in the widgets' own place, one surface at a time; audit
+ * detail stays in the Run pane. Inside the popover, the popover owns which detail is open.
  */
-export function OverviewWidgets({ model }: { model: ChatWidgetModel }) {
+export function OverviewWidgets({
+  model,
+  detail: chosen,
+  onDetail,
+}: {
+  model: ChatWidgetModel;
+  detail?: OverviewDetail | null;
+  onDetail?: (detail: OverviewDetail | null) => void;
+}) {
   const t = useTranslations('Widgets.overview');
+  const [own, setOwn] = useState<OverviewDetail | null>(null);
+  const choose = onDetail ?? setOwn;
+  const wanted = onDetail ? (chosen ?? null) : own;
+  // A detail whose figures went away gives its place back to the widgets.
+  const detail =
+    (wanted === 'usage' && !model.usage) || (wanted === 'agents' && !model.agents) ? null : wanted;
+  const section = useRef<HTMLElement>(null);
+  const back = useRef<HTMLButtonElement>(null);
+  const origin = useRef<OverviewDetail | null>(null);
+  // Focus follows the view: into the detail on opening, back to its widget on leaving.
+  useLayoutEffect(() => {
+    if (detail) {
+      origin.current = detail;
+      back.current?.focus();
+      return;
+    }
+    const from = origin.current;
+    origin.current = null;
+    if (from)
+      section.current
+        ?.querySelector<HTMLElement>(`[data-overview-widget="${from}"] button`)
+        ?.focus();
+  }, [detail]);
   // Without a run there is no overview to inspect.
   if (!model.runId) return null;
   if (model.readState === 'error')
@@ -102,31 +150,82 @@ export function OverviewWidgets({ model }: { model: ChatWidgetModel }) {
     );
   return (
     <section
+      ref={section}
       data-testid="session-summary-card"
       aria-label={t('heading')}
       className="flex flex-col gap-2 p-3"
     >
-      <p data-testid="overview-run-scope" className="text-caption text-muted-foreground">
-        {model.runNumber || model.viewed?.number
-          ? t('runScope', { number: model.runNumber ?? model.viewed?.number ?? 0 })
-          : t('selectedRun')}
-      </p>
-      {overviewWidgets(model).map((widget) => (
-        <div key={widget} data-overview-widget={widget}>
-          <Widget widget={widget} model={model} />
+      {detail ? (
+        // biome-ignore lint/a11y/noStaticElementInteractions: Escape from the detail's own controls steps back, as the popover's Escape does.
+        <div
+          data-overview-detail={detail}
+          className="flex flex-col gap-3"
+          onKeyDown={
+            onDetail
+              ? undefined
+              : (event) => {
+                  if (event.key !== 'Escape' || event.defaultPrevented) return;
+                  event.preventDefault();
+                  choose(null);
+                }
+          }
+        >
+          <Button
+            ref={back}
+            variant="ghost"
+            size="compact"
+            className="self-start"
+            aria-label={t('back')}
+            onClick={() => choose(null)}
+          >
+            <ArrowLeft aria-hidden="true" />
+            {t('heading')}
+          </Button>
+          {detail === 'context' ? (
+            <ContextDetail model={model} />
+          ) : detail === 'usage' && model.usage ? (
+            <UsageDetail model={model} usage={model.usage} />
+          ) : (
+            <AgentsDetail model={model} />
+          )}
         </div>
-      ))}
+      ) : (
+        <>
+          {/* Only an older run needs saying; the last or live run is what Overview shows. */}
+          {model.viewed && !model.viewed.latest ? (
+            <p data-testid="overview-run-scope" className="text-caption text-muted-foreground">
+              {model.runNumber || model.viewed.number
+                ? t('runScope', { number: model.runNumber ?? model.viewed.number })
+                : t('selectedRun')}
+            </p>
+          ) : null}
+          {overviewWidgets(model).map((widget) => (
+            <div key={widget} data-overview-widget={widget}>
+              <Widget widget={widget} model={model} open={choose} />
+            </div>
+          ))}
+        </>
+      )}
     </section>
   );
 }
 
-function Widget({ widget, model }: { widget: OverviewWidget; model: ChatWidgetModel }) {
+function Widget({
+  widget,
+  model,
+  open,
+}: {
+  widget: OverviewWidget;
+  model: ChatWidgetModel;
+  open: (detail: OverviewDetail) => void;
+}) {
   if (widget === 'attention') return <AttentionWidget model={model} />;
-  if (widget === 'context') return <ContextWidget model={model} />;
-  if (widget === 'usage' && model.usage) return <UsageWidget model={model} usage={model.usage} />;
+  if (widget === 'context') return <ContextWidget model={model} open={() => open('context')} />;
+  if (widget === 'usage' && model.usage)
+    return <UsageWidget usage={model.usage} open={() => open('usage')} />;
   if (widget === 'results') return <ResultsWidget model={model} />;
   if (widget === 'changes') return <ChangesWidget model={model} />;
-  if (widget === 'agents') return <AgentsWidget model={model} />;
+  if (widget === 'agents') return <AgentsWidget model={model} open={() => open('agents')} />;
   return null;
 }
 
@@ -136,10 +235,14 @@ function AttentionWidget({ model }: { model: ChatWidgetModel }) {
     .map((key) => (key === 'actionMixed' ? t(key, { count: model.action.count }) : t(key)))
     .join(' · ');
   return (
-    <Banner status="warning" size="compact" role="note">
+    <Banner status={actionTone(model.action)} size="compact" role="note">
       <BannerTitle>{label}</BannerTitle>
       <BannerActions>
-        <Button variant="secondary" size="compact" render={<RunLink model={model} />}>
+        <Button
+          variant="secondary"
+          size="compact"
+          render={<RunLink model={model} respond={model.action.needsUser} />}
+        >
           {t('actionOpen')}
         </Button>
       </BannerActions>
@@ -182,55 +285,26 @@ function Frame({
   );
 }
 
-// The trigger wraps a kit card: Card keeps `onClick` for its own stretched overlay.
-const triggerClass =
-  'min-w-0 cursor-pointer rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
-
-/** The widget opens its detail in place; focus returns to the widget when the detail closes. */
-function DetailWidget({
-  testId,
-  label,
-  card,
-  detail,
-  width = 'md',
-}: {
-  testId?: string;
-  label: string;
-  card: ReactNode;
-  detail: ReactNode;
-  width?: 'md' | 'lg';
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger
-        nativeButton={false}
-        data-testid={testId}
-        aria-label={label}
-        render={(<div className={triggerClass} />) as ReactElement}
-      >
-        <Card size="compact">{card}</Card>
-      </PopoverTrigger>
-      <PopoverPopup align="end" side="left" width={width}>
-        {detail}
-      </PopoverPopup>
-    </Popover>
-  );
-}
-
 function Figure({ value, unit }: { value: ReactNode; unit?: ReactNode }) {
   return (
     <p className="flex items-baseline gap-1.5">
-      <span className="text-body font-medium tabular-nums text-foreground">{value}</span>
+      <span
+        className="text-body tabular-nums text-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
+        {value}
+      </span>
       {unit ? <span className="text-caption text-muted-foreground">{unit}</span> : null}
     </p>
   );
 }
 
-function ContextWidget({ model }: { model: ChatWidgetModel }) {
+function ContextWidget({ model, open }: { model: ChatWidgetModel; open: () => void }) {
   const t = useTranslations('Widgets.overview');
   const tw = useTranslations('Widgets');
+  const locale = useLocale();
   const { context } = model;
-  const summary = contextLabel(context, tw);
+  const summary = contextLabel(context, tw, locale);
   const complete = context.coverage === 'request' && context.completeness === 'complete';
   const meterValue =
     complete &&
@@ -246,66 +320,65 @@ function ContextWidget({ model }: { model: ChatWidgetModel }) {
     context.percent != null
       ? `${context.percent}%`
       : context.tokens != null
-        ? compactNumber(context.tokens)
+        ? compactNumber(context.tokens, locale)
         : null;
   return (
-    <DetailWidget
-      testId="context-usage-chip"
+    <Card
+      size="compact"
+      data-testid="context-usage-chip"
       label={t('openDetail', { name: t('context') })}
-      width="lg"
-      card={
-        <Frame icon={Brain} title={t('context')}>
-          <span className="sr-only">{summary}</span>
-          {value ? (
-            <Figure
-              value={value}
-              unit={
-                context.tokens != null && context.windowTokens
-                  ? `${compactNumber(context.tokens)} / ${compactNumber(context.windowTokens)}`
-                  : context.percent == null
-                    ? tw('tokens')
-                    : null
-              }
-            />
-          ) : (
-            <p aria-hidden="true" className="text-body text-muted-foreground">
-              {summary}
-            </p>
-          )}
-          {meterValue != null && <Meter className="mt-2" value={meterValue} label={summary} />}
-        </Frame>
-      }
-      detail={<ContextDetail model={model} />}
-    />
+      onClick={open}
+    >
+      <Frame icon={Brain} title={t('context')}>
+        <span className="sr-only">{summary}</span>
+        {value ? (
+          <Figure
+            value={value}
+            // Each number once: a percentage is backed by tokens of the window; tokens alone
+            // take the window as their unit.
+            unit={
+              context.tokens != null && context.windowTokens
+                ? context.percent != null
+                  ? `${compactNumber(context.tokens, locale)} / ${compactNumber(context.windowTokens, locale)}`
+                  : `/ ${compactNumber(context.windowTokens, locale)}`
+                : context.percent == null
+                  ? tw('tokens')
+                  : null
+            }
+          />
+        ) : (
+          <p aria-hidden="true" className="text-body text-muted-foreground">
+            {summary}
+          </p>
+        )}
+        {meterValue != null && <Meter className="mt-2" value={meterValue} label={summary} />}
+      </Frame>
+    </Card>
   );
 }
 
-function UsageWidget({ model, usage }: { model: ChatWidgetModel; usage: UsageSummary }) {
+function UsageWidget({ usage, open }: { usage: UsageSummary; open: () => void }) {
   const t = useTranslations('Widgets.overview');
   const format = useFormatter();
   return (
-    <DetailWidget
-      label={t('openDetail', { name: t('usage') })}
-      card={
-        <Frame icon={Coins} title={t('usage')}>
-          <div className="flex items-end justify-between gap-3">
-            <div className="min-w-0">
-              <Figure value={format.number(usage.outputTokens)} unit={t('outputTokens')} />
-              <p className="mt-0.5 text-caption text-muted-foreground">
-                {t('calls', { used: usage.requests })}
-              </p>
-            </div>
-            <CallSparkline values={usage.perCall} />
-          </div>
-          {usage.unknown > 0 ? (
-            <p className="mt-2 text-caption text-warning">
-              {t('unknownUsage', { count: usage.unknown })}
+    <Card size="compact" label={t('openDetail', { name: t('usage') })} onClick={open}>
+      <Frame icon={Coins} title={t('usage')}>
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <Figure value={format.number(usage.outputTokens)} unit={t('outputTokens')} />
+            <p className="mt-0.5 text-caption text-muted-foreground">
+              {t('calls', { used: usage.requests })}
             </p>
-          ) : null}
-        </Frame>
-      }
-      detail={<UsageDetail model={model} usage={usage} />}
-    />
+          </div>
+          <CallSparkline values={usage.perCall} />
+        </div>
+        {usage.unknown > 0 ? (
+          <p className="mt-2 text-caption text-warning">
+            {t('unknownUsage', { count: usage.unknown })}
+          </p>
+        ) : null}
+      </Frame>
+    </Card>
   );
 }
 
@@ -366,8 +439,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
   ];
   return (
     <div data-testid="usage-detail" className="flex flex-col gap-3 text-body">
-      <p className="font-medium">{t('usage')}</p>
-      <p className="text-caption text-muted-foreground">{t('usageDefinition')}</p>
+      <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('usage')}</p>
       <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
         {rows.map(([name, value]) => (
           <div key={name} className="contents">
@@ -433,7 +505,9 @@ function ResultsWidget({ model }: { model: ChatWidgetModel }) {
           >
             <CardMedia icon={FileText} />
             <CardHeader>
-              <KitCardTitle>{result.label}</KitCardTitle>
+              {/* An inline title is trimmed to its baseline; unclipped, it keeps its descenders
+                  and wraps a long name instead of cutting it (as Needs you does). */}
+              <KitCardTitle className="[&>span]:overflow-visible">{result.label}</KitCardTitle>
               <CardAction aria-hidden="true">
                 <ChevronRight size={14} />
               </CardAction>
@@ -466,7 +540,7 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
       >
         <CardMedia icon={FileDiff} />
         <CardHeader>
-          <KitCardTitle>{t('changes')}</KitCardTitle>
+          <KitCardTitle className="[&>span]:overflow-visible">{t('changes')}</KitCardTitle>
           <CardDescription>
             {model.changesLabel === 'error' ? (
               <span className="text-body text-muted-foreground">{tw('changesError')}</span>
@@ -476,10 +550,16 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
               <span className="flex flex-wrap items-baseline gap-x-2">
                 {counted ? (
                   <>
-                    <span className="font-medium tabular-nums text-success">
+                    <span
+                      className="tabular-nums text-success"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
                       +{format.number(model.changeAdditions ?? 0)}
                     </span>
-                    <span className="font-medium tabular-nums text-destructive">
+                    <span
+                      className="tabular-nums text-destructive"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
                       −{format.number(model.changeDeletions ?? 0)}
                     </span>
                   </>
@@ -501,7 +581,7 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
   );
 }
 
-function AgentsWidget({ model }: { model: ChatWidgetModel }) {
+function AgentsWidget({ model, open }: { model: ChatWidgetModel; open: () => void }) {
   const t = useTranslations('Widgets.overview');
   const tw = useTranslations('Widgets');
   const status = useTranslations('Status');
@@ -528,46 +608,43 @@ function AgentsWidget({ model }: { model: ChatWidgetModel }) {
   const active = rows.filter((row) => !['succeeded', 'failed', 'cancelled'].includes(row.status));
   const visible = (active.length ? active : rows).slice(0, 2);
   return (
-    <Popover>
-      <AgentCard className="grid gap-3 p-3">
-        <PopoverTrigger
-          data-testid="agent-activity-chip"
-          render={<Button size="compact" variant="ghost" />}
-          aria-label={t('openDetail', { name: t('agents') })}
-        >
-          <Bot size={14} aria-hidden="true" />
-          {t('agents')}
-          <ChevronRight size={14} aria-hidden="true" />
-        </PopoverTrigger>
-        {model.live ? (
-          visible.map((row) => (
-            <AgentIdentity
-              key={row.id}
-              name={row.name}
-              model={
-                <AgentStatusLabel
-                  status={agentStatus(row.status)}
-                  label={status.has(row.status) ? status(row.status) : row.status}
-                />
-              }
-            />
-          ))
-        ) : (
-          <AgentStatusLabel status={summaryStatus} label={tw('agents', model.agents)} />
-        )}
-        <p className="text-caption text-muted-foreground">
-          {model.live
-            ? counts
-            : [
-                tw('agentsWaiting', { count: model.agents.waiting }),
-                tw('agentsFailed', { count: model.agents.failed }),
-              ].join(' · ')}
-        </p>
-      </AgentCard>
-      <PopoverPopup align="end" side="left" width="md">
-        <AgentsDetail model={model} />
-      </PopoverPopup>
-    </Popover>
+    <AgentCard className="grid gap-3 p-3">
+      <Button
+        data-testid="agent-activity-chip"
+        size="compact"
+        variant="ghost"
+        aria-label={t('openDetail', { name: t('agents') })}
+        onClick={open}
+      >
+        <Bot size={14} aria-hidden="true" />
+        {t('agents')}
+        <ChevronRight size={14} aria-hidden="true" />
+      </Button>
+      {model.live ? (
+        visible.map((row) => (
+          <AgentIdentity
+            key={row.id}
+            name={row.name}
+            model={
+              <AgentStatusLabel
+                status={agentStatus(row.status)}
+                label={status.has(row.status) ? status(row.status) : row.status}
+              />
+            }
+          />
+        ))
+      ) : (
+        <AgentStatusLabel status={summaryStatus} label={tw('agents', model.agents)} />
+      )}
+      <p className="text-caption text-muted-foreground">
+        {model.live
+          ? counts
+          : [
+              tw('agentsWaiting', { count: model.agents.waiting }),
+              tw('agentsFailed', { count: model.agents.failed }),
+            ].join(' · ')}
+      </p>
+    </AgentCard>
   );
 }
 

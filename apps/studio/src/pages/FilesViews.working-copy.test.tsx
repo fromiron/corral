@@ -37,6 +37,34 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 
+it('without a copy, the panel is the shared empty view with the one next step under it', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.copy = null;
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <WorkingCopyPanel sessionId="session" projectId="project" />
+        </IntlProvider>,
+      ),
+    );
+    const region = container.querySelector('section');
+    expect(region?.getAttribute('aria-label')).toBe(messages.Files.copyHeading);
+    const empty = region?.querySelector('[data-slot="empty-view"]');
+    expect(empty?.textContent).toContain(messages.Files.noCopyTitle);
+    const make = empty?.lastElementChild;
+    expect(make?.tagName).toBe('BUTTON');
+    expect(make?.textContent).toBe('Make a working copy from main');
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
 it('an open copy card follows creation and removal from another entry point', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.copy = null;

@@ -28,9 +28,11 @@ const target = {
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
+  laidOutWidth = null;
   vi.unstubAllGlobals();
   localStorage.clear();
 });
+let laidOutWidth: number | null = null;
 async function fixture(
   props: Partial<
     Pick<
@@ -57,7 +59,19 @@ async function fixture(
   vi.stubGlobal(
     'ResizeObserver',
     class {
-      observe() {}
+      readonly callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      // Only a test that gives the dock a width lays its grid out.
+      observe(element: Element) {
+        if (laidOutWidth === null) return;
+        const contentRect = { width: laidOutWidth, height: 800 } as DOMRectReadOnly;
+        this.callback(
+          [{ target: element, contentRect } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
       unobserve() {}
       disconnect() {}
     },
@@ -641,4 +655,120 @@ it('keeps the terminal activity indicator on its tab while another pane is activ
   props.terminalStatus = null;
   await f.renderSession('session');
   expect(f.container.querySelector('[aria-label="Terminal running"]')).toBeNull();
+});
+
+type SavedNode = {
+  type: 'leaf' | 'branch';
+  size: number;
+  data: { id: string; views: string[] } | SavedNode[];
+};
+const savedGroups = () => {
+  const saved = JSON.parse(localStorage.getItem(layoutStorageKey('host', 'project') ?? '') ?? '{}');
+  const walk = (node: SavedNode): { id: string; views: string[]; size: number }[] =>
+    node.type === 'leaf'
+      ? [{ ...(node.data as { id: string; views: string[] }), size: node.size }]
+      : (node.data as SavedNode[]).flatMap(walk);
+  return saved.layout ? walk(saved.layout.grid.root) : [];
+};
+/** A dock of this width; jsdom otherwise measures every element as zero. */
+function dockWidth(width: number) {
+  laidOutWidth = width;
+  // Dockview lays out only an element that is displayed.
+  vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockReturnValue(document.body);
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width,
+    height: 800,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: 800,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+}
+
+it('from 960px a new dock opens documents in a group beside the file tree', async () => {
+  dockWidth(1280);
+  try {
+    const f = await fixture();
+    // Dockview lays the grid out on the frame after it is measured.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    await act(async () => f.ref.current?.openContext('files'));
+    await act(async () => {
+      expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(
+        true,
+      );
+    });
+    const groups = savedGroups();
+    expect(groups.map(({ id, views }) => ({ id, views }))).toEqual([
+      { id: 'tree', views: ['context:files'] },
+      { id: 'main1', views: [expect.stringMatching(/^document:/)] },
+    ]);
+    // The tree keeps a column of about 260px; the document takes the rest.
+    expect(groups[0]?.size).toBeGreaterThanOrEqual(240);
+    expect(groups[0]?.size).toBeLessThanOrEqual(280);
+    expect(groups[1]?.size).toBeGreaterThan(900);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('a team design opened first in a wide new dock stays a full-width tab with the tree', async () => {
+  dockWidth(1280);
+  try {
+    const f = await fixture({
+      renderGraph: (descriptor) => <span>{descriptor.corralId}</span>,
+      graphTitle: (corralId) => `Team ${corralId}`,
+    });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    await act(async () => {
+      expect(f.ref.current?.openGraph('corral_a')).toBe(true);
+    });
+    const groups = savedGroups();
+    // Only documents open beside the tree; the canvas keeps the dock's width.
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.views).toEqual(['context:files', expect.stringMatching(/^graph:/)]);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('a narrower new dock keeps the document a tab beside the file tree', async () => {
+  dockWidth(900);
+  try {
+    const f = await fixture();
+    await act(async () => f.ref.current?.openContext('files'));
+    await act(async () => {
+      f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
+    });
+    const groups = savedGroups();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.views).toEqual(['context:files', expect.stringMatching(/^document:/)]);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('a saved arrangement is restored as it was, however wide the dock', async () => {
+  const panels = [
+    { id: 'context:files', descriptor: { kind: 'context' as const, view: 'files' as const } },
+    {
+      id: 'document:saved',
+      descriptor: { kind: 'document' as const, target, path: 'file.ts', viewId: 'document:saved' },
+    },
+  ];
+  localStorage.setItem(
+    layoutStorageKey('host', 'project') ?? '',
+    serializeLayout(createPresetLayout('implementation', panels), 'host', 'project'),
+  );
+  const before = savedGroups().map(({ id, views }) => ({ id, views }));
+  dockWidth(1280);
+  try {
+    await fixture();
+    expect(savedGroups().map(({ id, views }) => ({ id, views }))).toEqual(before);
+    expect(before.map((group) => group.id)).not.toContain('tree');
+  } finally {
+    vi.restoreAllMocks();
+  }
 });

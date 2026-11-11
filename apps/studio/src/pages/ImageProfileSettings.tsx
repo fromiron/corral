@@ -1,6 +1,6 @@
 import type { ModelProfileView } from '@corral/client';
 import { ImageGenerationProfile } from '@corral/contracts';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ImageProfilesView, imageProfilesApi } from '../image-profiles-api.ts';
@@ -65,41 +65,46 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
 
   return (
     <section aria-labelledby={heading} className="settings-surface flex flex-col gap-3">
-      <h3 id={heading} className="text-sm font-semibold">
+      <h3
+        id={heading}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
-      <p className="text-sm text-muted-foreground">{t('intro')}</p>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
       {saved ? (
-        <p role="status" className="text-sm">
+        <p role="status" className="text-body">
           {t('saved')}
         </p>
       ) : null}
       {!data && !error ? (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="text-body text-muted-foreground">
           {t('loading')}
         </p>
       ) : null}
       {data && !data.profiles.length ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <p className="text-body text-muted-foreground">{t('empty')}</p>
       ) : null}
       <ul className="flex flex-col gap-2">
         {data?.profiles.map((profile) => (
           <li
             key={profile.profileId}
-            className="flex flex-wrap items-center gap-2 rounded border border-line p-2 text-sm"
+            className="flex flex-wrap items-center gap-2 rounded border border-line p-2 text-body"
           >
             <div className="min-w-0 flex-1">
-              <p className="break-words font-medium">{profile.profileId}</p>
-              <p className="break-words text-xs text-muted-foreground">
+              <p className="break-words" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {profile.profileId}
+              </p>
+              <p className="break-words text-caption text-muted-foreground">
                 {profile.modelId} · {profile.modelProfileId}
               </p>
               {data.statuses?.[profile.profileId]?.available === false ? (
-                <p className="text-xs text-warning">
+                <p className="text-caption text-warning">
                   {data.statuses[profile.profileId]?.reason ?? t('unavailable')}
                 </p>
               ) : null}
@@ -168,7 +173,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           }}
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <label htmlFor={`${ids}-id`} className="flex flex-col gap-1 text-xs">
+            <label htmlFor={`${ids}-id`} className="flex flex-col gap-1 text-caption">
               {t('id')}
               <Input
                 nativeInput
@@ -180,7 +185,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 onChange={(event) => setDraft({ ...draft, profileId: event.target.value })}
               />
             </label>
-            <div className="flex flex-col gap-1 text-xs">
+            <div className="flex flex-col gap-1 text-caption">
               <span aria-hidden="true">{t('providerProfile')}</span>
               <Select
                 label={t('providerProfile')}
@@ -204,8 +209,13 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                   })),
                 ]}
               />
+              {/* Image generation is authorized by an API key only, never a subscription. */}
+              {modelProfiles.find((profile) => profile.profileId === draft.modelProfileId)
+                ?.method === 'oauth' ? (
+                <p className="text-danger">{t('needsApiKey')}</p>
+              ) : null}
             </div>
-            <label htmlFor={`${ids}-model`} className="flex flex-col gap-1 text-xs">
+            <label htmlFor={`${ids}-model`} className="flex flex-col gap-1 text-caption">
               {t('model')}
               <Input
                 nativeInput
@@ -217,7 +227,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 onChange={(event) => setDraft({ ...draft, modelId: event.target.value })}
               />
             </label>
-            <label htmlFor={`${ids}-timeout`} className="flex flex-col gap-1 text-xs">
+            <label htmlFor={`${ids}-timeout`} className="flex flex-col gap-1 text-caption">
               {t('timeout')}
               <Input
                 nativeInput
@@ -275,7 +285,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           {t('add')}
         </Button>
       )}
-      <p className="text-xs text-muted-foreground">{t('roleHint')}</p>
+      <p className="text-caption text-muted-foreground">{t('roleHint')}</p>
     </section>
   );
 }

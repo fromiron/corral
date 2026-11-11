@@ -13,6 +13,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Input,
   Select,
 } from '@corral/react/design-kit';
@@ -266,7 +267,9 @@ export function DebugControls({ api, target, copy, store }: Props) {
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-label={t('title')}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">{t('title')}</h2>
+        <h2 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('title')}
+        </h2>
         <Button
           size="compact"
           variant="ghost"
@@ -280,16 +283,16 @@ export function DebugControls({ api, target, copy, store }: Props) {
         </Button>
       </div>
       {!state ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
         </p>
       ) : !state.available ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t(state.unavailableReason === 'platform' ? 'platform' : 'untrusted')}
         </p>
       ) : null}
       {session ? (
-        <p role="status" className="text-xs">
+        <p role="status" className="text-caption">
           {choices.find((value) => value.id === session.configId)?.name ?? session.configId} ·{' '}
           {t(`state.${session.state}`)}
         </p>
@@ -321,7 +324,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
                     disabled={busy}
                   />
                   <label
-                    className="flex flex-col gap-1 text-xs"
+                    className="flex flex-col gap-1 text-caption"
                     htmlFor={`debug-port-${target.sessionId}`}
                   >
                     {t('port')}
@@ -347,7 +350,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
                 />
               ) : null}
               {!hasTarget ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-caption text-muted-foreground">
                   {t(needsTask ? 'needTask' : 'needPreview')}
                 </p>
               ) : null}
@@ -362,11 +365,11 @@ export function DebugControls({ api, target, copy, store }: Props) {
               </Button>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground">{t('noConfigurations')}</p>
+            <p className="text-caption text-muted-foreground">{t('noConfigurations')}</p>
           )}
           <Link
             {...settings.link('workspace', target.projectId)}
-            className="self-start text-xs text-primary underline"
+            className="self-start text-caption text-primary underline"
           >
             {t('settings')}
           </Link>
@@ -414,13 +417,13 @@ export function DebugControls({ api, target, copy, store }: Props) {
               </Button>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {t(session.ownership === 'attached' ? 'disconnectHint' : 'stopHint')}
           </p>
         </>
       ) : null}
       {copy?.pendingCommandId ? (
-        <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-warning">
+        <div role="status" className="flex flex-wrap items-center gap-2 text-caption text-warning">
           <span>{t('pending')}</span>
           <Button
             size="compact"
@@ -435,9 +438,11 @@ export function DebugControls({ api, target, copy, store }: Props) {
       {paused ? (
         <>
           <section className="flex flex-col gap-1" aria-label={t('stackFrames')}>
-            <h3 className="text-xs font-semibold">{t('stackFrames')}</h3>
+            <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {t('stackFrames')}
+            </h3>
             {reading ? (
-              <p role="status" className="text-xs text-muted-foreground">
+              <p role="status" className="text-caption text-muted-foreground">
                 {t('reading')}
               </p>
             ) : null}
@@ -449,10 +454,15 @@ export function DebugControls({ api, target, copy, store }: Props) {
                       frame?.key === pauseKey && frame.value.id === value.id ? 'secondary' : 'ghost'
                     }
                     aria-pressed={frame?.key === pauseKey && frame.value.id === value.id}
-                    className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal py-1.5 text-left text-xs"
+                    className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal py-1.5 text-left text-caption"
                     onClick={() => void chooseFrame(value)}
                   >
-                    <span className="break-words font-medium">{value.name}</span>
+                    <span
+                      className="break-words"
+                      style={{ fontVariationSettings: fontWeights.semibold }}
+                    >
+                      {value.name}
+                    </span>
                     <span className="break-all font-mono text-muted-foreground">
                       {value.source.path ?? value.source.name}:{value.source.line}:
                       {value.source.column}
@@ -467,7 +477,9 @@ export function DebugControls({ api, target, copy, store }: Props) {
           </section>
           {scopes?.key === pauseKey ? (
             <section className="flex flex-col gap-2" aria-label={t('variables')}>
-              <h3 className="text-xs font-semibold">{t('variables')}</h3>
+              <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {t('variables')}
+              </h3>
               <div className="flex flex-wrap gap-1">
                 {scopes.values.map((value) => (
                   <Button
@@ -484,8 +496,8 @@ export function DebugControls({ api, target, copy, store }: Props) {
               </div>
               {variables?.key === pauseKey && variables.frameId === scopes.frameId ? (
                 <>
-                  <p className="text-xs text-muted-foreground">{variables.name}</p>
-                  <ul className="max-h-56 overflow-y-auto text-xs">
+                  <p className="text-caption text-muted-foreground">{variables.name}</p>
+                  <ul className="max-h-56 overflow-y-auto text-caption">
                     {variables.values.map((value) => (
                       <li
                         key={`${value.name}:${value.variablesReference ?? ''}`}
@@ -528,12 +540,16 @@ export function DebugControls({ api, target, copy, store }: Props) {
               });
           }}
         >
-          <label className="text-xs font-semibold" htmlFor={`debug-expression-${target.sessionId}`}>
+          <label
+            className="text-caption"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+            htmlFor={`debug-expression-${target.sessionId}`}
+          >
             {t('console')}
           </label>
-          <p className="text-xs text-muted-foreground">{t('evaluateHint')}</p>
+          <p className="text-caption text-muted-foreground">{t('evaluateHint')}</p>
           {paused && !currentFrame ? (
-            <p className="text-xs text-muted-foreground">{t('selectFrame')}</p>
+            <p className="text-caption text-muted-foreground">{t('selectFrame')}</p>
           ) : null}
           <div className="flex items-center gap-2">
             <Input
@@ -550,15 +566,20 @@ export function DebugControls({ api, target, copy, store }: Props) {
             </Button>
           </div>
           {visibleResult?.value !== undefined ? (
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2 text-xs">
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2 text-caption">
               {visibleResult.value}
             </pre>
           ) : null}
         </form>
       ) : null}
       {session?.breakpoints.length ? (
-        <details className="text-xs">
-          <summary className="cursor-pointer font-medium">{t('breakpoints')}</summary>
+        <details className="text-caption">
+          <summary
+            className="cursor-pointer"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {t('breakpoints')}
+          </summary>
           <ul className="mt-2 space-y-1">
             {session.breakpoints.map((point) => (
               <li key={`${point.path}:${point.requestedLine}`} className="break-all font-mono">
@@ -572,15 +593,20 @@ export function DebugControls({ api, target, copy, store }: Props) {
         </details>
       ) : null}
       {session?.output ? (
-        <details className="text-xs">
-          <summary className="cursor-pointer font-medium">{t('output')}</summary>
+        <details className="text-caption">
+          <summary
+            className="cursor-pointer"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {t('output')}
+          </summary>
           <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2">
             {session.output}
           </pre>
         </details>
       ) : null}
       {error || copy?.error || session?.error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error || copy?.error || session?.error}
         </p>
       ) : null}
@@ -593,16 +619,16 @@ export function DebugControls({ api, target, copy, store }: Props) {
           <DialogDescription>{t('reviewHint')}</DialogDescription>
           {inspected ? (
             <>
-              <p className="text-sm font-medium">
+              <p className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
                 {inspected.configuration.name} · {inspected.configuration.runtime}
               </p>
-              <p className="text-xs">
+              <p className="text-caption">
                 {t('adapter')}: {inspected.adapter.name}
               </p>
-              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2 text-xs">
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-2 text-caption">
                 {JSON.stringify(inspected.adapter.argv)}
               </pre>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-caption">
                 <dt>{t('cwd')}</dt>
                 <dd className="break-all font-mono">{inspected.configuration.cwd}</dd>
                 {'program' in inspected.configuration ? (
@@ -651,7 +677,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
                   </>
                 ) : null}
               </dl>
-              <details className="text-xs">
+              <details className="text-caption">
                 <summary className="cursor-pointer">{t('reviewBasis')}</summary>
                 <p className="mt-1 break-all font-mono">{inspected.fingerprint}</p>
                 <pre className="mt-1 whitespace-pre-wrap break-all">
@@ -661,7 +687,9 @@ export function DebugControls({ api, target, copy, store }: Props) {
                   })}
                 </pre>
               </details>
-              {!inspected.trusted ? <p className="text-xs text-warning">{t('trustHint')}</p> : null}
+              {!inspected.trusted ? (
+                <p className="text-caption text-warning">{t('trustHint')}</p>
+              ) : null}
               <div className="flex shrink-0 flex-wrap justify-end gap-2">
                 <Button
                   size="compact"

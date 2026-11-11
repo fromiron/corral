@@ -193,7 +193,7 @@ export function NodeSettings({
                   { value: 'hashline', label: t('editingModeHashline') },
                 ]}
               />
-              <span className="font-normal text-muted-foreground">{t('editingModeHint')}</span>
+              <span className="text-muted-foreground">{t('editingModeHint')}</span>
             </label>
           ) : null}
           <div className="flex flex-col gap-1">
@@ -238,7 +238,7 @@ export function NodeSettings({
                   aria-describedby={`${id}-image-profile-hint`}
                 />
               </KitInputGroup>
-              <span id={`${id}-image-profile-hint`} className="font-normal text-muted-foreground">
+              <span id={`${id}-image-profile-hint`} className="text-muted-foreground">
                 {t('imageProfileHint')}
               </span>
             </div>
@@ -329,14 +329,11 @@ export function NodeSettings({
 
       {node.type === 'loop' ? loopSettings?.(node) : null}
       {node.type === 'output' ? (
-        <>
-          <KitSwitch
-            label={t('requireApproval')}
-            checked={node.requireApproval}
-            onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
-          />
-          <p className="text-caption text-muted-foreground">{t('outputNote')}</p>
-        </>
+        <KitSwitch
+          label={t('requireApproval')}
+          checked={node.requireApproval}
+          onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
+        />
       ) : null}
 
       {(node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (

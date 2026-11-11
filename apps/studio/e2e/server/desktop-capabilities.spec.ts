@@ -24,7 +24,17 @@ import {
   sdkProcessChannel,
   WORKER_ENTRY,
 } from '../../../../packages/adapter-pi/src/index.ts';
-import { panelTab, requestBox, selectSessionTeam } from '../workbench.ts';
+import {
+  closeSettings,
+  openConversationDetails,
+  openFolderSettings,
+  openLibraryTeams,
+  openProject,
+  panelTab,
+  requestBox,
+  selectSessionTeam,
+} from '../workbench.ts';
+import { watchErrors } from './harness.ts';
 
 // Only the remote model response is deterministic. Both Pi worker processes, every
 // Coordinator approval, the native command job and managed file broker are production.
@@ -101,17 +111,14 @@ const test = base.extend<{ capability: CapabilityFixture }>({
     git('add', '.');
     git('commit', '-qm', 'integration fixture');
     const external: string[] = [];
-    const errors: string[] = [];
     await page.route('**/*', (route) => {
       const url = new URL(route.request().url());
       if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return route.continue();
       external.push(url.origin);
       return route.abort('blockedbyclient');
     });
-    page.on('pageerror', (error) => errors.push(error.message));
-    page.on('console', (message) => {
-      if (message.type() === 'error') errors.push(message.text());
-    });
+    // The same error watch as the shared harness, including its one expected 404.
+    const errors = watchErrors(page);
     const server = await startCorralServer({
       workspace,
       worktreeRoot: worktrees,
@@ -173,13 +180,13 @@ const tools = [
 
 async function prepareSession(page: Page, capability: CapabilityFixture) {
   await capability.open('/');
-  await page.getByRole('tab', { name: /^Project folder/ }).click();
-  const folder = page.getByRole('tabpanel', { name: 'Project folder', exact: true });
+  const folder = await openFolderSettings(page);
   await folder.getByLabel('Folder path on this computer').fill(capability.source);
   await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
   const trust = folder.getByRole('switch', { name: /Trust this repository/ });
   await trust.click();
   await expect(trust).toBeChecked();
+  await closeSettings(page);
 
   await page.goto(`${capability.server.url}/settings/harness?projectId=default`);
   await page.getByLabel('Work style name', { exact: true }).fill('Native integration work');
@@ -212,15 +219,15 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   writeFileSync(definitionPath, JSON.stringify(definition));
   // The signed-in page reuses its session cookie.
   await page.goto(`${capability.server.url}/projects/default`);
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page.locator('input[type="file"]').setInputFiles(definitionPath);
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await page.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Native integration');
-  await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
+  await openProject(page);
+  const details = await openConversationDetails(page);
+  await details.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Native integration');
+  await details.getByRole('combobox', { name: 'Corral', exact: true }).click();
   await page.getByRole('option', { name: 'Native integration team', exact: true }).click();
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const sessionId = new URL(page.url()).pathname.split('/').at(-1);
   if (!sessionId) throw new Error('The UI did not create a session');
@@ -381,9 +388,13 @@ test('Ask approves a real command and a read-bound Hashline edit in the managed 
     exitCode: 0,
     cleanupConfirmed: true,
   });
+  // The Changes view opens on its review (workbench.md: "변경 화면은 검토 보기로 열린다").
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-  await page.getByRole('link', { name: 'Review changes', exact: true }).click();
-  await expect.poll(() => new URL(page.url()).searchParams.get('review')).toBe('true');
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Changes views', exact: true })
+      .getByRole('tab', { name: 'Review', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => new URL(page.url()).searchParams.get('panel')).toBe('changes');
   await page.getByRole('button', { name: /command\.txt/ }).click();
   await expect(page.getByTestId('file-diff')).toContainText('created by run_command');
@@ -441,7 +452,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     expect(owned.every((child) => alive(child.pid))).toBe(true);
     if (cancelScope === 'run') {
       await page
-        .getByRole('region', { name: 'Request', exact: true })
+        .getByRole('region', { name: 'Active run controls', exact: true })
         .getByRole('button', { name: 'Cancel whole run', exact: true })
         .click();
       await page
@@ -478,16 +489,22 @@ for (const cancelScope of ['run', 'command'] as const) {
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true);
-    const views = page.getByRole('tablist', { name: 'Session views', exact: true });
-    const conversation = views.getByRole('tab', { name: 'Conversation', exact: true });
-    const files = views.getByRole('tab', { name: 'Files', exact: true });
-    await conversation.focus();
-    await conversation.press('Enter');
+    // At this width the view tabs fold into one menu of the same name (workbench.md 전역 셸과
+    // 화면 틀); the keyboard moves through it from Files to Conversation and back.
+    const views = page.getByRole('combobox', { name: 'Session views', exact: true });
+    await views.focus();
+    await views.press('Enter');
+    await expect(page.getByRole('option', { name: /^Files\b/ })).toBeVisible();
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Enter');
     await expect(commands).not.toBeVisible();
-    await expect(conversation).toBeFocused();
-    await conversation.press('ArrowRight');
-    await expect(files).toBeFocused();
-    await files.press('Enter');
+    await expect(views).toBeFocused();
+    await expect(views).toContainText('Conversation');
+    await views.press('Enter');
+    await expect(page.getByRole('option', { name: /^Conversation\b/ })).toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(views).toContainText('Files');
     await expect(commands).toBeVisible();
     await commands.getByText('Output', { exact: true }).focus();
     await page.keyboard.press('Enter');
@@ -557,10 +574,10 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect(commandApproval).toContainText('node command-write.mjs');
   expect(existsSync(join(first.worktree, 'command.txt'))).toBe(false);
   await commandApproval.getByRole('button', { name: 'Allow once', exact: true }).click();
+  // The composer's notice names the waiting question and goes to it.
   await page
-    .getByTestId('chat-timeline')
-    .getByTestId('run-required-action')
-    .getByRole('link', { name: 'Go to the request', exact: true })
+    .getByTestId('action-required')
+    .getByRole('link', { name: 'Respond', exact: true })
     .click();
   await expect(page.getByTestId('run-monitor')).toContainText(
     'Fixture A is waiting for your answer.',
@@ -597,9 +614,9 @@ test('a session writer and another session’s writer keep separate controls', a
   ).toContain('run_command');
 
   await page.goto(`${capability.server.url}/projects/default`);
-  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await page.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Independent writer C');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  const details = await openConversationDetails(page);
+  await details.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Independent writer C');
+  await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page.getByRole('button', { name: /Make a working copy from/ }).click();
@@ -611,7 +628,7 @@ test('a session writer and another session’s writer keep separate controls', a
   expect(c?.sessionId).not.toBe(first.sessionId);
   // Cancelling the other session's writer leaves this session's writer waiting.
   await page
-    .getByRole('region', { name: 'Request', exact: true })
+    .getByRole('region', { name: 'Active run controls', exact: true })
     .getByRole('button', { name: 'Cancel whole run', exact: true })
     .click();
   await page
@@ -621,6 +638,8 @@ test('a session writer and another session’s writer keep separate controls', a
   await expect.poll(() => status('C'), { timeout: 30000 }).toBe('cancelled');
   expect(status('A')).toBe('awaiting_user');
   await page.goto(`${capability.server.url}/sessions/${first.sessionId}?run=${a}`);
-  await expect(page.getByTestId(`run-card-${a}`).getByTestId('run-required-action')).toBeVisible();
+  // A's question still waits: the composer's notice names it (the turn does not repeat it).
+  await expect(page.getByTestId(`run-card-${a}`)).toBeVisible();
+  await expect(page.getByTestId('action-required')).toContainText('Fixture A is waiting');
   expect(capability.errors).toEqual([]);
 });

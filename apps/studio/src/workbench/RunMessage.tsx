@@ -2,6 +2,7 @@ import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/cont
 import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
 import {
   ApprovalPanel,
+  buildTurnProcess,
   CopyTextButton,
   ExecutionTranscript,
   FailureNotice,
@@ -23,22 +24,25 @@ import {
   BannerActions,
   BannerTitle,
   Button,
+  fontWeights,
+  ThinkingIndicator,
   ThinkingStep,
   ThinkingStepDetails,
   ThinkingSteps,
   ThinkingStepsContent,
   ThinkingStepsHeader,
+  Tooltip,
 } from '@corral/react/design-kit';
 import { ChevronRight, FileText, LoaderCircle, PanelRight, Pause } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { type ChatDensity, preferences } from './preferences.ts';
-import { TurnProcess } from './TurnProcess.tsx';
+import { TurnLine, TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { toolRows } from './widgets/selectors.ts';
 
@@ -49,18 +53,25 @@ export function RunMessage({
   live,
   onOpenArtifact,
   artifactMetadataVersion,
+  runLine,
+  endActions,
 }: {
   runId: string;
   sessionId: string | null;
   live: boolean;
   onOpenArtifact(id: string): void;
   artifactMetadataVersion?: string;
+  /** What closes the turn's process line: the run's number, which opens its record. */
+  runLine?: ReactNode;
+  /** What the person can do next when the turn did not finish: retry, restore. */
+  endActions?: ReactNode;
 }) {
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
   const tt = useTranslations('Transcript');
   const tw = useTranslations('Widgets');
   const tm = useTranslations('MessageBody');
+  const ts = useTranslations('Status');
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const [disclosure, setDisclosure] = useState<{
     runId: string;
@@ -137,21 +148,33 @@ export function RunMessage({
     };
   }, [ids, store, retry]);
   const projection = state.projection;
+  // The turn's observed work steps; the conversation's process lists them.
+  const process = useMemo(
+    () => buildTurnProcess(state.events, projection, {}, label),
+    [state.events, projection, label],
+  );
+  // Waiting questions are answered in the exact run's response area; the composer's notice
+  // names the first and carries the way there, so the turn does not repeat it. A waiting
+  // approval is its card below, which says what it waits for.
+  const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
   if (!projection)
-    return state.streamError ? (
-      <p role="alert" className="text-sm text-danger">
-        {state.streamError}
-      </p>
-    ) : (
-      <div className="h-4 w-24 animate-pulse rounded bg-line/30" />
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        {sessionId && runLine ? <TurnLine>{runLine}</TurnLine> : null}
+        {state.streamError ? (
+          <p role="alert" className="text-body text-danger">
+            {state.streamError}
+          </p>
+        ) : (
+          <div className="h-4 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        )}
+        {/* Recovery stays reachable even when the run's record cannot be read. */}
+        {endActions ? <div className="flex flex-wrap gap-2">{endActions}</div> : null}
+      </div>
     );
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
   if (working && !watched) setWatched(true);
   const processOpen = chosen ?? (chatDensity === 'detailed' || working);
-  const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
-  const questions = interactions.filter((interaction) => interaction.kind !== 'approval');
-  const requiredLabel =
-    questions.length === 1 ? tw('actionQuestion') : tw('actionMixed', { count: questions.length });
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   // Current session activity lives by the composer and in the agent widget.
   // Historical failures stay visible here, while standalone consumers keep their activity row.
@@ -221,8 +244,28 @@ export function RunMessage({
   // does not vanish and return with every call.
   const writing = current ?? streams.filter(([, stream]) => stream.text).at(-1);
   const writer = writing ? projection.modelCalls[writing[0]]?.executionId : undefined;
+  const processShown = Boolean(sessionId) && (!working || chatDensity !== 'results');
+  // Observed only: the run is starting or working, nothing waits on the person, and no step,
+  // words or result have shown yet. A paused or waiting run does not animate.
+  const replyPending =
+    Boolean(sessionId) &&
+    ['created', 'validating', 'running'].includes(projection.status) &&
+    interactions.length === 0 &&
+    !(processShown && process.rows.length > 0) &&
+    !streams.some(([, stream]) => stream.text) &&
+    visible.length === 0;
+  const pendingWord = tw(projection.status === 'running' ? 'activityWorking' : 'activityStarting');
+  // A turn that did not finish says so once: its readable cause, whether it made anything,
+  // and what to do next. One agent's failure is the turn's failure; a team lists its agents.
+  const unfinished = Boolean(sessionId) && !working && projection.status !== 'succeeded';
+  const soleFailure = unfinished && executions.length <= 1 ? exposed[0] : undefined;
+  const listed = soleFailure ? [] : exposed;
+  const madeResults = Object.keys(projection.artifacts).length > 0;
   const agentRow = (execution: (typeof executions)[number]) => (
-    <li key={execution.executionId} className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs">
+    <li
+      key={execution.executionId}
+      className="flex min-w-0 flex-wrap items-center gap-x-2 text-caption"
+    >
       <Link
         to={sessionId ? '/sessions/$sessionId' : '/runs/$runId'}
         params={sessionId ? { sessionId } : { runId }}
@@ -232,7 +275,8 @@ export function RunMessage({
           execution: execution.executionId,
         }}
         title={execution.executionId}
-        className="font-medium hover:underline"
+        className="text-foreground hover:underline"
+        style={{ fontVariationSettings: fontWeights.semibold }}
       >
         {name(execution.executionId)}
       </Link>
@@ -257,32 +301,28 @@ export function RunMessage({
   );
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {sessionId && questions.length ? (
-        // The composer's live region announces it; the banner itself stays a note.
-        <Banner
-          data-testid="run-required-action"
-          status="warning"
-          contrast="high"
-          size="compact"
-          role="note"
-        >
-          <BannerTitle>{requiredLabel}</BannerTitle>
-          <BannerActions>
-            <Button
-              size="compact"
-              variant="secondary"
-              render={
-                <Link
-                  to="/sessions/$sessionId"
-                  params={{ sessionId }}
-                  search={{ panel: 'run', run: runId, view: 'run' }}
-                />
-              }
-            >
-              {tw('actionOpen')}
-            </Button>
-          </BannerActions>
-        </Banner>
+      {/* The turn reads top down: its process in one line, what needs the person, the answer. */}
+      {processShown ? (
+        <TurnProcess
+          events={state.events}
+          projection={projection}
+          process={process}
+          streams={state.streams}
+          label={label}
+          open={processOpen}
+          onOpenChange={(open) => setDisclosure({ runId, density: chatDensity, open })}
+          trailing={runLine}
+        />
+      ) : sessionId && runLine ? (
+        // No process to fold: a state other than plain work still shows beside the run number.
+        <TurnLine>
+          {['created', 'validating', 'running'].includes(projection.status) ? null : (
+            <span className="py-1.5 pl-2.5">
+              {ts.has(projection.status) ? ts(projection.status) : projection.status}
+            </span>
+          )}
+          {runLine}
+        </TurnLine>
       ) : null}
       {working && !sessionId ? <RunActions session={store} compact /> : null}
       <ApprovalPanel
@@ -290,6 +330,8 @@ export function RunMessage({
         onOpenArtifact={onOpenArtifact}
         showPlan={!sessionId}
         showRelatedPanels={!sessionId}
+        // In a conversation the top bar's pill says the run waits; the card names the decision.
+        headed={!sessionId}
         policySettingsAction={
           sessionId ? (
             <Button
@@ -304,9 +346,49 @@ export function RunMessage({
           ) : undefined
         }
       />
+      {unfinished ? (
+        <Banner
+          data-testid="run-ended"
+          status={
+            projection.status === 'failed'
+              ? 'error'
+              : projection.status === 'interrupted'
+                ? 'warning'
+                : 'default'
+          }
+          size="compact"
+          role="note"
+        >
+          <BannerTitle>
+            {projection.statusReason ? (
+              <RunReason code={projection.statusReason} nodeLabel={label} />
+            ) : ts.has(projection.status) ? (
+              ts(projection.status)
+            ) : (
+              projection.status
+            )}
+          </BannerTitle>
+          {soleFailure?.error || madeResults ? (
+            // The banner's description slot, holding blocks a paragraph cannot.
+            <div
+              data-slot="banner-description"
+              className="col-start-2 row-start-2 mt-1 flex min-w-0 flex-col gap-1 text-caption text-foreground"
+            >
+              {soleFailure?.error ? (
+                <FailureNotice
+                  message={soleFailure.error}
+                  cancelled={soleFailure.status === 'cancelled'}
+                />
+              ) : null}
+              {madeResults ? <p data-testid="run-made-results">{trun('madeResults')}</p> : null}
+            </div>
+          ) : null}
+          {endActions ? <BannerActions>{endActions}</BannerActions> : null}
+        </Banner>
+      ) : null}
       {attention.length ? (
         <ul
-          className="space-y-1 text-xs"
+          className="flex flex-col gap-1 text-caption"
           aria-label={t('toolActivity', { count: attention.length })}
         >
           {projection.status === 'succeeded' && attention.some((row) => row.tone === 'failed') ? (
@@ -330,21 +412,31 @@ export function RunMessage({
           })}
         </ul>
       ) : null}
+      {/* An ended turn's reason is its notice's title; a waiting question is the composer
+          notice's, and a waiting approval is its card's. */}
       {projection.statusReason &&
+      !unfinished &&
+      !(sessionId && interactions.length) &&
       projection.status !== 'running' &&
       projection.status !== 'succeeded' ? (
-        <p data-testid="run-reason" className="text-xs text-muted-foreground">
+        <p data-testid="run-reason" className="text-caption text-muted-foreground">
           {trun('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={label} />
         </p>
       ) : null}
-      {busy.length || exposed.length ? (
-        <section aria-label={t('teamActivity')} data-testid="team-activity" className="text-xs">
-          {exposed.length ? (
-            <ul className="mb-1 flex flex-col gap-1">{exposed.map(agentRow)}</ul>
+      {busy.length || listed.length ? (
+        <section
+          aria-label={t('teamActivity')}
+          data-testid="team-activity"
+          className="text-caption"
+        >
+          {listed.length ? (
+            <ul className={`flex flex-col gap-1 ${busy.length ? 'mb-1' : ''}`}>
+              {listed.map(agentRow)}
+            </ul>
           ) : null}
           {busy.length ? (
             <details className="group/agents">
-              <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-muted-foreground hover:text-text">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-muted-foreground hover:text-foreground">
                 {summary.working > 0 && projection.status === 'running' ? (
                   <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" />
                 ) : (
@@ -358,26 +450,15 @@ export function RunMessage({
                 </span>
                 <ChevronRight
                   size={12}
-                  className="transition-transform group-open/agents:rotate-90"
+                  className="transition-transform group-open/agents:rotate-90 motion-reduce:transition-none"
                 />
               </summary>
-              <ul className="mt-1.5 flex flex-col gap-1 border-l border-line pl-3">
+              <ul className="mt-1.5 flex flex-col gap-1 border-l border-border pl-3">
                 {busy.map(agentRow)}
               </ul>
             </details>
           ) : null}
         </section>
-      ) : null}
-      {/* The kit's observed work steps sit above the separately streamed answer. */}
-      {sessionId && (!working || chatDensity !== 'results') ? (
-        <TurnProcess
-          events={state.events}
-          projection={projection}
-          streams={state.streams}
-          label={label}
-          open={processOpen}
-          onOpenChange={(open) => setDisclosure({ runId, density: chatDensity, open })}
-        />
       ) : null}
       {/* The work log leads the turn, above its reply and result, from the turn's start. */}
       {!sessionId ? (
@@ -414,7 +495,7 @@ export function RunMessage({
                       }
                       isLast={index === projection.executionOrder.length - 1}
                     >
-                      <span className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="flex flex-wrap items-center gap-2 text-caption">
                         <StatusBadge status={execution.status} />
                         {call ? (
                           <ReasoningSummary
@@ -443,35 +524,51 @@ export function RunMessage({
           </ThinkingStepsContent>
         </ThinkingSteps>
       ) : null}
+      {replyPending ? (
+        // Where the answer will appear, until the run shows its first words or a result.
+        // The composer's region announces the run, so this status stays silent.
+        <ThinkingIndicator
+          data-testid="reply-pending"
+          aria-live="off"
+          size="compact"
+          className="px-0"
+          labels={{ status: pendingWord, words: [pendingWord] }}
+        />
+      ) : null}
       {writing && sessionId && chatDensity !== 'results' ? (
         // The reply being written reads as the answer it may become.
         <div
           data-testid="live-text"
           aria-live="off"
-          className="live-text min-w-0 text-sm leading-7 wrap-anywhere"
+          className="live-text turn-actions-scope flex min-w-0 flex-col gap-1 wrap-anywhere"
         >
           {!working && !handoff ? (
-            <p className="mb-2 text-xs text-muted-foreground" role="note">
+            <p className="text-caption text-muted-foreground" role="note">
               {tm('interrupted')}
               {writing[1].truncated ? ` · ${tm('truncated')}` : ''}
             </p>
           ) : null}
           {working || handoff ? (
-            <SafeMarkdown text={writing[1].text} />
+            <SafeMarkdown text={writing[1].text} size="chat" />
           ) : (
-            <MessageBody text={writing[1].text} markdown />
+            <>
+              <MessageBody text={writing[1].text} markdown size="chat" copy={false} />
+              <TurnActions>
+                <CopyTextButton text={writing[1].text} />
+              </TurnActions>
+            </>
           )}
         </div>
       ) : writing && chatDensity !== 'results' ? (
         <div data-testid="live-text" aria-live="off" className="min-w-0">
-          <p className="mb-1 text-2xs text-muted-foreground">
+          <p className="mb-1 text-micro text-muted-foreground">
             {current
               ? t('writing', { name: writer ? name(writer) : '' })
               : writer
                 ? name(writer)
                 : null}
           </p>
-          <div className="live-text max-h-40 overflow-auto text-sm leading-6 text-text/80 wrap-anywhere">
+          <div className="live-text max-h-40 overflow-auto text-muted-foreground wrap-anywhere">
             {!working && !handoff ? <p role="note">{tm('interrupted')}</p> : null}
             <SafeMarkdown text={writing[1].text} />
             {current ? (
@@ -484,7 +581,7 @@ export function RunMessage({
         </div>
       ) : null}
       {resultError ? (
-        <p role="alert" className="flex items-center gap-2 text-xs text-danger">
+        <p role="alert" className="flex items-center gap-2 text-caption text-danger">
           {t('resultUnavailable')}
           <Button variant="tertiary" size="compact" onClick={() => setRetry((value) => value + 1)}>
             {t('retryResult')}
@@ -511,10 +608,28 @@ export function RunMessage({
         />
       ))}
       {state.streamError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {state.streamError}
         </p>
       ) : null}
+      {/* The session knows the turn ended before this view has read it: recovery stays. */}
+      {endActions && !unfinished ? <div className="flex flex-wrap gap-2">{endActions}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * The icon row under a message: quiet until its message is hovered or holds focus, always
+ * shown under the latest answer and on touch screens (index.css). Its buttons keep their
+ * place in the tab order either way.
+ */
+export function TurnActions({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-testid="turn-actions"
+      className="turn-actions -ml-1.5 flex min-h-7 flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none"
+    >
+      {children}
     </div>
   );
 }
@@ -563,39 +678,49 @@ function ChatResult({
     view: 'results' as const,
     result: id,
   });
+  const actions =
+    text !== undefined || readable ? (
+      <TurnActions>
+        {text !== undefined ? <CopyTextButton text={text} /> : null}
+        {readable ? (
+          <Tooltip content={tr('openResults')}>
+            <Button
+              size="icon-compact"
+              variant="ghost"
+              aria-label={tr('openResults')}
+              render={<Link {...location} search={search(result.artifactVersionId)} />}
+            >
+              <PanelRight />
+            </Button>
+          </Tooltip>
+        ) : null}
+      </TurnActions>
+    ) : null;
   // in a conversation the answer is always visible, without a version header.
   if (sessionId && !partial && !result.media && !review)
     return (
-      <div className="min-w-0 space-y-2 text-sm leading-7 wrap-anywhere" data-testid="chat-result">
+      <div
+        className="turn-actions-scope flex min-w-0 flex-col gap-1 wrap-anywhere"
+        data-testid="chat-result"
+      >
         {text === undefined ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {ta(!bodyMetadataCurrent || readable ? 'loading' : 'retired')}
           </p>
         ) : (
-          <MessageBody text={text} markdown />
+          <MessageBody text={text} markdown size="chat" copy={false} />
         )}
-        {readable ? (
-          <div className="chat-result-actions flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <Link
-              {...location}
-              search={search(result.artifactVersionId)}
-              className="inline-flex items-center gap-1 hover:text-text"
-            >
-              <PanelRight size={12} aria-hidden="true" />
-              {tr('openResults')}
-            </Link>
-          </div>
-        ) : null}
+        {actions}
       </div>
     );
   return (
     <details
       open={open === true}
       onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="min-w-0 space-y-3 text-sm leading-7 wrap-anywhere"
+      className="turn-actions-scope flex min-w-0 flex-col gap-2 wrap-anywhere"
       data-testid="chat-result"
     >
-      <summary className="flex w-fit cursor-pointer list-none flex-wrap items-center gap-1.5 rounded text-xs text-muted-foreground hover:text-text">
+      <summary className="flex w-fit cursor-pointer list-none flex-wrap items-center gap-1.5 text-caption text-muted-foreground hover:text-foreground">
         <FileText size={13} />
         {partial ? tr('partial') : t('result')} · {result.name} v{result.version}
         {author ? (
@@ -603,14 +728,17 @@ function ChatResult({
             · {label(author.nodeId)} #{projection.executionOrder.indexOf(author.executionId) + 1}
           </span>
         ) : null}
-        <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+        <ChevronRight
+          size={12}
+          className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+        />
       </summary>
       {open === true ? (
-        <>
+        <div className="mt-2 flex min-w-0 flex-col gap-1">
           {!bodyMetadataCurrent ? (
-            <p className="text-xs text-muted-foreground">{ta('loading')}</p>
+            <p className="text-caption text-muted-foreground">{ta('loading')}</p>
           ) : !readable ? (
-            <p className="text-xs text-muted-foreground">{ta('retired')}</p>
+            <p className="text-caption text-muted-foreground">{ta('retired')}</p>
           ) : result.media ? (
             <GeneratedImage
               runId={projection.runId}
@@ -637,23 +765,12 @@ function ChatResult({
               }
             />
           ) : text === undefined ? (
-            <p className="text-xs text-muted-foreground">{ta('loading')}</p>
+            <p className="text-caption text-muted-foreground">{ta('loading')}</p>
           ) : (
-            <SafeMarkdown text={text} />
+            <SafeMarkdown text={text} size={sessionId ? 'chat' : 'compact'} />
           )}
-          {text !== undefined ? <CopyTextButton text={text} /> : null}
-          {readable ? (
-            <Link
-              {...location}
-              search={search(result.artifactVersionId)}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-text"
-            >
-              {sessionId ? <PanelRight size={12} aria-hidden="true" /> : null}
-              {tr('openResults')}
-              {sessionId ? null : <ChevronRight size={12} />}
-            </Link>
-          ) : null}
-        </>
+          {actions}
+        </div>
       ) : null}
     </details>
   );

@@ -4,37 +4,28 @@ import {
   BannerActions,
   BannerTitle,
   Button,
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Popover,
-  PopoverPopup,
-  PopoverTitle,
-  PopoverTrigger,
+  focusRing,
+  fontWeights,
   Select,
 } from '@corral/react/design-kit';
 import {
   ArrowRight,
-  Bot,
   ChevronDown,
   Circle,
   CircleAlert,
   CircleCheck,
   FileDiff,
-  History,
-  LoaderCircle,
-  Monitor,
-  PanelRight,
+  ListChecks,
+  TriangleAlert,
+  X,
 } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
+import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
-import { actionCopy, composerShowsRunStatus, type WidgetChip } from './selectors.ts';
+import { actionCopy, actionTone, composerShowsRunStatus } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -57,37 +48,34 @@ const CATEGORY_FILL: Record<string, string> = {
   instructions: 'bg-text/75',
   other: 'bg-text/45',
 };
-export const chipClass =
-  'inline-flex min-h-9 pointer-coarse:min-h-11 min-w-0 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-subtle hover:text-text focus-visible:ring-2 focus-visible:ring-ring';
+export const chipClass = `inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground transition-colors hover:bg-subtle hover:text-foreground ${focusRing}`;
 const number = (value: number) => value.toLocaleString();
-/** "Last run" only for the newest finished run; an older one names its position (#72). */
+/**
+ * "Last run" for the newest finished run, whose turn already links it by number; an older one
+ * names its position (#72).
+ */
 function viewedLabel(
   viewed: NonNullable<ChatWidgetModel['viewed']>,
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
-  if (viewed.latest && viewed.number) return t('lastRunNumber', { number: viewed.number });
+  if (viewed.latest && viewed.number) return t('lastRun');
   return viewed.number
     ? t('selectedRun', { number: viewed.number, total: viewed.total })
     : t('selectedRunUnordered');
 }
-export const compactNumber = (value: number) =>
-  value >= 1000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k` : number(value);
+export const compactNumber = (value: number, locale: string) =>
+  formatCount(value, locale, (short) =>
+    short >= 1000 ? `${(short / 1000).toFixed(short < 10_000 ? 1 : 0)}k` : number(short),
+  );
 
-function Chip({ chip, model }: { chip: WidgetChip; model: ChatWidgetModel }) {
-  if (chip === 'context') return <ContextUsageChip model={model} />;
-  if (chip === 'agents' && model.agents) return <AgentChip model={model} />;
-  if (chip === 'changes') return <ChangesChip model={model} />;
-  if (chip === 'environment' && model.environment) return <EnvironmentChip model={model} />;
-  return null;
-}
-
-/** The context chip's words, also the context widget's accessible summary. */
+/** The context widget's words, also its accessible summary. */
 export function contextLabel(
   context: ChatWidgetModel['context'],
   t: ReturnType<typeof useTranslations<'Widgets'>>,
+  locale: string,
 ) {
   return context.kind === 'messages' && context.tokens != null
-    ? t('contextMessages', { count: compactNumber(context.tokens) })
+    ? t('contextMessages', { count: compactNumber(context.tokens, locale) })
     : context.percent != null
       ? t('contextPercent', { percent: context.percent })
       : context.completeness === 'error'
@@ -97,21 +85,12 @@ export function contextLabel(
           : t('contextPending');
 }
 
-function ContextUsageChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  const { context } = model;
-  const label = contextLabel(context, t);
+/** A detail's heading. Details open in Overview's own place, so none is a popover's title. */
+function DetailTitle({ children }: { children: ReactNode }) {
   return (
-    <Popover>
-      <PopoverTrigger data-testid="context-usage-chip" className={chipClass}>
-        <ContextGauge percent={context.barPercent} />
-        <span className="truncate">{label}</span>
-        <ChevronDown size={12} />
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="lg">
-        <ContextDetail model={model} />
-      </PopoverPopup>
-    </Popover>
+    <h2 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+      {children}
+    </h2>
   );
 }
 /** ContextInspector: what the presented run's last request held. */
@@ -121,12 +100,22 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const { context } = model;
   const measured = context.tokens != null;
   const complete = context.coverage === 'request' && context.completeness === 'complete';
+  // An assembled request needs no sentence: the badge already says it is partial. Nor does one
+  // not measured yet: the badge says so.
+  const measurementNote =
+    complete || context.measurementStage === 'assembled'
+      ? null
+      : context.completeness === 'error'
+        ? t('measurementFailed')
+        : measured
+          ? t('noPercent')
+          : null;
   return (
     <div data-testid="context-inspector" className="flex flex-col gap-4 text-ui">
       <div>
         <div className="flex items-center justify-between gap-3">
-          <PopoverTitle>{t('context')}</PopoverTitle>
-          <span className="rounded-md bg-subtle px-2 py-0.5 text-2xs text-muted-foreground">
+          <DetailTitle>{t('context')}</DetailTitle>
+          <span className="rounded-md bg-subtle px-2 py-0.5 text-micro text-muted-foreground">
             {complete
               ? t('measurementFull')
               : context.kind === 'messages'
@@ -136,7 +125,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
                   : t('measurementPending')}
           </span>
         </div>
-        <p className="mt-1.5 break-words text-xs text-muted-foreground">
+        <p className="mt-1.5 break-words text-caption text-muted-foreground">
           {[
             model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
             context.roleLabel,
@@ -146,7 +135,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
             .join(' · ')}
         </p>
         {context.recordedAt ? (
-          <p className="mt-1 text-2xs text-muted-foreground">
+          <p className="mt-1 text-micro text-muted-foreground">
             {t('lastRequest', {
               time: new Date(context.recordedAt).toLocaleTimeString([], {
                 hour: '2-digit',
@@ -157,35 +146,40 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </p>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs text-muted-foreground">
-            {t(measured ? 'estimatedInput' : 'contextPending')}
-          </p>
-          {context.tokens != null ? (
-            <p className="mt-1 text-lg font-medium tabular-nums">
+      {/* Before a measured request the heading and its badge already say so; no line repeats it. */}
+      {context.tokens != null ? (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-caption text-muted-foreground">{t('estimatedInput')}</p>
+            <p
+              className="mt-1 text-title tabular-nums"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
               {number(context.tokens)}
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+              <span
+                className="ml-1.5 text-caption text-muted-foreground"
+                style={{ fontVariationSettings: fontWeights.normal }}
+              >
                 {context.windowTokens
                   ? `/ ${number(context.windowTokens)} ${t('tokens')}`
                   : t('tokens')}
               </span>
             </p>
+          </div>
+          {context.percent != null ? (
+            <span className="flex items-center gap-2 text-body tabular-nums">
+              <ContextGauge percent={context.barPercent} size={28} />
+              {context.percent}%
+            </span>
           ) : null}
         </div>
-        {context.percent != null ? (
-          <span className="flex items-center gap-2 text-sm tabular-nums">
-            <ContextGauge percent={context.barPercent} size={28} />
-            {context.percent}%
-          </span>
-        ) : null}
-      </div>
+      ) : null}
       <SegmentBar parts={context.parts} total={complete ? context.windowTokens : context.tokens} />
       <ul className="flex flex-col gap-2">
         {CATEGORIES.map((category) => {
           const part = context.parts.find((item) => item.category === category);
           return (
-            <li key={category} className="flex items-start justify-between gap-4 text-xs">
+            <li key={category} className="flex items-start justify-between gap-4 text-caption">
               <span className="flex items-center gap-2">
                 <span
                   aria-hidden="true"
@@ -194,15 +188,23 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
                 {tc(category)}
               </span>
               <span className="max-w-44 text-right tabular-nums text-muted-foreground">
-                {part
-                  ? `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
-                  : t(complete ? 'notInRequest' : 'notMeasured')}
+                {part ? (
+                  `${number(part.tokens)}${part.omission ? ` · ${t('measurementPartial')}` : ''}`
+                ) : complete ? (
+                  t('notInRequest')
+                ) : (
+                  // The badge says the measurement is partial; each unmeasured row is a dash.
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">{t('notMeasured')}</span>
+                  </>
+                )}
               </span>
             </li>
           );
         })}
         {context.freeTokens != null ? (
-          <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-xs text-muted-foreground">
+          <li className="mt-1 flex justify-between gap-3 border-t border-line/60 pt-2 text-caption text-muted-foreground">
             <span>{t(context.freeTokens < 0 ? 'estimatedOverage' : 'estimatedRemaining')}</span>
             <span className={`tabular-nums ${context.freeTokens < 0 ? 'text-warning' : ''}`}>
               {number(Math.abs(context.freeTokens))}
@@ -210,22 +212,16 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </li>
         ) : null}
       </ul>
-      {model.simulated || !complete || context.awaitingRefresh || context.kind === 'highest' ? (
-        <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-xs text-muted-foreground">
+      {model.simulated ||
+      context.awaitingRefresh ||
+      measurementNote ||
+      context.unmeasuredExecutions ||
+      context.omissions?.length ||
+      model.readState === 'error' ? (
+        <div className="space-y-1 rounded-lg bg-subtle px-3 py-2 text-caption text-muted-foreground">
           {model.simulated ? <p>{t('simulatedNote')}</p> : null}
           {context.awaitingRefresh ? <p>{t('contextRefresh')}</p> : null}
-          {!complete ? (
-            <p>
-              {context.measurementStage === 'assembled'
-                ? t('measurementAssembled')
-                : context.completeness === 'error'
-                  ? t('measurementFailed')
-                  : measured
-                    ? t('noPercent')
-                    : t('measurementWaiting')}
-            </p>
-          ) : null}
-          {context.kind === 'highest' ? <p>{t('highestContext')}</p> : null}
+          {measurementNote ? <p>{measurementNote}</p> : null}
           {context.unmeasuredExecutions ? (
             <p>{t('unmeasuredExecutions', { count: context.unmeasuredExecutions })}</p>
           ) : null}
@@ -243,18 +239,15 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
         </div>
       ) : null}
       {model.reserveTokens != null ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t('outputReserve', { count: number(model.reserveTokens) })}
         </p>
       ) : null}
       {context.providerInput != null ||
       context.providerCacheRead != null ||
       context.providerOutput != null ? (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer rounded-sm py-1 focus-visible:ring-2 focus-visible:ring-ring">
-            {t('providerUsage')}
-          </summary>
-          <p className="mt-1">{t('providerSeparate')}</p>
+        <details className="text-caption text-muted-foreground">
+          <summary className="cursor-pointer rounded-sm py-1">{t('providerUsage')}</summary>
           <p className="mt-1 tabular-nums">
             {t('providerNumbers', {
               input: context.providerInput == null ? '—' : number(context.providerInput),
@@ -266,7 +259,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
       ) : null}
       <RunLink
         model={model}
-        className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
+        className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-caption text-muted-foreground hover:text-text"
       >
         {t('contextDetails')}
         <ArrowRight size={14} />
@@ -321,22 +314,6 @@ export function SegmentBar({
     </div>
   );
 }
-function AgentChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  if (!model.agents) return null;
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="agent-activity-chip" className={chipClass}>
-        <Bot size={14} />
-        <span className="truncate">{t('agents', model.agents)}</span>
-        <ChevronDown size={12} />
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="md">
-        <AgentsDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
 /** Agent states and the plan each agent owns. */
 export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
@@ -344,8 +321,8 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   if (!model.agents) return null;
   return (
     <>
-      <PopoverTitle>{t('agentsHeading')}</PopoverTitle>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <DetailTitle>{t('agentsHeading')}</DetailTitle>
+      <p className="mt-2 text-caption text-muted-foreground">
         {[
           t('agents', model.agents),
           t('agentsWaiting', { count: model.agents.waiting }),
@@ -365,7 +342,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
                 <span className="truncate">
                   {choice.key === 'team' ? t('teamPlan') : choice.label}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-caption text-muted-foreground">
                   {choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : ''}
                 </span>
               </Button>
@@ -375,7 +352,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
       ) : null}
       <RunLink
         model={model}
-        className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-xs text-muted-foreground hover:text-text"
+        className="mt-3 flex items-center justify-between border-t border-line/60 pt-3 text-caption text-muted-foreground hover:text-text"
       >
         {t('allAgents')}
         <ArrowRight size={14} />
@@ -404,54 +381,21 @@ function ChangesChip({ model }: { model: ChatWidgetModel }) {
       <FileDiff size={14} />
       <span className="truncate">{text}</span>
       {model.changeLines != null ? (
-        <span className="text-2xs">{t('changesLines', { count: model.changeLines })}</span>
+        <span className="text-micro">{t('changesLines', { count: model.changeLines })}</span>
       ) : null}
     </Link>
-  );
-}
-function EnvironmentChip({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  return (
-    <Popover>
-      <PopoverTrigger data-testid="environment-chip" className={chipClass}>
-        <Monitor size={14} />
-        <span className="truncate">
-          {t(model.environment === 'simulated' ? 'environmentSimulated' : 'environmentRestricted')}
-        </span>
-      </PopoverTrigger>
-      <PopoverPopup align="start" width="md">
-        <EnvironmentDetail model={model} />
-      </PopoverPopup>
-    </Popover>
-  );
-}
-/** Why this run's environment differs from an ordinary local run. */
-export function EnvironmentDetail({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  return (
-    <>
-      <PopoverTitle>{t('environmentHeading')}</PopoverTitle>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        {t(
-          model.environment === 'simulated'
-            ? 'environmentSimulationDetail'
-            : 'environmentRestrictedDetail',
-        )}
-      </p>
-      <RunLink model={model} className="mt-3 inline-flex items-center gap-2 text-xs">
-        {t('contextDetails')}
-        <ArrowRight size={14} />
-      </RunLink>
-    </>
   );
 }
 export function RunLink({
   model,
   executionId,
+  respond = false,
   ...props
 }: {
   model: ChatWidgetModel;
   executionId?: string;
+  /** A request to answer the run: its run page opens the response area. */
+  respond?: boolean;
 } & ComponentProps<'a'>) {
   return (
     <Link
@@ -465,6 +409,7 @@ export function RunLink({
         panel: 'run',
         run: model.runId ?? undefined,
         view: 'run',
+        respond: respond || undefined,
         ...(executionId
           ? { execution: executionId, artifact: undefined, result: undefined, atSeq: undefined }
           : {}),
@@ -474,70 +419,207 @@ export function RunLink({
     />
   );
 }
-/** One announcement and a scoped entry to the existing approval/interaction host. */
-/** `summary` is the narrow-width way into the Overview widgets. */
-export function ComposerDock({ summary }: { summary?: ReactNode }) {
+/** The plan's done count, as the line and its live region say it. */
+function planCount(
+  status: ChatWidgetModel['plan']['status'],
+  t: ReturnType<typeof useTranslations<'Widgets'>>,
+) {
+  return 'completed' in status
+    ? t(
+        status.state === 'ready' && !status.runFinished && status.planFinished
+          ? 'planRunning'
+          : 'planCount',
+        { done: status.completed, total: status.total },
+      )
+    : status.state === 'loading'
+      ? t('planLoading')
+      : t('planError');
+}
+
+/**
+ * An ended run's state as a mark, so a failure never looks like a success: a check for done,
+ * an alert for failed, a cross for cancelled, a warning for interrupted. The word sits beside it.
+ */
+function RunStateIcon({ status, failed }: { status: string | null; failed: boolean }) {
+  const state = failed ? 'failed' : status;
+  const mark = { size: 12, 'aria-hidden': true, 'data-state': state ?? undefined } as const;
+  if (state === 'failed') return <CircleAlert {...mark} className="shrink-0 text-danger" />;
+  if (state === 'succeeded') return <CircleCheck {...mark} className="shrink-0 text-success" />;
+  if (state === 'cancelled') return <X {...mark} className="shrink-0" />;
+  if (state === 'interrupted') return <TriangleAlert {...mark} className="shrink-0 text-warning" />;
+  return <Circle {...mark} className="shrink-0" />;
+}
+
+/**
+ * The composer's one-line status above the input, and its attention notice.
+ *
+ * The line holds the host's send intent (`lead`), an ended run's state, the plan's done count
+ * with the step in progress (its toggle expands the Todo, `planId`), the change summary, the
+ * current tool, the host's "applies to a new request only" note and the Overview opener. A live
+ * run's state and controls belong to the top bar's pill, so the line never repeats them. One
+ * announcement and a scoped entry to the existing approval/interaction host follow it; approvals
+ * alone are announced only, since their turn's card in the conversation decides them.
+ */
+export function ComposerDock({
+  lead,
+  note,
+  summary,
+  planId,
+  plan: planRegion,
+}: {
+  /** The next request's intent and target chips. */
+  lead?: ReactNode;
+  /** The one notice for items the current intent does not carry. */
+  note?: ReactNode;
+  /** The Overview opener. */
+  summary?: ReactNode;
+  /** The id of the Todo the plan toggle expands. */
+  planId?: string;
+  /** The Todo the plan toggle expands, directly under the line. */
+  plan?: ReactNode;
+}) {
   const model = useChatWidget();
   const t = useTranslations('Widgets');
   const ts = useTranslations('Status');
-  if (!model?.runId) return null;
-  const actionLabel = actionCopy(model.action)
-    .map((key) => (key === 'actionMixed' ? t(key, { count: model.action.count }) : t(key)))
-    .join(' · ');
-  const status = model.plan.status;
+  const tt = useTranslations('Turn');
+  const run = model?.runId ? model : null;
+  if (!run && !lead && !note) return null;
+  const status = run?.plan.status ?? { state: 'hidden' as const };
+  const open = Boolean(run?.plan.open);
+  const plan = 'plan' in status ? status.plan : null;
   const countNotice =
     'completed' in status ? t('planCount', { done: status.completed, total: status.total }) : '';
+  const step =
+    plan && run?.plan.selectedChoice?.live
+      ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
+      : null;
+  const running =
+    run?.live && run.plan.runStatus === 'running' && !run.action.visible
+      ? (run.tools.find((row) => row.tone === 'running')?.name ?? null)
+      : null;
+  // Named as the work log names it (Wait, not await_tasks); an unknown tool keeps its own name.
+  const tool = running && tt.has(`tool.${running}`) ? tt(`tool.${running}`) : running;
+  // A failed run is told by its turn's card when that card is the latest turn; the notice
+  // stays while another run or result is on screen, so the failure stays discoverable. A run
+  // that completed with failed steps keeps it: the notice is the way to those steps. Approvals
+  // alone are decided in their turn's card, and the top bar's pill says the run waits, so the
+  // notice would only repeat them; the live region below still announces them.
+  const notice =
+    run?.action.visible &&
+    run.action.summary !== 'approval' &&
+    !(run.action.summary === 'failure' && !run.action.completedWithFailures && run.viewed?.latest);
+  // Waiting questions alone name the first one, as the conversation's notice does.
+  const actionLabel = run
+    ? (run.action.summary === 'question' && run.questionNotice) ||
+      actionCopy(run.action)
+        .map((key) => (key === 'actionMixed' ? t(key, { count: run.action.count }) : t(key)))
+        .join(' · ')
+    : '';
   return (
     <div
       data-testid="composer-dock"
       className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col"
     >
+      {/* One line at every width: the lead and the Overview opener keep their place, and the
+          items between give up their lower-priority words (container queries) and truncate. */}
       <div
         data-testid="composer-status-pills"
-        className="mb-2 flex min-w-0 flex-wrap items-center gap-1"
+        className="mb-2 flex min-w-0 flex-nowrap items-center gap-1 empty:hidden"
       >
-        {composerShowsRunStatus({
-          runStatus: model.plan.runStatus,
-          readState: model.readState,
-          needsAction: model.action.visible,
-        }) ? (
-          <RunLink model={model} className={`${chipClass} bg-raised`}>
-            <Circle
-              size={12}
-              aria-hidden="true"
-              className={model.action.visible ? 'text-warning' : 'text-muted-foreground'}
+        {lead}
+        {run &&
+        composerShowsRunStatus({ runStatus: run.plan.runStatus, readState: run.readState }) ? (
+          // An ended run keeps one state, which leads to its record.
+          <RunLink model={run} className={`${chipClass} shrink-0`}>
+            <RunStateIcon
+              status={run.readState === 'ready' ? run.plan.runStatus : null}
+              failed={run.readState === 'error'}
             />
             <span>
-              {model.readState === 'error'
+              {run.readState === 'error'
                 ? t('runUnavailable')
-                : model.readState === 'loading'
+                : run.readState === 'loading'
                   ? t('runLoading')
-                  : model.plan.runStatus
-                    ? ts(model.plan.runStatus)
+                  : run.plan.runStatus
+                    ? ts(run.plan.runStatus)
                     : t('runUnavailable')}
             </span>
-            {model.viewed ? <span className="text-2xs">{viewedLabel(model.viewed, t)}</span> : null}
+            {run.viewed ? (
+              <span className="text-micro @max-lg/composer-surface:hidden">
+                {viewedLabel(run.viewed, t)}
+              </span>
+            ) : null}
           </RunLink>
         ) : null}
-        {!model.plan.open && 'completed' in status ? (
+        {run &&
+        (run.plan.multiple ||
+          !run.plan.auto ||
+          (status.state === 'hidden' && run.plan.choices.length > 0)) ? (
+          <Select
+            label={t('planOwner')}
+            variant="chip"
+            value={run.plan.auto ? 'auto' : (run.plan.selectedKey ?? 'auto')}
+            onValueChange={(value) =>
+              value === 'auto' ? run.plan.follow() : run.plan.choose(value)
+            }
+            options={[
+              { value: 'auto', label: t('follow') },
+              ...run.plan.choices.map((choice) => ({
+                value: choice.key,
+                label: choice.key === 'team' ? t('teamPlan') : choice.label,
+                hint: choice.lastTeam
+                  ? t('teamLast')
+                  : choice.status
+                    ? ts(choice.status)
+                    : undefined,
+              })),
+            ]}
+          />
+        ) : null}
+        {run && status.state !== 'hidden' ? (
           <Button
+            type="button"
             variant="ghost"
+            data-testid="work-plan-toggle"
             className={chipClass}
-            onClick={() => model.plan.setOpen(true)}
-            aria-expanded={false}
+            aria-expanded={open}
+            aria-controls={planId}
+            onClick={() => run.plan.setOpen(!open)}
           >
-            <CircleCheck size={13} aria-hidden="true" />
-            {countNotice}
+            <ListChecks size={14} aria-hidden="true" className="shrink-0" />
+            <span className="shrink-0 @max-md/composer-surface:hidden">{t('planHeading')}</span>
+            <span className="min-w-0 truncate tabular-nums">{planCount(status, t)}</span>
+            {/* Collapsed, the line names the step in progress; open, the Todo shows it. */}
+            {step && !open ? (
+              <span className="min-w-0 max-w-64 truncate @max-md/composer-surface:hidden">
+                {step}
+              </span>
+            ) : null}
+            <ChevronDown
+              size={12}
+              aria-hidden="true"
+              className={`shrink-0 transition-[rotate] duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+            />
           </Button>
         ) : null}
-        {model.chips.includes('changes') ? <ChangesChip model={model} /> : null}
-        {summary}
+        {run?.chips.includes('changes') ? <ChangesChip model={run} /> : null}
+        {tool ? (
+          <span
+            data-testid="composer-activity"
+            className="min-w-0 max-w-48 truncate px-2 text-caption text-muted-foreground @max-md/composer-surface:hidden"
+          >
+            {tool}
+          </span>
+        ) : null}
+        {note}
+        {run ? summary : null}
       </div>
-      {model.action.visible ? (
+      {run ? planRegion : null}
+      {run && notice ? (
         // The live region below announces it; the banner itself stays a note.
         <Banner
           data-testid="action-required"
-          status="warning"
+          status={actionTone(run.action)}
           contrast="high"
           size="compact"
           role="note"
@@ -550,39 +632,54 @@ export function ComposerDock({ summary }: { summary?: ReactNode }) {
               variant="secondary"
               render={
                 <RunLink
-                  model={model}
+                  model={run}
+                  respond={run.action.needsUser}
                   executionId={
-                    model.action.needsUser ? undefined : (model.failedExecutionId ?? undefined)
+                    run.action.needsUser ? undefined : (run.failedExecutionId ?? undefined)
                   }
                 />
               }
             >
               {t(
-                !model.action.needsUser && model.failedExecutionId
-                  ? 'actionOpenFailure'
-                  : 'actionOpen',
+                run.action.needsUser
+                  ? 'actionOpen'
+                  : run.failedExecutionId
+                    ? 'actionOpenFailure'
+                    : 'actionOpenRun',
               )}
             </Button>
           </BannerActions>
         </Banner>
       ) : null}
-      <p className="sr-only" aria-live="polite" aria-atomic="true">
-        {[countNotice, model.action.visible ? actionLabel : ''].filter(Boolean).join(' · ')}
-      </p>
-      <RunStatusAnnouncement
-        runId={model.runId}
-        status={model.plan.runStatus}
-        ready={model.readState === 'ready'}
-      />
+      {run?.runId ? (
+        <>
+          <p className="sr-only" aria-live="polite" aria-atomic="true">
+            {[countNotice, run.action.visible ? actionLabel : ''].filter(Boolean).join(' · ')}
+          </p>
+          <RunStatusAnnouncement
+            runId={run.runId}
+            status={run.plan.runStatus}
+            ready={run.readState === 'ready'}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
+
+/**
+ * The work plan's Todo. In the composer it is the body the one-line status expands, rendered
+ * only while open, read only; the steering shell keeps its own toggle.
+ */
 export function ComposerPlan({
   variant = 'composer',
+  id,
   showAllKey,
   onShowAllKeyChange,
 }: {
   variant?: 'composer' | 'steering';
+  /** The composer Todo's id, which the line's plan toggle controls. */
+  id?: string;
   showAllKey?: string | null;
   onShowAllKeyChange?: (key: string | null) => void;
 } = {}) {
@@ -602,17 +699,94 @@ export function ComposerPlan({
   const selection = model.plan.selectedChoice;
   const key = `${model.runId}:${model.plan.selectedKey}`;
   const showAll = allKey === key;
-  const count =
-    'completed' in status
-      ? t(
-          status.state === 'ready' && !status.runFinished && status.planFinished
-            ? 'planRunning'
-            : 'planCount',
-          { done: status.completed, total: status.total },
-        )
-      : status.state === 'loading'
-        ? t('planLoading')
-        : t('planError');
+  const body = (
+    <>
+      {status.state === 'stale-criteria' || status.state === 'stale-attempt' ? (
+        <p className="mb-2 text-caption text-warning">
+          {t(status.state === 'stale-attempt' ? 'planOldAttempt' : 'planStale')}
+        </p>
+      ) : null}
+      {selection?.lastTeam ? (
+        <p className="mb-2 text-caption text-muted-foreground">{t('teamLast')}</p>
+      ) : null}
+      {model.plan.runStatus &&
+      ['failed', 'cancelled', 'interrupted'].includes(model.plan.runStatus) ? (
+        <p className="mb-2 text-caption text-warning">
+          {ts(model.plan.runStatus)} · {t('planPreserved')}
+        </p>
+      ) : null}
+      {status.state === 'loading' ? (
+        <p className="py-2 text-caption text-muted-foreground">{t('planLoading')}</p>
+      ) : null}
+      {status.state === 'error' || status.state === 'mismatch' ? (
+        <div className="flex items-center justify-between gap-2 pb-2 text-caption">
+          <p className="text-warning">
+            {t(status.state === 'mismatch' ? 'planMismatch' : 'planError')}
+          </p>
+          <Button size="compact" variant="tertiary" onClick={() => model.plan.retry()}>
+            {t('retry')}
+          </Button>
+        </div>
+      ) : null}
+      {/* Both places use the kit's plan rows (chat-widgets-contract §4.1): its glyphs, and the
+          step in progress marked as the current step. */}
+      {plan ? (
+        <AgentSteeringPlan
+          steps={(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => ({
+            id: item.id,
+            title: item.title,
+            status:
+              item.status === 'completed'
+                ? 'done'
+                : item.status === 'in_progress'
+                  ? 'active'
+                  : 'pending',
+          }))}
+          status={
+            model.plan.runStatus === 'running' && selection?.status === 'active'
+              ? 'running'
+              : 'waiting'
+          }
+          labels={{ plan: t('planHeading') }}
+          statusLabel={(state) =>
+            t(state === 'done' ? 'completed' : state === 'active' ? 'in_progress' : 'pending')
+          }
+          wrapTitles
+          // The composer's Todo box has its own inset.
+          className={variant === 'composer' ? 'px-0 pb-0' : undefined}
+        />
+      ) : null}
+      {plan && plan.items.length > 5 ? (
+        <Button
+          type="button"
+          size="compact"
+          variant="ghost"
+          className="ml-6 mt-1 text-muted-foreground"
+          onClick={() => setAllKey(showAll ? null : key)}
+        >
+          {t(showAll ? 'planLess' : 'planAll', { total: plan.items.length })}
+        </Button>
+      ) : null}
+    </>
+  );
+  if (variant === 'composer')
+    return status.state === 'hidden' ? null : (
+      <div
+        id={id}
+        hidden={!model.plan.open}
+        data-testid={model.plan.open ? 'composer-work-plan' : undefined}
+        className="work-plan-disclosure"
+      >
+        {model.plan.open ? (
+          <div
+            data-testid="work-plan-items"
+            className="work-plan-items mb-2 max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain px-2.5"
+          >
+            {body}
+          </div>
+        ) : null}
+      </div>
+    );
   return (
     <div data-testid="composer-work-plan" className="min-w-0">
       {model.plan.multiple ||
@@ -643,221 +817,42 @@ export function ComposerPlan({
         </div>
       ) : null}
       {status.state !== 'hidden' ? (
-        <div className={variant === 'steering' ? undefined : 'border-b border-line/50'}>
+        <div>
           <Button
             type="button"
             variant="ghost"
             data-testid="work-plan-toggle"
-            className="h-auto min-h-10 w-full justify-start gap-2 rounded-none px-4 py-2 text-left text-xs"
+            className="h-auto min-h-10 w-full justify-start gap-2 rounded-none px-4 py-2 text-left text-caption"
             aria-expanded={model.plan.open}
             aria-controls={panelId}
             onClick={() => model.plan.setOpen(!model.plan.open)}
           >
             <ChevronDown
               size={14}
-              className={`shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
+              className={`shrink-0 text-muted-foreground transition-[rotate] duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none ${model.plan.open ? '' : '-rotate-90'}`}
             />
-            <span className="font-medium">{t('planHeading')}</span>
+            <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('planHeading')}</span>
             {selection && model.plan.multiple ? (
               <span className="min-w-0 truncate text-muted-foreground">
                 {selection.key === 'team' ? t('teamPlan') : selection.label}
               </span>
             ) : null}
-            <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{count}</span>
+            <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+              {planCount(status, t)}
+            </span>
           </Button>
           <div id={panelId} hidden={!model.plan.open} className="work-plan-disclosure">
             {model.plan.open ? (
               <div
                 data-testid="work-plan-items"
-                className={`work-plan-items max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain ${variant === 'steering' ? 'pb-2' : 'px-4 pb-2'}`}
+                className="work-plan-items max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain pb-2"
               >
-                {status.state === 'stale-criteria' || status.state === 'stale-attempt' ? (
-                  <p className="mb-2 text-xs text-warning">
-                    {t(status.state === 'stale-attempt' ? 'planOldAttempt' : 'planStale')}
-                  </p>
-                ) : null}
-                {selection?.lastTeam ? (
-                  <p className="mb-2 text-xs text-muted-foreground">{t('teamLast')}</p>
-                ) : null}
-                {model.plan.runStatus &&
-                ['failed', 'cancelled', 'interrupted'].includes(model.plan.runStatus) ? (
-                  <p className="mb-2 text-xs text-warning">
-                    {ts(model.plan.runStatus)} · {t('planPreserved')}
-                  </p>
-                ) : null}
-                {status.state === 'loading' ? (
-                  <p className="py-2 text-xs text-muted-foreground">{t('planLoading')}</p>
-                ) : null}
-                {status.state === 'error' || status.state === 'mismatch' ? (
-                  <div className="flex items-center justify-between gap-2 pb-2 text-xs">
-                    <p className="text-warning">
-                      {t(status.state === 'mismatch' ? 'planMismatch' : 'planError')}
-                    </p>
-                    <Button size="compact" variant="tertiary" onClick={() => model.plan.retry()}>
-                      {t('retry')}
-                    </Button>
-                  </div>
-                ) : null}
-                {plan && variant === 'steering' ? (
-                  <AgentSteeringPlan
-                    steps={(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => ({
-                      id: item.id,
-                      title: item.title,
-                      status:
-                        item.status === 'completed'
-                          ? 'done'
-                          : item.status === 'in_progress'
-                            ? 'active'
-                            : 'pending',
-                    }))}
-                    status={
-                      model.plan.runStatus === 'running' && selection?.status === 'active'
-                        ? 'running'
-                        : 'waiting'
-                    }
-                    labels={{ plan: t('planHeading') }}
-                    statusLabel={(state) =>
-                      t(
-                        state === 'done'
-                          ? 'completed'
-                          : state === 'active'
-                            ? 'in_progress'
-                            : 'pending',
-                      )
-                    }
-                    wrapTitles
-                  />
-                ) : plan ? (
-                  <ol className="flex flex-col">
-                    {(showAll ? plan.items : plan.items.slice(0, 5)).map((item) => (
-                      <li
-                        key={item.id}
-                        data-plan-item={item.id}
-                        className="flex min-h-8 items-start gap-2.5 py-1.5 text-ui leading-5"
-                      >
-                        <WorkPlanStatusIcon status={item.status} label={t(item.status)} />
-                        <span
-                          className={`min-w-0 break-words ${item.status === 'completed' ? 'text-muted-foreground' : item.status === 'in_progress' ? 'font-medium' : ''}`}
-                        >
-                          {item.title}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                ) : null}
-                {plan && plan.items.length > 5 ? (
-                  <Button
-                    type="button"
-                    size="compact"
-                    variant="ghost"
-                    className="ml-6 mt-1 text-muted-foreground"
-                    onClick={() => setAllKey(showAll ? null : key)}
-                  >
-                    {t(showAll ? 'planLess' : 'planAll', { total: plan.items.length })}
-                  </Button>
-                ) : null}
+                {body}
               </div>
             ) : null}
           </div>
         </div>
       ) : null}
-      {variant === 'steering' ? null : <RunActivity model={model} />}
     </div>
-  );
-}
-function WorkPlanStatusIcon({
-  status,
-  label,
-}: {
-  status: 'pending' | 'in_progress' | 'completed';
-  label: string;
-}) {
-  return (
-    <span
-      role="img"
-      className={`mt-0.5 inline-flex shrink-0 ${status === 'in_progress' ? 'text-primary' : 'text-muted-foreground'}`}
-      title={label}
-      aria-label={label}
-    >
-      {status === 'completed' ? (
-        <CircleCheck size={15} />
-      ) : status === 'in_progress' ? (
-        <LoaderCircle size={15} className="motion-safe:animate-spin" />
-      ) : (
-        <Circle size={15} strokeDasharray="3 3" />
-      )}
-    </span>
-  );
-}
-function RunActivity({ model }: { model: ChatWidgetModel }) {
-  const t = useTranslations('Widgets');
-  const ts = useTranslations('Status');
-  const text = model.action.visible
-    ? ''
-    : model.activity.text === 'starting'
-      ? t('activityStarting')
-      : model.activity.text === 'working'
-        ? t('activityWorking')
-        : model.activity.text === 'failed'
-          ? t('activityFailed')
-          : model.activity.text === 'user'
-            ? t('activityUser')
-            : model.activity.text === 'elapsed' || model.activity.text === 'record'
-              ? ''
-              : ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(
-                    model.activity.text,
-                  )
-                ? ts(model.activity.text)
-                : model.activity.text;
-  const elapsed =
-    model.activity.elapsedMs == null
-      ? null
-      : model.activity.elapsedMs < 60_000
-        ? `${Math.max(0, Math.floor(model.activity.elapsedMs / 1000))}s`
-        : `${Math.floor(model.activity.elapsedMs / 60_000)}m ${Math.floor((model.activity.elapsedMs % 60_000) / 1000)}s`;
-  // A finished run's status pill already links to its record; the line is for live work.
-  if (!model.live && !text) return null;
-  return (
-    <div
-      data-testid="run-activity"
-      className="flex min-h-8 min-w-0 items-center gap-2 px-4 py-1.5 text-xs text-muted-foreground"
-    >
-      {model.live &&
-      !model.activity.frozen &&
-      model.plan.runStatus === 'running' &&
-      !model.action.visible ? (
-        <QuietActivity />
-      ) : (
-        <History size={13} className="shrink-0" />
-      )}
-      {text ? <span className="min-w-0 truncate">{text}</span> : null}
-      {elapsed ? (
-        <span className="shrink-0 tabular-nums">{t('activityElapsed', { time: elapsed })}</span>
-      ) : null}
-      {/* Pause, resume and cancel live in the dock's active run controls, one place (#91). */}
-      <RunLink
-        model={model}
-        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-sm hover:text-text focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <PanelRight size={12} aria-hidden="true" />
-        {t('activityRecord')}
-      </RunLink>
-    </div>
-  );
-}
-function QuietActivity() {
-  return (
-    <span
-      aria-hidden="true"
-      className="corral-quiet-activity inline-flex shrink-0 items-center gap-0.5"
-    >
-      {[0, 1, 2].map((dot) => (
-        <span
-          key={dot}
-          className="size-1 rounded-full bg-muted"
-          style={{ animationDelay: `${dot * 160}ms` }}
-        />
-      ))}
-    </span>
   );
 }

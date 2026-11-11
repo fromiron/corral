@@ -93,8 +93,10 @@ test('selects a registered check, approves its SDK call and reads the owned veri
       return { sessionId, runId: started.runId };
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    await expect(page.getByText('node check.mjs', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Run this check once', exact: true }).click();
+    // A session's run opens in its run history, beside the conversation that also shows the request.
+    const needsYou = page.getByTestId('run-needs-you');
+    await expect(needsYou.getByText('node check.mjs', { exact: true })).toBeVisible();
+    await needsYou.getByRole('button', { name: 'Run this check once', exact: true }).click();
     await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
     const reports = await page.evaluate(
       async (sessionId) => (await fetch(`/api/v1/sessions/${sessionId}/verifications`)).json(),

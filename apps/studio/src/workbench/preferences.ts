@@ -3,6 +3,8 @@ import { createStore } from 'zustand/vanilla';
 
 export type ChatDensity = 'results' | 'basic' | 'detailed';
 export type Theme = 'system' | 'light' | 'dark';
+/** The design kit's size step for the whole app. */
+export type InterfaceDensity = 'default' | 'compact';
 export interface Preferences {
   version: 1;
   theme: Theme;
@@ -13,6 +15,7 @@ export interface Preferences {
   /** Desktop app: a system notification when something needs the person (off by default). */
   notify: boolean;
   chatDensity: ChatDensity;
+  density: InterfaceDensity;
 }
 
 export const PREFERENCES_KEY = 'corral:workbench:v1';
@@ -24,6 +27,7 @@ const defaults: Preferences = {
   sendKey: 'enter',
   notify: false,
   chatDensity: 'basic',
+  density: 'default',
 };
 
 export function parsePreferences(raw: string | null): Preferences {
@@ -44,6 +48,7 @@ export function parsePreferences(raw: string | null): Preferences {
         value.chatDensity === 'results' || value.chatDensity === 'detailed'
           ? value.chatDensity
           : 'basic',
+      density: value.density === 'compact' ? 'compact' : 'default',
     };
   } catch {
     return { ...defaults };

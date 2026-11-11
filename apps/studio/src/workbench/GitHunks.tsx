@@ -5,7 +5,7 @@ import {
   type GitHunks as GitHunksView,
   type GitHunkWrite,
 } from '@corral/contracts';
-import { Button, Checkbox } from '@corral/react/design-kit';
+import { Button, Checkbox, fontWeights } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -131,8 +131,8 @@ function HunkSelection({
     }
   };
   return (
-    <section aria-label={t('title')} className="flex min-w-0 flex-col gap-2 text-xs">
-      <h4 className="font-medium">{t('title')}</h4>
+    <section aria-label={t('title')} className="flex min-w-0 flex-col gap-2 text-caption">
+      <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('title')}</h4>
       {!view ? (
         <p role="status" className="text-muted-foreground">
           {t('loading')}

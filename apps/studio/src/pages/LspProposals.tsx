@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Select,
 } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
@@ -91,10 +92,14 @@ export function LspProposals({
     }
   }
   const file = detail?.files.find((file) => file.path === path);
+  // Nothing proposed and nothing failed: the area is not there at all.
+  if (items.length === 0 && !error && selected === null) return null;
   return (
     <section className="flex flex-col gap-2 border-t border-line pt-3" aria-label={t('heading')}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{t('heading')}</h3>
+        <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('heading')}
+        </h3>
         <Button
           variant="ghost"
           size="icon-compact"
@@ -105,20 +110,18 @@ export function LspProposals({
           <RefreshCw />
         </Button>
       </div>
-      {/* What a proposal is matters once there is one; an empty list says so on its own. */}
-      <p className="text-xs text-muted-foreground">{items.length ? t('hint') : t('empty')}</p>
       {items.map((item) => (
         <div key={item.proposalId} className="flex flex-col gap-1 border-b border-line pb-2">
           <Button variant="tertiary" size="compact" onClick={() => setSelected(item.proposalId)}>
             {t('review', { title: item.title })}
           </Button>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {t(`states.${item.state}`)} · {t('files', { count: item.files.length })}
           </p>
         </div>
       ))}
       {!selected && error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
@@ -132,23 +135,27 @@ export function LspProposals({
           <DialogTitle>{detail?.title ?? t('heading')}</DialogTitle>
           <DialogDescription>{t('applyHint')}</DialogDescription>
           {error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {error}
             </p>
           ) : null}
           {!detail && !error ? <p role="status">{t('loading')}</p> : null}
           {detail ? (
             <>
-              <p role="status" className="text-sm font-medium">
+              <p
+                role="status"
+                className="text-subtitle"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
                 {t(`states.${detail.state}`)}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 {t('source', { server: detail.serverId, revision: detail.configRevision })} ·{' '}
                 <span className="font-mono" title={detail.hash}>
                   {detail.hash.slice(0, 12)}
                 </span>
               </p>
-              <div className="flex flex-col gap-1 text-sm">
+              <div className="flex flex-col gap-1 text-body">
                 <span aria-hidden="true">{t('file')}</span>
                 <Select
                   label={t('file')}
@@ -180,7 +187,7 @@ export function LspProposals({
                 </Button>
               </div>
               {detail.state === 'partial' || detail.state === 'failed' ? (
-                <p className="text-sm text-warning">{t('partialHint')}</p>
+                <p className="text-body text-warning">{t('partialHint')}</p>
               ) : null}
             </>
           ) : null}

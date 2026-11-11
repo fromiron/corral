@@ -48,6 +48,10 @@ export interface InspectorSheetProps {
   /** Other saved teams at their latest revision, for reference teams. */
   teams: readonly TeamReference[];
   onOpenTeam?: ((corralId: string) => void) | undefined;
+  /** Opens the roles to copy onto the selected agent. */
+  onImportRole?: (() => void) | undefined;
+  /** What the last edit left out, shown under the heading until the next edit. */
+  notice?: string | null | undefined;
   onSelect: (selection: TeamSelection) => void;
   onClose: () => void;
 }
@@ -129,6 +133,8 @@ export function InspectorSheet({
   loopSettings,
   teams,
   onOpenTeam,
+  onImportRole,
+  notice,
   onSelect,
   onClose,
 }: InspectorSheetProps) {
@@ -230,6 +236,11 @@ export function InspectorSheet({
               {action.label}
             </Button>
           ))}
+        {onImportRole && ids.length === 1 && nodes.get(ids[0] as string)?.type === 'agent' ? (
+          <Button variant="secondary" size="compact" onClick={onImportRole}>
+            {t('importRole')}
+          </Button>
+        ) : null}
         <Button
           variant="secondary"
           size="compact"
@@ -412,7 +423,7 @@ export function InspectorSheet({
   return (
     <aside
       aria-label={t('inspector')}
-      className="pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-[14px] border border-border bg-background shadow-lg"
+      className="pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg"
     >
       <header className="flex items-center gap-2 border-b border-border py-2 pr-2 pl-4">
         {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}
@@ -426,6 +437,17 @@ export function InspectorSheet({
           <X />
         </Button>
       </header>
+      {notice ? (
+        <p
+          className={cn(
+            size.type.caption,
+            'flex gap-1.5 border-b border-border px-4 py-2 text-foreground',
+          )}
+        >
+          <TriangleAlert size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />
+          {notice}
+        </p>
+      ) : null}
       <div className="grid content-start gap-4 overflow-y-auto p-4">{body}</div>
     </aside>
   );

@@ -72,6 +72,62 @@ export interface InboxItem {
   terminalId?: string;
 }
 
+/** A session's latest recorded check, decision and applying, with no text, paths or output. */
+export interface SessionEvidence {
+  sessionId: string;
+  /** Present only when the latest check completed. */
+  check: {
+    name: string;
+    verdict: 'pass' | 'fail' | 'inconclusive' | 'not_evaluated';
+    /** An applied file write was recorded after the check started. */
+    writesSince: boolean;
+  } | null;
+  decision: {
+    decision: DecisionView['decision'];
+    /** An applied file write was recorded after the decision. */
+    writesSince: boolean;
+  } | null;
+  integration: IntegrationView['state'] | null;
+}
+
+// One statement for every session of the project: each table is read once, ranked per session,
+// and only the latest row of each is kept. A write counts when it was recorded strictly later.
+const SESSION_EVIDENCE = `
+WITH s AS (
+  SELECT id, pinned, updated_at FROM work_sessions WHERE project_id = ? AND archived_at IS NULL
+),
+v AS (
+  SELECT session_id, started_at AS at, json_extract(command_json, '$.name') AS name,
+    json_extract(report_json, '$.state') AS state, json_extract(report_json, '$.verdict') AS verdict,
+    ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY started_at DESC, rowid DESC) AS n
+  FROM verifications WHERE session_id IN (SELECT id FROM s)
+),
+d AS (
+  SELECT session_id, created_at AS at, decision,
+    ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, rowid DESC) AS n
+  FROM review_decisions WHERE session_id IN (SELECT id FROM s)
+),
+i AS (
+  SELECT session_id, state,
+    ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, rowid DESC) AS n
+  FROM integrations WHERE session_id IN (SELECT id FROM s)
+),
+w AS (
+  SELECT session_id, MAX(created_at) AS at FROM file_operations
+  WHERE state = 'applied' AND session_id IN (SELECT id FROM s) GROUP BY session_id
+)
+SELECT s.id AS session_id,
+  v.name AS check_name, v.state AS check_state, v.verdict AS check_verdict,
+  COALESCE(w.at > v.at, 0) AS check_writes,
+  d.decision AS decision, COALESCE(w.at > d.at, 0) AS decision_writes,
+  i.state AS integration
+FROM s
+LEFT JOIN v ON v.session_id = s.id AND v.n = 1
+LEFT JOIN d ON d.session_id = s.id AND d.n = 1
+LEFT JOIN i ON i.session_id = s.id AND i.n = 1
+LEFT JOIN w ON w.session_id = s.id
+ORDER BY s.pinned DESC, s.updated_at DESC, s.id`;
+
 /** The file in the linked folder as it is now: absent, its hash, or refused (a link). */
 async function originalState(
   root: string,
@@ -533,6 +589,39 @@ export class ReviewService {
           );
       return this.integration(integrationId);
     });
+  }
+
+  // ── what a session already has on record ────────────────────────────────────
+
+  /**
+   * Each unarchived session's latest check, decision and applying; null for an unknown project.
+   * Reads recorded rows only: no Git, no working copy, no retention clean-up, no writes.
+   */
+  sessionEvidence(projectId: string): SessionEvidence[] | null {
+    if (!this.db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return null;
+    const rows = this.db.prepare(SESSION_EVIDENCE).all(projectId) as {
+      session_id: string;
+      check_name: string | null;
+      check_state: string | null;
+      check_verdict: NonNullable<SessionEvidence['check']>['verdict'] | null;
+      check_writes: number;
+      decision: DecisionView['decision'] | null;
+      decision_writes: number;
+      integration: IntegrationView['state'] | null;
+    }[];
+    return rows.map((r) => ({
+      sessionId: r.session_id,
+      check:
+        r.check_state === 'completed' && r.check_verdict
+          ? {
+              name: String(r.check_name),
+              verdict: r.check_verdict,
+              writesSince: r.check_writes === 1,
+            }
+          : null,
+      decision: r.decision ? { decision: r.decision, writesSince: r.decision_writes === 1 } : null,
+      integration: r.integration,
+    }));
   }
 
   // ── what needs a person ─────────────────────────────────────────────────────

@@ -33,7 +33,7 @@ test('settings guard preserves failed edits and saves only their selected target
   await page.getByRole('link', { name: 'General', exact: true }).click();
   await guard.getByRole('button', { name: 'Discard changes' }).click();
   await expect(
-    page.locator('.settings-content').getByRole('heading', { name: 'General', exact: true }),
+    page.locator('[data-settings-header]').getByRole('heading', { name: 'General', exact: true }),
   ).toBeVisible();
   const saved = await page.evaluate(async () =>
     (await fetch('/api/v1/harness/defaults/personal/default')).json(),

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -29,10 +30,47 @@ for (const name of [
 ])
   resolved(name);
 const pi = await import(pathToFileURL(resolved('@corral/adapter-pi')).href);
-const { startCorralServer } = await import(
+const { startCorralServer, loadFff } = await import(
   pathToFileURL(contained(join(server, 'src/index.js'))).href
 );
 assert.equal(typeof startCorralServer, 'function');
+// FFF ranks path search. Load it the way the server does, from this platform's binary in the
+// runtime, and run one path query on a scratch folder.
+const fff = await loadFff();
+assert(fff.binaryExists(), 'The FFF binary for this platform is not in the runtime');
+contained(fff.findBinary());
+fff.FileFinder.ensureLoaded();
+const searchRoot = mkdtempSync(join(tmpdir(), 'corral-fff-check-'));
+try {
+  mkdirSync(join(searchRoot, 'src', 'files'), { recursive: true });
+  writeFileSync(join(searchRoot, 'src', 'files', 'service.ts'), '');
+  writeFileSync(join(searchRoot, 'readme.md'), '');
+  const finder = fff.FileFinder.create({
+    basePath: searchRoot,
+    disableMmapCache: true,
+    disableContentIndexing: true,
+    disableWatch: true,
+  });
+  assert(finder.ok, 'FFF could not open an index');
+  try {
+    const scanned = await finder.value.waitForScan(10000);
+    assert(scanned.ok && scanned.value, 'FFF did not finish its scan');
+    const found = finder.value.mixedSearch('srvc', { pageSize: 5 });
+    assert(
+      found.ok &&
+        found.value.items.some(
+          (entry) =>
+            entry.type === 'file' &&
+            entry.item.relativePath.replaceAll('\\', '/') === 'src/files/service.ts',
+        ),
+      'FFF path query did not find the file',
+    );
+  } finally {
+    finder.value.destroy();
+  }
+} finally {
+  rmSync(searchRoot, { recursive: true, force: true });
+}
 const storageRequire = createRequire(resolved('@corral/storage-sqlite'));
 contained(storageRequire.resolve('better-sqlite3'));
 const Database = storageRequire('better-sqlite3');
@@ -133,6 +171,10 @@ assert(
   native.some((path) => path.includes(`${sep}node-pty${sep}`)),
   'PTY native binding was not loaded',
 );
+assert(
+  native.some((path) => path.includes('ffi-rs')),
+  'FFF’s FFI native binding was not loaded',
+);
 for (const file of Object.keys(require.cache)) contained(file);
 for (const file of native) contained(file);
 const processEntry = resolved('@corral/adapter-pi/processes');
@@ -165,5 +207,5 @@ for (const [entry, start, protocol] of [
   });
 }
 console.log(
-  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/PTY bindings, local AI manifest and helper start, both Pi worker handshakes${process.platform === 'linux' ? ', PTY shell input/101x37 resize/exit' : ''}.`,
+  `Runtime containment verified: ${Object.keys(require.cache).length} loaded modules, SQLite/PTY/FFF bindings, an FFF path query, local AI manifest and helper start, both Pi worker handshakes${process.platform === 'linux' ? ', PTY shell input/101x37 resize/exit' : ''}.`,
 );

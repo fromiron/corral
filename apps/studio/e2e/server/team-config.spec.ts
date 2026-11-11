@@ -63,6 +63,15 @@ test('pinned harness names survive two revision upgrades and reload without upgr
   }
 });
 
+/** The session menu's team line, where the selected saved team names its revision. */
+async function teamLine(page: Page, title: string) {
+  await page
+    .getByRole('banner')
+    .getByRole('button', { name: `Actions for ${title}`, exact: true })
+    .click();
+  return page.getByRole('menuitem', { name: /^Choose a Corral/ });
+}
+
 test('a saved-team conversation keeps its team name and revision after later edits', async ({
   page,
   corral,
@@ -80,7 +89,8 @@ test('a saved-team conversation keeps its team name and revision after later edi
     corralId: record.corralId,
   });
   await page.goto(`${corral.server.url}/sessions/${made.session.sessionId}`);
-  await expect(page.getByRole('banner')).toContainText('Saved writing team · r1');
+  await expect(await teamLine(page, 'Team provenance')).toContainText('Saved writing team · r1');
+  await page.keyboard.press('Escape');
   await requestBox(page).fill('Describe the writing task');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('chat-timeline')).toContainText('Succeeded');
@@ -89,11 +99,13 @@ test('a saved-team conversation keeps its team name and revision after later edi
     (entry: { sessionId: string }) => entry.sessionId === made.session.sessionId,
   );
   await page.goto(`${corral.server.url}/runs/${run.runId}`);
-  await expect(
-    page.getByRole('heading', { name: 'Saved writing team · r1', exact: true }),
-  ).toBeVisible();
+  // The run's head names its request; the team and its revision are in Run info
+  // (execution-monitor.md: "팀·시작 시각·실행 ID·…·저장 팀 편집 링크·…는 실행 정보의 상세에 둔다").
+  const facts = page.getByTestId('run-facts');
+  await page.getByRole('button', { name: 'Run info', exact: true }).click();
+  await expect(facts).toContainText('Saved writing team · r1');
   await expect(page.getByText('Team composed for this run · not a saved team')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Edit team', exact: true })).toBeVisible();
+  await expect(facts.getByRole('link', { name: 'Edit team', exact: true })).toBeVisible();
   await page.evaluate(
     async ({ record }) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -113,9 +125,9 @@ test('a saved-team conversation keeps its team name and revision after later edi
     { record },
   );
   await page.reload();
-  await expect(
-    page.getByRole('heading', { name: 'Saved writing team · r1', exact: true }),
-  ).toBeVisible();
+  if (!(await facts.isVisible()))
+    await page.getByRole('button', { name: 'Run info', exact: true }).click();
+  await expect(facts).toContainText('Saved writing team · r1');
 });
 
 test.describe('saved team roles', () => {
@@ -150,7 +162,8 @@ test.describe('saved team roles', () => {
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByTestId('revisions')).toContainText(`Version ${revision}`);
       await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-      await expect(page.getByRole('banner')).toContainText(`· r${revision}`);
+      await expect(await teamLine(page, 'Role refresh')).toContainText(`· r${revision}`);
+      await page.keyboard.press('Escape');
       await expect(page.getByTestId('models-not-ready')).toContainText(
         `Writer r${revision} (missing-profile)`,
       );
