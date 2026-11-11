@@ -43,8 +43,10 @@ function hasExactly(value: Record<string, unknown>, keys: readonly string[]): bo
 }
 
 class Rejected extends Error {
-  constructor(readonly reason: ThemeFileError) {
+  readonly reason: ThemeFileError;
+  constructor(reason: ThemeFileError) {
     super(reason);
+    this.reason = reason;
   }
 }
 const reject = (reason: ThemeFileError): never => {
