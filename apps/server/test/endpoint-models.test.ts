@@ -722,7 +722,10 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     await registry.refreshEndpointModels('router');
     expect(registry.profilesView().map((view) => view.modelId)).toEqual(['gamma']);
     expect(registry.endpointOf(snapshot)?.models.map((model) => model.id)).toEqual(['alpha']);
-    expect(registry.modelBroker(snapshot).model).toMatchObject({ id: 'alpha', contextWindow: 60000 });
+    expect(registry.modelBroker(snapshot).model).toMatchObject({
+      id: 'alpha',
+      contextWindow: 60000,
+    });
     await expect(registry.credentials(snapshot)).resolves.toBe('k');
     // A new run cannot start on a model the endpoint no longer lists.
     expect(registry.resolve('router:alpha', 'live').ok).toBe(false);

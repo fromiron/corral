@@ -928,7 +928,8 @@ export class ModelRegistry implements ModelResolver {
     // A pinned definition whose written part changed refuses its requests from now on.
     for (const [key, entry] of this.pinned) {
       const current = endpoints.get(entry.provider);
-      if (!current || writtenPart(current, entry.modelId) !== entry.written) this.pinned.delete(key);
+      if (!current || writtenPart(current, entry.modelId) !== entry.written)
+        this.pinned.delete(key);
     }
     // A new endpoint, a new address or access, or an address with no list yet fetches its list.
     // A fetch in flight for an unchanged address and access goes on; its result is kept.
