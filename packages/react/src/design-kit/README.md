@@ -118,7 +118,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 | `components/ui/slider.tsx` | `components/ui/slider.tsx` | `02aeebcf96caef2d9cb07647bf410d7b7d8de84a53b173d2f511fd5c85352a23` | `a7a9f1a7f68f538235f996e225749c6540aceef443f06380efcb3ca5337ea5c2` |
 | `components/ui/switch.tsx` | `components/ui/switch.tsx` | `68a0fe3e5dd5b30cf21633df824577794ccec67f14f38b8da8b307371b77ebb6` | `672bb716a5270c05906c877562fb4a07fff632d6500e237259a7cb127c3b91ab` |
 | `components/ui/table.tsx` | `components/ui/table.tsx` | `0d9426933db7f73c5e7e6579532f1abe1668430892f5b604a24dd34c7b254c51` | `5b63c7b9f9eee8115475558e81aa80ccc0432c826f15bc186e4a61d8fe43b8ab` |
-| `components/ui/tabs.tsx` | `components/ui/tabs.tsx` | `03bb6312d0bf95d4f2a9d6441da73c997714562f2c435e77cb51f9a23a381418` | `f311464ec7ab1cb6da0db7c462330fafabcb7ae6559974342644ef3d505be462` |
+| `components/ui/tabs.tsx` | `components/ui/tabs.tsx` | `9e08d603706011f6bdd3a3b90db68307566b02bc8076397339a70cb76bd28031` | `fe12493678b45a03a3e6ce503393f01ea466a0ea848b056e146d786dfe05c1bc` |
 | `components/ui/tabs-subtle.tsx` | `components/ui/tabs-subtle.tsx` | `33b690831bb70016cffa08dcd413b1437904e7653e414490563955b0b13a1811` | `8021809eff7993c656c15f669e947d9644223afacf724afc46343e8295127052` |
 | `components/ui/command-menu.tsx` | `components/ui/command-menu.tsx` | `f005cbc158b0cc6a78f64c0a17b5dbee60dc01a54147fc68797865c27aceee3f` | `eb86e9b97ba6e68f65664bf063c54248bb5b69d051c50e35e7de4ab57320e0a9` |
 | `components/ui/thinking-steps.tsx` | `components/ui/thinking-steps.tsx` | `8ffe24780dcbfdfa2aa408fb93f50393ff90300f84ec4c4fdac2f53d6f2dfc8d` | `df1fc89a2883924decca6755c565f1546015bde20d45ec2c5b621c5a64369015` |
