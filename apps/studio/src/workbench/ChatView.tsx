@@ -91,6 +91,8 @@ export function ChatView({
   // Where the view last put the end in view itself; its scroll event may arrive after the turn
   // has grown again, which is not the reader leaving the end.
   const followedTop = useRef(Number.POSITIVE_INFINITY);
+  /** The position the last scroll or pointer event saw, to tell moving down from moving up. */
+  const seenTop = useRef(0);
   const restoreTop = useRef<number | null>(null);
   const restoreAnchor = useRef<{ id: string; offset: number } | null>(null);
   const readingAnchor = useRef<{ id: string; offset: number } | null>(null);
@@ -234,8 +236,16 @@ export function ChatView({
     const box = timeline.current;
     if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
     // Still where the view put the end: the content grew below, the reader did not move up.
-    if (follow.current && box.scrollTop >= followedTop.current - 1) return;
-    follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    if (follow.current && box.scrollTop >= followedTop.current - 1) {
+      seenTop.current = box.scrollTop;
+      return;
+    }
+    // Moving up leaves the end, however little: within the last 48px the view would otherwise
+    // pull an older action back out from under the pointer. Moving down to within 48px of the
+    // end follows again; staying put only follows at the end itself (the content shrank).
+    const gap = box.scrollHeight - box.scrollTop - box.clientHeight;
+    follow.current = gap < 1 || (box.scrollTop > seenTop.current && gap < 48);
+    seenTop.current = box.scrollTop;
     const top = box.getBoundingClientRect().top;
     const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
       (item) => item.getBoundingClientRect().bottom > top,
