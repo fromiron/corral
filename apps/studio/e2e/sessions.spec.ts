@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { requestBox, slash, startSession, teamFromTemplate } from './workbench.ts';
+import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
 
 // Work sessions and input intents in the in-browser runtime.
 
@@ -44,7 +44,7 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
 
   // the next request carries the conversation; the first run is left as it was.
   await expect(box(page)).toHaveAccessibleDescription(
-    'Send to: new run in this session · follow-up',
+    'Send to: new run in this session · next request',
   );
   await box(page).fill('Now only for one writer');
   await page.getByRole('button', { name: 'Send' }).click();
@@ -73,10 +73,10 @@ test('while a run works, a request waits in the queue until a person starts it',
   await box(page).fill('First request');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(cards(page)).toHaveCount(1);
-  // Busy: continuing is not offered; queueing is.
-  await box(page).fill('/');
-  await expect(page.getByRole('option', { name: /\/next/ })).toHaveCount(0);
-  await slash(page, 'queue');
+  // Busy: a next request is decided when it is sent, so it waits behind the run (workbench.md).
+  await expect(box(page)).toHaveAccessibleDescription(
+    'Send to: after the current run in this session · next request',
+  );
   await box(page).fill('Then summarise it');
   await page.getByRole('button', { name: 'Send' }).click();
   const queue = page.getByRole('region', { name: 'Queued next tasks' });

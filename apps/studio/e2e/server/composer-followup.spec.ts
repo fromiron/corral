@@ -25,7 +25,7 @@ test.describe('saved requests with a stale instruction draft', () => {
         await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
         const first = corral.server.coordinator.listRuns()[0];
         if (!first) throw new Error('First run missing');
-        await slash(page, 'queue');
+        // A next request sent while the run works waits behind it (workbench.md).
         await box.fill('Saved queued request');
         await page.getByRole('button', { name: 'Send', exact: true }).click();
         await expect(page.getByRole('button', { name: 'Start now', exact: true })).toBeVisible();
@@ -91,7 +91,9 @@ test.fixme('same-name result references stay distinct after reload and deleting 
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(index + 1);
     await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
-    await expect(page.getByTestId('composer-destination')).toContainText('follow-up');
+    await expect(page.getByTestId('composer-destination')).toContainText(
+      'new run in this session · next request',
+    );
   }
   await box.fill('@notes');
   const results = page.getByRole('listbox', { name: 'References', exact: true });

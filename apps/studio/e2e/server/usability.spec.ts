@@ -151,7 +151,7 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
     .click();
   await expect(request(page)).toHaveValue('Keep this purpose through team setup');
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
-  // Nothing to ask about yet: the only choice is a follow-up, so no intent picker shows.
+  // Nothing to ask about yet: the only choice is a next request, so no intent picker shows.
   await expect(page.getByRole('combobox', { name: 'What this is' })).toHaveCount(0);
   await request(page).fill('');
   await page.reload();
@@ -177,8 +177,8 @@ test.describe('instruction delivery', () => {
         .getByTestId('app-sidebar')
         .getByRole('link', { name: /^Draft a release plan Paused · / }),
     ).toBeVisible();
-    // While a run is active a request queues by default; an instruction is chosen explicitly
-    // (workbench.md 문맥형 설정: "기본 입력은 다음 요청 대기열이며 지시는 사용자가 명시적으로 선택한다").
+    // While a run is active a next request waits behind it by default; an instruction is chosen
+    // explicitly (workbench.md: "기본 입력은 다음 요청이며 지시는 사용자가 명시적으로 선택한다").
     const intent = page.getByRole('combobox', { name: 'What this is', exact: true });
     await intent.click();
     await page.getByRole('option', { name: /^Instruction/ }).click();
@@ -334,7 +334,7 @@ test('UX-015-04 older results remain reachable after ten runs', async ({ page, c
       timeline(page).getByRole('region', { name: `Run #${index + 1}`, exact: true }),
     ).toContainText('Succeeded');
     await expect(request(page)).toHaveAccessibleDescription(
-      'Send to: new run in this session · follow-up',
+      'Send to: new run in this session · next request',
     );
   }
   const panel = await openResultsList(page);

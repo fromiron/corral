@@ -1,12 +1,6 @@
 import type { WorkSession } from '@corral/core';
 import type { Page } from '@playwright/test';
-import {
-  newConversation,
-  requestBox,
-  slash,
-  startSession,
-  teamFromTemplate,
-} from '../workbench.ts';
+import { newConversation, requestBox, startSession, teamFromTemplate } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const picker = (page: Page) =>
@@ -69,7 +63,7 @@ test.describe('queued permission ownership', () => {
     expect(corral.server.coordinator.getRunSnapshot(firstRunId)?.permissionMode).toBe(
       'accept_edits',
     );
-    await slash(page, 'queue');
+    // A next request sent while the run works waits behind it (workbench.md).
     await choose(page, 'Ask');
     await requestBox(page).fill('Queued request');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
