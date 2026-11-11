@@ -1,3 +1,4 @@
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { openRunArchive, type RuntimeSnapshot, type RuntimeTransport } from '@corral/core';
 import type { RunSessionState } from '@corral/react';
 
@@ -54,17 +55,21 @@ async function loadRunView(
   runId: string,
   details: boolean,
 ) {
-  const readTurn = async () => {
+  // The turn is kept once the run has ended; before that there is none to ask for.
+  const readTurn = async (snapshot: RuntimeSnapshot) => {
+    if (!TERMINAL_RUN_STATUSES.has(snapshot.projection.status)) return null;
     const turn = (await transport.getConversationTurn?.(runId)) ?? null;
     if (turn && turn.runId !== runId)
       throw new Error('The conversation turn does not match this run.');
     return turn;
   };
+  const read = transport.getSnapshot(runId);
+  const turnRead = read.then(readTurn);
   if (!details) {
     const [{ projection, partialOutputs }, definition, conversationTurn] = await Promise.all([
-      transport.getSnapshot(runId),
+      read,
       transport.getRunDefinition(runId),
-      readTurn(),
+      turnRead,
     ]);
     if (!definition || projection.runId !== runId) throw new Error('The run is unavailable.');
     return {
@@ -80,8 +85,8 @@ async function loadRunView(
   }
   const [record, conversationTurn, snapshot] = await Promise.all([
     readHistory(runId),
-    readTurn(),
-    transport.getSnapshot(runId),
+    turnRead,
+    read,
   ]);
   const archive = openRunArchive(record);
   if (archive.visibility !== 'private' || archive.runId !== runId)
