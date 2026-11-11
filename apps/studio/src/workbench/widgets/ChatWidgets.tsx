@@ -374,13 +374,16 @@ function ChangesChip({ model }: { model: ChatWidgetModel }) {
       params={{ sessionId: model.sessionId }}
       search={{ scope: 'run', runId: model.runId }}
       data-testid="run-changes-chip"
-      className={chipClass}
+      // The count is never cut; the line count leaves first when the line is short.
+      className={`${chipClass} shrink-0`}
       title={t(model.changesLabel === 'provisional' ? 'changesProvisional' : 'changesFixed')}
     >
-      <FileDiff size={14} />
-      <span className="truncate">{text}</span>
+      <FileDiff size={14} className="shrink-0" />
+      <span className="whitespace-nowrap">{text}</span>
       {model.changeLines != null ? (
-        <span className="text-micro">{t('changesLines', { count: model.changeLines })}</span>
+        <span className="whitespace-nowrap text-micro @max-lg/composer-surface:hidden">
+          {t('changesLines', { count: model.changeLines })}
+        </span>
       ) : null}
     </Link>
   );
@@ -519,8 +522,10 @@ export function ComposerDock({
       data-testid="composer-dock"
       className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col"
     >
-      {/* One line at every width: the lead and the Overview opener keep their place, and the
-          items between give up their lower-priority words (container queries) and truncate. */}
+      {/* One line at every width, each part on one line. The plan count and the change count
+          stay whole; the plan toggle is what shrinks, and inside it the current step's words.
+          As the line narrows (container queries) the step leaves, then the change summary's line
+          count, then the Overview opener's word. */}
       <div
         data-testid="composer-status-pills"
         className="mb-2 flex min-w-0 flex-nowrap items-center gap-1 empty:hidden"
@@ -544,7 +549,7 @@ export function ComposerDock({
                     : t('runUnavailable')}
             </span>
             {run.viewed ? (
-              <span className="text-micro @max-lg/composer-surface:hidden">
+              <span className="whitespace-nowrap text-micro @max-2xl/composer-surface:hidden">
                 {viewedLabel(run.viewed, t)}
               </span>
             ) : null}
@@ -580,17 +585,21 @@ export function ComposerDock({
             type="button"
             variant="ghost"
             data-testid="work-plan-toggle"
-            className={chipClass}
+            // The one part of the line that shrinks; whatever it cannot show is clipped, never
+            // drawn over its neighbours.
+            className={`${chipClass} overflow-hidden`}
             aria-expanded={open}
             aria-controls={planId}
             onClick={() => run.plan.setOpen(!open)}
           >
             <ListChecks size={14} aria-hidden="true" className="shrink-0" />
-            <span className="shrink-0 @max-md/composer-surface:hidden">{t('planHeading')}</span>
-            <span className="min-w-0 truncate tabular-nums">{planCount(status, t)}</span>
+            <span className="shrink-0 whitespace-nowrap @max-xl/composer-surface:hidden">
+              {t('planHeading')}
+            </span>
+            <span className="shrink-0 whitespace-nowrap tabular-nums">{planCount(status, t)}</span>
             {/* Collapsed, the line names the step in progress; open, the Todo shows it. */}
             {step && !open ? (
-              <span className="min-w-0 max-w-64 truncate @max-md/composer-surface:hidden">
+              <span className="min-w-0 max-w-64 truncate @max-xl/composer-surface:hidden">
                 {step}
               </span>
             ) : null}

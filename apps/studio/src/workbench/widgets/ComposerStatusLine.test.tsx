@@ -183,6 +183,52 @@ it('keeps the plan count, current step, activity, note and overview in one line'
   expect(line.querySelector('a')).toBeNull();
 });
 
+// The container widths (rem) below which a `@max-<size>/composer-surface:hidden` part leaves the
+// line, as Tailwind sizes them; 0 for a part that never leaves.
+const SIZES: Record<string, number> = { sm: 24, md: 28, lg: 32, xl: 36, '2xl': 42 };
+const leavesBelow = (element: Element | null | undefined) => {
+  const size = element?.className.match(/@max-(\w+)\/composer-surface:hidden/)?.[1];
+  return size ? (SIZES[size] ?? Number.NaN) : 0;
+};
+const byText = (root: Element | null | undefined, text: string) =>
+  [...(root?.querySelectorAll('span') ?? [])].find((span) => span.textContent === text);
+
+// chat-widgets-contract: the plan count and the change summary are not cut at wide widths; when
+// the line is short the current step's words go first, then the change summary's line count.
+// Each part stays on one line, so nothing wraps over the Overview opener (at 390 px wide too).
+it('keeps the plan count and change count whole; the current step gives way first, then the line count', async () => {
+  const view = await mount(
+    model(
+      { live: false, chips: ['changes'], changeFiles: 2, changeLines: 6, changesLabel: 'fixed' },
+      { runStatus: 'succeeded' },
+    ),
+  );
+  const toggle = view.toggle();
+  const count = byText(toggle, '1/7 done');
+  const step = byText(toggle, 'Plan item 2');
+  const chip = [...(view.line()?.querySelectorAll('a') ?? [])].find((link) =>
+    link.textContent?.includes('2 changes'),
+  );
+  const changes = byText(chip, '2 changes');
+  const lines = byText(chip, '6 lines');
+  if (!toggle || !count || !step || !chip || !changes || !lines) throw new Error('missing part');
+  for (const whole of [count, changes, lines]) {
+    expect(whole.classList.contains('whitespace-nowrap')).toBe(true);
+    expect(whole.classList.contains('truncate')).toBe(false);
+  }
+  // The counts never shrink or leave; the changes chip does not shrink at all.
+  expect(count.classList.contains('shrink-0')).toBe(true);
+  expect(chip.classList.contains('shrink-0')).toBe(true);
+  expect(leavesBelow(count)).toBe(0);
+  expect(leavesBelow(changes)).toBe(0);
+  // The step is the part of the line that shrinks, and it leaves before the line count does.
+  expect(step.classList.contains('truncate')).toBe(true);
+  expect(leavesBelow(lines)).toBeGreaterThan(0);
+  expect(leavesBelow(step)).toBeGreaterThan(leavesBelow(lines));
+  // At 390 px the line is about 24rem wide: the step and the line count are gone by then.
+  expect(leavesBelow(lines)).toBeGreaterThan(24);
+});
+
 it('renders the plan Todo only when the line is expanded, and only once', async () => {
   const view = await mount(model());
   const toggle = view.toggle();
