@@ -69,7 +69,6 @@ export function PreviewLeases({
               {desktop || lease.kind === 'static' ? (
                 <Button
                   variant="tertiary"
-                  size="compact"
                   onClick={() => {
                     setError(null);
                     if (desktop)
@@ -96,7 +95,6 @@ export function PreviewLeases({
               </Link>
               <Button
                 variant="ghost"
-                size="compact"
                 onClick={async () => {
                   try {
                     await workspaces?.stopPreview(sessionId, lease.leaseId);

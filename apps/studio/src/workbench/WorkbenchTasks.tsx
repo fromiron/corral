@@ -179,7 +179,6 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
               <li key={script.name} className="flex min-w-0 items-center gap-2 rounded px-1 py-0.5">
                 <Button
                   variant={last && last.operationId === selected ? 'secondary' : 'ghost'}
-                  size="compact"
                   disabled={!last}
                   aria-pressed={Boolean(last) && last?.operationId === selected}
                   onClick={() => last && select(last.operationId)}
@@ -198,7 +197,7 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
                 </Button>
                 {live ? (
                   <Button
-                    size="icon-compact"
+                    size="icon"
                     variant="ghost"
                     aria-label={t('stop', { script: script.name })}
                     disabled={pending !== null || live.state !== 'running'}
@@ -208,7 +207,7 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
                   </Button>
                 ) : (
                   <Button
-                    size="icon-compact"
+                    size="icon"
                     variant="ghost"
                     aria-label={t('run', { script: script.name })}
                     disabled={pending !== null}

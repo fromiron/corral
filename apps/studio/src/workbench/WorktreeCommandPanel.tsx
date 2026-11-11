@@ -112,7 +112,7 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
           {t('title')}
         </h3>
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('refresh')}
           onClick={() => {
@@ -129,7 +129,6 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
             <li key={item.id}>
               <Button
                 variant={item.id === selected ? 'secondary' : 'ghost'}
-                size="compact"
                 aria-pressed={item.id === selected}
                 onClick={() => select(item.id)}
                 title={item.command ?? undefined}
@@ -169,7 +168,6 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
           </div>
           {state === 'running' ? (
             <Button
-              size="compact"
               variant="tertiary"
               disabled={stopping === selected}
               onClick={async () => {

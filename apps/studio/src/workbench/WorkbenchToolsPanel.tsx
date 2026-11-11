@@ -32,7 +32,6 @@ export function WorkbenchToolsPanel({
   const firstRead = useRef(true);
   return (
     <Tabs
-      size="compact"
       value={tab ?? 'tasks'}
       onValueChange={(value) => setTab(value as ToolsTab)}
       className="flex min-h-0 min-w-0 flex-col gap-2 p-3"

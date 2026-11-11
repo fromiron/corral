@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { WorkspacePreview } from '@corral/client';
+import { SizeScope } from '@corral/react/design-kit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -160,4 +161,20 @@ it('says when no output is available', async () => {
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
   expect(fixture.workspaces.commandOutput).toHaveBeenCalledWith('session', 'cmd_one', 0);
   expect(disclosure?.textContent).toContain(messages.Preview.noOutput);
+});
+
+// Settings › General › Interface density reaches the bottom dock (workbench.md).
+it('the preview toolbar takes the interface density', async () => {
+  const sizes = async (density: 'default' | 'compact') => {
+    const container = await mount(
+      <SizeScope size={density}>
+        <PreviewView sessionId="session" lease={lease} output={null} inline />
+      </SizeScope>,
+    );
+    return [messages.Preview.refresh, messages.Preview.viewportTablet].map((name) =>
+      button(container, name)?.getAttribute('data-size'),
+    );
+  };
+  expect(await sizes('default')).toEqual(['icon', 'default']);
+  expect(await sizes('compact')).toEqual(['icon-compact', 'compact']);
 });
