@@ -149,14 +149,14 @@ it('copies a summary without the folder path, a key or a login link', async () =
         state: 'error',
         downloadBytes: null,
         progress: null,
-        error: 'cannot open /home/bell/.corral/local-ai/model.bin',
+        error: 'cannot open /home/someone/.corral/local-ai/model.bin',
       }),
     } as unknown as ModelsApi,
     workspaces: {
       binding: async () => ({
         bindingId: 'b',
         projectId: 'p',
-        path: '/home/bell/private/project',
+        path: '/home/someone/private/project',
         isGit: true,
         trusted: true,
         verifyCommands: [],
