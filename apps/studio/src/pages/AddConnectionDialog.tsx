@@ -346,6 +346,7 @@ export function AddConnectionDialog({
       title={title}
       closeLabel={t('close')}
       focusTitle={face.face !== 'find'}
+      data-settings-sheet
     >
       {body}
     </ConnectionSheet>
