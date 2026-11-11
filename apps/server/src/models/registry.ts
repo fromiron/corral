@@ -97,6 +97,9 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
  */
 const NO_SUBSCRIPTION_OAUTH = new Set(['anthropic']);
 
+/** Corral's own sign-in to this provider makes a borrowed Codex CLI login no connection. */
+const OPENAI = 'openai';
+
 /** How a provider is reached: `none` is a keyless local endpoint. */
 export type AuthMethod = 'oauth' | 'api_key' | 'none';
 
@@ -451,6 +454,24 @@ export class ModelRegistry implements ModelResolver {
     });
   }
 
+  /**
+   * A borrowed Codex CLI login while Corral has its own OpenAI sign-in: it still serves a profile
+   * that names it, but it is not a connection and lists no models, so the same models are not
+   * offered twice (features/model-connections.md, 연결).
+   */
+  private shadowedLogin(providerId: string): boolean {
+    if (providerId === OPENAI) return false;
+    const layered = sourceAware(this.options.credentials);
+    if (layered?.sourceOf(providerId) !== 'codex-cli') return false;
+    const openai = this.status.get(OPENAI);
+    return Boolean(openai?.method && openai.stored && layered.sourceOf(OPENAI) === 'corral');
+  }
+
+  /** Signed in and counted as a connection: its models are listed without a profile. */
+  private isConnection(providerId: string): boolean {
+    return Boolean(this.status.get(providerId)?.method) && !this.shadowedLogin(providerId);
+  }
+
   /** The models of every known provider by connection profile id, built when first needed. */
   private connectionIndex() {
     if (this.connectionIds) return this.connectionIds;
@@ -519,6 +540,14 @@ export class ModelRegistry implements ModelResolver {
         ok: false,
         code: 'CAPABILITY_DENIED',
         reason: SIGN_IN(this.providerName(config.provider)),
+      };
+    }
+    if (found.connection && this.shadowedLogin(config.provider)) {
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        reason:
+          'the Codex CLI login is not used while Corral has its own OpenAI sign-in; choose the OpenAI model',
       };
     }
     // A subscription token reaches fewer models than an API key; say so before the run.
@@ -1145,9 +1174,7 @@ export class ModelRegistry implements ModelResolver {
     ]);
     const shown = this.statusProviders().filter(
       (providerId) =>
-        named.has(providerId) ||
-        Boolean(this.status.get(providerId)?.method) ||
-        this.logins.has(providerId),
+        named.has(providerId) || this.isConnection(providerId) || this.logins.has(providerId),
     );
     return shown.map((providerId) => {
       const status = this.status.get(providerId);
@@ -1168,7 +1195,7 @@ export class ModelRegistry implements ModelResolver {
         source: sourceOf(status, () => layered?.sourceOf(providerId) ?? 'corral'),
         permissionsOk:
           layered?.sourceOf(providerId) !== 'codex-cli' || layered.codexPermissionsOk(),
-        modelCount: status?.method ? status.models.length : 0,
+        modelCount: status && this.isConnection(providerId) ? status.models.length : 0,
         modelFetch: endpoint
           ? (this.lastFetch.get(providerId) ??
             (endpoint.fetchedAt
@@ -1193,7 +1220,7 @@ export class ModelRegistry implements ModelResolver {
     const connection: ModelProfileView[] = [];
     for (const provider of this.statusProviders()) {
       const status = this.status.get(provider);
-      if (!status?.method || !this.knownProvider(provider)) continue;
+      if (!status || !this.isConnection(provider) || !this.knownProvider(provider)) continue;
       for (const model of status.models) {
         if (pointed.has(`${provider}\u0000${model.id}`)) continue;
         const id = connectionProfileId(provider, model.id);

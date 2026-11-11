@@ -8,6 +8,7 @@ import { parseWorkspaceConfig, waitForProjection } from '@corral/core';
 import { linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
 import {
   createFauxCore,
+  createModels,
   createProvider,
   envApiKeyAuth,
   type Model,
@@ -17,7 +18,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { LiveModels } from '../src/app.ts';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
 import { connectionProfileId } from '../src/models/connection-models.ts';
-import { FAKE_PROFILES, FAKE_REDIRECT_OK, fakeOpenAI } from '../src/testing.ts';
+import { FileCredentialStore, LayeredCredentialStore } from '../src/models/index.ts';
+import { ModelRegistry, type ProfileConfig } from '../src/models/registry.ts';
+import { FAKE_CODEX_ACCESS, FAKE_PROFILES, FAKE_REDIRECT_OK, fakeOpenAI } from '../src/testing.ts';
 
 const TOKEN = 'test-bootstrap-token-0123456789abcdef';
 const servers: CorralServer[] = [];
@@ -435,6 +438,120 @@ describe('connecting any provider Pi knows', () => {
       (list) => list.some((p) => p.modelId === 'fetched-2'),
     );
     expect(dynamic.fetches).toBe(2);
+  });
+});
+
+describe('the borrowed Codex CLI login', () => {
+  /** OpenAI and Codex as Pi has them, with a Codex CLI login on disk and Corral's own store. */
+  async function withCodexLogin(profiles: ProfileConfig[] = []) {
+    const dir = temp('codex');
+    const codexPath = join(dir, 'auth.json');
+    writeFileSync(
+      codexPath,
+      JSON.stringify({ tokens: { access_token: FAKE_CODEX_ACCESS, account_id: 'acct-test' } }),
+      { mode: 0o600 },
+    );
+    const own = new FileCredentialStore(join(dir, 'own'));
+    const credentials = new LayeredCredentialStore(own, codexPath);
+    const models = createModels({
+      credentials,
+      authContext: { env: async () => undefined, fileExists: async () => false },
+    });
+    for (const [id, name] of [
+      ['openai', 'OpenAI'],
+      ['openai-codex', 'OpenAI Codex (legacy)'],
+    ] as const) {
+      const faux = createFauxCore({
+        provider: id,
+        models: [{ id: 'gpt-x' }, { id: 'gpt-y' }],
+      });
+      models.setProvider(
+        createProvider({
+          id,
+          name,
+          auth: {
+            apiKey: envApiKeyAuth(`${name} API key`, []),
+            oauth: {
+              name,
+              isSubscription: true,
+              async login() {
+                throw new Error('not in this test');
+              },
+              async refresh(credential) {
+                return credential;
+              },
+              async toAuth(credential) {
+                return { apiKey: credential.access };
+              },
+            },
+          },
+          models: faux.models,
+          api: { stream: faux.stream, streamSimple: faux.streamSimple },
+        }),
+      );
+    }
+    const registry = new ModelRegistry(models, profiles, {
+      credentials,
+      getDeviceId: () => 'device',
+    });
+    await registry.refreshStatus();
+    const signInToOpenAI = async () => {
+      await own.modify('openai', async () => ({
+        type: 'oauth',
+        access: 'openai-access-secret',
+        refresh: 'openai-refresh-secret',
+        expires: Date.now() + 3_600_000,
+      }));
+      await registry.refreshStatus();
+    };
+    return { registry, signInToOpenAI };
+  }
+  const connections = (registry: ModelRegistry) =>
+    registry
+      .profilesView()
+      .filter((view) => view.source === 'connection')
+      .map((view) => view.profileId);
+
+  it('is a connection only while Corral has no OpenAI sign-in of its own; the same models are not listed twice', async () => {
+    const { registry, signInToOpenAI } = await withCodexLogin();
+    expect(connections(registry)).toEqual(['openai-codex:gpt-x', 'openai-codex:gpt-y']);
+    expect(registry.authView().map((view) => [view.providerId, view.source])).toEqual([
+      ['openai-codex', 'codex-cli'],
+    ]);
+    await signInToOpenAI();
+    expect(connections(registry)).toEqual(['openai:gpt-x', 'openai:gpt-y']);
+    expect(registry.authView().map((view) => [view.providerId, view.source])).toEqual([
+      ['openai', 'corral'],
+    ]);
+    // The list and a stored choice agree: the borrowed login's model is not offered now.
+    const stored = registry.resolve('openai-codex:gpt-x', 'live');
+    expect(stored).toMatchObject({ ok: false, code: 'CAPABILITY_DENIED' });
+    expect(stored.ok ? '' : stored.reason).toMatch(/OpenAI sign-in/);
+    expect(JSON.stringify([registry.authView(), registry.profilesView()])).not.toMatch(
+      /secret|FAKE|acct-test/,
+    );
+  });
+
+  it('a profile that names openai-codex still runs on the borrowed login', async () => {
+    const { registry, signInToOpenAI } = await withCodexLogin([
+      { id: 'codex', provider: 'openai-codex', model: 'gpt-x' },
+    ]);
+    await signInToOpenAI();
+    expect(registry.resolve('codex', 'live')).toMatchObject({
+      ok: true,
+      snapshot: { provider: 'openai-codex', modelId: 'gpt-x', auth: 'oauth' },
+    });
+    expect(registry.profilesView().map((view) => view.profileId)).toEqual([
+      'codex',
+      'openai:gpt-x',
+      'openai:gpt-y',
+    ]);
+    // Shown as the provider the profile uses; it lists no models of its own.
+    expect(registry.authView().find((view) => view.providerId === 'openai-codex')).toMatchObject({
+      signedIn: true,
+      source: 'codex-cli',
+      modelCount: 0,
+    });
   });
 });
 
