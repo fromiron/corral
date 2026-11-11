@@ -28,7 +28,7 @@ export function Select<T extends string>({
   label,
   placeholder,
   variant = 'outline',
-  size = 'sm',
+  size,
   disabled,
   className,
   icon,
@@ -83,8 +83,9 @@ export function Select<T extends string>({
       value={value ?? ''}
       onValueChange={(next) => onValueChange(next as T)}
       items={options.map(({ value, label }) => ({ value, label }))}
-      // A chip sits among compact buttons (the composer, the top bar) and hugs its value.
-      size={size === 'xs' || variant === 'chip' ? 'compact' : 'default'}
+      // A chip sits among compact buttons (the composer, the top bar) and hugs its value. No size
+      // takes the step of the surrounding size scope (the person's interface density).
+      size={size === 'xs' || variant === 'chip' ? 'compact' : size === 'sm' ? 'default' : undefined}
       disabled={disabled}
       open={open}
       onOpenChange={onOpenChange}

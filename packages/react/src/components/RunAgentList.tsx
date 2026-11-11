@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
   useNow,
+  useSize,
 } from '../design-kit/index.ts';
 import type { RunAgentGraphNode } from '../run/agent-graph.ts';
 import { useRunDisplay } from '../run/display.tsx';
@@ -90,6 +91,7 @@ export function RunAgentList({
   // A narrow list keeps a row to two lines: the model and the current attempt leave their
   // columns and stack under the agent's name, as the kit's narrow tables do.
   const wide = '@max-xl/agent-list:hidden';
+  const inset = useSize().variant === 'compact' ? '-ml-3' : '-ml-4';
   return (
     <div className="@container/agent-list min-w-0">
       <Table aria-label={t('label')}>
@@ -111,9 +113,8 @@ export function RunAgentList({
             const button = (
               <Button
                 variant={selected ? 'secondary' : 'ghost'}
-                size="compact"
                 aria-pressed={selected}
-                className="-ml-3 max-w-full justify-start text-foreground"
+                className={`${inset} max-w-full justify-start text-foreground`}
                 onClick={(event) => onSelectNode(node.id, event.currentTarget)}
               >
                 <span className="truncate">{node.label}</span>

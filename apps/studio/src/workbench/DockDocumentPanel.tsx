@@ -106,7 +106,6 @@ export function DockDocumentPanel({
       entry.recoveries.length);
   const link = !onReference ? (
     <Button
-      size="compact"
       variant="ghost"
       title={target.sessionId}
       render={<Link to="/sessions/$sessionId" params={{ sessionId: target.sessionId }} />}
@@ -123,7 +122,6 @@ export function DockDocumentPanel({
             {stale ? t('staleDock') : state.error}
           </p>
           <Button
-            size="compact"
             variant="tertiary"
             disabled={state.pending}
             onClick={() => retry((value) => value + 1)}
@@ -221,7 +219,6 @@ export function DockDocumentPanel({
               className="font-mono text-caption"
             />
             <Button
-              size="compact"
               variant="ghost"
               className="self-start"
               onClick={() => {

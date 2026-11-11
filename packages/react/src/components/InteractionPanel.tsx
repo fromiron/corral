@@ -201,7 +201,7 @@ function ExtensionPrompt({
           t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')}
       </h3>
       {!request && loadFailed ? (
-        <Button size="compact" variant="tertiary" onClick={retry}>
+        <Button variant="tertiary" onClick={retry}>
           {t('retryPrompt')}
         </Button>
       ) : null}
@@ -247,28 +247,22 @@ function ExtensionPrompt({
       <div className="flex flex-wrap gap-2">
         {request?.kind === 'confirm' ? (
           <>
-            <Button size="compact" disabled={busy} onClick={() => void answer(true)}>
+            <Button disabled={busy} onClick={() => void answer(true)}>
               {t('confirmYes')}
             </Button>
-            <Button
-              size="compact"
-              variant="tertiary"
-              disabled={busy}
-              onClick={() => void answer(false)}
-            >
+            <Button variant="tertiary" disabled={busy} onClick={() => void answer(false)}>
               {t('confirmNo')}
             </Button>
           </>
         ) : request ? (
           <Button
-            size="compact"
             disabled={busy || (request.kind === 'select' && !value)}
             onClick={() => void answer(value)}
           >
             {t('sendAnswer')}
           </Button>
         ) : null}
-        <Button size="compact" variant="ghost" disabled={busy} onClick={() => void answer(null)}>
+        <Button variant="ghost" disabled={busy} onClick={() => void answer(null)}>
           {t('dismissPrompt')}
         </Button>
       </div>
@@ -462,7 +456,7 @@ function UserQuestionPrompt({
       {!request ? (
         <>
           <p>{t(loadFailed || text !== undefined ? 'questionUnavailable' : 'loadingPrompt')}</p>
-          <Button type="button" size="compact" variant="tertiary" onClick={retry}>
+          <Button type="button" variant="tertiary" onClick={retry}>
             {t('retryPrompt')}
           </Button>
         </>
@@ -497,7 +491,6 @@ function UserQuestionPrompt({
             {step > 0 ? (
               <Button
                 type="button"
-                size="compact"
                 variant="tertiary"
                 disabled={busy}
                 onClick={() => goTo(step - 1)}
@@ -506,17 +499,11 @@ function UserQuestionPrompt({
               </Button>
             ) : null}
             {reviewing ? (
-              <Button
-                type="submit"
-                size="compact"
-                disabled={busy || !validUserAnswers(request, answers)}
-              >
+              <Button type="submit" disabled={busy || !validUserAnswers(request, answers)}>
                 {t('sendAnswer')}
               </Button>
             ) : (
-              <Button type="submit" size="compact">
-                {t('nextQuestion')}
-              </Button>
+              <Button type="submit">{t('nextQuestion')}</Button>
             )}
           </div>
         </>
@@ -524,7 +511,7 @@ function UserQuestionPrompt({
         request.questions.map((q) => questionFieldset(q))
       )}
       {request && !stepped ? (
-        <Button type="submit" size="compact" disabled={busy || !validUserAnswers(request, answers)}>
+        <Button type="submit" disabled={busy || !validUserAnswers(request, answers)}>
           {t('sendAnswer')}
         </Button>
       ) : null}
@@ -575,7 +562,7 @@ function ExecutionLine({
         <Button
           type="button"
           variant="ghost"
-          size="icon-compact"
+          size="icon"
           aria-label={t('copyExecutionId')}
           onClick={() =>
             void navigator.clipboard?.writeText(executionId).then(
@@ -630,7 +617,6 @@ function ReviewRow({
       </div>
       <Button
         type="button"
-        size="compact"
         variant="ghost"
         disabled={busy}
         aria-label={t('editAnswerFor', { question: question.prompt })}

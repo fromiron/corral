@@ -7,6 +7,7 @@ import {
   Button as KitButton,
   buttonVariants as kitButtonVariants,
 } from '../components/ui/button.tsx';
+import { useSizeVariant } from '../lib/size-context.tsx';
 import { cn } from '../lib/utils.ts';
 
 const variants = {
@@ -64,19 +65,28 @@ interface ButtonProps extends useRender.ComponentProps<'button'> {
   size?: ButtonSize;
 }
 
-export function Button({
-  className,
-  variant = 'default',
-  size = 'default',
-  render,
-  ...props
-}: ButtonProps) {
+/**
+ * The kit size a Button renders at. No size, or the plain icon size, takes the step of the
+ * surrounding size scope (the person's interface density); a named compact size stays compact.
+ */
+function resolveSize(
+  size: ButtonSize | undefined,
+  scope: 'default' | 'compact',
+): (typeof sizes)[ButtonSize] {
+  if (size === undefined) return scope;
+  const kit = sizes[size];
+  if (kit === 'icon') return scope === 'compact' ? 'icon-compact' : 'icon';
+  return kit;
+}
+
+export function Button({ className, variant = 'default', size, render, ...props }: ButtonProps) {
+  const resolved = resolveSize(size, useSizeVariant());
   const defaultProps = {
     className: cn(
       // Existing callers pass icon and multi-part labels as children instead of icon slots.
       // Keep the native control as the hit target, including text in display:contents labels.
       '[&>span]:pointer-events-none [&>span:last-child>span]:contents [&_svg]:shrink-0 [&_svg]:pointer-events-none',
-      sizes[size] === 'compact' || sizes[size] === 'icon-compact'
+      resolved === 'compact' || resolved === 'icon-compact'
         ? "[&_svg:not([class*='size-'])]:size-3.5"
         : "[&_svg:not([class*='size-'])]:size-4",
       semanticClasses[variant],
@@ -84,7 +94,7 @@ export function Button({
       className,
     ),
     'data-slot': 'button',
-    'data-size': size,
+    'data-size': resolved,
     type: render ? undefined : ('button' as const),
   };
   const element = useRender({
@@ -95,7 +105,7 @@ export function Button({
   return (
     <KitButton
       variant={variants[variant]}
-      size={sizes[size]}
+      size={resolved}
       render={element}
       ref={element.props.ref}
     />

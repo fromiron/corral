@@ -81,7 +81,6 @@ export function MeetingParticipants({
             <Tooltip content={t('mentionParticipant', { name: person.name })}>
               <Button
                 variant="ghost"
-                size="compact"
                 className="max-w-full gap-1.5"
                 onClick={() => onMention(person.name)}
               >

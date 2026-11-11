@@ -266,10 +266,8 @@ function Tasks({
               setPlan(null);
             }}
             disabled={busy || unresolved}
-            size="xs"
           />
           <Button
-            size="compact"
             variant="tertiary"
             disabled={busy || unsaved || unresolved || !profileId}
             onClick={() => void review()}
@@ -323,7 +321,6 @@ function Tasks({
               ) : null}
               <p className="text-muted-foreground">{t('startHint')}</p>
               <Button
-                size="compact"
                 disabled={busy || unsaved || (plan.source.dirty && !allowDirty)}
                 onClick={() => void start()}
               >
@@ -362,7 +359,6 @@ function Tasks({
           ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
-              size="compact"
               variant="tertiary"
               disabled={busy}
               onClick={() =>
@@ -375,7 +371,6 @@ function Tasks({
             </Button>
             {receipt?.state === 'uncertain' && receipt.cleanupConfirmed ? (
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy || unsaved}
                 onClick={() =>
@@ -396,7 +391,6 @@ function Tasks({
             ) : null}
             {receipt && ['running', 'uncertain'].includes(receipt.state) ? (
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy}
                 onClick={() =>
@@ -430,7 +424,6 @@ function Tasks({
             {list.deployments.map((item) => (
               <li key={item.operationId}>
                 <Button
-                  size="compact"
                   variant="ghost"
                   disabled={busy || (unresolved && item.operationId !== attempt?.operationId)}
                   onClick={() => {

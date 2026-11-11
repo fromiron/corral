@@ -14,6 +14,7 @@ import {
   KitCardHeader,
   KitCardTitle,
   Select,
+  useSize,
 } from '../design-kit/index.ts';
 import { formatClock } from '../design-kit/lib/agent-format.ts';
 import { useRunDisplay } from '../run/display.tsx';
@@ -23,8 +24,6 @@ import { EventText } from './RunText.tsx';
 // Committed events of one run. Only the rows in view are in the DOM, so a run
 // with 10,000 events costs the same as one with 50. New events are appended
 // below: the selection and the scroll position stay where the reader left them.
-
-const ROW_HEIGHT = 36;
 
 type ActorFilter = 'all' | RunEvent['actor']['kind'];
 
@@ -137,13 +136,18 @@ export function Timeline({
       })
     : [];
 
+  // One event per control-high row of the interface density.
+  const rowHeight = useSize().controlHeight;
   const rows = useVirtualizer({
     count: shown.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 8,
     getItemKey: (index) => shown[index]?.eventId ?? index,
   });
+  // A density change moves every row; sizes already placed are dropped.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the row height is the trigger.
+  useEffect(() => rows.measure(), [rowHeight]);
 
   useEffect(() => {
     if (!reveal) return;
@@ -250,12 +254,11 @@ export function Timeline({
                       data-testid="timeline-row"
                       data-seq={event.runSeq}
                       className="absolute left-0 w-full"
-                      style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
+                      style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
                     >
                       <KitButton
                         type="button"
                         variant={isSelected ? 'secondary' : 'ghost'}
-                        size="default"
                         aria-pressed={isSelected}
                         onClick={() => {
                           setSelectedId(event.eventId);
@@ -317,7 +320,6 @@ export function Timeline({
                       <KitButton
                         type="button"
                         variant="ghost"
-                        size="compact"
                         className="w-full justify-start text-left"
                         onClick={() => choose(cause)}
                       >
@@ -345,7 +347,6 @@ export function Timeline({
                     <KitButton
                       type="button"
                       variant="secondary"
-                      size="compact"
                       onClick={() => selected.executionId && onOpenExecution(selected.executionId)}
                     >
                       {t('openExecution')}

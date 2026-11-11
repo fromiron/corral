@@ -142,7 +142,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
     >
       <div className="flex shrink-0 items-center justify-end border-b border-line px-2 py-1">
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('refresh')}
           onClick={() => refresh((value) => value + 1)}
@@ -182,7 +182,6 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                     <li key={`${location}:${problem.message}`}>
                       <Button
                         variant="ghost"
-                        size="compact"
                         onClick={() => void reveal(problem)}
                         title={problem.message}
                         className="h-auto w-full justify-start gap-2 py-1 text-left"

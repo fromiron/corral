@@ -141,14 +141,13 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             ) : null}
             <div className="flex gap-2">
               {mode === 'browser' ? (
-                <Button variant="tertiary" size="compact" type="submit">
+                <Button variant="tertiary" type="submit">
                   {t('linkExample')}
                 </Button>
               ) : desktop ? (
                 <>
                   <Button
                     variant="tertiary"
-                    size="compact"
                     type="button"
                     onClick={() => {
                       if (!desktop) return;
@@ -159,12 +158,12 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                   >
                     {t('chooseFolder')}
                   </Button>
-                  <Button variant="tertiary" size="compact" type="submit" disabled={!path.trim()}>
+                  <Button variant="tertiary" type="submit" disabled={!path.trim()}>
                     {t('link')}
                   </Button>
                 </>
               ) : (
-                <Button variant="tertiary" size="compact" type="submit" disabled={!path.trim()}>
+                <Button variant="tertiary" type="submit" disabled={!path.trim()}>
                   {t('link')}
                 </Button>
               )}
@@ -195,7 +194,6 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
             </div>
             <Button
               variant="tertiary"
-              size="compact"
               type="button"
               onClick={() => void act(() => workspaces.unbind(projectId))}
             >
@@ -236,7 +234,6 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
               />
               <Button
                 variant="tertiary"
-                size="compact"
                 type="button"
                 disabled={checks === null}
                 onClick={() =>
@@ -361,18 +358,11 @@ export function WorkingCopyPanel({
         </span>
         <Button
           variant="primary"
-          size="compact"
           render={<Link to="/sessions/$sessionId/review" params={{ sessionId }} />}
         >
           {t('review')}
         </Button>
-        <Button
-          type="button"
-          variant="tertiary"
-          size="compact"
-          disabled={busy}
-          onClick={() => setRemoving(true)}
-        >
+        <Button type="button" variant="tertiary" disabled={busy} onClick={() => setRemoving(true)}>
           {t('remove')}
         </Button>
         <CopyRemovalDialog

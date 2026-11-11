@@ -220,7 +220,6 @@ export function MeetingHandoff({
     <div className="flex min-w-0 flex-col gap-3">
       <div>
         <Button
-          size="compact"
           variant="tertiary"
           ref={toggle}
           onClick={() => {
@@ -295,19 +294,13 @@ export function MeetingHandoff({
           {pending ? (
             <div>
               <p role="status">{t('pending')}</p>
-              <Button
-                size="compact"
-                variant="tertiary"
-                disabled={busy}
-                onClick={() => void send(pending.action)}
-              >
+              <Button variant="tertiary" disabled={busy} onClick={() => void send(pending.action)}>
                 {t('retry')}
               </Button>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy || !loaded || (target === 'new' && !title.trim()) || autoBlocked}
                 onClick={() => void send('draft')}
@@ -315,7 +308,6 @@ export function MeetingHandoff({
                 {t('draft')}
               </Button>
               <Button
-                size="compact"
                 disabled={busy || !loaded || (target === 'new' && !title.trim()) || autoBlocked}
                 onClick={() => void send('start')}
               >
@@ -492,7 +484,6 @@ export function MeetingHandoffLinks({
           (!meeting || activeMeetingDecision(meeting, receipt.decisionVersionId)) ? (
             <div>
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'start')}
@@ -508,7 +499,6 @@ export function MeetingHandoffLinks({
           ) ? (
             <div>
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'rediscuss')}
@@ -524,7 +514,6 @@ export function MeetingHandoffLinks({
             )) ? (
             <div>
               <Button
-                size="compact"
                 variant="ghost-destructive"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'cancel')}
@@ -540,7 +529,7 @@ export function MeetingHandoffLinks({
           <p role="alert" className="text-danger wrap-anywhere">
             {readError}
           </p>
-          <Button variant="ghost" size="compact" onClick={() => retryRead.current()}>
+          <Button variant="ghost" onClick={() => retryRead.current()}>
             {t('reload')}
           </Button>
         </div>

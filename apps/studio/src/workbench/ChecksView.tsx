@@ -197,7 +197,6 @@ export function Checks({
   const runButton = (command: { id: string; name: string }, onRow: boolean) => (
     <Button
       variant="tertiary"
-      size="compact"
       key={command.id}
       type="button"
       disabled={running}
@@ -246,7 +245,7 @@ export function Checks({
           <span className="ml-auto flex items-center gap-0.5">
             {mode !== 'browser' && commands.length ? (
               <Tooltip content={t('isolatedChecksNote')}>
-                <Button variant="ghost" size="icon-compact" aria-label={t('isolatedChecksNote')}>
+                <Button variant="ghost" size="icon" aria-label={t('isolatedChecksNote')}>
                   <Info aria-hidden />
                 </Button>
               </Tooltip>
@@ -255,7 +254,7 @@ export function Checks({
               <Tooltip content={tk('openProjectTools')}>
                 <Button
                   variant="ghost"
-                  size="icon-compact"
+                  size="icon"
                   aria-label={tk('openProjectTools')}
                   render={tools}
                 >
@@ -307,7 +306,6 @@ export function Checks({
               )}
               {r.state === 'running' && r.report?.owner.kind === 'manual' ? (
                 <Button
-                  size="compact"
                   variant="tertiary"
                   onClick={() =>
                     workspaces &&
@@ -349,7 +347,6 @@ export function Checks({
                     <>
                       {canDraftFix(r) ? (
                         <Button
-                          size="compact"
                           variant="secondary"
                           disabled={attaching}
                           onClick={() => void attach(r, 'fix')}
@@ -358,7 +355,6 @@ export function Checks({
                         </Button>
                       ) : null}
                       <Button
-                        size="compact"
                         variant="tertiary"
                         disabled={attaching || !canAttach(r)}
                         onClick={() => void attach(r, 'output')}

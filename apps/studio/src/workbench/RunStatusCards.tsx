@@ -312,7 +312,6 @@ function ContextCompaction({
         <>
           <p className="text-muted-foreground">{t('compactHint')}</p>
           <Button
-            size="compact"
             variant="tertiary"
             disabled={busy || ended || pending}
             onClick={() => {

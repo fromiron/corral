@@ -199,7 +199,6 @@ export function LiveVoice({
                   </p>
                   {utterance.receipt?.status === 'rejected' && (
                     <Button
-                      size="compact"
                       variant="ghost"
                       onClick={() => void runtime.current?.retry(utterance.commandId)}
                     >
@@ -209,7 +208,6 @@ export function LiveVoice({
                   {utterance.receipt?.alternatives?.map((delivery) => (
                     <Button
                       key={delivery}
-                      size="compact"
                       variant="ghost"
                       onClick={() => void runtime.current?.retry(utterance.commandId, delivery)}
                     >

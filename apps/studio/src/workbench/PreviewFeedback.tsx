@@ -279,21 +279,18 @@ export function PreviewFeedback({
       <div className="flex flex-wrap items-center gap-3">
         <Switch
           label={t('screenshot')}
-          size="compact"
           checked={screenshot}
           disabled={phase !== 'idle' || Boolean(review)}
           onToggle={() => setScreenshot(!screenshot)}
         />
         <Switch
           label={t('console')}
-          size="compact"
           checked={consoleMessages}
           disabled={phase !== 'idle' || Boolean(review)}
           onToggle={() => setConsoleMessages(!consoleMessages)}
         />
       </div>
       <Button
-        size="compact"
         variant="tertiary"
         disabled={phase !== 'idle' || Boolean(review)}
         onClick={() => void begin()}
@@ -305,7 +302,7 @@ export function PreviewFeedback({
           <p role="status" className="text-muted-foreground">
             {t('selectHint')}
           </p>
-          <Button size="compact" variant="ghost" onClick={cancel}>
+          <Button variant="ghost" onClick={cancel}>
             {t('cancel')}
           </Button>
         </>

@@ -42,7 +42,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
   }, [requested, path, sessionId, workspaces]);
   if (!requested)
     return (
-      <Button size="compact" variant="tertiary" onClick={() => setRequested(true)}>
+      <Button variant="tertiary" onClick={() => setRequested(true)}>
         {t('open')}
       </Button>
     );
@@ -54,7 +54,6 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
         </span>
         {desktop && lease ? (
           <Button
-            size="compact"
             variant="tertiary"
             onClick={() => {
               void desktop
@@ -68,7 +67,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           </Button>
         ) : null}
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('refresh')}
           disabled={!lease}
@@ -77,7 +76,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           <RefreshCw />
         </Button>
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('close')}
           disabled={closing}

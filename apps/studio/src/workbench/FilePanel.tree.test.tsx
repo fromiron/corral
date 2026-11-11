@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SizeScope } from '@corral/react/design-kit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -88,7 +89,7 @@ afterEach(async () => {
   for (const dispose of roots.splice(0)) await dispose();
   vi.unstubAllGlobals();
 });
-async function panel(onOpenDocument = vi.fn(() => true)) {
+async function panel(onOpenDocument = vi.fn(() => true), density?: 'default' | 'compact') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
   document.body.append(container);
@@ -101,12 +102,14 @@ async function panel(onOpenDocument = vi.fn(() => true)) {
     act(async () => {
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <FilePanel
-            projectId="project"
-            sessionId="session"
-            onReference={() => {}}
-            onOpenDocument={onOpenDocument}
-          />
+          <SizeScope size={density}>
+            <FilePanel
+              projectId="project"
+              sessionId="session"
+              onReference={() => {}}
+              onOpenDocument={onOpenDocument}
+            />
+          </SizeScope>
         </IntlProvider>,
       );
     });
@@ -267,4 +270,22 @@ it('the filter keeps the tree and still opens files', async () => {
   });
   expect(items(container)).toEqual(['docs', 'docs/readme.md', 'README.md']);
   expect(tree(container)).not.toBeNull();
+});
+
+// Settings › General › Interface density reaches the Files view (workbench.md).
+it('the Files toolbar and its filter take the interface density', async () => {
+  fixture.state = { documents: {} };
+  fixture.files = { ...fixture.files, list: { files: [file('README.md')], truncated: false } };
+  const sizes = async (density: 'default' | 'compact') => {
+    const { container } = await panel(undefined, density);
+    return [
+      container.querySelector<HTMLElement>(`button[aria-label="${messages.Desktop.refreshFiles}"]`)
+        ?.dataset.size,
+      container
+        .querySelector<HTMLElement>(`input[aria-label="${messages.Desktop.filterFiles}"]`)
+        ?.closest<HTMLElement>('[data-slot="input-control"]')?.dataset.size,
+    ];
+  };
+  expect(await sizes('default')).toEqual(['icon', 'default']);
+  expect(await sizes('compact')).toEqual(['icon-compact', 'compact']);
 });

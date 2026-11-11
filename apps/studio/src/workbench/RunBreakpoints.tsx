@@ -32,7 +32,6 @@ export function RunBreakpoints({
         {steps.map((step) => (
           <Switch
             key={step.id}
-            size="compact"
             label={step.label}
             checked={chosen.includes(step.id)}
             onToggle={() =>

@@ -49,7 +49,6 @@ export function QuestionsPanel({
                 type="button"
                 onClick={() => onOpenArtifact(id)}
                 variant="ghost"
-                size="compact"
                 className="font-mono"
               >
                 {id}

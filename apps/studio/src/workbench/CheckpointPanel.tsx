@@ -137,7 +137,6 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
       </label>
       <div className="flex flex-wrap gap-2">
         <Button
-          size="compact"
           variant="tertiary"
           disabled={busy || !label.trim()}
           onClick={() =>
@@ -155,11 +154,10 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
         >
           {t('capture')}
         </Button>
-        <Button size="compact" variant="ghost" disabled={busy} onClick={() => void act(reload)}>
+        <Button variant="ghost" disabled={busy} onClick={() => void act(reload)}>
           {t('refresh')}
         </Button>
         <Button
-          size="compact"
           variant="ghost"
           disabled={busy}
           onClick={() => void act(() => workspaces.pruneCheckpoints(sessionId))}
@@ -231,7 +229,6 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
                   }
                 />
                 <Button
-                  size="compact"
                   variant="ghost"
                   disabled={busy || item.state !== 'ready'}
                   onClick={() => void preview(item)}
@@ -262,7 +259,6 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
           </ul>
           <div className="mt-2 flex gap-2">
             <Button
-              size="compact"
               variant="tertiary"
               disabled={busy || plan.files.length === 0}
               onClick={() =>
@@ -281,7 +277,7 @@ export function CheckpointPanel({ sessionId }: { sessionId: string }) {
             >
               {t(plan.target === 'original' ? 'restoreOriginal' : 'restore')}
             </Button>
-            <Button size="compact" variant="ghost" disabled={busy} onClick={() => setPlan(null)}>
+            <Button variant="ghost" disabled={busy} onClick={() => setPlan(null)}>
               {t('close')}
             </Button>
           </div>

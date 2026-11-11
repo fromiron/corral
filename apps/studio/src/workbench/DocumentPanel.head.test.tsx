@@ -232,13 +232,14 @@ it('Save follows the unsaved state', async () => {
   expect(dirty.owner.save).toHaveBeenCalledWith('document');
 });
 
-/** The class a kit Button of this variant draws, to tell variants apart without fixing classes. */
+/**
+ * The class a kit Button of this variant draws, to tell variants apart without fixing classes.
+ * The document head takes the interface density, which is the default step here.
+ */
 function variantClass(variant: 'primary' | 'secondary') {
   const host = document.createElement('div');
   host.innerHTML = renderToStaticMarkup(
-    <Button size="compact" variant={variant}>
-      {messages.Documents.save}
-    </Button>,
+    <Button variant={variant}>{messages.Documents.save}</Button>,
   );
   return host.querySelector('button')?.className;
 }

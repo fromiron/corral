@@ -15,6 +15,7 @@ import {
   TabPanel,
   Tabs,
   Tooltip,
+  useSize,
 } from '@corral/react/design-kit';
 import { Ellipsis, Plus, X } from '@corral/react/icons';
 import {
@@ -232,7 +233,7 @@ function DockHeaderActions({
     <Tooltip content={`${t('close')}: ${activePanel.title}`}>
       <Button
         variant="ghost"
-        size="icon-compact"
+        size="icon"
         aria-label={`${t('close')}: ${activePanel.title}`}
         onClick={() => renderer.close(activePanel.id)}
       >
@@ -247,9 +248,7 @@ function DockHeaderActions({
   return (
     <div className="corral-dock-header-actions">
       <Menu>
-        <MenuTrigger
-          render={<Button variant="ghost" size="icon-compact" aria-label={t('openPane')} />}
-        >
+        <MenuTrigger render={<Button variant="ghost" size="icon" aria-label={t('openPane')} />}>
           <Plus />
         </MenuTrigger>
         <MenuPopup align="end" className="min-w-48">
@@ -268,9 +267,7 @@ function DockHeaderActions({
         </MenuPopup>
       </Menu>
       <Menu>
-        <MenuTrigger
-          render={<Button variant="ghost" size="icon-compact" aria-label={t('paneActions')} />}
-        >
+        <MenuTrigger render={<Button variant="ghost" size="icon" aria-label={t('paneActions')} />}>
           <Ellipsis />
         </MenuTrigger>
         <MenuPopup align="end" className="w-64">
@@ -345,6 +342,8 @@ const components = { workbench: DockPanel };
 export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>(
   function DockWorkbench(props, ref) {
     const t = useTranslations('Docking');
+    // The tab strip's height and type follow the interface density (docking.css).
+    const density = useSize().variant;
     const current = useRef(props);
     current.current = props;
     const labels = useRef(t);
@@ -460,7 +459,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       }
       if (tree) {
         const created = api.addGroup({ id: 'main1', direction: 'right', referenceGroup: tree });
-        tree.api.setSize({ width: TREE_WIDTH });
+        tree.api.setSize({ width: TREE_WIDTH[density] });
         return created;
       }
       return api.addGroup({
@@ -1085,7 +1084,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
               {props.renderContext('chat')}
             </TabPanel>
             <TabPanel value="files" keepMounted className="corral-dock-session-panel">
-              <div className="corral-dock-area">
+              <div className="corral-dock-area" data-size={density}>
                 <DockviewReact
                   components={components}
                   defaultTabComponent={DockTab}
