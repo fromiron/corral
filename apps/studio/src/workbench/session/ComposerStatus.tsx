@@ -46,12 +46,7 @@ export function ComposerHeader({
     <>
       {/* A live run's status and Cancel sit in the top bar; only the pre-run auto choice is cancelled here. */}
       {choosingAuto ? (
-        <Button
-          variant="tertiary"
-          size="compact"
-          data-slot="composer-run-header"
-          onClick={onCancelAuto}
-        >
+        <Button variant="tertiary" data-slot="composer-run-header" onClick={onCancelAuto}>
           <Square className="size-3.5 fill-current" />
           {t('cancelAutoChoice')}
         </Button>
@@ -134,12 +129,7 @@ export function ComposerStatus({
       >
         <ComposerStats runs={runs} />
         {simulated ? (
-          <Badge
-            data-testid="composer-environment"
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-          >
+          <Badge data-testid="composer-environment" variant="outline" className="shrink-0">
             {t('modeMock')}
           </Badge>
         ) : null}

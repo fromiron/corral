@@ -26,7 +26,7 @@ const colors = {
 } as const;
 export function Badge({
   variant = 'default',
-  size = 'default',
+  size,
   ...props
 }: Omit<ComponentProps<typeof KitBadge>, 'variant' | 'size' | 'color'> & {
   variant?: Variant;
@@ -36,7 +36,8 @@ export function Badge({
     <KitBadge
       variant={variant === 'outline' ? 'dot' : 'solid'}
       color={colors[variant]}
-      size={size === 'sm' ? 'compact' : 'default'}
+      // No size takes the step of the surrounding size scope (the person's interface density).
+      size={size === undefined ? undefined : size === 'sm' ? 'compact' : 'default'}
       data-slot="badge"
       {...props}
     />

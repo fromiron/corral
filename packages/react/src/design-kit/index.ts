@@ -6,6 +6,7 @@ export * from './adapters/dialog.tsx';
 export * from './adapters/input.tsx';
 export * from './adapters/menu.tsx';
 export * from './adapters/popover.tsx';
+export * from './adapters/preview-cards.tsx';
 export * from './adapters/scroll-area.tsx';
 export * from './adapters/select.tsx';
 export * from './adapters/separator.tsx';
@@ -235,6 +236,19 @@ export {
   CheckboxItem,
   CheckboxItem as KitCheckboxItem,
 } from './components/ui/checkbox-group.tsx';
+export {
+  ColorPicker,
+  type ColorPickerLabels,
+  ColorPickerPopover,
+  type ColorPickerPopoverProps,
+  type ColorPickerProps,
+  type ColorPickerSwatch,
+  ColorSwatch,
+  type ColorSwatchProps,
+  ColorTile,
+  type ColorTileProps,
+  type ParsedColor,
+} from './components/ui/color-picker.tsx';
 export {
   CommandMenu,
   CommandMenuDialog,

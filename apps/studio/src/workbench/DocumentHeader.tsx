@@ -1,5 +1,5 @@
 import type { GitStatus, WorkspaceTarget } from '@corral/contracts';
-import { Badge, Tooltip } from '@corral/react/design-kit';
+import { Badge, Tooltip, useSize } from '@corral/react/design-kit';
 import { Files, Folder, GitBranch } from '@corral/react/icons';
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
@@ -130,10 +130,11 @@ export function DocumentHeader({
   const SourceIcon = target.kind === 'copy' ? Files : Folder;
   const published = useTreeSource(target.kind === 'copy' ? target.target.sessionId : null);
   const beside = treeSource ?? published;
+  const height = useSize().variant === 'compact' ? 'h-10' : 'h-12';
   return (
     <div
       data-testid="document-header"
-      className="@container/head flex h-10 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 text-caption text-muted-foreground"
+      className={`@container/head flex ${height} min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 text-caption text-muted-foreground`}
     >
       {/* The folder gives way first, so the file name stays readable. */}
       <p className="flex min-w-0 flex-1 items-center font-mono text-body" title={path}>
@@ -142,7 +143,7 @@ export function DocumentHeader({
       </p>
       {beside === target.kind ? null : (
         <Tooltip content={source}>
-          <Badge variant="secondary" size="sm" className="shrink-0">
+          <Badge variant="secondary" className="shrink-0">
             <span className="inline-flex items-center gap-1">
               <SourceIcon aria-hidden className="size-3 shrink-0" />
               <span className="@max-xl/head:sr-only">{source}</span>

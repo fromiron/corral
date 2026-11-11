@@ -140,7 +140,7 @@ export function UsageInspector({
           </p>
         ) : null}
         {agents.length ? (
-          <Table size="compact" aria-label={t('byAgent')}>
+          <Table aria-label={t('byAgent')}>
             <TableHeader>
               <TableRow>
                 <TableHead>{t('agent')}</TableHead>

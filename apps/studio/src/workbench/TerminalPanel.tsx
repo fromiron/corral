@@ -337,7 +337,7 @@ function SessionTerminals({
             <Popover>
               <Tooltip content={t('details')}>
                 <PopoverTrigger
-                  render={<Button variant="ghost" size="icon-compact" aria-label={t('details')} />}
+                  render={<Button variant="ghost" size="icon" aria-label={t('details')} />}
                 >
                   <Info />
                 </PopoverTrigger>
@@ -362,7 +362,6 @@ function SessionTerminals({
           {entry && current && mayControl && !entry.inputUnknown ? (
             entry.controlling ? (
               <Button
-                size="compact"
                 variant="ghost"
                 disabled={entry.busy}
                 onClick={() => run(() => store.release(selectedId))}
@@ -373,7 +372,6 @@ function SessionTerminals({
               // Who holds input is read here, where it is taken.
               <Tooltip content={t(current.controller ? 'otherController' : 'readOnly')}>
                 <Button
-                  size="compact"
                   variant="tertiary"
                   disabled={entry.busy}
                   onClick={() => run(() => store.claim(selectedId, Boolean(current.controller)))}
@@ -385,7 +383,6 @@ function SessionTerminals({
           ) : null}
           {entry && (entry.connection === 'disconnected' || entry.connection === 'idle') ? (
             <Button
-              size="compact"
               variant="tertiary"
               disabled={entry.busy}
               onClick={() => run(() => store.reconnect(selectedId))}
@@ -397,7 +394,6 @@ function SessionTerminals({
             current.state === 'uncertain' ? (
               // Recovery keeps its words: this stop also verifies termination.
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={entry.busy}
                 onClick={() => {
@@ -410,7 +406,7 @@ function SessionTerminals({
             ) : (
               <Tooltip content={stopLabel}>
                 <Button
-                  size="icon-compact"
+                  size="icon"
                   variant="ghost"
                   aria-label={stopLabel}
                   disabled={entry.busy || current.state === 'stopping'}
@@ -433,7 +429,7 @@ function SessionTerminals({
               {/* The wrapper keeps the reason reachable by pointer while the button is disabled. */}
               <span className="inline-flex">
                 <Button
-                  size="icon-compact"
+                  size="icon"
                   variant="ghost"
                   aria-label={t(capturing ? 'capturing' : 'attachSelection')}
                   disabled={capturing || !entry.hasSelection}
@@ -447,7 +443,7 @@ function SessionTerminals({
           <Tooltip content={t('refresh')}>
             <Button
               ref={refreshButton}
-              size="icon-compact"
+              size="icon"
               variant="ghost"
               aria-label={t('refresh')}
               aria-disabled={session?.loading}
@@ -473,7 +469,6 @@ function SessionTerminals({
             {/* The wrapper keeps the reason reachable by pointer while the button is disabled. */}
             <span className="inline-flex">
               <Button
-                size="compact"
                 variant={items.length || createDisabled ? 'ghost' : 'primary'}
                 aria-label={t('create')}
                 disabled={createDisabled}
@@ -489,9 +484,7 @@ function SessionTerminals({
               <Tooltip content={t('chooseShell')}>
                 <MenuTrigger
                   disabled={createDisabled}
-                  render={
-                    <Button variant="ghost" size="icon-compact" aria-label={t('chooseShell')} />
-                  }
+                  render={<Button variant="ghost" size="icon" aria-label={t('chooseShell')} />}
                 >
                   <ChevronDown />
                 </MenuTrigger>
@@ -521,7 +514,7 @@ function SessionTerminals({
           </p>
         ) : null}
         {hasWriter && savesWaiting ? (
-          <Banner data-testid="terminal-blocking" status="warning" size="compact" role="status">
+          <Banner data-testid="terminal-blocking" status="warning" role="status">
             <BannerTitle>{t('blockingSave')}</BannerTitle>
           </Banner>
         ) : null}
@@ -541,7 +534,6 @@ function SessionTerminals({
             <p role="status">{t('createPending')}</p>
             <div className="flex flex-wrap gap-2">
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={session?.loading}
                 onClick={() => run(() => store.checkCreate(sessionId))}
@@ -550,7 +542,6 @@ function SessionTerminals({
               </Button>
               {session?.canRetryCreate ? (
                 <Button
-                  size="compact"
                   variant="tertiary"
                   disabled={session.loading}
                   onClick={() => run(() => store.retryCreate(sessionId))}
@@ -621,7 +612,6 @@ function SessionTerminals({
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    size="compact"
                     variant="tertiary"
                     disabled={entry.busy}
                     onClick={() => run(() => store.checkInput(selectedId))}
@@ -630,7 +620,6 @@ function SessionTerminals({
                   </Button>
                   {mayControl ? (
                     <Button
-                      size="compact"
                       variant="tertiary"
                       disabled={entry.busy}
                       onClick={() => run(() => store.claim(selectedId, true))}

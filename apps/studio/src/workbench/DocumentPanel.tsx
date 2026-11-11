@@ -311,7 +311,6 @@ export function DocumentPanel({
       {edits && pendingProposals ? (
         <Tooltip content={tp('pendingCount', { count: pendingProposals })}>
           <Button
-            size="compact"
             variant="secondary"
             aria-label={tp('pendingCount', { count: pendingProposals })}
             onClick={showHistory}
@@ -324,7 +323,6 @@ export function DocumentPanel({
       ) : null}
       {pending ? (
         <Button
-          size="compact"
           variant="tertiary"
           disabled={entry.saving}
           onClick={() => perform(() => owner.checkSave(documentKey))}
@@ -333,7 +331,6 @@ export function DocumentPanel({
         </Button>
       ) : null}
       <Button
-        size="compact"
         // While another writer holds the copy, the banner's own actions lead and Save steps back.
         variant={entry.writerBusy ? 'secondary' : canSave ? 'primary' : 'ghost'}
         disabled={!canSave}
@@ -348,7 +345,7 @@ export function DocumentPanel({
             render={
               <Button
                 variant="ghost"
-                size="icon-compact"
+                size="icon"
                 aria-label={t('moreActions', { path: entry.path })}
               />
             }
@@ -467,11 +464,10 @@ export function DocumentPanel({
             <p className="text-caption text-muted-foreground">{t('readOnly')}</p>
           ) : null}
           {entry.formatBlocked ? (
-            <Banner status="warning" size="compact" role="status">
+            <Banner status="warning" role="status">
               <BannerTitle>{t('eolHint')}</BannerTitle>
               <BannerActions>
                 <Button
-                  size="compact"
                   variant="secondary"
                   disabled={eolDisabled}
                   onClick={() => owner.convertEol(documentKey, 'lf')}
@@ -479,7 +475,6 @@ export function DocumentPanel({
                   {t('eolLf')}
                 </Button>
                 <Button
-                  size="compact"
                   variant="secondary"
                   disabled={eolDisabled}
                   onClick={() => owner.convertEol(documentKey, 'crlf')}
@@ -524,7 +519,6 @@ export function DocumentPanel({
               <DocumentText label={t('theirs')} text={versionText(entry.conflict)} />
               <div className="flex flex-wrap gap-2">
                 <Button
-                  size="compact"
                   variant="tertiary"
                   disabled={readOnlyTarget || pending || entry.saving}
                   onClick={() => {
@@ -536,7 +530,6 @@ export function DocumentPanel({
                   {t('keepDraft')}
                 </Button>
                 <Button
-                  size="compact"
                   variant="ghost"
                   disabled={readOnlyTarget || pending || entry.saving}
                   onClick={() => {
@@ -568,7 +561,6 @@ export function DocumentPanel({
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <Button
-                  size="compact"
                   variant="tertiary"
                   disabled={readOnlyTarget || entry.dirty || pending || entry.saving}
                   onClick={() => perform(() => owner.restoreRecovery(documentKey, recovery.id))}
@@ -576,7 +568,6 @@ export function DocumentPanel({
                   {t('restoreRecovery')}
                 </Button>
                 <Button
-                  size="compact"
                   variant="ghost"
                   onClick={() => perform(() => owner.discardRecovery(documentKey, recovery.id))}
                 >
@@ -775,18 +766,12 @@ export function DocumentPanel({
             ) : null}
             <div className="flex flex-wrap gap-2">
               <Button
-                size="compact"
                 disabled={capturing || !onAttach || readOnlyTarget || referencePending}
                 onClick={() => void attachCaptured(captured)}
               >
                 {t('attachSnapshot')}
               </Button>
-              <Button
-                size="compact"
-                variant="ghost"
-                disabled={capturing}
-                onClick={() => setCaptured(null)}
-              >
+              <Button variant="ghost" disabled={capturing} onClick={() => setCaptured(null)}>
                 {t('cancel')}
               </Button>
             </div>

@@ -521,6 +521,27 @@ it('shows no state word or mark for a live server with a model', async () => {
   expect(read).not.toContain(messages.Shell.connected);
 });
 
+// The logo is the symbol and the wordmark drawn as vectors in the text color; the name stays as
+// text for screen readers and is not read twice.
+it('shows the Corral symbol and wordmark in the header, with the name as text once', async () => {
+  fixture.services = { repository: {}, mode: 'server', live: true };
+  fixture.profiles = [{ available: true }];
+  const container = await mount();
+  const header = container.querySelector<HTMLElement>('[data-sidebar="header"]');
+  const symbol = header?.querySelector('svg[data-brand="symbol"]');
+  const wordmark = header?.querySelector('svg[data-brand="wordmark"]');
+  expect(symbol?.getAttribute('fill')).toBe('currentColor');
+  expect(wordmark?.getAttribute('fill')).toBe('currentColor');
+  for (const mark of [symbol, wordmark])
+    expect(mark?.closest('[aria-hidden="true"]')).not.toBeNull();
+  const menu = corralMenu(container);
+  expect(menu.contains(wordmark ?? null)).toBe(true);
+  expect(occurrences(menu.textContent ?? '', 'Corral')).toBe(1);
+  expect(visibleText(menu)).toBe('Corral');
+  // The letter tile the symbol replaced is gone.
+  expect(header?.querySelector('.bg-foreground')).toBeNull();
+});
+
 it('without a model, the header word is the one control that opens model settings', async () => {
   fixture.services = { repository: {}, mode: 'server', live: true };
   fixture.profiles = [];

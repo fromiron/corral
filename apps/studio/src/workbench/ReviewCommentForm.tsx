@@ -120,7 +120,6 @@ export function ReviewCommentForm({
           <div className="min-w-0 flex-1">
             <Select
               label={td('commentSide')}
-              size="xs"
               className="w-full min-w-0"
               value={range.side}
               onValueChange={(side) => onRange({ ...range, side })}
@@ -132,7 +131,6 @@ export function ReviewCommentForm({
           </div>
           <Input
             type="number"
-            size="compact"
             font="mono"
             min={1}
             aria-label={td('fromLine')}
@@ -144,7 +142,6 @@ export function ReviewCommentForm({
           <span aria-hidden>–</span>
           <Input
             type="number"
-            size="compact"
             font="mono"
             min={1}
             aria-label={td('toLine')}
@@ -177,10 +174,10 @@ export function ReviewCommentForm({
         className="w-full"
       />
       <div className="flex gap-2">
-        <Button type="submit" size="compact" disabled={busy || !ready || tooLong}>
+        <Button type="submit" disabled={busy || !ready || tooLong}>
           {t('addComment')}
         </Button>
-        <Button type="button" size="compact" variant="ghost" onClick={onCancel}>
+        <Button type="button" variant="ghost" onClick={onCancel}>
           {t('cancel')}
         </Button>
       </div>

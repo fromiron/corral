@@ -206,7 +206,6 @@ function ResultButton({
       aria-current={chosen ? 'true' : undefined}
       onClick={() => onSelect(item.artifactVersionId)}
       variant={chosen ? 'secondary' : 'ghost'}
-      size="compact"
       className="h-auto w-full justify-start py-2 text-left whitespace-normal"
     >
       <span className="flex min-w-0 flex-col items-start">
@@ -327,7 +326,6 @@ export function ResultReader({
       <Tabs
         value={format}
         onValueChange={(value) => setFormat(value as Format)}
-        size="compact"
         className="contents"
       >
         <header className="flex flex-col gap-2 border-b border-line px-4 py-3">
@@ -374,7 +372,6 @@ export function ResultReader({
                   disabled={text === undefined}
                   onClick={() => void copy()}
                   variant="tertiary"
-                  size="compact"
                 >
                   {copied ? t('copied') : t('copy')}
                 </Button>
@@ -383,7 +380,6 @@ export function ResultReader({
                   disabled={text === undefined}
                   onClick={download}
                   variant="tertiary"
-                  size="compact"
                 >
                   {t('download')}
                 </Button>

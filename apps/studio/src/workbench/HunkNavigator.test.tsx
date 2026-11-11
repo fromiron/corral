@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SizeScope } from '@corral/react/design-kit';
 import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -12,7 +13,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount(count = 3) {
+async function mount(count = 3, density?: 'default' | 'compact') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const reveal = vi.fn();
   const navigation = createRef<HunkNavigation>();
@@ -29,7 +30,9 @@ async function mount(count = 3) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <HunkNavigator hunks={hunks} onReveal={reveal} navigation={navigation} />
+        <SizeScope size={density}>
+          <HunkNavigator hunks={hunks} onReveal={reveal} navigation={navigation} />
+        </SizeScope>
       </IntlProvider>,
     ),
   );
@@ -81,4 +84,12 @@ it('has nothing to move to in a diff without changes', async () => {
   expect(view.navigation.current?.move(1)).toBe(false);
   expect(view.button('Next change')?.disabled).toBe(true);
   expect(view.button('Previous change')?.disabled).toBe(true);
+});
+
+// Settings › General › Interface density reaches the Changes view (workbench.md).
+it('its buttons take the interface density', async () => {
+  const roomy = await mount(3, 'default');
+  expect(roomy.button('Next change')?.dataset.size).toBe('icon');
+  const dense = await mount(3, 'compact');
+  expect(dense.button('Next change')?.dataset.size).toBe('icon-compact');
 });

@@ -111,7 +111,6 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
       </h3>
       <Select
         label={t('operation')}
-        size="xs"
         value={selected}
         onValueChange={select}
         disabled={pending}
@@ -131,7 +130,6 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
       </label>
       {desktop ? (
         <Button
-          size="compact"
           variant="tertiary"
           disabled={
             pending ||
@@ -179,7 +177,6 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
       )}
       {lease ? (
         <Button
-          size="compact"
           variant="ghost"
           onClick={async () => {
             try {
@@ -224,7 +221,6 @@ function BrowserQaPreviewLink() {
   return (
     <Button
       variant="ghost"
-      size="compact"
       className="self-start"
       render={
         <Link

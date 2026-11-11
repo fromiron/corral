@@ -114,7 +114,6 @@ export function HunkActions({
     >
       {!hunks ? (
         <Button
-          size="compact"
           variant="tertiary"
           className="self-start"
           disabled={busy}
@@ -173,7 +172,6 @@ export function HunkActions({
           <div className="flex flex-wrap gap-2">
             {onAttach && workspaceId ? (
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy || !selected.length}
                 onClick={() =>
@@ -221,7 +219,6 @@ export function HunkActions({
               </Button>
             ) : null}
             <Button
-              size="compact"
               variant="tertiary"
               disabled={busy || active || !selected.length}
               onClick={() => void prepare('apply_original')}
@@ -229,7 +226,6 @@ export function HunkActions({
               {t('planOriginal')}
             </Button>
             <Button
-              size="compact"
               variant="tertiary"
               disabled={busy || active || !selected.length}
               onClick={() => void prepare('revert_working_copy')}
@@ -251,7 +247,6 @@ export function HunkActions({
           </p>
           <p className="m-0">{t('approval', { count: selected.length, path })}</p>
           <Button
-            size="compact"
             disabled={busy || active}
             onClick={() =>
               void act(async () => {

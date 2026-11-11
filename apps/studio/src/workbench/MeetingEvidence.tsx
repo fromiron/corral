@@ -127,13 +127,7 @@ export function MeetingEvidencePicker(props: {
         enabled
       />
       <div>
-        <Button
-          type="button"
-          size="compact"
-          variant="ghost"
-          disabled={blocked}
-          onClick={() => void list()}
-        >
+        <Button type="button" variant="ghost" disabled={blocked} onClick={() => void list()}>
           {t('evidenceResults')}
         </Button>
       </div>
@@ -145,7 +139,6 @@ export function MeetingEvidencePicker(props: {
                 <Button
                   key={artifact.artifactVersionId}
                   type="button"
-                  size="compact"
                   variant="tertiary"
                   disabled={blocked}
                   onClick={() => void chooseArtifact(results.runId, artifact)}
@@ -157,7 +150,6 @@ export function MeetingEvidencePicker(props: {
                 <Button
                   key={run.runId}
                   type="button"
-                  size="compact"
                   variant="tertiary"
                   disabled={blocked}
                   onClick={() => void chooseRun(run.runId)}

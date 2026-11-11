@@ -114,10 +114,11 @@ function Sources({ sources }: { sources: ProcessRow['sources'] }) {
  * so their text, not their hover fill, starts on the answer's left edge.
  */
 export function TurnLine({ children }: { children: ReactNode }) {
+  const inset = useSize().variant === 'compact' ? '-ml-2.5' : '-ml-3';
   return (
     <div
       data-testid="turn-line"
-      className="-ml-2.5 flex min-w-0 flex-wrap items-center text-caption text-muted-foreground"
+      className={`${inset} flex min-w-0 flex-wrap items-center text-caption text-muted-foreground`}
     >
       {children}
     </div>
@@ -230,7 +231,6 @@ export function TurnProcess({
     <ThinkingSteps
       data-testid="turn-process"
       className="turn-process w-full"
-      size="compact"
       open={open}
       onOpenChange={onOpenChange}
     >

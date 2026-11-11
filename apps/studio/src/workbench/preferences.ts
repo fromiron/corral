@@ -1,5 +1,6 @@
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { isPaletteId, type PaletteId } from './themes/palette.ts';
 
 export type ChatDensity = 'results' | 'basic' | 'detailed';
 export type Theme = 'system' | 'light' | 'dark';
@@ -7,7 +8,10 @@ export type Theme = 'system' | 'light' | 'dark';
 export type InterfaceDensity = 'default' | 'compact';
 export interface Preferences {
   version: 1;
+  /** Light or dark; under a named theme, that theme's base (the vault carries only this). */
   theme: Theme;
+  /** A named theme (themes/appearance.ts), or null for the kit's own palette. */
+  palette: PaletteId | null;
   sidebarOpen: boolean;
   sidebarWidth: number;
   /** Enter sends and Shift+Enter adds a line, or Ctrl/⌘+Enter sends and Enter adds a line. */
@@ -22,6 +26,7 @@ export const PREFERENCES_KEY = 'corral:workbench:v1';
 const defaults: Preferences = {
   version: 1,
   theme: 'system',
+  palette: null,
   sidebarOpen: true,
   sidebarWidth: 256,
   sendKey: 'enter',
@@ -37,6 +42,7 @@ export function parsePreferences(raw: string | null): Preferences {
     return {
       version: 1,
       theme: ['system', 'light', 'dark'].includes(value.theme) ? value.theme : 'system',
+      palette: isPaletteId(value.palette) ? value.palette : null,
       sidebarOpen: typeof value.sidebarOpen === 'boolean' ? value.sidebarOpen : true,
       sidebarWidth:
         typeof value.sidebarWidth === 'number' && Number.isFinite(value.sidebarWidth)

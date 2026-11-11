@@ -90,7 +90,6 @@ export function ProjectMaterialPicker({
         label={t('attach')}
         className="max-w-52"
         variant="chip"
-        size="xs"
         disabled={disabled || busy || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
         value={null}
         placeholder={t('attachPlaceholder')}
@@ -181,7 +180,6 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
           <li key={item.id} className="flex items-center gap-2 text-body">
             <Button
               variant="ghost"
-              size="compact"
               className="min-w-0 flex-1 justify-start"
               onClick={() => {
                 setEditing(item);
@@ -195,7 +193,6 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
               </span>
             </Button>
             <Button
-              size="compact"
               variant="ghost"
               disabled={busy}
               onClick={async () => {
@@ -269,11 +266,11 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
           />
         </label>
         <div className="flex gap-2">
-          <Button type="submit" size="compact" disabled={busy}>
+          <Button type="submit" disabled={busy}>
             {editing ? t('saveVersion') : t('add')}
           </Button>
           {editing ? (
-            <Button type="button" variant="ghost" size="compact" onClick={clear}>
+            <Button type="button" variant="ghost" onClick={clear}>
               {t('cancelEdit')}
             </Button>
           ) : null}

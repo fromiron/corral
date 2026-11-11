@@ -71,7 +71,7 @@ export function WriterHeld({
     };
   }, [workspaces, terminals, transport, sessionId, scope]);
   return (
-    <Banner status={released ? 'success' : 'warning'} size="compact" role="alert">
+    <Banner status={released ? 'success' : 'warning'} role="alert">
       <BannerTitle>{released ? t('writerReleased') : t('writerHeld')}</BannerTitle>
       {error ? <BannerDescription className="text-danger">{error}</BannerDescription> : null}
       <BannerActions>
@@ -80,7 +80,6 @@ export function WriterHeld({
           : tasks.map((task) => (
               <Button
                 key={task.operationId}
-                size="compact"
                 variant="tertiary"
                 disabled={stopping}
                 onClick={async () => {
@@ -105,7 +104,6 @@ export function WriterHeld({
             ))}
         {!released && hasTerminal ? (
           <Button
-            size="compact"
             variant="tertiary"
             render={
               <Link
@@ -122,7 +120,6 @@ export function WriterHeld({
           ? runs.map((run) => (
               <Button
                 key={run.runId}
-                size="compact"
                 variant="tertiary"
                 render={
                   <Link

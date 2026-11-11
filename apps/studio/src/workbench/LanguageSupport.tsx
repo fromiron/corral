@@ -94,7 +94,6 @@ function LanguageControls({
               {t(session.state)}
             </span>
             <Button
-              size="compact"
               variant="tertiary"
               disabled={copy?.busy}
               onClick={() => void store.stop(target)}
@@ -119,14 +118,12 @@ function LanguageControls({
           <>
             <Select
               label={t('server')}
-              size="xs"
               value={serverId}
               onValueChange={select}
               options={servers.map((server) => ({ value: server.id, label: server.name }))}
               disabled={copy?.busy}
             />
             <Button
-              size="compact"
               variant="tertiary"
               disabled={copy?.busy}
               onClick={() => void store.inspect(target, serverId)}
@@ -135,7 +132,6 @@ function LanguageControls({
             </Button>
             {inspection ? (
               <Button
-                size="compact"
                 disabled={copy?.busy}
                 onClick={() => void store.start(target, !inspection.trusted)}
               >

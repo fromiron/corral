@@ -106,7 +106,6 @@ export function RunControls({
             startDisabled
           }
           variant="primary"
-          size="compact"
         >
           {starting ? t('starting') : t('start')}
         </Button>
@@ -121,7 +120,7 @@ export function RunControls({
           className="flex flex-wrap items-center justify-between gap-2 rounded border border-primary/50 bg-primary/10 px-2 py-1 text-caption"
         >
           <span>{t('startFrom', { label: startFrom.label, runId: startFrom.runId })}</span>
-          <Button type="button" onClick={onClearStartFrom} variant="ghost" size="compact">
+          <Button type="button" onClick={onClearStartFrom} variant="ghost">
             {t('clearStartFrom')}
           </Button>
         </div>
@@ -133,7 +132,6 @@ export function RunControls({
             label={t('agents')}
             value={mode}
             onValueChange={setMode}
-            size="xs"
             options={[
               { value: 'mock', label: t('modeMock') },
               { value: 'live', label: t('modeLive') },

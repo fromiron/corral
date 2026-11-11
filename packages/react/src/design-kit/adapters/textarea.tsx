@@ -4,14 +4,19 @@ import { Field as FieldPrimitive } from '@base-ui/react/field';
 import { mergeProps } from '@base-ui/react/merge-props';
 import type * as React from 'react';
 
+import { useSizeVariant } from '../lib/size-context.tsx';
 import { cn } from './utils.ts';
 
 type TextareaProps = React.ComponentProps<'textarea'> & {
-  size?: 'sm' | 'default' | 'lg' | number;
+  size?: 'sm' | 'compact' | 'default' | 'lg' | number;
   unstyled?: boolean;
 };
 
-function Textarea({ className, size = 'default', unstyled = false, ...props }: TextareaProps) {
+function Textarea({ className, size: sizeProp, unstyled = false, ...props }: TextareaProps) {
+  // No size takes the step of the surrounding size scope (the person's interface density); the
+  // compact step is the `sm` field.
+  const scope = useSizeVariant();
+  const size = sizeProp ?? scope;
   return (
     <span
       className={
@@ -29,7 +34,7 @@ function Textarea({ className, size = 'default', unstyled = false, ...props }: T
           <textarea
             className={cn(
               'field-sizing-content min-h-20 max-h-64 w-full rounded-[inherit] px-3 py-2 text-body outline-none wrap-anywhere placeholder:text-muted-foreground pointer-coarse:text-base',
-              size === 'sm' &&
+              (size === 'sm' || size === 'compact') &&
                 'min-h-16 px-2.5 py-1.5 text-[length:var(--fs-body-compact)] leading-[var(--lh-body-compact)] pointer-coarse:text-base',
               size === 'lg' && 'min-h-24 py-2',
             )}

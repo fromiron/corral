@@ -176,7 +176,6 @@ export function SessionChangesPanel({
   const missing = copy.state === 'none';
   return (
     <Tabs
-      size="compact"
       value={shown}
       onValueChange={(value) => choose(value as ChangesView)}
       className="flex h-full min-h-0 min-w-0 flex-col"
@@ -208,9 +207,7 @@ export function SessionChangesPanel({
           ) : null}
           <Menu>
             <Tooltip content={tr('more')}>
-              <MenuTrigger
-                render={<Button variant="ghost" size="icon-compact" aria-label={tr('more')} />}
-              >
+              <MenuTrigger render={<Button variant="ghost" size="icon" aria-label={tr('more')} />}>
                 <Ellipsis aria-hidden />
               </MenuTrigger>
             </Tooltip>

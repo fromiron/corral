@@ -271,7 +271,6 @@ export function DebugControls({ api, target, copy, store }: Props) {
           {t('title')}
         </h2>
         <Button
-          size="compact"
           variant="ghost"
           disabled={copy?.busy}
           onClick={() => {
@@ -355,7 +354,6 @@ export function DebugControls({ api, target, copy, store }: Props) {
                 </p>
               ) : null}
               <Button
-                size="compact"
                 variant="tertiary"
                 className="self-start"
                 disabled={busy || !hasTarget}
@@ -379,7 +377,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
         <>
           <div className="flex flex-wrap gap-2">
             {session.state === 'running' ? (
-              <Button size="compact" disabled={busy} onClick={() => void command('pause')}>
+              <Button disabled={busy} onClick={() => void command('pause')}>
                 {t('pause')}
               </Button>
             ) : null}
@@ -387,7 +385,6 @@ export function DebugControls({ api, target, copy, store }: Props) {
               ? (['continue', 'next', 'stepIn', 'stepOut'] as const).map((kind) => (
                   <Button
                     key={kind}
-                    size="compact"
                     variant={kind === 'continue' ? 'default' : 'outline'}
                     disabled={busy}
                     onClick={() => void command(kind)}
@@ -398,7 +395,6 @@ export function DebugControls({ api, target, copy, store }: Props) {
               : null}
             {session.canDisconnect ? (
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={ending}
                 onClick={() => void command('disconnect')}
@@ -407,12 +403,7 @@ export function DebugControls({ api, target, copy, store }: Props) {
               </Button>
             ) : null}
             {session.canStop ? (
-              <Button
-                size="compact"
-                variant="tertiary"
-                disabled={ending}
-                onClick={() => void command('stop')}
-              >
+              <Button variant="tertiary" disabled={ending} onClick={() => void command('stop')}>
                 {t('stop')}
               </Button>
             ) : null}
@@ -426,7 +417,6 @@ export function DebugControls({ api, target, copy, store }: Props) {
         <div role="status" className="flex flex-wrap items-center gap-2 text-caption text-warning">
           <span>{t('pending')}</span>
           <Button
-            size="compact"
             variant="tertiary"
             disabled={copy.busy}
             onClick={() => void store.checkCommand(target)}
@@ -484,7 +474,6 @@ export function DebugControls({ api, target, copy, store }: Props) {
                 {scopes.values.map((value) => (
                   <Button
                     key={value.variablesReference}
-                    size="compact"
                     variant="tertiary"
                     disabled={reading}
                     onClick={() => void readVariables(value.variablesReference, value.name)}
@@ -508,7 +497,6 @@ export function DebugControls({ api, target, copy, store }: Props) {
                         </span>
                         {value.variablesReference ? (
                           <Button
-                            size="compact"
                             variant="ghost"
                             className="self-start"
                             disabled={reading}
@@ -691,16 +679,10 @@ export function DebugControls({ api, target, copy, store }: Props) {
                 <p className="text-caption text-warning">{t('trustHint')}</p>
               ) : null}
               <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                <Button
-                  size="compact"
-                  variant="ghost"
-                  disabled={copy?.busy}
-                  onClick={() => setReview(false)}
-                >
+                <Button variant="ghost" disabled={copy?.busy} onClick={() => setReview(false)}>
                   {t('cancel')}
                 </Button>
                 <Button
-                  size="compact"
                   disabled={busy}
                   onClick={() =>
                     void store.start(target, !inspected.trusted).then(() => setReview(false))

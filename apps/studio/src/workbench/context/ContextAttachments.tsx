@@ -216,7 +216,6 @@ function CaptureRow({
               <div className="flex flex-wrap gap-1">
                 <Button
                   type="button"
-                  size="compact"
                   variant="ghost"
                   disabled={disabled || busy}
                   aria-label={`${t('openSource')}: ${item.name}`}
@@ -229,7 +228,6 @@ function CaptureRow({
                 ) : (
                   <Button
                     type="button"
-                    size="compact"
                     variant="ghost"
                     disabled={disabled || busy}
                     aria-label={`${t('replaceCapture')}: ${item.name}`}
@@ -248,7 +246,7 @@ function CaptureRow({
         </details>
         <Button
           type="button"
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('removeCapture', { name: item.name })}
           disabled={disabled}

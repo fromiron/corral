@@ -56,7 +56,13 @@ export async function applyPortablePreferences(
   if (actual !== expectedRevision && actual !== desired)
     throw new Error('Browser preferences changed since preview. Preview or recover again.');
   if (target.shortcuts) writeShortcutBindings(target.shortcuts);
-  changePreferences({ theme: target.theme, sendKey: target.sendKey, notify: target.notify });
+  changePreferences({
+    theme: target.theme,
+    // A different brightness from the vault replaces a named theme; the same one keeps it.
+    ...(target.theme !== current.theme ? { palette: null } : {}),
+    sendKey: target.sendKey,
+    notify: target.notify,
+  });
   setLocale(target.locale);
   const saved = parsePreferences(localStorage.getItem(PREFERENCES_KEY));
   const readback: PortableApplication = {

@@ -267,6 +267,63 @@ it('keeps an older message action in place when pointer focus precedes its scrol
   expect(top).toBe(100);
 });
 
+// The same guarantee when the conversation is only a little taller than its view: moving up by
+// less than the distance that counts as "near the end" still leaves the end, or the view would
+// pull a clipped older action back out from under the pointer.
+it('keeps an older message action in place when the conversation overflows by less than the follow distance', async () => {
+  sessionStorage.clear();
+  const container = await render(
+    undefined,
+    false,
+    undefined,
+    <button type="button">Open in Results</button>,
+  );
+  const box = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+  const row = container.querySelector<HTMLElement>('[data-chat-item]');
+  const action = row?.querySelector('button');
+  if (!box || !row || !action) throw new Error('Conversation action fixture missing');
+  let height = 227;
+  let top = 0;
+  Object.defineProperties(box, {
+    scrollHeight: { get: () => height },
+    clientHeight: { get: () => 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  row.getBoundingClientRect = () => ({ top: -top, bottom: height - top }) as DOMRect;
+  const resize = async () =>
+    act(async () => {
+      for (const callback of resizeCallbacks) callback();
+    });
+  await resize();
+  expect(top).toBe(27);
+  // The browser scrolls the clipped action into view, then the pointer goes down on it.
+  box.scrollTop = 0;
+  await act(async () => {
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  await act(async () => {
+    action.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    action.focus();
+  });
+  expect(top).toBe(0);
+  await resize();
+  expect(top).toBe(0);
+  // Scrolling back down to the end follows again.
+  await act(async () => {
+    box.dispatchEvent(new Event('wheel', { bubbles: true }));
+    box.scrollTop = 27;
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  height = 400;
+  await resize();
+  expect(top).toBe(200);
+});
+
 it('identifies and highlights the message selected from search', async () => {
   const container = await render(undefined, false, 'entry');
   const row = container.querySelector('[data-chat-item="entry"]');

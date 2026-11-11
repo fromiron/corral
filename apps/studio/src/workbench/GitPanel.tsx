@@ -503,7 +503,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       <div className="flex flex-wrap items-end gap-2">
         <Select
           label={t('source')}
-          size="sm"
           value={source}
           onValueChange={(value) => setSource(value as 'session' | 'project')}
           options={[
@@ -512,7 +511,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           ]}
         />
         <Button
-          size="compact"
           variant="tertiary"
           disabled={!result}
           onClick={() => setRevision((value) => value + 1)}
@@ -592,7 +590,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                   />
                   <Button
                     type="submit"
-                    size="compact"
                     variant="tertiary"
                     disabled={!branchName.trim() || Boolean(busy || unconfirmed)}
                   >
@@ -604,7 +601,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                     {others.slice(0, 20).map((branch) => (
                       <li key={branch}>
                         <Button
-                          size="compact"
                           variant="ghost"
                           aria-label={t('switchTo', { branch })}
                           title={t('switchTo', { branch })}
@@ -620,7 +616,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 {remote ? (
                   <div className="flex flex-wrap gap-1">
                     <Button
-                      size="compact"
                       variant="tertiary"
                       disabled={Boolean(busy || unconfirmed)}
                       onClick={() => void change({ kind: 'fetch', remote })}
@@ -628,7 +623,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                       {t('fetch')}
                     </Button>
                     <Button
-                      size="compact"
                       variant="tertiary"
                       disabled={!status.head.branch || Boolean(busy || unconfirmed)}
                       onClick={() =>
@@ -642,7 +636,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                       {t('pull')}
                     </Button>
                     <Button
-                      size="compact"
                       variant="tertiary"
                       disabled={!status.head.branch || Boolean(busy || unconfirmed)}
                       onClick={() =>
@@ -674,7 +667,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             >
               <span>{t('unconfirmed')}</span>
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={Boolean(busy)}
                 onClick={() => void check(unconfirmed)}
@@ -684,7 +676,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               {unconfirmed.advanced ? (
                 <>
                   <Button
-                    size="compact"
                     variant="tertiary"
                     disabled={Boolean(busy)}
                     onClick={() => void recoverAdvanced(unconfirmed, 'reconcile')}
@@ -692,7 +683,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                     {t('reconcile')}
                   </Button>
                   <Button
-                    size="compact"
                     variant="ghost"
                     disabled={Boolean(busy)}
                     onClick={() => void recoverAdvanced(unconfirmed, 'cancel')}
@@ -707,7 +697,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             <div role="status" className="flex flex-wrap items-center gap-2 text-caption">
               <span>{t('advancedRunning')}</span>
               <Button
-                size="compact"
                 variant="tertiary"
                 onClick={() =>
                   void workspaces
@@ -771,7 +760,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   type="submit"
-                  size="compact"
                   disabled={!message.trim() || Boolean(busy) || Boolean(unconfirmed)}
                 >
                   {busy?.kind === 'commit'
@@ -781,7 +769,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 {busy?.kind === 'commit' ? (
                   <Button
                     type="button"
-                    size="compact"
                     variant="tertiary"
                     onClick={() =>
                       void workspaces?.cancelGitOperation?.(sessionId, busy.operationId)
@@ -792,7 +779,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 ) : null}
                 <Switch
                   label={t('runHooks')}
-                  size="compact"
                   checked={runHooks}
                   onToggle={() => setRunHooks(!runHooks)}
                 />
@@ -816,7 +802,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                   </h3>
                   {writable && entries.length > 1 ? (
                     <Button
-                      size="compact"
                       variant="ghost"
                       disabled={Boolean(busy || unconfirmed)}
                       onClick={() =>
@@ -839,7 +824,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                             ? 'secondary'
                             : 'ghost'
                         }
-                        size="compact"
                         data-git-side={side}
                         data-path={entry.path}
                         aria-pressed={selected?.side === side && selected.path === entry.path}
@@ -857,7 +841,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                       </Button>
                       {writable ? (
                         <Button
-                          size="icon-compact"
+                          size="icon"
                           variant="ghost"
                           aria-label={t(side === 'staged' ? 'unstage' : 'stage', {
                             path: entry.path,

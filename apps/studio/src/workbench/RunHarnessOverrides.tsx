@@ -116,7 +116,6 @@ export function RunHarnessOverrides({
               </div>
               <Button
                 variant="tertiary"
-                size="compact"
                 onClick={() => {
                   const key = selectionKey;
                   const version = ++request.current;

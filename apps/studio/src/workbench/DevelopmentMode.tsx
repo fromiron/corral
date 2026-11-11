@@ -106,12 +106,7 @@ export function DevelopmentMode({
         <span className={operation ? 'text-warning' : 'text-muted-foreground'}>
           {t(operation?.state === 'uncertain' ? 'uncertain' : operation ? 'shared' : 'strict')}
         </span>
-        <Button
-          size="compact"
-          variant="tertiary"
-          disabled={busy === query}
-          onClick={() => void change()}
-        >
+        <Button variant="tertiary" disabled={busy === query} onClick={() => void change()}>
           {t(operation ? 'finish' : 'start')}
         </Button>
       </div>

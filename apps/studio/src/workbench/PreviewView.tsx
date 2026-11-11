@@ -61,7 +61,6 @@ export function PreviewView({
         {address ? (
           <InputCopy
             value={address}
-            size="compact"
             className="min-w-0 flex-[1_1_12rem]"
             title={`${t('address')}: ${address}`}
             labels={{
@@ -76,7 +75,7 @@ export function PreviewView({
         {inline ? (
           <>
             <Button
-              size="icon-compact"
+              size="icon"
               variant="ghost"
               aria-label={t('refresh')}
               onClick={() => reload((value) => value + 1)}
@@ -88,7 +87,6 @@ export function PreviewView({
               {(Object.keys(VIEWPORTS) as Viewport[]).map((size) => (
                 <Button
                   key={size}
-                  size="compact"
                   variant={viewport === size ? 'secondary' : 'ghost'}
                   aria-pressed={viewport === size}
                   onClick={() => setViewport(size)}

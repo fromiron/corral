@@ -43,13 +43,12 @@ function WriterNotice({ sessionId, store }: { sessionId: string; store: Terminal
   }, [sessionId, store]);
   if (!terminal) return null;
   return (
-    <Banner data-testid="terminal-writer-notice" status="warning" size="compact" role="status">
+    <Banner data-testid="terminal-writer-notice" status="warning" role="status">
       <BannerTitle>
         {t(terminal.state === 'uncertain' ? 'writerUncertainNotice' : 'writerNotice')}
       </BannerTitle>
       <BannerActions>
         <Button
-          size="compact"
           variant="secondary"
           render={
             <Link

@@ -72,7 +72,6 @@ export function RunView({
           <Button
             type="button"
             variant="ghost"
-            size="compact"
             onClick={() => {
               const runId = session.getState().runId;
               if (runId) void session.getState().open(runId);
@@ -173,7 +172,6 @@ export function RunOutput({
                 onClick={() => onOpenResults(artifact.artifactVersionId)}
                 aria-label={label}
                 variant="tertiary"
-                size="compact"
               >
                 {label} ↗
               </Button>
@@ -200,7 +198,6 @@ export function RunOutput({
             })
           }
           variant="secondary"
-          size="compact"
           className="self-start"
         >
           {t('newRunFromResult')}
@@ -455,7 +452,6 @@ export function ExecutionTree({
                 onValueChange={(iterationId) =>
                   choose(loop.nodeId, iterationId === 'latest' ? null : iterationId)
                 }
-                size="xs"
                 options={[
                   { value: 'latest', label: loopText('latest') },
                   ...(!selected && selectedIterations[loop.nodeId]
@@ -596,7 +592,6 @@ export function ExecutionTree({
       selectedId={selectedExecutionId}
       onSelect={(agent) => onSteer(agent.id)}
       labels={labels}
-      size="compact"
       cardWidth={wideCards ? fittedCardWidth(root, treeWidth) : TREE.card}
       // The column shrinks to the panel; cards truncate instead of widening it. Untitled, the
       // bar's first two parts (spark mark and title) step aside; the tree keeps the name.

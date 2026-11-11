@@ -227,7 +227,53 @@ describe('design guard (Workbench polish P0)', () => {
     );
     expect(found).toEqual([]);
   });
+
+  // DESIGN.md Colors: theme values live in the theme module only, and components keep reading
+  // tokens. The copied kit and the Corral token file hold the default palette.
+  it('keeps color literals in the theme module and the token files, never in a component', () => {
+    const found = [...text].flatMap(([path, body]) =>
+      themeColorLiterals(where(path), body).map((hex) => `${where(path)}: ${hex}`),
+    );
+    // Known: the team editor's container tint predates themes and has no token yet, so it stays
+    // teal under every theme. Only these two literals in that file are tolerated.
+    const known = [
+      'packages/react/src/team-editor/TeamGraphCanvas.tsx: #3b82f6',
+      'packages/react/src/team-editor/TeamGraphCanvas.tsx: #14b8a6',
+    ];
+    expect(found.filter((each) => !known.includes(each))).toEqual([]);
+  });
+
+  it('finds a color literal in a component but not in the theme module or the token files', () => {
+    const line = "const accent = '#66d9ef';";
+    expect(themeColorLiterals('apps/studio/src/workbench/Panel.tsx', line)).toEqual(['#66d9ef']);
+    expect(themeColorLiterals('packages/react/src/components/Card.tsx', "fill='#FFF'")).toEqual([
+      '#FFF',
+    ]);
+    expect(themeColorLiterals('apps/studio/src/index.css', 'color: #00000080;')).toEqual([
+      '#00000080',
+    ]);
+    expect(themeColorLiterals('apps/studio/src/workbench/themes/builtin.ts', line)).toEqual([]);
+    expect(themeColorLiterals('packages/react/src/theme.css', line)).toEqual([]);
+    expect(themeColorLiterals('packages/react/src/design-kit/tokens.css', line)).toEqual([]);
+    // Not colors: issue numbers, element ids, fragments.
+    expect(
+      themeColorLiterals('apps/studio/src/a.ts', "'PR #479 open' '#root' '#bootstrap='"),
+    ).toEqual([]);
+  });
 });
+
+/** Colors written as hex outside the files that own palettes. */
+function themeColorLiterals(path: string, source: string): string[] {
+  if (
+    path.startsWith('apps/studio/src/workbench/themes/') ||
+    path.startsWith('packages/react/src/design-kit/') ||
+    path === 'packages/react/src/theme.css'
+  )
+    return [];
+  return [...source.matchAll(/(?<![\w&])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3})(?![\w-])/gi)]
+    .map((match) => match[0])
+    .filter((hex) => !/^#\d{3}$/.test(hex));
+}
 
 // The kit's six type roles and its variable-font weights replace Tailwind's default steps, and
 // transitions use the kit's motion tokens (DESIGN.md Typography, Motion and Accessibility).
@@ -240,7 +286,7 @@ const callSites = [...text].filter(
 // keyword's weight is its only highlight. Only this exact declaration is exempt.
 const codeKeyword = (path: string, line: string) =>
   path === 'packages/react/src/components/CodeBlock.tsx' &&
-  line.trim().endsWith("color = 'font-semibold text-primary';");
+  line.trim().endsWith("color = 'font-semibold text-syntax-keyword';");
 
 /** `path:line: class` for each class `find` reports on a line of a call site. */
 function report(find: (line: string) => string[]): string[] {
@@ -303,7 +349,7 @@ describe('design guard (kit type roles and motion)', () => {
   });
 
   it("exempts only the code highlighter's keyword weight", () => {
-    const line = "      if (KEYWORDS.has(word)) color = 'font-semibold text-primary';";
+    const line = "      if (KEYWORDS.has(word)) color = 'font-semibold text-syntax-keyword';";
     expect(codeKeyword('packages/react/src/components/CodeBlock.tsx', line)).toBe(true);
     expect(codeKeyword('packages/react/src/components/Other.tsx', line)).toBe(false);
     expect(

@@ -30,6 +30,9 @@
 | 경로로 파일 찾아 열기 | Quick open / 빠른 열기 | `quickOpen` | 파일 검색(내용 검색과 구분) |
 | 세션 검사 명령의 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
 | 실행 일시정지·재개·취소 | Active run controls / 진행 중 실행 제어 | `DockRunControls` | — |
+| 앱 전체의 색 구성 선택 | Appearance / 화면 테마 | `theme`(밝기), `palette`(이름 있는 테마) | 스킨, 컬러 스킴 |
+| Corral이 함께 싣는 색 구성 | Built-in theme / 내장 테마 | `builtin:<id>` | 프리셋, 기본 테마(시스템·라이트·다크와 구분) |
+| 이 기기에서 만든 색 구성 | Personal theme / 개인 테마 | `custom:<id>` | 커스텀 테마, 사용자 정의 테마, 내 테마 |
 | 모델의 사고량 | Reasoning effort / 추론 노력 | `reasoning` | — |
 | 자동 추론 요청의 수준을 판정 엔진이 고르는 설정 | Effort mode / 추론 판정 | `EffortRoutingSettings` | Automatic reasoning, 추론 노력 자동 선택 |
 | Git index에 올리기 / 내리기 | Stage / 스테이지, Unstage / 스테이지 해제 | `git.stage`, `git.unstage` | add, 추가(화면 문구) |

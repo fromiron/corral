@@ -90,7 +90,6 @@ export function RefusalHelp({
         {(kind === 'terminal' || kind === 'terminalUncertain') &&
         (owner?.sessionId ?? sessionId) ? (
           <Button
-            size="compact"
             variant="tertiary"
             render={
               <Link
@@ -104,22 +103,18 @@ export function RefusalHelp({
           </Button>
         ) : null}
         {kind === 'signin' || kind === 'profile' || kind === 'image' ? (
-          <Button size="compact" render={<Link {...navigation.link('models')} />}>
+          <Button render={<Link {...navigation.link('models')} />}>
             {t(kind === 'image' ? 'chooseImageModel' : 'connect')}
           </Button>
         ) : null}
-        {kind === 'network' && onRetry ? (
-          <Button size="compact" onClick={onRetry}>
-            {t('retry')}
-          </Button>
-        ) : null}
+        {kind === 'network' && onRetry ? <Button onClick={onRetry}>{t('retry')}</Button> : null}
         {kind === 'busy' && onQueue ? (
-          <Button size="compact" variant="tertiary" onClick={onQueue}>
+          <Button variant="tertiary" onClick={onQueue}>
             {t('queue')}
           </Button>
         ) : null}
         {onEdit ? (
-          <Button size="compact" variant="tertiary" onClick={onEdit}>
+          <Button variant="tertiary" onClick={onEdit}>
             {t('edit')}
           </Button>
         ) : null}

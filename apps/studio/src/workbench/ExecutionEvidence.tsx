@@ -1,6 +1,6 @@
 import type { FileOperationView, VerificationResultView } from '@corral/client';
 import type { RunSessionStore } from '@corral/react';
-import { Button, fontWeights } from '@corral/react/design-kit';
+import { Button, fontWeights, useSize } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -30,6 +30,7 @@ export function ExecutionEvidence({
   onOpenArtifact(artifactVersionId: string): void;
 }) {
   const t = useTranslations('RunPage');
+  const inset = useSize().variant === 'compact' ? '-ml-2' : '-ml-3';
   const { workspaces, mode } = useServices();
   const runId = useStore(session, (state) => state.projection?.runId ?? null);
   const artifacts = useStore(session, (state) => state.projection?.artifacts);
@@ -105,8 +106,7 @@ export function ExecutionEvidence({
               <li key={artifact.artifactVersionId}>
                 <Button
                   variant="ghost"
-                  size="compact"
-                  className="-ml-2"
+                  className={inset}
                   onClick={() => onOpenArtifact(artifact.artifactVersionId)}
                 >
                   {artifact.name} · v{artifact.version}

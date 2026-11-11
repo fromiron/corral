@@ -185,7 +185,6 @@ export function ExecutionSteering({
       queueFooter={<p className="mt-2 text-caption text-muted-foreground">{t('deliveredNote')}</p>}
       compose={compose}
       headerActions={headerActions}
-      size="compact"
       className={className}
     >
       {children}

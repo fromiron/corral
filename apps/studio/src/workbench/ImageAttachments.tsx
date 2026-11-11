@@ -136,7 +136,6 @@ export function ImageAttachmentPicker({
       />
       {!inputRef ? (
         <Button
-          size="compact"
           variant="ghost"
           disabled={disabled || busy || value.length >= IMAGE_MAX_COUNT}
           onClick={() => input.current?.click()}
@@ -147,7 +146,6 @@ export function ImageAttachmentPicker({
       {value.map((image) => (
         <Button
           key={image.imageId}
-          size="compact"
           variant="tertiary"
           disabled={disabled || busy}
           aria-label={t('removeImage', { name: image.name })}

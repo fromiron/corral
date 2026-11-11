@@ -5,6 +5,7 @@ import {
   emptyProjection,
   type RunProjection,
 } from '@corral/core';
+import { SizeScope } from '@corral/react/design-kit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -36,7 +37,7 @@ const artifact = (id: string, name: string, authorExecutionId: string, kept = tr
   }) as ArtifactVersionView;
 
 /** Two parallel helpers each made a notes-part v1 in their first attempt; one is no longer kept. */
-async function render() {
+async function render(density?: 'default' | 'compact') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const projection: RunProjection = {
     ...emptyProjection('run_1'),
@@ -64,7 +65,9 @@ async function render() {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <RunResultVersions session={session} onOpenResult={vi.fn()} onOpenArtifact={vi.fn()} />
+        <SizeScope size={density}>
+          <RunResultVersions session={session} onOpenResult={vi.fn()} onOpenArtifact={vi.fn()} />
+        </SizeScope>
       </IntlProvider>,
     ),
   );
@@ -93,4 +96,12 @@ it('sets a name that is no longer kept as the other names are, its note as a sec
   expect(name?.textContent).toBe('notes-part');
   expect(name?.classList.contains(size as string)).toBe(true);
   expect(note?.textContent).toBe(messages.RunMonitor.resultVersions.notKept);
+});
+
+// Settings › General › Interface density reaches the run history (workbench.md).
+it('result rows take the interface density', async () => {
+  const name = (container: HTMLElement) =>
+    row(container, 'v_notes').querySelector<HTMLButtonElement>('button')?.dataset.size;
+  expect(name(await render('default'))).toBe('default');
+  expect(name(await render('compact'))).toBe('compact');
 });

@@ -233,7 +233,6 @@ export function MeetingDecisions({
                       <DecisionContent content={candidate.content} />
                       <div>
                         <Button
-                          size="compact"
                           variant="secondary"
                           disabled={busy}
                           onClick={(event) =>
@@ -375,7 +374,6 @@ export function MeetingDecisions({
               <>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    size="compact"
                     variant="tertiary"
                     disabled={busy}
                     onClick={(event) =>
@@ -393,7 +391,6 @@ export function MeetingDecisions({
                     {t('revise')}
                   </Button>
                   <Button
-                    size="compact"
                     variant="ghost-destructive"
                     disabled={busy}
                     onClick={() => {

@@ -232,7 +232,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
             </p>
           ) : null}
           {model.readState === 'error' ? (
-            <Button size="compact" variant="tertiary" onClick={model.retryRead}>
+            <Button variant="tertiary" onClick={model.retryRead}>
               {t('retry')}
             </Button>
           ) : null}
@@ -334,7 +334,6 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
           {model.plan.choices.map((choice) => (
             <li key={choice.key}>
               <Button
-                size="compact"
                 variant="ghost"
                 className="h-auto w-full justify-between gap-2 py-2"
                 onClick={() => model.plan.choose(choice.key)}
@@ -621,14 +620,12 @@ export function ComposerDock({
           data-testid="action-required"
           status={actionTone(run.action)}
           contrast="high"
-          size="compact"
           role="note"
           className="mb-2"
         >
           <BannerTitle>{actionLabel}</BannerTitle>
           <BannerActions>
             <Button
-              size="compact"
               variant="secondary"
               render={
                 <RunLink
@@ -723,7 +720,7 @@ export function ComposerPlan({
           <p className="text-warning">
             {t(status.state === 'mismatch' ? 'planMismatch' : 'planError')}
           </p>
-          <Button size="compact" variant="tertiary" onClick={() => model.plan.retry()}>
+          <Button variant="tertiary" onClick={() => model.plan.retry()}>
             {t('retry')}
           </Button>
         </div>
@@ -759,7 +756,6 @@ export function ComposerPlan({
       {plan && plan.items.length > 5 ? (
         <Button
           type="button"
-          size="compact"
           variant="ghost"
           className="ml-6 mt-1 text-muted-foreground"
           onClick={() => setAllKey(showAll ? null : key)}
@@ -795,7 +791,6 @@ export function ComposerPlan({
         <div className="flex items-center justify-end px-3 pt-2">
           <Select
             label={t('planOwner')}
-            size="xs"
             variant="ghost"
             value={model.plan.auto ? 'auto' : (model.plan.selectedKey ?? 'auto')}
             onValueChange={(value) =>

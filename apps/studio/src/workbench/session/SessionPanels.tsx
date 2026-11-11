@@ -45,11 +45,7 @@ export function RunPanel({
       <div className="grid h-full place-items-center p-6">
         <div className="grid justify-items-center gap-3">
           <EmptyState title={tw('noRuns')} />
-          <Button
-            variant="secondary"
-            size="compact"
-            onClick={() => setSearch({ panel: undefined })}
-          >
+          <Button variant="secondary" onClick={() => setSearch({ panel: undefined })}>
             {tw('openConversation')}
           </Button>
         </div>
@@ -259,7 +255,7 @@ export function ArtifactsPanel({
     return (
       <div role="alert" className="space-y-2 text-caption text-danger">
         <p>{td('resultUnavailable')}</p>
-        <Button variant="tertiary" size="compact" onClick={() => setRetry((value) => value + 1)}>
+        <Button variant="tertiary" onClick={() => setRetry((value) => value + 1)}>
           {td('retryResult')}
         </Button>
       </div>
@@ -317,7 +313,7 @@ export function ArtifactsPanel({
         </ul>
       )}
       {ended.length > count ? (
-        <Button variant="ghost" size="compact" onClick={() => setCount((value) => value + 10)}>
+        <Button variant="ghost" onClick={() => setCount((value) => value + 10)}>
           {td('moreResults', { count: ended.length - count })}
         </Button>
       ) : null}
@@ -348,7 +344,6 @@ export function ChecksPanel({
       />
       <Button
         variant="tertiary"
-        size="compact"
         className="self-start"
         render={<Link to="/sessions/$sessionId/review" params={{ sessionId: session.sessionId }} />}
       >

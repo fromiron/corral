@@ -111,7 +111,7 @@ export function EntryCard({
               {entry.intent !== 'steer' ? (
                 <Tooltip content={tm('editAsNew')}>
                   <Button
-                    size="icon-compact"
+                    size="icon"
                     variant="ghost"
                     aria-label={tm('editAsNew')}
                     onClick={() => editRequest(entry.text, entry)}
@@ -132,9 +132,7 @@ export function EntryCard({
                 <Popover>
                   <PopoverTrigger
                     title={t('runSettings')}
-                    render={
-                      <Button size="icon-compact" variant="ghost" aria-label={t('runSettings')} />
-                    }
+                    render={<Button size="icon" variant="ghost" aria-label={t('runSettings')} />}
                   >
                     <Settings />
                   </PopoverTrigger>
@@ -193,14 +191,10 @@ export function EntryCard({
             unfinished ? (
               // What to do next sits with the turn's one notice that it did not finish.
               <>
-                <Button size="compact" variant="secondary" disabled={!canResend} onClick={resend}>
+                <Button variant="secondary" disabled={!canResend} onClick={resend}>
                   {t('retryRequest')}
                 </Button>
-                <Button
-                  size="compact"
-                  variant="ghost"
-                  onClick={() => editRequest(entry.text, entry)}
-                >
+                <Button variant="ghost" onClick={() => editRequest(entry.text, entry)}>
                   {t('restoreRequest')}
                 </Button>
               </>
@@ -219,7 +213,6 @@ export function EntryCard({
           />
           <Button
             variant="ghost"
-            size="compact"
             onClick={() =>
               onPanel('run', {
                 run: entry.runId ?? undefined,
@@ -328,7 +321,6 @@ export function RunCard({
             <Tooltip content={t('openRun')}>
               <Button
                 variant="ghost"
-                size="compact"
                 data-testid="turn-run"
                 onClick={() => onPanel('run', { run: run.runId, view: 'run' })}
               >
@@ -429,7 +421,7 @@ function DeliveryStatus({
       <span>{t('appliesAt')}</span>
       {status ? <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span> : null}
       {status && ['not_delivered', 'expired', 'cancelled'].includes(status) ? (
-        <Button size="compact" variant="tertiary" disabled={resendDisabled} onClick={onResend}>
+        <Button variant="tertiary" disabled={resendDisabled} onClick={onResend}>
           {t('resendNext')}
         </Button>
       ) : null}

@@ -225,8 +225,10 @@ try {
     page.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }),
   ).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Appearance', exact: true }).click();
-  await page.getByRole('option', { name: 'Dark', exact: true }).click();
+  await page
+    .getByRole('radiogroup', { name: 'Appearance', exact: true })
+    .getByRole('radio', { name: 'Dark', exact: true })
+    .click();
   // the window follows the page's theme.
   await expect
     .poll(() =>

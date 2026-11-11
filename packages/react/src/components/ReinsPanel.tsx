@@ -180,7 +180,6 @@ export function ReinsPanel({
               type="button"
               disabled={pending || target.finished}
               variant="tertiary"
-              size="compact"
               onClick={() =>
                 setDraft({
                   ...draft,
@@ -200,7 +199,6 @@ export function ReinsPanel({
           onClick={() => void send()}
           disabled={pending || text.trim() === '' || !draftMatches || target.finished}
           variant="primary"
-          size="compact"
           className="self-end"
         >
           {pending ? t('sending') : t('send')}
@@ -229,7 +227,7 @@ export function ReinsPanel({
               ['scope', 'scopeValue'],
             ] as const
           ).map(([name, value]) => (
-            <KitBadge key={name} size="compact" data-reins-chip>
+            <KitBadge key={name} data-reins-chip>
               <span className="sr-only">{t(name)}: </span>
               {t(value)}
             </KitBadge>
@@ -287,7 +285,6 @@ export function ReinsPanel({
           disabled={pending || execution?.status === 'cancelling'}
           onClick={() => setCancelTarget({ runId, executionId: target.executionId })}
           variant="tertiary"
-          size="compact"
           className="self-start text-destructive-foreground"
         >
           {t('cancelExecution')}
@@ -313,17 +310,11 @@ export function ReinsPanel({
               });
             }}
             variant="tertiary"
-            size="compact"
             className="text-destructive-foreground"
           >
             {t('confirmCancelExecution')}
           </Button>
-          <Button
-            type="button"
-            onClick={() => setCancelTarget(null)}
-            variant="secondary"
-            size="compact"
-          >
+          <Button type="button" onClick={() => setCancelTarget(null)} variant="secondary">
             {t('keepRunning')}
           </Button>
         </div>
@@ -355,7 +346,6 @@ export function ReinsPanel({
               })
             }
             variant="primary"
-            size="compact"
           >
             {t('restart')}
           </Button>

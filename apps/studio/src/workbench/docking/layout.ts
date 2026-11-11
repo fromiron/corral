@@ -254,9 +254,12 @@ export function createPresetLayout(
   };
 }
 
-/** The file tree's own group in a wide new dock, and the column it keeps. */
+/**
+ * The file tree's own group in a wide new dock, and the column it keeps: wide enough for the
+ * tree's head at the interface density.
+ */
 export const TREE_GROUP = 'tree';
-export const TREE_WIDTH = 260;
+export const TREE_WIDTH = { compact: 260, default: 300 } as const;
 /** From this dock width a new dock opens documents in a group beside the tree. */
 export const TREE_BESIDE_DOCUMENTS = 960;
 

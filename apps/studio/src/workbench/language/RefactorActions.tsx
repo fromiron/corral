@@ -199,7 +199,6 @@ export function RefactorActions({
       <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {active && session.capabilities.rename ? (
           <Button
-            size="compact"
             variant="ghost"
             disabled={dirty || !selection || busy === context}
             onClick={() => {
@@ -214,7 +213,6 @@ export function RefactorActions({
         ) : null}
         {active && session.capabilities.codeActions ? (
           <Button
-            size="compact"
             variant="ghost"
             disabled={dirty || !selection || busy === context}
             onClick={() => {
@@ -225,7 +223,7 @@ export function RefactorActions({
           </Button>
         ) : null}
         {busy === context && !renaming ? (
-          <Button size="compact" variant="ghost" onClick={cancel}>
+          <Button variant="ghost" onClick={cancel}>
             {t('cancel')}
           </Button>
         ) : null}
@@ -251,7 +249,6 @@ export function RefactorActions({
             choices.proposals.map((proposal) => (
               <Button
                 key={proposal.proposalId}
-                size="compact"
                 variant="tertiary"
                 className="self-start"
                 onClick={() => onReview(proposal)}

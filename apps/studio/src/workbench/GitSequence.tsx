@@ -188,19 +188,13 @@ function SequenceControls({
           <p role="status">{t(`active.${sequence.kind}`)}</p>
           <div className="flex flex-wrap gap-2">
             <Button
-              size="compact"
               variant="tertiary"
               disabled={blocked || !!state.conflicts.length}
               onClick={() => prepare('continue')}
             >
               {t('reviewContinue')}
             </Button>
-            <Button
-              size="compact"
-              variant="tertiary"
-              disabled={blocked}
-              onClick={() => prepare('abort')}
-            >
+            <Button variant="tertiary" disabled={blocked} onClick={() => prepare('abort')}>
               {t('reviewAbort')}
             </Button>
           </div>
@@ -212,7 +206,6 @@ function SequenceControls({
         <>
           <Select
             label={t('branch')}
-            size="xs"
             value={branch?.name ?? ''}
             onValueChange={setSelected}
             disabled={blocked || !branches.length}
@@ -220,7 +213,6 @@ function SequenceControls({
           />
           <div className="flex flex-wrap gap-2">
             <Button
-              size="compact"
               variant="tertiary"
               disabled={blocked || !clean || !branch}
               onClick={() => prepare('merge')}
@@ -228,7 +220,6 @@ function SequenceControls({
               {t('reviewMerge')}
             </Button>
             <Button
-              size="compact"
               variant="tertiary"
               disabled={blocked || !clean || !branch}
               onClick={() => prepare('rebase')}

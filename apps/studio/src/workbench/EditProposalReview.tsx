@@ -351,7 +351,7 @@ function ProposalReview({
   return (
     <>
       {trigger ? (
-        <Button size="compact" variant="tertiary" disabled={busy} onClick={() => void history()}>
+        <Button variant="tertiary" disabled={busy} onClick={() => void history()}>
           {t('history')}
         </Button>
       ) : null}
@@ -393,7 +393,6 @@ function ProposalReview({
                 {detail.files.map((value) => (
                   <li key={value.path}>
                     <Button
-                      size="compact"
                       variant="ghost"
                       aria-pressed={path === value.path}
                       className="max-w-full justify-start"
@@ -477,11 +476,7 @@ function ProposalReview({
               {items.length ? (
                 items.map((value) => (
                   <li key={value.proposalId}>
-                    <Button
-                      size="compact"
-                      variant="tertiary"
-                      onClick={() => void select(value.proposalId, value)}
-                    >
+                    <Button variant="tertiary" onClick={() => void select(value.proposalId, value)}>
                       {value.title}
                     </Button>
                     <p className="text-caption text-muted-foreground">
