@@ -72,12 +72,21 @@ it('previews a new endpoint only after its draft is valid, then resumes after fu
     if (!addEndpoint) throw new Error('Missing Add endpoint action');
     await act(async () => addEndpoint.click());
     await edit('Endpoint id 1', 'local');
-    await edit('Address of endpoint 1', 'http://127.0.0.1:11434/v1');
     await previewAfterPause();
     expect(previewConfig).not.toHaveBeenCalled();
-    await edit('Models of endpoint 1', 'llama3.2');
+    // An address alone is a valid endpoint: its models come from its `/models` list.
+    await edit('Address of endpoint 1', 'http://127.0.0.1:11434/v1');
     await previewAfterPause();
     expect(previewConfig).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        modelProviders: [expect.objectContaining({ id: 'local', models: [] })],
+      }),
+      expect.any(AbortSignal),
+    );
+    await edit('Models of endpoint 1', 'llama3.2');
+    await previewAfterPause();
+    expect(previewConfig).toHaveBeenCalledTimes(2);
+    expect(previewConfig).toHaveBeenLastCalledWith(
       {
         revision: 'revision',
         modelProfiles: [],
@@ -95,10 +104,10 @@ it('previews a new endpoint only after its draft is valid, then resumes after fu
     );
     await edit('Address of endpoint 1', 'http://');
     await previewAfterPause();
-    expect(previewConfig).toHaveBeenCalledTimes(1);
+    expect(previewConfig).toHaveBeenCalledTimes(2);
     await edit('Address of endpoint 1', 'http://localhost:11434/v1');
     await previewAfterPause();
-    expect(previewConfig).toHaveBeenCalledTimes(2);
+    expect(previewConfig).toHaveBeenCalledTimes(3);
     expect(previewConfig.mock.calls.at(-1)?.[0]).toMatchObject({
       modelProviders: [{ baseUrl: 'http://localhost:11434/v1' }],
     });
