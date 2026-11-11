@@ -538,6 +538,26 @@ describe('the editor', () => {
     expect(document.activeElement).toBe(button(T.editNamed.replace('{name}', 'Mine')));
   });
 
+  it("refuses a name another personal theme has, and keeps the theme's own name", async () => {
+    stored({ ...monokai, name: 'Mine' }, 'mine');
+    stored({ ...monokai, name: 'Other' }, 'other');
+    await show();
+    await click(button(T.editNamed.replace('{name}', 'Other')));
+    const name = field(T.name);
+    await type(name, ' Mine ');
+    await click(button(T.save));
+    expect(editor()).not.toBeNull();
+    expect(name.getAttribute('aria-invalid')).toBe('true');
+    expect(editor()?.textContent).toContain(T.nameTaken);
+    expect(document.activeElement).toBe(name);
+    expect(personalThemes.getState().map((theme) => theme.palette.name)).toEqual(['Mine', 'Other']);
+    // Its own name is not another theme's.
+    await type(name, 'Other');
+    await type(field(T.ui.background), '#202020');
+    await click(button(T.save));
+    expect(editor()).toBeNull();
+  });
+
   it('shows a sample of the draft: text, status marks, code and the sixteen terminal colors', async () => {
     chooseAppearance('builtin:monokai');
     await show();

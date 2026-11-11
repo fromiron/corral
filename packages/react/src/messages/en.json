@@ -3450,6 +3450,7 @@
     "saveMissing": "Not saved: this theme was deleted.",
     "name": "Name",
     "nameInvalid": "Use 1 to {max} characters.",
+    "nameTaken": "That name is taken by another personal theme.",
     "base": "Base",
     "hexInvalid": "Use {format}.",
     "pick": "Pick color for {name}",
@@ -3458,7 +3459,7 @@
     "low": "Low contrast",
     "sample": "Sample",
     "sampleBody": "The quick brown fox jumps over the lazy dog.",
-    "sampleMuted": "Sphinx of black quartz, judge my vow.",
+    "sampleMuted": "Yesterday 3:00 PM · 2 runs · 4 changes",
     "sampleComment": "Names stay short",
     "groups": {
       "ui": "Basic colors",

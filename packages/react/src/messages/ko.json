@@ -3450,6 +3450,7 @@
     "saveMissing": "저장하지 못했습니다. 이 테마는 삭제되었습니다.",
     "name": "이름",
     "nameInvalid": "1~{max}자로 입력하세요.",
+    "nameTaken": "다른 개인 테마가 쓰는 이름입니다.",
     "base": "밝기 기준",
     "hexInvalid": "{format} 형식으로 입력하세요.",
     "pick": "{name} 색 고르기",
@@ -3458,7 +3459,7 @@
     "low": "낮은 대비",
     "sample": "견본",
     "sampleBody": "다람쥐 헌 쳇바퀴에 타고파.",
-    "sampleMuted": "키스의 고유조건은 입술끼리 만나야 하고 특별한 기술은 필요치 않다.",
+    "sampleMuted": "어제 오후 3시 · 실행 2회 · 변경 4개",
     "sampleComment": "이름은 짧게",
     "groups": {
       "ui": "기본 색",

@@ -35,6 +35,7 @@ import {
 } from '../workbench/themes/palette.ts';
 import {
   addPersonalTheme,
+  personalThemes,
   type ThemeSaveError,
   updatePersonalTheme,
 } from '../workbench/themes/storage.ts';
@@ -142,7 +143,7 @@ export function ThemeEditor({
   const [colors, setColors] = useState<Colors>(initial);
   const [texts, setTexts] = useState<Colors>(initial);
   const [marked, setMarked] = useState<ReadonlySet<ColorKey>>(new Set());
-  const [nameInvalid, setNameInvalid] = useState(false);
+  const [nameInvalid, setNameInvalid] = useState<'length' | 'taken' | null>(null);
   const [failure, setFailure] = useState<ThemeSaveError | null>(null);
   const savedId = useRef(target.kind === 'edit' ? target.id : null);
   const nameField = useRef<HTMLInputElement>(null);
@@ -172,7 +173,17 @@ export function ThemeEditor({
     const trimmed = name.trim();
     const length = [...trimmed].length;
     if (length < 1 || length > PALETTE_NAME_MAX) {
-      setNameInvalid(true);
+      setNameInvalid('length');
+      nameField.current?.focus();
+      return false;
+    }
+    // Two personal themes with one name could not be told apart in the Appearance list.
+    if (
+      personalThemes
+        .getState()
+        .some((theme) => theme.id !== savedId.current && theme.palette.name === trimmed)
+    ) {
+      setNameInvalid('taken');
       nameField.current?.focus();
       return false;
     }
@@ -294,16 +305,18 @@ export function ThemeEditor({
                   ref={nameField}
                   id={fieldId('name')}
                   value={name}
-                  aria-invalid={nameInvalid || undefined}
+                  aria-invalid={nameInvalid ? true : undefined}
                   aria-describedby={nameInvalid ? `${fieldId('name')}-error` : undefined}
                   onChange={(event) => {
                     setName(event.target.value);
-                    setNameInvalid(false);
+                    setNameInvalid(null);
                   }}
                 />
                 {nameInvalid ? (
                   <p id={`${fieldId('name')}-error`} className="text-caption text-destructive">
-                    {t('nameInvalid', { max: PALETTE_NAME_MAX })}
+                    {nameInvalid === 'taken'
+                      ? t('nameTaken')
+                      : t('nameInvalid', { max: PALETTE_NAME_MAX })}
                   </p>
                 ) : null}
               </div>
