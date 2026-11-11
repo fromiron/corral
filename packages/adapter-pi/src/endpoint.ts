@@ -61,8 +61,38 @@ export function endpointModelDefaults(baseUrl: string, modelId: string) {
 }
 
 /**
- * OpenAI-style `reasoning_effort` for a reasoning model of an added endpoint: low, medium and
- * high; the provider default sends no effort at all.
+ * Addresses pi-ai 1.5.0's chat completions client recognizes (its `detectCompat`, matched the
+ * same way): Pi picks the reasoning format and levels for these hosts itself, so an endpoint
+ * there keeps them (features/model-connections.md, 직접 추가한 엔드포인트). Revisit on a Pi upgrade.
+ */
+const PI_RECOGNIZED_HOSTS = [
+  'api.z.ai',
+  'open.bigmodel.cn',
+  'api.together.ai',
+  'api.together.xyz',
+  'api.moonshot.',
+  'openrouter.ai',
+  'api.cloudflare.com',
+  'gateway.ai.cloudflare.com',
+  'integrate.api.nvidia.com',
+  'api.ant-ling.com',
+  'cerebras.ai',
+  'api.x.ai',
+  'chutes.ai',
+  'opencode.ai',
+];
+
+/** Whether Pi recognizes this address and serializes reasoning for it in its own format. */
+function piRecognizedHost(baseUrl: string): boolean {
+  return (
+    PI_RECOGNIZED_HOSTS.some((host) => baseUrl.includes(host)) ||
+    baseUrl.toLowerCase().includes('deepseek.com')
+  );
+}
+
+/**
+ * OpenAI-style `reasoning_effort` for a reasoning model of an added endpoint on a host Pi does not
+ * recognize: low, medium and high; the provider default sends no effort at all.
  */
 const ENDPOINT_EFFORT = {
   thinkingLevelMap: {
@@ -132,7 +162,7 @@ export function endpointProvider(
             maxTokensField: 'max_completion_tokens' as const,
           },
         }
-      : m.reasoning
+      : m.reasoning && !piRecognizedHost(spec.baseUrl)
         ? ENDPOINT_EFFORT
         : {}),
   }));
