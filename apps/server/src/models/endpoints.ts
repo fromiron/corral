@@ -49,8 +49,8 @@ const FIELDS: readonly ModelValueField[] = [
 ];
 
 /**
- * The endpoints of a configuration. Each lists the models of its last `/models` fetch for the
- * same origin, plus the models the configuration writes; a written entry wins for its id.
+ * The endpoints of a configuration. Each lists the models of its last `/models` fetch from the
+ * same address, plus the models the configuration writes; a written entry wins for its id.
  * Values: configuration, known address/model defaults, `/models`, models.dev, defaults.
  */
 export function endpointsFrom(
@@ -60,7 +60,7 @@ export function endpointsFrom(
   return new Map(
     configs.map((config) => {
       const url = new URL(config.baseUrl);
-      const cached = fetched?.read(config.id, url.origin) ?? null;
+      const cached = fetched?.read(config.baseUrl) ?? null;
       const written = config.models ?? [];
       const ids = [
         ...new Set([...(cached?.models ?? []).map((m) => m.id), ...written.map((m) => m.id)]),

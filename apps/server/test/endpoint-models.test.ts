@@ -709,7 +709,55 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     expect(net.seen).toEqual([]);
   });
 
-  it('server start makes no request even when the cache is old', async () => {
+  it('two workspaces naming the same endpoint id at different addresses keep each other’s lists', async () => {
+    const configDir = temp();
+    const at = (port: number): ModelProviderConfig => ({
+      ...ROUTER,
+      id: 'local',
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+    });
+    // Both servers start before either one fetches.
+    const one = setup({ configDir, configs: [at(1111)] });
+    const two = setup({ configDir, configs: [at(2222)] });
+    key(one.credentials, 'k', 'http://127.0.0.1:1111', 'local');
+    key(two.credentials, 'k', 'http://127.0.0.1:2222', 'local');
+    one.net.answer(() => list([{ id: 'one-model' }]));
+    two.net.answer(() => list([{ id: 'two-model' }]));
+    await one.registry.refreshEndpointModels('local');
+    await two.registry.refreshEndpointModels('local');
+    // Restarted, each finds its own list by its address and sends nothing.
+    for (const [port, model] of [
+      [1111, 'one-model'],
+      [2222, 'two-model'],
+    ] as const) {
+      const net = network();
+      const again = setup({ configDir, net, configs: [at(port)] });
+      key(again.credentials, 'k', `http://127.0.0.1:${port}`, 'local');
+      await again.registry.refreshStatus();
+      expect(again.registry.profilesView().map((view) => view.modelId)).toEqual([model]);
+      expect(net.seen).toEqual([]);
+    }
+  });
+
+  it('a cache write merges its one entry into what the file holds now; entries are found by address', () => {
+    const file = join(temp(), 'endpoint-models-v1.json');
+    const first = new EndpointModelCache(file);
+    // Read before the first one wrote anything.
+    const second = new EndpointModelCache(file);
+    const entry = (id: string) => ({
+      fetchedAt: '2026-11-11T00:00:00.000Z',
+      models: [{ id, response: {}, catalog: {} }],
+    });
+    first.write('https://a.example.test/v1', entry('a'));
+    second.write('https://b.example.test/v1/', entry('b'));
+    const fresh = new EndpointModelCache(file);
+    expect(fresh.read('https://a.example.test/v1')?.models.map((m) => m.id)).toEqual(['a']);
+    expect(fresh.read('https://b.example.test/v1')?.models.map((m) => m.id)).toEqual(['b']);
+    expect(fresh.read('https://a.example.test/v2')).toBeNull();
+    expect(fresh.read('https://a.example.test')).toBeNull();
+  });
+
+  it('a cache file in the earlier shape is ignored', async () => {
     const configDir = temp();
     writeFileSync(
       join(configDir, 'endpoint-models-v1.json'),
@@ -718,6 +766,29 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
         endpoints: {
           router: {
             origin: 'https://router.example.test',
+            fetchedAt: '2020-01-01T00:00:00.000Z',
+            models: [{ id: 'alpha', response: { contextWindow: 7000 }, catalog: {} }],
+          },
+        },
+      }),
+    );
+    const net = network();
+    const { registry, credentials } = setup({ configDir, net });
+    key(credentials, 'k');
+    await registry.refreshStatus();
+    expect(registry.profilesView()).toEqual([]);
+    expect(registry.authView()[0]).toMatchObject({ modelFetch: null });
+    expect(net.seen).toEqual([]);
+  });
+
+  it('server start makes no request even when the cache is old', async () => {
+    const configDir = temp();
+    writeFileSync(
+      join(configDir, 'endpoint-models-v1.json'),
+      JSON.stringify({
+        version: 2,
+        endpoints: {
+          'https://router.example.test/v1': {
             fetchedAt: '2020-01-01T00:00:00.000Z',
             models: [{ id: 'alpha', response: { contextWindow: 7000 }, catalog: {} }],
           },

@@ -49,6 +49,7 @@ import {
   type EndpointFetchResult,
   type EndpointModelCache,
   type EndpointModelSource,
+  endpointAddress,
   fetchEndpointModels,
 } from './endpoint-models.ts';
 import { probeEndpoint } from './endpoint-probe.ts';
@@ -1510,7 +1511,7 @@ export class ModelRegistry implements ModelResolver {
     };
   }
 
-  /** Caches a fetched list for its origin and puts the endpoint's new definition in use. */
+  /** Caches a fetched list for its address and puts the endpoint's new definition in use. */
   private useFetched(
     providerId: string,
     endpoint: Endpoint,
@@ -1520,7 +1521,6 @@ export class ModelRegistry implements ModelResolver {
     if (!endpoint.config) return;
     const catalog = this.options.endpointModels?.catalog;
     const entry = {
-      origin: endpoint.origin,
       fetchedAt,
       models: models.map(({ id, ...response }) => ({
         id,
@@ -1530,13 +1530,14 @@ export class ModelRegistry implements ModelResolver {
     };
     const cache = this.options.endpointModels?.cache;
     try {
-      cache?.write(providerId, entry);
+      cache?.write(endpoint.spec.baseUrl, entry);
     } catch {
       /* The list is still used until the server stops; the next fetch writes it again. */
     }
+    const address = endpointAddress(endpoint.spec.baseUrl);
     const source: EndpointModelSource = {
-      read: (id, origin) =>
-        id === providerId && origin === endpoint.origin ? entry : (cache?.read(id, origin) ?? null),
+      read: (baseUrl) =>
+        endpointAddress(baseUrl) === address ? entry : (cache?.read(baseUrl) ?? null),
     };
     const rebuilt = endpointsFrom([endpoint.config], source).get(providerId);
     if (!rebuilt) return;
