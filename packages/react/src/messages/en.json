@@ -921,6 +921,11 @@
     "reject": "Reject",
     "refused": "Not applied: {message}",
     "done": "{step} approved ({subject})",
+    "doneBare": "{step} approved",
+    "doneTool": "Allowed once: {call}",
+    "doneCheck": "Check run once",
+    "doneLsp": "Query run once",
+    "doneLimit": "{limit}: continued",
     "then": {
       "user_action": "Approving continues the run with these versions; rejecting stops it.",
       "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
@@ -948,8 +953,22 @@
       "check": "Stop here",
       "breakpoint": "Stop the run"
     },
+    "limit": {
+      "title": {
+        "no_progress": "No progress in {used} replies",
+        "spawns": "Agent limit reached ({used} of {max})",
+        "questions": "Question limit reached ({used} of {max})",
+        "depth": "Delegation depth limit reached ({used} of {max})",
+        "loop_iterations": "Round limit reached ({used} of {max})"
+      },
+      "explain": "The run paused here. Continue to let it go on, or stop the run.",
+      "then": "Continuing lets the run go on; stopping ends it.",
+      "approve": "Continue",
+      "reject": "Stop the run"
+    },
     "checkHeading": "Approve check launch",
     "checkScope": "{execution} · attempt {attempt} · config r{revision} · {fingerprint} · tree {tree}",
+    "checkIdentity": "Check identity and fingerprint",
     "checkOnce": "Runs this registered command once in a frozen copy. Future launches need their own permission unless you trust the fingerprint in project settings.",
     "checkUnavailable": "Check details could not be verified. Dismiss this request and try again.",
     "checkLoading": "Loading the exact check command…",

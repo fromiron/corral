@@ -179,6 +179,11 @@ export interface ApprovalView {
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
   tool?: EventPayload<'approval.requested'>['tool'];
+  /**
+   * The run limit this decision pauses for: the `limit.reached` fact committed immediately before
+   * a plain `user_action` approval (the no-progress pause). Absent for every other approval.
+   */
+  limit?: { kind: EventPayload<'limit.reached'>['limitKind']; used: number; max: number };
   status: 'pending' | 'approved' | 'rejected' | 'stale';
 }
 
@@ -262,6 +267,8 @@ export interface RunProjection {
   output: { nodeId: string; artifactVersionIds: string[] } | null;
   /** Actual workflow routes, not reasoning-effort observations; absent in older snapshots. */
   workflowBranches?: Record<string, WorkflowBranchView>;
+  /** The latest `limit.reached` fact and its sequence, so the approval right after can name it. */
+  lastLimit?: { runSeq: number } & EventPayload<'limit.reached'>;
 }
 
 export class ProjectionGapError extends Error {
@@ -641,6 +648,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       };
     case 'approval.requested': {
       const { approvalId, kind, subjectVersionIds, criteriaVersionId } = event.payload;
+      // The Coordinator commits the limit it reached, then the approval that pauses for it.
+      const limit =
+        kind === 'user_action' &&
+        !event.payload.tool &&
+        !event.payload.nodeId &&
+        p.lastLimit?.runSeq === event.runSeq - 1
+          ? { kind: p.lastLimit.limitKind, used: p.lastLimit.used, max: p.lastLimit.max }
+          : null;
       const approval: ApprovalView = {
         approvalId,
         kind,
@@ -651,11 +666,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         ...(event.payload.loopStop ? { loopStop: event.payload.loopStop } : {}),
         ...(event.payload.routes ? { routes: event.payload.routes } : {}),
         ...(event.payload.nodeId ? { nodeId: event.payload.nodeId } : {}),
+        ...(limit ? { limit } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
     case 'breakpoints.changed':
       return { ...p, breakpoints: event.payload.nodeIds };
+    case 'limit.reached':
+      return { ...p, lastLimit: { runSeq: event.runSeq, ...event.payload } };
     case 'approval.resolved': {
       const approval = p.approvals[event.payload.approvalId];
       if (!approval) return p;
@@ -881,7 +899,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'extension.ui_notified':
     case 'model.request_recorded':
     case 'skill.read':
-    case 'limit.reached':
     case 'cancel.requested':
     case 'cancel.confirmed':
     case 'observation.late':

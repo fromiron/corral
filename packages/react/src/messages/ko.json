@@ -921,6 +921,11 @@
     "reject": "반려",
     "refused": "적용 안 됨: {message}",
     "done": "{step} 승인함 ({subject})",
+    "doneBare": "{step} 승인함",
+    "doneTool": "한 번 허용함: {call}",
+    "doneCheck": "검사 한 번 실행함",
+    "doneLsp": "질의 한 번 실행함",
+    "doneLimit": "{limit}: 계속함",
     "then": {
       "user_action": "승인하면 이 버전으로 실행을 계속하고, 반려하면 실행을 멈춥니다.",
       "final_output": "승인하면 이 버전이 실행의 최종 결과가 됩니다. 반려하면 최종 결과 없이 끝납니다.",
@@ -948,8 +953,22 @@
       "check": "여기서 멈춤",
       "breakpoint": "실행 중단"
     },
+    "limit": {
+      "title": {
+        "no_progress": "응답 {used}번 동안 진전 없음",
+        "spawns": "에이전트 한도에 닿음 ({used}/{max})",
+        "questions": "질문 한도에 닿음 ({used}/{max})",
+        "depth": "위임 깊이 한도에 닿음 ({used}/{max})",
+        "loop_iterations": "반복 한도에 닿음 ({used}/{max})"
+      },
+      "explain": "실행이 여기서 멈췄습니다. 계속하거나 실행을 중지하세요.",
+      "then": "계속하면 실행이 이어지고, 중지하면 끝납니다.",
+      "approve": "계속",
+      "reject": "실행 중지"
+    },
     "checkHeading": "검사 실행 승인",
     "checkScope": "{execution} · 시도 {attempt} · 설정 r{revision} · 실행 해시 {fingerprint} · 파일 상태 {tree}",
+    "checkIdentity": "검사 식별 정보와 지문",
     "checkOnce": "등록된 명령을 고정된 복사본에서 한 번 실행합니다. 프로젝트 설정에서 실행 해시를 신뢰하지 않으면 다음 실행에도 별도 승인이 필요합니다.",
     "checkUnavailable": "검사 정보를 확인하지 못했습니다. 요청을 거절한 뒤 다시 시도하세요.",
     "checkLoading": "실행할 검사 명령을 불러오는 중…",

@@ -37,9 +37,25 @@ const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
     ? `loop_${approval.loopStop}`
     : approval.kind;
 
+/** One line of a call's main subject: the command it runs or the file it touches. */
+function callSubject(plan: ToolPermissionPlan): string | null {
+  if (plan.descriptor.source !== 'corral') return null;
+  const args = plan.arguments as Record<string, unknown>;
+  const request = args.request as Record<string, unknown> | undefined;
+  const text =
+    plan.descriptor.name === 'run_command'
+      ? [args.command, request?.command].find((value) => typeof value === 'string')
+      : [args.path, args.from].find((value) => typeof value === 'string');
+  if (typeof text !== 'string' || !text.trim()) return null;
+  const lines = text.trim().split('\n');
+  const first = lines[0]?.trim() ?? '';
+  return first.length > 80 || lines.length > 1 ? `${first.slice(0, 79)}…` : first;
+}
+
 /**
- * Decisions waiting for the person: each names the exact versions and the
- * criteria it is about. Approving applies to that subject only; a newer version needs its own.
+ * Decisions waiting for the person: each says in words what it is about (the versions and
+ * criteria, the call, or the run limit that paused the run). Approving applies to that subject
+ * only; a newer version needs its own. Internal identifiers stay in titles and collapsed details.
  */
 export function ApprovalPanel({
   session,
@@ -91,7 +107,10 @@ export function ApprovalPanel({
   );
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
+  const executions = useStore(session, (s) => s.projection?.executions);
+  const toolCalls = useStore(session, (s) => s.projection?.toolCalls);
   const nodes = useStore(session, (s) => s.definition?.nodes);
+  const tTurn = useTranslations('Turn');
   const approvals = useMemo(
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
     [all],
@@ -100,16 +119,22 @@ export function ApprovalPanel({
     () => Object.values(all ?? {}).filter((a) => a.status === 'approved'),
     [all],
   );
-  const criteriaId = approvals[0]?.criteriaVersionId;
+  // The criteria a decision about versions is judged by; a run limit and a tool call have none.
+  const criteriaId = approvals.find((a) => !a.limit && !a.tool)?.criteriaVersionId;
   const criteria = useStore(session, (s) => (criteriaId ? s.artifactTexts[criteriaId] : undefined));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<Receipt | null>(null);
   const [toolPlans, setToolPlans] = useState<Record<string, ToolPermissionPlan | null>>({});
   const [checkPlans, setCheckPlans] = useState<Record<string, CheckPlan | null>>({});
 
+  // Waiting calls show their details; calls already allowed are named by them in their line.
+  const described = useMemo(
+    () => [...approvals, ...(compact ? [] : done)].filter((approval) => approval.tool),
+    [approvals, done, compact],
+  );
   useEffect(() => {
     let active = true;
-    for (const approval of approvals) {
+    for (const approval of described) {
       if (!approval.tool) continue;
       const { bodyRef, fingerprint, targetTree } = approval.tool;
       void (async () => {
@@ -143,7 +168,7 @@ export function ApprovalPanel({
     return () => {
       active = false;
     };
-  }, [approvals, session]);
+  }, [described, session]);
 
   useEffect(() => {
     if (criteriaId) void session.getState().loadArtifact(criteriaId);
@@ -201,13 +226,46 @@ export function ApprovalPanel({
   const headingAction = headed && !compact ? approvalsAction : undefined;
   const doneAction = headingAction ? undefined : approvalsAction;
   const cardAction = headingAction || shownDone.length ? undefined : approvalsAction;
+  /** A version by its name; an id the run does not name stays out of the visible text. */
   const label = (id: string) =>
-    artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
-  /** What waits; a breakpoint names the step it holds. */
+    artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : null;
+  /** Which limit paused the run, and at what count. */
+  const limitText = (limit: NonNullable<ApprovalView['limit']>) =>
+    t(`limit.title.${limit.kind}`, { used: limit.used, max: limit.max });
+  /** What waits; a breakpoint names the step it holds, a run limit the limit. */
   const kindText = (approval: ApprovalView) =>
-    t(`kind.${copyKey(approval)}`, {
-      step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
-    });
+    approval.limit
+      ? limitText(approval.limit)
+      : t(`kind.${copyKey(approval)}`, {
+          step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
+        });
+  const toolLabel = (name: string) => (tTurn.has(`tool.${name}`) ? tTurn(`tool.${name}`) : name);
+  /** A decision already made, in words: the limit, the call or check, or the version. */
+  const doneText = (approval: ApprovalView) => {
+    if (approval.limit) return t('doneLimit', { limit: limitText(approval.limit) });
+    if (approval.tool?.purpose === 'tool') {
+      const plan = toolPlans[approval.tool.bodyRef];
+      const name = plan?.descriptor.name ?? toolCalls?.[approval.tool.toolCallId]?.name;
+      const subject = plan ? callSubject(plan) : null;
+      const tool = name ? toolLabel(name) : t('toolHeading');
+      return t('doneTool', { call: subject ? `${tool} · ${subject}` : tool });
+    }
+    if (approval.tool) {
+      const name = checkPlans[approval.tool.bodyRef]?.name;
+      const step = t(approval.tool.purpose === 'lsp' ? 'doneLsp' : 'doneCheck');
+      return name ? `${step}: ${name}` : step;
+    }
+    const subject = label(approval.subjectVersionIds[0] ?? '');
+    return subject
+      ? t('done', { step: kindText(approval), subject })
+      : t('doneBare', { step: kindText(approval) });
+  };
+  /** The agent that asks, named only where the run has more than one. */
+  const askedBy = (executionId: string) => {
+    if (Object.keys(executions ?? {}).length < 2) return null;
+    const nodeId = executions?.[executionId]?.nodeId;
+    return nodes?.find((node) => node.id === nodeId)?.label ?? null;
+  };
   const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
     // Focus in this decision's card is handed on when the card leaves.
     handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
@@ -276,7 +334,9 @@ export function ApprovalPanel({
                     ? 'rejectLsp'
                     : 'rejectCheck',
               )
-            : t(`rejectAs.${copyKey(approval)}`)}
+            : approval.limit
+              ? t('limit.reject')
+              : t(`rejectAs.${copyKey(approval)}`)}
         </Button>
         <Button
           data-approval-action="primary"
@@ -298,7 +358,9 @@ export function ApprovalPanel({
                       ? 'lspOnce'
                       : 'checkOnce',
                 )
-              : t(`then.${copyKey(approval)}`)
+              : approval.limit
+                ? t('limit.then')
+                : t(`then.${copyKey(approval)}`)
           }
           onClick={() => void decide(approval.approvalId, 'approve')}
         >
@@ -310,7 +372,9 @@ export function ApprovalPanel({
                     ? 'approveLsp'
                     : 'approveCheck',
               )
-            : t(`approveAs.${copyKey(approval)}`)}
+            : approval.limit
+              ? t('limit.approve')
+              : t(`approveAs.${copyKey(approval)}`)}
         </Button>
         {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
       </>
@@ -342,14 +406,13 @@ export function ApprovalPanel({
           <p
             key={approval.approvalId}
             data-testid={`approved-${approval.approvalId}`}
+            // The exact versions stay at hand for diagnostics, never as the line's words.
+            title={approval.subjectVersionIds.join(', ')}
             className="flex items-center gap-1.5 text-caption text-muted-foreground"
           >
             {index === 0 ? <RowAction action={doneAction} /> : null}
             <AgentStatusIcon status="done" size={12} />
-            {t('done', {
-              step: kindText(approval),
-              subject: label(approval.subjectVersionIds[0] ?? ''),
-            })}
+            {doneText(approval)}
           </p>
         ))}
         {approvals.map((approval, index) => (
@@ -389,9 +452,9 @@ export function ApprovalPanel({
                       )
                     : kindText(approval)}
                 </p>
-                {approval.tool && !compact ? (
+                {approval.tool && !compact && askedBy(approval.tool.executionId) ? (
                   <span className="truncate text-muted-foreground">
-                    {approval.tool.executionId}
+                    {askedBy(approval.tool.executionId)}
                   </span>
                 ) : null}
               </div>
@@ -426,17 +489,24 @@ export function ApprovalPanel({
                         {checkPlans[approval.tool.bodyRef]?.argv.join(' ')}
                       </code>
                       <p className="text-muted-foreground">
-                        {t('checkScope', {
-                          execution: approval.tool.executionId,
-                          attempt: approval.tool.attemptNo,
-                          revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
-                          fingerprint: approval.tool.fingerprint.slice(0, 12),
-                          tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
-                        })}
-                      </p>
-                      <p className="text-muted-foreground">
                         {t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')}
                       </p>
+                      <Accordion>
+                        <AccordionItem value="identity">
+                          <AccordionTrigger>{t('checkIdentity')}</AccordionTrigger>
+                          <AccordionContent>
+                            <p className="break-all">
+                              {t('checkScope', {
+                                execution: approval.tool.executionId,
+                                attempt: approval.tool.attemptNo,
+                                revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
+                                fingerprint: approval.tool.fingerprint.slice(0, 12),
+                                tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
+                              })}
+                            </p>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
                     </>
                   ) : (
                     <p role={checkPlans[approval.tool.bodyRef] === null ? 'alert' : 'status'}>
@@ -450,25 +520,35 @@ export function ApprovalPanel({
                 </div>
               ) : null}
               {compact || approval.tool ? null : (
-                <p className="text-muted-foreground">{t(`explain.${copyKey(approval)}`)}</p>
+                <p className="text-muted-foreground">
+                  {approval.limit ? t('limit.explain') : t(`explain.${copyKey(approval)}`)}
+                </p>
               )}
-              {approval.tool ? null : (
+              {/* A run limit is about the run, not a version: it names no subject or criteria. */}
+              {approval.tool ||
+              approval.limit ||
+              !approval.subjectVersionIds.some((id) => label(id)) ? null : (
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="text-muted-foreground">{t('subject')}</span>
-                  {approval.subjectVersionIds.map((id) => (
-                    <Button
-                      key={id}
-                      variant="tertiary"
-                      size="compact"
-                      title={id}
-                      onClick={() => onOpenArtifact(id)}
-                    >
-                      {label(id)}
-                    </Button>
-                  ))}
+                  {approval.subjectVersionIds.flatMap((id) => {
+                    const name = label(id);
+                    return name
+                      ? [
+                          <Button
+                            key={id}
+                            variant="tertiary"
+                            size="compact"
+                            title={id}
+                            onClick={() => onOpenArtifact(id)}
+                          >
+                            {name}
+                          </Button>,
+                        ]
+                      : [];
+                  })}
                 </div>
               )}
-              {criteria ? (
+              {criteria && !approval.limit && approval.criteriaVersionId === criteriaId ? (
                 <div className="text-muted-foreground">
                   {t('criteria')}
                   <ul className="list-disc pl-5">
