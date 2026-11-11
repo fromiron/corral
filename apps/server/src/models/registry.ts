@@ -91,12 +91,6 @@ export const DEFAULT_PROFILES: readonly ProfileConfig[] = [
   { id: 'model-b', provider: 'openai', model: 'gpt-6.1-sol' },
 ];
 
-/**
- * Providers whose subscription OAuth Corral does not start: Anthropic does not allow third-party
- * apps to use subscription credentials. They take an API key instead.
- */
-const NO_SUBSCRIPTION_OAUTH = new Set(['anthropic']);
-
 /** Corral's own sign-in to this provider makes a borrowed Codex CLI login no connection. */
 const OPENAI = 'openai';
 
@@ -1086,7 +1080,7 @@ export class ModelRegistry implements ModelResolver {
   private methods(providerId: string): { oauth: boolean; apiKey: boolean } {
     const auth = this.models.getProvider(providerId)?.auth;
     return {
-      oauth: Boolean(auth?.oauth) && !NO_SUBSCRIPTION_OAUTH.has(providerId),
+      oauth: Boolean(auth?.oauth),
       apiKey: Boolean(auth?.apiKey) && !this.options.endpoints?.get(providerId)?.spec.keyless,
     };
   }
@@ -1271,9 +1265,7 @@ export class ModelRegistry implements ModelResolver {
     if (!this.methods(providerId).oauth) {
       throw new RegistryError(
         'unsupported',
-        NO_SUBSCRIPTION_OAUTH.has(providerId)
-          ? `${this.providerName(providerId)} subscription sign-in is not supported; enter an API key`
-          : `${this.providerName(providerId)} signs in with an API key here`,
+        `${this.providerName(providerId)} signs in with an API key here`,
       );
     }
     const running = this.logins.get(providerId);

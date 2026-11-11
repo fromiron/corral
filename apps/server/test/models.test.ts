@@ -367,7 +367,7 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     expect((await finish(context)).status).toBe('refused');
   });
 
-  it('refuses an empty or oversized key, a provider no profile uses, and Anthropic subscription sign-in', async () => {
+  it('refuses an empty or oversized key and a provider Pi does not know; Anthropic offers both methods', async () => {
     const context = await start(makeFake(), [
       ...FAKE_PROFILES,
       { id: 'claude', provider: 'anthropic', model: 'claude-test' },
@@ -376,13 +376,11 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     expect((await setKey(context.json, 'openai', 'x'.repeat(2000))).status).toBe(400);
     expect((await setKey(context.json, 'nobody', 'sk-x')).status).toBe(404);
     const login = await context.json('/model-auth/anthropic/login', { method: 'POST' });
-    expect(login.status).toBe(501);
-    expect(login.body.error).toMatchObject({ code: 'COMMAND_NOT_SUPPORTED' });
-    expect(login.body.error.message).toMatch(/API key/);
+    expect(login.status).toBe(202);
     const anthropic = (await context.json('/model-auth')).body.find(
       (p: { providerId: string }) => p.providerId === 'anthropic',
     );
-    expect(anthropic).toMatchObject({ methods: { oauth: false, apiKey: true } });
+    expect(anthropic).toMatchObject({ methods: { oauth: true, apiKey: true } });
   });
 
   it('a keyless local endpoint runs without a key; a keyed one gets the entered key', async () => {
@@ -815,7 +813,7 @@ describe('editing profiles and endpoints from the Models page', () => {
         cacheWrite: expect.any(Number),
       },
     });
-    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(false);
+    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(true);
 
     const current = await context.json('/model-config');
     expect(current.body).toMatchObject({

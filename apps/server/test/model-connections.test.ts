@@ -369,7 +369,7 @@ describe('connecting any provider Pi knows', () => {
     ]);
   });
 
-  it('login, key and sign-out answer TARGET_NOT_FOUND for a provider Pi does not know; Anthropic stays key-only', async () => {
+  it('login, key and sign-out answer TARGET_NOT_FOUND for a provider Pi does not know', async () => {
     const fake = fakeOpenAI({ configDir: temp('config') });
     const context = await start(fake.live);
     for (const [path, init] of [
@@ -382,20 +382,51 @@ describe('connecting any provider Pi knows', () => {
       expect(answer.status, path).toBe(404);
       expect(answer.body.error.code).toBe('TARGET_NOT_FOUND');
     }
-    // Anthropic needs no profile for a key, and its subscription sign-in is still refused.
-    expect(
-      (
-        await context.json('/model-auth/anthropic/api-key', {
-          method: 'PUT',
-          body: JSON.stringify({ key: 'sk-ant-fixture' }),
-        })
-      ).status,
-    ).toBe(200);
-    expect((await providerOf(context, 'anthropic'))?.signedIn).toBe(true);
+  });
+
+  it('Anthropic offers the sign-in methods Pi gives it, like every other provider', async () => {
+    const fake = fakeOpenAI({ configDir: temp('config') });
+    const context = await start(fake.live);
+    const catalog = (await context.json('/model-catalog')).body as {
+      providerId: string;
+      methods: unknown;
+    }[];
+    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods).toEqual({
+      oauth: true,
+      apiKey: true,
+    });
+    // The subscription sign-in starts like any provider's and its models are listed.
     const login = await context.json('/model-auth/anthropic/login', { method: 'POST' });
-    expect(login.body.error.code).toBe('COMMAND_NOT_SUPPORTED');
-    const profiles = (await context.json('/model-profiles')).body as { profileId: string }[];
-    expect(profiles.map((p) => p.profileId)).toContain('anthropic:claude-test');
+    expect(login.status).toBe(202);
+    expect(login.body).toMatchObject({ state: 'waiting', authUrl: expect.any(String) });
+    await context.json('/model-auth/anthropic/login/callback', {
+      method: 'POST',
+      body: JSON.stringify({ url: FAKE_REDIRECT_OK }),
+    });
+    const signedIn = await until(
+      () => providerOf(context, 'anthropic'),
+      (view) => view?.signedIn === true,
+    );
+    expect(signedIn).toMatchObject({ method: 'oauth', subscription: true, modelCount: 1 });
+    const ids = async () =>
+      ((await context.json('/model-profiles')).body as { profileId: string }[]).map(
+        (p) => p.profileId,
+      );
+    expect(await ids()).toContain('anthropic:claude-test');
+    // A pasted subscription token is a key like any other: it connects and lists the models.
+    await context.json('/model-auth/anthropic', { method: 'DELETE' });
+    expect(await ids()).not.toContain('anthropic:claude-test');
+    const pasted = await context.json('/model-auth/anthropic/api-key', {
+      method: 'PUT',
+      body: JSON.stringify({ key: 'sk-ant-oat01-fixture-secret' }),
+    });
+    expect(pasted.status).toBe(200);
+    expect(await providerOf(context, 'anthropic')).toMatchObject({
+      signedIn: true,
+      method: 'api_key',
+    });
+    expect(await ids()).toContain('anthropic:claude-test');
+    expect(context.responses.join('\n')).not.toMatch(/sk-ant-oat01|anthropic-(access|refresh)/);
   });
 
   it('checking status never refreshes an OAuth token', async () => {
