@@ -1,4 +1,5 @@
 import type { MeetingConfig } from '@corral/contracts';
+import { ModelSelect, profileChoices } from '@corral/react';
 import {
   Button,
   Dialog,
@@ -6,7 +7,7 @@ import {
   DialogTitle,
   fontWeights,
   Input,
-  Select,
+  type ModelOption,
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
@@ -83,6 +84,7 @@ export function NewMeetingHost() {
 
 export function NewMeetingDialog({ projectId, onClose }: { projectId: string; onClose(): void }) {
   const t = useTranslations('Meetings');
+  const tm = useTranslations('ModelSelect');
   const { repository, mode, live } = useServices();
   const navigate = useNavigate();
   const profiles = useModelProfiles();
@@ -95,6 +97,17 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
       label: profile.available ? profile.label : `${profile.label} · ${t('modelUnavailable')}`,
     }));
   }, [profiles, liveModels, t]);
+  // The same rows as the composer's picker: named profiles, then each connected provider's models.
+  const choices = useMemo<ModelOption[]>(
+    () =>
+      liveModels
+        ? profileChoices(profiles ?? [], {
+            profiles: tm('profiles'),
+            unavailable: t('modelUnavailable'),
+          })
+        : options.map((option) => ({ id: option.value, name: option.label, description: '' })),
+    [profiles, liveModels, options, t, tm],
+  );
   const available = liveModels
     ? options.filter((option) =>
         profiles?.some((profile) => profile.profileId === option.value && profile.available),
@@ -262,10 +275,10 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
                       <span aria-hidden className={FIELD_LABEL}>
                         {t('modelLabel')}
                       </span>
-                      <Select
+                      <ModelSelect
                         label={t('participantModel', { number })}
                         value={item.modelProfile}
-                        options={options}
+                        options={choices}
                         onValueChange={(modelProfile) => change(item.key, { modelProfile })}
                       />
                     </div>
@@ -384,10 +397,10 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
             <span aria-hidden className={FIELD_LABEL}>
               {t('secretaryModel')}
             </span>
-            <Select
+            <ModelSelect
               label={t('secretaryModel')}
               value={secretary}
-              options={options}
+              options={choices}
               onValueChange={setSecretary}
             />
             {liveModels && profiles !== null && !isAvailable(secretary) ? (

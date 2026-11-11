@@ -45,6 +45,24 @@ vi.mock('@corral/react/design-kit', async (importOriginal) => ({
     </select>
   ),
 }));
+// The searchable model field, as a native select over the same rows.
+vi.mock('@corral/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@corral/react')>()),
+  ModelSelect: ({ label, options, value, onValueChange }: any) => (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(event) => onValueChange(event.target.value)}
+    >
+      <option value="" />
+      {options.map((option: any) => (
+        <option key={option.id} value={option.id}>
+          {option.name}
+        </option>
+      ))}
+    </select>
+  ),
+}));
 const { StartMeeting } = await import('./NewMeeting.tsx');
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
