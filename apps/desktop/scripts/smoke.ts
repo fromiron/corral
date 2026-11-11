@@ -222,7 +222,8 @@ try {
   assert.equal(application.process().exitCode, null, 'Keep running does not close the app');
   await page.getByRole('button', { name: 'Resume run', exact: true }).click();
   await expect(
-    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }),
+    // The turn's line and its work summary can both say it for a moment as the run ends.
+    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }).first(),
   ).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
@@ -295,7 +296,7 @@ try {
   const restored = await application.firstWindow();
   await restored.waitForURL(/\/sessions\/session_/, { timeout: 30000 });
   await expect(
-    restored.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }),
+    restored.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }).first(),
   ).toBeVisible();
   await expect(restored.getByRole('combobox', { name: 'Request', exact: true })).toHaveValue(
     'A draft preserved across restart',
@@ -333,12 +334,11 @@ try {
   await restored.waitForURL('corral://startup/');
   await restored.getByRole('button', { name: 'Try again', exact: true }).click();
   await restored.waitForURL(/\/sessions\/session_/, { timeout: 30000 });
-  await expect(
-    restored
-      .getByTestId('chat-timeline')
-      .getByRole('note')
-      .filter({ hasText: 'Not finished (Interrupted)' }),
-  ).toBeVisible();
+  // The turn the restart cut off says so once, in its own ending notice.
+  const ended = restored.getByTestId('chat-timeline').getByTestId('run-ended');
+  await expect(ended).toHaveAttribute('role', 'note');
+  await expect(ended).toContainText(/interrupted/i);
+  console.log('Interrupted turn notice:', (await ended.innerText()).replace(/\s+/g, ' '));
   await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toHaveCount(0);
   await restored.getByRole('combobox', { name: 'Request', exact: true }).fill('Quit while paused');
   await restored.getByRole('button', { name: 'Send', exact: true }).click();
