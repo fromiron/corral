@@ -260,6 +260,31 @@ describe('diagnostic rows', () => {
     for (const name of ['refused', 'offline', '.test']) expect(summary).not.toContain(name);
   });
 
+  it('gives one cause for an endpoint, as its connection row does: a changed address or a missing sign-in comes before an old fetch', () => {
+    const old = { kind: 'authentication', status: 401, fetchedAt: '2026-11-11T00:00:00Z' } as const;
+    const models = (patch: Partial<ProviderAuthView>) =>
+      diagnosticRows({
+        runtime: { mode: 'server', version: '1.0.0', live: true },
+        models: {
+          state: 'ready',
+          providers: [
+            provider({ providerId: 'local', name: 'Local', endpoint: 'local.test', ...patch }),
+          ],
+          profiles: [profile()],
+        },
+        folder: { state: 'no-project' },
+        pathEngine: { state: 'loaded', status: { engine: 'builtIn' } },
+        localAi: { state: 'loaded', view: localAi() },
+      }).find((row) => row.id === 'models');
+    expect(models({ modelFetch: old, endpointChanged: true })?.causes).toEqual([
+      { kind: 'endpointChanged' },
+    ]);
+    expect(models({ modelFetch: old, signedIn: false, method: null })?.causes).toEqual([]);
+    expect(models({ modelFetch: old })?.causes).toEqual([
+      { kind: 'endpointFetch', fetch: 'authentication' },
+    ]);
+  });
+
   it("shows the server's path engine and why it fell back", () => {
     const report = (pathEngine: DiagnosticsReport['pathEngine']): DiagnosticsReport => ({
       ...leaky,

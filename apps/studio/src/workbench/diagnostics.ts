@@ -89,12 +89,15 @@ function modelsRow(models: DiagnosticsReport['models']): DiagnosticRow {
     signedIn: models.providers.filter((provider) => provider.signedIn).length,
     providers: models.providers.length,
   };
-  // An endpoint never fetched (modelFetch null) or fetched fine gives no cause.
+  // An endpoint never fetched (modelFetch null) or fetched fine gives no cause. As on its
+  // connection row, a changed address or a missing sign-in comes before an old fetch.
   const failures = [
     ...new Set(
       models.providers.flatMap((provider) => {
         const kind = provider.modelFetch?.kind;
-        return kind && kind !== 'connected' ? [kind] : [];
+        return kind && kind !== 'connected' && provider.signedIn && !provider.endpointChanged
+          ? [kind]
+          : [];
       }),
     ),
   ];
