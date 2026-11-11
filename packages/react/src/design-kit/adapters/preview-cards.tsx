@@ -311,7 +311,8 @@ interface PreviewCardButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   /** Unique within its grid, after the cards (it joins the grid's hover). */
   index: number;
   label: string;
-  /** Drawn in a dashed 16:10 frame where a card has its picture. */
+  /** Centred in a dashed 16:10 frame where a card has its picture: an icon, or, while the tile
+   *  is disabled, why. */
   icon: ReactNode;
 }
 
@@ -325,10 +326,12 @@ function PreviewCardButton({ index, label, icon, className, ...props }: PreviewC
     <button
       ref={ref}
       type="button"
+      // Named by its label alone: what the frame shows (a reason) is the host's description.
+      aria-label={label}
       data-fluid-hover-index={index}
       {...props}
       className={cn(
-        'group/preview relative z-10 flex min-w-0 cursor-pointer flex-col gap-1.5 p-1 text-left aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+        'group/preview relative z-10 flex min-w-0 cursor-pointer flex-col gap-1.5 p-1 text-left aria-disabled:cursor-not-allowed',
         shape.container,
         focusRing,
         className,
@@ -343,7 +346,7 @@ function PreviewCardButton({ index, label, icon, className, ...props }: PreviewC
         {icon}
       </span>
       <span className="flex min-h-7 items-center px-1">
-        <span className="line-clamp-2 break-words text-body text-muted-foreground transition-colors duration-80 group-hover/preview:text-foreground group-aria-disabled/preview:text-muted-foreground">
+        <span className="line-clamp-2 break-words text-body text-muted-foreground transition-colors duration-80 group-hover/preview:text-foreground group-aria-disabled/preview:text-muted-foreground group-aria-disabled/preview:opacity-50">
           {label}
         </span>
       </span>

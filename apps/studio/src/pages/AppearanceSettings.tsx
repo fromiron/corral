@@ -290,11 +290,6 @@ export function AppearanceSettings({
                 {importReason(tt, importError)}
               </p>
             ) : null}
-            {full ? (
-              <p id={limitId} className="m-0 px-1 text-body text-muted-foreground">
-                {tt('limit', { limit: PERSONAL_THEME_LIMIT })}
-              </p>
-            ) : null}
             <PreviewCardGrid>
               {personal.map((theme, index) => (
                 <PreviewCard
@@ -316,7 +311,7 @@ export function AppearanceSettings({
                       >
                         <Ellipsis />
                       </MenuTrigger>
-                      <MenuPopup align="end" className="min-w-40">
+                      <MenuPopup align="end" className="w-44">
                         <MenuItem
                           onClick={() => {
                             setImportError(null);
@@ -348,7 +343,19 @@ export function AppearanceSettings({
                 index={firstPersonal + personal.length}
                 data-theme-new
                 label={tt('newTheme')}
-                icon={<Plus aria-hidden className="size-5" strokeWidth={1.5} />}
+                // At the cap the tile says why, where a new theme would have gone.
+                icon={
+                  full ? (
+                    <span
+                      id={limitId}
+                      className="px-3 text-center text-caption text-muted-foreground"
+                    >
+                      {tt('limit', { limit: PERSONAL_THEME_LIMIT })}
+                    </span>
+                  ) : (
+                    <Plus aria-hidden className="size-5" strokeWidth={1.5} />
+                  )
+                }
                 aria-disabled={full || undefined}
                 aria-describedby={full ? limitId : undefined}
                 onClick={newTheme}
