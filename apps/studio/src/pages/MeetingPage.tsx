@@ -196,7 +196,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
       <div role={loadError ? 'alert' : 'status'} className="flex flex-col gap-2 p-4 text-body">
         <p>{loadError || '…'}</p>
         {loadError ? (
-          <Button size="compact" variant="tertiary" onClick={() => void refresh()}>
+          <Button variant="tertiary" onClick={() => void refresh()}>
             {t('retry')}
           </Button>
         ) : null}
@@ -598,7 +598,7 @@ function AnswerCard({
         // The one place the minutes are offered: where the secretary posted them. The button
         // under the secretary's name says what is ready.
         <div className="flex flex-col items-start gap-2">
-          <Button size="compact" variant="secondary" onClick={onOpenMinutes}>
+          <Button variant="secondary" onClick={onOpenMinutes}>
             <PanelRight />
             {t('viewMinutes')}
           </Button>
@@ -809,15 +809,10 @@ function MeetingComposer({
         contentSlot={
           <>
             {summaryFailed ? (
-              <Banner role="alert" status="error" contrast="high" size="compact">
+              <Banner role="alert" status="error" contrast="high">
                 <BannerTitle>{t('summaryFailed')}</BannerTitle>
                 <BannerActions>
-                  <Button
-                    size="compact"
-                    variant="tertiary"
-                    disabled={sending || active}
-                    onClick={requestPlan}
-                  >
+                  <Button variant="tertiary" disabled={sending || active} onClick={requestPlan}>
                     {t('retrySummary')}
                   </Button>
                 </BannerActions>
@@ -841,11 +836,9 @@ function MeetingComposer({
                 </span>
                 <div className="flex gap-2">
                   {active ? null : (
-                    <Button size="compact" onClick={() => void sendQueued()}>
-                      {t('sendQueued')}
-                    </Button>
+                    <Button onClick={() => void sendQueued()}>{t('sendQueued')}</Button>
                   )}
-                  <Button size="compact" variant="tertiary" onClick={() => void dropQueued()}>
+                  <Button variant="tertiary" onClick={() => void dropQueued()}>
                     {t('dropQueued')}
                   </Button>
                 </div>
@@ -1039,7 +1032,6 @@ function QueuedMessage({
       />
       <div className="flex flex-wrap gap-2">
         <Button
-          size="compact"
           disabled={saving || attachmentLoading || !text.trim()}
           onClick={async () => {
             setSaving(true);
@@ -1058,12 +1050,7 @@ function QueuedMessage({
         >
           {t('saveQueued')}
         </Button>
-        <Button
-          size="compact"
-          variant="tertiary"
-          disabled={saving}
-          onClick={() => setEditing(false)}
-        >
+        <Button variant="tertiary" disabled={saving} onClick={() => setEditing(false)}>
           {t('cancel')}
         </Button>
       </div>
@@ -1081,7 +1068,6 @@ function QueuedMessage({
       {queued.attachments?.length ? <TextAttachmentList attachments={queued.attachments} /> : null}
       <div>
         <Button
-          size="compact"
           variant="tertiary"
           onClick={() => {
             setText(queued.text);
@@ -1138,7 +1124,6 @@ function MeetingRecipients({
         <Button
           key={person.id}
           type="button"
-          size="compact"
           variant={selected.includes(person.id) ? 'secondary' : 'ghost'}
           aria-pressed={selected.includes(person.id)}
           onClick={() =>
