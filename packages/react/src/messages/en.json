@@ -3419,11 +3419,9 @@
     "pending": "Pending",
     "in_progress": "In progress",
     "completed": "Completed",
-    "verification": "Verification required",
-    "evidence": "Evidence ({count})",
     "staleCriteria": "The completion criteria have changed since this plan.",
     "staleAttempt": "This plan belongs to an earlier attempt.",
-    "unavailable": "The plan or evidence could not be loaded.",
+    "unavailable": "The plan could not be loaded.",
     "loading": "Loading plan…",
     "retry": "Retry"
   },

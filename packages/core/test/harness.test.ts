@@ -1290,19 +1290,13 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(() =>
       openRunArchive(exportRunArchive(s.store, s.input().runId, { privateTranscript: true })),
     ).not.toThrow();
+    // The plan is a plain checklist: it is not checked against the check's result, and a
+    // later change of the working copy does not hold it back.
     const update = {
       scope: 'execution',
       expectedRevision: 0,
       criteriaVersionId: s.input().criteriaVersionId,
-      items: [
-        {
-          id: 'verify',
-          title: 'Verify current files',
-          status: 'completed',
-          requiresVerification: true,
-          evidenceRefs: [`result_${auth.toolCallId}`],
-        },
-      ],
+      items: [{ id: 'verify', title: 'Verify current files', status: 'completed' }],
     };
     expect(await s.host().invokeTool({ name: 'update_plan', args: update })).toMatchObject({
       ok: true,
@@ -1311,7 +1305,17 @@ describe('Coordinator harness boundary (H2)', () => {
     currentTree = '0'.repeat(40);
     expect(
       await s.host().invokeTool({ name: 'update_plan', args: { ...update, expectedRevision: 1 } }),
-    ).toMatchObject({ ok: false });
+    ).toMatchObject({ ok: true, result: { revision: 2 } });
+    expect(
+      await s.host().invokeTool({
+        name: 'update_plan',
+        args: {
+          ...update,
+          expectedRevision: 2,
+          items: [{ ...update.items[0], evidenceRefs: [`result_${auth.toolCallId}`] }],
+        },
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'SCHEMA_INVALID' } });
     expect(
       s.coordinator.getSnapshot(s.input().runId).projection.tasks[s.input().taskId]?.status,
     ).not.toBe('completed');

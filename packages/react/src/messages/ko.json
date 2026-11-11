@@ -3419,11 +3419,9 @@
     "pending": "예정",
     "in_progress": "진행 중",
     "completed": "완료",
-    "verification": "검증 필요",
-    "evidence": "근거 {count}개",
     "staleCriteria": "이 계획 이후 완료 기준이 변경되었습니다.",
     "staleAttempt": "이 계획은 이전 시도에서 기록되었습니다.",
-    "unavailable": "계획 또는 근거를 불러오지 못했습니다.",
+    "unavailable": "계획을 불러오지 못했습니다.",
     "loading": "계획을 불러오는 중…",
     "retry": "다시 시도"
   },
