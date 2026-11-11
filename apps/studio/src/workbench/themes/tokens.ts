@@ -2,6 +2,7 @@ import { contrastRatio, mix } from './color.ts';
 import { type Palette, SYNTAX_COLORS } from './palette.ts';
 
 const WHITE = '#ffffff';
+const BLACK = '#000000';
 
 /**
  * How much of the text color goes into a fill that carries text (a secondary button, the open
@@ -97,3 +98,17 @@ export const PALETTE_TOKENS: readonly string[] = [
   '--emphasis-hover',
   ...SYNTAX_COLORS.map((key) => `--syntax-${key}`),
 ];
+
+/**
+ * A text color that reads on every surface of a draft, for marks that must stay legible however
+ * the draft's own colors turn out (the editor's low-contrast mark): the theme's text while it
+ * reaches 4.5:1 on each surface step, otherwise black or white, whichever reads better.
+ */
+export function legibleText(palette: Palette): string {
+  const tokens = paletteTokens(palette);
+  const surfaces = [1, 2, 3, 4, 5, 6, 7, 8].map((step) => tokens[`--surface-${step}`] as string);
+  const least = (text: string) =>
+    Math.min(...surfaces.map((surface) => contrastRatio(text, surface)));
+  if (least(palette.ui.foreground) >= 4.5) return palette.ui.foreground;
+  return least(BLACK) >= least(WHITE) ? BLACK : WHITE;
+}
