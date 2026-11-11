@@ -172,7 +172,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 
 | `components/ui/file-thumbnail.tsx` | `components/ui/file-thumbnail.tsx` | `6c59cb759becc33e6f318cc31e3c533fb02b96ab79fc3bbc035e4f35c1a2be74` | `b553ae97fca9b6079b83e6ff985f2dfb6293c3386ca4f3b133ed558e4657c672` |
 
-| `components/ui/color-picker.tsx` | `components/ui/color-picker.tsx` | `e6e334a5d917264c9dbf701281a6bf8b4ce4cca8ec290d6fc1f96726d4df8873` | `4106743a44bd4db29f6b2ed1c04ac479689a470758096edca02e04808560f94d` |
+| `components/ui/color-picker.tsx` | `components/ui/color-picker.tsx` | `e6e334a5d917264c9dbf701281a6bf8b4ce4cca8ec290d6fc1f96726d4df8873` | `1af0d61a3363f0efc129ce20819b47bb7a3d3464f9c4851e50471d217de5d710` |
 
 | `components/agent/agent-graph.tsx` (node extraction) | `components/agent/agent-graph.tsx` | `53d908b6317854e5df3bd8f1b49f3f7539167b95a6247f25d4bf7368dc2004b6` | `4655e4b3e0e9db9a378ff932d3d889b356ff339d3ef24b6807bebeea87453934` |
 

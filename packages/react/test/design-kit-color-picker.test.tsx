@@ -70,6 +70,31 @@ describe('the copied kit color picker', () => {
     expect(hex).not.toHaveAttribute('aria-invalid');
   });
 
+  it('lets Escape through once the typed value is the applied one, with or without # and in any case', async () => {
+    const user = userEvent.setup();
+    const outside = vi.fn();
+    render(
+      // biome-ignore lint/a11y/noStaticElementInteractions: Observes the key the picker lets through.
+      <div onKeyDown={(event) => event.key === 'Escape' && outside()}>
+        <Picker />
+      </div>,
+    );
+    const hex = screen.getByRole('textbox', { name: 'Hex' });
+    for (const typed of ['123456', '#ABCDEF']) {
+      await user.click(hex);
+      await user.keyboard(`{Control>}a{/Control}${typed}`);
+      outside.mockClear();
+      await user.keyboard('{Escape}');
+      expect(outside).toHaveBeenCalledTimes(1);
+    }
+    // A value that differs from the applied one is put back first, and Escape stops there.
+    await user.keyboard('{Control>}a{/Control}12');
+    outside.mockClear();
+    await user.keyboard('{Escape}');
+    expect(outside).not.toHaveBeenCalled();
+    expect(hex).toHaveValue('abcdef');
+  });
+
   it("picks one of the host's swatches by name and marks the one that matches", async () => {
     const user = userEvent.setup();
     const onColor = vi.fn();

@@ -492,6 +492,11 @@ function usePopupExit(open: boolean, setOpen: (open: boolean) => void) {
 // current color back.
 // -----------------------------------------------------------------------------
 
+/** One value however it was typed: with or without `#`, in either case. */
+function sameHex(a: string, b: string) {
+  return a.replace(/^#/, '').toLowerCase() === b.replace(/^#/, '').toLowerCase();
+}
+
 function HexInput({
   value,
   onCommit,
@@ -572,7 +577,7 @@ function HexInput({
             if (e.key === 'Enter') {
               e.preventDefault();
               commit();
-            } else if (e.key === 'Escape' && (draft !== value || invalid)) {
+            } else if (e.key === 'Escape' && (!sameHex(draft, value) || invalid)) {
               // Puts the color back; a second Escape closes the popover.
               e.stopPropagation();
               setDraft(value);
