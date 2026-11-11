@@ -132,6 +132,21 @@ export async function readThemeFile(file: Blob): Promise<ThemeParse> {
   return parseTheme(await file.text());
 }
 
+// Characters no common file system takes in a name, control characters included.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it removes.
+const UNSAFE_FILE_CHARACTERS = /[\\/:*?"<>|\u0000-\u001f\u007f]+/g;
+const RESERVED_FILE_NAME = /^(?:con|prn|aux|nul|com\d|lpt\d)$/i;
+
+/** The exported file's name: the theme name made safe for a file name, then `.json`. */
+export function themeFileName(name: string): string {
+  const safe = name
+    .replace(UNSAFE_FILE_CHARACTERS, '-')
+    .trim()
+    .replace(/^[-.\s]+|[-.\s]+$/g, '');
+  if (!safe) return 'theme.json';
+  return `${RESERVED_FILE_NAME.test(safe) ? `${safe}-theme` : safe}.json`;
+}
+
 /** The exported file: only the theme's own fields, in a fixed order, colors lower-cased. */
 export function serializeTheme(value: Palette): string {
   const pick = <K extends string>(record: Readonly<Record<K, string>>, keys: readonly K[]) =>

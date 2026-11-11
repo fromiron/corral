@@ -2,6 +2,7 @@ export * from './adapters/badge.tsx';
 export * from './adapters/button.tsx';
 export * from './adapters/card.tsx';
 export * from './adapters/checkbox.tsx';
+export * from './adapters/color-field.tsx';
 export * from './adapters/dialog.tsx';
 export * from './adapters/input.tsx';
 export * from './adapters/menu.tsx';
@@ -235,6 +236,7 @@ export {
   CheckboxItem,
   CheckboxItem as KitCheckboxItem,
 } from './components/ui/checkbox-group.tsx';
+export { ColorTile, type ColorTileProps } from './components/ui/color-picker.tsx';
 export {
   CommandMenu,
   CommandMenuDialog,
