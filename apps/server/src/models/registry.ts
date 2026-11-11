@@ -1234,6 +1234,8 @@ export class ModelRegistry implements ModelResolver {
     }));
     const taken = new Set(this.profiles.map((profile) => profile.id));
     const pointed = new Set(this.profiles.map((p) => `${p.provider}\u0000${p.model}`));
+    // The resolver's index decides which provider and model an id means when two pairs share it.
+    const index = this.connectionIndex();
     const connection: ModelProfileView[] = [];
     for (const provider of this.statusProviders()) {
       const status = this.status.get(provider);
@@ -1241,7 +1243,8 @@ export class ModelRegistry implements ModelResolver {
       for (const model of status.models) {
         if (pointed.has(`${provider}\u0000${model.id}`)) continue;
         const id = connectionProfileId(provider, model.id);
-        if (taken.has(id)) continue;
+        const owner = index.get(id);
+        if (taken.has(id) || owner?.provider !== provider || owner.model !== model.id) continue;
         taken.add(id);
         connection.push({
           ...this.profileView({ id, provider, model: model.id }),

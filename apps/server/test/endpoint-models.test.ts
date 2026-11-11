@@ -6,6 +6,7 @@ import { type ModelProviderConfig, parseWorkspaceConfig } from '@corral/core';
 import { type Credential, type CredentialStore, createModels } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ModelCatalogService } from '../src/models/catalog-service.ts';
+import { connectionProfileId } from '../src/models/connection-models.ts';
 import {
   ENDPOINT_MODEL_LIMITS,
   EndpointModelCache,
@@ -751,6 +752,40 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     registerEndpoints(models, renamed);
     await registry.reconfigure([], renamed, 'rev-2');
     expect(registry.endpointOf(snapshot)?.models[0]).toMatchObject({ contextWindow: 60000 });
+  });
+
+  it('the list and a stored choice agree on which model an id means when two pairs make the same id', async () => {
+    const configs: ModelProviderConfig[] = [
+      {
+        id: 'loc',
+        name: 'Loc',
+        baseUrl: 'http://127.0.0.1:1111/v1',
+        access: 'none',
+        models: [{ id: 'x:m' }],
+      },
+      {
+        id: 'loc:x',
+        name: 'Loc X',
+        baseUrl: 'http://127.0.0.1:2222/v1',
+        access: 'none',
+        models: [{ id: 'm' }, { id: 'other' }],
+      },
+    ];
+    const { registry, models } = setup({ configs });
+    const endpoints = registry.endpointsFor(configs);
+    registerEndpoints(models, endpoints);
+    // A named profile on the second endpoint comes first in the provider order.
+    await registry.reconfigure([{ id: 'p', provider: 'loc:x', model: 'other' }], endpoints, 'rev');
+    await registry.idle();
+    expect(connectionProfileId('loc', 'x:m')).toBe(connectionProfileId('loc:x', 'm'));
+    const listed = registry.profilesView().filter((view) => view.profileId === 'loc:x:m');
+    expect(listed).toHaveLength(1);
+    const resolved = registry.resolve('loc:x:m', 'live');
+    if (!resolved.ok) throw new Error(resolved.reason);
+    expect([resolved.snapshot.provider, resolved.snapshot.modelId]).toEqual([
+      listed[0]!.provider,
+      listed[0]!.modelId,
+    ]);
   });
 
   it('refreshing a provider that is not an endpoint is refused without a request', async () => {
