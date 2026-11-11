@@ -80,19 +80,19 @@ const leaky: DiagnosticsReport = {
         login: {
           state: 'failed',
           authUrl: 'https://auth.internal.example/?code=ghp_abcdefghijklmnop',
-          error: `Bearer eyJhbGciOiJIUzI1NiJ9 rejected at /home/bell/.corral/auth.json: ${MESSAGE_BODY}`,
+          error: `Bearer eyJhbGciOiJIUzI1NiJ9 rejected at /home/someone/.corral/auth.json: ${MESSAGE_BODY}`,
         } as ProviderAuthView['login'],
       }),
       provider({ providerId: 'anthropic', name: 'Anthropic', signedIn: false, method: null }),
     ],
     profiles: [
-      profile({ profileId: 'C:\\Users\\bell\\profile', modelName: MESSAGE_BODY }),
+      profile({ profileId: 'C:\\Users\\someone\\profile', modelName: MESSAGE_BODY }),
       profile({ profileId: 'second', available: false }),
     ],
   },
   folder: {
     state: 'bound',
-    path: '/home/bell/private/merger-project',
+    path: '/home/someone/private/merger-project',
     trusted: true,
     missing: false,
     isGit: true,
@@ -102,7 +102,7 @@ const leaky: DiagnosticsReport = {
     state: 'loaded',
     view: localAi({
       state: 'error',
-      error: `failed to open C:\\Users\\bell\\models\\x.bin with token sk-live-1234567890abcdef: ${MESSAGE_BODY}`,
+      error: `failed to open C:\\Users\\someone\\models\\x.bin with token sk-live-1234567890abcdef: ${MESSAGE_BODY}`,
     }),
   },
 };
@@ -132,7 +132,7 @@ describe('diagnostics summary', () => {
       runtime: { mode: 'server', version: '0.0.0', live: true },
       folder: {
         state: 'bound',
-        path: 'C:\\Users\\bell\\merger',
+        path: 'C:\\Users\\someone\\merger',
         trusted: false,
         missing: true,
         isGit: false,
