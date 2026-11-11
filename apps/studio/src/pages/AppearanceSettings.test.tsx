@@ -605,26 +605,26 @@ describe('the editor', () => {
     await click(newTile());
     const contrast = () => picker()?.querySelector('[data-contrast]')?.textContent ?? '';
     const mark = () => tile(T.ui.muted).querySelector('[data-low-contrast]');
-    await typeColor(T.ui.muted, '#7e7e7e');
+    await typeColor(T.ui.muted, '#9e9e9e');
     expect(contrast()).toContain(T.contrast);
-    expect(contrast()).toContain('3.0:1');
-    expect(contrast()).toContain(T.low);
-    expect(mark()?.textContent).toContain('3.0:1');
-    expect(mark()?.textContent).toContain(T.low);
-    expect(described(tile(T.ui.muted))).toContain(T.low);
-    await type(hexField(), '#9e9e9e');
     expect(contrast()).toContain('4.6:1');
     expect(contrast()).not.toContain(T.low);
     // A color that passes shows nothing beside its tile.
     expect(mark()).toBeNull();
     expect(described(tile(T.ui.muted))).not.toContain(':1');
+    await type(hexField(), '#7e7e7e');
+    expect(contrast()).toContain('3.0:1');
+    expect(contrast()).toContain(T.low);
+    expect(mark()?.textContent).toContain('3.0:1');
+    expect(mark()?.textContent).toContain(T.low);
+    expect(described(tile(T.ui.muted))).toContain(T.low);
     // Background, selection and the code and terminal colors are not judged as text.
-    for (const name of [T.ui.background, T.ui.selection, T.syntax.comment, T.terminal.blue]) {
-      await openPicker(name);
-      expect(contrast()).toBe('');
-      expect(tile(name).querySelector('[data-low-contrast]')).toBeNull();
-    }
-    await typeColor(T.ui.muted, '#7e7e7e');
+    const judged = all('[data-theme-editor] [data-color-tile]')
+      .filter((each) => each.querySelector('[data-low-contrast]'))
+      .map((each) => each.ariaLabel);
+    expect(judged).toEqual([T.ui.muted]);
+    await openPicker(T.ui.background);
+    expect(contrast()).toBe('');
     await click(button(T.save));
     expect(editor()).toBeNull();
     expect(personalThemes.getState()[0]?.palette.ui.muted).toBe('#7e7e7e');
