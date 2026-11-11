@@ -398,14 +398,18 @@ function ColorRow({
           <span
             id={`${id}-ratio`}
             data-low-contrast={low || undefined}
-            className="inline-flex items-center gap-1 text-caption text-muted-foreground tabular-nums"
+            // A low mark stays readable even when the color being judged is the secondary text.
+            className={cn(
+              'inline-flex items-center gap-1 text-caption tabular-nums',
+              low ? 'text-foreground' : 'text-muted-foreground',
+            )}
           >
             <span className="sr-only">{t('contrast')}</span>
             {low ? <TriangleAlert aria-hidden className="size-3 text-warning" /> : null}
             {t('ratio', {
               ratio: format.number(ratio, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
             })}
-            {low ? <span className="text-foreground">{t('low')}</span> : null}
+            {low ? <span>{t('low')}</span> : null}
           </span>
         )}
       </div>
