@@ -290,6 +290,8 @@ export class ModelRegistry implements ModelResolver {
 
   private readonly fetches = new Map<string, ModelFetch>();
   private readonly lastFetch = new Map<string, Omit<EndpointModelsView, 'modelCount'>>();
+  /** Providers with a list Pi fetches whose refresh has finished in this process. */
+  private readonly dynamicLoaded = new Set<string>();
   /** Bumped per provider when its credential changes; a fetch across a change is dropped. */
   private readonly credentialEpochs = new Map<string, number>();
   private readonly background = new Set<Promise<unknown>>();
@@ -517,6 +519,13 @@ export class ModelRegistry implements ModelResolver {
       .sort((a, b) => b.length - a.length)[0];
     if (owner && !this.status.get(owner)?.method)
       return { ok: false, code: 'CAPABILITY_DENIED', reason: SIGN_IN(this.providerName(owner)) };
+    // A list Pi fetches is empty until its refresh finishes (at server start, or offline).
+    if (owner && this.models.getProvider(owner)?.refreshModels && !this.dynamicLoaded.has(owner))
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        reason: `the ${this.providerName(owner)} model list is not loaded yet; try again in a moment`,
+      };
     return { ok: false, code: 'GRAPH_INVALID', reason: 'no such model profile' };
   }
 
@@ -1448,7 +1457,9 @@ export class ModelRegistry implements ModelResolver {
 
   private async refreshDynamic(providers: string[], force: boolean) {
     if (this.stopped.signal.aborted) return;
-    await this.models.refresh({ providers, force, signal: this.stopped.signal });
+    const result = await this.models.refresh({ providers, force, signal: this.stopped.signal });
+    for (const id of providers)
+      if (!result.aborted && !result.errors.has(id)) this.dynamicLoaded.add(id);
     this.catalogChanged();
     await Promise.all(providers.map((id) => this.refreshStatus(id)));
   }

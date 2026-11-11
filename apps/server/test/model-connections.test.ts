@@ -11,6 +11,7 @@ import {
   createModels,
   createProvider,
   envApiKeyAuth,
+  InMemoryCredentialStore,
   type Model,
   type OAuthAuth,
 } from '@earendil-works/pi-ai';
@@ -606,6 +607,49 @@ describe('the borrowed Codex CLI login', () => {
       signedIn: true,
       source: 'codex-cli',
       modelCount: 0,
+    });
+  });
+});
+
+describe('a provider whose list Pi fetches', () => {
+  it('a stored choice says the list is not loaded yet until the refresh finishes', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const credentials = new InMemoryCredentialStore();
+    const models = createModels({
+      credentials,
+      authContext: { env: async () => undefined, fileExists: async () => false },
+    });
+    const faux = createFauxCore({ provider: 'dynamo', models: [{ id: 'base-model' }] });
+    models.setProvider(
+      createProvider({
+        id: 'dynamo',
+        name: 'Dynamo',
+        auth: { apiKey: envApiKeyAuth('Dynamo key', ['DYNAMO_API_KEY']) },
+        models: faux.models,
+        fetchModels: async () => {
+          await held;
+          return [{ ...(faux.models[0] as Model<string>), id: 'fetched' }];
+        },
+        api: { stream: faux.stream, streamSimple: faux.streamSimple },
+      }),
+    );
+    await credentials.modify('dynamo', async () => ({ type: 'api_key', key: 'dynamo-key' }));
+    const registry = new ModelRegistry(models, [], { credentials, getDeviceId: () => 'device' });
+    await registry.refreshStatus();
+    registry.refreshDynamicProviders();
+    const early = registry.resolve('dynamo:fetched', 'live');
+    expect(early).toMatchObject({ ok: false, code: 'CAPABILITY_DENIED' });
+    expect(early.ok ? '' : early.reason).toMatch(/Dynamo model list is not loaded yet/);
+    release();
+    await registry.idle();
+    expect(registry.resolve('dynamo:fetched', 'live').ok).toBe(true);
+    // Once the list is loaded, a model it does not have is an unknown profile.
+    expect(registry.resolve('dynamo:gone', 'live')).toMatchObject({
+      ok: false,
+      reason: 'no such model profile',
     });
   });
 });
