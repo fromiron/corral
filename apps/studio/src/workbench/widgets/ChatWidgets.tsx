@@ -500,13 +500,13 @@ export function ComposerDock({
   const tool = running && tt.has(`tool.${running}`) ? tt(`tool.${running}`) : running;
   // A failed run is told by its turn's card when that card is the latest turn; the notice
   // stays while another run or result is on screen, so the failure stays discoverable. A run
-  // that completed with failed steps keeps it: the notice is the way to those steps. Approvals
+  // that completed with failed steps says so once, in its turn, beside those steps. Approvals
   // alone are decided in their turn's card, and the top bar's pill says the run waits, so the
   // notice would only repeat them; the live region below still announces them.
   const notice =
     run?.action.visible &&
     run.action.summary !== 'approval' &&
-    !(run.action.summary === 'failure' && !run.action.completedWithFailures && run.viewed?.latest);
+    !(run.action.summary === 'failure' && (run.action.completedWithFailures || run.viewed?.latest));
   // Waiting questions alone name the first one, as the conversation's notice does.
   const actionLabel = run
     ? (run.action.summary === 'question' && run.questionNotice) ||

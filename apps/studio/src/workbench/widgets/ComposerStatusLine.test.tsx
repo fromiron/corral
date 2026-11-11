@@ -485,21 +485,27 @@ it("leaves a failure to its turn's card when that card is the latest turn", asyn
   expect(view.line()?.querySelector('a')?.textContent).toContain(messages.Status.failed);
 });
 
-it('keeps the failed-steps notice for a run that completed, whose card has no way to them', async () => {
-  const view = await mount(
-    model(
-      {
-        live: false,
-        action: { ...failure, completedWithFailures: true },
-        failedExecutionId: 'exec_failed',
-        viewed: { latest: true, number: 1, total: 1 },
-      },
-      { runStatus: 'succeeded' },
-    ),
-  );
-  const banner = view.container.querySelector('[data-testid="action-required"]');
-  expect(banner?.textContent).toContain(messages.Widgets.actionOpenFailure);
-});
+it.each([true, false])(
+  'leaves the failed-steps notice of a completed run to its turn, never above the input (latest=%s)',
+  async (latest) => {
+    const view = await mount(
+      model(
+        {
+          live: false,
+          action: { ...failure, completedWithFailures: true },
+          failedExecutionId: 'exec_failed',
+          viewed: { latest, number: 1, total: latest ? 1 : 2 },
+        },
+        { runStatus: 'succeeded' },
+      ),
+    );
+    expect(view.container.querySelector('[data-testid="action-required"]')).toBeNull();
+    // Only the polite announcement still says it; nothing on screen repeats the turn's line.
+    const shown = view.container.cloneNode(true) as HTMLElement;
+    for (const hidden of shown.querySelectorAll('.sr-only')) hidden.remove();
+    expect(shown.textContent).not.toContain(messages.Widgets.actionCompletedWithFailures);
+  },
+);
 
 it('keeps a failure notice while another run or result is on screen', async () => {
   const view = await mount(
