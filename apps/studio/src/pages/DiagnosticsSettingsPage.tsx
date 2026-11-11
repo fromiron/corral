@@ -40,6 +40,7 @@ const LOCAL_AI_STATES = new Set<string>([
 export function DiagnosticsSettingsPage() {
   const t = useTranslations('Diagnostics');
   const tm = useTranslations('Models');
+  const tc = useTranslations('Connections');
   const tl = useTranslations('LocalAi');
   const tf = useTranslations('Files');
   const td = useTranslations('Desktop');
@@ -148,8 +149,9 @@ export function DiagnosticsSettingsPage() {
         return t('cause.noModel');
       case 'modelsFailed':
         return tm('loadFailed');
-      case 'endpoint':
-        return tm(`connectionTest.${value.test}`);
+      case 'endpointFetch':
+        // The words the endpoint's own connection row uses.
+        return tc(`cause.fetch.${value.fetch}`);
       case 'endpointChanged':
         return tm('endpointChanged');
       case 'folderMissing':
@@ -199,7 +201,11 @@ export function DiagnosticsSettingsPage() {
                 {row.causes.map((value) => {
                   const text = cause(value);
                   return text ? (
-                    <p key={value.kind === 'endpoint' ? `endpoint:${value.test}` : value.kind}>
+                    <p
+                      key={
+                        value.kind === 'endpointFetch' ? `endpointFetch:${value.fetch}` : value.kind
+                      }
+                    >
                       {text}
                     </p>
                   ) : null;

@@ -133,7 +133,6 @@ it('copies a summary without the folder path, a key or a login link', async () =
           methods: { oauth: true, apiKey: true },
           endpoint: null,
           endpointChanged: false,
-          connectionTest: null,
           subscription: false,
           expiresAt: null,
           login: { state: 'waiting', authUrl: 'https://auth.example/?code=secret-code' },
@@ -181,6 +180,84 @@ it('copies a summary without the folder path, a key or a login link', async () =
   for (const secret of ['/home/', 'secret-code', 'auth.example', 'model.bin'])
     expect(text).not.toContain(secret);
   expect(container.textContent).toContain('Diagnostics copied');
+});
+
+it('gives an endpoint whose last model list fetch failed as the models row cause, in the words of its connection row', async () => {
+  const endpoint = (providerId: string, modelFetch: unknown) => ({
+    providerId,
+    name: providerId,
+    signedIn: true,
+    method: 'api_key',
+    methods: { oauth: false, apiKey: true },
+    endpoint: `${providerId}.example.test`,
+    endpointChanged: false,
+    subscription: false,
+    expiresAt: null,
+    login: null,
+    source: 'corral',
+    permissionsOk: true,
+    modelCount: 1,
+    modelFetch,
+  });
+  const fetchedAt = '2026-11-11T00:00:00Z';
+  let providers = [
+    endpoint('never', null),
+    endpoint('listed', { kind: 'connected', status: 200, fetchedAt }),
+  ];
+  fixture.services = {
+    mode: 'server',
+    serverVersion: '1.4.0',
+    live: true,
+    harnesses: null,
+    workspaces: null,
+    models: {
+      profiles: async () => [
+        {
+          profileId: 'listed:alpha',
+          source: 'connection',
+          provider: 'listed',
+          providerName: 'listed',
+          modelId: 'alpha',
+          modelName: 'alpha',
+          available: true,
+          reasoning: false,
+          contextWindow: null,
+          maxOutputTokens: null,
+          method: 'api_key',
+          keyConfigured: true,
+          subscriptionSupported: null,
+        },
+      ],
+      auth: async () => providers,
+      catalog: async () => [],
+      config: async () => null,
+      localAi: async () => ({
+        release: 'r',
+        models: { meeting: 'm' },
+        state: 'ready',
+        downloadBytes: null,
+        progress: null,
+        error: null,
+      }),
+    } as unknown as ModelsApi,
+  };
+  const words = messages.Connections.cause.fetch;
+  const fine = row(await render(), 'models');
+  expect(fine?.textContent).toContain('Connected');
+  for (const text of Object.values(words)) expect(fine?.textContent).not.toContain(text);
+  expect(fine?.querySelectorAll('p')).toHaveLength(0);
+
+  providers = [
+    ...providers,
+    endpoint('refused', { kind: 'authentication', status: 401, fetchedAt }),
+    endpoint('offline', { kind: 'connection', status: null, fetchedAt }),
+  ];
+  const failed = row(await render(), 'models');
+  expect([...(failed?.querySelectorAll('p') ?? [])].map((p) => p.textContent)).toEqual([
+    words.authentication,
+    words.connection,
+  ]);
+  expect(failed?.querySelector('a')?.getAttribute('href')).toBe('/settings/models');
 });
 
 const missingFolderA = {

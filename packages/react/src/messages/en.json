@@ -767,16 +767,7 @@
     "profile": "Profile",
     "model": "Model",
     "status": "Status",
-    "ready": "Ready",
-    "connectionTest": {
-      "connected": "Endpoint responded.",
-      "authentication": "Credentials were rejected or are missing. Update the key and test again.",
-      "rateLimit": "Requests are limited. Wait before testing again.",
-      "server": "The endpoint is temporarily unavailable. Retry later.",
-      "redirect": "The endpoint redirected the request. Review its configured address.",
-      "unsupported": "This endpoint does not support the connection check. Review its API base address.",
-      "connection": "Could not connect. Check the address, network, and local server."
-    }
+    "ready": "Ready"
   },
   "MessageBody": {
     "copyCode": "Copy code",
