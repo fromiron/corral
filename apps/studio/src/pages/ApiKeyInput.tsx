@@ -9,12 +9,18 @@ export function ApiKeyInput({
   onChange,
   disabled = false,
   describedBy,
+  placeholder,
+  kitLabel = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
   /** The id of a line that says more about the key, read as the field's description. */
   describedBy?: string;
+  /** Shown while the field is empty, such as that a saved key stays when it is left blank. */
+  placeholder?: string;
+  /** Sets the label like the kit's InputField labels beside it (body size, inset). */
+  kitLabel?: boolean;
 }) {
   const t = useTranslations('Models');
   const id = useId();
@@ -25,7 +31,12 @@ export function ApiKeyInput({
   }, [empty]);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <label htmlFor={id} className="text-caption text-muted-foreground">
+      <label
+        htmlFor={id}
+        className={
+          kitLabel ? 'pl-2.5 text-body text-muted-foreground' : 'text-caption text-muted-foreground'
+        }
+      >
         {t('apiKeyLabel')}
       </label>
       <div className="flex items-stretch gap-2">
@@ -37,6 +48,7 @@ export function ApiKeyInput({
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
           aria-describedby={describedBy}
+          placeholder={placeholder}
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}
