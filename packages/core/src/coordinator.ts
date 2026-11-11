@@ -153,7 +153,7 @@ import {
   type RuntimeSnapshot,
   readPartialOutputs,
 } from './partial-output.ts';
-import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
+import { applyEvent, emptyProjection, type RunProjection, toolRunGrant } from './projection.ts';
 import { reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun, type RunPlan } from './run-plan.ts';
@@ -6132,7 +6132,7 @@ export class Coordinator {
     plan: CheckPlan | ToolPermissionPlan,
     cancellation: ToolCancellation,
   ): Promise<boolean> {
-    if (cancellation.aborted || run.stop.aborted || run.uiRequestCount >= 100) return false;
+    if (cancellation.aborted || run.stop.aborted) return false;
     const execution = run.projection.executions[input.executionId];
     if (
       !execution ||
@@ -6143,6 +6143,25 @@ export class Coordinator {
         (!tool.effectId || run.projection.effects[tool.effectId]?.status !== 'admitted'))
     )
       return false;
+    // "Allow for this run": a call with exactly an approved fingerprint passes without asking,
+    // and the record names the approval it relied on.
+    const grant = plan.purpose === 'tool' ? toolRunGrant(run.projection, plan.fingerprint) : null;
+    if (grant) {
+      this.commit(run, [
+        {
+          type: 'tool.authorized',
+          executionId: input.executionId,
+          payload: {
+            executionId: input.executionId,
+            toolCallId: tool.toolCallId,
+            approvalId: grant.approvalId,
+            fingerprint: plan.fingerprint,
+          },
+        },
+      ]);
+      return true;
+    }
+    if (run.uiRequestCount >= 100) return false;
     const bodyRef = this.ids.next('artifact_version');
     const timeoutMs = 300000;
     const request = this.requestApproval(run, 'user_action', [bodyRef], {
@@ -6417,6 +6436,16 @@ export class Coordinator {
           ? `approve ${approvalId} by naming one of its routes`
           : `approval ${approvalId} takes no route`,
       });
+    // Only approving a tool call reaches past it: for the rest of the Run, the same fingerprint.
+    const toolCall = approval.tool?.purpose === 'tool' && decision === 'approve';
+    if (command.payload.scope === 'run' && !toolCall)
+      return refuse({
+        code: 'SCHEMA_INVALID',
+        message:
+          decision === 'approve'
+            ? `approval ${approvalId} is not a tool call; only a tool call is allowed for the run`
+            : 'a rejection has no scope',
+      });
     this.commit(
       run,
       [
@@ -6430,6 +6459,7 @@ export class Coordinator {
             actor: USER.id,
             subjectVersionIds: approval.subjectVersionIds,
             ...(picksRoute && routeId ? { routeId } : {}),
+            ...(toolCall ? { scope: command.payload.scope ?? 'once' } : {}),
           },
         },
         ...(['paused', 'pausing'].includes(run.projection.status)

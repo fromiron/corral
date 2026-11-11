@@ -175,6 +175,8 @@ export interface ApprovalView {
   nodeId?: string;
   /** The route the person picked, once a `route` approval is approved. */
   routeId?: string;
+  /** How far an approved tool call reaches; `run` also covers the Run's same-fingerprint calls. */
+  scope?: 'once' | 'run';
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
@@ -686,6 +688,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
             ...approval,
             status,
             ...(event.payload.routeId ? { routeId: event.payload.routeId } : {}),
+            ...(event.payload.scope ? { scope: event.payload.scope } : {}),
           },
         },
       };
@@ -994,6 +997,23 @@ function updateModelCall(
   const current = p.modelCalls[id];
   if (!current) return p;
   return { ...p, modelCalls: { ...p.modelCalls, [id]: { ...current, ...change } } };
+}
+
+/**
+ * The Run's "allow for this run" grant that covers a tool call with exactly this fingerprint: an
+ * approved tool approval resolved with `scope: run`. It is read from the approvals alone, so a
+ * projection rebuilt from the Run's events has the same grants, and another Run has none.
+ */
+export function toolRunGrant(projection: RunProjection, fingerprint: string): ApprovalView | null {
+  for (const approval of Object.values(projection.approvals))
+    if (
+      approval.status === 'approved' &&
+      approval.scope === 'run' &&
+      approval.tool?.purpose === 'tool' &&
+      approval.tool.fingerprint === fingerprint
+    )
+      return approval;
+  return null;
 }
 
 /**
