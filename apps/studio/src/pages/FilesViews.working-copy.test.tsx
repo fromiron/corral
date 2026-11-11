@@ -37,7 +37,7 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 
-it('without a copy, the panel is the shared empty view with the one next step under it', async () => {
+it('without a copy, the panel is the shared empty view with the one next step inside it', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.copy = null;
   const container = document.createElement('div');
@@ -55,7 +55,10 @@ it('without a copy, the panel is the shared empty view with the one next step un
     expect(region?.getAttribute('aria-label')).toBe(messages.Files.copyHeading);
     const empty = region?.querySelector('[data-slot="empty-view"]');
     expect(empty?.textContent).toContain(messages.Files.noCopyTitle);
-    const make = empty?.lastElementChild;
+    // The step sits inside the dashed empty state, not after it.
+    const frame = empty?.querySelector('[data-slot="empty-state"]');
+    expect(frame?.className).toContain('border-dashed');
+    const make = frame?.lastElementChild;
     expect(make?.tagName).toBe('BUTTON');
     expect(make?.textContent).toBe('Make a working copy from main');
   } finally {

@@ -112,12 +112,24 @@ export function SectionLabel({ children, count }: { children: ReactNode; count?:
   );
 }
 
-/** An empty list or view: its title says what belongs there; a line under it is optional. */
-export function EmptyState({ title, text }: { title: string; text?: string | undefined }) {
+/**
+ * An empty list or view: its title says what belongs there; a line under it and one next step
+ * at its foot are optional.
+ */
+export function EmptyState({
+  title,
+  text,
+  action,
+}: {
+  title: string;
+  text?: string | undefined;
+  action?: ReactNode;
+}) {
   const size = useSize();
   const shape = useShape();
   return (
     <div
+      data-slot="empty-state"
       className={cn(
         shape.container,
         'grid justify-items-center gap-1 border border-dashed border-border px-6 py-10 text-center',
@@ -132,6 +144,7 @@ export function EmptyState({ title, text }: { title: string; text?: string | und
       {text ? (
         <p className={cn(size.type.caption, 'm-0 max-w-sm text-muted-foreground')}>{text}</p>
       ) : null}
+      {action}
     </div>
   );
 }

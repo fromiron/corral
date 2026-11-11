@@ -13,9 +13,9 @@ export interface EmptyViewAction {
 }
 
 /**
- * An empty list or view: the kit EmptyState, and under it at most one next step as a secondary
- * button. The kit state has no action slot, so the action follows it. Every empty part of a view
- * uses this, so they share alignment, title size and spacing. Without text it is the title alone.
+ * An empty list or view: the kit EmptyState, with at most one next step as a secondary button at
+ * the foot of its dashed frame. Every empty part of a view uses this, so they share alignment,
+ * title size and spacing. Without text it is the title alone.
  */
 export function EmptyView({
   title,
@@ -29,21 +29,26 @@ export function EmptyView({
   action?: EmptyViewAction | undefined;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'title'>) {
   return (
-    <div data-slot="empty-view" className={cn('grid gap-3', className)} {...props}>
-      <EmptyState title={title} text={text} />
-      {action ? (
-        <Button
-          ref={action.ref}
-          variant="secondary"
-          size="compact"
-          className="justify-self-center"
-          disabled={action.disabled}
-          onClick={action.onClick}
-          render={action.render}
-        >
-          {action.label}
-        </Button>
-      ) : null}
+    <div data-slot="empty-view" className={cn('grid', className)} {...props}>
+      <EmptyState
+        title={title}
+        text={text}
+        action={
+          action ? (
+            <Button
+              ref={action.ref}
+              variant="secondary"
+              size="compact"
+              className="mt-2"
+              disabled={action.disabled}
+              onClick={action.onClick}
+              render={action.render}
+            >
+              {action.label}
+            </Button>
+          ) : null
+        }
+      />
     </div>
   );
 }
