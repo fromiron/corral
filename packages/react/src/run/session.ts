@@ -72,12 +72,15 @@ export interface RunSessionState {
   /** Loads immutable text; reload retries a body that could not be verified by a reader. */
   loadArtifact(artifactVersionId: string, options?: { reload?: boolean }): Promise<void>;
   steer(executionId: string, text: string): Promise<Receipt>;
-  /** Approves or rejects a pending approval, for the exact subject the person was shown. */
-  /** `routeId` names the route a person picks when approving a `route` approval. */
+  /**
+   * Approves or rejects a pending approval, for the exact subject the person was shown.
+   * `routeId` names the route a person picks when approving a `route` approval; `scope: 'run'`
+   * approves a tool call for the rest of the run (the default is this call once).
+   */
   resolveApproval(
     approvalId: string,
     decision: 'approve' | 'reject',
-    routeId?: string,
+    options?: { routeId?: string; scope?: 'once' | 'run' },
   ): Promise<Receipt>;
   refreshReceipt(commandId: string): Promise<void>;
   dispose(): void;
@@ -655,7 +658,7 @@ export function createRunSession(
         });
       },
 
-      async resolveApproval(approvalId, decision, routeId) {
+      async resolveApproval(approvalId, decision, { routeId, scope } = {}) {
         const approval = get().projection?.approvals[approvalId];
         if (!approval) throw new Error('no such approval');
         return get().sendCommand({
@@ -666,6 +669,7 @@ export function createRunSession(
             decision,
             subjectVersionId: approval.subjectVersionIds[0] ?? '',
             ...(routeId ? { routeId } : {}),
+            ...(scope ? { scope } : {}),
           },
         });
       },

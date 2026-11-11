@@ -165,7 +165,13 @@ function useToolCalls(
     id: tool.toolCallId,
     name: tool.name,
     status: activityState && unfinished(tool) ? activityState.status : toolStatus[tool.status],
-    statusLabel: activityState && unfinished(tool) ? activityState.label : t(`tool.${tool.status}`),
+    statusLabel:
+      activityState && unfinished(tool)
+        ? activityState.label
+        : // A call that passed on an approval for the run says so after its state.
+          [t(`tool.${tool.status}`), tool.allowedForRun ? t('allowedForRun') : null]
+            .filter(Boolean)
+            .join(' · '),
     args: tool.args,
     ...(tool.detail ? { error: tool.detail } : {}),
     ...(tool.resultRef

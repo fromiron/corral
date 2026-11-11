@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button, fontWeights } from '../design-kit/index.ts';
@@ -25,9 +24,6 @@ export function WorkPlanPanel({ session }: { session: RunSessionStore }) {
 
 function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: WorkPlanRef }) {
   const t = useTranslations('WorkPlan');
-  const runId = useStore(session, (s) => s.runId);
-  const bodies = useStore(session, (s) => s.artifactTexts);
-  const [failedEvidence, setFailedEvidence] = useState<string | null>(null);
   const { status, retry } = useRunWorkPlan(session, view);
   const plan = 'plan' in status ? status.plan : null;
   // A plan is named by the agent that wrote it, never by its execution identifier.
@@ -60,53 +56,6 @@ function WorkPlanDetails({ session, view }: { session: RunSessionStore; view: Wo
                   {t(item.status)}
                 </span>
                 <span className="min-w-0 flex-1 break-words">{item.title}</span>
-                {item.requiresVerification ? (
-                  <span className="text-caption text-muted-foreground">{t('verification')}</span>
-                ) : null}
-                {item.evidenceRefs?.length ? (
-                  <details className="w-full text-caption">
-                    <summary className="cursor-pointer">
-                      {t('evidence', { count: item.evidenceRefs.length })}
-                    </summary>
-                    {item.evidenceRefs.map((ref) => (
-                      <div key={ref} className="mt-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => {
-                            setFailedEvidence(null);
-                            void session
-                              .getState()
-                              .loadArtifact(ref)
-                              .then(() => {
-                                if (
-                                  session.getState().runId === runId &&
-                                  session.getState().artifactTexts[ref] === undefined
-                                ) {
-                                  setFailedEvidence(ref);
-                                }
-                              })
-                              .catch(() => {
-                                if (session.getState().runId === runId) setFailedEvidence(ref);
-                              });
-                          }}
-                        >
-                          {ref}
-                        </Button>
-                        {bodies[ref] ? (
-                          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all">
-                            {bodies[ref]}
-                          </pre>
-                        ) : null}
-                        {failedEvidence === ref ? (
-                          <p role="alert" className="text-caption text-danger">
-                            {t('unavailable')}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </details>
-                ) : null}
               </li>
             ))}
           </ol>

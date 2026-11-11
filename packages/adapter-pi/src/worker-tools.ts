@@ -32,7 +32,7 @@ export const TOOL_TEXT: Record<WorkerTool, string> = {
   edit_hashline:
     'Apply version-1 Hashline operations to a file read by this execution, using its exact tag. PUT N.=M: followed by lines prefixed with + replaces inclusive lines; PUT <N: or PUT >N: inserts before or after a line; PUT >$: appends. CUT N.=M removes inclusive lines. REM deletes the file; MV "relative/path" renames it. REM and MV must be the only operation and need a complete read. Coordinates refer to the original read. Create new files with write_file first. Corral validates the tag, observed lines and destination before changing files. Stale or unseen content is refused; read again instead of guessing a tag. Call read_hashline again after each successful edit before making another edit; a returned tag alone is not read evidence.',
   update_plan:
-    'Record a checklist for your execution, or the team when you are its designated planner. Use the returned revision for the next update and the current criteriaVersionId. At most one item is in progress. Required verification needs real run_check resultRefs from this execution and current tree. A completed plan does not submit or finish the task.',
+    'Record a checklist for your execution, or the team when you are its designated planner. Each item has only id, title and status. Use the returned revision for the next update and the current criteriaVersionId. At most one item is in progress. Mark an item completed when its step is done. A completed plan does not submit or finish the task.',
   ask_user:
     'Ask the person 1–4 structured questions and wait for their answers. Recommendations never authorize an action. Use stable key and question/option IDs. Use ask for another agent.',
   search:

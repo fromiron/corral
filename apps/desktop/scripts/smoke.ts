@@ -222,7 +222,8 @@ try {
   assert.equal(application.process().exitCode, null, 'Keep running does not close the app');
   await page.getByRole('button', { name: 'Resume run', exact: true }).click();
   await expect(
-    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }),
+    // The turn's line and its work summary can both say it for a moment as the run ends.
+    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }).first(),
   ).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
@@ -295,7 +296,7 @@ try {
   const restored = await application.firstWindow();
   await restored.waitForURL(/\/sessions\/session_/, { timeout: 30000 });
   await expect(
-    restored.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }),
+    restored.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }).first(),
   ).toBeVisible();
   await expect(restored.getByRole('combobox', { name: 'Request', exact: true })).toHaveValue(
     'A draft preserved across restart',
@@ -333,12 +334,11 @@ try {
   await restored.waitForURL('corral://startup/');
   await restored.getByRole('button', { name: 'Try again', exact: true }).click();
   await restored.waitForURL(/\/sessions\/session_/, { timeout: 30000 });
-  await expect(
-    restored
-      .getByTestId('chat-timeline')
-      .getByRole('note')
-      .filter({ hasText: 'Not finished (Interrupted)' }),
-  ).toBeVisible();
+  // The turn the restart cut off says so once, in its own ending notice.
+  const ended = restored.getByTestId('chat-timeline').getByTestId('run-ended');
+  await expect(ended).toHaveAttribute('role', 'note');
+  await expect(ended).toContainText('The local server restarted');
+  console.log('Interrupted turn notice:', (await ended.innerText()).replace(/\s+/g, ' '));
   await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toHaveCount(0);
   await restored.getByRole('combobox', { name: 'Request', exact: true }).fill('Quit while paused');
   await restored.getByRole('button', { name: 'Send', exact: true }).click();
@@ -392,12 +392,13 @@ try {
     .getByTestId('app-sidebar')
     .getByRole('link', { name: /^Desktop packaged smoke/ })
     .click();
-  await expect(
-    recovery
-      .getByTestId('chat-timeline')
-      .getByRole('note')
-      .filter({ hasText: 'Not finished (Interrupted)' }),
-  ).toHaveCount(2);
+  // Both turns the restarts cut off keep their own ending notice.
+  const cutOff = recovery.getByTestId('chat-timeline').getByTestId('run-ended');
+  await expect(cutOff).toHaveCount(2);
+  console.log(
+    'Interrupted turn notices:',
+    (await cutOff.allInnerTexts()).map((text) => text.replace(/\s+/g, ' ')),
+  );
   console.log('Checking renderer recovery');
   const rendererPid = await application.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.webContents.getOSProcessId(),
@@ -436,7 +437,7 @@ try {
           )
             return false;
           return contents.executeJavaScript(
-            'document.querySelector("[data-testid=chat-timeline]")?.textContent.includes("Interrupted") ?? false',
+            'document.querySelectorAll("[data-testid=chat-timeline] [data-testid=run-ended]").length === 2',
           );
         }),
       { timeout: 30000 },

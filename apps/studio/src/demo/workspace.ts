@@ -44,6 +44,12 @@ function safeRelative(input: string): string {
   return parts.join('/');
 }
 
+/** A folder to list, as the server's broker takes it: one that names the root is the root. */
+function safeFolder(input: string): string {
+  if (!input.startsWith('/') && input.split('/').every((p) => p === '' || p === '.')) return '';
+  return safeRelative(input);
+}
+
 /** A stable 40-hex id for content (not cryptographic: the demo has nothing to protect). */
 function contentId(text: string): string {
   let out = '';
@@ -481,10 +487,7 @@ export class DemoWorkspace implements FileTools {
     if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
     switch (input.name) {
       case 'list_files': {
-        const folder =
-          typeof input.args.path === 'string' && input.args.path
-            ? safeRelative(input.args.path)
-            : '';
+        const folder = typeof input.args.path === 'string' ? safeFolder(input.args.path) : '';
         const files = [...c.files.entries()]
           .filter(([path]) => !folder || path === folder || path.startsWith(`${folder}/`))
           .map(([path, text]) => ({ path, bytes: new TextEncoder().encode(text).length }));

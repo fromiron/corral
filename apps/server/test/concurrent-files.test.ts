@@ -79,6 +79,18 @@ it('parallel reader pins writer input; same tree rejects second writer; other tr
     expect(await service.execute({ ...input, name: 'read' }, cancel)).toMatchObject({
       text: 'before\n',
     });
+    // A snapshot reader lists its pinned input tree's root for a folder that names the root.
+    for (const path of ['.', './', ''])
+      expect(
+        await service.execute({ ...input, name: 'list_files', args: { path } }, cancel),
+      ).toEqual({ files: [{ path: 'a.txt', bytes: 7 }], truncated: false });
+    await expect(
+      service.execute({ ...input, name: 'list_files', args: { path: '..' } }, cancel),
+    ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
+    await expect(service.execute({ ...input, args: { path: '.' } }, cancel)).rejects.toMatchObject({
+      code: 'SCHEMA_INVALID',
+      message: 'the path names no file',
+    });
     expect((await service.readPreviewSnapshot('reader', 'a.txt'))?.toString()).toBe('before\n');
     expect(await service.readPreviewSnapshot('writer', 'a.txt')).toBeNull();
     expect(await service.currentTreeForRun('reader')).toBe(await service.startBaseline('writer'));

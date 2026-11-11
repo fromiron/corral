@@ -335,6 +335,15 @@ export function InboxPage() {
   const destination = current ? inboxDestination(current.item) : null;
   // A decision is answered here; every other kind is a link to its own screen.
   const respondsHere = current?.item.kind === 'decision' && current.item.runId !== null;
+  // Once handled, the item's run stays one step away, as its record (nothing waits there now).
+  const handledRun: InboxDestination | null =
+    !current && shown?.item.runId
+      ? {
+          to: '/sessions/$sessionId',
+          params: { sessionId: shown.item.sessionId },
+          search: { panel: 'run', view: 'run', run: shown.item.runId },
+        }
+      : null;
   // The chosen row's line, for the narrow layout where the row is not on screen.
   const narrowLine = current
     ? joined(kindLine(current), manyProjects ? projectLabel(current.projectId) : null)
@@ -498,6 +507,10 @@ export function InboxPage() {
                   {destination && respondsHere ? (
                     <Button variant="tertiary" size="compact" render={destinationLink(destination)}>
                       {t(`open.${destinationKind(destination)}`)}
+                    </Button>
+                  ) : handledRun ? (
+                    <Button variant="tertiary" size="compact" render={destinationLink(handledRun)}>
+                      {t('open.run')}
                     </Button>
                   ) : null}
                   <Button

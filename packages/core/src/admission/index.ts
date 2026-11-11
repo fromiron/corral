@@ -17,7 +17,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   type ToolProposal,
   UserInputRequest,
-  WorkPlanUpdate,
+  workPlanProblem,
 } from '@corral/contracts';
 import { utf8ToBytes } from '@noble/hashes/utils.js';
 import type { InstallationPolicy } from '../config.ts';
@@ -521,10 +521,11 @@ const roleAllowlist: Gate<ToolGateView> = {
       }
     }
     switch (proposal.name) {
-      case 'update_plan':
-        return WorkPlanUpdate.safeParse(args).success
-          ? allow
-          : refuse('SCHEMA_INVALID', 'invalid work plan');
+      case 'update_plan': {
+        // The model gets the first problem to fix, never the values it sent.
+        const problem = workPlanProblem(args);
+        return problem === null ? allow : refuse('SCHEMA_INVALID', `invalid work plan: ${problem}`);
+      }
       case 'ask_user':
         return UserInputRequest.safeParse(args).success
           ? allow

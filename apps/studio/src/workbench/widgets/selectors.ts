@@ -441,19 +441,27 @@ export function actionRequired(input: {
     input.failedEffects,
     input.runStatus === 'failed' || input.runStatus === 'interrupted' ? 1 : 0,
   );
-  const kinds = [
+  // What a person must answer (chat-widgets-contract §6.3): approvals, questions and results
+  // whose outcome is unknown. A failed step is told, but it is not an item to answer or count.
+  const answers = [
     input.pendingApprovals ? 'approval' : null,
     input.pendingQuestions ? 'question' : null,
-    failed ? 'failure' : null,
     input.unclearEffects ? 'unclear' : null,
-  ].filter((kind): kind is 'approval' | 'question' | 'failure' | 'unclear' => kind !== null);
+  ].filter((kind): kind is 'approval' | 'question' | 'unclear' => kind !== null);
   return {
-    visible: kinds.length > 0,
+    visible: answers.length > 0 || failed > 0,
     needsUser: input.pendingApprovals + input.pendingQuestions > 0,
     hasFailure: failed + input.unclearEffects > 0,
     completedWithFailures: input.runStatus === 'succeeded' && failed > 0,
-    count: input.pendingApprovals + input.pendingQuestions + failed + input.unclearEffects,
-    summary: kinds.length === 0 ? 'none' : kinds.length === 1 ? kinds[0]! : 'mixed',
+    count: input.pendingApprovals + input.pendingQuestions + input.unclearEffects,
+    summary:
+      answers.length === 0
+        ? failed
+          ? ('failure' as const)
+          : ('none' as const)
+        : answers.length === 1
+          ? answers[0]!
+          : ('mixed' as const),
     unclearCauses: input.unclearEffects ? (input.unclearCauses ?? ['effect']) : [],
   };
 }
@@ -470,7 +478,7 @@ const unclearCopy = {
  * approval, a failure or an unclear effect keeps the warning.
  */
 export function actionTone(action: ReturnType<typeof actionRequired>): 'info' | 'warning' {
-  return action.summary === 'question' ? 'info' : 'warning';
+  return action.summary === 'question' && !action.hasFailure ? 'info' : 'warning';
 }
 
 /** Widgets message keys for the attention banner; several unclear causes are each named. */

@@ -81,9 +81,16 @@ export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
         }}
       >
         <PopoverTrigger data-testid="session-summary-trigger" className={chipClass}>
-          <LayoutGrid size={14} aria-hidden="true" />
-          {t('overview.heading')}
-          <ChevronDown size={12} aria-hidden="true" />
+          <LayoutGrid size={14} aria-hidden="true" className="shrink-0" />
+          {/* On the narrowest line the opener is its mark; its name stays for assistive tech. */}
+          <span className="whitespace-nowrap @max-md/composer-surface:sr-only">
+            {t('overview.heading')}
+          </span>
+          <ChevronDown
+            size={12}
+            aria-hidden="true"
+            className="shrink-0 @max-md/composer-surface:hidden"
+          />
         </PopoverTrigger>
         <PopoverPopup
           data-testid="session-summary-popup"

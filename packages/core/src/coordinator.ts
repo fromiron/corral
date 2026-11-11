@@ -153,7 +153,14 @@ import {
   type RuntimeSnapshot,
   readPartialOutputs,
 } from './partial-output.ts';
-import { applyEvent, emptyProjection, type RunProjection } from './projection.ts';
+import {
+  type ApprovalView,
+  applyEvent,
+  emptyProjection,
+  type RunProjection,
+  toolGrantKey,
+  toolRunGrant,
+} from './projection.ts';
 import { reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun, type RunPlan } from './run-plan.ts';
@@ -177,7 +184,7 @@ import {
   type StoredConversationTurn,
   type StoredRun,
 } from './store/run-store.ts';
-import { toolPermission, toolPermissionPlan } from './tool-policy.ts';
+import { commandGrantFingerprint, toolPermission, toolPermissionPlan } from './tool-policy.ts';
 import {
   applyUsageRecord,
   FALLBACK_OUTPUT_TOKENS,
@@ -6131,8 +6138,10 @@ export class Coordinator {
     tool: { toolCallId: string; effectId?: string },
     plan: CheckPlan | ToolPermissionPlan,
     cancellation: ToolCancellation,
+    /** What an approval for the run grants, when not the call's own fingerprint (commands). */
+    grantFingerprint?: string,
   ): Promise<boolean> {
-    if (cancellation.aborted || run.stop.aborted || run.uiRequestCount >= 100) return false;
+    if (cancellation.aborted || run.stop.aborted) return false;
     const execution = run.projection.executions[input.executionId];
     if (
       !execution ||
@@ -6143,6 +6152,26 @@ export class Coordinator {
         (!tool.effectId || run.projection.effects[tool.effectId]?.status !== 'admitted'))
     )
       return false;
+    // "Allow for this run": a call whose key an approval for the run granted passes without
+    // asking, and the record names the approval it relied on and the key that matched.
+    const key = plan.purpose === 'tool' ? (grantFingerprint ?? plan.fingerprint) : null;
+    const grant = key ? toolRunGrant(run.projection, key) : null;
+    if (grant && key) {
+      this.commit(run, [
+        {
+          type: 'tool.authorized',
+          executionId: input.executionId,
+          payload: {
+            executionId: input.executionId,
+            toolCallId: tool.toolCallId,
+            approvalId: grant.approvalId,
+            fingerprint: key,
+          },
+        },
+      ]);
+      return true;
+    }
+    if (run.uiRequestCount >= 100) return false;
     const bodyRef = this.ids.next('artifact_version');
     const timeoutMs = 300000;
     const request = this.requestApproval(run, 'user_action', [bodyRef], {
@@ -6154,6 +6183,7 @@ export class Coordinator {
         toolCallId: tool.toolCallId,
         bodyRef,
         fingerprint: plan.fingerprint,
+        ...(plan.purpose === 'tool' && grantFingerprint ? { grantFingerprint } : {}),
         ...('tree' in plan ? { targetTree: plan.tree } : {}),
         deadline: new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString(),
       },
@@ -6370,20 +6400,8 @@ export class Coordinator {
     }
     if (approval.tool) {
       const pending = run.toolApprovals.get(approvalId);
-      const owner = run.projection.executions[approval.tool.executionId];
       if (pending && this.clock.monotonicMs() >= pending.due) pending.expire('timeout');
-      if (
-        !pending ||
-        this.clock.monotonicMs() >= pending.due ||
-        !owner ||
-        TERMINAL_EXECUTION_STATUSES.has(owner.status) ||
-        owner.attemptNo !== approval.tool.attemptNo ||
-        run.cancelRequested.has(owner.executionId) ||
-        run.closingExecutions.has(owner.executionId) ||
-        run.projection.tasks[pending.input.taskId]?.activeExecutionId !== owner.executionId ||
-        (pending.effectId !== null &&
-          run.projection.effects[pending.effectId]?.status !== 'admitted')
-      )
+      if (!this.toolApprovalCurrent(run, approval))
         return refuse({
           code: 'APPROVAL_STALE',
           message: 'the check approval owner is no longer current',
@@ -6417,6 +6435,31 @@ export class Coordinator {
           ? `approve ${approvalId} by naming one of its routes`
           : `approval ${approvalId} takes no route`,
       });
+    // Only approving a tool call reaches past it: for the rest of the Run, the same fingerprint.
+    const toolCall = approval.tool?.purpose === 'tool' && decision === 'approve';
+    if (command.payload.scope === 'run' && !toolCall)
+      return refuse({
+        code: 'SCHEMA_INVALID',
+        message:
+          decision === 'approve'
+            ? `approval ${approvalId} is not a tool call; only a tool call is allowed for the run`
+            : 'a rejection has no scope',
+      });
+    // Allowed for the run, the Run's other waiting calls with the same key need no answer either:
+    // each is approved by the runtime and recorded as passing on this approval.
+    const key = toolCall && approval.tool ? toolGrantKey(approval.tool) : null;
+    const covered =
+      key && command.payload.scope === 'run'
+        ? Object.values(run.projection.approvals).filter(
+            (other) =>
+              other.approvalId !== approvalId &&
+              other.status === 'pending' &&
+              other.tool?.purpose === 'tool' &&
+              toolGrantKey(other.tool) === key &&
+              run.approvals.has(other.approvalId) &&
+              this.toolApprovalCurrent(run, other),
+          )
+        : [];
     this.commit(
       run,
       [
@@ -6430,14 +6473,41 @@ export class Coordinator {
             actor: USER.id,
             subjectVersionIds: approval.subjectVersionIds,
             ...(picksRoute && routeId ? { routeId } : {}),
+            ...(toolCall ? { scope: command.payload.scope ?? 'once' } : {}),
           },
         },
+        ...covered.flatMap((other): EventDraft[] => {
+          const tool = other.tool as NonNullable<ApprovalView['tool']>;
+          return [
+            {
+              type: 'approval.resolved',
+              executionId: tool.executionId,
+              payload: {
+                approvalId: other.approvalId,
+                decision: 'approve',
+                actor: RUNTIME.id,
+                subjectVersionIds: other.subjectVersionIds,
+                reason: 'allowed_for_run',
+              },
+            },
+            {
+              type: 'tool.authorized',
+              executionId: tool.executionId,
+              payload: {
+                executionId: tool.executionId,
+                toolCallId: tool.toolCallId,
+                approvalId,
+                fingerprint: key as string,
+              },
+            },
+          ];
+        }),
         ...(['paused', 'pausing'].includes(run.projection.status)
           ? []
           : [
               runState(
                 run.projection.status,
-                run.approvals.size > 1 ||
+                run.approvals.size > 1 + covered.length ||
                   run.extensionUi.size > 0 ||
                   run.userInputs.size > 0 ||
                   Object.values(run.projection.tasks).some((t) => t.status === 'blocked')
@@ -6464,10 +6534,34 @@ export class Coordinator {
     );
     run.approvals.delete(approvalId);
     resume(decision);
+    for (const other of covered) {
+      const waiting = run.approvals.get(other.approvalId);
+      run.approvals.delete(other.approvalId);
+      waiting?.('approve');
+    }
     this.wake(run);
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return stored.receipt;
+  }
+
+  /** Whether a waiting tool approval still asks about its owner's current call. */
+  private toolApprovalCurrent(run: LiveRun, approval: ApprovalView): boolean {
+    const pending = run.toolApprovals.get(approval.approvalId);
+    const owner = approval.tool && run.projection.executions[approval.tool.executionId];
+    return Boolean(
+      pending &&
+        approval.tool &&
+        owner &&
+        this.clock.monotonicMs() < pending.due &&
+        !TERMINAL_EXECUTION_STATUSES.has(owner.status) &&
+        owner.attemptNo === approval.tool.attemptNo &&
+        !run.cancelRequested.has(owner.executionId) &&
+        !run.closingExecutions.has(owner.executionId) &&
+        run.projection.tasks[pending.input.taskId]?.activeExecutionId === owner.executionId &&
+        (pending.effectId === null ||
+          run.projection.effects[pending.effectId]?.status === 'admitted'),
+    );
   }
 
   /** Versions the previous round hands to the next through previous_iteration_output. */
@@ -6983,86 +7077,6 @@ export class Coordinator {
           )))
     )
       return refuse('only the designated planner owns the team plan');
-    if (previous) {
-      let prior: WorkPlan;
-      try {
-        prior = WorkPlan.parse(
-          JSON.parse(this.store.getArtifactText(run.runId, previous.bodyRef) ?? 'null'),
-        );
-      } catch {
-        return refuse('previous plan body is unavailable');
-      }
-      if (
-        prior.items.some(
-          (item) =>
-            item.requiresVerification &&
-            !update.items.some((next) => next.id === item.id && next.requiresVerification),
-        )
-      )
-        return refuse('required verification items cannot be removed or weakened');
-    }
-    const verification = update.items.filter(
-      (item) => item.requiresVerification && item.status === 'completed',
-    );
-    if (verification.length) {
-      const trees = new Set<string>();
-      const events = this.store.readEvents(run.runId, 0);
-      const criteriaSeq =
-        events.findLast(
-          (event) =>
-            event.type === 'patch.committed' &&
-            event.payload.kind === 'criteria' &&
-            event.payload.after.criteriaVersionId === update.criteriaVersionId,
-        )?.runSeq ?? 0;
-      for (const ref of new Set(verification.flatMap((item) => item.evidenceRefs ?? []))) {
-        const call = Object.values(run.projection.toolCalls).find(
-          (call) =>
-            call.name === 'run_check' && call.executionId === executionId && call.resultRef === ref,
-        );
-        if (!call || call.reason)
-          return refuse('plan evidence must be a successful check from this execution');
-        const checkedSeq =
-          events.findLast(
-            (event) => event.type === 'tool.finished' && event.payload.resultRef === ref,
-          )?.runSeq ?? 0;
-        if (checkedSeq <= criteriaSeq) return refuse('plan evidence predates the current criteria');
-        try {
-          const { stale, ...body } = JSON.parse(
-            this.store.getArtifactText(run.runId, ref) ?? 'null',
-          );
-          const report = VerificationReport.parse(body);
-          if (
-            stale !== false ||
-            report.state !== 'completed' ||
-            report.verdict !== 'pass' ||
-            report.exitCode !== 0 ||
-            report.timedOut ||
-            !report.cleanupConfirmed ||
-            report.targetUnchanged !== true ||
-            report.owner.kind !== 'execution' ||
-            report.owner.runId !== run.runId ||
-            report.owner.executionId !== executionId ||
-            report.owner.attemptNo !== attemptNo ||
-            run.projection.effects[report.owner.effectId]?.outcome !== 'succeeded' ||
-            report.configRevision !== input.harness?.projectTools?.revision ||
-            !input.harness.projectTools.checkIds.includes(report.commandId)
-          )
-            return refuse('plan evidence is not a current passing check');
-          trees.add(report.tree);
-        } catch {
-          return refuse('plan verification evidence is unavailable');
-        }
-      }
-      let tree: string | null | undefined;
-      try {
-        tree = await this.files?.currentTreeForRun?.(run.runId);
-      } catch {
-        return refuse('current verification target is unavailable');
-      }
-      if (!tree || trees.size !== 1 || !trees.has(tree))
-        return refuse('plan verification target changed');
-    }
-    if (!current()) return refuse('plan revision, criteria or execution changed');
     const plan: WorkPlan = {
       scope: update.scope,
       executionId,
@@ -10163,6 +10177,8 @@ export class Coordinator {
               { toolCallId: tool.toolCallId },
               approval,
               cancellation,
+              // Allowed for the run, the same launch passes again whatever the run changed since.
+              commandGrantFingerprint(approval, plan.launchFingerprint),
             ))
           ) {
             if (cancellation.aborted)
