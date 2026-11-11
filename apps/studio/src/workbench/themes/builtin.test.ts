@@ -108,10 +108,11 @@ describe('built-in themes', () => {
     '%s',
     (_name, theme) => {
       const tokens = paletteTokens(theme.palette);
-      const surfaces = [1, 2, 3].map((step) => tokens[`--surface-${step}`] as string);
+      // Text sits on the floor up to the step dialogs and menus use.
+      const surfaces = [1, 2, 3, 4, 5].map((step) => tokens[`--surface-${step}`] as string);
 
       it.each(['foreground', 'muted', 'emphasis', 'error', 'success', 'warning', 'info'] as const)(
-        'keeps %s at 4.5:1 or more on surfaces 1, 2 and 3',
+        'keeps %s at 4.5:1 or more on surfaces 1 to 5',
         (key) => {
           for (const surface of surfaces)
             expect(contrastRatio(theme.palette.ui[key], surface)).toBeGreaterThanOrEqual(4.5);

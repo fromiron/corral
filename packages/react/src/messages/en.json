@@ -3459,7 +3459,7 @@
     "ratio": "{ratio}:1",
     "low": "Low contrast",
     "sample": "Sample",
-    "sampleBody": "The quick brown fox jumps over the lazy dog.",
+    "sampleBody": "Moved the theme colors to tokens.",
     "sampleMuted": "Yesterday 3:00 PM · 2 runs · 4 changes",
     "sampleComment": "Names stay short",
     "sampleRows": {
