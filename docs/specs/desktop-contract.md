@@ -226,7 +226,7 @@ flowchart LR
 
 - 음성 provider operation과 마이크·오디오 출력은 별도 adapter가 소유하고, Corral의 실행 도구를 직접 호출하지 않는다.
 - 사용자가 선택한 host/session/Run을 음성 시작 시 고정한다. 대상 변경은 표시하고 명시 전환한다. 화면의 현재 탭 변화로 다른 세션에 발화가 전송되지 않는다.
-- 확정 발화는 idle이면 일반 next 요청, 실행 중이면 명시 대상 steer다. 승인 대기로 steer 대상이 없으면 그 이유와 queue/다음 요청 선택을 제공한다.
+- 확정 발화는 idle이면 일반 next 요청, 실행 중이면 명시 대상 steer다. 승인 대기로 steer 대상이 없으면 그 이유를 알리고 다음 요청으로 보낼 수 있게 한다.
 - 발화 ID·최종 transcript·commandId를 결합해 partial transcript/재연결 중복 제출을 막는다. Reins의 accepted/delivered 의미를 그대로 쓴다.
 - 원본 오디오를 파일·로그·DB에 저장하지 않는다. 마이크 buffer는 종료 시 폐기한다. 확정된 사용자 텍스트는 일반 세션 기록이 된다는 점을 UI에 표시한다.
 - 앱 종료/호스트 전환/권한 철회 시 장치와 socket을 정리한다. 음성 token/비용·시간 상한과 사용량은 Run 사용량과 함께 표시한다.
