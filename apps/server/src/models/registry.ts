@@ -224,8 +224,6 @@ export interface RegistryOptions {
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
   /** OpenAI-compatible endpoints from the workspace config, already registered. */
   endpoints?: ReadonlyMap<string, Endpoint>;
-  /** The config file's revision now; a model list fetched across a change is dropped. */
-  currentConfigRevision?: () => string;
   /** Fetching endpoint model lists: the cache, models.dev metadata and the request function. */
   endpointModels?: {
     cache: EndpointModelCache;
@@ -236,8 +234,10 @@ export interface RegistryOptions {
 }
 
 interface ModelFetch {
+  /** The endpoint's credential epoch when the fetch started. */
   epoch: string;
-  config: unknown;
+  /** The endpoint as it was when the fetch started: its address and access. */
+  endpoint: Endpoint;
   abort: AbortController;
   promise: Promise<EndpointModelsView>;
 }
@@ -281,8 +281,7 @@ export class ModelRegistry implements ModelResolver {
 
   private readonly fetches = new Map<string, ModelFetch>();
   private readonly lastFetch = new Map<string, Omit<EndpointModelsView, 'modelCount'>>();
-  /** Bumped when the config changes; per provider when its credential does. */
-  private configEpoch = 0;
+  /** Bumped per provider when its credential changes; a fetch across a change is dropped. */
   private readonly credentialEpochs = new Map<string, number>();
   private readonly background = new Set<Promise<unknown>>();
   private readonly stopped = new AbortController();
@@ -878,7 +877,6 @@ export class ModelRegistry implements ModelResolver {
   ) {
     const before = this.options.endpoints ?? new Map<string, Endpoint>();
     this.connectionEpoch++;
-    this.configEpoch++;
     this.connectionTests.clear();
     this.profiles = profiles;
     this.options = { ...this.options, endpoints, ...(configRevision ? { configRevision } : {}) };
@@ -888,24 +886,19 @@ export class ModelRegistry implements ModelResolver {
       const current = endpoints.get(entry.provider);
       if (!current || writtenPart(current, entry.modelId) !== entry.written) this.pinned.delete(key);
     }
-    // A new endpoint or a new address fetches its list; one fetched across the save again.
-    const moved = [...endpoints.values()]
-      .filter((endpoint) => before.get(endpoint.providerId)?.spec.baseUrl !== endpoint.spec.baseUrl)
+    // A new endpoint, a new address or access, or an address with no list yet fetches its list.
+    // A fetch in flight for an unchanged address and access goes on; its result is kept.
+    const changed = [...endpoints.values()]
+      .filter((endpoint) => !sameAccess(before.get(endpoint.providerId), endpoint))
+      .map((endpoint) => endpoint.providerId);
+    const unlisted = [...endpoints.values()]
+      .filter((endpoint) => !endpoint.fetchedAt)
       .map((endpoint) => endpoint.providerId);
     for (const id of [...this.lastFetch.keys()])
-      if (moved.includes(id) || !endpoints.has(id)) this.lastFetch.delete(id);
+      if (changed.includes(id) || !endpoints.has(id)) this.lastFetch.delete(id);
     for (const [id, running] of this.fetches) if (!endpoints.has(id)) running.abort.abort();
-    const interrupted = [...this.fetches.keys()].filter((id) => endpoints.has(id));
     await this.refreshStatus();
-    for (const id of new Set([...moved, ...interrupted])) this.fetchInBackground(id);
-  }
-
-  setConfigRevision(configRevision: string) {
-    this.connectionEpoch++;
-    this.configEpoch++;
-    this.connectionTests.clear();
-    this.options = { ...this.options, configRevision };
-    for (const id of [...this.fetches.keys()]) this.fetchInBackground(id);
+    for (const id of new Set([...changed, ...unlisted])) this.fetchInBackground(id);
   }
 
   /** Endpoints of a configuration with the lists fetched for them (the cache), not yet in use. */
@@ -1361,7 +1354,7 @@ export class ModelRegistry implements ModelResolver {
   }
 
   private fetchEpoch(providerId: string) {
-    return `${this.configEpoch}:${this.credentialEpochs.get(providerId) ?? 0}`;
+    return String(this.credentialEpochs.get(providerId) ?? 0);
   }
 
   private track(work: Promise<unknown>) {
@@ -1422,7 +1415,8 @@ export class ModelRegistry implements ModelResolver {
   /**
    * Fetches an endpoint's model list from its saved address (features/model-connections.md,
    * 엔드포인트 모델 가져오기). One fetch per endpoint at a time: a caller joins the one in flight.
-   * A result that arrives after the config, the revision or the credential changed is dropped.
+   * A result that arrives after the endpoint's address or access, or its credential, changed is
+   * dropped; other config changes keep it.
    */
   refreshEndpointModels(providerId: string): Promise<EndpointModelsView> {
     const endpoint = this.options.endpoints?.get(providerId);
@@ -1436,13 +1430,13 @@ export class ModelRegistry implements ModelResolver {
     }
     const epoch = this.fetchEpoch(providerId);
     const running = this.fetches.get(providerId);
-    if (running && running.epoch === epoch && running.config === (endpoint.config ?? endpoint))
+    if (running && running.epoch === epoch && sameAccess(running.endpoint, endpoint))
       return running.promise;
     running?.abort.abort();
     const abort = new AbortController();
     const entry: ModelFetch = {
       epoch,
-      config: endpoint.config ?? endpoint,
+      endpoint,
       abort,
       promise: Promise.resolve() as unknown as Promise<EndpointModelsView>,
     };
@@ -1459,12 +1453,10 @@ export class ModelRegistry implements ModelResolver {
     epoch: string,
     signal: AbortSignal,
   ): Promise<EndpointModelsView> {
-    const revision = this.options.currentConfigRevision?.();
     const current = () =>
       !signal.aborted &&
       this.fetchEpoch(providerId) === epoch &&
-      sameEndpoint(this.options.endpoints?.get(providerId), endpoint) &&
-      (revision === undefined || this.options.currentConfigRevision?.() === revision);
+      sameAccess(this.options.endpoints?.get(providerId), endpoint);
     const late = () =>
       new RegistryError(
         'conflict',
@@ -1499,7 +1491,9 @@ export class ModelRegistry implements ModelResolver {
     }
     if (!current()) throw late();
     const fetchedAt = new Date(this.now()).toISOString();
-    if (result.models) this.useFetched(providerId, endpoint, result.models, fetchedAt);
+    // The list joins the endpoint as it is configured now (the same address and access).
+    const now = this.options.endpoints?.get(providerId) ?? endpoint;
+    if (result.models) this.useFetched(providerId, now, result.models, fetchedAt);
     this.lastFetch.set(providerId, { kind: result.kind, status: result.status, fetchedAt });
     await this.refreshStatus(providerId);
     const status = this.status.get(providerId);
@@ -1571,6 +1565,15 @@ function writtenPart(endpoint: Endpoint, modelId: string): string {
       ? Object.fromEntries(Object.entries(entry).filter(([, value]) => value !== undefined))
       : null,
   });
+}
+
+/** An endpoint still reached at the same address with the same access. */
+function sameAccess(current: Endpoint | undefined, expected: Endpoint) {
+  return (
+    current !== undefined &&
+    current.spec.baseUrl === expected.spec.baseUrl &&
+    current.spec.keyless === expected.spec.keyless
+  );
 }
 
 /** The same configured endpoint, though its definition may have taken a newly fetched list. */

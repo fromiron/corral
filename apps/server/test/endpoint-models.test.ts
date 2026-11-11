@@ -292,7 +292,6 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
       configDir?: string;
       net?: ReturnType<typeof network>;
       catalog?: ModelCatalogService | null;
-      revision?: { value: string };
     } = {},
   ) {
     const configDir = options.configDir ?? temp();
@@ -303,19 +302,17 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
       credentials,
       authContext: { env: async () => undefined, fileExists: async () => false },
     });
-    const revision = options.revision ?? { value: 'rev-1' };
     const endpoints = endpointsFrom(options.configs ?? [ROUTER], cache);
     registerEndpoints(models, endpoints);
     const registry = new ModelRegistry(models, [], {
       credentials,
       getDeviceId: () => 'device',
       endpoints,
-      configRevision: revision.value,
-      currentConfigRevision: () => revision.value,
+      configRevision: 'rev-1',
       endpointModels: { cache, catalog: options.catalog ?? null, fetch: net.fetch },
       now: () => Date.UTC(2026, 10, 11),
     });
-    return { registry, net, credentials, cache, models, configDir, revision };
+    return { registry, net, credentials, cache, models, configDir };
   }
 
   const key = (
@@ -447,23 +444,78 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     });
   });
 
-  it('drops a late result when the key or the config revision changes during the fetch', async () => {
-    const { registry, net, credentials, revision } = setup();
+  it('drops a late result when the key changes during the fetch', async () => {
+    const { registry, net, credentials } = setup();
     key(credentials, 'k');
-    let held = net.hold();
-    let pending = registry.refreshEndpointModels('router');
-    await held.arrived;
-    revision.value = 'rev-2';
-    held.release(list([{ id: 'late' }]));
-    await expect(pending).rejects.toMatchObject({ code: 'conflict' });
-    held = net.hold();
-    pending = registry.refreshEndpointModels('router');
+    const held = net.hold();
+    const pending = registry.refreshEndpointModels('router');
     await held.arrived;
     await registry.setApiKey('router', 'replacement-key');
     held.release(list([{ id: 'late' }]));
     await expect(pending).rejects.toMatchObject({ code: 'conflict' });
     await registry.idle();
     expect(registry.profilesView().map((view) => view.modelId)).not.toContain('late');
+  });
+
+  it('keeps a fetch result across a config save that leaves the endpoint’s address and access alone', async () => {
+    const { registry, net, credentials, models } = setup();
+    key(credentials, 'k');
+    net.answer(() => list([{ id: 'alpha' }]));
+    await registry.refreshEndpointModels('router');
+    const held = net.hold();
+    const pending = registry.refreshEndpointModels('router');
+    await held.arrived;
+    // Profiles, the endpoint's name and its written models change; its address and access do not.
+    const next = registry.endpointsFor([
+      { ...ROUTER, name: 'Renamed', models: [{ id: 'written', contextWindow: 9000 }] },
+    ]);
+    registerEndpoints(models, next);
+    await registry.reconfigure(
+      [{ id: 'chosen', provider: 'router', model: 'written' }],
+      next,
+      'rev-2',
+    );
+    held.release(list([{ id: 'alpha' }, { id: 'late' }]));
+    await expect(pending).resolves.toMatchObject({ kind: 'connected', modelCount: 3 });
+    await registry.idle();
+    expect(net.seen).toHaveLength(2);
+    expect(
+      registry
+        .catalog()
+        .find((provider) => provider.providerId === 'router')
+        ?.models.map((model) => [model.id, model.limits?.contextWindow.value]),
+    ).toEqual([
+      ['alpha', 32000],
+      ['late', 32000],
+      ['written', 9000],
+    ]);
+    expect(registry.catalog().find((provider) => provider.providerId === 'router')?.name).toBe(
+      'Renamed',
+    );
+  });
+
+  it('saving fetches when the endpoint is new, its address or access changed, or its address has no list yet', async () => {
+    const { registry, net, credentials, models } = setup({ configs: [] });
+    key(credentials, 'k');
+    const save = async (configs: ModelProviderConfig[]) => {
+      const next = registry.endpointsFor(configs);
+      registerEndpoints(models, next);
+      await registry.reconfigure([], next, 'rev');
+      await registry.idle();
+      return net.seen.length;
+    };
+    net.answer(() => {
+      throw new Error('offline');
+    });
+    expect(await save([ROUTER])).toBe(1); // new
+    // The address has no list (the fetch failed): saving it unchanged fetches again.
+    expect(await save([{ ...ROUTER, name: 'Renamed' }])).toBe(2);
+    net.answer(() => list([{ id: 'alpha' }]));
+    expect(await save([{ ...ROUTER, name: 'Renamed' }])).toBe(3);
+    // Now it has one: an unchanged address and access fetch nothing.
+    expect(await save([{ ...ROUTER, name: 'Again' }])).toBe(3);
+    expect(await save([{ ...ROUTER, access: 'none' }])).toBe(4);
+    expect(net.seen.at(-1)).toMatchObject({ authorization: null });
   });
 
   it('a key bound to another origin is never sent; no request is made', async () => {

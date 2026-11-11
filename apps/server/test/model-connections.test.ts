@@ -558,4 +558,46 @@ describe('endpoint models over HTTP', () => {
       },
     });
   });
+
+  it('saving the reasoning judgment settings while the models are fetched keeps the fetched list', async () => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const fake = fakeOpenAI({
+      configDir: temp('config'),
+      fetch: async (input) => {
+        if (String(input) !== 'https://router.example.test/v1/models') throw new Error('offline');
+        entered();
+        await released;
+        return new Response(JSON.stringify({ data: [{ id: 'alpha' }] }));
+      },
+    });
+    const context = await start(fake.live, {
+      modelProfiles: FAKE_PROFILES,
+      modelProviders: [ROUTER],
+    });
+    await context.json('/model-auth/router/api-key', {
+      method: 'PUT',
+      body: JSON.stringify({ key: 'fixture-router-key' }),
+    });
+    await arrived;
+    const { revision } = (await context.json('/effort-routing')).body;
+    const saved = await context.json('/effort-routing', {
+      method: 'PUT',
+      body: JSON.stringify({ settings: { mode: 'off' }, revision }),
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.revision).not.toBe(revision);
+    release();
+    const router = await until(
+      () => providerOf(context, 'router'),
+      (view) => (view?.modelFetch as { kind?: string } | null)?.kind === 'connected',
+    );
+    expect(router).toMatchObject({ modelCount: 1 });
+  });
 });
