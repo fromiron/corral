@@ -323,12 +323,13 @@ export function ApprovalPanel({
             : t(`rejectAs.${copyKey(approval)}`)}
       </Button>
       {approval.tool?.purpose === 'tool' ? (
-        // The same call again needs no answer until the run ends; any change asks again.
+        // The same call again needs no answer until the run ends; a command is matched by its
+        // launch, so it reaches past the run's file changes, and any other change asks again.
         <Button
           variant="secondary"
           data-approval-action="run"
           disabled={busy || !toolPlans[approval.tool.bodyRef]}
-          title={t('toolRun')}
+          title={t(approval.tool.grantFingerprint ? 'toolRunCommand' : 'toolRun')}
           onClick={() => void decide(approval.approvalId, 'approve', { scope: 'run' })}
         >
           {t('approveToolRun')}

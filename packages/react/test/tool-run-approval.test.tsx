@@ -203,6 +203,58 @@ describe('a tool permission card', () => {
     expect(screen.queryByTestId('approved-appr_covered')).toBeNull();
   });
 
+  it.each([
+    ['en', 'run_command', 'toolRunCommand'],
+    ['en', 'write_file', 'toolRun'],
+    ['ko', 'run_command', 'toolRunCommand'],
+    ['ko', 'write_file', 'toolRun'],
+  ] as const)(
+    'the run-wide decision says how far it reaches for this kind of call (%s, %s)',
+    async (locale, name, key) => {
+      const messages = locale === 'ko' ? ko : en;
+      // A command is matched by its launch, so it reaches past file changes; another tool's call
+      // is matched exactly.
+      const write = toolPermissionPlan(
+        { snapshotHash: 'c'.repeat(64), policyRevision: 2 },
+        {
+          name: 'write_file',
+          source: 'corral',
+          schemaHash: 'd'.repeat(64),
+          exposure: 'direct',
+          sideEffect: 'workspace',
+        },
+        { path: 'notes.md', text: 'notes' },
+      );
+      const command = name === 'run_command';
+      const pending = approval('approval_tool', 'pending', 'tool_body');
+      const session = sessionStore({
+        projection: projectionWith({
+          status: 'awaiting_user',
+          approvals: {
+            approval_tool: {
+              ...pending,
+              tool: command
+                ? { ...pending.tool, grantFingerprint: 'f'.repeat(64) }
+                : { ...pending.tool, fingerprint: write.fingerprint },
+            },
+          } as never,
+        }),
+        artifactTexts: { tool_body: JSON.stringify(command ? permission : write) },
+      });
+      render(
+        <IntlProvider locale={locale} messages={messages} timeZone="UTC">
+          <ApprovalPanel session={session} onOpenArtifact={() => {}} headed={false} />
+        </IntlProvider>,
+      );
+      const run = screen.getByRole('button', { name: messages.Approvals.approveToolRun });
+      await vi.waitFor(() => expect(run).toBeEnabled());
+      const reach = messages.Approvals[key];
+      expect(reach).toBeTruthy();
+      expect(run).toHaveAttribute('title', reach);
+      expect(reach).not.toBe(messages.Approvals[key === 'toolRun' ? 'toolRunCommand' : 'toolRun']);
+    },
+  );
+
   it('names the decisions in Korean', async () => {
     show({ approval_tool: approval('approval_tool', 'pending', 'tool_body') }, 'ko');
     expect(screen.getByRole('button', { name: '이번만 허용' })).toBeVisible();

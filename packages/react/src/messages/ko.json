@@ -982,6 +982,7 @@
     "toolHeading": "도구 실행 승인",
     "toolOnce": "이 호출만 허용합니다.",
     "toolRun": "이 실행이 끝날 때까지 똑같은 호출은 다시 묻지 않고 허용합니다. 하나라도 다르면 다시 묻습니다.",
+    "toolRunCommand": "이 실행이 끝날 때까지 같은 명령을 다시 묻지 않습니다. 파일이 바뀐 뒤에도 적용됩니다.",
     "approveTool": "이번만 허용",
     "approveToolRun": "이 실행 동안 허용",
     "rejectTool": "거절",

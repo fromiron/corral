@@ -982,6 +982,7 @@
     "toolHeading": "Tool permission",
     "toolOnce": "Allows this call only.",
     "toolRun": "Allows this exact call again until this run ends; any change asks again.",
+    "toolRunCommand": "Allows this same command until this run ends, also after files change.",
     "approveTool": "Allow once",
     "approveToolRun": "Allow for this run",
     "rejectTool": "Deny",
