@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   ContextMeter,
   type EndpointSpec,
+  endpointProvider,
   type ModelBroker,
   managedRetryStream,
   modelReasoningCapabilities as reasoningCapabilities,
@@ -266,6 +267,17 @@ export class ModelRegistry implements ModelResolver {
   /** Every connection model id of every known provider, connected or not. */
   private connectionIds: Map<string, { provider: string; model: string }> | null = null;
 
+  /**
+   * The endpoint model definitions Runs were resolved with, by provider and snapshot hash, with
+   * what a person wrote for them then. A later fetched change leaves them in use; a written change
+   * refuses them (features/model-connections.md, Run과 엔드포인트 정의). Entries whose written part
+   * no longer matches the config are dropped when it is saved.
+   */
+  private readonly pinned = new Map<
+    string,
+    { provider: string; modelId: string; spec: EndpointSpec; written: string }
+  >();
+
   private readonly fetches = new Map<string, ModelFetch>();
   private readonly lastFetch = new Map<string, Omit<EndpointModelsView, 'modelCount'>>();
   /** Bumped when the config changes; per provider when its credential does. */
@@ -304,7 +316,7 @@ export class ModelRegistry implements ModelResolver {
         // Re-resolve the host's origin-bound credential; a bare per-request key loses its binding.
         ...(this.options.endpoints?.has(model.provider) ? { apiKey: undefined } : {}),
         onPayload: async (payload, selected) => {
-          if (snapshot) this.assertEndpointSnapshot(snapshot);
+          if (snapshot) this.endpointSpecOf(snapshot);
           return (await options?.onPayload?.(payload, selected)) ?? payload;
         },
         cacheRetention: options?.cacheRetention ?? 'short',
@@ -531,6 +543,7 @@ export class ModelRegistry implements ModelResolver {
     const context = this.contextPolicy(config);
     if (context.errors.length)
       return { ok: false, code: 'CAPABILITY_DENIED', reason: context.errors.join('; ') };
+    const endpointHash = this.pin(config.provider, config.model);
     return {
       ok: true,
       snapshot: {
@@ -544,13 +557,7 @@ export class ModelRegistry implements ModelResolver {
         cachePolicy: this.cachePolicy(config),
         maxOutputTokens: this.models.getModel(config.provider, config.model)!.maxTokens,
         imageInput: this.models.getModel(config.provider, config.model)!.input.includes('image'),
-        ...(this.options.endpoints?.get(config.provider)
-          ? {
-              endpointHash: endpointHash(
-                endpointModelSpec(this.options.endpoints.get(config.provider)!.spec, config.model),
-              ),
-            }
-          : {}),
+        ...(endpointHash ? { endpointHash } : {}),
         ...(config.workerIsolation ? { workerIsolation: config.workerIsolation } : {}),
         reasoning: reasoningCapabilities(this.models.getModel(config.provider, config.model)),
         // The run record knows oauth and api_key; a keyless endpoint is recorded as api_key.
@@ -561,11 +568,7 @@ export class ModelRegistry implements ModelResolver {
 
   /** The access token for one request; pi-ai refreshes an expired OAuth token first. */
   modelBroker(snapshot: ModelProfileSnapshot, owner?: AgentStartInput): ModelBroker {
-    this.assertEndpointSnapshot(snapshot);
-    const model =
-      snapshot.provider && snapshot.modelId
-        ? this.models.getModel(snapshot.provider, snapshot.modelId)
-        : undefined;
+    const model = this.snapshotModel(snapshot);
     if (!model) throw new Error('the pinned sandbox model is unavailable');
     const meter = new ContextMeter();
     return {
@@ -605,11 +608,10 @@ export class ModelRegistry implements ModelResolver {
   }
 
   async credentials(model: ModelProfileSnapshot): Promise<string | null> {
-    this.assertEndpointSnapshot(model);
+    const resolved = this.snapshotModel(model);
     if (!model.provider || !model.modelId) return null;
     // A keyless endpoint gets no key from this computer.
     if (this.options.endpoints?.get(model.provider)?.spec.keyless) return null;
-    const resolved = this.models.getModel(model.provider, model.modelId);
     if (!resolved) throw new Error(`${model.provider} has no model ${model.modelId}`);
     let auth: Awaited<ReturnType<Models['getAuth']>>;
     try {
@@ -733,10 +735,12 @@ export class ModelRegistry implements ModelResolver {
     const requestId = operation?.requestId ?? randomUUID();
     if (!resolution.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId)
       return { ok: false, reason: 'model_error' };
-    const selected = this.models.getModel(
-      resolution.snapshot.provider,
-      resolution.snapshot.modelId,
-    );
+    let selected: Model<Api> | undefined;
+    try {
+      selected = this.snapshotModel(resolution.snapshot);
+    } catch {
+      return { ok: false, reason: 'model_error' };
+    }
     const model =
       selected && resolution.snapshot.contextPolicy
         ? { ...selected, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
@@ -878,6 +882,11 @@ export class ModelRegistry implements ModelResolver {
     this.profiles = profiles;
     this.options = { ...this.options, endpoints, ...(configRevision ? { configRevision } : {}) };
     this.catalogChanged();
+    // A pinned definition whose written part changed refuses its requests from now on.
+    for (const [key, entry] of this.pinned) {
+      const current = endpoints.get(entry.provider);
+      if (!current || writtenPart(current, entry.modelId) !== entry.written) this.pinned.delete(key);
+    }
     // A new endpoint or a new address fetches its list; one fetched across the save again.
     const moved = [...endpoints.values()]
       .filter((endpoint) => before.get(endpoint.providerId)?.spec.baseUrl !== endpoint.spec.baseUrl)
@@ -1000,21 +1009,55 @@ export class ModelRegistry implements ModelResolver {
 
   /**
    * The non-secret definition of the endpoint model behind a snapshot, for its worker: the
-   * address, auth, cache and session settings and that one model, as its hash covers.
+   * address, auth, cache and session settings and that one model, as pinned when it was resolved.
    */
   endpointOf(model: ModelProfileSnapshot): EndpointSpec | null {
-    this.assertEndpointSnapshot(model);
-    const spec = model.provider ? this.options.endpoints?.get(model.provider)?.spec : undefined;
-    return spec && model.modelId ? endpointModelSpec(spec, model.modelId) : null;
+    return this.endpointSpecOf(model);
   }
 
-  /** Refuses a prepared request whose own endpoint model definition changed since it was pinned. */
-  private assertEndpointSnapshot(model: ModelProfileSnapshot) {
-    if (!model.endpointHash) return;
-    const spec = model.provider ? this.options.endpoints?.get(model.provider)?.spec : undefined;
-    const own = spec && model.modelId ? endpointModelSpec(spec, model.modelId) : null;
-    if (!own || endpointHash(own) !== model.endpointHash)
-      throw new Error('The endpoint configuration changed after this request was prepared.');
+  /**
+   * Pins one endpoint model's effective definition for the Runs resolved with it; its hash goes
+   * into their snapshot. Null for a provider that is not an endpoint.
+   */
+  private pin(provider: string, modelId: string): string | null {
+    const endpoint = this.options.endpoints?.get(provider);
+    const spec = endpoint ? endpointModelSpec(endpoint.spec, modelId) : null;
+    if (!endpoint || !spec) return null;
+    const hash = endpointHash(spec);
+    this.pinned.set(`${provider}\u0000${hash}`, {
+      provider,
+      modelId,
+      spec,
+      written: writtenPart(endpoint, modelId),
+    });
+    return hash;
+  }
+
+  /**
+   * The endpoint definition a snapshot runs with: the one pinned when it was resolved, while what
+   * a person wrote for it (address, access, cache and session settings, that model's values) is
+   * unchanged. A snapshot pinned before this process started is served only by an identical
+   * current definition. Anything else refuses the prepared request.
+   */
+  private endpointSpecOf(model: ModelProfileSnapshot): EndpointSpec | null {
+    if (!model.endpointHash) return null;
+    const endpoint = model.provider ? this.options.endpoints?.get(model.provider) : undefined;
+    if (endpoint && model.modelId) {
+      const pinned = this.pinned.get(`${endpoint.providerId}\u0000${model.endpointHash}`);
+      if (pinned?.written === writtenPart(endpoint, model.modelId)) return pinned.spec;
+      const own = endpointModelSpec(endpoint.spec, model.modelId);
+      if (own && endpointHash(own) === model.endpointHash) return own;
+    }
+    throw new Error('The endpoint configuration changed after this request was prepared.');
+  }
+
+  /** The model a snapshot runs on: an endpoint's pinned definition, else Pi's own model. */
+  private snapshotModel(snapshot: ModelProfileSnapshot): Model<Api> | undefined {
+    const spec = this.endpointSpecOf(snapshot);
+    if (!snapshot.provider || !snapshot.modelId) return undefined;
+    return spec
+      ? endpointProvider(snapshot.provider, spec).getModels()[0]
+      : this.models.getModel(snapshot.provider, snapshot.modelId);
   }
 
   private methods(providerId: string): { oauth: boolean; apiKey: boolean } {
@@ -1507,6 +1550,26 @@ export class ModelRegistry implements ModelResolver {
 
 function endpointHash(spec: EndpointSpec | null): string {
   return createHash('sha256').update(canonicalJson(spec)).digest('hex');
+}
+
+/**
+ * What a person wrote for one endpoint model: the address, access, cache and session settings
+ * and the values written for that model. Fetched values and the display name are not part of it.
+ */
+function writtenPart(endpoint: Endpoint, modelId: string): string {
+  const { baseUrl, keyless, cacheRetention, sessionAffinity } = endpoint.spec;
+  const entry = endpoint.config
+    ? endpoint.config.models?.find((model) => model.id === modelId)
+    : endpoint.spec.models.find((model) => model.id === modelId);
+  return canonicalJson({
+    baseUrl,
+    keyless,
+    cacheRetention: cacheRetention ?? null,
+    sessionAffinity: sessionAffinity ?? null,
+    model: entry
+      ? Object.fromEntries(Object.entries(entry).filter(([, value]) => value !== undefined))
+      : null,
+  });
 }
 
 /** The same configured endpoint, though its definition may have taken a newly fetched list. */

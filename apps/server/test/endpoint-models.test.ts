@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { endpointProvider, modelReasoningCapabilities } from '@corral/adapter-pi';
 import { type ModelProviderConfig, parseWorkspaceConfig } from '@corral/core';
 import { type Credential, type CredentialStore, createModels } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -605,7 +606,7 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     });
   });
 
-  it('a prepared request survives other models joining the list but not a change to its own model', async () => {
+  it('a prepared request survives other models joining the list', async () => {
     const { registry, net, credentials, models } = setup();
     key(credentials, 'k');
     net.answer(() => list([{ id: 'alpha', context_length: 60000 }]));
@@ -623,9 +624,81 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     registerEndpoints(models, next);
     await registry.reconfigure([], next, 'rev-2');
     expect(() => registry.endpointOf(resolved.snapshot)).not.toThrow();
-    net.answer(() => list([{ id: 'alpha', context_length: 61000 }, { id: 'gamma' }]));
+  });
+
+  /** A Run started on `alpha` as the endpoint listed it: 60,000 context and reasoning. */
+  async function runningAlpha() {
+    const context = setup();
+    key(context.credentials, 'k');
+    context.net.answer(() =>
+      list([{ id: 'alpha', context_length: 60000, supported_parameters: ['reasoning'] }]),
+    );
+    await context.registry.refreshEndpointModels('router');
+    const resolved = context.registry.resolve('router:alpha', 'live');
+    if (!resolved.ok) throw new Error(resolved.reason);
+    return { ...context, snapshot: resolved.snapshot };
+  }
+
+  it('a running Run keeps the definition it started with across a refresh that changes its context window; the worker receives it', async () => {
+    const { registry, net, snapshot } = await runningAlpha();
+    net.answer(() => list([{ id: 'alpha', context_length: 61000 }]));
     await registry.refreshEndpointModels('router');
-    expect(() => registry.endpointOf(resolved.snapshot)).toThrow(/endpoint configuration changed/);
+    // New runs see the refreshed values.
+    expect(registry.profilesView().map((view) => [view.modelId, view.contextWindow])).toEqual([
+      ['alpha', 61000],
+    ]);
+    // What the adapter hands the worker is the definition pinned at run start.
+    const pinned = registry.endpointOf(snapshot);
+    expect(pinned?.baseUrl).toBe('https://router.example.test/v1');
+    expect(pinned?.models).toEqual([
+      { id: 'alpha', contextWindow: 60000, maxOutput: 4096, reasoning: true },
+    ]);
+    const worker = endpointProvider('router', pinned!).getModels()[0]!;
+    expect(modelReasoningCapabilities(worker).identity).toBe(snapshot.reasoning?.identity);
+    expect(registry.modelBroker(snapshot).model).toMatchObject({
+      id: 'alpha',
+      contextWindow: 60000,
+      reasoning: true,
+    });
+    await expect(registry.credentials(snapshot)).resolves.toBe('k');
+  });
+
+  it('a running Run keeps its model when a refresh drops it from the list', async () => {
+    const { registry, net, snapshot } = await runningAlpha();
+    net.answer(() => list([{ id: 'gamma' }]));
+    await registry.refreshEndpointModels('router');
+    expect(registry.profilesView().map((view) => view.modelId)).toEqual(['gamma']);
+    expect(registry.endpointOf(snapshot)?.models.map((model) => model.id)).toEqual(['alpha']);
+    expect(registry.modelBroker(snapshot).model).toMatchObject({ id: 'alpha', contextWindow: 60000 });
+    await expect(registry.credentials(snapshot)).resolves.toBe('k');
+    // A new run cannot start on a model the endpoint no longer lists.
+    expect(registry.resolve('router:alpha', 'live').ok).toBe(false);
+  });
+
+  it('what a person writes in the config still refuses the prepared request; a rename does not', async () => {
+    for (const change of [
+      { baseUrl: 'https://elsewhere.example.test/v1' },
+      { access: 'none' as const },
+      { cacheRetention: 'long' as const },
+      { sessionAffinity: 'headers' as const },
+      { models: [{ id: 'alpha', contextWindow: 50000 }] },
+    ]) {
+      const { registry, models, snapshot } = await runningAlpha();
+      const next = registry.endpointsFor([{ ...ROUTER, ...change }]);
+      registerEndpoints(models, next);
+      await registry.reconfigure([], next, 'rev-2');
+      const label = JSON.stringify(change);
+      expect(() => registry.endpointOf(snapshot), label).toThrow(/endpoint configuration changed/);
+      expect(() => registry.modelBroker(snapshot), label).toThrow(/endpoint configuration changed/);
+      await expect(registry.credentials(snapshot), label).rejects.toThrow(
+        /endpoint configuration changed/,
+      );
+    }
+    const { registry, models, snapshot } = await runningAlpha();
+    const renamed = registry.endpointsFor([{ ...ROUTER, name: 'Renamed router' }]);
+    registerEndpoints(models, renamed);
+    await registry.reconfigure([], renamed, 'rev-2');
+    expect(registry.endpointOf(snapshot)?.models[0]).toMatchObject({ contextWindow: 60000 });
   });
 
   it('refreshing a provider that is not an endpoint is refused without a request', async () => {
