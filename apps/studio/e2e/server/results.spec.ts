@@ -55,21 +55,41 @@ test('a completed run explains failed file steps and opens their reasons', async
   await page.goto(`${corral.server.url}/sessions/${created.session.sessionId}`);
   await requestBox(page).fill('Write project notes');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  const banner = page.getByTestId('action-required');
-  await expect(banner).toContainText('The run completed, but some tool steps failed.');
+  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
   const run = corral.server.coordinator.listRuns()[0];
   assert(run);
-  expect(run.status).toBe('succeeded');
   const failed = Object.values(
     corral.server.coordinator.getSnapshot(run.runId).projection.toolCalls,
   ).find((tool) => tool.errorCode === 'TARGET_NOT_FOUND');
   assert(failed);
-  await page.goto(
-    `${corral.server.url}/sessions/${created.session.sessionId}?run=${run.runId}&atSeq=1`,
+  // chat-widgets-contract: a completed run's failed-steps notice shows once, in its turn, beside
+  // those steps; nothing above the input repeats it or counts the steps as items to answer.
+  const tools = page.getByRole('list', { name: /^Tools · \d+$/ });
+  await expect(tools).toContainText('The run completed, but some tool steps failed.');
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  // Each helper's list_files failed the same way; the first one stands for them.
+  const step = tools.getByRole('listitem').filter({ hasText: 'list_files' }).first();
+  await expect(
+    step.getByText('The requested file, folder, or target is unavailable.'),
+  ).toBeVisible();
+  await expect(step.locator('details')).not.toHaveAttribute('open');
+  await step.getByText('Diagnostics', { exact: true }).click();
+  await expect(step.locator('details code')).toHaveText(
+    'TARGET_NOT_FOUND: the folder is unavailable',
   );
-  await banner.getByRole('link', { name: 'Review failed steps' }).click();
+  // The run record keeps the same reasons on the execution that failed.
+  await panelTab(page, 'Runs');
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('tablist', { name: 'Execution views', exact: true })
+    .getByRole('tab', { name: 'Workflow', exact: true })
+    .click();
+  await page
+    .getByTestId('run-work-flow')
+    .getByRole('button', { name: new RegExp(` · ${failed.executionId}`) })
+    .first()
+    .click();
   await expect(page).toHaveURL(new RegExp(`execution=${failed.executionId}`));
-  await expect(page).not.toHaveURL(/atSeq=/);
   const failure = page.getByTestId(`failed-step-${failed.toolCallId}`);
   await expect(failure).toContainText('list_files');
   await expect(
