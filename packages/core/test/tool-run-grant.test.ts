@@ -5,10 +5,12 @@ import {
   type CheckPlan,
   type CommandExecution,
   type CommandPlan,
+  type CorralDefinition,
   canonicalJson,
   type EffectiveHarnessSnapshot,
   type LspReport,
   type RunEvent,
+  type Scheduler,
   type ToolDescriptor,
   type ToolOutcome,
 } from '@corral/contracts';
@@ -43,9 +45,9 @@ const writeFile = corral('write_file', 'workspace');
 const runCommand = corral('run_command', 'external');
 const lspQuery = corral('lsp_query', 'external');
 const bookkeeping = [corral('write_artifact', 'workspace'), corral('submit_result', 'workspace')];
-const harness = (policyRevision = 1): EffectiveHarnessSnapshot => ({
+const harness = (policyRevision = 1, snapshotHash = 'a'.repeat(64)): EffectiveHarnessSnapshot => ({
   binding: { profileId: 'writing', revision: 1 },
-  snapshotHash: 'a'.repeat(64),
+  snapshotHash,
   piVersion: '1.3.0',
   policyRevision,
   policy: 'trusted-native',
@@ -94,6 +96,10 @@ function setup(
     requireApproval?: boolean;
     /** The harness a role resolves when the Run starts; the Run pins it. */
     resolve?: (roleId: string) => EffectiveHarnessSnapshot;
+    /** The team, when not a line of `agents`. */
+    definition?: () => CorralDefinition;
+    /** Deadlines, when they should not fire as the clock moves. */
+    timers?: Scheduler;
   } = {},
 ) {
   const store = new InMemoryRunStore();
@@ -102,7 +108,7 @@ function setup(
   const written: Record<string, unknown>[] = [];
   const coordinator = new Coordinator({
     clock,
-    timers: clock,
+    timers: options.timers ?? clock,
     ids: new SequentialIdFactory(),
     store,
     files: {
@@ -132,7 +138,7 @@ function setup(
     },
   });
   const start = (commandId = 'start') => {
-    const definition = linearCorral(options.agents ?? ['writer']);
+    const definition = options.definition?.() ?? linearCorral(options.agents ?? ['writer']);
     for (const role of definition.roles) {
       role.harness = harness().binding;
       // A language server query rides on read_file and the selected project tools.
@@ -252,6 +258,41 @@ function setup(
     if (!submitted.ok) throw new Error(submitted.error.message);
     execution.settle({ outcome: 'succeeded' });
   };
+  const cancel = (runId: string, executionId: string) =>
+    coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: `cancel_${executionId}`,
+      runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'execution', executionId }, reason: 'user stopped it' },
+    });
+  /** Starts one call and waits until it asks; returns its approval and the call's outcome. */
+  const ask = async (
+    runId: string,
+    execution: Started,
+    proposal: { name: string; args: Record<string, unknown> },
+  ) => {
+    const before = approvals(runId).length;
+    const auth = await execution.host.authorizeTool(proposal);
+    if (!auth.ok) throw new Error(auth.error.message);
+    const outcome = execution.host.executeTool(auth.toolCallId);
+    await vi.waitFor(() => expect(approvals(runId).length).toBe(before + 1));
+    return { approval: approvals(runId).at(-1)!.payload, outcome, toolCallId: auth.toolCallId };
+  };
+  /** Starts these calls of one execution together: once one waits for approval, none can start. */
+  const startAll = async (
+    execution: Started,
+    proposals: { name: string; args: Record<string, unknown> }[],
+  ) =>
+    (await Promise.all(proposals.map((proposal) => execution.host.authorizeTool(proposal)))).map(
+      (auth) => {
+        if (!auth.ok) throw new Error(auth.error.message);
+        return {
+          toolCallId: auth.toolCallId,
+          outcome: execution.host.executeTool(auth.toolCallId),
+        };
+      },
+    );
   const authorized = (runId: string) =>
     events(runId).filter(
       (event): event is Extract<RunEvent, { type: 'tool.authorized' }> =>
@@ -268,9 +309,60 @@ function setup(
     resolve,
     call,
     finish,
+    cancel,
+    ask,
+    startAll,
     authorized,
     written,
   };
+}
+
+/** p, then a and b at once, meeting at a Join before m and the Output. */
+function forkedCorral(): CorralDefinition {
+  const definition = linearCorral(['p', 'a', 'b', 'm']);
+  for (const node of definition.nodes)
+    if (node.type === 'agent' && node.id !== 'p')
+      node.inputBindings = [{ kind: 'task_output', name: 'previous', sourceNodeId: 'p' }];
+  definition.nodes.push({ id: 'j', type: 'join', label: 'j', policy: 'all' });
+  const edge = (id: string, source: string, target: string) => ({
+    id,
+    source,
+    sourcePort: 'out' as const,
+    target,
+    targetPort: 'in' as const,
+  });
+  definition.controlEdges = [
+    edge('e1', 'p', 'a'),
+    edge('e2', 'p', 'b'),
+    edge('e3', 'a', 'j'),
+    edge('e4', 'b', 'j'),
+    edge('e5', 'j', 'm'),
+    edge('e6', 'm', 'output'),
+  ];
+  return definition;
+}
+
+/** Deadlines that fire only when the test says so, as a timer running late would. */
+function lateTimers() {
+  const pending: { ms: number; fn: () => void }[] = [];
+  const timers: Scheduler = {
+    after: (ms, fn) => {
+      const timer = { ms, fn };
+      pending.push(timer);
+      return () => {
+        const index = pending.indexOf(timer);
+        if (index >= 0) pending.splice(index, 1);
+      };
+    },
+  };
+  /** Fires the oldest deadline still set for this many milliseconds. */
+  const fire = (ms: number) => {
+    const index = pending.findIndex((timer) => timer.ms === ms);
+    if (index < 0) throw new Error(`no ${ms} ms deadline is set`);
+    const [timer] = pending.splice(index, 1);
+    timer!.fn();
+  };
+  return { timers, fire };
 }
 
 const write = (path: string, text = 'notes') => ({ name: 'write_file', args: { path, text } });
@@ -358,28 +450,34 @@ describe('allow for this run', () => {
     writer.settle({ outcome: 'cancelled' });
   });
 
-  // The Run pins each role's harness, and so its policy revision, when it starts; another
+  // The Run pins each role's harness, its snapshot and policy revision, when it starts; another
   // role of the same Run may pin another one.
   it.each([
-    ['pins the same policy revision passes on the grant', 1, 0],
-    ['pins another policy revision asks again', 2, 1],
-  ] as const)('a later execution of the Run whose role %s', async (_name, editorRevision, asks) => {
-    const s = setup({
-      agents: ['writer', 'editor'],
-      resolve: (roleId) => harness(roleId === 'editor_role' ? editorRevision : 1),
-    });
-    const runId = s.start();
-    const writer = await s.next(0);
-    await s.call(runId, writer, write('notes.md'), 'run');
-    await s.finish(writer);
-    const editor = await s.next(1);
-    expect(editor.input.harness?.policyRevision).toBe(editorRevision);
-    const later = await s.call(runId, editor, write('notes.md'), asks ? 'once' : undefined);
-    expect(later.outcome.ok).toBe(true);
-    expect(later.newApprovals).toBe(asks);
-    expect(s.authorized(runId)).toHaveLength(1 - asks);
-    editor.settle({ outcome: 'cancelled' });
-  });
+    ['pins the same policy revision passes on the grant', 1, 'a'.repeat(64), 0],
+    ['pins another policy revision asks again', 2, 'a'.repeat(64), 1],
+    ['pins another harness snapshot asks again', 1, 'b'.repeat(64), 1],
+  ] as const)(
+    'a later execution of the Run whose role %s',
+    async (_name, editorRevision, editorSnapshot, asks) => {
+      const s = setup({
+        agents: ['writer', 'editor'],
+        resolve: (roleId) =>
+          roleId === 'editor_role' ? harness(editorRevision, editorSnapshot) : harness(),
+      });
+      const runId = s.start();
+      const writer = await s.next(0);
+      await s.call(runId, writer, write('notes.md'), 'run');
+      await s.finish(writer);
+      const editor = await s.next(1);
+      expect(editor.input.harness?.policyRevision).toBe(editorRevision);
+      expect(editor.input.harness?.snapshotHash).toBe(editorSnapshot);
+      const later = await s.call(runId, editor, write('notes.md'), asks ? 'once' : undefined);
+      expect(later.outcome.ok).toBe(true);
+      expect(later.newApprovals).toBe(asks);
+      expect(s.authorized(runId)).toHaveLength(1 - asks);
+      editor.settle({ outcome: 'cancelled' });
+    },
+  );
 
   it('a tool registration that changed during the Run asks again', async () => {
     const s = setup();
@@ -498,6 +596,74 @@ describe('allow for this run', () => {
     );
   });
 
+  it('a waiting identical call in another execution of the Run is allowed with the run-wide approval', async () => {
+    const s = setup({ definition: forkedCorral });
+    const runId = s.start();
+    await s.finish(await s.next(0));
+    const a = await s.next(1);
+    const b = await s.next(2);
+    const first = await s.ask(runId, a, write('notes.md'));
+    const other = await s.ask(runId, b, write('notes.md'));
+    expect(other.approval.tool!.executionId).toBe(b.input.executionId);
+    expect(other.approval.tool!.executionId).not.toBe(first.approval.tool!.executionId);
+    expect(other.approval.tool!.fingerprint).toBe(first.approval.tool!.fingerprint);
+    expect(s.resolve(runId, first.approval.approvalId, 'approve', 'run').status).toBe('applied');
+    expect((await first.outcome).ok).toBe(true);
+    expect((await other.outcome).ok).toBe(true);
+    expect(
+      s
+        .events(runId)
+        .filter((event) => event.type === 'approval.resolved')
+        .map((event) => event.payload),
+    ).toEqual([
+      expect.objectContaining({ approvalId: first.approval.approvalId, scope: 'run' }),
+      expect.objectContaining({
+        approvalId: other.approval.approvalId,
+        decision: 'approve',
+        actor: 'coordinator',
+        reason: 'allowed_for_run',
+      }),
+    ]);
+    expect(s.authorized(runId).map((event) => event.payload)).toEqual([
+      {
+        executionId: b.input.executionId,
+        toolCallId: other.toolCallId,
+        approvalId: first.approval.approvalId,
+        fingerprint: first.approval.tool!.fingerprint,
+      },
+    ]);
+    expect(s.written).toEqual([
+      { path: 'notes.md', text: 'notes' },
+      { path: 'notes.md', text: 'notes' },
+    ]);
+    a.settle({ outcome: 'cancelled' });
+    b.settle({ outcome: 'cancelled' });
+  });
+
+  it('a waiting identical call whose execution was cancelled ends on its own path, untouched by the run-wide approval', async () => {
+    const s = setup({ definition: forkedCorral });
+    const runId = s.start();
+    await s.finish(await s.next(0));
+    const a = await s.next(1);
+    const b = await s.next(2);
+    const first = await s.ask(runId, a, write('notes.md'));
+    const other = await s.ask(runId, b, write('notes.md'));
+    expect(s.cancel(runId, b.input.executionId).status).not.toBe('rejected');
+    expect((await other.outcome).ok).toBe(false);
+    const closed = { status: 'rejected', reason: 'cancelled' };
+    expect(
+      s.coordinator.getSnapshot(runId).projection.approvals[other.approval.approvalId],
+    ).toMatchObject(closed);
+    expect(s.resolve(runId, first.approval.approvalId, 'approve', 'run').status).toBe('applied');
+    expect((await first.outcome).ok).toBe(true);
+    expect(
+      s.coordinator.getSnapshot(runId).projection.approvals[other.approval.approvalId],
+    ).toMatchObject(closed);
+    expect(s.authorized(runId)).toHaveLength(0);
+    expect(s.written).toEqual([{ path: 'notes.md', text: 'notes' }]);
+    a.settle({ outcome: 'cancelled' });
+  });
+
   it('a language server launch approval cannot be allowed for the run and still asks each time', async () => {
     const query = {
       serverId: 'typescript',
@@ -569,15 +735,20 @@ describe('allow for this run on a command', () => {
    * fingerprint covers only the launch (executable and content, argv, shell, cwd, environment,
    * timeout, mode, working-copy identity, source command and final arguments).
    */
-  function commandSetup() {
+  function commandSetup(options: Parameters<typeof setup>[0] = {}) {
     const runCommand = vi.fn<NonNullable<FileTools['runCommand']>>(async () => report);
     const world = {
       tree: 'd'.repeat(40),
       rootIdentity: 'c'.repeat(64),
       executableHash: '1'.repeat(64),
+      /** Holds the call planned in this order (from 1) until the test opens its gate. */
+      hold: {} as Record<number, Gate>,
+      planning: 0,
     };
     const plans: CommandPlan[] = [];
     const planCommand = async (input: CommandExecution): Promise<CommandPlan> => {
+      world.planning += 1;
+      await world.hold[world.planning]?.wait();
       const { request } = input;
       const shellId = request.shellId ?? 'bash';
       const launch = {
@@ -605,7 +776,7 @@ describe('allow for this run on a command', () => {
       return plan;
     };
     return {
-      ...setup({ files: { planCommand, runCommand, stopRunServices: async () => {} } }),
+      ...setup({ ...options, files: { planCommand, runCommand, stopRunServices: async () => {} } }),
       runCommand,
       world,
       plans,
@@ -752,8 +923,10 @@ describe('allow for this run on a command', () => {
     const replayed = s.events(runId).reduce(applyEvent, emptyProjection(runId));
     expect(replayed.approvals).toEqual(s.coordinator.getSnapshot(runId).projection.approvals);
     expect(toolRunGrant(replayed, key)?.approvalId).toBe(granted.asked);
-    // The exact fingerprint of the call that was approved is not a key a later call can match.
-    expect(toolRunGrant(replayed, s.plans[0]!.fingerprint)).toBeNull();
+    // The exact fingerprint the approval carries is not a key a later call can match.
+    const exact = s.approvals(runId)[0]!.payload.tool!.fingerprint;
+    expect(exact).not.toBe(key);
+    expect(toolRunGrant(replayed, exact)).toBeNull();
     writer.settle({ outcome: 'cancelled' });
   });
 
@@ -810,6 +983,128 @@ describe('allow for this run on a command', () => {
     expect((await pending[2])!.ok).toBe(false);
     writer.settle({ outcome: 'cancelled' });
   });
+
+  it('a waiting identical command past its deadline is left to its own deadline by the run-wide approval', async () => {
+    const late = lateTimers();
+    const s = commandSetup({ timers: late.timers });
+    const runId = s.start();
+    const writer = await s.next(0);
+    // The second call asks later: its planning waits until the first has waited a while.
+    const later = new Gate();
+    s.world.hold[2] = later;
+    const calls = await s.startAll(writer, [command(), command()]);
+    await vi.waitFor(() => expect(s.approvals(runId)).toHaveLength(1));
+    s.clock.advance(200_000);
+    later.open();
+    await vi.waitFor(() => expect(s.approvals(runId)).toHaveLength(2));
+    const [first, second] = s.approvals(runId).map((event) => event.payload);
+    expect(second!.tool!.grantFingerprint).toBe(first!.tool!.grantFingerprint);
+    // The first is past its deadline, while its timer has not fired yet.
+    s.clock.advance(150_000);
+    expect(s.resolve(runId, second!.approvalId, 'approve', 'run').status).toBe('applied');
+    expect((await calls[1]!.outcome).ok).toBe(true);
+    expect(s.coordinator.getSnapshot(runId).projection.approvals[first!.approvalId]?.status).toBe(
+      'pending',
+    );
+    expect(s.authorized(runId)).toHaveLength(0);
+    // Its own deadline ends it as a refusal; only the allowed call launched.
+    late.fire(300_000);
+    expect((await calls[0]!.outcome).ok).toBe(false);
+    expect(s.coordinator.getSnapshot(runId).projection.approvals[first!.approvalId]).toMatchObject({
+      status: 'rejected',
+      reason: 'timeout',
+    });
+    expect(s.runCommand).toHaveBeenCalledTimes(1);
+    expect(s.runCommand.mock.calls[0]?.[2]).toBe(s.plans[1]!.fingerprint);
+    writer.settle({ outcome: 'cancelled' });
+  });
+
+  it('a decision on a waiting card the run-wide approval already closed is APPROVAL_STALE and changes nothing', async () => {
+    const s = commandSetup();
+    const runId = s.start();
+    const writer = await s.next(0);
+    const calls = await s.startAll(writer, [command(), command()]);
+    await vi.waitFor(() => expect(s.approvals(runId)).toHaveLength(2));
+    const [first, second] = s.approvals(runId).map((event) => event.payload);
+    expect(s.resolve(runId, second!.approvalId, 'approve', 'run').status).toBe('applied');
+    expect((await calls[0]!.outcome).ok).toBe(true);
+    expect((await calls[1]!.outcome).ok).toBe(true);
+    const events = s.events(runId).length;
+    const projection = s.coordinator.getSnapshot(runId).projection;
+    const late = s.resolve(runId, first!.approvalId, 'reject');
+    expect(late.status).toBe('rejected');
+    expect(late.error?.code).toBe('APPROVAL_STALE');
+    expect(s.events(runId)).toHaveLength(events);
+    expect(s.coordinator.getSnapshot(runId).projection).toEqual(projection);
+    expect(projection.approvals[first!.approvalId]).toMatchObject({
+      status: 'approved',
+      reason: 'allowed_for_run',
+    });
+    expect(s.runCommand).toHaveBeenCalledTimes(2);
+    writer.settle({ outcome: 'cancelled' });
+  });
+
+  it('a granted command whose execution is cancelled before its launch does not launch', async () => {
+    const s = commandSetup();
+    const runId = s.start();
+    const writer = await s.next(0);
+    await s.call(runId, writer, command(), 'run');
+    // The next call is planning when the Run is told to pause, so once it passes on the grant it
+    // waits at the boundary before its launch; there its execution is cancelled.
+    const hold = new Gate();
+    s.world.hold[2] = hold;
+    const auth = await writer.host.authorizeTool(command());
+    if (!auth.ok) throw new Error(auth.error.message);
+    const pending = writer.host.executeTool(auth.toolCallId);
+    await vi.waitFor(() => expect(s.world.planning).toBe(2));
+    expect(
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'pause_run',
+        runId,
+        type: 'pause',
+        payload: { scope: 'run' },
+      }).status,
+    ).not.toBe('rejected');
+    hold.open();
+    await vi.waitFor(() =>
+      expect(s.authorized(runId).map((event) => event.payload.toolCallId)).toEqual([
+        auth.toolCallId,
+      ]),
+    );
+    expect(s.cancel(runId, writer.input.executionId).status).not.toBe('rejected');
+    expect((await pending).ok).toBe(false);
+    expect(s.runCommand).toHaveBeenCalledTimes(1);
+    expect(s.approvals(runId)).toHaveLength(1);
+  });
+
+  it.each([
+    ['pins the same harness passes on the grant', 1, 'a'.repeat(64), 0],
+    ['pins another policy revision asks again', 2, 'a'.repeat(64), 1],
+    ['pins another harness snapshot asks again', 1, 'b'.repeat(64), 1],
+  ] as const)(
+    'a later execution of the Run whose role %s for the same command',
+    async (_name, editorRevision, editorSnapshot, asks) => {
+      const s = commandSetup({
+        agents: ['writer', 'editor'],
+        resolve: (roleId) =>
+          roleId === 'editor_role' ? harness(editorRevision, editorSnapshot) : harness(),
+      });
+      const runId = s.start();
+      const writer = await s.next(0);
+      await s.call(runId, writer, command(), 'run');
+      await s.finish(writer);
+      const editor = await s.next(1);
+      expect(editor.input.harness?.snapshotHash).toBe(editorSnapshot);
+      const later = await s.call(runId, editor, command(), asks ? 'once' : undefined);
+      expect(later.outcome.ok).toBe(true);
+      expect(later.newApprovals).toBe(asks);
+      expect(s.authorized(runId)).toHaveLength(1 - asks);
+      // The launch is the same; only the registration and policy around it differ.
+      expect(s.plans[1]!.launchFingerprint).toBe(s.plans[0]!.launchFingerprint);
+      editor.settle({ outcome: 'cancelled' });
+    },
+  );
 
   it('cancelling the Run while a granted call runs ends it as cancelling an approved call does', async () => {
     const s = commandSetup();
