@@ -19,10 +19,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyEvent,
   Coordinator,
+  commandGrantFingerprint,
   emptyProjection,
   type FileTools,
   InMemoryRunStore,
   toolRunGrant,
+  validToolPermissionPlan,
 } from '../src/index.ts';
 
 // "Allow for this run" (harness-contract, api-contract `resolve_approval.scope`): a tool approval
@@ -552,26 +554,8 @@ describe('allow for this run', () => {
 });
 
 describe('allow for this run on a command', () => {
-  const plan: CommandPlan = {
-    operationId: 'command_one',
-    hostId: 'local',
-    sessionId: 'session_one',
-    workspaceBindingId: 'workspace_one',
-    worktreeId: 'worktree_one',
-    rootIdentity: 'c'.repeat(64),
-    tree: 'd'.repeat(40),
-    shellId: 'bash',
-    command: 'npm test',
-    executable: 'bash',
-    argv: ['-lc', 'npm test'],
-    cwd: '.',
-    environmentHash: 'e'.repeat(64),
-    timeoutMs: 10000,
-    mode: 'foreground',
-    fingerprint: 'f'.repeat(64),
-  };
   const report = {
-    operationId: plan.operationId,
+    operationId: 'command_any',
     state: 'completed' as const,
     exitCode: 0,
     signal: null,
@@ -580,83 +564,250 @@ describe('allow for this run on a command', () => {
     output: { text: 'ok', bytes: 2, hash: 'a'.repeat(64), truncated: false },
   };
   /**
-   * `perCall` plans the way the local server does: the operation is named after the call's run,
-   * execution, attempt and effect, and its launch fingerprint covers that name.
+   * Plans the way the local server does: each call is its own operation, named after its effect,
+   * on the working tree as it is now; its exact fingerprint covers both, while its launch
+   * fingerprint covers only the launch (executable and content, argv, shell, cwd, environment,
+   * timeout, mode, working-copy identity, source command and final arguments).
    */
-  function commandSetup(perCall = false) {
+  function commandSetup() {
     const runCommand = vi.fn<NonNullable<FileTools['runCommand']>>(async () => report);
-    const copy = { rootIdentity: plan.rootIdentity };
-    const planCommand = async (input: CommandExecution): Promise<CommandPlan> => {
-      const operationId = perCall ? `command_${input.effectId}` : plan.operationId;
-      const cwd = input.request.cwd ?? '.';
-      const { rootIdentity } = copy;
-      return {
-        ...plan,
-        operationId,
-        cwd,
-        rootIdentity,
-        fingerprint: hash({ operationId, cwd, rootIdentity }),
-      };
+    const world = {
+      tree: 'd'.repeat(40),
+      rootIdentity: 'c'.repeat(64),
+      executableHash: '1'.repeat(64),
     };
-    return { ...setup({ files: { planCommand, runCommand } }), runCommand, copy };
+    const plans: CommandPlan[] = [];
+    const planCommand = async (input: CommandExecution): Promise<CommandPlan> => {
+      const { request } = input;
+      const shellId = request.shellId ?? 'bash';
+      const launch = {
+        hostId: 'local',
+        sessionId: 'session_one',
+        workspaceBindingId: 'workspace_one',
+        worktreeId: 'worktree_one',
+        rootIdentity: world.rootIdentity,
+        shellId,
+        command: request.command,
+        executable: shellId,
+        argv: ['-lc', request.command],
+        cwd: request.cwd ?? '.',
+        environmentHash: 'e'.repeat(64),
+        timeoutMs: request.timeoutMs ?? 120000,
+        mode: request.mode ?? 'foreground',
+      };
+      const call = { ...launch, operationId: `command_${input.effectId}`, tree: world.tree };
+      const plan: CommandPlan = {
+        ...call,
+        launchFingerprint: hash({ ...launch, executableHash: world.executableHash, request }),
+        fingerprint: hash({ ...call, executableHash: world.executableHash }),
+      };
+      plans.push(plan);
+      return plan;
+    };
+    return {
+      ...setup({ files: { planCommand, runCommand, stopRunServices: async () => {} } }),
+      runCommand,
+      world,
+      plans,
+    };
   }
-  const command = (cwd?: string) => ({
+  const command = (args: Record<string, unknown> = {}) => ({
     name: 'run_command',
-    args: { command: 'npm test', ...(cwd ? { cwd } : {}) },
+    args: { command: 'npm test', ...args },
   });
 
-  it('the same launch passes on the grant and runs with its own launch fingerprint', async () => {
+  it('the same command after the Run edited files passes on the grant, launched on its own exact plan', async () => {
     const s = commandSetup();
     const runId = s.start();
     const writer = await s.next(0);
     const first = await s.call(runId, writer, command(), 'run');
     expect(first.outcome.ok).toBe(true);
+    // The request carries the call's exact fingerprint, which the body proves, and the launch
+    // key a grant for the run is matched by.
+    const asked = s.approvals(runId)[0]!.payload.tool!;
+    const body = JSON.parse(s.store.getArtifactText(runId, asked.bodyRef)!);
+    expect(validToolPermissionPlan(body)).toBe(true);
+    expect(asked.fingerprint).toBe(body.fingerprint);
+    expect(asked.grantFingerprint).toBe(
+      commandGrantFingerprint(body, s.plans[0]!.launchFingerprint),
+    );
+    expect(asked.grantFingerprint).not.toBe(asked.fingerprint);
+
+    s.world.tree = '7'.repeat(40);
     const second = await s.call(runId, writer, command());
     expect(second.outcome.ok).toBe(true);
     expect(second.newApprovals).toBe(0);
+    expect(s.plans[1]!.fingerprint).not.toBe(s.plans[0]!.fingerprint);
     expect(s.authorized(runId).map((event) => event.payload)).toEqual([
-      expect.objectContaining({ toolCallId: second.toolCallId, approvalId: first.asked }),
+      {
+        executionId: writer.input.executionId,
+        toolCallId: second.toolCallId,
+        approvalId: first.asked,
+        fingerprint: asked.grantFingerprint,
+      },
     ]);
+    // The server gets this call's own exact fingerprint, as after Allow once on it.
     expect(s.runCommand).toHaveBeenCalledTimes(2);
-    expect(s.runCommand.mock.calls[1]?.[2]).toBe(
-      hash({ operationId: plan.operationId, cwd: '.', rootIdentity: plan.rootIdentity }),
-    );
+    expect(s.runCommand.mock.calls[1]?.[1]).toEqual(s.plans[1]);
+    expect(s.runCommand.mock.calls[1]?.[2]).toBe(s.plans[1]!.fingerprint);
     writer.settle({ outcome: 'cancelled' });
   });
 
-  it('a different working directory asks again', async () => {
+  it.each([
+    ['other command text', command({ command: 'npm run lint' }), () => {}],
+    ['another working directory', command({ cwd: 'src' }), () => {}],
+    ['another timeout', command({ timeoutMs: 30000 }), () => {}],
+    ['another shell', command({ shellId: 'sh' }), () => {}],
+    ['a service instead of a foreground run', command({ mode: 'service' }), () => {}],
+    [
+      'a changed executable',
+      command(),
+      (world: { executableHash: string }) => {
+        world.executableHash = '2'.repeat(64);
+      },
+    ],
+    [
+      'another working copy',
+      command(),
+      (world: { rootIdentity: string }) => {
+        world.rootIdentity = '9'.repeat(64);
+      },
+    ],
+  ] as const)('%s asks again', async (_name, next, change) => {
     const s = commandSetup();
     const runId = s.start();
     const writer = await s.next(0);
     await s.call(runId, writer, command(), 'run');
-    const elsewhere = await s.call(runId, writer, command('src'), 'once');
-    expect(elsewhere.newApprovals).toBe(1);
+    change(s.world);
+    const again = await s.call(runId, writer, next, 'reject');
+    expect(again.newApprovals).toBe(1);
     expect(s.authorized(runId)).toHaveLength(0);
+    expect(s.runCommand).toHaveBeenCalledTimes(1);
     writer.settle({ outcome: 'cancelled' });
   });
 
-  it('a working copy whose identity changed during the Run asks again', async () => {
+  it('a command allowed once asks again', async () => {
     const s = commandSetup();
     const runId = s.start();
     const writer = await s.next(0);
-    await s.call(runId, writer, command(), 'run');
-    s.copy.rootIdentity = '9'.repeat(64);
-    const recreated = await s.call(runId, writer, command(), 'once');
-    expect(recreated.newApprovals).toBe(1);
-    expect(s.authorized(runId)).toHaveLength(0);
-    writer.settle({ outcome: 'cancelled' });
-  });
-
-  it('a launch planned per call, as the local server plans it, never shares a fingerprint and asks again', async () => {
-    const s = commandSetup(true);
-    const runId = s.start();
-    const writer = await s.next(0);
-    await s.call(runId, writer, command(), 'run');
+    await s.call(runId, writer, command(), 'once');
     const again = await s.call(runId, writer, command(), 'once');
     expect(again.newApprovals).toBe(1);
-    const [one, two] = s.approvals(runId);
-    expect(one!.payload.tool!.fingerprint).not.toBe(two!.payload.tool!.fingerprint);
     expect(s.authorized(runId)).toHaveLength(0);
+    writer.settle({ outcome: 'cancelled' });
+  });
+
+  it('another Run asks again for the same command', async () => {
+    const s = commandSetup();
+    const first = s.start('first');
+    const writer = await s.next(0);
+    await s.call(first, writer, command(), 'run');
+    await s.finish(writer);
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(first).projection.status).toBe('succeeded'),
+    );
+    const second = s.start('second');
+    const next = await s.next(1);
+    const again = await s.call(second, next, command(), 'once');
+    expect(again.newApprovals).toBe(1);
+    expect(s.approvals(second)[0]!.payload.tool!.grantFingerprint).toBe(
+      s.approvals(first)[0]!.payload.tool!.grantFingerprint,
+    );
+    expect(s.authorized(second)).toHaveLength(0);
+    next.settle({ outcome: 'cancelled' });
+  });
+
+  it('a grant on another tool never covers a command, nor a command grant another tool', async () => {
+    const s = commandSetup();
+    const runId = s.start();
+    const writer = await s.next(0);
+    // A command allowed for the run: a file write still asks, and the other way round.
+    expect((await s.call(runId, writer, command(), 'run')).newApprovals).toBe(1);
+    expect((await s.call(runId, writer, write('notes.md'), 'run')).newApprovals).toBe(1);
+    // Each grant covers its own call only.
+    expect((await s.call(runId, writer, command())).newApprovals).toBe(0);
+    expect((await s.call(runId, writer, write('notes.md'))).newApprovals).toBe(0);
+    const [commandGrant, writeGrant] = s.approvals(runId).map((event) => event.payload);
+    expect(commandGrant!.tool!.grantFingerprint).toBeDefined();
+    expect(writeGrant!.tool!.grantFingerprint).toBeUndefined();
+    expect(s.authorized(runId).map((event) => event.payload)).toEqual([
+      expect.objectContaining({
+        approvalId: commandGrant!.approvalId,
+        fingerprint: commandGrant!.tool!.grantFingerprint,
+      }),
+      expect.objectContaining({
+        approvalId: writeGrant!.approvalId,
+        fingerprint: writeGrant!.tool!.fingerprint,
+      }),
+    ]);
+    writer.settle({ outcome: 'cancelled' });
+  });
+
+  it('a command grant is rebuilt identically from the event log', async () => {
+    const s = commandSetup();
+    const runId = s.start();
+    const writer = await s.next(0);
+    const granted = await s.call(runId, writer, command(), 'run');
+    const key = s.approvals(runId)[0]!.payload.tool!.grantFingerprint!;
+    const replayed = s.events(runId).reduce(applyEvent, emptyProjection(runId));
+    expect(replayed.approvals).toEqual(s.coordinator.getSnapshot(runId).projection.approvals);
+    expect(toolRunGrant(replayed, key)?.approvalId).toBe(granted.asked);
+    // The exact fingerprint of the call that was approved is not a key a later call can match.
+    expect(toolRunGrant(replayed, s.plans[0]!.fingerprint)).toBeNull();
+    writer.settle({ outcome: 'cancelled' });
+  });
+
+  it('a waiting identical command is allowed with the card the person allowed for the run', async () => {
+    const s = commandSetup();
+    const runId = s.start();
+    const writer = await s.next(0);
+    const calls = await Promise.all(
+      [command(), command(), command({ cwd: 'src' })].map((proposal) =>
+        writer.host.authorizeTool(proposal),
+      ),
+    );
+    const pending = calls.map((auth) => {
+      if (!auth.ok) throw new Error(auth.error.message);
+      return writer.host.executeTool(auth.toolCallId);
+    });
+    await vi.waitFor(() => expect(s.approvals(runId)).toHaveLength(3));
+    const [one, two, other] = s.approvals(runId).map((event) => event.payload);
+    expect(one!.tool!.grantFingerprint).toBe(two!.tool!.grantFingerprint);
+    expect(s.resolve(runId, two!.approvalId, 'approve', 'run').status).toBe('applied');
+    expect((await pending[0])!.ok).toBe(true);
+    expect((await pending[1])!.ok).toBe(true);
+    expect(
+      s
+        .events(runId)
+        .filter((event) => event.type === 'approval.resolved')
+        .map((event) => event.payload),
+    ).toEqual([
+      expect.objectContaining({ approvalId: two!.approvalId, scope: 'run', actor: 'local_user' }),
+      expect.objectContaining({
+        approvalId: one!.approvalId,
+        decision: 'approve',
+        reason: 'allowed_for_run',
+      }),
+    ]);
+    expect(s.authorized(runId).map((event) => event.payload)).toEqual([
+      expect.objectContaining({
+        toolCallId: calls[0]!.toolCallId,
+        approvalId: two!.approvalId,
+        fingerprint: two!.tool!.grantFingerprint,
+      }),
+    ]);
+    // Each ran on its own exact plan; the different call still waits for the person.
+    expect(s.runCommand.mock.calls.map((call) => call[2]).sort()).toEqual(
+      s.plans
+        .filter((plan) => plan.cwd === '.')
+        .map((plan) => plan.fingerprint)
+        .sort(),
+    );
+    expect(s.coordinator.getSnapshot(runId).projection.approvals[other!.approvalId]?.status).toBe(
+      'pending',
+    );
+    expect(s.resolve(runId, other!.approvalId, 'reject').status).toBe('applied');
+    expect((await pending[2])!.ok).toBe(false);
     writer.settle({ outcome: 'cancelled' });
   });
 

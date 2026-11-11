@@ -70,6 +70,7 @@ const commandPermission = toolPermissionPlan(
     environmentHash: 'c'.repeat(64),
     timeoutMs: 120000,
     mode: 'foreground',
+    launchFingerprint: 'e'.repeat(64),
     fingerprint: 'd'.repeat(64),
     request: { command: 'npm test' },
   },

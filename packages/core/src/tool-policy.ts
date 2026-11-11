@@ -118,6 +118,20 @@ export function toolPermissionPlan(
   };
   return { ...details, fingerprint: hash(details) };
 }
+/**
+ * The key "allow for this run" matches a command by: its launch fingerprint (the server's
+ * `CommandPlan.launchFingerprint`, without the call's own operation or the working tree) under the
+ * same tool registration and policy as the approved call.
+ */
+export function commandGrantFingerprint(plan: ToolPermissionPlan, launchFingerprint: string) {
+  return hash({
+    purpose: plan.purpose,
+    descriptorHash: plan.descriptorHash,
+    snapshotHash: plan.snapshotHash,
+    policyRevision: plan.policyRevision,
+    launchFingerprint,
+  });
+}
 export function validToolPermissionPlan(plan: ToolPermissionPlan): boolean {
   return (
     canonicalJson(plan) === canonicalJson(toolPermissionPlan(plan, plan.descriptor, plan.arguments))

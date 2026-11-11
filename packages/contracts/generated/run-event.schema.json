@@ -7353,6 +7353,10 @@
                   "type": "string",
                   "pattern": "^[a-f0-9]{64}$"
                 },
+                "grantFingerprint": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
                 "targetTree": {
                   "type": "string",
                   "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
@@ -7497,7 +7501,8 @@
               "enum": [
                 "cancelled",
                 "timeout",
-                "execution_ended"
+                "execution_ended",
+                "allowed_for_run"
               ]
             },
             "routeId": {

@@ -177,6 +177,8 @@ export interface ApprovalView {
   routeId?: string;
   /** How far an approved tool call reaches; `run` also covers the Run's same-fingerprint calls. */
   scope?: 'once' | 'run';
+  /** Why the runtime closed it, when it did (`allowed_for_run`: another approval covered it). */
+  reason?: EventPayload<'approval.resolved'>['reason'];
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
@@ -689,6 +691,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
             status,
             ...(event.payload.routeId ? { routeId: event.payload.routeId } : {}),
             ...(event.payload.scope ? { scope: event.payload.scope } : {}),
+            ...(event.payload.reason ? { reason: event.payload.reason } : {}),
           },
         },
       };
@@ -999,18 +1002,22 @@ function updateModelCall(
   return { ...p, modelCalls: { ...p.modelCalls, [id]: { ...current, ...change } } };
 }
 
+/** The key "allow for this run" matches a later call by: a command's launch, else the call. */
+export const toolGrantKey = (tool: NonNullable<ApprovalView['tool']>) =>
+  tool.grantFingerprint ?? tool.fingerprint;
+
 /**
- * The Run's "allow for this run" grant that covers a tool call with exactly this fingerprint: an
- * approved tool approval resolved with `scope: run`. It is read from the approvals alone, so a
- * projection rebuilt from the Run's events has the same grants, and another Run has none.
+ * The Run's "allow for this run" grant for a call with exactly this key: an approved tool approval
+ * resolved with `scope: run`. It is read from the approvals alone, so a projection rebuilt from the
+ * Run's events has the same grants, and another Run has none.
  */
-export function toolRunGrant(projection: RunProjection, fingerprint: string): ApprovalView | null {
+export function toolRunGrant(projection: RunProjection, key: string): ApprovalView | null {
   for (const approval of Object.values(projection.approvals))
     if (
       approval.status === 'approved' &&
       approval.scope === 'run' &&
       approval.tool?.purpose === 'tool' &&
-      approval.tool.fingerprint === fingerprint
+      toolGrantKey(approval.tool) === key
     )
       return approval;
   return null;

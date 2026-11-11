@@ -177,6 +177,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     cwd: '.',
     environmentHash: 'e'.repeat(64),
     timeoutMs: 10000,
+    launchFingerprint: '1'.repeat(64),
     fingerprint: 'f'.repeat(64),
   };
   async function commandSetup(

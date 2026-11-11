@@ -5172,14 +5172,13 @@ export class WorkspaceService implements FileTools {
       attemptNo: input.attemptNo,
       effectId: input.effectId,
     }).slice(0, 32)}`;
-    const plan = {
-      operationId,
+    // The launch, as "allow for this run" matches it: no call of its own, no working tree.
+    const launch = {
       hostId: 'local',
       sessionId,
       workspaceBindingId: binding.id,
       worktreeId: `worktree_${sessionId}`,
       rootIdentity: hash({ root, dev: info.dev, ino: info.ino, birthtimeMs: info.birthtimeMs }),
-      tree: await this.snapshotTree(root),
       shellId: shell.shellId,
       command: request.command,
       executable: shell.executable,
@@ -5189,9 +5188,12 @@ export class WorkspaceService implements FileTools {
       timeoutMs: request.timeoutMs ?? 120000,
       mode: request.mode ?? 'foreground',
     };
+    const plan = { ...launch, operationId, tree: await this.snapshotTree(root) };
+    const executableHash = sha256(await readFile(shell.executable));
     return CommandPlan.parse({
       ...plan,
-      fingerprint: hash({ ...plan, executableHash: sha256(await readFile(shell.executable)) }),
+      launchFingerprint: hash({ ...launch, executableHash, request }),
+      fingerprint: hash({ ...plan, executableHash }),
     });
   }
 
@@ -5399,7 +5401,10 @@ export class WorkspaceService implements FileTools {
           created_at: string;
           updated_at: string;
         };
-        const plan = CommandPlan.parse(JSON.parse(row.plan_json));
+        // Only what the list shows: a plan recorded before a field was added still lists.
+        const plan = CommandPlan.pick({ shellId: true, cwd: true, mode: true, command: true })
+          .loose()
+          .parse(JSON.parse(row.plan_json));
         const { plan_json: _private, ...publicRow } = row;
         return {
           ...publicRow,
