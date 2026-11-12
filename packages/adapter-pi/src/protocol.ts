@@ -108,6 +108,8 @@ export const WorkerFrame = z.discriminatedUnion('type', [
     text: Text,
     usage: WorkerUsage,
     rawUsage: z.record(z.string(), z.unknown()).nullable(),
+    /** Cut by an interrupt: interrupted output, and the execution goes on. */
+    interrupted: z.literal(true).optional(),
   }),
   z.strictObject({
     type: z.literal('stream'),
@@ -233,6 +235,8 @@ export const HostFrame = z.discriminatedUnion('type', [
     value: ProtectedContext.nullable(),
   }),
   z.strictObject({ type: z.literal('directive'), ...head, directiveId: Identifier, text: Text }),
+  /** A directive that cuts the model response in flight; a running tool is never cut. */
+  z.strictObject({ type: z.literal('interrupt'), ...head, directiveId: Identifier, text: Text }),
   z.strictObject({
     type: z.literal('reprepare'),
     ...head,

@@ -9,6 +9,7 @@ import type {
 } from '@corral/contracts';
 import { Coordinator, InProcessTransport, type ModelResolver } from '@corral/core';
 import { FakeClock, SequentialIdFactory } from '@corral/testkit';
+import type { StreamFn } from '@earendil-works/pi-agent-core';
 import { createFauxCore, type FauxResponseStep } from '@earendil-works/pi-ai';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
@@ -26,7 +27,12 @@ export const liveModels: ModelResolver = {
 /** The Coordinator with the Pi adapter; the worker runs Pi in-process on pi-ai's faux model. */
 export function liveRuntime(
   responses: FauxResponseStep[],
-  options: { tokensPerSecond?: number; contextPolicy?: ProfileContextPolicy } = {},
+  options: {
+    tokensPerSecond?: number;
+    contextPolicy?: ProfileContextPolicy;
+    /** Wraps the faux stream, e.g. to see each request's signal. */
+    wrapStream?: (stream: StreamFn) => StreamFn;
+  } = {},
 ) {
   const faux = createFauxCore(
     options.tokensPerSecond ? { tokensPerSecond: options.tokensPerSecond } : {},
@@ -36,7 +42,10 @@ export function liveRuntime(
   const adapter = new PiAgentAdapter({
     spawn: () => {
       const { host, worker } = memoryChannelPair();
-      runWorker(worker, { streamFn: faux.streamSimple, resolveModel: () => faux.getModel() });
+      runWorker(worker, {
+        streamFn: options.wrapStream ? options.wrapStream(faux.streamSimple) : faux.streamSimple,
+        resolveModel: () => faux.getModel(),
+      });
       return host;
     },
     credentials: async (model) => {

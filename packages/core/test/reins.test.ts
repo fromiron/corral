@@ -1,4 +1,10 @@
-import type { AgentAdapter, AgentHost, AgentSettlement, RunCommand } from '@corral/contracts';
+import type {
+  AgentAdapter,
+  AgentHost,
+  AgentSettlement,
+  DeliveredDirective,
+  RunCommand,
+} from '@corral/contracts';
 import {
   collaborationCorral,
   FakeClock,
@@ -320,4 +326,149 @@ it('a parent waiting for children holds no request slot and does not delay pause
   expect((await waitForProjection(transport, runId, (p) => p.status === 'succeeded')).status).toBe(
     'succeeded',
   );
+});
+
+describe('interrupt delivery', () => {
+  function interruptSetup(options: { interrupts: boolean; askUser?: boolean }) {
+    const store = new InMemoryRunStore();
+    const hosts: AgentHost[] = [];
+    const interrupts: DeliveredDirective[] = [];
+    const pushed: DeliveredDirective[] = [];
+    const agents: AgentAdapter = {
+      async start(_input, host) {
+        hosts.push(host);
+        const settled = new Promise<AgentSettlement>(() => {});
+        return {
+          cancel: async () => {},
+          waitForSettlement: () => settled,
+          pushDirective: (directive) => void pushed.push(directive),
+          ...(options.interrupts
+            ? { interrupt: (directive: DeliveredDirective) => void interrupts.push(directive) }
+            : {}),
+        };
+      },
+    };
+    const coordinator = new Coordinator({
+      store,
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents,
+    });
+    const transport = new InProcessTransport(coordinator);
+    const definition = linearCorral(['writer']);
+    if (options.askUser) definition.roles[0]?.allowedCollaborationTools.push('ask_user');
+    const { runId } = coordinator.startRun({
+      schemaVersion: '0.1',
+      commandId: 'start',
+      mode: 'mock',
+      definition,
+    });
+    if (!runId) throw new Error('the interrupt fixture run did not start');
+    const steer = (targetExecutionId: string, commandId = 'interrupt') =>
+      coordinator.submit({
+        schemaVersion: '0.1',
+        runId,
+        commandId,
+        type: 'steer',
+        payload: { targetExecutionId, text: 'Stop and cite sources.', delivery: 'interrupt' },
+      });
+    const accepted = () =>
+      store.readEvents(runId, 0).filter((event) => event.type === 'directive.accepted');
+    const started = async () => {
+      const p = await waitForProjection(transport, runId, (p) => p.executionOrder.length === 1);
+      await vi.waitFor(() => expect(hosts).toHaveLength(1));
+      const host = hosts[0];
+      if (!host) throw new Error('the agent did not start');
+      return { executionId: p.executionOrder[0] ?? '', host };
+    };
+    return { coordinator, transport, runId, interrupts, pushed, steer, accepted, store, started };
+  }
+
+  it('an interrupt is accepted, reaches the handle once, and is delivered by the next request', async () => {
+    const s = interruptSetup({ interrupts: true });
+    const { executionId, host } = await s.started();
+    const receipt = s.steer(executionId);
+    expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'immediate' });
+    expect(s.accepted().map((event) => event.payload)).toMatchObject([{ delivery: 'interrupt' }]);
+    const directiveId = Object.keys(s.coordinator.getSnapshot(s.runId).projection.directives)[0];
+    expect(s.interrupts).toEqual([{ directiveId, text: 'Stop and cite sources.' }]);
+    expect(s.pushed).toEqual([]);
+    // The same command sent again is the same intent: one directive, one interrupt.
+    expect(s.steer(executionId)).toEqual(receipt);
+    expect(s.accepted()).toHaveLength(1);
+    expect(s.interrupts).toHaveLength(1);
+    const permit = await host.prepareModelRequest();
+    expect(permit.directives.map((d) => d.directiveId)).toEqual([directiveId]);
+    await host.modelRequestDispatched?.(permit.modelCallId);
+    expect(
+      s.coordinator.getSnapshot(s.runId).projection.directives[directiveId ?? '']?.status,
+    ).toBe('delivered');
+    expect(s.coordinator.getReceipt(s.runId, 'interrupt')).toMatchObject({
+      status: 'applied',
+      requestedBoundary: 'immediate',
+    });
+  });
+
+  it('an adapter that cannot interrupt gets the directive as next_request, and the receipt says so', async () => {
+    const s = interruptSetup({ interrupts: false });
+    const { executionId, host } = await s.started();
+    const receipt = s.steer(executionId);
+    expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'next_request' });
+    expect(s.accepted().map((event) => event.payload)).toMatchObject([
+      { delivery: 'next_request' },
+    ]);
+    expect(s.pushed).toHaveLength(1);
+    const permit = await host.prepareModelRequest();
+    await host.modelRequestDispatched?.(permit.modelCallId);
+    expect(s.coordinator.getReceipt(s.runId, 'interrupt')).toMatchObject({
+      status: 'applied',
+      requestedBoundary: 'next_request',
+    });
+  });
+
+  it('an interrupt for a target waiting on the person cuts nothing and rides the first request after', async () => {
+    const s = interruptSetup({ interrupts: true, askUser: true });
+    const { executionId, host } = await s.started();
+    const answer = host.invokeTool({
+      name: 'ask_user',
+      args: { key: 'format', questions: [{ id: 'format', kind: 'text', prompt: 'Which format?' }] },
+    });
+    const waiting = await waitForProjection(
+      s.transport,
+      s.runId,
+      (p) => p.executions[executionId]?.status === 'waiting_approval',
+    );
+    const receipt = s.steer(executionId);
+    // Not lowered: the adapter can interrupt; there is just no response to cut.
+    expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'immediate' });
+    expect(s.accepted().map((event) => event.payload)).toMatchObject([{ delivery: 'interrupt' }]);
+    expect(s.interrupts).toEqual([]);
+    expect(s.pushed).toHaveLength(1);
+    const event = s.store.readEvents(s.runId, 0).find((e) => e.type === 'user_input.requested');
+    if (event?.type !== 'user_input.requested') throw new Error('missing request');
+    expect(
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'answer',
+        runId: s.runId,
+        type: 'answer_user',
+        expectedControlRevision: waiting.controlRevision,
+        payload: {
+          requestId: event.payload.requestId,
+          executionId,
+          attemptNo: 1,
+          schemaHash: event.payload.schemaHash,
+          answers: [{ questionId: 'format', text: 'A table' }],
+        },
+      }).status,
+    ).toBe('applied');
+    await answer;
+    const permit = await host.prepareModelRequest();
+    const directiveId = s.pushed[0]?.directiveId;
+    expect(permit.directives.map((d) => d.directiveId)).toEqual([directiveId]);
+    await host.modelRequestDispatched?.(permit.modelCallId);
+    expect(
+      s.coordinator.getSnapshot(s.runId).projection.directives[directiveId ?? '']?.status,
+    ).toBe('delivered');
+  });
 });

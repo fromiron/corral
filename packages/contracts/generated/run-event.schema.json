@@ -7735,6 +7735,13 @@
               "minLength": 1,
               "maxLength": 12000
             },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "next_request",
+                "interrupt"
+              ]
+            },
             "attachments": {
               "maxItems": 5,
               "type": "array",
@@ -11347,6 +11354,10 @@
                 "estimated",
                 "unknown"
               ]
+            },
+            "interrupted": {
+              "type": "boolean",
+              "const": true
             }
           },
           "required": [

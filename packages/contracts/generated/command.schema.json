@@ -263,7 +263,10 @@
             },
             "delivery": {
               "type": "string",
-              "const": "next_request"
+              "enum": [
+                "next_request",
+                "interrupt"
+              ]
             },
             "attachments": {
               "maxItems": 5,

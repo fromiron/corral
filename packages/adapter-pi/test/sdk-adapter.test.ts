@@ -1739,9 +1739,9 @@ it('two plain directives a reprepare delivers go in as two messages', async () =
   );
 });
 
-it('directives waiting at SDK start follow the request text in the first prompt', async () => {
-  // session.prompt takes one text; Pi's steering queue would hold a second directive for
-  // a later turn, so directives waiting at start stay in the first prompt after the request.
+it('directives waiting at SDK start follow the request text as one message each', async () => {
+  // Steered before the first prompt in "all" mode, they go in together after the request,
+  // so no directive's text follows another's attachment body.
   const directives = [
     {
       directiveId: 'dir_1',
@@ -1762,12 +1762,116 @@ it('directives waiting at SDK start follow the request text in the first prompt'
   );
   const handle = await run.adapter.start(run.input, run.host);
   await handle.waitForSettlement();
-  const prompt = seen.find((text) => text.includes('Private brief.')) ?? '';
-  expect(prompt.endsWith(`\n\n${directives.map(sdkDirectiveText).join('\n\n')}`)).toBe(true);
-  expect(prompt.indexOf('Private brief.')).toBeLessThan(prompt.indexOf(SDK_DIRECTIVE_PREFIX));
+  const prompt = seen.findIndex((text) => text.includes('Private brief.'));
+  expect(prompt).toBeGreaterThan(-1);
+  expect(seen[prompt]).not.toContain(SDK_DIRECTIVE_PREFIX);
+  expect(seen.slice(prompt + 1)).toEqual(directives.map(sdkDirectiveText));
   for (const { directiveId } of directives)
     expect(seen.join('\n').split(`${SDK_DIRECTIVE_PREFIX}${directiveId})`)).toHaveLength(2);
   expect(run.requests).toMatchObject([{ directiveIds: ['dir_1', 'dir_2'] }]);
+});
+
+it('two directives steered during one SDK response both lead the next turn, each reported once', async () => {
+  const entered = new Gate(),
+    release = new Gate();
+  let seen: string[] = [];
+  const directives = [
+    { directiveId: 'dir_a', text: 'Keep sources.' },
+    { directiveId: 'dir_b', text: 'Also cite page numbers.' },
+  ];
+  const run = runtime([
+    async () => {
+      entered.open();
+      await release.wait();
+      return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], {
+        stopReason: 'toolUse',
+      });
+    },
+    (context) => {
+      seen = userTexts(context);
+      return fauxAssistantMessage('Done.');
+    },
+  ]);
+  const handle = await run.adapter.start(run.input, run.host);
+  await entered.wait();
+  for (const directive of directives) handle.pushDirective?.(directive);
+  release.open();
+  await handle.waitForSettlement();
+  expect(run.requests).toMatchObject([{ directiveIds: [] }, { directiveIds: ['dir_a', 'dir_b'] }]);
+  expect(seen.filter((text) => text.startsWith(SDK_DIRECTIVE_PREFIX))).toEqual(
+    directives.map(sdkDirectiveText),
+  );
+});
+
+describe('interrupt on the SDK worker', () => {
+  const tick = async () => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+  const observes = (frames: unknown[]) =>
+    (frames as { type: string; modelCallId?: string; interrupted?: boolean }[]).filter(
+      (frame) => frame.type === 'observe',
+    );
+
+  it('cuts the response in flight and carries the directive into the next request of the same session', async () => {
+    const entered = new Gate(),
+      release = new Gate();
+    let seen: string[] = [];
+    const run = runtime([
+      async () => {
+        entered.open();
+        await release.wait();
+        return fauxAssistantMessage('A long answer the person did not want.');
+      },
+      (context) => {
+        seen = userTexts(context);
+        return fauxAssistantMessage('Done.');
+      },
+    ]);
+    const handle = await run.adapter.start(run.input, run.host);
+    await entered.wait();
+    const directive = { directiveId: 'dir_cut', text: 'Stop and cite sources.' };
+    handle.interrupt?.(directive);
+    await tick();
+    release.open();
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(run.requests).toMatchObject([{ directiveIds: [] }, { directiveIds: ['dir_cut'] }]);
+    expect(seen.filter((text) => text.startsWith(SDK_DIRECTIVE_PREFIX))).toEqual([
+      sdkDirectiveText(directive),
+    ]);
+    expect(observes(run.frames).map((frame) => [frame.modelCallId, frame.interrupted])).toEqual([
+      ['call_1', true],
+      ['call_2', undefined],
+    ]);
+    // The cut call keeps the usage its provider reported.
+    const cut = observes(run.frames)[0] as { usage?: { inputTokens: number | null } };
+    expect(cut.usage?.inputTokens).toBeGreaterThan(0);
+  });
+
+  it('a cancel after an interrupt ends the SDK execution as cancelled', async () => {
+    const entered = new Gate(),
+      release = new Gate();
+    let later = 0;
+    const run = runtime([
+      async () => {
+        entered.open();
+        await release.wait();
+        return fauxAssistantMessage('A long answer.');
+      },
+      () => {
+        later++;
+        return fauxAssistantMessage('Should not run.');
+      },
+    ]);
+    const handle = await run.adapter.start(run.input, run.host);
+    await entered.wait();
+    handle.interrupt?.({ directiveId: 'dir_cancel', text: 'Stop.' });
+    const cancelled = handle.cancel('stopped');
+    await tick();
+    release.open();
+    await cancelled;
+    expect((await handle.waitForSettlement()).outcome).toBe('cancelled');
+    expect(later).toBe(0);
+  });
 });
 
 it('the SDK exposes the same user question schema and resumes only after its host answer', async () => {
