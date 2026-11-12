@@ -6,5 +6,8 @@ import base from './playwright.config.ts';
 export default defineConfig({
   ...base,
   testDir: './e2e/flow',
+  // The tests write one shared baseline file.
+  workers: 1,
+  fullyParallel: false,
   projects: [{ name: 'flow', testMatch: '**/*.spec.ts' }],
 });
