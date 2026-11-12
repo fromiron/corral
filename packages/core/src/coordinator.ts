@@ -3333,10 +3333,10 @@ export class Coordinator {
       return refuse({ code: 'TARGET_TERMINAL', message: 'the scope is cancelling' });
     const directiveId = this.ids.next('directive');
     const handle = run.handles.get(executionId);
-    // An interrupt the target's adapter cannot take, or one sent before its worker started (no
-    // response to cut), is lowered to the next request.
+    // An interrupt is lowered to the next request when the target's adapter cannot take one, or
+    // when its worker has not been handed over yet, so whether it can is unknown.
     const delivery =
-      command.payload.delivery === 'interrupt' && (!handle || !handle.interrupt)
+      command.payload.delivery === 'interrupt' && !handle?.interrupt
         ? 'next_request'
         : command.payload.delivery;
     this.commit(

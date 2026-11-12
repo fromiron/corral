@@ -136,7 +136,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     cancellation.abort();
     void session?.abort();
   };
+  // Set once a turn ended in an error or abort without a cut: the execution fails, and no
+  // waiting directive may start another turn (reins §2).
+  let endedUnfinished = false;
   const steer = (directive: DeliveredDirective) => {
+    if (endedUnfinished) return;
     void session?.steer(directiveText(directive)).catch(steerFailed);
   };
   port.onFrame((raw) => {
@@ -582,7 +586,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             });
             let chunkIndex = 0;
             for await (const event of stream) {
-              if (event.type === 'text_delta' && !cancelled)
+              if (event.type === 'text_delta' && event.delta && !cancelled)
                 send({
                   type: 'stream',
                   modelCallId,
@@ -723,9 +727,16 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               ),
           });
           if (flight)
-            void stream.result().finally(() => {
-              if (turnFlight === flight) turnFlight = null;
-            });
+            void stream
+              .result()
+              .then((answer) => {
+                if (!unfinished(answer) || wasCut(flight, answer)) return;
+                endedUnfinished = true;
+                session?.clearQueue();
+              })
+              .finally(() => {
+                if (turnFlight === flight) turnFlight = null;
+              });
           return stream;
         },
       });

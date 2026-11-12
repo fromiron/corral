@@ -254,9 +254,9 @@ describe('a target whose worker has not started', () => {
     expect(s.coordinator.getReceipt(s.runId, 'second')?.status).toBe('applied');
   });
 
-  it('an interrupt sent before the worker starts, to an adapter that cannot interrupt, is lowered and the receipt says so', async () => {
+  it('an interrupt sent before the adapter hands the worker over is lowered, even for an adapter that can interrupt, and the receipt says so', async () => {
     const gate = new Gate();
-    const s = setup({ startGate: gate, interrupts: false });
+    const s = setup({ startGate: gate, interrupts: true });
     const executionId = await s.firstExecution();
     await vi.waitFor(() => expect(gate.waiting).toBe(1));
     const receipt = s.steer(executionId, 'Stop and cite.', 'early', 'interrupt');
@@ -266,6 +266,7 @@ describe('a target whose worker has not started', () => {
     expect(s.events().find((e) => e.type === 'directive.accepted')?.payload.delivery).toBe(
       'next_request',
     );
+    expect(s.interrupted).toEqual([]);
   });
 });
 
@@ -513,18 +514,23 @@ describe('an unfinished call', () => {
     });
     const finished = s.events().find((e) => e.type === 'model.finished');
     const whole = await s.request(writer.host);
+    // Response bodies as stored while the run is live (an ended run releases unretained ones).
+    const bodies = {
+      call: s.store.getArtifactText(s.runId, `response_${permit.modelCallId}`),
+      whole: s.store.getArtifactText(s.runId, `response_${whole.modelCallId}`),
+    };
     s.send('cancel', { scope: { kind: 'run' }, reason: 'stopped' }, 'stop');
     await waitForProjection(s.transport, s.runId, (p) => p.status === 'cancelled');
-    return { s, call: permit.modelCallId, whole: whole.modelCallId, finished };
+    return { s, call: permit.modelCallId, whole: whole.modelCallId, finished, bodies };
   };
 
   it.each([
     ['cut by an interrupt', { interrupted: true as const }],
     ['ended in an error', { failed: true as const }],
   ])(
-    'a call %s records no confirmed response; its text is partial output only, also on replay, and is not exported',
+    'a call %s records no confirmed response; its text is partial output only, also on replay, and no response body reaches history, branches or search',
     async (_name, mark) => {
-      const { s, call, whole, finished } = await unfinished(mark);
+      const { s, call, whole, finished, bodies } = await unfinished(mark);
       expect(finished?.payload).toMatchObject({
         responseRef: null,
         certainty: 'reported',
@@ -541,6 +547,14 @@ describe('an unfinished call', () => {
       expect(readPartialOutputs(s.store, s.runId, replayed)?.[call]?.text).toBe(
         'UNFINISHED prefix',
       );
+      // Branch history and session search read a call's text through its response body; the
+      // whole call has one, the unfinished call none. The private history names only the whole.
+      expect(bodies).toEqual({ call: null, whole: 'reply' });
+      const archive = exportRunArchive(s.store, s.runId, { privateTranscript: true });
+      const refs = 'unavailableBodyRefs' in archive ? archive.unavailableBodyRefs : [];
+      expect(refs).toContain(`response_${whole}`);
+      expect(refs).not.toContain(`response_${call}`);
+      // Neither export carries the partial text (true of any reply text, kept as a guard).
       for (const privateTranscript of [false, true])
         expect(
           JSON.stringify(exportRunArchive(s.store, s.runId, { privateTranscript })),
