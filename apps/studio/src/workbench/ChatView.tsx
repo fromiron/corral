@@ -55,6 +55,38 @@ export function ChatDensityMenu() {
   );
 }
 
+/**
+ * A wheel, touch, or key aimed at a scrollable row (a capped reply, a code block) belongs to that
+ * box. The conversation only leaves the end when the person moves the conversation itself.
+ */
+function scrollingNested(target: EventTarget | null, timeline: HTMLElement) {
+  let node = target instanceof Element ? target : null;
+  while (node && node !== timeline) {
+    // A box already at its top passes the upward scroll on to the conversation.
+    if (node.scrollTop > 0 && node.scrollHeight - node.clientHeight > 1) {
+      const overflow = getComputedStyle(node).overflowY;
+      if (overflow === 'auto' || overflow === 'scroll') return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
+/**
+ * Marks a pointer as held until it is released anywhere, since a drag often ends outside the
+ * box that was pressed.
+ */
+export function holdPointer(held: { current: boolean }) {
+  held.current = true;
+  const release = () => {
+    held.current = false;
+    window.removeEventListener('pointerup', release, true);
+    window.removeEventListener('pointercancel', release, true);
+  };
+  window.addEventListener('pointerup', release, true);
+  window.addEventListener('pointercancel', release, true);
+}
+
 /** A session is the conversation; each child turn keeps its Corral Run/Execution identity. */
 export function ChatView({
   sessionId,
@@ -66,6 +98,7 @@ export function ChatView({
   aside,
   centerEmpty = false,
   expandedHeader = false,
+  sent,
 }: {
   sessionId: string;
   messageId?: string | undefined;
@@ -75,6 +108,8 @@ export function ChatView({
   header?: ReactNode;
   /** Read a long header (meeting records) without displacing the composer. */
   expandedHeader?: boolean;
+  /** Increases when the person sends. Following the end starts again. */
+  sent?: number;
   /**
    * Widgets that float in the margin right of the conversation and stay put while it scrolls
    *; index.css hides them when the margin cannot hold them.
@@ -96,6 +131,12 @@ export function ChatView({
   const restoreTop = useRef<number | null>(null);
   const restoreAnchor = useRef<{ id: string; offset: number } | null>(null);
   const readingAnchor = useRef<{ id: string; offset: number } | null>(null);
+  // A pointer is down on the scrollbar, so the next upward scroll is the person, not layout.
+  const scrollbarPointer = useRef(false);
+  // A pointer is down in the messages, so focus that follows is a click, not keyboard navigation.
+  const contentPointer = useRef(false);
+  const touchY = useRef<number | null>(null);
+  const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
   const [focused, setFocused] = useState<string | null>(null);
   const virtualized = items.length > 40;
@@ -210,6 +251,29 @@ export function ChatView({
   useLayoutEffect(() => {
     position.current();
   });
+  const followEnd = () => {
+    restoreTop.current = null;
+    restoreAnchor.current = null;
+    readingAnchor.current = null;
+    scrollbarPointer.current = false;
+    follow.current = true;
+    followedTop.current = Number.POSITIVE_INFINITY;
+    position.current();
+  };
+  // followEnd only writes refs. Listing it would rerun this on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refs only
+  useLayoutEffect(() => {
+    if (sent === undefined) return;
+    // The first value is the mount, including a restored reading position. Only a later send
+    // starts following again.
+    if (sentSeen.current === undefined) {
+      sentSeen.current = sent;
+      return;
+    }
+    if (sentSeen.current === sent) return;
+    sentSeen.current = sent;
+    followEnd();
+  }, [sent]);
   const jumped = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     if (!messageId) {
@@ -232,20 +296,7 @@ export function ChatView({
     readingAnchor.current = null;
     follow.current = false;
   };
-  const readPosition = () => {
-    const box = timeline.current;
-    if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
-    // Still where the view put the end: the content grew below, the reader did not move up.
-    if (follow.current && box.scrollTop >= followedTop.current - 1) {
-      seenTop.current = box.scrollTop;
-      return;
-    }
-    // Moving up leaves the end, however little: within the last 48px the view would otherwise
-    // pull an older action back out from under the pointer. Moving down to within 48px of the
-    // end follows again; staying put only follows at the end itself (the content shrank).
-    const gap = box.scrollHeight - box.scrollTop - box.clientHeight;
-    follow.current = gap < 1 || (box.scrollTop > seenTop.current && gap < 48);
-    seenTop.current = box.scrollTop;
+  const rememberPlace = (box: HTMLElement) => {
     const top = box.getBoundingClientRect().top;
     const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
       (item) => item.getBoundingClientRect().bottom > top,
@@ -255,6 +306,41 @@ export function ChatView({
         ? { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top }
         : null;
     setAtEnd(follow.current);
+  };
+  const readPosition = () => {
+    const box = timeline.current;
+    if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
+    const gap = box.scrollHeight - box.scrollTop - box.clientHeight;
+    if (follow.current) {
+      // A lower offset while still following is the list remeasuring, scroll anchoring, or
+      // the composer changing the port. The person leaves only with an upward gesture.
+      const movedUp = box.scrollTop < followedTop.current - 1;
+      if (!(movedUp && scrollbarPointer.current)) {
+        seenTop.current = box.scrollTop;
+        return;
+      }
+      stopRestoring();
+      seenTop.current = box.scrollTop;
+    } else {
+      // Moving down to within 48px of the end follows again; staying put only follows at
+      // the end itself (the content shrank).
+      follow.current = gap < 1 || (box.scrollTop > seenTop.current && gap < 48);
+      seenTop.current = box.scrollTop;
+    }
+    rememberPlace(box);
+  };
+  const lockReadingPosition = () => {
+    const box = timeline.current;
+    if (!box || restoreTop.current !== null || restoreAnchor.current !== null) return;
+    // Still where following left the end: clicking a message is not navigation.
+    if (follow.current && box.scrollTop >= followedTop.current - 1) {
+      seenTop.current = box.scrollTop;
+      return;
+    }
+    // Hit testing already scrolled an older action into view. Hold that place before
+    // focus renders move it.
+    if (follow.current) stopRestoring();
+    rememberPlace(box);
   };
 
   return (
@@ -282,20 +368,54 @@ export function ChatView({
         tabIndex={0}
         aria-label={t('conversation')}
         className={`chat-timeline min-h-0 overscroll-contain ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
-        onWheel={stopRestoring}
+        onWheel={(event) => {
+          if (!(event.deltaY < 0)) return;
+          const box = timeline.current;
+          if (!box || box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
+          stopRestoring();
+        }}
         onPointerDown={(event) => {
           // A scrollbar drag is navigation; clicking message actions is not.
-          if (event.target === event.currentTarget) stopRestoring();
+          if (event.target === event.currentTarget) {
+            holdPointer(scrollbarPointer);
+            return;
+          }
+          holdPointer(contentPointer);
           // Hit testing can scroll an older action into view before the scroll event.
           // Read that position before focus renders can move the target under the pointer.
-          else readPosition();
+          lockReadingPosition();
         }}
-        onTouchMove={stopRestoring}
+        onFocus={(event) => {
+          const box = timeline.current;
+          if (!box || !follow.current || contentPointer.current) return;
+          if (event.target === event.currentTarget) return;
+          // The offset within the content holds whether or not the browser has scrolled the
+          // target into view yet. Following would pull a target above the end's view away.
+          const offset =
+            event.target.getBoundingClientRect().top -
+            box.getBoundingClientRect().top +
+            box.scrollTop;
+          if (offset >= box.scrollHeight - box.clientHeight - 1) return;
+          stopRestoring();
+          rememberPlace(box);
+        }}
+        onTouchStart={(event) => {
+          touchY.current = event.touches[0]?.clientY ?? null;
+        }}
+        onTouchMove={(event) => {
+          const box = timeline.current;
+          const y = event.touches[0]?.clientY;
+          const start = touchY.current;
+          // A finger moving down carries the conversation toward the past.
+          if (!box || y === undefined || start === null || y <= start) return;
+          if (box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
+          stopRestoring();
+        }}
         onKeyDown={(event) => {
-          if (
-            ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)
-          )
-            stopRestoring();
+          if (!['ArrowUp', 'PageUp', 'Home'].includes(event.key)) return;
+          const box = timeline.current;
+          if (!box || box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
+          stopRestoring();
         }}
         onScroll={readPosition}
       >
@@ -376,16 +496,7 @@ export function ChatView({
                 size="icon"
                 variant="tertiary"
                 className="pointer-events-auto rounded-full"
-                onClick={() => {
-                  restoreTop.current = null;
-                  restoreAnchor.current = null;
-                  readingAnchor.current = null;
-                  follow.current = true;
-                  if (timeline.current) {
-                    timeline.current.scrollTop = timeline.current.scrollHeight;
-                    followedTop.current = timeline.current.scrollTop;
-                  }
-                }}
+                onClick={followEnd}
               >
                 <ArrowDown />
               </Button>

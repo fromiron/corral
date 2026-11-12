@@ -6,6 +6,8 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ComposerDock, ComposerPlan } from './ChatWidgets.tsx';
+import { OverviewPopover } from './OverviewWidgets.tsx';
+import { type ContextCall, presentContext } from './selectors.ts';
 import type { ChatWidgetModel } from './useChatWidgets.tsx';
 
 const fixture = vi.hoisted(() => ({ model: null as ChatWidgetModel | null }));
@@ -121,7 +123,7 @@ function model(change: Partial<ChatWidgetModel> = {}, plan: Partial<ChatWidgetMo
   } as unknown as ChatWidgetModel;
 }
 
-async function mount(initial: ChatWidgetModel) {
+async function mount(initial: ChatWidgetModel, summary?: ReactNode) {
   fixture.model = initial;
   const container = document.createElement('div');
   document.body.append(container);
@@ -138,7 +140,7 @@ async function mount(initial: ChatWidgetModel) {
           planId={planId}
           lead={<span data-testid="lead">Queue</span>}
           note={<span data-testid="note">Applies to a new request only: references</span>}
-          summary={<button type="button">Overview</button>}
+          summary={summary ?? <button type="button">Overview</button>}
           plan={<ComposerPlan id={planId} />}
         />
         <div data-testid="queue">Queued request</div>
@@ -598,4 +600,92 @@ it('keeps a failure notice while another run or result is on screen', async () =
     } as Partial<ChatWidgetModel>),
   );
   expect(view.container.querySelector('[data-testid="action-required"]')).not.toBeNull();
+});
+
+function call(
+  coverage: ContextCall['coverage'],
+  completeness: ContextCall['completeness'],
+): ContextCall {
+  return {
+    modelCallId: 'call_1',
+    executionId: 'exec_1',
+    recordedAt: '2026-10-19T00:00:00.000Z',
+    coverage,
+    completeness,
+    messageTokens: 50_000,
+    usedTokens: coverage === 'request' ? 710 : null,
+    parts: [],
+    windowTokens: coverage === 'request' ? 1000 : null,
+    providerInput: null,
+    providerCacheRead: null,
+    providerOutput: null,
+  };
+}
+
+async function hover(element: Element) {
+  await act(async () => {
+    element.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mouseenter'));
+    element.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+}
+
+it('shows an about N% pill on the status line when the whole request was measured', async () => {
+  const context = presentContext({
+    calls: [call('request', 'complete')],
+    compactions: [],
+    selectedExecutionId: 'exec_1',
+  });
+  expect(context.percent).toBe(71);
+  const value = model({
+    context,
+    usage: {
+      outputTokens: 9000,
+      requests: 4,
+      unknown: 0,
+      perCall: [100, 200],
+      input: { tokens: 50_000, cached: null, cacheShare: null, cacheUnreported: 0 },
+      inputUnreported: 0,
+    },
+  });
+  const view = await mount(value, <OverviewPopover model={value} />);
+  const pill = view
+    .line()
+    ?.querySelector<HTMLButtonElement>('[data-testid="composer-context-occupancy"]');
+  expect(pill, view.line()?.textContent ?? '').toBeTruthy();
+  expect(pill?.textContent).toContain('about 71%');
+  expect(pill?.getAttribute('aria-label')).toBe('Context about 71%');
+  await hover(pill as Element);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('Context about 71%');
+  await act(async () => pill?.click());
+  expect(document.querySelector('[data-testid="context-inspector"]')).not.toBeNull();
+});
+
+it('shows no occupancy percentage for messages-only context or cumulative usage', async () => {
+  const messagesOnly = presentContext({
+    calls: [call('messages', 'complete')],
+    compactions: [],
+    selectedExecutionId: 'exec_1',
+  });
+  expect(messagesOnly.percent).toBeNull();
+  const unmeasured = presentContext({ calls: [], compactions: [], selectedExecutionId: null });
+  for (const context of [messagesOnly, unmeasured]) {
+    const value = model({
+      context,
+      usage: {
+        outputTokens: 9000,
+        requests: 4,
+        unknown: 0,
+        perCall: [100, 200],
+        input: { tokens: 50_000, cached: null, cacheShare: null, cacheUnreported: 0 },
+        inputUnreported: 0,
+      },
+    });
+    const view = await mount(value, <OverviewPopover model={value} />);
+    const line = view.line();
+    expect(line?.querySelector('[data-testid="composer-context-occupancy"]')).toBeNull();
+    expect(line?.textContent).not.toMatch(/about \d+%|\d+%/);
+  }
 });

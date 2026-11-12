@@ -29,6 +29,7 @@ interface Draft {
   key: string;
   name: string | null;
   aliases: string;
+  role: string;
   prompt: string;
   modelProfile: string;
 }
@@ -121,6 +122,7 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
       key: id,
       name: null,
       aliases: '',
+      role: '',
       prompt: '',
       modelProfile: pick(index),
     })),
@@ -169,10 +171,12 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
       version: 1,
       participants: participants.map((item, index) => {
         const aliases = parseAliases(item.aliases, item.name);
+        const role = item.role.trim();
         return {
           participantId: `p${index + 1}`,
           name: item.name.trim(),
           ...(aliases.length ? { aliases } : {}),
+          ...(role ? { role } : {}),
           prompt: item.prompt.trim(),
           modelProfile: item.modelProfile,
         };
@@ -297,13 +301,24 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
                   </label>
                   <label className="flex flex-col gap-1">
                     <span aria-hidden className={FIELD_LABEL}>
-                      {t('roleLabel')}
+                      {t('roleTagLabel')}
+                    </span>
+                    <Input
+                      aria-label={t('participantRoleTag', { number })}
+                      value={item.role}
+                      maxLength={40}
+                      onChange={(event) => change(item.key, { role: event.target.value })}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span aria-hidden className={FIELD_LABEL}>
+                      {t('roleDescriptionLabel')}
                     </span>
                     {/* Two lines to start; the field grows with what is written. */}
                     <Textarea
                       size="sm"
                       className="[&_textarea]:min-h-[calc(2lh+0.75rem)]"
-                      aria-label={t('participantRole', { number })}
+                      aria-label={t('participantRoleDescription', { number })}
                       value={item.prompt}
                       maxLength={4000}
                       rows={2}
@@ -326,6 +341,7 @@ export function NewMeetingDialog({ projectId, onClose }: { projectId: string; on
                         key: `extra_${globalThis.crypto.randomUUID()}`,
                         name: null,
                         aliases: '',
+                        role: '',
                         prompt: '',
                         modelProfile: pick(current.length),
                       },

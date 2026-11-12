@@ -9,6 +9,7 @@ import {
   estimateRunCost,
   type RunCostEstimate,
   type RunSessionState,
+  type RunSessionStore,
   runResults,
   useWorkPlanSnapshot,
 } from '@corral/react';
@@ -27,6 +28,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../../pages/Workbench.tsx';
 import { useModelPrices } from '../../prices.ts';
 import { useServices } from '../../services.tsx';
+import { type CompactReason, compactTarget } from '../compactTarget.ts';
 import { useQuestionNotice } from '../questionNotice.ts';
 import { readRunView } from '../readRunView.ts';
 import { contextCalls } from './contextCalls.ts';
@@ -85,6 +87,13 @@ export interface ChatWidgetModel {
   /** The waiting questions' notice (first title, count from two), once the first is read. */
   questionNotice: string | null;
   failedExecutionId: string | null;
+  /** Manual compaction for the execution this context is showing. */
+  compaction?: {
+    reason: CompactReason | null;
+    pending: boolean;
+    phase: 'queued' | 'started' | 'completed' | 'failed' | 'cancelled' | 'skipped' | null;
+    request: () => Promise<string | null>;
+  };
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
     open: boolean;
@@ -583,6 +592,13 @@ function useChatWidgetState(
     action,
     questionNotice,
     failedExecutionId: failedToolExecutionId(projection, tools),
+    compaction: compactionControl(
+      session,
+      presentationRunId,
+      projection,
+      context.executionId,
+      compactions,
+    ),
     activity,
     plan: {
       open,
@@ -602,6 +618,44 @@ function useChatWidgetState(
       choose: (key) => setManualKey(key),
     },
     notice,
+  };
+}
+
+function compactionControl(
+  session: RunSessionStore,
+  presentationRunId: string | null,
+  projection: RunProjection | null,
+  executionId: string | null,
+  compactions: {
+    executionId?: string;
+    phase: NonNullable<ChatWidgetModel['compaction']>['phase'];
+  }[],
+): NonNullable<ChatWidgetModel['compaction']> {
+  const decision = compactTarget(projection, executionId);
+  const targetId = decision.ok ? decision.executionId : executionId;
+  const phase =
+    [...compactions].reverse().find((item) => item.executionId === targetId)?.phase ?? null;
+  return {
+    reason: decision.ok ? (presentationRunId ? null : 'compactNoExecution') : decision.reason,
+    pending: decision.ok && decision.pending,
+    phase,
+    request: async () => {
+      const current = session.getState();
+      if (!presentationRunId || current.runId !== presentationRunId || !current.projection)
+        return null;
+      const next = compactTarget(current.projection, executionId);
+      if (!next.ok || next.pending) return null;
+      try {
+        const receipt = await current.sendCommand({
+          type: 'compact_context',
+          expectedControlRevision: next.expectedControlRevision,
+          payload: { executionId: next.executionId, attemptNo: next.attemptNo },
+        });
+        return receipt.error?.message ?? null;
+      } catch (failure) {
+        return failure instanceof Error ? failure.message : String(failure);
+      }
+    },
   };
 }
 

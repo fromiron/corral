@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createLocalIntelligence } from '../src/factory.ts';
@@ -164,6 +164,194 @@ describe('local AI install from the settings panel', () => {
     expect(li.status().state).toBe('error');
     expect(li.status().error).toContain('Cache directory does not exist');
     expect(li.status().error).not.toContain(root);
+    await li.close();
+  });
+
+  it('removes only the meeting release and leaves the judge model', async () => {
+    const root = tempDir();
+    const bundle = testBundle();
+    markInstalled(root, bundle);
+    const judge = join(root, 'd1', 'd1-test');
+    mkdirSync(judge, { recursive: true });
+    writeFileSync(join(judge, 'keep'), 'judge');
+    const older = join(root, 'corral-local-ai-1');
+    mkdirSync(older, { recursive: true });
+    writeFileSync(
+      join(older, 'install.json'),
+      JSON.stringify({ release: 'corral-local-ai-1', target: 'linux-x64' }),
+    );
+    const notes = join(root, 'notes');
+    mkdirSync(notes, { recursive: true });
+    writeFileSync(join(notes, 'keep'), 'notes');
+    const launcher = fakeLauncher();
+    const li = createLocalIntelligence({
+      root,
+      bundle,
+      launch: launcher.launch,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
+      platform: 'linux',
+      arch: 'x64',
+    });
+    const judged = li.engine.embed({
+      texts: ['hi'],
+      task: 'classification',
+      overflow: 'truncate',
+    });
+    await vi.waitFor(() => expect(launcher.helpers).toHaveLength(1));
+    launcher.last().ready();
+    await vi.waitFor(() => expect(launcher.last().sent).toHaveLength(1));
+
+    await expect(li.remove()).rejects.toThrow('a computation is in progress');
+    expect(existsSync(join(bundleDir(root, bundle), 'install.json'))).toBe(true);
+    expect(launcher.last().killed).toBe(false);
+
+    launcher.last().answer();
+    await judged;
+    await li.remove();
+    expect(li.status()).toMatchObject({ state: 'missing', error: null });
+    expect(launcher.last().killed).toBe(true);
+    expect(existsSync(bundleDir(root, bundle))).toBe(false);
+    expect(existsSync(older)).toBe(false);
+    expect(existsSync(join(judge, 'keep'))).toBe(true);
+    expect(existsSync(join(notes, 'keep'))).toBe(true);
+
+    await li.remove();
+    expect(li.status().state).toBe('missing');
+    expect(existsSync(join(judge, 'keep'))).toBe(true);
+    expect(existsSync(join(notes, 'keep'))).toBe(true);
+    await li.close();
+  });
+
+  it('starts no helper for an embedding that arrives while removal stops the helper', async () => {
+    const root = tempDir();
+    const bundle = testBundle();
+    markInstalled(root, bundle);
+    const launcher = fakeLauncher();
+    let exit!: () => void;
+    const li = createLocalIntelligence({
+      root,
+      bundle,
+      launch: (command) => {
+        const helper = launcher.launch(command);
+        const kill = helper.kill.bind(helper);
+        helper.kill = async () => {
+          await new Promise<void>((resolve) => {
+            exit = resolve;
+          });
+          await kill();
+        };
+        return helper;
+      },
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
+      platform: 'linux',
+      arch: 'x64',
+    });
+    const warm = li.engine.warmUp();
+    await vi.waitFor(() => expect(launcher.helpers).toHaveLength(1));
+    launcher.last().ready();
+    await warm;
+
+    const removing = li.remove();
+    await vi.waitFor(() => expect(exit).toBeDefined());
+    const late = li.engine.embed({ texts: ['hi'], task: 'classification', overflow: 'truncate' });
+    exit();
+    await removing;
+
+    await expect(late).rejects.toThrow('not installed');
+    expect(launcher.helpers).toHaveLength(1);
+    expect(existsSync(bundleDir(root, bundle))).toBe(false);
+    expect(li.status().state).toBe('missing');
+    await li.close();
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    'keeps the local path out of a failed removal and still reads as installed',
+    async () => {
+      const root = tempDir();
+      const bundle = testBundle();
+      markInstalled(root, bundle);
+      const li = createLocalIntelligence({
+        root,
+        bundle,
+        launch: fakeLauncher().launch,
+        env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
+        platform: 'linux',
+        arch: 'x64',
+      });
+      chmodSync(bundleDir(root, bundle), 0o500);
+      try {
+        const failure = await li.remove().then(
+          () => null,
+          (error: Error) => error,
+        );
+        expect(failure?.message).toBe('cannot remove the local AI files (EACCES)');
+        expect(li.status().state).toBe('idle');
+      } finally {
+        chmodSync(bundleDir(root, bundle), 0o700);
+      }
+      expect(existsSync(join(bundleDir(root, bundle), 'install.json'))).toBe(true);
+      await li.close();
+    },
+  );
+
+  it('refuses to remove a meeting bundle while it is installing', async () => {
+    const root = tempDir();
+    const judge = join(root, 'd1', 'd1-test');
+    mkdirSync(judge, { recursive: true });
+    writeFileSync(join(judge, 'keep'), 'judge');
+    const held = heldFetch();
+    const li = localAi(root, held.fetchFn);
+    li.install();
+    await vi.waitFor(() => expect(held.asked).toHaveLength(1));
+
+    await expect(li.remove()).rejects.toThrow('an install is in progress');
+
+    expect(li.status().state).toBe('installing');
+    expect(held.aborted).toEqual([]);
+    expect(existsSync(join(judge, 'keep'))).toBe(true);
+    await li.close();
+  });
+
+  it('drops a late install completion after the meeting bundle is removed', async () => {
+    const root = tempDir();
+    const bundle = testBundle();
+    const judge = join(root, 'd1', 'd1-test');
+    mkdirSync(judge, { recursive: true });
+    writeFileSync(join(judge, 'keep'), 'judge');
+    let entered = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let rewrite = false;
+    const li = createLocalIntelligence({
+      root,
+      bundle,
+      fetchFn: fakeFetch(servedBodies(bundle)).fetchFn,
+      launch: fakeLauncher().launch,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
+      platform: 'linux',
+      arch: 'x64',
+      beforeAccept: async () => {
+        entered = true;
+        await gate;
+        if (rewrite) markInstalled(root, bundle);
+      },
+    });
+    li.install();
+    const pending = li.installing();
+    expect(pending).not.toBeNull();
+    await vi.waitFor(() => expect(entered).toBe(true));
+    rewrite = true;
+
+    await li.remove();
+    expect(li.status().state).toBe('missing');
+    release();
+    await pending;
+
+    expect(li.status().state).toBe('missing');
+    expect(existsSync(bundleDir(root, bundle))).toBe(false);
+    expect(existsSync(join(judge, 'keep'))).toBe(true);
     await li.close();
   });
 

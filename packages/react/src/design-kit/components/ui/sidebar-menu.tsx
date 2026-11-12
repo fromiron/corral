@@ -1244,10 +1244,81 @@ SidebarMenuSkeleton.displayName = 'SidebarMenuSkeleton';
 export interface SidebarMenuSubProps extends HTMLAttributes<HTMLUListElement> {
   /** Animated collapse. Omitted, the sub-menu is always visible. */
   open?: boolean;
+  /**
+   * End the left guide at the last mounted row and turn it into that row.
+   * The line is `[data-sidebar-guide-line]` inside the row, or the row itself
+   * when it has none. The straight border stays while that row is unmounted.
+   * The stroke is the border colour and stops at the row's edge. The sidebar
+   * guide is physical-left; this app does not mirror it for RTL.
+   */
+  elbow?: boolean;
+}
+
+interface GuideTurn {
+  /** Distance from the submenu's top padding edge to the line's middle. */
+  end: number;
+  /** Horizontal stroke length, including the 1px stem it joins. */
+  reach: number;
+}
+
+function submenuRows(ul: HTMLElement) {
+  return [...ul.children].filter(
+    (node): node is HTMLLIElement =>
+      node instanceof HTMLLIElement && node.dataset.sidebar !== 'menu-guide',
+  );
+}
+
+/** Distance from `ancestor`'s padding edge to `target`'s border edge. */
+function offsetTo(ancestor: HTMLElement, target: HTMLElement, axis: 'offsetTop' | 'offsetLeft') {
+  let value = 0;
+  let node: HTMLElement | null = target;
+  const seen = new Set<HTMLElement>();
+  while (node && node !== ancestor) {
+    if (seen.has(node)) return null;
+    seen.add(node);
+    value += node[axis];
+    // Annotated: offsetParent's DOM type otherwise cycles through this binding.
+    const parent: Element | null = node.offsetParent;
+    if (!(parent instanceof HTMLElement)) return null;
+    node = parent;
+  }
+  return node === ancestor ? value : null;
+}
+
+/** Where the guide turns, from the last row's own line. Null when that row is not mounted. */
+function measureGuideTurn(ul: HTMLElement): GuideTurn | null {
+  const rows = submenuRows(ul);
+  const last = rows.at(-1);
+  if (!last) return null;
+  const ulHeight = ul.offsetHeight;
+  if (ulHeight <= 0) return null;
+  // A virtual window can paint rows above the true end. The border keeps
+  // running until the row that actually finishes the submenu is mounted.
+  if (last.offsetTop + last.offsetHeight < ulHeight - 1) return null;
+  const line = last.querySelector<HTMLElement>('[data-sidebar-guide-line]') ?? last;
+  const top = offsetTo(ul, line, 'offsetTop');
+  const inset = offsetTo(ul, last, 'offsetLeft');
+  if (top === null || inset === null || line.offsetHeight <= 0) return null;
+  return { end: top + line.offsetHeight / 2, reach: inset + 1 };
+}
+
+function sameTurn(a: GuideTurn | null, b: GuideTurn | null) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.end === b.end && a.reach === b.reach;
+}
+
+function markGuideEnd(ul: HTMLElement, on: boolean) {
+  const rows = submenuRows(ul);
+  const last = rows.at(-1);
+  for (const row of rows) {
+    if (on && row === last) row.setAttribute('data-sidebar-guide-end', '');
+    else row.removeAttribute('data-sidebar-guide-end');
+  }
 }
 
 const SidebarMenuSub = forwardRef<HTMLUListElement, SidebarMenuSubProps>(
-  ({ className, open = true, children, ...props }, ref) => {
+  ({ className, open = true, elbow = false, children, ...props }, ref) => {
     const containerRef = useRef<HTMLUListElement>(null);
     // Not its own scope: rows register with the parent SidebarMenu, which
     // must re-read visibility when this toggles.
@@ -1256,6 +1327,31 @@ const SidebarMenuSub = forwardRef<HTMLUListElement, SidebarMenuSubProps>(
     useIsoLayoutEffect(() => {
       refreshVisibility?.();
     }, [open, refreshVisibility]);
+    const [turn, setTurn] = useState<GuideTurn | null>(null);
+    useIsoLayoutEffect(() => {
+      const ul = containerRef.current;
+      if (!ul) return;
+      if (!elbow) {
+        setTurn((current) => (current === null ? current : null));
+        markGuideEnd(ul, false);
+        return;
+      }
+      const read = () => {
+        const next = measureGuideTurn(ul);
+        setTurn((current) => (sameTurn(current, next) ? current : next));
+        markGuideEnd(ul, next !== null);
+      };
+      read();
+      if (typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(read);
+      observer.observe(ul);
+      for (const row of submenuRows(ul)) {
+        observer.observe(row);
+        const line = row.querySelector('[data-sidebar-guide-line]');
+        if (line instanceof HTMLElement) observer.observe(line);
+      }
+      return () => observer.disconnect();
+    }, [elbow, children, open]);
 
     // Animate to the measured offsetHeight, not "auto", which framer measures
     // wrong under a scaled ancestor.
@@ -1310,11 +1406,38 @@ const SidebarMenuSub = forwardRef<HTMLUListElement, SidebarMenuSubProps>(
           className={cn(
             // 15px margin + 1px border + pl-2 + the row's pl-2 = 32px, the
             // parent label's x. A margin (not translate) so rects include it.
-            'relative ml-[15px] flex min-w-0 flex-col border-l border-border pl-2 select-none',
+            // The transparent border keeps that 1px while the stem draws the
+            // visible guide, so the line can stop before the row's bottom.
+            'relative ml-[15px] flex min-w-0 flex-col border-l pl-2 select-none',
+            elbow && turn ? 'border-transparent' : 'border-border',
             className,
           )}
           {...props}
         >
+          {elbow && turn ? (
+            <li
+              aria-hidden="true"
+              data-sidebar="menu-guide"
+              className="pointer-events-none absolute top-0 left-0 h-0 w-0"
+            >
+              <span
+                data-sidebar="menu-guide-stem"
+                className="pointer-events-none absolute top-0 bg-border"
+                style={{ left: -1, width: 1, height: turn.end }}
+              />
+              <span
+                data-sidebar="menu-guide-elbow"
+                className="pointer-events-none absolute bg-border"
+                style={{
+                  left: -1,
+                  top: turn.end,
+                  width: turn.reach,
+                  height: 1,
+                  transform: 'translateY(-50%)',
+                }}
+              />
+            </li>
+          ) : null}
           {children}
         </ul>
       </motion.div>

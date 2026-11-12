@@ -68,9 +68,15 @@ export function MeetingParticipants({
     ...view.config.participants.map((participant) => ({
       id: participant.participantId,
       name: participant.name,
+      role: participant.role,
       model: label(participant.modelProfile),
     })),
-    { id: SECRETARY_ID, name: t('secretary'), model: label(view.config.secretary.modelProfile) },
+    {
+      id: SECRETARY_ID,
+      name: t('secretary'),
+      role: undefined,
+      model: label(view.config.secretary.modelProfile),
+    },
   ];
   return (
     <ul aria-label={t('participants')} className="flex flex-wrap items-center gap-1 pb-2">
@@ -88,6 +94,9 @@ export function MeetingParticipants({
                 <span className="truncate" style={{ fontVariationSettings: fontWeights.semibold }}>
                   {person.name}
                 </span>
+                {person.role ? (
+                  <span className="truncate text-caption text-muted-foreground">{person.role}</span>
+                ) : null}
                 {state === 'idle' ? (
                   // A participant still named after its model shows that name once.
                   person.model === person.name ? null : (
