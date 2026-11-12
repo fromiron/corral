@@ -6016,10 +6016,21 @@ export class WorkspaceService implements FileTools {
       });
     if (input.name === 'list_files') {
       const files = listing.filter((file) => !path || file.path.startsWith(`${path}/`));
-      return {
-        files: files.slice(0, 500).map(({ path, bytes }) => ({ path, bytes })),
-        truncated: files.length > 500,
-      };
+      const needle = typeof input.args.query === 'string' ? input.args.query.toLowerCase() : '';
+      const found: { path: string; bytes: number }[] = [];
+      for (const file of files.slice(0, 500)) {
+        if (needle) {
+          if (cancellation.aborted)
+            throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+          if (file.bytes > MAX_TEXT) continue;
+          const blob = await git(root, ['cat-file', 'blob', file.oid], {
+            maxBuffer: MAX_TEXT + 1,
+          });
+          if (!decodeText(blob.stdout)?.toLowerCase().includes(needle)) continue;
+        }
+        found.push({ path: file.path, bytes: file.bytes });
+      }
+      return { files: found, truncated: files.length > 500 };
     }
     const file = listing.find((file) => file.path === path);
     if (!file) throw new ToolRefusal('TARGET_NOT_FOUND', 'file not present in the run snapshot');

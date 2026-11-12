@@ -207,6 +207,17 @@ describe('direct folder file access', () => {
       const copyPaths = filePaths(copyList);
       expect(copyPaths).toContain('from-copy.txt');
       expect(copyPaths).not.toContain('only-original.txt');
+      const copySearch = await service.execute(
+        {
+          name: 'list_files',
+          args: { query: 'COPY' },
+          runId: 'run_copy',
+          executionId: 'exec_copy',
+          toolCallId: 'search_copy',
+        },
+        live(),
+      );
+      expect(filePaths(copySearch)).toEqual(['from-copy.txt']);
       expect(service.sessionFiles('session_copy')).toEqual({ mode: 'copy' });
       service.acquireRun('run_1', 'session_1', true);
       await service.prepareRun('run_1');
