@@ -146,6 +146,7 @@ const sessions: WorkSession[] = Array.from({ length: 500 }, (_, index) => ({
   createdAt,
   updatedAt: new Date(Date.parse(createdAt) - index * 1000).toISOString(),
   archivedAt: null,
+  autoStart: true,
   entries: [],
 }));
 type Model = ComponentProps<typeof Sidebar>['model'];

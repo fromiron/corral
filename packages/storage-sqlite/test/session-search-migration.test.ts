@@ -20,7 +20,7 @@ it('rebuilds only the derived search cache while retaining sessions and original
     migrate(db);
     // Later steps add columns with their defaults; no existing value changes.
     expect(db.prepare('SELECT * FROM work_sessions').all()).toEqual(
-      before.map((row) => ({ ...(row as object), criteria_json: '[]' })),
+      before.map((row) => ({ ...(row as object), criteria_json: '[]', auto_start: 1 })),
     );
     expect(db.prepare('SELECT * FROM session_search_v1').all()).toEqual([]);
     expect(db.prepare('SELECT * FROM session_search_state_v1').all()).toEqual([]);

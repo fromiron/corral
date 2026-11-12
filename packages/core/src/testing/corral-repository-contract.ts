@@ -839,6 +839,138 @@ export function describeCorralRepositoryContract(
         expect(updated.ok && updated.session.entries[0]?.auto).toEqual(auto);
         expect((await repo.getSession(id))?.entries[0]?.auto).toEqual(auto);
       });
+
+      it('saves autoStart, true by default, and a queued start snapshot and carried source', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Server queue' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect(created.session.autoStart).toBe(true);
+        expect((await repo.getSession(id))?.autoStart).toBe(true);
+        const off = await repo.updateSession(id, { autoStart: false, expectedRevision: 1 });
+        expect(off).toMatchObject({ ok: true, session: { autoStart: false, revision: 2 } });
+        expect((await repo.getSession(id))?.autoStart).toBe(false);
+        expect(
+          await repo.updateSession(id, { autoStart: true, expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        const start = {
+          choice: { modelProfile: 'model-a' },
+          mode: 'mock' as const,
+          team: 'none' as const,
+          permissionMode: 'ask' as const,
+        };
+        const queued = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'Start me later',
+          state: 'queued',
+          permissionMode: 'ask',
+          start,
+          carriedFrom: 'directive_original',
+        });
+        if (!queued.ok) throw new Error(queued.message);
+        expect((await repo.getSession(id))?.entries[0]).toMatchObject({
+          start,
+          carriedFrom: 'directive_original',
+        });
+        const plain = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'No snapshot',
+          state: 'queued',
+        });
+        if (!plain.ok) throw new Error(plain.message);
+        const stored = (await repo.getSession(id))?.entries[1];
+        expect(stored && 'start' in stored).toBe(false);
+        expect(stored && 'carriedFrom' in stored).toBe(false);
+        for (const refused of [
+          { intent: 'queue' as const, start: { ...start, mode: 'later' } },
+          { intent: 'queue' as const, start: { ...start, extra: true } },
+          // Only new and queued requests carry a start snapshot.
+          { intent: 'steer' as const, start, permissionMode: 'ask' as const },
+          { intent: 'explain' as const, start, permissionMode: 'ask' as const },
+          { intent: 'next' as const, start, permissionMode: 'auto' as const },
+          { intent: 'next' as const, start },
+          { intent: 'next' as const, carriedFrom: 'directive_original' },
+          // The snapshot's permission mode is the request's: both absent, or the same.
+          { intent: 'queue' as const, start },
+          { intent: 'queue' as const, start, permissionMode: 'auto' as const },
+          {
+            intent: 'queue' as const,
+            start: { ...start, permissionMode: undefined },
+            permissionMode: 'ask' as const,
+          },
+        ])
+          expect(
+            await repo.addSessionEntry(id, {
+              text: 'Refused',
+              state: 'queued',
+              ...(refused as object),
+            } as Parameters<CorralRepository['addSessionEntry']>[1]),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        // Without a permission mode, only the intent rule can refuse these.
+        const bare = { choice: { modelProfile: 'model-a' }, mode: 'mock' as const };
+        for (const intent of ['steer', 'explain'] as const)
+          expect(
+            await repo.addSessionEntry(id, {
+              intent,
+              text: 'Refused',
+              state: 'queued',
+              start: bare,
+            }),
+          ).toEqual({
+            ok: false,
+            error: 'invalid',
+            message: 'a start request requires a valid new or queued request',
+          });
+        expect((await repo.getSession(id))?.entries).toHaveLength(2);
+        // A new request keeps the snapshot it started with, so a carried request can copy it.
+        const sent = await repo.addSessionEntry(id, {
+          intent: 'next',
+          text: 'Started by the screen',
+          state: 'started',
+          runId: 'run_sent',
+          permissionMode: 'ask',
+          start,
+        });
+        if (!sent.ok) throw new Error(sent.message);
+        expect((await repo.getSession(id))?.entries[2]).toMatchObject({
+          intent: 'next',
+          state: 'started',
+          start,
+        });
+      });
+
+      it('a resent queued command keeps its start and carried source, and refuses others', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Resend' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const start = { choice: { modelProfile: 'model-a' }, mode: 'mock' as const };
+        const entry = {
+          commandId: 'queue_resent',
+          intent: 'queue' as const,
+          text: 'Once',
+          state: 'queued' as const,
+          start,
+          carriedFrom: 'directive_one',
+        };
+        const first = await repo.addSessionEntry(id, entry);
+        if (!first.ok) throw new Error(first.message);
+        const again = await repo.addSessionEntry(id, clone(entry));
+        expect(again).toMatchObject({ ok: true });
+        expect(again.ok && again.session.entries).toEqual(first.session.entries);
+        for (const changed of [
+          { ...entry, start: { ...start, choice: { modelProfile: 'model-b' } } },
+          { ...entry, start: { ...start, team: 'auto' as const } },
+          { ...entry, carriedFrom: 'directive_two' },
+          (({ start: _start, ...rest }) => rest)(entry),
+          (({ carriedFrom: _from, ...rest }) => rest)(entry),
+        ])
+          expect(await repo.addSessionEntry(id, changed)).toMatchObject({
+            ok: false,
+            error: 'invalid',
+          });
+        expect((await repo.getSession(id))?.entries).toHaveLength(1);
+      });
     });
   });
 }

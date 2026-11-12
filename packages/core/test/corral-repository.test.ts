@@ -103,3 +103,17 @@ it('preserves structured refusal diagnostics when a session is reopened', async 
   expect(appended.ok).toBe(true);
   expect((await repo.getSession(made.session.sessionId))?.entries[0]?.refusal).toEqual(refusal);
 });
+
+it('reads a session saved before autoStart as starting its queue', async () => {
+  const { store, repo } = setup();
+  const made = await repo.createSession({ projectId: 'default', title: 'older' });
+  if (!made.ok) throw new Error(made.message);
+  for (const [key, value] of store.data) {
+    if (!value.includes(made.session.sessionId)) continue;
+    const sessions = JSON.parse(value) as Record<string, unknown>[];
+    store.setItem(key, JSON.stringify(sessions.map(({ autoStart: _drop, ...rest }) => rest)));
+  }
+  expect(store.data.size).toBeGreaterThan(0);
+  expect([...store.data.values()].some((value) => value.includes('autoStart'))).toBe(false);
+  expect((await repo.getSession(made.session.sessionId))?.autoStart).toBe(true);
+});
