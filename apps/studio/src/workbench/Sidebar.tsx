@@ -242,9 +242,8 @@ const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
 /**
  * Row heights of the project list, per density. A session row holds its title and one line of
  * state and time, each at its type role's full line height, so neither line is clipped. The
- * virtual list estimates rows by these and draws session rows at exactly these heights. The
- * project row takes the button's measured height once that exists, so the guide reaches the
- * last row of the project.
+ * virtual list estimates rows by these and draws session rows at exactly these heights. Every
+ * project row uses one measured button height when that reading is non-zero.
  */
 export function sidebarRowHeights(compact: boolean) {
   return compact
@@ -307,7 +306,7 @@ export const Sidebar = memo(function Sidebar({
   const size = useSize();
   const compact = size.variant === 'compact';
   const heights = useMemo(() => sidebarRowHeights(compact), [compact]);
-  const [projectHeights, setProjectHeights] = useState<Record<string, number>>({});
+  const [projectHeight, setProjectHeight] = useState<number | undefined>(undefined);
   const waiting = useMemo(
     () => needsYouCount(model.sessions, model.runs, model.terminalAttention),
     [model.sessions, model.runs, model.terminalAttention],
@@ -339,7 +338,7 @@ export const Sidebar = memo(function Sidebar({
     getScrollElement: () => scroll.current,
     estimateSize: (index) => {
       const row = rows[index];
-      if (row?.kind === 'project') return projectHeights[row.project.projectId] ?? heights.project;
+      if (row?.kind === 'project') return projectHeight ?? heights.project;
       return heights[row?.kind ?? 'session'];
     },
     scrollMargin,
@@ -378,50 +377,36 @@ export const Sidebar = memo(function Sidebar({
     laidOut.current = heights;
     virtual.measure();
   }, [heights, virtual]);
-  // The project row is an in-flow button. Its used height can pass the estimate
-  // and slide this group's border under the next project's button. A zero
-  // reading is ignored: jsdom has no layout and must keep the estimate.
-  // `heights` is not read; a density change has already restyled the button.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read after the density class commits
+  const virtualItems = virtual.getVirtualItems();
+  const renderedRows = virtualItems.map((item) => item.index).join(',');
+  // A zero height is ignored.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read after the density class commits and when rendered rows change
   useLayoutEffect(() => {
     const menu = list.current;
     if (!menu) return;
-    const buttons = () =>
-      menu.querySelectorAll<HTMLElement>(
+    const projectButton = () =>
+      menu.querySelector<HTMLElement>(
         ':scope > [data-sidebar="menu-item"] > [data-sidebar="menu-button"]',
       );
     const read = () => {
-      const found = new Map<string, number>();
-      for (const button of buttons()) {
-        const index = Number(button.parentElement?.dataset.sidebarIndex);
-        const row = rows[index];
-        if (row?.kind !== 'project') continue;
-        const height = button.offsetHeight;
-        if (height > 0) found.set(row.project.projectId, height);
-      }
-      setProjectHeights((prev) => {
-        if ([...found].every(([id, height]) => prev[id] === height)) return prev;
-        return { ...prev, ...Object.fromEntries(found) };
-      });
+      const height = projectButton()?.offsetHeight ?? 0;
+      if (height > 0) setProjectHeight((current) => (current === height ? current : height));
     };
     read();
+    const button = projectButton();
+    if (!button) return;
     const observer = new ResizeObserver(read);
-    for (const button of buttons()) observer.observe(button);
+    observer.observe(button);
     return () => observer.disconnect();
-  }, [rows, heights]);
+  }, [renderedRows, heights]);
   // estimateSize is not a measurement dependency, so a new project height has
   // to drop the cached estimate explicitly.
-  const measuredProjects = useRef(projectHeights);
+  const measuredProject = useRef(projectHeight);
   useLayoutEffect(() => {
-    if (measuredProjects.current === projectHeights) return;
-    measuredProjects.current = projectHeights;
+    if (measuredProject.current === projectHeight) return;
+    measuredProject.current = projectHeight;
     virtual.measure();
-  }, [projectHeights, virtual]);
-  const virtualItems = virtual.getVirtualItems();
-  // One range across projects, with ancestry kept so a project header stays
-  // with its visible children when that header is above the viewport. Offsets
-  // are the virtualizer's measurements, so the submenu border ends on the
-  // group's last row while those measurements change.
+  }, [projectHeight, virtual]);
   const measurements = virtual.measurementsCache;
   const tree = useMemo(() => {
     const groups: {
@@ -463,10 +448,9 @@ export const Sidebar = memo(function Sidebar({
     (row) => row.kind === 'session' && path.startsWith(`/sessions/${row.session.sessionId}`),
   );
   const hasActive = activeIndex >= 0;
-  const mountedRows = virtual.getVirtualItems();
-  const sessionTabIndex = mountedRows.some((row) => row.index === activeIndex)
+  const sessionTabIndex = virtualItems.some((row) => row.index === activeIndex)
     ? activeIndex
-    : mountedRows.find((row) => rows[row.index]?.kind === 'session')?.index;
+    : virtualItems.find((row) => rows[row.index]?.kind === 'session')?.index;
   // Navigation brings the selected session into view; background data changes do not.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only intentional navigation scrolls the sidebar
   useLayoutEffect(() => {
