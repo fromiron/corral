@@ -5285,7 +5285,6 @@
   },
   "ModelUsage": {
     "heading": "Model request history",
-    "load": "Load history",
     "refresh": "Refresh",
     "loading": "Loading…",
     "failed": "Could not load request history.",
@@ -5301,6 +5300,21 @@
     "estimatedCost": "Estimated {value}",
     "reportedCost": "Reported {value}",
     "more": "Load older requests",
+    "chart": {
+      "caption": "{requests, number} loaded requests, {models, number} models",
+      "excluded": "{count, plural, one {# request has an unknown token count} other {# requests have an unknown token count}}",
+      "partial": "{value} · unknown {count, number}",
+      "time": "Requests over time",
+      "subscription": "Subscription {count, number}",
+      "unknownCost": "Unknown price {count, number}",
+      "reportedZero": "Reported {value} · {count, number}",
+      "estimatedZero": "Estimated {value} · {count, number}",
+      "models": "Token totals by model",
+      "input": "Input tokens, solid",
+      "output": "Output tokens, hatched",
+      "cache": "Cache read, dotted",
+      "unknownMark": "Unknown, open diamond"
+    },
     "purpose": {
       "turn": "Conversation",
       "retry": "Retry",
