@@ -139,7 +139,7 @@ export function ModelUsageChart({ items }: { items: ModelAttempt[] }) {
         {t('chart.caption', { requests: items.length, models: models.length })}
       </figcaption>
       {excluded > 0 ? <p>{t('chart.excluded', { count: excluded })}</p> : null}
-      <ul className="space-y-3" aria-label={t('chart.legend')}>
+      <ul className="space-y-3" aria-label={t('chart.models')}>
         {models.map((model, index) => (
           <li
             key={model.name}

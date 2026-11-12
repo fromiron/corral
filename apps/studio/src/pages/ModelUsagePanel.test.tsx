@@ -199,6 +199,9 @@ it('charts loaded pages only, and does not draw an unknown token count as zero',
     const chart = () => view.container.querySelector('[data-usage-chart]');
     expect(chart()?.textContent).toContain('3 loaded requests, 2 models');
     expect(chart()?.textContent).toContain('3 requests have an unknown token count');
+    expect(
+      chart()?.querySelectorAll('ul[aria-label="Token totals by model"] > [data-model-summary]'),
+    ).toHaveLength(2);
     const alpha = chart()?.querySelector('[data-model-summary="alpha · one"]');
     expect(alpha?.textContent).toContain('10 · unknown 1');
     expect(alpha?.textContent).toContain('Input tokens, solid');

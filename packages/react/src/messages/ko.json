@@ -5281,7 +5281,7 @@
       "unknownCost": "가격 미확인 {count}건",
       "reportedZero": "보고 {value} · {count}건",
       "estimatedZero": "추정 {value} · {count}건",
-      "legend": "막대 무늬",
+      "models": "모델별 토큰 합계",
       "input": "입력 토큰, 채움",
       "output": "출력 토큰, 빗금",
       "cache": "캐시 읽기, 점",

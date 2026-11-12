@@ -5281,7 +5281,7 @@
       "unknownCost": "Unknown price {count, number}",
       "reportedZero": "Reported {value} · {count, number}",
       "estimatedZero": "Estimated {value} · {count, number}",
-      "legend": "Bar patterns",
+      "models": "Token totals by model",
       "input": "Input tokens, solid",
       "output": "Output tokens, hatched",
       "cache": "Cache read, dotted",
