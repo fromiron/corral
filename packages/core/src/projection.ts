@@ -60,7 +60,7 @@ export interface DirectiveView {
   directiveId: string;
   targetExecutionId: string;
   text: string;
-  /** Text attachments carried before the text when a request delivers it. */
+  /** Text attachments carried after the text when a request delivers it. */
   attachments?: TextAttachment[];
   status: DirectiveStatus;
   commandId: string | null;

@@ -608,7 +608,7 @@ const CHECK_RUNNER = new BuiltInCheckRunner();
  */
 const WORKING: ReadonlySet<RunProjection['status']> = new Set(['running', 'awaiting_user']);
 
-/** What a request delivers for a directive: its attachments, then its text. */
+/** What a request delivers for a directive: its text, then its attachments. */
 const deliveredText = (directive: DirectiveView) =>
   directiveWithAttachments(directive.text, directive.attachments);
 
