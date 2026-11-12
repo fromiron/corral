@@ -202,13 +202,13 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
           </section>
           <div className="settings-row flex-col items-start gap-1">
             <Switch
-              label={t('trust')}
+              label={binding.isGit ? t('trust') : t('trustFolderSwitch')}
               checked={binding.trusted}
               onToggle={() =>
                 void act(() => workspaces.configure(projectId, { trusted: !binding.trusted }))
               }
             />
-            <p className="text-caption">{t('trustHint')}</p>
+            <p className="text-caption">{binding.isGit ? t('trustHint') : t('trustFolderHint')}</p>
           </div>
           {binding.trusted ? (
             <section className="settings-surface flex flex-col gap-3">

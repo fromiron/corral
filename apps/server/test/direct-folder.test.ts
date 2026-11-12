@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from '@corral/storage-sqlite';
@@ -50,6 +58,14 @@ function database() {
      VALUES ('run_1', 'c', 'h', '{"permissionMode":"ask"}', 'running', 0, '{}', 'x', 'default', 'session_1')`,
   ).run();
   db.prepare(
+    "INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision, created_at, updated_at, archived_at, entries_json) VALUES ('session_2', 'default', NULL, 't', '', 0, 1, 'x', 'x', NULL, '[]')",
+  ).run();
+  db.prepare(
+    `INSERT INTO runs (id, corral_id, definition_hash, snapshot_json, status, last_seq,
+       projection_json, started_at, project_id, session_id)
+     VALUES ('run_2', 'c', 'h', '{"permissionMode":"auto"}', 'running', 0, '{}', 'x', 'default', 'session_2')`,
+  ).run();
+  db.prepare(
     `INSERT INTO runs (id, corral_id, definition_hash, snapshot_json, status, last_seq,
        projection_json, started_at, project_id, session_id)
      VALUES ('run_copy', 'c', 'h', '{}', 'running', 0, '{}', 'x', 'default', 'session_copy')`,
@@ -80,6 +96,48 @@ async function directFolder() {
       live(),
     );
   return { root, outside, db, service, call };
+}
+
+function command(runId: string, effectId: string, line: string) {
+  return {
+    runId,
+    executionId: `exec_${effectId}`,
+    attemptNo: 1,
+    effectId,
+    request: { command: line },
+  };
+}
+
+function cancellable() {
+  let aborted = false;
+  const listeners = new Set<() => void>();
+  return {
+    get aborted() {
+      return aborted;
+    },
+    onCancel(fn: () => void) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    cancel() {
+      aborted = true;
+      for (const fn of listeners) fn();
+    },
+  };
+}
+
+/** The durable writer reservations held now (direct mode: only a running command's). */
+function folderWriters(db: ReturnType<typeof database>) {
+  return db
+    .prepare(
+      "SELECT owner_kind, owner_id, state FROM workspace_access WHERE writer=1 AND state IN ('active','uncertain')",
+    )
+    .all() as { owner_kind: string; owner_id: string; state: string }[];
+}
+
+async function until(check: () => boolean) {
+  for (let i = 0; i < 400 && !check(); i += 1) await new Promise((r) => setTimeout(r, 10));
+  if (!check()) throw new Error('condition not reached');
 }
 
 describe('direct folder file access', () => {
@@ -141,10 +199,30 @@ describe('direct folder file access', () => {
         code: 'CAPABILITY_DENIED',
       });
       expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('needle\n');
+      // In ask mode, only the approved launch fingerprint lets the command run.
+      const asked = command('run_1', 'effect_asked', 'touch asked');
+      const askedPlan = await s.service.planCommand(asked, live());
+      await expect(
+        s.service.runCommand(asked, askedPlan, 'not-this-fingerprint', live()),
+      ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
+      expect(existsSync(join(s.root, 'asked'))).toBe(false);
+      expect(
+        await s.service.runCommand(asked, askedPlan, askedPlan.fingerprint, live()),
+      ).toMatchObject({ state: 'completed', exitCode: 0 });
+      expect(existsSync(join(s.root, 'asked'))).toBe(true);
       s.db
         .prepare('UPDATE runs SET snapshot_json = ? WHERE id = ?')
         .run('{"permissionMode":"auto"}', 'run_1');
-      const report = await s.service.runCommand(input, plan, null, live());
+      // The approved command changed the folder, so the earlier plan no longer matches it.
+      await expect(s.service.runCommand(input, plan, null, live())).rejects.toMatchObject({
+        code: 'REVISION_CONFLICT',
+      });
+      const report = await s.service.runCommand(
+        input,
+        await s.service.planCommand(input, live()),
+        null,
+        live(),
+      );
       expect(report).toMatchObject({ state: 'completed', exitCode: 0 });
       expect(report.output.text).toBe('ok');
       expect(report.output.text).not.toContain(s.root);
@@ -248,6 +326,174 @@ describe('direct folder file access', () => {
       );
       expect(filePaths(directList)).toContain('only-original.txt');
       expect(filePaths(directList)).not.toContain('from-copy.txt');
+    } finally {
+      await service.dispose();
+      db.close();
+    }
+  });
+
+  it('two sessions in one trusted project both start, and neither holds the folder before a command', async () => {
+    const s = await directFolder();
+    try {
+      s.service.acquireRun('run_1', 'session_1', true);
+      s.service.acquireRun('run_2', 'session_2', true);
+      await s.service.prepareRun('run_1');
+      await s.service.prepareRun('run_2');
+      expect(folderWriters(s.db)).toEqual([]);
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+
+  it('runs one command at a time in the folder, refuses another while one runs, and releases the folder when it ends', async () => {
+    const s = await directFolder();
+    try {
+      s.db
+        .prepare('UPDATE runs SET snapshot_json = ? WHERE id = ?')
+        .run('{"permissionMode":"auto"}', 'run_1');
+      s.service.acquireRun('run_1', 'session_1', true);
+      s.service.acquireRun('run_2', 'session_2', true);
+      const first = command(
+        'run_1',
+        'effect_wait',
+        'while [ ! -f go ]; do sleep 0.02; done; printf first',
+      );
+      const running = s.service.runCommand(
+        first,
+        await s.service.planCommand(first, live()),
+        null,
+        live(),
+      );
+      await until(() => folderWriters(s.db).length === 1);
+      // Another session's command, and the same run's next command, are refused, not queued.
+      for (const next of [
+        command('run_2', 'effect_other', 'printf other'),
+        command('run_1', 'effect_again', 'printf again'),
+      ])
+        await expect(s.service.planCommand(next, live())).rejects.toMatchObject({
+          code: 'RUN_ALREADY_ACTIVE',
+        });
+      writeFileSync(join(s.root, 'go'), '');
+      expect(await running).toMatchObject({ state: 'completed', exitCode: 0 });
+      expect(folderWriters(s.db)).toEqual([]);
+      const next = command('run_2', 'effect_next', 'printf next');
+      expect(
+        await s.service.runCommand(next, await s.service.planCommand(next, live()), null, live()),
+      ).toMatchObject({ state: 'completed', exitCode: 0 });
+      expect(folderWriters(s.db)).toEqual([]);
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+
+  it('a cancelled command releases the folder once its end is confirmed', async () => {
+    const s = await directFolder();
+    try {
+      s.db
+        .prepare('UPDATE runs SET snapshot_json = ? WHERE id = ?')
+        .run('{"permissionMode":"auto"}', 'run_1');
+      s.service.acquireRun('run_1', 'session_1', true);
+      s.service.acquireRun('run_2', 'session_2', true);
+      const slow = command('run_1', 'effect_slow', 'sleep 30');
+      const cancellation = cancellable();
+      const running = s.service.runCommand(
+        slow,
+        await s.service.planCommand(slow, live()),
+        null,
+        cancellation,
+      );
+      await until(() => folderWriters(s.db).length === 1);
+      cancellation.cancel();
+      expect(await running).toMatchObject({ cleanupConfirmed: true });
+      expect(folderWriters(s.db)).toEqual([]);
+      const next = command('run_2', 'effect_after_cancel', 'printf after');
+      expect(
+        await s.service.runCommand(next, await s.service.planCommand(next, live()), null, live()),
+      ).toMatchObject({ state: 'completed' });
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+
+  it('a command whose end is unconfirmed keeps the folder protected', async () => {
+    const s = await directFolder();
+    try {
+      s.db
+        .prepare('UPDATE runs SET snapshot_json = ? WHERE id = ?')
+        .run('{"permissionMode":"auto"}', 'run_1');
+      s.service.acquireRun('run_1', 'session_1', true);
+      s.service.acquireRun('run_2', 'session_2', true);
+      // The native helper reports that it could not confirm the process group ended.
+      const runtime = (
+        s.service as unknown as {
+          commandRuntime: { startService: (input: { operationId: string }) => unknown };
+        }
+      ).commandRuntime;
+      runtime.startService = (input) => ({
+        operationId: input.operationId,
+        started: Promise.resolve(true),
+        completion: Promise.resolve({
+          operationId: input.operationId,
+          state: 'uncertain',
+          exitCode: null,
+          signal: null,
+          timedOut: false,
+          cleanupConfirmed: false,
+          output: { text: '', bytes: 0, hash: '0'.repeat(64), truncated: false },
+        }),
+      });
+      const lost = command('run_1', 'effect_lost', 'printf lost');
+      expect(
+        await s.service.runCommand(lost, await s.service.planCommand(lost, live()), null, live()),
+      ).toMatchObject({ cleanupConfirmed: false });
+      expect(folderWriters(s.db)).toEqual([expect.objectContaining({ state: 'uncertain' })]);
+      await expect(
+        s.service.planCommand(command('run_2', 'effect_blocked', 'printf no'), live()),
+      ).rejects.toMatchObject({ code: 'RUN_ALREADY_ACTIVE' });
+      // Worker recovery alone does not return a folder whose command is still unconfirmed.
+      s.service.confirmWorkerRecovery();
+      expect(folderWriters(s.db)).toEqual([expect.objectContaining({ state: 'uncertain' })]);
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
+
+  it('a direct run does not run a command in a working copy made after it started', async () => {
+    const root = temp();
+    execFileSync('git', ['init', '-q', root]);
+    execFileSync('git', ['config', 'user.email', 't@e'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 't'], { cwd: root });
+    writeFileSync(join(root, 'a.txt'), 'committed\n');
+    execFileSync('git', ['add', '.'], { cwd: root });
+    execFileSync('git', ['commit', '-qm', 'first'], { cwd: root });
+    const db = database();
+    const service = new WorkspaceService({
+      db,
+      clock: new FakeClock(),
+      worktreeRoot: join(temp(), 'worktrees'),
+      forbidden: [],
+    });
+    try {
+      await service.bind('default', root);
+      await service.configure('default', { trusted: true });
+      db.prepare('UPDATE runs SET snapshot_json = ? WHERE id = ?').run(
+        '{"permissionMode":"auto"}',
+        'run_1',
+      );
+      service.acquireRun('run_1', 'session_1', true);
+      await service.createWorktree('session_1', 'default');
+      const copy = service.copyOf('session_1')?.worktree;
+      if (!copy) throw new Error('missing copy');
+      const input = command('run_1', 'effect_in_copy', 'touch from-direct-run');
+      await expect(service.planCommand(input, live())).rejects.toMatchObject({
+        code: 'CAPABILITY_DENIED',
+      });
+      expect(existsSync(join(copy, 'from-direct-run'))).toBe(false);
+      expect(existsSync(join(root, 'from-direct-run'))).toBe(false);
     } finally {
       await service.dispose();
       db.close();
