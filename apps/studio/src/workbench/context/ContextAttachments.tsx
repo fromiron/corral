@@ -48,6 +48,9 @@ export function AttachmentSource({ source }: { source: TextAttachmentProvenance 
     case 'check':
       label = `${t('checkSource')} · ${source.commandId} · ${source.tree.slice(0, 8)}`;
       break;
+    case 'reply':
+      label = `${t('replySource')} · ${source.runId} · ${source.start}–${source.end}`;
+      break;
   }
   return <p className="break-all text-caption text-muted-foreground">{label}</p>;
 }

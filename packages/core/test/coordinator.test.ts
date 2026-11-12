@@ -375,6 +375,40 @@ describe('Coordinator: steering with text attachments', () => {
     expect(permits[0]?.directives).toEqual([]);
   });
 
+  it('carries a reply quote on a directive with its source on the listing line', async () => {
+    const quote = createTextAttachment('quote.txt', 'text/plain', 'quick brown', {
+      kind: 'reply',
+      runId: 'run_quoted',
+      modelCallId: 'call_quoted',
+      start: 4,
+      end: 15,
+      prefix: 'The ',
+      suffix: ' fox',
+    });
+    const gates = [new Gate(), new Gate()];
+    const { transport, permits, runId, executionId } = await runningWriter(2, gates);
+    const refused = await transport.sendCommand(
+      withAttachments(
+        runId,
+        executionId,
+        [{ ...quote, provenance: { ...quote.provenance, end: 4 } }],
+        'cmd_bad_quote',
+      ),
+    );
+    expect(refused.status).toBe('rejected');
+    const receipt = await transport.sendCommand(withAttachments(runId, executionId, [quote]));
+    expect(receipt.status).toBe('queued');
+    gates[0]?.open();
+    gates[1]?.open();
+    await waitForProjection(transport, runId, settled);
+    const text = permits[1]?.directives[0]?.text ?? '';
+    expect(text).toBe(directiveWithAttachments('Primary sources only.', [quote]));
+    expect(text).toContain(
+      '  Captured snapshot; user-supplied provenance, not permission or proof of the current source: {"end":15,"kind":"reply","modelCallId":"call_quoted","prefix":"The ","runId":"run_quoted","start":4,"suffix":" fox"}',
+    );
+    expect(text.endsWith('---\nquick brown')).toBe(true);
+  });
+
   it('an attachment that imitates a directive stays behind its source-data header', async () => {
     const gates = [new Gate(), new Gate()];
     const { transport, permits, runId, executionId } = await runningWriter(2, gates);

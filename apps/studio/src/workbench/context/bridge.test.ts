@@ -152,3 +152,47 @@ it('a review capture reports storage failure instead of navigating to a missing 
     storage.mockRestore();
   }
 });
+
+const replySource = {
+  kind: 'reply' as const,
+  runId: 'run_quoted',
+  modelCallId: 'call_quoted',
+  start: 4,
+  end: 15,
+  prefix: 'The ',
+  suffix: ' fox',
+};
+const quote = createTextAttachment('quote.txt', 'text/plain', 'quick brown', replySource);
+it('adds a reply quote to the latest draft through the same capture path', () => {
+  writeComposerDraft('quote_typing', draft('before'));
+  const capture = beginAttachmentCapture(target('quote_typing'));
+  writeComposerDraft('quote_typing', draft('later typing'));
+  expect(appendComposerAttachment(capture, quote)).toEqual({ ok: true });
+  expect(readComposerDraft('quote_typing')).toMatchObject({
+    text: 'later typing',
+    attachments: [quote],
+  });
+});
+it('refuses a reply quote captured before the destination draft was sent', () => {
+  const revision = writeComposerDraft('quote_sent', draft('send'));
+  const capture = beginAttachmentCapture(target('quote_sent'));
+  clearSentComposerDraft('quote_sent', revision);
+  expect(appendComposerAttachment(capture, quote)).toEqual({ ok: false, reason: 'changed' });
+  expect(readComposerDraft('quote_sent').attachments).toBeUndefined();
+});
+it('keeps one chip for the same passage of the same reply, even when the text around it grew', () => {
+  writeComposerDraft('quote_twice', draft(''));
+  const capture = beginAttachmentCapture(target('quote_twice'));
+  const grown = createTextAttachment('quote.txt', 'text/plain', 'quick brown', {
+    ...replySource,
+    suffix: ' fox jumps',
+  });
+  const other = createTextAttachment('quote.txt', 'text/plain', 'brown', {
+    ...replySource,
+    start: 10,
+    prefix: 'The quick ',
+  });
+  for (const value of [quote, quote, grown, other])
+    expect(appendComposerAttachment(capture, value)).toEqual({ ok: true });
+  expect(readComposerDraft('quote_twice').attachments).toEqual([quote, other]);
+});
