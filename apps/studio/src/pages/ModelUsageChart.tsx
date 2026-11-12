@@ -18,11 +18,6 @@ interface ModelStat {
   series: Record<SeriesName, SeriesStat>;
 }
 
-/**
- * Sparkline plots every number and hides itself from assistive tech, so it
- * cannot show an unknown count next to a text equivalent. Marks are drawn
- * at their final size; nothing animates.
- */
 function prefersReducedMotion() {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
@@ -71,7 +66,12 @@ function diamond(x: number, y: number, size: number) {
   return `M${cx} ${cy - radius} L${cx + radius} ${cy} L${cx} ${cy + radius} L${cx - radius} ${cy} Z`;
 }
 
-/** Token bars and a request timeline for the pages Settings has loaded. */
+/**
+ * Token bars and a request timeline for the pages Settings has loaded. The kit
+ * Sparkline plots every value as a number and hides itself from assistive tech,
+ * so it cannot keep an unknown count beside its text. Marks are drawn at their
+ * final size; nothing animates.
+ */
 export function ModelUsageChart({ items }: { items: ModelAttempt[] }) {
   const t = useTranslations('ModelUsage');
   const format = useFormatter();
