@@ -10,12 +10,13 @@ import { WorkTab } from './WorkTab.tsx';
 type ComposerProps = {
   home?: boolean;
   onWorkFolder?: () => void;
-  onSetUpWorkingCopy?: () => void;
+  onFolderAction?: () => void;
+  folderAccess?: string;
 };
 const fixture = vi.hoisted(() => ({
   composer: [] as ComposerProps[],
   workspaces: null as object | null,
-  copyMissing: false,
+  access: 'unknown' as 'unknown' | 'unlinked' | 'copy',
 }));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({
@@ -28,7 +29,7 @@ vi.mock('../../services.tsx', () => ({
 vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('../../router.tsx', () => ({ sessionRoute: { useSearch: () => ({}) } }));
 vi.mock('../MeetingHandoff.tsx', () => ({ MeetingHandoffLinks: () => null }));
-vi.mock('../WorkFolderNotice.tsx', () => ({ useWorkingCopyMissing: () => fixture.copyMissing }));
+vi.mock('../WorkFolderNotice.tsx', () => ({ useFolderAccess: () => fixture.access }));
 vi.mock('./SessionEntries.tsx', () => ({
   EntryCard: ({ entry }: { entry: SessionEntry }) => <p>{entry.text}</p>,
   RunCard: () => null,
@@ -55,7 +56,7 @@ beforeEach(() => {
   );
   fixture.composer = [];
   fixture.workspaces = null;
-  fixture.copyMissing = false;
+  fixture.access = 'unknown';
 });
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
@@ -145,15 +146,16 @@ it('returns to the conversation layout once a request exists', async () => {
   expect(fixture.composer.at(-1)?.home).toBe(false);
 });
 
-it('marks a missing working copy once, in the composer row, in place of the folder icon', async () => {
+it('offers the folder step in the composer row, and does not repeat it above the conversation', async () => {
   fixture.workspaces = {};
   await show(session());
   expect(fixture.composer.at(-1)?.onWorkFolder).toBeTypeOf('function');
-  expect(fixture.composer.at(-1)?.onSetUpWorkingCopy).toBeUndefined();
-  fixture.copyMissing = true;
+  expect(fixture.composer.at(-1)?.onFolderAction).toBeUndefined();
+  fixture.access = 'unlinked';
   const container = await show(session());
-  expect(fixture.composer.at(-1)?.onSetUpWorkingCopy).toBeTypeOf('function');
+  expect(fixture.composer.at(-1)?.onFolderAction).toBeTypeOf('function');
+  expect(fixture.composer.at(-1)?.folderAccess).toBe('unlinked');
   expect(fixture.composer.at(-1)?.onWorkFolder).toBeUndefined();
-  // Nothing above the conversation repeats it.
-  expect(container.textContent).not.toContain(messages.Sessions.noWorkingCopy);
+  // The notice lives in the composer. The conversation above does not repeat it.
+  expect(container.textContent).not.toContain(messages.Sessions.agentNoFiles);
 });

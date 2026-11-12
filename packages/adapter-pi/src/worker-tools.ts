@@ -42,9 +42,9 @@ export const TOOL_TEXT: Record<WorkerTool, string> = {
   write_artifact:
     'Save your output text as a new immutable version. Returns its artifactVersionId.',
   list_files:
-    'List files of the working copy under a relative folder (default: the root). Returns paths and sizes.',
+    'List files under a relative folder (default: the root) of the session working copy, or of the project source folder when this session works there directly. Returns paths and sizes. Set query to one line of text to return only UTF-8 files that contain it. Paths stay inside that folder.',
   read_file:
-    'Read a UTF-8 working-copy file in ranges of at most 8192 Unicode characters. offset is zero-based, and nextOffset locates the next range. Read all ranges of the current file before replacing it; use read_hashline for line-based edits.',
+    'Read a UTF-8 file in the session working copy, or in the project source folder when this session works there directly. Ranges are at most 8192 Unicode characters. offset is zero-based, and nextOffset locates the next range. Read all ranges of the current file before replacing it; use read_hashline for line-based edits.',
   write_file:
     'Create or replace a UTF-8 text file by relative path. An existing file must be read first; if it changed since, the write is refused.',
   delete_file: 'Delete a file you have read, by relative path.',
@@ -109,7 +109,10 @@ export function parametersOf(
     case 'write_artifact':
       return Type.Object({ text: Type.String() });
     case 'list_files':
-      return Type.Object({ path: Type.Optional(Type.String({ maxLength: 500 })) });
+      return Type.Object({
+        path: Type.Optional(Type.String({ maxLength: 500 })),
+        query: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+      });
     case 'read_file':
       return Type.Object({
         path: Type.String({ minLength: 1, maxLength: 500 }),

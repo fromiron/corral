@@ -4,6 +4,7 @@ import {
   buildTurnProcess,
   ExecutionToolGroup,
   type ProcessRow,
+  ReasoningLevelLabel,
   ReasoningSummary,
   type RunSessionState,
   type TurnProcess as TurnProcessModel,
@@ -250,7 +251,8 @@ export function TurnProcess({
           const last = index === process.rows.length - 1;
           if (row.kind === 'model') {
             const label = t('request', { no: row.no });
-            // A judged request shows its judgement on the row; any other opens it as details.
+            // The applied level stays on the row. A judged request also shows its judgement;
+            // any other keeps the rest of the record in the details.
             const judged = Boolean(row.call.reasoning?.route);
             return (
               <ThinkingStep
@@ -262,6 +264,7 @@ export function TurnProcess({
                 isLast={last}
                 className="turn-process-row"
               >
+                <ReasoningLevelLabel call={row.call} open={row.open} />
                 {judged ? (
                   // Aligns the button's text with the description.
                   <div className="-ml-3 self-start">
@@ -269,9 +272,12 @@ export function TurnProcess({
                   </div>
                 ) : (
                   <StepDetails step={label} description={modelDescription(row)}>
-                    <div className="-ml-3">
-                      <ReasoningSummary call={row.call} open={row.open} />
-                    </div>
+                    {/* With no reasoning record there is no rest to show; the row says so. */}
+                    {row.call.reasoning ? (
+                      <div className="-ml-3">
+                        <ReasoningSummary call={row.call} open={row.open} />
+                      </div>
+                    ) : null}
                   </StepDetails>
                 )}
                 <Sources sources={row.sources} />

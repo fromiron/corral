@@ -151,6 +151,23 @@ export class ScheduleService {
     return schedule;
   }
 
+  /**
+   * Schedules that name this session. Read before its rows go; the returned release aborts their
+   * in-flight dispatches and is called only once the session is deleted.
+   */
+  sessionDispatches(sessionId: string) {
+    const ids = this.store
+      .list()
+      .filter((schedule) => schedule.sessionId === sessionId)
+      .map((schedule) => schedule.id);
+    return () => {
+      for (const id of ids) {
+        this.pending.get(id)?.abort();
+        this.pending.delete(id);
+      }
+    };
+  }
+
   remove(id: string, expectedRevision: number) {
     const schedule = this.require(id, expectedRevision);
     if (

@@ -25,6 +25,8 @@ export interface RecoveryStorage {
   write(draft: RecoveryDraft): Promise<void>;
   /** Delete exactly the inspected revision, preserving a newer draft from another view. */
   remove(draft: RecoveryDraft): Promise<void>;
+  /** Delete every draft for this session, including a newer revision. */
+  clearSession(sessionId: string): Promise<void>;
 }
 
 const Draft = z.object({
@@ -120,6 +122,34 @@ export function indexedDbRecovery(factory = globalThis.indexedDB): RecoveryStora
           if (request.result && canonicalJson(request.result) === canonicalJson(draft))
             rows.delete(draft.id);
         };
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = transaction.onabort = () =>
+          reject(transaction.error ?? new Error('Document recovery deletion failed'));
+      });
+    },
+    async clearSession(sessionId) {
+      const db = await database();
+      const rows = await new Promise<RecoveryDraft[]>((resolve, reject) => {
+        const transaction = db.transaction('drafts', 'readonly');
+        const request = transaction.objectStore('drafts').getAll();
+        transaction.oncomplete = () =>
+          resolve(
+            (request.result as unknown[]).flatMap((value) => {
+              const parsed = Draft.safeParse(value);
+              return parsed.success ? [parsed.data] : [];
+            }),
+          );
+        transaction.onerror = transaction.onabort = () =>
+          reject(transaction.error ?? new Error('Document recovery read failed'));
+      });
+      const ids = rows
+        .filter((draft) => draft.target.sessionId === sessionId)
+        .map((draft) => draft.id);
+      if (!ids.length) return;
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('drafts', 'readwrite');
+        const store = transaction.objectStore('drafts');
+        for (const id of ids) store.delete(id);
         transaction.oncomplete = () => resolve();
         transaction.onerror = transaction.onabort = () =>
           reject(transaction.error ?? new Error('Document recovery deletion failed'));

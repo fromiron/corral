@@ -103,6 +103,9 @@ function setup(options: DocumentStoreOptions = {}) {
     remove: async (draft) => {
       if (rows.get(draft.id)?.updatedAt === draft.updatedAt) rows.delete(draft.id);
     },
+    clearSession: async (sessionId) => {
+      for (const [id, row] of rows) if (row.target.sessionId === sessionId) rows.delete(id);
+    },
   };
   const createModel = vi.fn((text: string) => new FakeModel(text));
   const loadMonaco = vi.fn(async () => ({

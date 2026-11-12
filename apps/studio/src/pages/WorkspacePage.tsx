@@ -68,6 +68,7 @@ import {
 import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../workbench/preferences.ts';
 import { RunList } from '../workbench/RunList.tsx';
+import { SessionDeletionDialog } from '../workbench/SessionDeletionDialog.tsx';
 import { readCriteria } from '../workbench/sessionCriteria.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import {
@@ -1004,8 +1005,11 @@ function SessionList({
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState<string | null>(null);
-  const { repository } = useServices();
+  const { repository, sessionDeletion } = useServices();
   const router = useRouter();
+  const navigate = useNavigate();
+  const path = useRouterState({ select: (state) => state.location.pathname });
+  const [deleting, setDeleting] = useState<WorkSession | null>(null);
   const setArchived = async (session: WorkSession, archived: boolean) => {
     setArchiving(session.sessionId);
     setError(null);
@@ -1157,6 +1161,13 @@ function SessionList({
                     archivable={Boolean(row.session.archivedAt) || group.id === 'empty'}
                     archiving={archiving !== null}
                     onArchive={(session) => void setArchived(session, !session.archivedAt)}
+                    onDelete={
+                      sessionDeletion
+                        ? (session) => {
+                            if (session.archivedAt) setDeleting(session);
+                          }
+                        : undefined
+                    }
                   />
                 ))}
               </ul>
@@ -1174,6 +1185,25 @@ function SessionList({
         >
           {showArchived ? t('hideArchived') : t('showArchived', { count: archivedCount })}
         </Button>
+      ) : null}
+      {deleting ? (
+        <SessionDeletionDialog
+          open
+          sessionId={deleting.sessionId}
+          projectId={deleting.projectId}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            const gone = deleting;
+            setDeleting(null);
+            projectsChanged();
+            void router.invalidate();
+            if (path.startsWith(`/sessions/${gone.sessionId}`))
+              void navigate({
+                to: '/projects/$projectId',
+                params: { projectId: gone.projectId },
+              });
+          }}
+        />
       ) : null}
     </section>
   );
@@ -1226,6 +1256,7 @@ function SessionRow({
   archivable,
   archiving,
   onArchive,
+  onDelete,
 }: {
   row: SessionGroupRow;
   /** Check · decision · applied, as recorded; none when they could not be read. */
@@ -1237,6 +1268,7 @@ function SessionRow({
   archivable: boolean;
   archiving: boolean;
   onArchive: (session: WorkSession) => void;
+  onDelete?: (session: WorkSession) => void;
 }) {
   const status = useTranslations('Status');
   const t = useTranslations('Sessions');
@@ -1319,6 +1351,16 @@ function SessionRow({
           onClick={() => onArchive(x)}
         >
           {t(x.archivedAt ? 'restoreSession' : 'archive')}
+        </Button>
+      ) : null}
+      {x.archivedAt && onDelete ? (
+        <Button
+          variant="ghost"
+          size="compact"
+          aria-label={t('deleteNamed', { title: x.title })}
+          onClick={() => onDelete(x)}
+        >
+          {t('delete')}
         </Button>
       ) : null}
     </li>
