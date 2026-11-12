@@ -321,3 +321,120 @@ it('ends as cancelled when cancelled while waiting to retry after reasoning', as
   expect(opened).toEqual([0]);
   expect(seen).toEqual(['error']);
 });
+
+const lostConnection = [
+  'terminated',
+  'TypeError: terminated',
+  'premature close',
+  'read ECONNRESET',
+  'socket hang up',
+  'other side closed',
+  'Premature Close',
+];
+
+it.each(lostConnection)('classifies "%s" after the response started as transport', (text) => {
+  const ok = { status: 200, headers: new Headers() };
+  expect(providerFailure(text, ok, { responseStarted: true })).toEqual({
+    code: 'TRANSPORT',
+    status: 200,
+    retryAfterMs: null,
+    requestId: null,
+  });
+});
+
+it.each(lostConnection)('keeps "%s" before any response event an unknown outcome', (text) => {
+  expect(providerFailure(text).code).toBe('UNKNOWN');
+  expect(providerFailure(text, undefined, { responseStarted: false }).code).toBe('UNKNOWN');
+});
+
+it.each([
+  'Overloaded',
+  '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+  'provider returned 529',
+])('classifies the overload notice "%s" after the response started as a server error', (text) => {
+  const ok = { status: 200, headers: new Headers() };
+  expect(providerFailure(text, ok, { responseStarted: true }).code).toBe('SERVER');
+  expect(providerFailure(text, ok).code).toBe('UNKNOWN');
+});
+
+it.each(['Request was aborted', 'terminated: operation cancelled'])(
+  'keeps cancellation "%s" ahead of a lost connection',
+  (text) => {
+    expect(providerFailure(text, undefined, { responseStarted: true }).code).toBe('CANCELLED');
+  },
+);
+
+function cutBeforeStart(errorMessage: string) {
+  const stream = createAssistantMessageEventStream();
+  const error = { ...fauxAssistantMessage(''), stopReason: 'error' as const, errorMessage };
+  stream.push({ type: 'error', reason: 'error', error });
+  stream.end(error);
+  return stream;
+}
+
+async function runCut(first: () => ReturnType<typeof succeed>, signal?: AbortSignal) {
+  const opened: number[] = [];
+  const out = managedRetryStream({
+    model: { id: 'fixture', provider: 'faux', api: 'faux' },
+    signal: signal ?? new AbortController().signal,
+    random: () => 0.5,
+    delay: async () => true,
+    open: (attempt) => {
+      opened.push(attempt);
+      return attempt === 0 ? first() : succeed();
+    },
+  });
+  return { opened, result: await out.result() };
+}
+
+it.each(lostConnection)('retries a response lost with "%s" after only reasoning', async (text) => {
+  const { opened, result } = await runCut(() => cutAfter([thinking], text));
+  expect(opened).toEqual([0, 1]);
+  expect(result.stopReason).toBe('stop');
+});
+
+it('retries a response cut by an overload notice after only reasoning', async () => {
+  const { opened, result } = await runCut(() => cutAfter([thinking], 'Overloaded'));
+  expect(opened).toEqual([0, 1]);
+  expect(result.stopReason).toBe('stop');
+});
+
+it('retries a response lost right after it started, before any delta', async () => {
+  const { opened, result } = await runCut(() => cutAfter([], 'terminated'));
+  expect(opened).toEqual([0, 1]);
+  expect(result.stopReason).toBe('stop');
+});
+
+it('keeps a response lost after body text as interrupted output', async () => {
+  const { opened, result } = await runCut(() => cutAfter([thinking, bodyText], 'terminated'));
+  expect(opened).toEqual([0]);
+  expect(result.stopReason).toBe('error');
+  expect(result.content).toEqual([thinking, bodyText]);
+});
+
+it('does not repeat a response lost after a tool call started', async () => {
+  const { opened, result } = await runCut(() => cutAfter([thinking, toolCall], 'terminated'));
+  expect(opened).toEqual([0]);
+  expect(result.stopReason).toBe('error');
+});
+
+it.each(['terminated', 'Overloaded'])(
+  'does not repeat "%s" before any response event',
+  async (text) => {
+    const { opened, result } = await runCut(() => cutBeforeStart(text));
+    expect(opened).toEqual([0]);
+    expect(result.stopReason).toBe('error');
+  },
+);
+
+it('does not repeat a response lost because it was cancelled', async () => {
+  const controller = new AbortController();
+  const { opened, result } = await runCut(() => {
+    controller.abort();
+    return cutAfter([thinking], 'terminated');
+  }, controller.signal);
+  expect(opened).toEqual([0]);
+  expect(result.stopReason).toBe('error');
+  const { opened: again } = await runCut(() => cutAfter([thinking], 'Request was aborted'));
+  expect(again).toEqual([0]);
+});

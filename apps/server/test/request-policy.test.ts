@@ -1,6 +1,7 @@
 import { memoryChannelPair, modelBridgeChannel } from '@corral/adapter-pi';
 import type { ModelAttempt } from '@corral/contracts';
 import {
+  type AssistantMessage,
   createAssistantMessageEventStream,
   createModels,
   fauxAssistantMessage,
@@ -211,6 +212,126 @@ it('auxiliary retry attempts retain one logical request and distinct physical id
   } finally {
     spy.mockRestore();
   }
+});
+
+/** A draft whose first provider stream optionally starts, shows `first`, then loses its connection. */
+async function draftAfterLostConnection(started: boolean, first: 'thinking' | 'text' | 'none') {
+  const credentials = new InMemoryCredentialStore();
+  const models = createModels({
+    credentials,
+    authContext: { env: async () => undefined, fileExists: async () => false },
+  });
+  const endpoints = endpointsFrom([
+    {
+      id: 'fixture',
+      name: 'Fixture',
+      baseUrl: 'http://127.0.0.1:8001/v1',
+      access: 'none',
+      models: [{ id: 'model', contextWindow: 32000, maxOutput: 512 }],
+    },
+  ]);
+  registerEndpoints(models, endpoints);
+  const registry = new ModelRegistry(
+    models,
+    [{ id: 'chosen', provider: 'fixture', model: 'model' }],
+    { credentials, endpoints, getDeviceId: () => 'fixture' },
+  );
+  await registry.refreshStatus();
+  const records = new Map<string, ModelAttempt>();
+  let calls = 0;
+  registry.configureRequests({
+    store: {
+      put: (r) => records.set(r.attemptId, structuredClone(r)),
+      get: (id) => records.get(id) ?? null,
+      list: () => [...records.values()],
+    },
+    acquire: async () => () => {},
+  });
+  const spy = vi.spyOn(models, 'streamSimple').mockImplementation((model, _context, options) => {
+    const stream = createAssistantMessageEventStream();
+    const cut = calls++ === 0;
+    void (async () => {
+      await options?.onPayload?.({ model: model.id }, model);
+      if (!cut) {
+        const message = fauxAssistantMessage('answer');
+        stream.push({ type: 'done', reason: 'stop', message });
+        stream.end(message);
+        return;
+      }
+      // A cut provider stream that reported no usage (the faux default object is shared).
+      const base = {
+        ...fauxAssistantMessage(''),
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+      };
+      const content: AssistantMessage['content'] =
+        first === 'thinking'
+          ? [{ type: 'thinking', thinking: 'weighing' }]
+          : first === 'text'
+            ? [{ type: 'text', text: 'Answer' }]
+            : [];
+      if (started) stream.push({ type: 'start', partial: { ...base, content: [] } });
+      if (first === 'thinking')
+        stream.push({
+          type: 'thinking_delta',
+          contentIndex: 0,
+          delta: 'weighing',
+          partial: { ...base, content },
+        });
+      if (first === 'text')
+        stream.push({
+          type: 'text_delta',
+          contentIndex: 0,
+          delta: 'Answer',
+          partial: { ...base, content },
+        });
+      const error = {
+        ...base,
+        content,
+        stopReason: 'error' as const,
+        errorMessage: 'TypeError: terminated private-body',
+      };
+      stream.push({ type: 'error', reason: 'error', error });
+      stream.end(error);
+    })();
+    return stream;
+  });
+  try {
+    const answer = await registry.draftTeam('Synthetic goal', { id: 'logical_draft' });
+    return { answer, calls, attempts: [...records.values()] };
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+it('retries a draft whose response was lost after only reasoning, recording a transport failure', async () => {
+  const { calls, attempts } = await draftAfterLostConnection(true, 'thinking');
+  expect(calls).toBe(2);
+  expect(attempts[0]?.failure?.code).toBe('TRANSPORT');
+  expect(attempts[0]?.status).toBe('failed');
+  expect(attempts[0]?.usage.source).toBe('unknown');
+  expect(JSON.stringify(attempts)).not.toContain('terminated');
+});
+
+it('reports a draft lost after body text as failed, not as an unknown outcome', async () => {
+  const { answer, calls, attempts } = await draftAfterLostConnection(true, 'text');
+  expect(calls).toBe(1);
+  expect(answer).toMatchObject({ ok: false, code: 'MODEL_UNAVAILABLE' });
+  expect(attempts[0]?.failure?.code).toBe('TRANSPORT');
+  expect(attempts[0]?.usage.source).toBe('unknown');
+});
+
+it('keeps a draft whose connection was lost before any response event an unknown outcome', async () => {
+  const { answer, calls, attempts } = await draftAfterLostConnection(false, 'none');
+  expect(calls).toBe(1);
+  expect(answer).toMatchObject({ ok: false, code: 'REQUEST_OUTCOME_UNKNOWN' });
+  expect(attempts[0]?.failure?.code).toBe('UNKNOWN');
 });
 
 it('host worker transport retains endpoint-bound credential metadata', async () => {
