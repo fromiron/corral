@@ -486,4 +486,116 @@ describe('interrupt on the core worker', () => {
     expect(contexts.at(-1)).toContain(`${DIRECTIVE_PREFIX}dir_retry)`);
     expect(observed.find((o) => o.modelCallId === 'call_2')?.interrupted).toBe(true);
   });
+
+  it('an interrupt while a transient retry is being prepared rides that retry, uncut', async () => {
+    const contexts: string[] = [];
+    let protectedReads = 0;
+    let handle: Awaited<ReturnType<PiAgentAdapter['start']>> | undefined;
+    const { adapter, host, observed } = coreWorker(
+      [
+        fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'fetch failed' }),
+        (context) => {
+          contexts.push(JSON.stringify(context.messages));
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      {
+        // The retry's preparation starts with its own protected-context read.
+        protectedContext: () => {
+          if (++protectedReads === 2) handle?.interrupt?.({ directiveId: 'dir_prep', text: TEXT });
+          return undefined as never;
+        },
+      },
+    );
+    handle = await adapter.start(startInput(), host);
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(protectedReads).toBe(2);
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.split(`${DIRECTIVE_PREFIX}dir_prep)`)).toHaveLength(2);
+    expect(observed.map((o) => o.interrupted).filter(Boolean)).toEqual([]);
+  });
+
+  it('an interrupt during the summary of an overflow recovery rides the recovered request, uncut', async () => {
+    const summarizing = new Gate(),
+      summarize = new Gate();
+    const seen: boolean[] = [];
+    const { transport } = liveRuntime([
+      {
+        ...fauxAssistantMessage(''),
+        stopReason: 'error',
+        errorMessage: JSON.stringify({
+          code: 'CONTEXT_OVERFLOW',
+          status: 400,
+          retryAfterMs: null,
+          requestId: null,
+        }),
+      },
+      async () => {
+        summarizing.open();
+        await summarize.wait();
+        return fauxAssistantMessage('Keep the marker requirement and submit the final artifact.');
+      },
+      ...writeThenSubmit(seen),
+    ]);
+    const { runId, events, interrupt } = await liveRun(
+      transport,
+      `${'Reference context. '.repeat(1000)} Save overflow recovered.`,
+    );
+    await summarizing.wait();
+    await interrupt();
+    await tick();
+    summarize.open();
+    const final = await waitForProjection(transport, runId, settled);
+    expect(final.status).toBe('succeeded');
+    expect(seen).toEqual([true]);
+    const directiveId = final.directiveOrder[0] ?? '';
+    expect(final.directives[directiveId]?.status).toBe('delivered');
+    expect(
+      Object.values(final.modelCalls).filter((call) => call.directiveIds.includes(directiveId)),
+    ).toHaveLength(1);
+    expect(events.filter((e) => e.type === 'model.finished' && e.payload.interrupted)).toEqual([]);
+  });
+
+  it('a provider that finishes despite the cut leaves no interrupt mark', async () => {
+    const entered = new Gate(),
+      release = new Gate();
+    const contexts: string[] = [];
+    const faux = createFauxCore({});
+    faux.setResponses([
+      async () => {
+        entered.open();
+        await release.wait();
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft.' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      (context) => {
+        contexts.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage('Done.');
+      },
+    ]);
+    const observed: AgentObservation[] = [];
+    const { host } = recordingHost({ observe: async (o) => void observed.push(o) });
+    const adapter = new PiAgentAdapter({
+      spawn: () => {
+        const pair = memoryChannelPair();
+        runWorker(pair.worker, {
+          // The provider never sees the abort and answers in full.
+          streamFn: (model, context, options) =>
+            faux.streamSimple(model, context, { ...options, signal: undefined }),
+          resolveModel: () => faux.getModel(),
+        });
+        return pair.host;
+      },
+      credentials: async () => ACCESS_TOKEN,
+    });
+    const handle = await adapter.start(startInput(), host);
+    await entered.wait();
+    handle.interrupt?.({ directiveId: 'dir_late', text: TEXT });
+    await tick();
+    release.open();
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(observed.map((o) => o.interrupted).filter(Boolean)).toEqual([]);
+    expect(contexts[0]?.split(`${DIRECTIVE_PREFIX}dir_late)`)).toHaveLength(2);
+  });
 });

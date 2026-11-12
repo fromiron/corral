@@ -435,6 +435,33 @@ describe('interrupt delivery', () => {
     expect(calls[whole.modelCallId]).not.toHaveProperty('interrupted');
   });
 
+  it('a cut call does not raise the no-progress notice; the next whole reply still does', async () => {
+    const s = interruptSetup({ interrupts: true });
+    const { host } = await s.started();
+    const usage = { inputTokens: 3, outputTokens: 1 };
+    const reply = async (interrupted: boolean) => {
+      const permit = await host.prepareModelRequest();
+      await host.modelRequestDispatched?.(permit.modelCallId);
+      await host.observe({
+        kind: 'model_completed',
+        modelCallId: permit.modelCallId,
+        text: 'no new evidence',
+        usage,
+        ...(interrupted ? { interrupted: true as const } : {}),
+      });
+    };
+    const notices = () =>
+      s.store
+        .readEvents(s.runId, 0)
+        .filter((e) => e.type === 'extension.ui_notified' && e.payload.key === 'no_progress');
+    for (let i = 0; i < 5; i++) await reply(false);
+    expect(s.coordinator.getSnapshot(s.runId).projection.progress.turns).toBe(5);
+    await reply(true);
+    expect(notices()).toHaveLength(0);
+    await reply(false);
+    expect(notices()).toHaveLength(1);
+  });
+
   it('an adapter that cannot interrupt gets the directive as next_request, and the receipt says so', async () => {
     const s = interruptSetup({ interrupts: false });
     const { executionId, host } = await s.started();

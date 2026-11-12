@@ -113,6 +113,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   // requests and while a tool runs, when an interrupt has nothing to cut.
   let inFlight: Flight | null = null;
   let directivesInPrepared = new Set<string>();
+  // True while a request is prepared and its directives are not yet fixed in its record.
+  let unrecorded = false;
   // Interrupt directives that cut a response and still have to lead the next request.
   const interrupting = new Map<string, DeliveredDirective>();
 
@@ -154,7 +156,9 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     if (frame.type === 'interrupt') {
       directives.set(frame.directiveId, frame);
       // A response whose request already carries the directive has nothing to gain from a cut.
-      if (cancelled || !inFlight || inFlight.directiveIds.has(frame.directiveId)) return;
+      // A request still being prepared takes the directive itself and is never cut for it.
+      if (cancelled || !inFlight || unrecorded || inFlight.directiveIds.has(frame.directiveId))
+        return;
       interrupting.set(frame.directiveId, frame);
       inFlight.abort.abort();
       return;
@@ -274,10 +278,39 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     let latest: Flight | null = null;
     let cutFlight: Flight | null = null;
     let automaticCompactions = 0;
+    // One message per directive: no directive's text follows another's attachment body.
+    const withDirectives = (context: AgentContext, skip?: Set<string>): AgentContext => {
+      const present = JSON.stringify(context.messages);
+      const missing = [...directives.values()].filter(
+        (d) =>
+          !skip?.has(d.directiveId) &&
+          !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
+      );
+      if (!missing.length) return context;
+      return {
+        ...context,
+        messages: [
+          ...context.messages,
+          ...missing.map((d) => ({
+            role: 'user' as const,
+            content: directiveText(d),
+            timestamp: Date.now(),
+          })),
+        ],
+      };
+    };
     const prepareRequest = async (context: AgentContext, retryIndex = 0) => {
+      try {
+        return await prepareFixed(context, retryIndex);
+      } finally {
+        unrecorded = false;
+      }
+    };
+    const prepareFixed = async (context: AgentContext, retryIndex: number) => {
       if (!retryIndex) logicalRequestId = `request_${++logicalRequests}`;
       let preparedContext = context;
       const prepare = async () => {
+        unrecorded = true;
         const state = await call({ type: 'get_protected_context' });
         if (state.type !== 'protected_context') throw new Error('protected context refused');
         if (state.value) {
@@ -288,23 +321,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             protectedState.section,
           ];
         }
-        const present = JSON.stringify(preparedContext.messages);
-        const missing = [...directives.values()].filter(
-          (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
-        );
-        // One message per directive: no directive's text follows another's attachment body.
-        if (missing.length)
-          preparedContext = {
-            ...preparedContext,
-            messages: [
-              ...preparedContext.messages,
-              ...missing.map((d) => ({
-                role: 'user' as const,
-                content: directiveText(d),
-                timestamp: Date.now(),
-              })),
-            ],
-          };
+        preparedContext = withDirectives(preparedContext);
+        const placed = new Set(directives.keys());
         const saved = await call({
           type: 'checkpoint_context',
           value: checkpointContext(preparedContext, 'pi-core'),
@@ -465,9 +483,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           // Only a manual compaction's failure leaves the request to go on uncompacted.
           if (owner.trigger === 'automatic') throw error;
         }
+        // Directives that arrived during preparation (a summary call, say) still go in now.
+        preparedContext = withDirectives(preparedContext, placed);
         lastPrepared = normalizeContext({ messages: preparedContext.messages as Message[] });
         measuredContext = inspectContext(preparedContext);
         directivesInPrepared = new Set(directives.keys());
+        unrecorded = false;
         return call({
           type: 'prepare_request',
           logicalRequestId,
@@ -723,6 +744,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           ...(cut ? { interrupted: true } : {}),
         });
         cutFlight = cut ? latest : null;
+        // A response that ended on its own was not cut, whatever the abort asked.
+        if (latest && !cut) latest.cut = false;
       }
     });
 
