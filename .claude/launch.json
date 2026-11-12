@@ -87,6 +87,59 @@
         "--no-open"
       ],
       "port": 6006
+    },
+    {
+      "name": "review-storybook",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        ".claude/worktrees/flow-review",
+        "--filter",
+        "@corral/react",
+        "exec",
+        "storybook",
+        "dev",
+        "-p",
+        "6007",
+        "--ci",
+        "--no-open"
+      ],
+      "port": 6007
+    },
+    {
+      "name": "review-server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        ".claude/worktrees/flow-review/apps/server/src/main.ts",
+        "--workspace",
+        ".claude/worktrees/flow-review-ws",
+        "--port",
+        "4318",
+        "--allow-origin",
+        "http://localhost:5174",
+        "--no-live",
+        "--mock-delay",
+        "50"
+      ],
+      "port": 4318
+    },
+    {
+      "name": "review-studio",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "CORRAL_SERVER=http://127.0.0.1:4318",
+        "pnpm",
+        "--dir",
+        ".claude/worktrees/flow-review",
+        "--filter",
+        "@corral/studio",
+        "exec",
+        "vite",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "port": 5174
     }
   ]
 }
