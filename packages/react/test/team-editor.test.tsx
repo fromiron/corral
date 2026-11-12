@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { StudioStoresProvider } from '../src/context.tsx';
-import { type EditorDraft, emptyDraft } from '../src/editor/model.ts';
+import { type EditorDraft, emptyDraft, updateNode } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import koMessages from '../src/messages/ko.json' with { type: 'json' };
@@ -39,12 +39,17 @@ function chain(length: number): EditorDraft {
 function renderEditor(
   draft: EditorDraft,
   profiles?: { profileId: string; label: string; available: boolean }[],
+  imageProfiles?: { profileId: string; label: string }[] | null,
 ) {
   const editor = createEditorStore(draft);
   render(
     <IntlProvider locale="en" messages={messages}>
       <StudioStoresProvider editor={editor} session={sessionStore()}>
-        <TeamEditor editor={editor} {...(profiles ? { profiles } : {})} />
+        <TeamEditor
+          editor={editor}
+          {...(profiles ? { profiles } : {})}
+          {...(imageProfiles !== undefined ? { imageProfiles } : {})}
+        />
       </StudioStoresProvider>
     </IntlProvider>,
   );
@@ -188,6 +193,35 @@ describe('team editor', () => {
     expect(editor.getState().draft.definition.controlEdges).toEqual([
       expect.objectContaining({ source: 'agent_1', sourcePort: 'out', target: 'agent_2' }),
     ]);
+  });
+
+  it('chooses a saved image profile instead of typing its id', async () => {
+    const editor = renderEditor(chain(1), undefined, [
+      { profileId: 'illustration', label: 'illustration · gpt-image-1' },
+      { profileId: 'keyed:gpt-image-1', label: 'keyed:gpt-image-1 · gpt-image-1' },
+    ]);
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole('switch', { name: 'Generate images' })));
+    expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
+    await choose('Image profile', 'illustration · gpt-image-1');
+    expect(editor.getState().draft.definition.roles[0]?.imageProfile).toBe('illustration');
+  });
+
+  it('keeps a role image profile id that is not in the saved list', async () => {
+    const draft = updateNode(chain(1), 'agent_1', {
+      generateImage: true,
+      imageProfile: 'legacy_hand',
+    });
+    const editor = renderEditor(draft, undefined, [
+      { profileId: 'illustration', label: 'illustration · gpt-image-1' },
+    ]);
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Image profile' }).textContent).toContain(
+      'legacy_hand',
+    );
+    expect(editor.getState().draft.definition.roles[0]?.imageProfile).toBe('legacy_hand');
   });
 
   it('applies a review loop to the selection from the command menu', async () => {

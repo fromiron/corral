@@ -6,32 +6,43 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
+import { all, click, control, field, settle, stubBrowser, type } from './modelTestDom.ts';
 
 // Image generation needs an API key: a subscription sign-in is refused on the profile field
-// itself, not explained ahead of the form.
+// itself, not explained ahead of the form. The profile id is derived, not typed.
+
+const api = vi.hoisted(() => ({
+  list: vi.fn(async () => ({
+    profiles: [
+      {
+        profileId: 'from-subscription',
+        modelProfileId: 'subscription',
+        modelId: 'gpt-image-1',
+        api: 'openai-images',
+        timeoutMs: 120000,
+      },
+      {
+        profileId: 'from-key',
+        modelProfileId: 'keyed',
+        modelId: 'gpt-image-1',
+        api: 'openai-images',
+        timeoutMs: 120000,
+      },
+      {
+        profileId: 'keyed:gpt-image-1',
+        modelProfileId: 'keyed',
+        modelId: 'gpt-image-1',
+        api: 'openai-images',
+        timeoutMs: 90000,
+      },
+    ],
+    statuses: {},
+  })),
+  save: vi.fn(async () => undefined),
+}));
 
 vi.mock('../image-profiles-api.ts', () => ({
-  imageProfilesApi: {
-    list: vi.fn(async () => ({
-      profiles: [
-        {
-          profileId: 'from-subscription',
-          modelProfileId: 'subscription',
-          modelId: 'gpt-image-1',
-          api: 'openai-images',
-          timeoutMs: 120000,
-        },
-        {
-          profileId: 'from-key',
-          modelProfileId: 'keyed',
-          modelId: 'gpt-image-1',
-          api: 'openai-images',
-          timeoutMs: 120000,
-        },
-      ],
-      statuses: {},
-    })),
-  },
+  imageProfilesApi: api,
 }));
 vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => {},
@@ -96,4 +107,81 @@ it('says nothing on the field for a profile that uses an API key', async () => {
   const form = container.querySelector('form');
   expect(form).toBeTruthy();
   expect(form?.textContent).not.toContain(messages.ImageProfiles.needsApiKey);
+});
+
+function shownProfileId(form: ParentNode): string {
+  const label = all('label', form).find((el) => el.textContent === messages.ImageProfiles.id);
+  const htmlFor = label instanceof HTMLLabelElement ? label.htmlFor : '';
+  const named = htmlFor ? document.getElementById(htmlFor) : null;
+  return named?.textContent?.trim() ?? '';
+}
+
+async function pickConnection(profileId: string) {
+  stubBrowser();
+  Element.prototype.getAnimations ??= () => [];
+  await click(control(messages.ImageProfiles.providerProfile));
+  await settle();
+  await click(
+    all('[role="option"], [data-value]').find((el) => el.getAttribute('data-value') === profileId),
+  );
+  await settle();
+}
+
+it('derives a read-only image profile id from the connection and the image model', async () => {
+  const container = await render();
+  await click(control(messages.ImageProfiles.add));
+  const form = container.querySelector('form');
+  if (!form) throw new Error('the add form did not open');
+  expect(form.querySelector('input[id$="-id"]')).toBeNull();
+  expect(form.querySelector('output')?.tagName).toBe('OUTPUT');
+  expect(shownProfileId(form)).toBe(messages.ImageProfiles.idPending);
+
+  await pickConnection('keyed');
+  await type(field(messages.ImageProfiles.model, form), 'gpt-image-2');
+  expect(shownProfileId(form)).toBe('keyed:gpt-image-2');
+
+  await type(field(messages.ImageProfiles.model, form), 'gpt-image-1');
+  // keyed:gpt-image-1 is already saved, so the new profile takes the next number.
+  expect(shownProfileId(form)).toBe('keyed:gpt-image-1-2');
+
+  await type(field(messages.ImageProfiles.model, form), 'vendor/name');
+  const slashed = shownProfileId(form);
+  await type(field(messages.ImageProfiles.model, form), 'vendor_name');
+  const underscored = shownProfileId(form);
+  expect(underscored).toBe('keyed:vendor_name');
+  expect(slashed).not.toBe(underscored);
+  expect(slashed).not.toContain('/');
+  expect(form.querySelector('input[id$="-id"]')).toBeNull();
+});
+
+it('keeps a saved profile id that the derivation would not produce', async () => {
+  const container = await render();
+  await edit(container, 'from-key');
+  const form = container.querySelector('form');
+  if (!form) throw new Error('the edit form did not open');
+  expect(shownProfileId(form)).toBe('from-key');
+  await type(field(messages.ImageProfiles.model, form), 'other-model');
+  expect(shownProfileId(form)).toBe('from-key');
+  await click(control(messages.ImageProfiles.save, form));
+  await settle();
+  expect(api.save).toHaveBeenCalledWith(
+    expect.objectContaining({
+      profileId: 'from-key',
+      modelId: 'other-model',
+      modelProfileId: 'keyed',
+    }),
+  );
+});
+
+it('keeps the image model id as an input and does not offer a reasoning field', async () => {
+  const container = await render();
+  await click(control(messages.ImageProfiles.add));
+  const form = container.querySelector('form');
+  if (!form) throw new Error('the add form did not open');
+  expect(field(messages.ImageProfiles.model, form)).toBeTruthy();
+  expect(form.textContent).toContain(messages.ImageProfiles.modelHint);
+  expect(container.textContent).toContain(messages.ImageProfiles.reasoningNote);
+  expect(all('[role="combobox"]', form).map((el) => el.getAttribute('aria-label'))).toEqual([
+    messages.ImageProfiles.providerProfile,
+  ]);
 });

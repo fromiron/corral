@@ -64,7 +64,12 @@ import {
 import { InspectorSheet, PATTERNS, type SheetView } from './InspectorSheet.tsx';
 import { ADDABLE, KIND_ICON } from './kinds.ts';
 import { layoutTeam } from './layout.ts';
-import type { LoopSettings, ProfileOption, RoleSettings } from './NodeSettings.tsx';
+import type {
+  ImageProfileChoice,
+  LoopSettings,
+  ProfileOption,
+  RoleSettings,
+} from './NodeSettings.tsx';
 import { RunStatsFigures } from './RunStatsFigures.tsx';
 import { statFigures } from './runStats.ts';
 import { StructureTree } from './StructureTree.tsx';
@@ -77,6 +82,8 @@ import { STEP_DRAG_TYPE, TeamGraphCanvas, type TeamSelection } from './TeamGraph
 export interface TeamEditorProps {
   editor: EditorStore;
   profiles?: ProfileOption[] | null;
+  /** Saved image profiles. Null until the host knows the list; a role's current id is kept. */
+  imageProfiles?: readonly ImageProfileChoice[] | null;
   /** Extra role settings the host adds to an agent's sheet, such as its Skills. */
   roleSettings?: RoleSettings | undefined;
   /** Extra loop settings the host adds to a Loop's sheet. */
@@ -104,6 +111,7 @@ const PATTERN_ICON: Record<Pattern, typeof Split> = {
 export function TeamEditor({
   editor,
   profiles = null,
+  imageProfiles = null,
   roleSettings,
   loopSettings,
   teams = NO_TEAMS,
@@ -564,6 +572,7 @@ export function TeamEditor({
                 selection={selection}
                 view={view ?? 'selection'}
                 profiles={profiles}
+                imageProfiles={imageProfiles}
                 roleSettings={roleSettings}
                 loopSettings={loopSettings}
                 teams={teams}

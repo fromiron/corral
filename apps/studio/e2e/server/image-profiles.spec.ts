@@ -12,7 +12,6 @@ test('image profile CRUD and role configuration persist through the normal setti
   await modelSettingsTab(page, 'Images');
   const section = page.getByRole('region', { name: 'Image generation', exact: true });
   await section.getByRole('button', { name: 'Add image profile' }).click();
-  await section.getByLabel('Image profile ID', { exact: true }).fill('illustration');
   await section.getByRole('combobox', { name: 'Provider model profile', exact: true }).click();
   const options = page.getByRole('option');
   await expect(options).not.toHaveCount(0);
@@ -20,6 +19,9 @@ test('image profile CRUD and role configuration persist through the normal setti
   if (!profile) throw new Error('No provider profile available');
   await options.first().click();
   await section.getByLabel('Image model ID').fill('image-test');
+  const id = section.getByLabel('Image profile ID', { exact: true });
+  await expect(id).toHaveText(`${profile}:image-test`);
+  const profileId = `${profile}:image-test`;
   await section.getByRole('button', { name: 'Save image profile' }).click();
   await expect(section.getByRole('status')).toHaveText('Image profile saved.');
   await section.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -28,12 +30,12 @@ test('image profile CRUD and role configuration persist through the normal setti
   await expect(section.getByRole('status')).toHaveText('Image profile saved.');
   await page.reload();
   await modelSettingsTab(page, 'Images');
-  await expect(section.getByText('illustration', { exact: true })).toBeVisible();
+  await expect(section.getByText(profileId, { exact: true })).toBeVisible();
   await section.screenshot({ path: test.info().outputPath('image-profiles.png') });
   const stored = await page.evaluate(async () => (await fetch('/api/v1/image-profiles')).json());
   expect(stored.profiles).toContainEqual(
     expect.objectContaining({
-      profileId: 'illustration',
+      profileId,
       modelId: 'image-test',
       timeoutMs: 90000,
     }),
@@ -46,7 +48,10 @@ test('image profile CRUD and role configuration persist through the normal setti
   await newTeam(page);
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Generate images/ }).check();
-  await page.getByRole('textbox', { name: /^Image profile ID/ }).fill('illustration');
+  await page.getByRole('combobox', { name: 'Image profile', exact: true }).click();
+  await page
+    .getByRole('option', { name: new RegExp(profileId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })
+    .click();
   await page.screenshot({ path: test.info().outputPath('image-role.png') });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved. New revision.' })).toBeVisible();
@@ -55,7 +60,7 @@ test('image profile CRUD and role configuration persist through the normal setti
     .replace('/edit', '')
     .replace('/corrals/', '/api/v1/corrals/');
   const saved = await page.evaluate(async (path) => (await fetch(path)).json(), path);
-  expect(saved.definition.roles[0]).toMatchObject({ imageProfile: 'illustration' });
+  expect(saved.definition.roles[0]).toMatchObject({ imageProfile: profileId });
   expect(saved.definition.roles[0].allowedWorkTools).toContain('generate_image');
   expect(saved.definition.roles[0].allowedWorkTools).not.toContain('run_command');
 
@@ -64,10 +69,10 @@ test('image profile CRUD and role configuration persist through the normal setti
   await corral.restart();
   await corral.open('/settings/models');
   await modelSettingsTab(page, 'Images');
-  await expect(section.getByText('illustration', { exact: true })).toBeVisible();
+  await expect(section.getByText(profileId, { exact: true })).toBeVisible();
   await section.getByRole('button', { name: 'Delete', exact: true }).click();
   await section.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(section.getByText('illustration', { exact: true })).toBeVisible();
+  await expect(section.getByText(profileId, { exact: true })).toBeVisible();
   await section.getByRole('button', { name: 'Delete', exact: true }).click();
   await section.getByRole('button', { name: 'Confirm delete', exact: true }).click();
   await expect(section.getByText('No image profiles configured.')).toBeVisible();
