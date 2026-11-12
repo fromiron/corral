@@ -12,7 +12,7 @@
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
 | 백본 | B1–B10 | 진행 중(B1·B7·B8 병합) |
-| 화면 | K1, U1–U14 | 진행 중(K1 병합) |
+| 화면 | K1, U1–U14 | 진행 중(K1·U1 병합) |
 | 회의 | M1–M4 | 대기 |
 | 감독 | A1–A9 | 대기 |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 수정) |
@@ -437,7 +437,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 리뷰 중 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
-| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 리뷰 중 |
+| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 대기 |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 대기 |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
