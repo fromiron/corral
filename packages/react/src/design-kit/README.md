@@ -4,7 +4,7 @@ The user supplied the local `design_kit` project and explicitly authorized copyi
 
 ## Canonical entry and source graph
 
-[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 77 imported component/helper files, including the extracted `WorkspaceTile` and page chrome, the adapted opaque, hex-only `ColorPicker` and the adapted text-only `ChatMessage`.
+[index.ts](index.ts), exported as `@corral/react/design-kit`, is the canonical product entry. `packages/react/src/ui/*` contains compatibility reexports only. The source tree contains 79 imported component/helper files, including the extracted `WorkspaceTile` and page chrome, the adapted opaque, hex-only `ColorPicker` and the adapted text-only `ChatMessage`.
 
 - `sidebar.tsx` composes `sidebar-core.tsx`, `sidebar-menu.tsx`, source Button, Tooltip, ScrollArea and shared shape, size, surface, icon, hover and spring helpers. `search-field.tsx` composes SidebarInput.
 - Source Card, Badge, Table, InputGroup/InputField, CheckboxGroup, RadioGroup, Switch and Accordion provide product compositions. Card's Next.js Link is a native anchor in Corral.
@@ -55,6 +55,7 @@ All imports use package-relative paths instead of the original `@/` alias. TypeS
 - AgentSteering accepts controlled composer, plan, activity and header-action slots, localized labels and actual directive receipt states. Its original plan rows are extracted as `AgentSteeringPlan` with optional title wrapping and accessible status labels, so the existing host plan controller can retain disclosure, owner selection and full-list access. Its optional activity height bound keeps the single composer outside a named keyboard-scrollable activity region on short screens. Corral supplies its existing single composer and command controller. Unsupported instant interruption, directive removal and per-agent pause actions are absent.
 - ToolCallCard/ToolCallGroup add waiting and stopped states using the source status glyphs, so an unfinished tool does not animate as running during an approval wait, pause or cancellation. Expanded code uses the foreground token for punctuation contrast; the source grouping, disclosure and code layout remain intact.
 - DecisionInbox keeps the source card, header, row anatomy, pills and motion. Its adaptations are relative imports, Corral formatting/import order, a `labels` prop for the region's accessible name (the heading, clear and empty lines were already props) and a guard in place of the non-null assertion on a missing secondary answer.
+- DecisionInbox takes `optimistic` (default true, the source behavior): false sends `onDecide` without setting the confirmation pill, which then comes only from a decision's `resolution`, so a host can tie the pill to a receipt. A decision's `pending` disables both of its buttons through Button's own `disabled` while the host awaits that receipt; no new color, spinner or wording is added.
 - AgentHandoff presents one observed agent pair at a time with factual relationship labels and selectable executions. It does not infer an ordered pipeline from unrelated agents. DecisionTree supports read-only recorded selections, explicit unknown branches and evidence details; inspection cannot invoke a workflow decision or choose a default branch.
 Tooltip explicitly provides its popup role and trigger description linkage while retaining the supplied hover, focus, and motion behavior.
 - The panels below needed newer shared source: `agent-primitives` (the Collapse, Roll, RollNumber, DisclosureChevron, DrawnCheck and CircleCheck motion helpers and Meter `live`), `agent-format` (spoken durations, seconds and tokens) and `icon-context` (the agent icon slots) are refreshed to the current source with the adaptations above kept. `lib/utils` gains the source `assignRef` beside Corral's extra font-size groups.
@@ -166,7 +167,7 @@ Source hashes cover original complete files. The workspace-header hash identifie
 
 | `components/agent/agent-steering.tsx` | `components/agent/agent-steering.tsx` | `1165b5bc851c52339289d38c217394be65a50169d1b151755b74d5304b96e60c` | `c53498be6a2026a5a6ec3b4b65507f20510189202f95ddc71defd899bfa16d6d` |
 
-| `components/agent/decision-inbox.tsx` | `components/agent/decision-inbox.tsx` | `a33debeab7a4bf19c97c03f05e84960a8ee8f7313b402e3879300d261864203c` | `1e9fe6e35e6d1a104970a235360d1197a92577e625e7deeee44c7cb29d97f640` |
+| `components/agent/decision-inbox.tsx` | `components/agent/decision-inbox.tsx` | `a33debeab7a4bf19c97c03f05e84960a8ee8f7313b402e3879300d261864203c` | `2479f48ac754ff1ab3314ea64fcc3bb8b6b432c62924a8db4eca9897d329289c` |
 
 | `components/agent/decision-tree.tsx` | `components/agent/decision-tree.tsx` | `84e3db63cf9e0cae2f60bdb0ae8d5ee1fc6e2ec474100b5a30eeeeb0c126bf12` | `45dfb23f04cefb542288c4543cfb0fb0e4397c75ac55cebbd5b8b561ac730efb` |
 

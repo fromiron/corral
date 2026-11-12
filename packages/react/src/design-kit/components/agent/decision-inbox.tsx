@@ -41,6 +41,8 @@ interface Decision {
   folded?: boolean;
   /** Mark as answered from outside: shows the pill with this text. */
   resolution?: string;
+  /** An answer was sent and its receipt is awaited: both buttons wait, unpressable. */
+  pending?: boolean;
 }
 
 interface DecisionInboxLabels {
@@ -53,6 +55,11 @@ const defaultLabels: DecisionInboxLabels = { region: 'Decisions' };
 interface DecisionInboxProps extends HTMLAttributes<HTMLDivElement> {
   /** Open decisions, top first. Drop a decision to animate its row out. */
   decisions: Decision[];
+  /**
+   * Show the pill as soon as an answer is picked. Default true. False sends
+   * `onDecide` only: the pill then comes from the decision's `resolution`.
+   */
+  optimistic?: boolean;
   /** An answer was picked. The row shows its pill until you remove it. */
   onDecide?: (id: string, choice: DecisionChoice) => void;
   /** Header text for N open decisions. Default `N need(s) your input`. */
@@ -76,6 +83,7 @@ const DecisionInboxBody = forwardRef<HTMLDivElement, Omit<DecisionInboxProps, 's
     {
       decisions,
       onDecide,
+      optimistic = true,
       heading = defaultHeading,
       clearHeading = 'Nothing waiting on you',
       emptyLabel = 'Nothing waiting on you – new decisions show up here.',
@@ -100,7 +108,7 @@ const DecisionInboxBody = forwardRef<HTMLDivElement, Omit<DecisionInboxProps, 's
     const decide = (d: Decision, choice: DecisionChoice) => {
       const action = choice === 'primary' ? d.primary : d.secondary;
       if (!action) return;
-      setPicked((p) => ({ ...p, [d.id]: action.doneLabel ?? action.label }));
+      if (optimistic) setPicked((p) => ({ ...p, [d.id]: action.doneLabel ?? action.label }));
       onDecide?.(d.id, choice);
     };
 
@@ -259,6 +267,7 @@ function DecisionRow({ decision, resolution, folded, onUnfold, onDecide }: Decis
                 variant="primary"
                 size="compact"
                 dir="auto"
+                disabled={decision.pending}
                 onClick={() => onDecide('primary')}
               >
                 {decision.primary.label}
@@ -268,6 +277,7 @@ function DecisionRow({ decision, resolution, folded, onUnfold, onDecide }: Decis
                   variant="tertiary"
                   size="compact"
                   dir="auto"
+                  disabled={decision.pending}
                   onClick={() => onDecide('secondary')}
                 >
                   {decision.secondary.label}

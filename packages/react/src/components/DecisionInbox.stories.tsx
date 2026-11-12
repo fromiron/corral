@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useEffect, useRef, useState } from 'react';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { DecisionInbox } from '../design-kit/index.ts';
+import { type Decision, DecisionInbox, type DecisionInboxProps } from '../design-kit/index.ts';
 
 // Rows, the heading and the pill fade in on springs, and the a11y check runs after play:
 // wait until nothing in the canvas is still fading.
@@ -15,90 +16,118 @@ async function settled(canvasElement: HTMLElement) {
   );
 }
 
+const budget: Decision = {
+  id: 'request-budget',
+  title: '요청 예산 400회에 닿았습니다',
+  detail: '지금까지 400회를 썼고 작업은 마지막 검토 단계입니다.',
+  primary: { label: '계속', doneLabel: '계속합니다' },
+  secondary: { label: '멈춤', doneLabel: '멈췄습니다' },
+};
+
+const loopRound: Decision = {
+  id: 'loop-round',
+  title: 'Loop 4회차를 계속할까요?',
+  detail: '3회차까지 끝났고 남은 회차는 6회입니다.',
+  primary: { label: '계속', doneLabel: '계속합니다' },
+  secondary: { label: '멈춤', doneLabel: '멈췄습니다' },
+};
+
+const meetingChain: Decision = {
+  id: 'meeting-chain',
+  title: '회의를 다음 발언자로 이어갈까요?',
+  primary: { label: '이어가기', doneLabel: '이어갑니다' },
+  secondary: { label: '마무리', doneLabel: '마무리했습니다' },
+  folded: true,
+};
+
+// Corral's flow: a click sends the response, the row waits (`pending`), the receipt
+// brings the `resolution`, and the host then drops the row.
+function ReceiptFlow(props: DecisionInboxProps) {
+  const [decisions, setDecisions] = useState(props.decisions);
+  const timers = useRef<number[]>([]);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const t of pending) window.clearTimeout(t);
+    };
+  }, []);
+  const decide: NonNullable<DecisionInboxProps['onDecide']> = (id, choice) => {
+    props.onDecide?.(id, choice);
+    setDecisions((all) => all.map((d) => (d.id === id ? { ...d, pending: true } : d)));
+    timers.current.push(
+      window.setTimeout(() => {
+        setDecisions((all) =>
+          all.map((d) => {
+            if (d.id !== id) return d;
+            const action = choice === 'primary' ? d.primary : d.secondary;
+            return { ...d, pending: false, resolution: action?.doneLabel ?? action?.label };
+          }),
+        );
+      }, 400),
+      window.setTimeout(() => setDecisions((all) => all.filter((d) => d.id !== id)), 1600),
+    );
+  };
+  return <DecisionInbox {...props} decisions={decisions} onDecide={decide} />;
+}
+
 const meta = {
-  title: 'Studio/DecisionInbox',
+  title: 'Conversation/DecisionInbox',
   component: DecisionInbox,
   decorators: [(Story) => <div className="w-[28rem] max-w-full">{Story()}</div>],
   args: {
     onDecide: fn(),
+    optimistic: false,
     labels: { region: '결정' },
-    heading: (count: number) => `${count}건이 답을 기다립니다`,
-    clearHeading: '기다리는 결정이 없습니다',
-    emptyLabel: '기다리는 결정이 없습니다.',
-    decisions: [],
+    heading: (n: number) => (n > 0 ? `결정 ${n}건` : '모두 답했습니다'),
+    clearHeading: '결정 없음',
+    emptyLabel: '대기 중인 결정이 없습니다',
+    decisions: [budget],
   },
 } satisfies Meta<typeof DecisionInbox>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const ApproveOrReject: Story = {
-  args: {
-    decisions: [
-      {
-        id: 'run-shell',
-        title: '터미널에서 npm test를 실행할까요?',
-        detail: '작업 폴더: apps/server\n실행 파일: bash',
-        primary: { label: '승인', doneLabel: '승인했습니다' },
-        secondary: { label: '거절', doneLabel: '거절했습니다' },
-      },
-    ],
-  },
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByText('1건이 답을 기다립니다')).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole('button', { name: '승인' }));
-    await expect(args.onDecide).toHaveBeenCalledWith('run-shell', 'primary');
-    await expect(await canvas.findByRole('status')).toHaveTextContent('승인했습니다');
-    await settled(canvasElement);
-  },
-};
-
-export const WithChoices: Story = {
-  args: {
-    decisions: [
-      {
-        id: 'publish-target',
-        title: '결과를 어디에 정리할까요?',
-        detail: '보고서 초안이 두 가지 형식으로 준비되어 있습니다.',
-        primary: { label: '문서로 정리', doneLabel: '문서로 정리했습니다' },
-        secondary: { label: '슬라이드로 정리', doneLabel: '슬라이드로 정리했습니다' },
-      },
-      {
-        id: 'older-notes',
-        title: '이전 메모를 함께 넣을까요?',
-        primary: { label: '넣기' },
-        secondary: { label: '빼기' },
-        folded: true,
-      },
-    ],
-  },
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('button', { name: '슬라이드로 정리' }));
-    await expect(args.onDecide).toHaveBeenCalledWith('publish-target', 'secondary');
-    await userEvent.click(canvas.getByRole('button', { name: '이전 메모를 함께 넣을까요?' }));
-    await expect(canvas.getByRole('button', { name: '넣기' })).toBeInTheDocument();
-    await settled(canvasElement);
-  },
-};
-
 export const ContinueOrStop: Story = {
-  args: {
-    decisions: [
-      {
-        id: 'request-budget',
-        title: '요청 예산 400회에 닿았습니다',
-        detail: '지금까지 400회를 썼고 작업은 마지막 검토 단계입니다.',
-        primary: { label: '계속', doneLabel: '계속합니다' },
-        secondary: { label: '멈춤', doneLabel: '멈췄습니다' },
-      },
-    ],
-  },
+  render: (args) => <ReceiptFlow {...args} />,
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('button', { name: '멈춤' }));
-    await expect(args.onDecide).toHaveBeenCalledWith('request-budget', 'secondary');
-    await expect(await canvas.findByRole('status')).toHaveTextContent('멈췄습니다');
+    await userEvent.click(canvas.getByRole('button', { name: '계속' }));
+    await expect(args.onDecide).toHaveBeenCalledWith('request-budget', 'primary');
+    // Sent, receipt not back yet: no confirmation, buttons wait.
+    await expect(canvas.queryByRole('status')).toBeNull();
+    await expect(canvas.getByRole('button', { name: '계속' })).toBeDisabled();
+    await expect(canvas.getByRole('button', { name: '멈춤' })).toBeDisabled();
+    // The receipt arrives: the confirmation shows.
+    await expect(await canvas.findByRole('status')).toHaveTextContent('계속합니다');
+    // The host drops the answered row.
+    await waitFor(() => expect(canvas.queryByText('요청 예산 400회에 닿았습니다')).toBeNull(), {
+      timeout: 4000,
+    });
+    await settled(canvasElement);
+  },
+};
+
+export const SeveralWaiting: Story = {
+  args: { decisions: [loopRound, meetingChain] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole('button', { name: '계속' })).toBeInTheDocument();
+    const folded = canvas.getByRole('button', { name: '회의를 다음 발언자로 이어갈까요?' });
+    await expect(folded).toHaveAttribute('aria-expanded', 'false');
+    for (let i = 0; i < 5 && document.activeElement !== folded; i += 1) await userEvent.tab();
+    await expect(folded).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    const answer = await canvas.findByRole('button', { name: '이어가기' });
+    for (let i = 0; i < 5 && document.activeElement !== answer; i += 1) await userEvent.tab();
+    await expect(answer).toHaveFocus();
+    await settled(canvasElement);
+  },
+};
+
+export const Dark: Story = {
+  args: { decisions: [loopRound, meetingChain] },
+  decorators: [(Story) => <div className="dark bg-background p-3 text-foreground">{Story()}</div>],
+  play: async ({ canvasElement }) => {
     await settled(canvasElement);
   },
 };
