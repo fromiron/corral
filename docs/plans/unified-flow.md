@@ -11,11 +11,11 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
-| 백본 | B1–B9 | 대기 |
-| 화면 | K1, U1–U14 | 대기 |
+| 백본 | B1–B10 | 진행 중(B7·B8 병합) |
+| 화면 | K1, U1–U14 | 진행 중 |
 | 회의 | M1–M4 | 대기 |
 | 감독 | A1–A9 | 대기 |
-| 검증 | V1(기준선), V2(최종 장면) | 대기 |
+| 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 수정) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
 
@@ -425,19 +425,19 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | ID | 이름 | 선행 | 주 대상 | 상태 |
 |---|---|---|---|---|
 | S0 | 명세 변경 | — | `docs/specs` | 완료 |
-| V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 대기 |
-| B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 대기 |
+| V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 수정 중 |
+| B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 재검토 중 |
 | B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 대기 |
-| B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 대기 |
-| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 대기 |
+| B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 구현 중 |
+| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 리뷰 중 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 대기 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 대기 |
-| B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 대기 |
-| B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 대기 |
+| B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
+| B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 대기 |
-| B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 대기 |
-| K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 대기 |
-| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 대기 |
+| B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 구현 중 |
+| K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 재검토 중 |
+| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 구현 중 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 대기 |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 대기 |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
@@ -719,6 +719,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **V1 (측정기).** 추적 대상이 없으면 최상위 값은 0이 아니라 `null`이고 표본 수를 함께 낸다. 항목은 식별 값(`data-chat-item` 값)으로 따라가 같은 값의 새 노드로 바뀌어도 이어서 재고, 사라진 항목은 결과에 따로 적는다. 세로와 가로 이동을 모두 잰다. 입력 줄과 끝 간격의 첫 표본은 `start()` 안에서 읽는다. 전이 구간은 붙잡아 둔 응답으로 만들고 구간 사이에 빈틈을 두지 않는다. `e2e/flow`는 `playwright.flow.config.ts`로만 돌고 확장 구성(`playwright.extended.config.ts`)에서는 뺀다.
 - **B8 (초과 복구와 취소).** 컨텍스트 초과 복구도 같은 판정을 쓴다(생각·공백만 나왔을 때만 강제 압축 뒤 한 번 다시 보냄). 붙잡은 이벤트의 취소 경계 두 가지(붙잡은 중 취소, 재시도 대기 중 취소)를 테스트로 고정한다.
 - **B1 (유예).** 유예는 `starting`·`working`에서 `succeeded`·`cancelled`로 바뀔 때만 있고 실행이 끝난 시각부터 2초다(끝난 시각을 모르면 변화를 처음 본 시각부터). 60초 규칙은 없다. 유예가 끝나는 시각은 다시 물어도 밀리지 않는다. 열린 요청도 승인 대기도 없는 `awaiting_user` Run의 필요한 것은 `continue`다.
+- **B3 (B7이 남긴 반례).** 같은 파일을 고치는 김에 `packages/adapter-pi/test/pi-adapter.test.ts`에 자동 압축이 실패하면 `started`·`failed` 이벤트가 한 번씩 나오고 실행이 예전처럼 실패로 끝나는 테스트를 더한다(자동 실패를 다시 던지는 줄이 빠지면 실패해야 한다).
 - **B7 (자동 압축의 보고).** 자동 압축도 수동과 같은 단계(`started` 뒤 `completed`·`failed`·`cancelled`·`skipped`)를 보고하므로 이벤트는 단계마다 하나다. 자동은 보고에 `trigger: 'automatic'`을 싣고 이벤트 envelope의 commandId는 비운다.
 - **B9 (§9 표 테스트).** `apps/server/test/server.test.ts`의 제품 계약 §9 표 테스트에 무인 실행 예산·감독 예산 행이 코드 기본값과 같다는 단언을 더한다.
 - **B9·A5 (감독의 예산).** 감독은 예산(기본 60)을 다 쓰면 승인을 묻지 않고 끝난다. 계속 여부 승인은 팀 역할(400)과 동적 하위 실행(200)에만 있다. 승인의 kind는 `request_budget`이다.
