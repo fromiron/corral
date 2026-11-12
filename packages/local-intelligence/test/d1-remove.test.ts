@@ -192,7 +192,10 @@ describe('removing the Local judge model', () => {
         writeFileSync(join(dir, manifest.model.file), MODEL_BYTES);
         writeFileSync(join(dir, 'llama-server'), SERVER_BYTES);
         writeFileSync(join(dir, 'libggml.so'), LIB_BYTES);
-        writeFileSync(join(dir, 'install.json'), JSON.stringify({ id: manifest.id }));
+        writeFileSync(
+          join(dir, 'install.json'),
+          JSON.stringify({ id: manifest.id, devices: ['cpu'] }),
+        );
       },
       onInstalled: () => {
         accepted = true;

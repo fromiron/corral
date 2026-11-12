@@ -202,7 +202,8 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /local-ai | — | release, models(`{meeting}`: 번들이 설치하는 회의 분석 모델의 표시 이름), state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null) |
+| GET /local-ai | — | release, models(`{meeting}`: 번들이 설치하는 회의 분석 모델의 표시 이름), state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), device(`{requested, actual}`: requested는 `cpu`·`gpu`·`auto`, actual은 준비된 엔진의 `cpu`·`gpu` 또는 null) |
+| PUT /local-ai/device | `{device}` `cpu`·`gpu`·`auto` | 회의 분석 엔진의 장치를 저장하고 실행 중인 헬퍼를 끝낸다. 다음 계산이 그 규칙으로 헬퍼를 시작한다. 계산 중에 다른 장치로 바꾸면 409 `RESOURCE_CAPACITY`이며 저장된 장치와 헬퍼는 그대로다([로컬 AI](features/local-intelligence.md)). 응답은 GET /local-ai와 같다. 다른 값은 400 `SCHEMA_INVALID`. 쓸 수 없는 환경과 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED` |
 | POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
 | DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다. 설치된 번들은 지우지 않는다 |
 | DELETE /local-ai | — | 회의 분석 번들만 제거한다. 규칙은 [로컬 AI](features/local-intelligence.md). 이미 없으면 설치 안 됨. 설치 중·계산 중은 409 `RESOURCE_CAPACITY`이며 파일과 헬퍼는 그대로다. `local-ai/d1`은 지우지 않는다. 쓸 수 없는 환경과 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED`. 응답은 GET /local-ai와 같다 |
@@ -211,9 +212,9 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /effort-routing | — | settings(`decisions.effort_routing`, 없으면 `{mode:'off'}`), revision, local(`{model, host, supported, reason, install, runtime, downloadBytes, progress, error, device:{requested, active}, threads, defaultThreads}`: threads는 실행 중인 instance의 스레드 수, defaultThreads는 서버 CPU에서 정한 새 Local 설정의 기본값, install은 `absent`·`downloading`·`verifying`·`installed`·`install-error`, runtime은 `stopped`·`starting`·`ready`·`packing`·`inferring`·`draining`·`error`, 쓸 수 없는 환경은 supported false와 이유), apis(판정 API마다 `{id, keyConfigured, noticeRevision, verified}`). 키·로컬 경로는 담지 않는다 |
+| GET /effort-routing | — | settings(`decisions.effort_routing`, 없으면 `{mode:'off'}`), revision, local(`{model, host, supported, reason, install, runtime, downloadBytes, installedBytes, progress, error, device:{requested, active}, devices, threads, defaultThreads}`: threads는 실행 중인 instance의 스레드 수, defaultThreads는 서버 CPU에서 정한 새 Local 설정의 기본값, install은 요청한 장치의 `absent`·`downloading`·`verifying`·`installed`·`install-error`, runtime은 `stopped`·`starting`·`ready`·`packing`·`inferring`·`draining`·`error`, device.requested는 `cpu`·`vulkan`·`cuda`, device.active는 준비된 instance의 실제 장치 또는 null, devices는 이 컴퓨터용 manifest에 있는 장치마다 `{kind, installed, downloadBytes, requirement}`, installedBytes는 설치된 모델과 런타임 archive의 합 또는 null, downloadBytes는 요청한 장치를 설치할 때 내려받을 크기, 쓸 수 없는 환경은 supported false와 이유), apis(판정 API마다 `{id, keyConfigured, noticeRevision, verified}`). 키·로컬 경로는 담지 않는다. devices의 GPU 항목을 검증됨으로 주지 않는다 |
 | PUT /effort-routing | `{settings, revision}` | 설정 저장. 형식 오류, 키가 없는 판정 API, 현재 고지와 다른 동의 revision, 이 컴퓨터에서 쓸 수 없는 Local은 400 `SCHEMA_INVALID`, revision이 다르면 409 `REVISION_CONFLICT`. 다운로드는 시작하지 않는다. 설치된 Local을 저장하면 준비를 시작하고, Off나 판정 API를 저장하면 Corral이 시작한 Local 프로세스를 끝낸다. 응답은 GET /effort-routing과 같다 |
-| POST /effort-routing/local/install | — | 202. Local 모델·런타임 설치를 시작한다. 진행 중이면 같은 설치, 이미 설치됐으면 그대로다. 설치가 끝나고 설정이 Manual + Local이면 준비를 시작한다. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED`. 응답은 GET /effort-routing과 같다 |
+| POST /effort-routing/local/install | `{device?}` `cpu`·`vulkan`·`cuda`. 없으면 `cpu` | 202. 그 장치의 런타임만 설치한다. 모델이 없거나 다르면 모델도 받는다. 다른 장치의 archive는 받지 않는다. 진행 중이면 같은 설치, 그 장치가 이미 설치됐으면 그대로다. manifest에 없는 장치는 400 `SCHEMA_INVALID`. 설치가 끝나고 설정이 Manual + 그 Local 장치이면 준비를 시작한다. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED`. 응답은 GET /effort-routing과 같다 |
 | DELETE /effort-routing/local/install | — | 진행 중인 설치를 취소하고 부분 파일을 지운다. 이미 설치된 버전은 그대로다. 응답은 GET /effort-routing과 같다 |
 | DELETE /effort-routing/local | — | 설치된 Local manifest 디렉터리만 제거한다. 규칙은 [추론 판정](features/effort-routing.md). 저장된 설정은 바꾸지 않고 설치 상태는 `absent`다. 설치 중·판정 중은 409 `RESOURCE_CAPACITY`이며 파일과 프로세스는 그대로다. 회의 분석 번들은 지우지 않는다. 이미 없으면 `absent`다. 실제 모델이 없거나 이 컴퓨터에서 쓸 수 없으면 403 `CAPABILITY_DENIED`. 응답은 GET /effort-routing과 같다 |
 | POST /effort-routing/local/start | — | 202. 설치된 Local을 다시 준비한다(오류 뒤 다시 준비). 설정이 Manual + Local이 아니거나 설치되지 않았으면 400 `SCHEMA_INVALID`. 응답은 GET /effort-routing과 같다 |
@@ -257,7 +258,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
 | REVISION_CONFLICT | 409 | Corral 저장의 기준 definition revision이 현재와 다름(다른 탭에서 저장). 저장하지 않음 (구현 중 추가) |
 | RUN_ALREADY_ACTIVE | 409 | workspace에 이미 활성 Run이 있음. 새 Run과 effect 없음 (구현 중 추가) |
-| RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음. 로컬 번들을 설치 중·판정 중·계산 중에 제거하려 할 때도 이 코드다([추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md)). 파일과 프로세스는 그대로다 |
+| RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음. 로컬 번들을 설치 중·판정 중·계산 중에 제거하려 할 때와 계산 중에 회의 분석 장치를 바꾸려 할 때도 이 코드다([추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md)). 파일과 프로세스는 그대로다 |
 | CRITERIA_CHANGE_REQUIRES_NEW_RUN | 409 | Loop가 이미 종료되어 완료 기준 변경은 새 Run 필요 |
 | RESTART_NOT_ALLOWED | 409 | 부모가 더 이상 대기하지 않거나 downstream 진행 |
 | APPROVAL_STALE | 409 | 대상/기준 버전 변경 또는 이미 해결 |

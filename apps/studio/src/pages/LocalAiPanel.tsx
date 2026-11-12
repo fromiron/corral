@@ -5,6 +5,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  Select,
 } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -25,7 +26,7 @@ export function LocalAiPanel({ pollMs = 1000 }: { pollMs?: number }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [actionFailed, setActionFailed] = useState(false);
   const [refusal, setRefusal] = useState<
-    'removeInstalling' | 'removeComputing' | 'removeFailed' | null
+    'removeInstalling' | 'removeComputing' | 'removeFailed' | 'deviceComputing' | null
   >(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -100,6 +101,21 @@ export function LocalAiPanel({ pollMs = 1000 }: { pollMs?: number }) {
       setBusy(false);
     }
   };
+  const setDevice = async (device: LocalAiView['device']['requested']) => {
+    if (!models) return;
+    setBusy(true);
+    setActionFailed(false);
+    setRefusal(null);
+    try {
+      setView(await models.setLocalAiDevice(device));
+    } catch (error) {
+      if (error instanceof ApiError && error.message === 'a computation is in progress')
+        setRefusal('deviceComputing');
+      else setActionFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
   const mb = (bytes: number) => format.number(Math.round(bytes / MB));
   const download =
     view?.downloadBytes == null
@@ -122,6 +138,26 @@ export function LocalAiPanel({ pollMs = 1000 }: { pollMs?: number }) {
               <li>{t('model.meeting', { name: view.models.meeting })}</li>
             </ul>
             <p role="status">{t(`state.${view.state}`)}</p>
+            {view.state !== 'unsupported' ? (
+              <>
+                <Select<'cpu' | 'gpu' | 'auto'>
+                  label={t('device')}
+                  value={view.device.requested}
+                  onValueChange={(device) => void setDevice(device)}
+                  options={[
+                    { value: 'cpu', label: t('devices.cpu') },
+                    { value: 'gpu', label: t('devices.gpu'), hint: t('notVerified') },
+                    { value: 'auto', label: t('devices.auto'), hint: t('notVerified') },
+                  ]}
+                  className="w-fit min-w-32"
+                />
+                <p>
+                  {view.device.actual
+                    ? t('running', { device: t(`devices.${view.device.actual}`) })
+                    : t('notRunning')}
+                </p>
+              </>
+            ) : null}
             {canInstall && download ? <p id={downloadHint}>{t('download', download)}</p> : null}
             {installing && view.progress ? (
               <p>

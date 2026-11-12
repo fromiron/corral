@@ -3034,9 +3034,19 @@
     "removeDismiss": "Cancel",
     "removeInstalling": "Cannot remove it while it is installing.",
     "removeComputing": "Cannot remove it while a computation is running.",
+    "deviceComputing": "Cannot change the device while a computation is running.",
     "removeFailed": "Could not remove the model. Try again.",
     "loadFailed": "Could not load local AI status. Reload and try again.",
-    "actionFailed": "Could not change the install. Try again."
+    "actionFailed": "Could not change the install. Try again.",
+    "device": "Device",
+    "devices": {
+      "cpu": "CPU",
+      "gpu": "GPU",
+      "auto": "Automatic"
+    },
+    "running": "Running on {device}",
+    "notRunning": "Not running",
+    "notVerified": "Not verified on this computer"
   },
   "DecisionApis": {
     "heading": "Decision APIs",
@@ -3100,8 +3110,11 @@
     "removeFailed": "Could not remove the model. Try again.",
     "device": "Device",
     "cpu": "CPU",
+    "vulkan": "Vulkan",
+    "cuda": "CUDA",
     "gpu": "GPU",
-    "gpuUnverified": "No verified GPU setup yet",
+    "notVerified": "Not verified on this computer",
+    "gpuRequirement": "Needs {requirement}. Corral does not download these.",
     "advanced": "Advanced",
     "timeout": "Longest wait (ms)",
     "threads": "CPU threads",

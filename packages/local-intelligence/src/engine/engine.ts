@@ -384,8 +384,11 @@ export class LocalEmbeddingEngine {
           return;
         }
         if (!started) {
-          if (message.type === 'ready') settle(null);
-          else if (message.type === 'fatal') settle(new Error(message.message));
+          if (message.type === 'ready') {
+            if (message.backend !== backend)
+              settle(new Error('the local AI helper reported a different device'));
+            else settle(null);
+          } else if (message.type === 'fatal') settle(new Error(message.message));
           return;
         }
         if (generation === this.generation && helper === this.helper) this.onMessage(message);

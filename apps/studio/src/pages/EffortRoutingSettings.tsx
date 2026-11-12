@@ -36,9 +36,12 @@ type ApiId = EffortRoutingView['apis'][number]['id'];
 type Fallback = 'provider-default' | EffortLevel;
 
 /** What the person is editing; numbers stay text until they are valid. */
+type LocalDevice = 'cpu' | 'vulkan' | 'cuda';
+
 interface Form {
   mode: Settings['mode'];
   engine: 'local' | 'api';
+  device: LocalDevice;
   threads: string;
   localTimeout: string;
   apiId: ApiId | null;
@@ -53,6 +56,7 @@ function formOf(view: EffortRoutingView): Form {
   return {
     mode: saved.mode,
     engine: engine?.kind ?? 'local',
+    device: localDevice(view, engine?.kind === 'local' ? engine.device.kind : 'cpu'),
     threads: String(engine?.kind === 'local' ? engine.device.threads : view.local.defaultThreads),
     localTimeout: String(
       engine?.kind === 'local' ? engine.callerTimeoutMs : LOCAL_ROUTING_TIMEOUT_MS,
@@ -66,6 +70,12 @@ function formOf(view: EffortRoutingView): Form {
         ? saved.fallback.effort
         : 'provider-default',
   };
+}
+
+function localDevice(view: EffortRoutingView, saved: LocalDevice): LocalDevice {
+  const offered = view.local.devices;
+  if (!offered || offered.some((entry) => entry.kind === saved)) return saved;
+  return 'cpu';
 }
 
 const whole = (text: string, min: number, max: number) => {
@@ -93,9 +103,11 @@ function settingsOf(form: Form, view: EffortRoutingView): Settings | null {
       ROUTING_TIMEOUT_MAX_MS,
     );
     if (!view.local.supported || threads === null || callerTimeoutMs === null) return null;
+    if (view.local.devices && !view.local.devices.some((entry) => entry.kind === form.device))
+      return null;
     return {
       mode: 'manual',
-      engine: { kind: 'local', device: { kind: 'cpu', threads }, callerTimeoutMs },
+      engine: { kind: 'local', device: { kind: form.device, threads }, callerTimeoutMs },
       fallback,
       ...application,
     };
@@ -305,7 +317,7 @@ export function EffortRoutingSettings({
                   form={form}
                   busy={busy}
                   change={change}
-                  install={() => localAction(() => models.installLocalRouting())}
+                  install={() => localAction(() => models.installLocalRouting(form.device))}
                   cancel={() => localAction(() => models.cancelLocalRoutingInstall())}
                   start={() => localAction(() => models.startLocalRouting())}
                   remove={removeLocal}
@@ -381,37 +393,64 @@ function LocalEngine({
   const prepareHint = useId();
   const [confirming, setConfirming] = useState(false);
   const local = view.local;
+  const offered = local.devices?.length ? local.devices : null;
+  const cpu = {
+    kind: 'cpu' as const,
+    installed: local.install === 'installed',
+    downloadBytes: local.downloadBytes ?? 0,
+    requirement: null,
+  };
+  const catalog = offered ?? [cpu];
+  const picked = catalog.find((entry) => entry.kind === form.device) ?? cpu;
   const mb = (bytes: number) => format.number(Math.round(bytes / MB));
+  const downloadBytes = offered ? picked.downloadBytes : local.downloadBytes;
+  const removeBytes = local.installedBytes ?? local.downloadBytes;
   const download =
-    local.downloadBytes === null
+    downloadBytes === null
       ? null
-      : formatDownload(local.downloadBytes, (value, options) => format.number(value, options));
+      : formatDownload(downloadBytes, (value, options) => format.number(value, options));
+  const removal =
+    removeBytes === null
+      ? null
+      : formatDownload(removeBytes, (value, options) => format.number(value, options));
+  const pickedInstalled = offered ? picked.installed : local.install === 'installed';
   const status = !local.supported
     ? t('unsupported')
-    : local.install === 'absent'
-      ? t('install.absent', {
-          size: download?.size ?? mb(local.downloadBytes ?? 0),
-          unit: download?.unit ?? 'MB',
+    : local.install === 'downloading'
+      ? t('install.downloading', {
+          percent: local.progress
+            ? Math.floor((local.progress.received / local.progress.total) * 100)
+            : 0,
+          received: mb(local.progress?.received ?? 0),
+          total: mb(local.progress?.total ?? downloadBytes ?? 0),
         })
-      : local.install === 'downloading'
-        ? t('install.downloading', {
-            percent: local.progress
-              ? Math.floor((local.progress.received / local.progress.total) * 100)
-              : 0,
-            received: mb(local.progress?.received ?? 0),
-            total: mb(local.progress?.total ?? local.downloadBytes ?? 0),
-          })
-        : local.install === 'installed'
-          ? t(`runtime.${local.runtime}`)
-          : t(`install.${local.install}`);
-  const saved = view.settings.mode === 'manual' && view.settings.engine.kind === 'local';
+      : local.install === 'verifying'
+        ? t('install.verifying')
+        : local.install === 'install-error' && (!offered || form.device === local.device.requested)
+          ? t('install.install-error')
+          : !pickedInstalled
+            ? t('install.absent', {
+                size: download?.size ?? mb(downloadBytes ?? 0),
+                unit: download?.unit ?? 'MB',
+              })
+            : t(`runtime.${local.runtime}`);
+  const savedEngine =
+    view.settings.mode === 'manual' && view.settings.engine.kind === 'local'
+      ? view.settings.engine
+      : null;
   const canPrepare =
-    saved &&
-    local.install === 'installed' &&
+    savedEngine !== null &&
+    savedEngine.device.kind === form.device &&
+    pickedInstalled &&
     (local.runtime === 'stopped' || local.runtime === 'error');
   const canInstall =
-    local.supported && (local.install === 'absent' || local.install === 'install-error');
-  const canRemove = local.supported && local.install === 'installed';
+    local.supported &&
+    !pickedInstalled &&
+    local.install !== 'downloading' &&
+    local.install !== 'verifying';
+  const canRemove =
+    local.supported &&
+    (offered ? offered.some((entry) => entry.installed) : local.install === 'installed');
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -486,8 +525,8 @@ function LocalEngine({
           <DialogTitle>{t('removeTitle')}</DialogTitle>
           <DialogDescription className="my-4">
             {t('removeConfirm', {
-              size: download?.size ?? '0',
-              unit: download?.unit ?? 'MB',
+              size: removal?.size ?? download?.size ?? '0',
+              unit: removal?.unit ?? download?.unit ?? 'MB',
             })}
           </DialogDescription>
           <div className="flex justify-end gap-2">
@@ -506,17 +545,26 @@ function LocalEngine({
         </DialogPopup>
       </Dialog>
       <Labeled label={t('device')}>
-        <Select<'cpu' | 'gpu'>
+        <Select<LocalDevice>
           label={t('device')}
-          value="cpu"
-          onValueChange={() => {}}
-          options={[
-            { value: 'cpu', label: t('cpu') },
-            { value: 'gpu', label: t('gpu'), disabled: true, hint: t('gpuUnverified') },
-          ]}
+          value={form.device}
+          onValueChange={(device) => change({ device })}
+          options={catalog.map((entry) => ({
+            value: entry.kind,
+            label: t(entry.kind),
+            hint: entry.kind === 'cpu' ? undefined : t('notVerified'),
+          }))}
           className="w-fit min-w-32"
         />
       </Labeled>
+      {picked.kind !== 'cpu' ? (
+        <p className="text-caption text-muted-foreground">
+          {t('notVerified')}.
+          {picked.requirement
+            ? ` ${t('gpuRequirement', { requirement: picked.requirement })}`
+            : null}
+        </p>
+      ) : null}
       <details className="text-body">
         <summary>{t('advanced')}</summary>
         <div className="mt-2 flex flex-wrap gap-4">
