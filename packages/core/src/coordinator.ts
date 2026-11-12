@@ -2582,7 +2582,7 @@ export class Coordinator {
         commandId: command.commandId,
         payloadHash,
         receipt,
-        runId: command.sessionId,
+        runId: null,
         directiveId: null,
       });
     });
