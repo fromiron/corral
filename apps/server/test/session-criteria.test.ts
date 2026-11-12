@@ -260,6 +260,7 @@ it('a session without criteria starts the same definition as before', async () =
     brief: 'Write the report.',
     choice: { modelProfile: 'model-a' },
     fileTools: false,
+    workspace: { mode: 'none', reason: 'unlinked' },
   });
   const recorded = await s.transport.getRunDefinition(started.runId ?? '');
   expect(recorded && definitionHash(recorded)).toBe(definitionHash(expected));

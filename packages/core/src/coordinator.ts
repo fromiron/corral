@@ -285,7 +285,8 @@ export interface FileTools {
     cancellation: ToolCancellation,
   ): Promise<CommandReport>;
   runStartFiles?(runId: string): RuntimeFiles | null;
-  captureRuntimeFiles?(runId: string, checkpointId: string): Promise<RuntimeFiles>;
+  /** null when the run works in a folder that file checkpoints do not cover. */
+  captureRuntimeFiles?(runId: string, checkpointId: string): Promise<RuntimeFiles | null>;
   verifyRuntimeFiles?(runId: string, reference: RuntimeFiles): Promise<boolean>;
   available(runId: string): boolean;
   pinCriteria?(runId: string, files: ReviewRecipeRevision['criteriaFiles']): Promise<void>;
@@ -8175,7 +8176,7 @@ export class Coordinator {
         const files = this.files?.available(run.runId)
           ? await this.files.captureRuntimeFiles?.(run.runId, `files_${checkpointId}`)
           : null;
-        if (this.files?.available(run.runId) && !files) return null;
+        if (files === undefined) return null;
         requireOwned();
         if (
           hashOf(protectedContext()) !== hashOf(state.protectedContext) ||

@@ -800,7 +800,15 @@ function fileArgsValid(name: string, args: Record<string, unknown>): boolean {
   const only = (...allowed: string[]) => keys.every((k) => allowed.includes(k));
   switch (name) {
     case 'list_files':
-      return only('path') && (args.path === undefined || args.path === '' || isPath(args.path));
+      return (
+        only('path', 'query') &&
+        (args.path === undefined || args.path === '' || isPath(args.path)) &&
+        (args.query === undefined ||
+          (typeof args.query === 'string' &&
+            args.query.length > 0 &&
+            args.query.length <= 200 &&
+            !/[\r\n\0]/.test(args.query)))
+      );
     case 'read_file':
     case 'delete_file':
       return only('path') && isPath(args.path);

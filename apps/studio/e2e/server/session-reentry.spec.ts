@@ -29,7 +29,10 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
   }, sessionId);
   await page.reload();
   await page
-    .getByRole('button', { name: 'No working copy · Set up file work', exact: true })
+    .getByRole('button', {
+      name: 'The agent cannot read or change files. Link a folder.',
+      exact: true,
+    })
     .click();
   await expect(page).toHaveURL(/panel=changes/);
   await openProject(page);
@@ -40,7 +43,10 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
   await expect(requestBox(page)).toBeVisible();
   await expect(page).toHaveURL(/compose=true/);
   await page
-    .getByRole('button', { name: 'No working copy · Set up file work', exact: true })
+    .getByRole('button', {
+      name: 'The agent cannot read or change files. Link a folder.',
+      exact: true,
+    })
     .click();
   const dialog = await openTextSearch(page);
   await dialog.getByRole('textbox').fill('moonstone');

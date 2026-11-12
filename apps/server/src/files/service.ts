@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, existsSync, realpathSync } from 'node:fs';
+import { constants, existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import {
   chmod,
   link,
@@ -123,6 +123,7 @@ import {
   type FileTools,
   type RunProjection,
   rankFuzzy,
+  type SessionFiles,
   type ToolCancellation,
   ToolRefusal,
   ToolTerminationUnconfirmed,
@@ -321,6 +322,12 @@ export class WorkspaceError extends Error {
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
+/** The key a durable workspace reservation is held under: the folder's real path. */
+const accessKey = (path: string) => {
+  const real = realpathSync.native(path);
+  return process.platform === 'win32' ? real.toLowerCase() : real;
+};
+
 /** A relative path inside the worktree, or a refusal. Never `..`, absolute, or into `.git`. */
 const GIT_KINDS = [
   'git.stage',
@@ -482,6 +489,11 @@ export class WorkspaceService implements FileTools {
   >();
   private readonly commandEpochs = new Map<string, number>();
   private readonly pendingCommandRuns = new Map<string, string>();
+  /** Runs admitted in direct mode, and the linked folder each one started with. */
+  private readonly directRuns = new Map<
+    string,
+    { sessionId: string; bindingId: string; key: string }
+  >();
   private disposing = false;
   private readonly runAccess: RunAccessStore;
   private readonly workspaceAccess: WorkspaceAccessStore;
@@ -2801,6 +2813,57 @@ export class WorkspaceService implements FileTools {
     await git(worktree, ['update-ref', ref, tree]);
   }
 
+  /** A command's tree: a Git snapshot of a working copy, or a fingerprint that writes nothing. */
+  private async commandTree(root: string, gitSnapshot: boolean): Promise<string> {
+    return gitSnapshot ? this.snapshotTree(root) : this.folderFingerprint(root);
+  }
+
+  /**
+   * Identity of a linked folder's plain files. Symlinks, `.git` and `.corral` are skipped, so the
+   * hash is not a checkpoint and does not follow a link out of the folder.
+   */
+  private async folderFingerprint(root: string): Promise<string> {
+    const pending = [''];
+    const parts: string[] = [];
+    let visited = 0;
+    let truncated = false;
+    while (pending.length && parts.length <= 500 && visited < 2000) {
+      const rel = pending.shift() ?? '';
+      let dir: Awaited<ReturnType<typeof opendir>>;
+      try {
+        dir = await opendir(join(root, rel));
+      } catch {
+        continue;
+      }
+      for await (const entry of dir) {
+        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.corral')
+          continue;
+        if (entry.isSymbolicLink()) continue;
+        if (++visited >= 2000) {
+          truncated = true;
+          break;
+        }
+        const path = rel ? `${rel}/${entry.name}` : entry.name;
+        try {
+          safeRelative(path);
+        } catch {
+          continue;
+        }
+        if (entry.isDirectory()) pending.push(path);
+        else if (entry.isFile()) {
+          const info = await lstat(join(root, path));
+          parts.push(`${path}\0${info.size}\0${Math.trunc(info.mtimeMs)}`);
+        }
+        if (parts.length > 500) {
+          truncated = true;
+          break;
+        }
+      }
+    }
+    parts.sort();
+    return sha256(Buffer.from(`${truncated ? 'truncated' : 'complete'}\n${parts.join('\n')}`));
+  }
+
   /** The worktree as a git tree, from a temporary index; .gitignore'd files are left out. */
   private async snapshotTree(worktree: string, isolation?: 'linux-bwrap'): Promise<string> {
     const index = join(tmpdir(), `corral-index-${randomUUID()}`);
@@ -4296,6 +4359,38 @@ export class WorkspaceService implements FileTools {
     });
   }
 
+  /**
+   * Where this session's agent works. A working copy wins. Otherwise a linked, trusted folder
+   * that is still there is direct. The result names no path.
+   */
+  sessionFiles(sessionId: string): SessionFiles {
+    if (this.worktree(sessionId)) return { mode: 'copy' };
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    const binding = session ? this.binding(session.project_id) : null;
+    if (!binding) return { mode: 'none', reason: 'unlinked' };
+    if (!binding.trusted) return { mode: 'none', reason: 'untrusted' };
+    try {
+      if (
+        !existsSync(binding.root_path) ||
+        lstatSync(binding.root_path).isSymbolicLink() ||
+        !statSync(binding.root_path).isDirectory()
+      )
+        return { mode: 'none', reason: 'missing' };
+    } catch {
+      return { mode: 'none', reason: 'missing' };
+    }
+    return { mode: 'direct' };
+  }
+
+  private bindingOfSession(sessionId: string): BindingRow | null {
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    return session ? this.binding(session.project_id) : null;
+  }
+
   /** The worktree's tree now, without pinning it. */
   async currentTree(sessionId: string, isolation?: 'linux-bwrap'): Promise<string | null> {
     const row = this.worktree(sessionId);
@@ -5136,21 +5231,83 @@ export class WorkspaceService implements FileTools {
 
   private commandContext(input: CommandExecution) {
     if (this.disposing) throw new ToolRefusal('TARGET_TERMINAL', 'workspace is shutting down');
-    const found = this.worktreeOfRun(input.runId);
     const access = this.runAccess.get(input.runId);
-    if (!found || !access || access.writer !== 1 || access.state !== 'active')
-      throw new ToolRefusal('CAPABILITY_DENIED', 'commands require an active working copy writer');
-    const binding = this.db
-      .prepare('SELECT * FROM workspace_bindings WHERE id=?')
-      .get(found.row.binding_id) as BindingRow | undefined;
-    if (!binding?.trusted)
-      throw new ToolRefusal('CAPABILITY_DENIED', 'trust the repository before running commands');
     if (this.criteria.get(input.runId)?.length)
       throw new ToolRefusal(
         'CAPABILITY_DENIED',
         'native commands cannot protect immutable review criteria',
       );
-    return { ...found, binding };
+    const keyOf = (path: string) => {
+      try {
+        return accessKey(path);
+      } catch {
+        return null;
+      }
+    };
+    const found = this.worktreeOfRun(input.runId);
+    if (found) {
+      // The run's writer must be for this copy: a copy made after the run started, or made
+      // again since, has no lease of this run's.
+      if (
+        !access ||
+        access.writer !== 1 ||
+        access.state !== 'active' ||
+        access.session_id !== found.sessionId ||
+        access.copy_generation !== found.row.copy_generation ||
+        access.worktree_key !== keyOf(found.row.worktree_path)
+      )
+        throw new ToolRefusal(
+          'CAPABILITY_DENIED',
+          'commands require an active working copy writer',
+        );
+      const binding = this.db
+        .prepare('SELECT * FROM workspace_bindings WHERE id=?')
+        .get(found.row.binding_id) as BindingRow | undefined;
+      if (!binding?.trusted)
+        throw new ToolRefusal('CAPABILITY_DENIED', 'trust the repository before running commands');
+      return { ...found, binding, gitSnapshot: true, folderKey: null };
+    }
+    const sessionId = this.sessionOfRun(input.runId);
+    const binding = sessionId ? this.bindingOfSession(sessionId) : null;
+    if (!sessionId || !binding?.trusted || this.sessionFiles(sessionId).mode !== 'direct')
+      throw new ToolRefusal('CAPABILITY_DENIED', 'trust the folder before running commands');
+    // Only a run admitted in direct mode, in this same linked folder, runs commands here.
+    const started = this.directRuns.get(input.runId);
+    const folderKey = keyOf(binding.root_path);
+    if (
+      access ||
+      !started ||
+      started.sessionId !== sessionId ||
+      started.bindingId !== binding.id ||
+      started.key !== folderKey
+    )
+      throw new ToolRefusal(
+        'CAPABILITY_DENIED',
+        'the linked folder changed since this run started',
+      );
+    return {
+      row: { worktree_path: binding.root_path } as WorktreeRow,
+      sessionId,
+      binding,
+      // A linked folder is not a checkpoint. Do not write Git objects or refs into it.
+      gitSnapshot: false,
+      folderKey,
+    };
+  }
+
+  /**
+   * A direct command refuses rather than queues when the linked folder is held: by another
+   * command, a person's task, or a command whose end was never confirmed.
+   */
+  private assertFolderFree(key: string) {
+    const held = this.workspaceAccess.writerAt(key);
+    if (!held) return;
+    throw new ToolRefusal(
+      'RUN_ALREADY_ACTIVE',
+      held.state === 'uncertain'
+        ? 'an earlier command in the linked folder has not confirmed it ended; the folder stays protected'
+        : 'another command or task is running in the linked folder; run this one after it ends',
+    );
   }
 
   /** Caller holds the existing worktree mutex; this does not create a second launch path. */
@@ -5188,7 +5345,11 @@ export class WorkspaceService implements FileTools {
       timeoutMs: request.timeoutMs ?? 120000,
       mode: request.mode ?? 'foreground',
     };
-    const plan = { ...launch, operationId, tree: await this.snapshotTree(root) };
+    const plan = {
+      ...launch,
+      operationId,
+      tree: await this.commandTree(root, this.worktree(sessionId) !== null),
+    };
     const executableHash = sha256(await readFile(shell.executable));
     return CommandPlan.parse({
       ...plan,
@@ -5199,8 +5360,10 @@ export class WorkspaceService implements FileTools {
 
   async planCommand(input: CommandExecution, cancellation: ToolCancellation): Promise<CommandPlan> {
     if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'command cancelled');
-    const { row } = this.commandContext(input);
+    const { row, folderKey } = this.commandContext(input);
+    if (folderKey) this.assertFolderFree(folderKey);
     return this.lease(row.worktree_path, async () => {
+      if (folderKey) this.assertFolderFree(folderKey);
       const plan = await this.commandPlanAt(input);
       if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'command cancelled');
       return plan;
@@ -5231,9 +5394,17 @@ export class WorkspaceService implements FileTools {
       return existing;
     }
     if (saved) return Promise.resolve(this.commandReport(plan.sessionId, plan.operationId));
-    const { row, sessionId } = this.commandContext(input);
+    const { row, sessionId, gitSnapshot, folderKey } = this.commandContext(input);
+    if (folderKey) this.assertFolderFree(folderKey);
     const epoch = this.commandEpochs.get(input.runId) ?? 0;
+    // Direct mode: this command, not its run, holds the linked folder's single writer.
+    const folderOwner = folderKey ? { kind: 'run' as const, id: plan.operationId } : null;
+    const releaseFolder = (confirmed: boolean) => {
+      // Releasing only moves an active reservation, so an uncertain one stays protected.
+      if (folderOwner) this.workspaceAccess.release(folderOwner, confirmed);
+    };
     const completion = this.lease(row.worktree_path, async () => {
+      if (folderKey) this.assertFolderFree(folderKey);
       const current = await this.commandPlanAt(input);
       if (canonicalJson(current) !== canonicalJson(plan))
         throw new ToolRefusal('REVISION_CONFLICT', 'command target or launch identity changed');
@@ -5250,118 +5421,136 @@ export class WorkspaceService implements FileTools {
         epoch !== (this.commandEpochs.get(input.runId) ?? 0)
       )
         throw new ToolRefusal('TARGET_TERMINAL', 'command cancelled');
-      this.db
-        .prepare(`INSERT INTO command_operations
-        (id,session_id,run_id,request_hash,owner_json,plan_json,state,report_json,before_tree,after_tree,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,'running',NULL,?,NULL,?,?)`)
-        .run(
-          plan.operationId,
-          sessionId,
-          input.runId,
-          requestHash,
-          canonicalJson({
-            hostId: plan.hostId,
-            sessionId,
-            runId: input.runId,
-            executionId: input.executionId,
-            attemptNo: input.attemptNo,
-            effectId: input.effectId,
-          }),
-          canonicalJson(plan),
-          plan.tree,
-          this.clock.nowIso(),
-          this.clock.nowIso(),
-        );
-      let lease: ReturnType<CommandRuntime['startService']>;
+      if (folderKey && folderOwner) {
+        this.assertFolderFree(folderKey);
+        this.workspaceAccess.acquire(folderOwner, sessionId, row.worktree_path, true, 1);
+      }
       try {
-        lease = this.commandRuntime.startService(
-          {
-            operationId: plan.operationId,
-            owner: {
+        this.db
+          .prepare(`INSERT INTO command_operations
+          (id,session_id,run_id,request_hash,owner_json,plan_json,state,report_json,before_tree,after_tree,created_at,updated_at)
+          VALUES(?,?,?,?,?,?,'running',NULL,?,NULL,?,?)`)
+          .run(
+            plan.operationId,
+            sessionId,
+            input.runId,
+            requestHash,
+            canonicalJson({
               hostId: plan.hostId,
               sessionId,
               runId: input.runId,
               executionId: input.executionId,
               attemptNo: input.attemptNo,
               effectId: input.effectId,
-            },
-            directory: join(row.worktree_path, plan.cwd),
-            command: { shellId: plan.shellId, executable: plan.executable, args: plan.argv },
-            timeoutMs: plan.timeoutMs,
-          },
-          cancellation,
-        );
-      } catch (error) {
-        if (!(error instanceof CommandCapacityError)) throw error;
-        const report = CommandReport.parse({
-          operationId: plan.operationId,
-          state: 'failed',
-          exitCode: null,
-          signal: null,
-          timedOut: false,
-          cleanupConfirmed: true,
-          output: {
-            text: error.message,
-            bytes: Buffer.byteLength(error.message),
-            hash: sha256(Buffer.from(error.message)),
-            truncated: false,
-          },
-        });
-        this.db
-          .prepare(
-            'UPDATE command_operations SET state=?,report_json=?,after_tree=?,updated_at=? WHERE id=?',
-          )
-          .run(
-            report.state,
-            canonicalJson(report),
+            }),
+            canonicalJson(plan),
             plan.tree,
             this.clock.nowIso(),
-            plan.operationId,
+            this.clock.nowIso(),
           );
-        return report;
-      }
-      const finish = async (initial: CommandReport) => {
-        let report = initial;
-        let after: string | null = null;
+        let lease: ReturnType<CommandRuntime['startService']>;
         try {
-          if (report.cleanupConfirmed) {
-            after = await this.snapshotTree(row.worktree_path);
-            await this.pin(row.worktree_path, `refs/corral/${sessionId}/latest`, after);
-          }
-        } catch {
-          report = { ...report, state: 'uncertain' };
+          lease = this.commandRuntime.startService(
+            {
+              operationId: plan.operationId,
+              owner: {
+                hostId: plan.hostId,
+                sessionId,
+                runId: input.runId,
+                executionId: input.executionId,
+                attemptNo: input.attemptNo,
+                effectId: input.effectId,
+              },
+              directory: join(row.worktree_path, plan.cwd),
+              command: { shellId: plan.shellId, executable: plan.executable, args: plan.argv },
+              timeoutMs: plan.timeoutMs,
+            },
+            cancellation,
+          );
+        } catch (error) {
+          if (!(error instanceof CommandCapacityError)) throw error;
+          const report = CommandReport.parse({
+            operationId: plan.operationId,
+            state: 'failed',
+            exitCode: null,
+            signal: null,
+            timedOut: false,
+            cleanupConfirmed: true,
+            output: {
+              text: error.message,
+              bytes: Buffer.byteLength(error.message),
+              hash: sha256(Buffer.from(error.message)),
+              truncated: false,
+            },
+          });
+          this.db
+            .prepare(
+              'UPDATE command_operations SET state=?,report_json=?,after_tree=?,updated_at=? WHERE id=?',
+            )
+            .run(
+              report.state,
+              canonicalJson(report),
+              plan.tree,
+              this.clock.nowIso(),
+              plan.operationId,
+            );
+          releaseFolder(true);
+          return report;
         }
-        if (!report.cleanupConfirmed) this.runAccess.release(input.runId, false);
-        this.db
-          .prepare(
-            'UPDATE command_operations SET state=?,report_json=?,after_tree=?,updated_at=? WHERE id=?',
-          )
-          .run(report.state, canonicalJson(report), after, this.clock.nowIso(), plan.operationId);
-        return CommandReport.parse(report);
-      };
-      if (plan.mode === 'service') {
-        // Keep the run's durable writer reservation, but free the per-operation mutex
-        // so the same run can edit and rebuild while its development server is alive.
-        const completion = lease.completion.then((report) =>
-          this.lease(row.worktree_path, () => finish(report)),
-        );
-        this.commandServices.set(plan.operationId, {
-          runId: input.runId,
-          started: lease.started,
-          completion,
-        });
-        void completion.catch(() => this.runAccess.release(input.runId, false));
-        return CommandReport.parse({
-          operationId: plan.operationId,
-          state: 'running',
-          exitCode: null,
-          signal: null,
-          timedOut: false,
-          cleanupConfirmed: false,
-          output: { text: '', bytes: 0, hash: sha256(Buffer.alloc(0)), truncated: false },
-        });
+        const finish = async (initial: CommandReport) => {
+          let report = initial;
+          let after: string | null = null;
+          try {
+            if (report.cleanupConfirmed) {
+              if (gitSnapshot) {
+                after = await this.snapshotTree(row.worktree_path);
+                await this.pin(row.worktree_path, `refs/corral/${sessionId}/latest`, after);
+              } else after = await this.folderFingerprint(row.worktree_path);
+            }
+          } catch {
+            report = { ...report, state: 'uncertain' };
+          }
+          if (!folderOwner && !report.cleanupConfirmed) this.runAccess.release(input.runId, false);
+          this.db
+            .prepare(
+              'UPDATE command_operations SET state=?,report_json=?,after_tree=?,updated_at=? WHERE id=?',
+            )
+            .run(report.state, canonicalJson(report), after, this.clock.nowIso(), plan.operationId);
+          releaseFolder(report.cleanupConfirmed);
+          return CommandReport.parse(report);
+        };
+        if (plan.mode === 'service') {
+          // Keep the durable writer reservation, but free the per-operation mutex so the same
+          // run can edit and rebuild while its development server is alive. In direct mode the
+          // service's own reservation keeps other commands out of the folder until it stops.
+          const completion = lease.completion.then((report) =>
+            this.lease(row.worktree_path, () => finish(report)),
+          );
+          this.commandServices.set(plan.operationId, {
+            runId: input.runId,
+            started: lease.started,
+            completion,
+          });
+          void completion.catch(() => {
+            if (folderOwner) releaseFolder(false);
+            else this.runAccess.release(input.runId, false);
+          });
+          return CommandReport.parse({
+            operationId: plan.operationId,
+            state: 'running',
+            exitCode: null,
+            signal: null,
+            timedOut: false,
+            cleanupConfirmed: false,
+            output: { text: '', bytes: 0, hash: sha256(Buffer.alloc(0)), truncated: false },
+          });
+        }
+        return finish(await lease.completion);
+      } catch (error) {
+        // Whatever failed after the reservation, the command's end is not confirmed.
+        releaseFolder(false);
+        throw error;
       }
-      return finish(await lease.completion);
     }).then(async (report) => {
       const service = this.commandServices.get(plan.operationId);
       if (report.state === 'running' && service && !(await service.started))
@@ -5497,6 +5686,13 @@ export class WorkspaceService implements FileTools {
       .get(runId);
     if (unfinished) {
       this.runAccess.release(runId, false);
+      // A direct command's own folder reservation stays protected as well.
+      for (const row of this.db
+        .prepare(
+          "SELECT id FROM command_operations WHERE run_id=? AND (state='running' OR report_json IS NULL OR json_extract(report_json,'$.cleanupConfirmed')!=1)",
+        )
+        .all(runId) as { id: string }[])
+        this.workspaceAccess.release({ kind: 'run', id: row.id }, false);
       throw new ToolTerminationUnconfirmed();
     }
   }
@@ -5690,6 +5886,32 @@ export class WorkspaceService implements FileTools {
     return this.taskView(this.taskReceipt(sessionId, operationId));
   }
 
+  private runFolder(runId: string): {
+    root: string;
+    sessionId: string;
+    mode: 'copy' | 'direct';
+    isGit: boolean;
+  } | null {
+    const found = this.worktreeOfRun(runId);
+    if (found)
+      return {
+        root: found.row.worktree_path,
+        sessionId: found.sessionId,
+        mode: 'copy',
+        isGit: true,
+      };
+    const sessionId = this.sessionOfRun(runId);
+    if (!sessionId || this.sessionFiles(sessionId).mode !== 'direct') return null;
+    const binding = this.bindingOfSession(sessionId);
+    if (!binding) return null;
+    return {
+      root: binding.root_path,
+      sessionId,
+      mode: 'direct',
+      isGit: binding.is_git === 1,
+    };
+  }
+
   private worktreeOfRun(runId: string): { row: WorktreeRow; sessionId: string } | null {
     const sessionId = this.sessionOfRun(runId);
     if (!sessionId) return null;
@@ -5698,15 +5920,30 @@ export class WorkspaceService implements FileTools {
   }
 
   available(runId: string): boolean {
-    return this.worktreeOfRun(runId) !== null;
+    const sessionId = this.sessionOfRun(runId);
+    if (!sessionId) return false;
+    const files = this.sessionFiles(sessionId);
+    return files.mode === 'copy' || files.mode === 'direct';
   }
 
   acquireRun(runId: string, sessionId: string | undefined, writer: boolean): void {
     if (sessionId && this.removingWorktrees.has(sessionId))
       throw new ToolRefusal('REVISION_CONFLICT', 'the working copy is being removed');
     const row = sessionId ? this.worktree(sessionId) : null;
-    if (row)
+    if (row) {
       this.runAccess.acquire(runId, row.session_id, row.worktree_path, writer, row.copy_generation);
+      return;
+    }
+    if (!sessionId || this.sessionFiles(sessionId).mode !== 'direct') return;
+    const binding = this.bindingOfSession(sessionId);
+    if (!binding) return;
+    // A direct run holds no folder lease at start. Each command takes the folder's single
+    // writer while it runs, and only in the folder the run started with.
+    this.directRuns.set(runId, {
+      sessionId,
+      bindingId: binding.id,
+      key: accessKey(binding.root_path),
+    });
   }
 
   worktreeScope(sessionId: string): string | null {
@@ -5743,8 +5980,11 @@ export class WorkspaceService implements FileTools {
     const access = this.runAccess.get(runId);
     if (!access || (access.tree && this.runTree(runId, 'start'))) return Promise.resolve();
     const row = this.worktree(access.session_id);
-    if (!row)
+    if (!row) {
+      // Direct mode has no Git checkpoint. A removed copy is still a refusal.
+      if (this.sessionFiles(access.session_id).mode === 'direct') return Promise.resolve();
       return Promise.reject(new ToolRefusal('TARGET_NOT_FOUND', 'working copy is unavailable'));
+    }
     const work = this.lease(row.worktree_path, async () => {
       const writer = this.runAccess.writerAt(access.worktree_key);
       // A concurrent reader observes the writer's pinned input, never partially written files.
@@ -5818,6 +6058,7 @@ export class WorkspaceService implements FileTools {
   releaseRun(runId: string, terminationConfirmed: boolean): void {
     this.runAccess.release(runId, terminationConfirmed);
     this.preparingRuns.delete(runId);
+    this.directRuns.delete(runId);
   }
 
   /** Call only after the adapter has positively recovered every prior worker/process group. */
@@ -5826,7 +6067,8 @@ export class WorkspaceService implements FileTools {
       .prepare(`UPDATE workspace_access SET state='released'
       WHERE owner_kind='run' AND state='uncertain'
         AND NOT EXISTS (SELECT 1 FROM command_operations c
-          WHERE c.run_id=workspace_access.owner_id AND c.state IN ('running','uncertain'))
+          WHERE (c.run_id=workspace_access.owner_id OR c.id=workspace_access.owner_id)
+            AND c.state IN ('running','uncertain'))
         AND NOT EXISTS (SELECT 1 FROM file_operations f
           WHERE f.session_id=workspace_access.session_id AND f.state IN ('planned','uncertain'))
         AND NOT EXISTS (SELECT 1 FROM checkpoint_restores r
@@ -5875,10 +6117,21 @@ export class WorkspaceService implements FileTools {
       });
     if (input.name === 'list_files') {
       const files = listing.filter((file) => !path || file.path.startsWith(`${path}/`));
-      return {
-        files: files.slice(0, 500).map(({ path, bytes }) => ({ path, bytes })),
-        truncated: files.length > 500,
-      };
+      const needle = typeof input.args.query === 'string' ? input.args.query.toLowerCase() : '';
+      const found: { path: string; bytes: number }[] = [];
+      for (const file of files.slice(0, 500)) {
+        if (needle) {
+          if (cancellation.aborted)
+            throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+          if (file.bytes > MAX_TEXT) continue;
+          const blob = await git(root, ['cat-file', 'blob', file.oid], {
+            maxBuffer: MAX_TEXT + 1,
+          });
+          if (!decodeText(blob.stdout)?.toLowerCase().includes(needle)) continue;
+        }
+        found.push({ path: file.path, bytes: file.bytes });
+      }
+      return { files: found, truncated: files.length > 500 };
     }
     const file = listing.find((file) => file.path === path);
     if (!file) throw new ToolRefusal('TARGET_NOT_FOUND', 'file not present in the run snapshot');
@@ -6010,8 +6263,9 @@ export class WorkspaceService implements FileTools {
   async captureRuntimeFiles(
     runId: string,
     checkpointId: string,
-  ): Promise<import('@corral/contracts').RuntimeFiles> {
+  ): Promise<import('@corral/contracts').RuntimeFiles | null> {
     const found = this.worktreeOfRun(runId);
+    if (!found && this.runFolder(runId)?.mode === 'direct') return null;
     if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'runtime files require a working copy');
     const row = await this.checkpointTarget(found.sessionId, 'working_copy');
     return this.lease(row.worktree_path, async () => {
@@ -6207,6 +6461,7 @@ export class WorkspaceService implements FileTools {
   ): Promise<Record<string, unknown>> {
     const frozen = await this.readPinnedRun(input, cancellation);
     if (frozen) return frozen;
+    if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
     if (input.name === 'write') {
       const args = PiWriteInput.parse(input.args);
       return this.execute(
@@ -6214,9 +6469,19 @@ export class WorkspaceService implements FileTools {
         cancellation,
       );
     }
-    const found = this.worktreeOfRun(input.runId);
-    if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
-    const root = found.row.worktree_path;
+    const folder = this.runFolder(input.runId);
+    if (!folder) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
+    if (
+      folder.mode === 'direct' &&
+      (input.name === 'write_file' ||
+        input.name === 'delete_file' ||
+        input.name === 'move_file' ||
+        input.name === 'edit' ||
+        input.name === 'edit_hashline')
+    )
+      throw new ToolRefusal('CAPABILITY_DENIED', 'file tools do not change the linked folder');
+    const found = { sessionId: folder.sessionId };
+    const root = folder.root;
     const reads = this.readsOf(input.runId, input.executionId);
     const name = input.name;
     switch (name) {
@@ -6329,10 +6594,14 @@ export class WorkspaceService implements FileTools {
           return { ...applied, piResult: edited.result };
         });
       }
-      case 'list_files':
-        return this.list(
+      case 'list_files': {
+        const query = typeof input.args.query === 'string' ? input.args.query : '';
+        if (query && (query.length > 200 || /[\r\n\0]/.test(query)))
+          throw new ToolRefusal('SCHEMA_INVALID', 'search one line at a time');
+        const listed = await this.list(
           root,
           typeof input.args.path === 'string' ? safeFolder(input.args.path) : '',
+          folder.isGit,
         ).catch((error: unknown) => {
           if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
             throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
@@ -6340,6 +6609,22 @@ export class WorkspaceService implements FileTools {
             throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
           throw error;
         });
+        if (!query) return listed;
+        const needle = query.toLowerCase();
+        const files: { path: string; bytes: number }[] = [];
+        for (const file of listed.files) {
+          if (cancellation.aborted)
+            throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+          try {
+            const read = await boundedFile(root, file.path, Math.min(MAX_TEXT, file.bytes));
+            const text = read.bytes ? decodeText(read.bytes) : null;
+            if (text?.toLowerCase().includes(needle)) files.push(file);
+          } catch {
+            // A path that is no longer a plain file is not a match.
+          }
+        }
+        return { files, truncated: listed.truncated };
+      }
       case 'read':
       case 'read_file': {
         const rel = safeRelative(String(input.args.path));

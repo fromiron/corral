@@ -1994,6 +1994,48 @@ it('core tools enforce path boundaries and role caps, then execute a granted cal
   }
 });
 
+it('a running run loses file tools at the next admission when the folder is no longer available', async () => {
+  const read: ToolDescriptor = { ...descriptor, name: 'read_file', source: 'corral' };
+  let open = true;
+  const selected: EffectiveHarnessSnapshot = {
+    ...snapshot,
+    policy: 'strict',
+    resources: [],
+    allowedTools: ['read_file'],
+    permissionPolicies: [
+      {
+        default: 'deny',
+        rules: [{ tool: 'read_file', action: 'allow', descriptorHash: hash(read) }],
+      },
+    ],
+  };
+  const s = setup(true, selected, {
+    fileTools: true,
+    files: {
+      available: () => open,
+      execute: async () => ({ text: 'fixture' }),
+    },
+  });
+  await s.started.wait();
+  await s.host().reportHarness!({
+    ok: true,
+    snapshotHash: selected.snapshotHash,
+    tools: [read],
+    diagnostics: [],
+  });
+  try {
+    expect(
+      await s.host().authorizeTool({ name: 'read_file', args: { path: 'a.txt' } }),
+    ).toMatchObject({ ok: true });
+    open = false;
+    expect(
+      await s.host().authorizeTool({ name: 'read_file', args: { path: 'a.txt' } }),
+    ).toMatchObject({ ok: false });
+  } finally {
+    s.done.open();
+  }
+});
+
 it('review-only scope refuses native startup before an execution exists', () => {
   const s = setup(true, snapshot, { reviewOnly: true });
   expect(s.result.runId).toBeNull();
