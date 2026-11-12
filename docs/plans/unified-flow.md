@@ -427,10 +427,10 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | S0 | 명세 변경 | — | `docs/specs` | 완료 |
 | V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 완료 |
 | B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
-| B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 구현 중 |
+| B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 테스트 20개(2개 실패), 찾은 빈틈 수정 중 |
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 완료 |
-| B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 구현 중 |
+| B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 리뷰 중 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
@@ -439,7 +439,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 수정 중(`flow/u2-timeline-frame-2`) |
-| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 리뷰 중(U2 브랜치 위) |
+| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 리뷰 수정 중(U2 브랜치 위) |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
@@ -762,6 +762,10 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U7 (U3가 남긴 것).** 상단 바 pill(`DockRunControls`)은 상태 이름을 접근 이름으로만 갖는다. U7이 그 부품을 지울 때 그 접근 이름을 보던 단언(`DockRunControls.test.tsx`, `ApprovalWaiting.once.test.tsx`, `run-page.spec.ts`, `chat-widgets.spec.ts`)을 활동 바로 옮긴다. 컴포저 줄의 "Succeeded · Last run"은 실행 행이 화면에 보이면 상태 이름을 쓰지 않는다.
 - **U5·U6 (B6가 남긴 것).** 끊긴 호출은 투영의 모델 호출 기록 `interrupted: true`로 안다(`model.finished.interrupted`). 끊긴 출력은 그 호출의 응답으로 저장되므로 화면이 "중단된 출력"으로 표시하려면 이 값을 본다. 요청을 준비하는 중이거나 permit을 기다리는 중의 끼어들기는 끊지 않고 그 요청에 실린다(그 호출에는 `interrupted`가 없다). 그때 메타 줄은 "끼어듦 · 응답을 끊고 전달됨"이 아니라 읽힘으로 보여야 한다.
 - **B6 (남긴 한계).** 모델은 다음 요청에서 자기 끊긴 글을 보지 못한다(공급자 변환이 끊긴 assistant 메시지를 통째로 뺀다). 컨텍스트 초과 복구 중에 지시가 오면 재준비가 압축 결과를 버린다(B6 이전부터 있던 동작). 끊긴 호출은 무진전 턴으로 세지 않는다.
+- **B5 (정한 것).** 조건을 만족한 지시는 `expired`가 되는 순간 바로 넘겨받는다(앞 지시가 풀리기를 기다리지 않는다). 같은 순간에 만료된 여럿은 보낸 순서, 다른 때에 넘겨받은 것은 넘겨받은 순서로 시작한다. 넘겨받은 항목은 세션 기록의 끝에 붙고, 다음에 시작할 것을 고를 때 먼저다(`@corral/core`의 `queuedEntriesInStartOrder`, `nextQueuedEntry`). 지시 기록에 `origin`이 생길 때까지(A1) `origin ?? 'user'`로 읽는다.
+- **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
+- **B2 (찾은 빈틈과 정한 것).** 반례 테스트가 둘을 찾았다. (1) worker가 아직 시작되지 않은 대상에 온 끼어들기는 끊을 응답이 없으니 `next_request`로 낮춘다(receipt와 지시 기록 모두). (2) 끼어들기로 끊겼거나 오류로 끝난 호출은 확정 응답(`responseRef`)으로 기록하지 않고 받은 글은 부분 출력(`partialOutputs`)으로만 읽는다. 명세를 그렇게 고쳤고 B2 브랜치에서 구현을 고친다.
+- **U6 (끼어듦의 표시).** 메타 줄의 "끼어듦 · 응답을 끊고 전달됨"은 지시의 `delivery`가 `interrupt`이고, 그 지시를 실은 호출 바로 앞의 같은 실행 단위 호출이 `interrupted`일 때만 쓴다. 아니면(끊을 응답이 없어 그냥 실린 경우) "읽힘"이다.
 
 ### V2 최종 장면
 - 대상: `apps/studio/e2e/flow/{idle,multi-agent,join-interrupt,awaiting,citation,sidebar,meeting}.spec.ts`.
