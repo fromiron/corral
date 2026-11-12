@@ -46,10 +46,20 @@ Checkpoint v2 reuses immutable message and artifact bodies through a versioned m
 
 Source closure follows owned finished tool records, not only toolResult messages still visible after compaction. The execution reuses successfully committed chunk/source references, while message snapshots and restored body hashes remain validated. Selecting one checkpoint does not hydrate every other checkpoint.
 
-Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings.
+Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings. The Settings screen that reads them is [설정의 모델 요청 이력](#설정의-모델-요청-이력).
 
 Chooser usage in the Run derives from the existing attempt ledger: one `usage.recorded` per prepared physical request, with its reported usage or null when unknown. No payload prepared means no usage record. Late usage fills only the matching record; past snapshots and choice text are not rewritten. Callers without a managed ledger record only reported usage. The chooser prompt and visible-text gate share a 4,096-byte JSON bound; model output allowance and reasoning are separate from that byte bound.
 
 Each physical chooser attempt has 30 seconds from provider SDK dispatch to completion. Admission and retry waits are excluded, including reacquiring a slot. User cancellation remains active while waiting and during transmission. The response timer ends with its attempt; retries use the same rule and the existing two-retry maximum.
 
 [Port notices](../../THIRD-PARTY-NOTICES/llm-runtime-ports.md) describe pinned DSH MIT and PI LGPL sources, modifications, corresponding source distribution and rebuild/replacement steps.
+
+## 설정의 모델 요청 이력
+
+설정 → 모델 → **사용량** 탭을 선택하면 요청 이력의 첫 페이지를 읽는다. 호출은 `GET /api/v1/model-attempts`이고 `limit`은 50이다. 원장 전체를 읽지 않는다. 그 탭이 선택되기 전에는 읽지 않는다. 탭을 떠나갔다 다시 선택해도 저절로 다시 읽지 않는다. **새로고침**은 첫 페이지를 다시 읽고, **이전 요청 더 보기**는 다음 커서가 있을 때만 `before`로 다음 페이지를 이미 읽은 것 뒤에 붙인다.
+
+읽은 페이지만 표 위에 차트로 보인다. 더 보기로 붙인 페이지도 같은 차트에 들어간다. 모델은 공급자와 모델 ID로 묶는다. 막대는 확인된 입력·출력·캐시 읽기 토큰의 합이다. 없는 값은 0으로 그리지 않는다. 한 계열이 모두 없으면 미확인 표시만 둔다. 일부만 없으면 확인된 합만 막대로 그리고, 빠진 수를 글과 미확인 표시로 남긴다. 확인된 0은 0으로 두어 미확인과 구분한다. 토큰이 미확인인 요청도 시간순 요청에는 넣는다. 시간 위치는 그 요청의 `startedAt`이다. 추론 토큰과 캐시 쓰기 토큰은 차트와 표에 보이지 않는다.
+
+비용은 막대 길이로 그리지 않는다. 구독, 가격 미확인, 보고된 0, 추정된 0은 차트의 글에서 서로 다른 말로 센다. 읽은 페이지에 없는 구분은 0건으로 만들지 않는다. 표는 요청별 상세다. 구독, 가격 미확인, 추정 금액, 보고 금액은 표에서 서로 다르게 읽히고, 보고된 0은 보고된 0으로 남는다.
+
+차트의 합계는 막대 옆 글로도 읽힌다. 계열은 무늬와 이름으로 구분하고 색만으로 구분하지 않는다. 차트는 움직이지 않으며, 동작 줄이기에서도 같은 값을 바로 보인다. 글자 크기는 인터페이스 밀도(기본 또는 compact)를 따른다.
