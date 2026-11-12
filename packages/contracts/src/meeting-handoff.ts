@@ -54,6 +54,11 @@ export const MeetingHandoffReceipt = z.strictObject({
   detail: z.string().nullable(),
   runId: Identifier.nullable(),
   createdAt: z.string(),
+  /** Set when that side of the handoff has been deleted; the other session keeps this receipt. */
+  sourceDeleted: z.boolean().optional(),
+  targetDeleted: z.boolean().optional(),
+  sourceTitle: z.string().max(200).optional(),
+  targetTitle: z.string().max(200).optional(),
   result: z
     .strictObject({
       status: z.string(),

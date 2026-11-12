@@ -90,7 +90,7 @@ export function ModelSettingsPage() {
         <ImageProfileSettings modelProfiles={profiles} />
       </div>
     ),
-    usage: <ModelUsagePanel />,
+    usage: <ModelUsagePanel active={tab === MODEL_TABS.indexOf('usage')} />,
   };
 
   return (

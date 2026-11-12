@@ -48,10 +48,20 @@ Checkpoint v2 reuses immutable message and artifact bodies through a versioned m
 
 Source closure follows owned finished tool records, not only toolResult messages still visible after compaction. The execution reuses successfully committed chunk/source references, while message snapshots and restored body hashes remain validated. Selecting one checkpoint does not hydrate every other checkpoint.
 
-Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings.
+Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings. The Settings screen that reads them is [Model request history in Settings](#model-request-history-in-settings).
 
 Chooser usage in the Run derives from the existing attempt ledger: one `usage.recorded` per prepared physical request, with its reported usage or null when unknown. No payload prepared means no usage record. Late usage fills only the matching record; past snapshots and choice text are not rewritten. Callers without a managed ledger record only reported usage. The chooser prompt and visible-text gate share a 4,096-byte JSON bound; model output allowance and reasoning are separate from that byte bound.
 
 Each physical chooser attempt has 30 seconds from provider SDK dispatch to completion. Admission and retry waits are excluded, including reacquiring a slot. User cancellation remains active while waiting and during transmission. The response timer ends with its attempt; retries use the same rule and the existing two-retry maximum.
 
 [Port notices](../../THIRD-PARTY-NOTICES/llm-runtime-ports.md) describe pinned DSH MIT and PI LGPL sources, modifications, corresponding source distribution and rebuild/replacement steps.
+
+## Model request history in Settings
+
+Selecting the **Usage** tab under Settings → Models reads the first page of request history with `GET /api/v1/model-attempts` and `limit` 50. It never reads the whole ledger. Nothing is read before the tab is selected, and leaving the tab and selecting it again does not reread on its own. **Refresh** rereads the first page; **Load older requests** appears only when there is a next cursor and appends the next page, read with `before`, after the pages already loaded.
+
+A chart above the table shows only the loaded pages, including pages appended by loading older requests. Models are grouped by provider and model ID. Each bar is the sum of the known input, output and cache-read tokens. A missing count is never drawn as zero. When every count in a series is missing, the series shows only the unknown mark. When some are missing, the bar shows the known sum and the missing count stays in the text and as the unknown mark. A known zero stays zero, distinct from unknown. Requests with unknown tokens still appear on the request timeline, placed at their `startedAt`. Reasoning and cache-write tokens appear in neither the chart nor the table.
+
+Cost is never drawn as bar length. The chart text counts subscription, unknown price, reported zero and estimated zero in distinct words, and a category absent from the loaded pages is not shown as zero requests. The table is the per-request detail: subscription, unknown price, estimated amount and reported amount read differently there, and a reported zero stays a reported zero.
+
+Every total in the chart is also readable as text beside its bars. Series are told apart by pattern and name, not by color alone. The chart does not animate, so reduced motion shows the same values at once. Its text size follows the interface density (default or compact).

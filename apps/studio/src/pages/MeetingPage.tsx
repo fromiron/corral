@@ -71,6 +71,7 @@ import {
 import { isSendKey, preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { TurnActions } from '../workbench/RunMessage.tsx';
+import { SessionDeletionDialog } from '../workbench/SessionDeletionDialog.tsx';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -111,6 +112,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
   const refreshId = useRef(0);
   const sessionId = session.sessionId;
   const composer = useRef<ComposerHandle>(null);
+  const [sent, setSent] = useState(0);
   const narrow = useNarrowScreen();
   // The side panel's open state is this meeting's; the drawer opens only when asked.
   const [panelOpen, rememberPanel] = useRemembered<boolean>(
@@ -228,6 +230,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
             centerEmpty
             expandedHeader={recordsWide}
             sessionId={sessionId}
+            sent={sent}
             header={
               <>
                 <MeetingParticipants
@@ -302,6 +305,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                     ? () => void act(() => meetings.stop(sessionId, active.roundId))
                     : undefined
                 }
+                onSent={() => setSent((count) => count + 1)}
                 send={(request) => act(() => meetings.send(sessionId, request))}
                 sendQueued={() => act(() => meetings.sendQueued(sessionId))}
                 dropQueued={() => act(() => meetings.dropQueued(sessionId))}
@@ -366,7 +370,7 @@ function MeetingActions({
   recordsToggle: RefObject<HTMLButtonElement | null>;
   onToggleRecords(): void;
 }) {
-  const { repository } = useServices();
+  const { repository, sessionDeletion } = useServices();
   const router = useRouter();
   const t = useTranslations('Sessions');
   const tm = useTranslations('Meetings');
@@ -375,6 +379,7 @@ function MeetingActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const update = async (change: { title?: string; pinned?: boolean; archived?: boolean }) => {
     if (busy) return false;
     setBusy(true);
@@ -433,6 +438,18 @@ function MeetingActions({
         await update({ archived: !session.archivedAt });
       },
     },
+    ...(sessionDeletion
+      ? [
+          {
+            id: 'session:delete',
+            title: command('deleteSession'),
+            group,
+            slash: 'delete',
+            disabled: busy,
+            run: () => setDeleting(true),
+          },
+        ]
+      : []),
   ]);
   return (
     <TopbarActions>
@@ -478,6 +495,11 @@ function MeetingActions({
           <MenuItem disabled={busy} onClick={() => void update({ archived: !session.archivedAt })}>
             {t(session.archivedAt ? 'restore' : 'archive')}
           </MenuItem>
+          {sessionDeletion ? (
+            <MenuItem disabled={busy} onClick={() => setDeleting(true)}>
+              {t('delete')}
+            </MenuItem>
+          ) : null}
         </MenuPopup>
       </Menu>
       <RenameSessionDialog
@@ -485,6 +507,21 @@ function MeetingActions({
         busy={busy}
         onSave={(title) => update({ title })}
         onClose={() => setRenaming(null)}
+      />
+      <SessionDeletionDialog
+        open={deleting}
+        sessionId={session.sessionId}
+        projectId={session.projectId}
+        onClose={() => setDeleting(false)}
+        onDeleted={() => {
+          setDeleting(false);
+          projectsChanged();
+          void router.invalidate();
+          void router.navigate({
+            to: '/projects/$projectId',
+            params: { projectId: session.projectId },
+          });
+        }}
       />
     </TopbarActions>
   );
@@ -656,6 +693,7 @@ function MeetingComposer({
   error,
   onStop,
   send,
+  onSent,
   sendQueued,
   dropQueued,
   editQueued,
@@ -667,6 +705,8 @@ function MeetingComposer({
   error: string;
   onStop?: (() => void) | undefined;
   send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
+  /** The person sent. The conversation follows the end again. */
+  onSent?: () => void;
   sendQueued(): Promise<MeetingResult | null>;
   dropQueued(): Promise<MeetingResult | null>;
   editQueued(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
@@ -714,6 +754,7 @@ function MeetingComposer({
     request: Omit<Extract<MeetingRoundRequest, { kind: 'message' }>, 'commandId' | 'mode'>,
   ) => {
     if (inFlight.current || attachmentLoading) return;
+    onSent?.();
     const key = JSON.stringify([request, mode]);
     if (pending.current?.key !== key) pending.current = { key, commandId: newCommandId() };
     inFlight.current = true;

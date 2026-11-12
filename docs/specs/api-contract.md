@@ -69,6 +69,8 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/:id/compaction | `CompactSessionCommand`. 경로의 세션과 본문 `sessionId`가 같아야 한다 | 끝나지 않은 Run이 없을 때 다음 요청에 붙을 이전 턴의 요약. receipt. 같은 명령 ID·본문은 저장된 receipt이고 모델을 다시 부르지 않는다. 다른 본문은 409. 진행 중 Run·리비전 불일치·요약할 턴 없음은 거절. 채택된 요약은 덮는 턴·기준 세션 리비전과 함께 남고, 더 오래된 리비전의 늦은 요약은 버려진다. 원래 Run 기록은 바꾸지 않는다 |
 | POST /sessions/:id/compaction/cancel | `CancelSessionCompactionCommand` | 진행 중인 세션 압축을 취소한다. 같은 명령 ID는 같은 receipt. 이미 채택된 요약은 지우지 않는다 |
 | GET /sessions/:id/compaction | — | `{compaction}`는 다음 요청에 쓰이는 요약 지점 `{commandId, throughRunId, coveredRunIds, sessionRevision}` 또는 null. 모델을 부르지 않는다 |
+| GET /sessions/:id/deletion | — | 이 세션을 지우면 잃는 것의 읽기 전용 요약. 세션이 없으면 `TARGET_NOT_FOUND`. `runs`는 실행 수, `messages`는 저장된 요청과 회의에서 사람이 쓴 메시지 수, `unfinishedRunIds`는 끝나지 않은 실행, `generatedMedia`는 생성된 이미지 수, `inputImages`는 입력 이미지 수, `schedules`는 이 세션을 대상으로 하고 아직 지워지지 않은 예약의 `id`·`title`, `handoffs`는 인계(`commandId`, `direction`이 `outgoing` 또는 `incoming`, `otherSessionId`, `otherTitle`, `otherDeleted`)다. `checkpoints`는 작업 사본 쪽 준비된 파일 체크포인트 수, `sourceCheckpoints`는 원본 폴더의 준비된 체크포인트 수, `revertibleIntegrations`는 원본 폴더에 쓴 파일이 아직 남은(파일 결과가 applied·uncertain·revert_conflict) 반영 수, `reviewDecisions`는 검토 판단 수, `reviewComments`는 초안을 뺀 검토 의견 수(초안은 `workingCopy.draftComments`), `verifications`는 검사 결과 수다. 살아있는 작업 사본이 있으면 `workingCopy`는 사본 삭제 요약과 같고, 없으면 null이다. 브라우저 초안은 넣지 않는다. 범위는 [세션 삭제](workbench.md#세션-삭제) |
+| DELETE /sessions/:id | `{expectedRevision, copyGeneration?}` | 요약을 읽은 revision으로 세션을 지운다. 성공은 204. 없으면 `TARGET_NOT_FOUND`. revision이 다르거나, 살아있는 사본인데 `copyGeneration`이 없거나 다르면 `REVISION_CONFLICT`이며 세션은 남는다. 끝나지 않은 실행이 있으면 `RUN_ALREADY_ACTIVE`이며 세션과 사본은 남는다. 사본이 있으면 기존 사본 삭제의 확인을 먼저 하고, 그 확인이 거절하거나 폴더가 남으면 세션은 지워지지 않는다. 확인한 삭제의 반복으로 온 `TARGET_NOT_FOUND`는 클라이언트가 끝난 것으로 본다 |
 | POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
 | GET /sessions/:id/meeting | — | `MeetingView`: 저장된 메시지·답·사용량·대기 메시지·회의록·결정. 내부 `rounds`는 기존 기록/실행 소유권을 위한 응답 묶음이며 UI의 진행 단계가 아니다. 새 레코드의 `order`로 메시지·발언 순서를 표현하며 `replyTo`는 에이전트 멘션의 실제 출처다. 조회·재열기는 모델을 호출하지 않는다 |
@@ -80,7 +82,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/:id/meeting/decisions/withdraw | `MeetingWithdrawDecisionRequest` | 사람의 철회 사유를 별도 기록. 후보·철회/대체된 버전은 새 실행 인계 불가 |
 | POST /sessions/:id/meeting/handoffs | `MeetingHandoffRequest` | 채택한 결정의 초안/시작. 같은 프로젝트 일반 세션만 대상, 실행 구성·완료 기준 고정. `{handoff:MeetingHandoffReceipt}` |
 | GET /sessions/:id/meeting/handoffs/:commandId | — | 저장된 receipt와 기존 시작 결과를 대조. 새 실행은 하지 않음 |
-| GET /sessions/:id/meeting-handoffs | — | 출처/대상 양방향 인계 이력 `{handoffs}`와 Run·결과 상태 |
+| GET /sessions/:id/meeting-handoffs | — | 출처/대상 양방향 인계 이력 `{handoffs}`와 Run·결과 상태. 한쪽 세션이 지워지면 남은 세션의 이력에 남고, 지워진 쪽은 `sourceDeleted` 또는 `targetDeleted`와 지우기 직전 제목 `sourceTitle`·`targetTitle`로 보인다 |
 | POST /sessions/:id/meeting/handoffs/:commandId/start | `MeetingHandoffStartRequest` | 저장된 초안의 동일 항목·실행 구성으로 명시 시작. 대상의 미전송 입력·진행 중 작업을 다시 확인 |
 | POST /sessions/:id/meeting/handoffs/:commandId/cancel | — | 취소 의도를 저장하고 시작/Run 취소를 확인. 확인 실패는 uncertain으로 남겨 같은 인계에서 재확인 |
 | POST /sessions/:id/meeting/handoffs/:commandId/rediscuss | `{commandId,mode}` | 종료된 결과·출처 ID를 고정해 새 대화 메시지로 보낸다. 자동 토론 없음 |
@@ -205,7 +207,8 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 |---|---|---|
 | GET /local-ai | — | release, models(`{meeting}`: 번들이 설치하는 회의 분석 모델의 표시 이름), state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null) |
 | POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
-| DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다 |
+| DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다. 설치된 번들은 지우지 않는다 |
+| DELETE /local-ai | — | 회의 분석 번들만 제거한다. 규칙은 [로컬 AI](features/local-intelligence.md). 이미 없으면 설치 안 됨. 설치 중·계산 중은 409 `RESOURCE_CAPACITY`이며 파일과 헬퍼는 그대로다. `local-ai/d1`은 지우지 않는다. 쓸 수 없는 환경과 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED`. 응답은 GET /local-ai와 같다 |
 
 추론 판정. 설정·엔진·설치 규칙은 [추론 판정](features/effort-routing.md), 판정 API의 키와 요청 형식은 [판정 API](features/decision-apis.md)가 정한다. 실제 모델이 없는 서버는 403 `CAPABILITY_DENIED`다.
 
@@ -215,6 +218,7 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 | PUT /effort-routing | `{settings, revision}` | 설정 저장. 형식 오류, 키가 없는 판정 API, 현재 고지와 다른 동의 revision, 이 컴퓨터에서 쓸 수 없는 Local은 400 `SCHEMA_INVALID`, revision이 다르면 409 `REVISION_CONFLICT`. 다운로드는 시작하지 않는다. 설치된 Local을 저장하면 준비를 시작하고, Off나 판정 API를 저장하면 Corral이 시작한 Local 프로세스를 끝낸다. 응답은 GET /effort-routing과 같다 |
 | POST /effort-routing/local/install | — | 202. Local 모델·런타임 설치를 시작한다. 진행 중이면 같은 설치, 이미 설치됐으면 그대로다. 설치가 끝나고 설정이 Manual + Local이면 준비를 시작한다. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED`. 응답은 GET /effort-routing과 같다 |
 | DELETE /effort-routing/local/install | — | 진행 중인 설치를 취소하고 부분 파일을 지운다. 이미 설치된 버전은 그대로다. 응답은 GET /effort-routing과 같다 |
+| DELETE /effort-routing/local | — | 설치된 Local manifest 디렉터리만 제거한다. 규칙은 [추론 판정](features/effort-routing.md). 저장된 설정은 바꾸지 않고 설치 상태는 `absent`다. 설치 중·판정 중은 409 `RESOURCE_CAPACITY`이며 파일과 프로세스는 그대로다. 회의 분석 번들은 지우지 않는다. 이미 없으면 `absent`다. 실제 모델이 없거나 이 컴퓨터에서 쓸 수 없으면 403 `CAPABILITY_DENIED`. 응답은 GET /effort-routing과 같다 |
 | POST /effort-routing/local/start | — | 202. 설치된 Local을 다시 준비한다(오류 뒤 다시 준비). 설정이 Manual + Local이 아니거나 설치되지 않았으면 400 `SCHEMA_INVALID`. 응답은 GET /effort-routing과 같다 |
 | GET /decision-apis | — | [판정 API](features/decision-apis.md) 목록: `{id, provider, model, keyConfigured}`. 키 값은 담지 않는다 |
 | PUT /decision-apis/:id/api-key | `{key}` | 판정 API 키 저장. 응답은 GET /decision-apis와 같다. 모르는 id는 404, 실제 모델이 없는 서버는 403 `CAPABILITY_DENIED` |
@@ -256,7 +260,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
 | REVISION_CONFLICT | 409 | Corral 저장의 기준 definition revision이 현재와 다름(다른 탭에서 저장). 저장하지 않음 (구현 중 추가) |
 | RUN_ALREADY_ACTIVE | 409 | workspace에 이미 활성 Run이 있음. 새 Run과 effect 없음 (구현 중 추가) |
-| RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음 |
+| RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음. 로컬 번들을 설치 중·판정 중·계산 중에 제거하려 할 때도 이 코드다([추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md)). 파일과 프로세스는 그대로다 |
 | CRITERIA_CHANGE_REQUIRES_NEW_RUN | 409 | Loop가 이미 종료되어 완료 기준 변경은 새 Run 필요 |
 | RESTART_NOT_ALLOWED | 409 | 부모가 더 이상 대기하지 않거나 downstream 진행 |
 | APPROVAL_STALE | 409 | 대상/기준 버전 변경 또는 이미 해결 |

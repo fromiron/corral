@@ -27,6 +27,7 @@ import { shortcutLabel } from '../../shortcuts.ts';
 import { ChatDensityMenu } from '../ChatView.tsx';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { SessionDeletionDialog } from '../SessionDeletionDialog.tsx';
 import { TopbarActions, useTopbarLayout } from '../TopbarSlot.tsx';
 import { type CriteriaSave, SessionCriteriaDialog } from './SessionCriteriaDialog.tsx';
 
@@ -79,11 +80,12 @@ export function SessionActions({
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workbench');
   const td = useTranslations('Desktop');
-  const { repository } = useServices();
+  const { repository, sessionDeletion } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   // The saved lines the criteria dialog opened with, while it is open; the control it was opened
   // from outlasts it, to take focus back. `criteriaBase` is what a save is checked against: the
   // stored lines as last read and their revision.
@@ -253,6 +255,17 @@ export function SessionActions({
       slash: session.archivedAt ? 'restore' : 'archive',
       run: () => void update({ archived: !session.archivedAt }),
     },
+    ...(sessionDeletion
+      ? [
+          {
+            id: 'session:delete',
+            title: tcmd('deleteSession'),
+            group: sessionGroup,
+            slash: 'delete',
+            run: () => setDeleting(true),
+          },
+        ]
+      : []),
   ]);
   const changeCount = changes?.length ?? 0;
   const fileViewerLabel = tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer');
@@ -390,6 +403,9 @@ export function SessionActions({
           <MenuItem onClick={() => void update({ archived: !session.archivedAt })}>
             {session.archivedAt ? t('restore') : t('archive')}
           </MenuItem>
+          {sessionDeletion ? (
+            <MenuItem onClick={() => setDeleting(true)}>{t('delete')}</MenuItem>
+          ) : null}
         </MenuPopup>
       </Menu>
       <RenameSessionDialog
@@ -402,6 +418,21 @@ export function SessionActions({
         opener={criteriaOpener}
         onSave={saveCriteria}
         onClose={() => setCriteria(null)}
+      />
+      <SessionDeletionDialog
+        open={deleting}
+        sessionId={session.sessionId}
+        projectId={session.projectId}
+        onClose={() => setDeleting(false)}
+        onDeleted={() => {
+          setDeleting(false);
+          projectsChanged();
+          void router.invalidate();
+          void navigate({
+            to: '/projects/$projectId',
+            params: { projectId: session.projectId },
+          });
+        }}
       />
     </TopbarActions>
   );

@@ -107,7 +107,28 @@ it('cancels back to not installed, and shows a failure with the install button a
     .mockResolvedValue(view({ error: 'model.litertlm: download failed: HTTP 503' }));
   const failed = await render();
   expect(failed.querySelector('[role="alert"]')?.textContent).toContain('HTTP 503');
+  expect(failed.textContent).toContain('Downloads about 198 MB for local AI.');
   expect(button(failed, 'Install')).toBeDefined();
+});
+
+it('confirms the size freed before removing the meeting model and leaves the judge model alone', async () => {
+  const localAi = vi.fn().mockResolvedValue(view({ state: 'idle' }));
+  const removeLocalAi = vi.fn().mockResolvedValue(view({ state: 'missing' }));
+  fixture.services = {
+    models: { localAi, installLocalAi: vi.fn(), cancelLocalAiInstall: vi.fn(), removeLocalAi },
+  };
+  const container = await render();
+  await act(async () => button(container, 'Remove')?.click());
+  expect(removeLocalAi).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain(
+    'Frees about 198 MB on this computer. The judge model stays.',
+  );
+  const confirm = [...document.querySelectorAll('button')].filter(
+    (node) => node.textContent === 'Remove',
+  );
+  await act(async () => confirm.at(-1)?.click());
+  expect(removeLocalAi).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('Not installed');
 });
 
 it('offers no install where local AI cannot run, and says so when status cannot load', async () => {

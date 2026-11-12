@@ -1,6 +1,6 @@
 import type { CorralSummary, RunSummary, WorkSession } from '@corral/core';
 import { cn, fontWeights, useSize } from '@corral/react/design-kit';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
 import { sessionRoute } from '../../router.tsx';
@@ -134,6 +134,7 @@ export function WorkTab({
   const size = useSize();
   // Nothing asked and nothing run: the conversation is the kit home composition.
   const home = session.entries.length === 0 && loose.length === 0;
+  const [sent, setSent] = useState(0);
   const copyMissing = useWorkingCopyMissing(
     session.sessionId,
     runs.map((run) => `${run.runId}:${run.status}`).join(','),
@@ -145,6 +146,7 @@ export function WorkTab({
         key={session.sessionId}
         sessionId={session.sessionId}
         messageId={messageId}
+        sent={sent}
         header={
           <MeetingHandoffLinks
             key={`handoffs:${session.sessionId}`}
@@ -176,6 +178,7 @@ export function WorkTab({
             onViewRun={(run) => onPanel('run', { run })}
             queued={queued}
             onChange={onChange}
+            onSent={() => setSent((count) => count + 1)}
             reference={reference}
             onReferenceUsed={onReferenceUsed}
             home={home}

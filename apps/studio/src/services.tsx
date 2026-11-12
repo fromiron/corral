@@ -16,6 +16,8 @@ import {
   RestCorralRepository,
   RunModesApi,
   SessionCompactionApi,
+  type SessionDeletionRequest,
+  type SessionDeletionSummary,
   TerminalsApi,
   VaultApi,
   VoiceApi,
@@ -91,6 +93,11 @@ export interface StudioServices {
   readSessionCompaction?: (sessionId: string) => Promise<SessionCompactionView | null>;
   /** Work folders and file changes; the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
+  /** Session deletion exists on the local server. The browser demo has no delete. */
+  sessionDeletion: {
+    preview(sessionId: string): Promise<SessionDeletionSummary>;
+    delete(sessionId: string, body: SessionDeletionRequest): Promise<void>;
+  } | null;
   /** meeting rounds; the in-browser runtime runs the same service locally. */
   meetings: MeetingsClient;
   meetingHandoffs?: MeetingHandoffsApi;
@@ -179,6 +186,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     const choices = await modesApi.read().catch(() => ({ modes: {} }));
     let modeWrite: Promise<void> = Promise.resolve();
     const runs = createRunSessions(transport, recovery);
+    const repository = new RestCorralRepository(http);
     return {
       mode: 'server',
       serverVersion: health.version,
@@ -188,7 +196,11 @@ export async function createStudioServices(): Promise<StudioServices> {
         return current.pathEngine;
       },
       workspaceId: 'workspaceId' in choices ? choices.workspaceId : undefined,
-      repository: new RestCorralRepository(http),
+      repository,
+      sessionDeletion: {
+        preview: (sessionId) => repository.deletionPreview(sessionId),
+        delete: (sessionId, body) => repository.deleteSession(sessionId, body),
+      },
       transport,
       readHistory: (runId) => transport.exportRun(runId, { privateTranscript: true }),
       runFor: runs.runFor,
@@ -251,6 +263,7 @@ export async function createStudioServices(): Promise<StudioServices> {
   return {
     mode: 'browser',
     terminals: null,
+    sessionDeletion: null,
     persistent,
     sessionMissing: false,
     models: null,

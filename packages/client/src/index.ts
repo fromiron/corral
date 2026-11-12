@@ -1322,6 +1322,20 @@ export class RestCorralRepository implements CorralRepository {
     ) as Promise<SessionResult>;
   }
 
+  deletionPreview(sessionId: string): Promise<SessionDeletionSummary> {
+    return this.http.json(`/sessions/${encodeURIComponent(sessionId)}/deletion`);
+  }
+
+  /** 204 removes it. A repeated confirmed delete is 404 and is already done. A conflict throws. */
+  async deleteSession(sessionId: string, body: SessionDeletionRequest): Promise<void> {
+    const response = await this.http.request(`/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify(body),
+    });
+    if (response.status === 204 || response.status === 404) return;
+    throw await apiError(response);
+  }
+
   addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult> {
     return this.projectWrite(
       `/sessions/${encodeURIComponent(sessionId)}/entries`,
@@ -1625,6 +1639,10 @@ export class ModelsApi {
   cancelLocalAiInstall(): Promise<LocalAiView> {
     return this.http.json('/local-ai/install', { method: 'DELETE' });
   }
+  /** Deletes the meeting bundle only. The judge model stays. */
+  removeLocalAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai', { method: 'DELETE' });
+  }
   decisionApis(): Promise<DecisionApiView[]> {
     return this.http.json('/decision-apis');
   }
@@ -1655,6 +1673,10 @@ export class ModelsApi {
   }
   cancelLocalRoutingInstall(): Promise<EffortRoutingView> {
     return this.http.json('/effort-routing/local/install', { method: 'DELETE' });
+  }
+  /** Deletes the installed Local judge model only. The saved setting and the meeting bundle stay. */
+  removeLocalRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local', { method: 'DELETE' });
   }
   /** Prepares the saved, installed Local engine again. */
   startLocalRouting(): Promise<EffortRoutingView> {
@@ -2227,6 +2249,43 @@ export interface WorktreeView {
   removedAt: string | null;
   reviewed: boolean;
   missing: boolean;
+}
+
+export interface SessionDeletionSummary {
+  sessionId: string;
+  revision: number;
+  title: string;
+  meeting: boolean;
+  archived: boolean;
+  runs: number;
+  messages: number;
+  unfinishedRunIds: string[];
+  generatedMedia: number;
+  inputImages: number;
+  schedules: { id: string; title: string }[];
+  handoffs: {
+    commandId: string;
+    direction: 'outgoing' | 'incoming';
+    otherSessionId: string;
+    otherTitle: string;
+    otherDeleted: boolean;
+  }[];
+  checkpoints: number;
+  /** Restore points of the linked source folder that go with the session. */
+  sourceCheckpoints: number;
+  /** Applies still in the source folder that Corral could revert until the session is gone. */
+  revertibleIntegrations: number;
+  reviewDecisions: number;
+  reviewComments: number;
+  verifications: number;
+  copyGeneration: number | null;
+  /** The working-copy removal summary when a copy is still live; browser drafts are absent. */
+  workingCopy: CopyRemovalPlan | null;
+}
+
+export interface SessionDeletionRequest {
+  expectedRevision: number;
+  copyGeneration?: number;
 }
 
 export interface CopyRemovalPlan {

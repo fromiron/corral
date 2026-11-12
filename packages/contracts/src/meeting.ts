@@ -13,6 +13,8 @@ export const MeetingParticipant = z.strictObject({
   name: z.string().trim().min(1).max(40),
   /** What the person also calls them; messages may address them by these as by the name. */
   aliases: z.array(z.string().trim().min(1).max(40)).max(8).optional(),
+  /** Short label shown beside the name. The prompt is the longer role description. */
+  role: z.string().trim().min(1).max(40).optional(),
   /** Optional role guidance; an empty string means an ordinary chat participant. */
   prompt: z.string().trim().max(4000),
   modelProfile: Identifier,
@@ -22,7 +24,13 @@ export type MeetingParticipant = z.infer<typeof MeetingParticipant>;
 /** Local-only selection input: posted text and configured roles, never provider credentials. */
 export interface MeetingSelectionInput {
   message: string;
-  participants: { participantId: string; name?: string; prompt: string }[];
+  participants: {
+    participantId: string;
+    name?: string;
+    aliases?: string[];
+    role?: string;
+    prompt: string;
+  }[];
   history: { id?: string; participantId: string | null; text: string }[];
 }
 
