@@ -3,8 +3,10 @@
 // use.
 import { availableParallelism } from 'node:os';
 import { type Bundle, bundledManifest } from './bundle.ts';
+import { BundleBusyError } from './busy.ts';
 import { type Device, type EngineState, LocalEmbeddingEngine } from './engine/engine.ts';
 import { builtHelperPath, type HelperLauncher, spawnHelper } from './engine/helper.ts';
+import { removeMeetingReleases } from './install.ts';
 import { BundleInstaller, type InstallProgressView } from './installer.ts';
 import { LocalMeetingSelector } from './meeting/selector.ts';
 import { cpuThreads, defaultLocalAiDir, runtimeTarget } from './platform.ts';
@@ -19,6 +21,11 @@ export interface LocalIntelligenceOptions {
   launch?: HelperLauncher;
   /** Downloads for the settings panel's install. */
   fetchFn?: typeof fetch;
+  /**
+   * Awaited after an install's files are on disk and before that install is accepted. A removal
+   * in that gap discards the install, including files the callback writes afterwards.
+   */
+  beforeAccept?(): Promise<void>;
   platform?: string;
   arch?: string;
   logicalCores?: number;
@@ -47,8 +54,15 @@ export interface LocalIntelligence {
   status(): LocalAiStatus;
   /** Starts installing this release in the background unless it cannot or need not. */
   install(): LocalAiStatus;
+  /** The in-flight install, including the moment before it is accepted. Null when none runs. */
+  installing(): Promise<void> | null;
   /** Stops a running install; resolves once its partial files are removed. */
   cancelInstall(): Promise<LocalAiStatus>;
+  /**
+   * Stops the helper Corral started and deletes this bundle's release folders. Refused while an
+   * install or an embedding is in progress. The judge model under `d1` stays.
+   */
+  remove(): Promise<LocalAiStatus>;
   /** Cancels a running install and stops the engine. */
   close(): Promise<void>;
 }
@@ -83,7 +97,12 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
     bundle,
     target,
     ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+    ...(options.beforeAccept ? { beforeAccept: options.beforeAccept } : {}),
     onInstalled: () => engine.refreshInstall(),
+    onDiscarded: () => {
+      removeMeetingReleases(root, bundle);
+      engine.refreshInstall();
+    },
   });
   // Runtime and spawn errors name the bundle folder or the helper; the panel shows neither.
   const withoutPaths = (text: string | null) => {
@@ -116,11 +135,23 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
       if (status().state !== 'unsupported') installer.start();
       return status();
     },
+    installing: () => installer.installing(),
     cancelInstall: async () => {
       await installer.cancel();
       return status();
     },
+    remove: async () => {
+      if (!target) throw new Error('local AI has no runtime for this platform');
+      if (installer.running()) throw new BundleBusyError('installing');
+      if (engine.busy()) throw new BundleBusyError('computing');
+      installer.invalidate();
+      await engine.stop();
+      removeMeetingReleases(root, bundle);
+      engine.refreshInstall();
+      return status();
+    },
     close: async () => {
+      installer.invalidate();
       await installer.cancel();
       await engine.close();
     },

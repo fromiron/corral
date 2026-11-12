@@ -68,6 +68,26 @@ export function installState(
   return other ? 'stale' : 'missing';
 }
 
+/**
+ * Deletes this meeting release and any older one. `d1` is the judge model and is left alone,
+ * as is anything that is not a meeting release folder.
+ */
+export function removeMeetingReleases(root: string, bundle: Bundle = bundledManifest()): void {
+  rmSync(bundleDir(root, bundle), { recursive: true, force: true });
+  let names: string[] = [];
+  try {
+    names = readdirSync(root);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === 'd1' || name === bundle.release) continue;
+    const dir = join(root, name);
+    const stamp = readStamp(dir);
+    if (typeof stamp?.release === 'string') rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function sha256File(path: string): Promise<string> {
   const hash = createHash('sha256');
   const handle = await open(path, 'r');

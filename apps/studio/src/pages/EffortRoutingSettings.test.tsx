@@ -59,6 +59,7 @@ const models = () => ({
   installLocalRouting: vi.fn(),
   cancelLocalRoutingInstall: vi.fn(),
   startLocalRouting: vi.fn(),
+  removeLocalRouting: vi.fn(),
 });
 
 const cleanups: (() => void)[] = [];
@@ -130,8 +131,9 @@ it('starts Off with nothing to set up, and saving Manual with Local downloads no
   expect(radio(container, 'Local judge model')?.getAttribute('aria-checked')).toBe('true');
   expect(container.textContent).toContain('Runs on server-host');
   expect(container.querySelector('[role="status"]')?.textContent).toBe(
-    'Not installed · about 1,123 MB',
+    'Not installed · about 1.1 GB',
   );
+  expect(container.textContent).toContain('Downloads about 1.1 GB.');
   await act(async () => button(container, 'Save')?.click());
   expect(api.saveEffortRouting).toHaveBeenCalledWith(LOCAL, 'rev_1');
   expect(api.installLocalRouting).not.toHaveBeenCalled();
@@ -167,7 +169,88 @@ it('installs only from its button, follows the download, and can cancel it', asy
   await act(async () => button(container, 'Cancel install')?.click());
   expect(api.cancelLocalRoutingInstall).toHaveBeenCalledTimes(1);
   expect(container.querySelector('[role="status"]')?.textContent).toBe(
-    'Not installed · about 1,123 MB',
+    'Not installed · about 1.1 GB',
+  );
+  expect(container.textContent).toContain('Downloads about 1.1 GB.');
+});
+
+it('says an install downloads about 1.1 GB again after it fails', async () => {
+  const api = models();
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'install-error', error: 'the download did not match' }),
+    }),
+  );
+  const container = await render(api);
+  expect(container.querySelector('[role="status"]')?.textContent).toBe('Install failed');
+  expect(container.textContent).toContain('Downloads about 1.1 GB.');
+  expect(button(container, 'Install')).toBeDefined();
+});
+
+it('says Prepare now starts the installed model and downloads nothing', async () => {
+  const api = models();
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'installed', runtime: 'stopped' }),
+    }),
+  );
+  const container = await render(api);
+  expect(button(container, 'Prepare now')).toBeDefined();
+  expect(container.textContent).toContain(
+    'Starts the model that is already installed. Nothing is downloaded.',
+  );
+});
+
+it('confirms the size freed before removing the judge model', async () => {
+  const api = models();
+  const absent = view({
+    settings: LOCAL,
+    local: local({ install: 'absent' }),
+  });
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'installed', runtime: 'stopped' }),
+    }),
+  );
+  api.removeLocalRouting.mockResolvedValue(absent);
+  const container = await render(api);
+  await act(async () => button(container, 'Remove')?.click());
+  expect(api.removeLocalRouting).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain(
+    'Frees about 1.1 GB on this computer. The meeting analysis model stays.',
+  );
+  const confirm = [...document.querySelectorAll('button')].filter(
+    (node) => node.textContent === 'Remove',
+  );
+  await act(async () => confirm.at(-1)?.click());
+  expect(api.removeLocalRouting).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('[role="status"]')?.textContent).toBe(
+    'Not installed · about 1.1 GB',
+  );
+});
+
+it('says a judgment must finish before the judge model can be removed', async () => {
+  const api = models();
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'installed', runtime: 'inferring' }),
+    }),
+  );
+  api.removeLocalRouting.mockRejectedValue(
+    new ApiError(409, 'RESOURCE_CAPACITY', 'a judgment is running'),
+  );
+  const container = await render(api);
+  await act(async () => button(container, 'Remove')?.click());
+  const confirm = [...document.querySelectorAll('button')].filter(
+    (node) => node.textContent === 'Remove',
+  );
+  await act(async () => confirm.at(-1)?.click());
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    'Cannot remove it while a judgment is running.',
   );
 });
 

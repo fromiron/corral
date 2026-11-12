@@ -2,6 +2,7 @@
 // runtime and the routing port on top. One judgment at a time per host and no queue: Busy is
 // known before any tokenizer call. A judgment's slot is held until its native response is read
 // to the end or its child has exited, whatever the caller did meanwhile.
+import { rmSync } from 'node:fs';
 import { availableParallelism, hostname } from 'node:os';
 import type {
   DecisionCancellation,
@@ -14,6 +15,7 @@ import type {
   RoutingLease,
   SettledBasis,
 } from '@corral/contracts';
+import { BundleBusyError } from '../busy.ts';
 import { d1Threads } from '../platform.ts';
 import { D1HttpError, systemOne, tokenize } from './client.ts';
 import {
@@ -69,7 +71,12 @@ export interface D1EngineOptions {
   /** Logical processors on the host; the default thread count follows from them. */
   cores?: number;
   monotonicMs?(): number;
-  /** Called once an install has finished. */
+  /**
+   * Awaited after the files are on disk and this install is no longer in progress, before it is
+   * accepted. A removal in that gap discards the install, including files the callback writes.
+   */
+  beforeAccept?(): Promise<void>;
+  /** Called once an install is accepted. */
   onInstalled?(): void;
 }
 
@@ -134,6 +141,11 @@ export class D1Engine {
     done: Promise<void>;
   } | null = null;
   private installFailure: string | null = null;
+  private accepting = false;
+  private removing = false;
+  /** Bumped by a removal so a late install completion cannot bring the model back. */
+  private generation = 0;
+  private removeTask: Promise<D1Status> | null = null;
   private readonly now: () => number;
 
   constructor(options: D1EngineOptions) {
@@ -206,7 +218,16 @@ export class D1Engine {
   /** Starts installing in the background unless it cannot, need not, or already does. */
   install(): D1Status {
     const { manifest } = this.options;
-    if (!manifest || this.problem || this.job || this.installed()) return this.status();
+    if (
+      !manifest ||
+      this.problem ||
+      this.removing ||
+      this.accepting ||
+      this.job ||
+      this.installed()
+    )
+      return this.status();
+    const generation = this.generation;
     const controller = new AbortController();
     const job: NonNullable<D1Engine['job']> = {
       controller,
@@ -225,13 +246,29 @@ export class D1Engine {
       },
     })
       .then(
-        () => this.options.onInstalled?.(),
+        async () => {
+          if (this.job === job) this.job = null;
+          this.accepting = true;
+          try {
+            await this.options.beforeAccept?.();
+            if (generation !== this.generation || this.removing) {
+              this.scrub();
+              this.installFailure = null;
+              return;
+            }
+            this.options.onInstalled?.();
+          } finally {
+            this.accepting = false;
+          }
+        },
         (error: unknown) => {
-          if (!controller.signal.aborted) this.installFailure = describe(error);
+          if (!controller.signal.aborted && generation === this.generation)
+            this.installFailure = describe(error);
         },
       )
       .finally(() => {
         if (this.job === job) this.job = null;
+        this.accepting = false;
       });
     this.job = job;
     return this.status();
@@ -252,6 +289,54 @@ export class D1Engine {
     return this.status();
   }
 
+  /**
+   * Stops the child this engine started and deletes this manifest's folder. Refused while an
+   * install or a judgment is in progress. Another manifest folder and the meeting bundle stay.
+   */
+  async remove(): Promise<D1Status> {
+    if (!this.options.manifest || this.problem)
+      throw new Error(this.problem ?? 'the Local engine is not available on this computer');
+    if (this.removeTask) return this.removeTask;
+    if (this.job) throw new BundleBusyError('installing');
+    if (this.lease) throw new BundleBusyError('judging');
+    const generation = ++this.generation;
+    this.removing = true;
+    const task = (async () => {
+      try {
+        await this.stop();
+        if (this.generation === generation) {
+          this.scrub();
+          this.installFailure = null;
+        }
+        return this.status();
+      } finally {
+        if (this.generation === generation) this.removing = false;
+      }
+    })();
+    this.removeTask = task;
+    try {
+      return await task;
+    } finally {
+      if (this.removeTask === task) this.removeTask = null;
+    }
+  }
+
+  /** Deletes only this manifest's folder. A filesystem error keeps its path out of the message. */
+  private scrub(): void {
+    const { manifest } = this.options;
+    if (!manifest) return;
+    try {
+      rmSync(d1Dir(this.options.root, manifest), { recursive: true, force: true });
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      throw new Error(
+        typeof code === 'string' && /^E[A-Z]+$/.test(code)
+          ? `cannot remove the Local model files (${code})`
+          : 'cannot remove the Local model files',
+      );
+    }
+  }
+
   /** Readies the runtime in the background, also after an error. */
   prepare(threads: number): void {
     if (this.runtime && this.installed()) void this.runtime.prepare(threads);
@@ -263,6 +348,9 @@ export class D1Engine {
   }
 
   async close(): Promise<void> {
+    // A completion that has not been accepted yet must not bring the model back.
+    this.generation += 1;
+    this.removing = true;
     await this.cancelInstall();
     await this.stop();
   }
