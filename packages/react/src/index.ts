@@ -95,6 +95,21 @@ export {
   type RunHistory,
   reconstructRunHistory,
 } from './run/history.ts';
+export {
+  executionPresence,
+  PRESENCE_EXIT_GRACE_MS,
+  type Presence,
+  type PresenceDetail,
+  type PresenceGroup,
+  type PresenceKind,
+  type PresenceNeed,
+  type PresenceRequest,
+  type PresenceTone,
+  runPresence,
+  sessionGroupOf,
+  sessionPresence,
+  settle,
+} from './run/presence.ts';
 export { createRunRecovery, type RecoveryStorage, type RunRecovery } from './run/recovery.ts';
 export {
   type ResultGroup,

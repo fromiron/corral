@@ -6064,5 +6064,31 @@
     "refused": "Not saved: {message}",
     "conflict": "Profiles changed elsewhere. Your edits are still here.",
     "reload": "Start from the latest"
+  },
+  "Presence": {
+    "state": {
+      "awaiting_user": "Waiting for you",
+      "failed": "Failed",
+      "interrupted": "Interrupted",
+      "stopping": "Stopping",
+      "pausing": "Pausing",
+      "paused": "Paused",
+      "starting": "Starting",
+      "working": "Working",
+      "succeeded": "Completed",
+      "cancelled": "Cancelled",
+      "ready": "No run yet",
+      "empty": "Empty session"
+    },
+    "need": {
+      "approval": "Approval",
+      "question": "Question",
+      "continue": "Continue?"
+    },
+    "detail": {
+      "waiting_agents": "Waiting for agents",
+      "waiting_reply": "Waiting for a reply",
+      "watching": "Watching"
+    }
   }
 }
