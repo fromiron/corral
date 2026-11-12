@@ -197,8 +197,7 @@ export function conversationDefinition(
 ): CorralDefinition {
   const { roster, ...rest } = input;
   const base = autoDefinition({ ...rest, template: 'single' });
-  // Team none keeps no start-model level. Per request is the same judgment as automatic
-  // reasoning: each of the lead's requests, with the spec's fallback when the judge is down.
+  // Team none has no start-model level, so per request is judged like automatic reasoning.
   const perRequest = !roster && rest.choice.reasoning?.mode === 'route';
   const duty = roster ? leadTeamDuty(roster) : LEAD_DUTY;
   const roles = base.roles.map((role) => ({
