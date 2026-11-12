@@ -71,6 +71,7 @@ async function fixture(
     selectParticipants?: (input: MeetingSelectionInput) => Promise<string[] | null>;
     /** A selector's raw scores, for tests about the policy itself. */
     scoreParticipants?: (input: MeetingSelectionInput) => Promise<MeetingSelectorResult | null>;
+    meetingPolicy?: { needsReplyThreshold: number };
   } = {},
 ) {
   const { selectParticipants: chosen } = options;
@@ -167,6 +168,7 @@ async function fixture(
       newRoundId: () => `round_${++rounds}`,
       random: options.random ?? (() => 0.999),
       ...(scoreParticipants ? { selectParticipants: scoreParticipants } : {}),
+      ...(options.meetingPolicy ? { meetingPolicy: options.meetingPolicy } : {}),
       ...(options.persistent
         ? {
             continuation: (
@@ -221,8 +223,14 @@ async function fixture(
   };
 }
 
-const brief = (input: AgentStartInput) =>
-  input.inputs.find((item) => item.name === 'brief')?.text ?? '';
+const brief = (input: AgentStartInput | undefined) =>
+  input?.inputs.find((item) => item.name === 'brief')?.text ?? '';
+
+async function viewOf(f: { meetings: MeetingService; sessionId: string }) {
+  const view = await f.meetings.view(f.sessionId);
+  if (!view) throw new Error('The meeting does not exist.');
+  return view;
+}
 
 describe('local meeting participant selection', () => {
   it('uses posted conversation, selects only the recipient and reuses it on command replay', async () => {
@@ -381,6 +389,10 @@ describe('local meeting participant selection', () => {
     await f.send('followup', 'Why?');
     await f.meetings.idle(f.sessionId);
     expect(f.seen.map((input) => input.role.name)).toEqual(['Builder', 'Secretary', 'Builder']);
+    expect((await viewOf(f)).rounds[2]?.selection).toEqual({
+      strategy: 'fallback',
+      reason: 'recent_speaker',
+    });
   });
 
   it('rotates the persisted fallback when nobody has completed a reply, including after recreation', async () => {
@@ -408,6 +420,8 @@ describe('local meeting participant selection', () => {
     });
     await service.idle(f.sessionId);
     expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder', 'Tester']);
+    for (const round of (await viewOf(f)).rounds)
+      expect(round.selection).toEqual({ strategy: 'fallback', reason: 'rotation' });
   });
 
   it('does not expose running answers or future messages to the selector', async () => {
@@ -481,7 +495,7 @@ describe('meeting selection record and no recipients', () => {
       participantIds: [],
       answers: [],
       active: false,
-      selection: { strategy: 'none' },
+      selection: { strategy: 'none', reason: 'no_recipients' },
     });
     expect(view.rounds[0]!.selection!.scores).toBeUndefined();
     expect(f.seen).toHaveLength(0);
@@ -539,14 +553,15 @@ describe('meeting selection record and no recipients', () => {
     await f.meetings.idle(f.sessionId);
     await f.send('minutes', 'Summarize.', [SECRETARY_ID]);
     await f.meetings.idle(f.sessionId);
-    expect(await selectionOf(f, 0)).toMatchObject({ strategy: 'explicit' });
-    expect(await selectionOf(f, 1)).toMatchObject({ strategy: 'mention' });
-    expect(await selectionOf(f, 2)).toMatchObject({ strategy: 'explicit' });
-    for (const n of [0, 1, 2]) {
-      const selection = (await selectionOf(f, n))!;
-      expect(selection.scores).toBeUndefined();
-      expect(selection.reason.length).toBeGreaterThan(0);
-    }
+    expect(await selectionOf(f, 0)).toEqual({
+      strategy: 'explicit',
+      reason: 'composer_recipients',
+    });
+    expect(await selectionOf(f, 1)).toEqual({ strategy: 'mention', reason: 'mention' });
+    expect(await selectionOf(f, 2)).toEqual({
+      strategy: 'explicit',
+      reason: 'composer_recipients',
+    });
   });
 
   it('records an address-rule choice as address', async () => {
@@ -554,7 +569,7 @@ describe('meeting selection record and no recipients', () => {
     const f = await fixture({ config: named, selectParticipants: select });
     await f.send('called', '빌더야 어떻게 생각해?');
     await f.meetings.idle(f.sessionId);
-    expect(await selectionOf(f, 0)).toMatchObject({ strategy: 'address' });
+    expect(await selectionOf(f, 0)).toEqual({ strategy: 'address', reason: 'addressed' });
     expect(select).not.toHaveBeenCalled();
   });
 
@@ -573,12 +588,13 @@ describe('meeting selection record and no recipients', () => {
     await f.meetings.idle(f.sessionId);
     const view = (await f.meetings.view(f.sessionId))!;
     expect(view.rounds[0]!.participantIds).toEqual(['tester']);
-    expect(view.rounds[0]!.selection).toMatchObject({
+    expect(view.rounds[0]?.selection).toEqual({
       strategy: 'selector',
       scores: [
         { participantId: 'architect', score: 0.1 },
         { participantId: 'tester', score: 0.6 },
       ],
+      reason: 'top_score',
     });
     expect(f.seen.map((input) => input.role.name)).toEqual(['Tester']);
   });
@@ -587,13 +603,11 @@ describe('meeting selection record and no recipients', () => {
     const judged = await fixture({ selectParticipants: async () => null });
     await judged.send('fallback', 'Compare your views.');
     await judged.meetings.idle(judged.sessionId);
-    const fallback = (await selectionOf(judged, 0))!;
-    expect(fallback.strategy).toBe('fallback');
-    expect(fallback.scores).toBeUndefined();
+    expect(await selectionOf(judged, 0)).toEqual({ strategy: 'fallback', reason: 'rotation' });
     const plain = await fixture();
     await plain.send('everyone', 'Compare your views.');
     await plain.meetings.idle(plain.sessionId);
-    expect(await selectionOf(plain, 0)).toMatchObject({ strategy: 'fallback' });
+    expect(await selectionOf(plain, 0)).toEqual({ strategy: 'fallback', reason: 'analysis_off' });
     expect(plain.seen).toHaveLength(3);
   });
 
@@ -606,7 +620,7 @@ describe('meeting selection record and no recipients', () => {
       expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(2),
     );
     await f.meetings.idle(f.sessionId);
-    expect(await selectionOf(f, 1)).toMatchObject({ strategy: 'mention' });
+    expect(await selectionOf(f, 1)).toEqual({ strategy: 'mention', reason: 'participant_mention' });
   });
 
   it('keeps the previous speaker continuing when the selector says no reply is needed', async () => {
@@ -624,7 +638,96 @@ describe('meeting selection record and no recipients', () => {
     await f.send('second', 'And then?');
     await f.meetings.idle(f.sessionId);
     expect(f.seen.map((input) => input.role.name)).toEqual(['Builder', 'Builder']);
-    expect(await selectionOf(f, 1)).toMatchObject({ strategy: 'selector' });
+    expect(await selectionOf(f, 1)).toEqual({
+      strategy: 'selector',
+      scores: [
+        { participantId: 'builder', score: 0.8 },
+        { participantId: 'tester', score: 0.2 },
+      ],
+      reason: 'continuity',
+    });
+  });
+
+  it('records a selector judgement that no reply is needed', async () => {
+    const f = await fixture({
+      scoreParticipants: async () => ({
+        scores: [{ participantId: 'tester', score: 0.8 }],
+        needsReply: 0.1,
+      }),
+    });
+    await f.send('quiet', 'Thanks, all.');
+    await f.meetings.idle(f.sessionId);
+    const [round] = (await viewOf(f)).rounds;
+    expect(round?.participantIds).toEqual([]);
+    expect(round?.selection).toEqual({
+      strategy: 'selector',
+      scores: [{ participantId: 'tester', score: 0.8 }],
+      reason: 'no_reply_needed',
+    });
+    expect(f.seen).toHaveLength(0);
+  });
+
+  it('applies the meeting policy it is given', async () => {
+    const scoreParticipants = async () => ({
+      scores: [{ participantId: 'tester', score: 0.8 }],
+      needsReply: 0.3,
+    });
+    const lenient = await fixture({
+      scoreParticipants,
+      meetingPolicy: { needsReplyThreshold: 0.2 },
+    });
+    await lenient.send('m', 'Anything else?');
+    await lenient.meetings.idle(lenient.sessionId);
+    expect(lenient.seen.map((input) => input.role.name)).toEqual(['Tester']);
+    const standard = await fixture({ scoreParticipants });
+    await standard.send('m', 'Anything else?');
+    await standard.meetings.idle(standard.sessionId);
+    expect(standard.seen).toHaveLength(0);
+  });
+
+  it('records the recipients saved with an old waiting message', async () => {
+    const f = await fixture();
+    const session = await f.repository.getSession(f.sessionId);
+    if (!session?.meeting) throw new Error('The meeting does not exist.');
+    await f.repository.updateSession(f.sessionId, {
+      expectedRevision: session.revision,
+      meeting: {
+        ...session.meeting,
+        queued: { commandId: 'waiting', mode: 'mock', text: 'left over', mentions: ['tester'] },
+      },
+    });
+    expect(await f.meetings.sendQueued(f.sessionId)).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    expect(await selectionOf(f, 0)).toEqual({ strategy: 'explicit', reason: 'saved_recipients' });
+  });
+
+  it('refuses a selection whose reason does not belong to its strategy', () => {
+    const round = {
+      roundId: 'r',
+      commandId: 'c',
+      kind: 'all',
+      message: 'Hello.',
+      basedOnRoundId: null,
+      rebuttalNo: null,
+      participantIds: ['tester'],
+      answers: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      stoppedAt: null,
+    };
+    const valid = (selection: unknown) => MeetingRound.safeParse({ ...round, selection }).success;
+    expect(valid({ strategy: 'selector', reason: 'top_score' })).toBe(true);
+    expect(valid({ strategy: 'none', reason: 'no_recipients' })).toBe(true);
+    expect(valid({ strategy: 'none', reason: 'top_score' })).toBe(false);
+    expect(valid({ strategy: 'explicit', reason: 'mention' })).toBe(false);
+    expect(valid({ strategy: 'fallback', reason: 'addressed' })).toBe(false);
+    expect(valid({ strategy: 'mention', reason: 'rotation' })).toBe(false);
+    expect(
+      valid({
+        strategy: 'fallback',
+        reason: 'Meeting analysis is off; every permitted participant replies.',
+      }),
+    ).toBe(false);
+    expect(MeetingRound.safeParse(round).success).toBe(true);
   });
 });
 
@@ -993,6 +1096,9 @@ describe('meeting messages', () => {
     expect(await f.rebut('r3')).toMatchObject({ ok: true });
     await f.meetings.idle(f.sessionId);
     const view = (await f.meetings.view(f.sessionId))!;
+    expect(view.rounds.slice(1).map((round) => round.selection)).toEqual(
+      Array(3).fill({ strategy: 'explicit', reason: 'rebuttal' }),
+    );
     expect(
       view.rounds.map((round) => [round.kind, round.rebuttalNo, round.participantIds]),
     ).toEqual([
@@ -1609,4 +1715,272 @@ it('a parallel answer completing before the first participant still schedules it
   const total = f.seen.length;
   await f.meetings.view(f.sessionId);
   expect(f.seen).toHaveLength(total);
+});
+
+describe('meeting mention chain hold', () => {
+  /** Architect and Builder call each other until `mentions` replies have mentioned someone. */
+  const pingPong = (mentions: number, extra: Parameters<typeof fixture>[0] = {}) => {
+    let replies = 0;
+    return fixture({
+      ...extra,
+      reply: (input) =>
+        ++replies <= mentions
+          ? `@${input.role.name === 'Architect' ? 'Builder' : 'Architect'} your turn.`
+          : 'Done.',
+    });
+  };
+  const chainAfterLastMessage = (view: MeetingView) => {
+    const last = view.rounds.findLastIndex((round) => round.message !== null);
+    return view.rounds.slice(last + 1).filter((round) => round.kind === 'mention').length;
+  };
+
+  it('stops before the ninth mention response and keeps the hold after a restart', async () => {
+    const f = await pingPong(100);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(9);
+    const view = await viewOf(f);
+    expect(MeetingView.safeParse(view).success).toBe(true);
+    expect(view.rounds).toHaveLength(9);
+    expect(chainAfterLastMessage(view)).toBe(8);
+    expect(view.hold).toEqual({ kind: 'chain', after: view.rounds[8]?.roundId });
+    expect(view.rounds.every((round) => !round.active)).toBe(true);
+    const reopened = await viewOf({ meetings: f.service(), sessionId: f.sessionId });
+    expect(reopened.hold).toEqual(view.hold);
+    expect(f.seen).toHaveLength(9);
+  });
+
+  it('holds nothing while a chain stays at eight mention responses or fewer', async () => {
+    for (const [mentions, runs] of [
+      [8, 9],
+      [7, 8],
+    ] as const) {
+      const f = await pingPong(mentions);
+      await f.send('c1', 'Go', ['architect']);
+      await f.meetings.idle(f.sessionId);
+      expect(f.seen).toHaveLength(runs);
+      const view = await viewOf(f);
+      expect(view.hold).toBeUndefined();
+      expect(chainAfterLastMessage(view)).toBe(mentions);
+    }
+  });
+
+  it('a person’s message clears the hold and the chain is counted again from it', async () => {
+    const f = await pingPong(100);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    const first = (await viewOf(f)).hold;
+    expect(first).toBeDefined();
+    expect(await f.send('c2', 'Keep going', ['architect'])).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(18);
+    const view = await viewOf(f);
+    expect(chainAfterLastMessage(view)).toBe(8);
+    expect(view.hold).toEqual({ kind: 'chain', after: view.rounds.at(-1)?.roundId });
+    expect(view.hold).not.toEqual(first);
+  });
+
+  it('a person’s message without recipients clears the hold too', async () => {
+    const f = await pingPong(100);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    expect((await viewOf(f)).hold).toBeDefined();
+    await f.meetings.send(f.sessionId, {
+      kind: 'message',
+      commandId: 'note',
+      mode: 'mock',
+      text: 'Noted.',
+      recipients: 'none',
+    });
+    await f.meetings.idle(f.sessionId);
+    expect((await viewOf(f)).hold).toBeUndefined();
+    expect(f.seen).toHaveLength(9);
+  });
+
+  it('a message without recipients posted mid-chain restarts the count', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let starts = 0;
+    const f = await pingPong(100, { onStart: () => (++starts === 5 ? held : undefined) });
+    await f.send('c1', 'Go', ['architect']);
+    await vi.waitFor(() => expect(f.seen).toHaveLength(5));
+    await f.meetings.send(f.sessionId, {
+      kind: 'message',
+      commandId: 'note',
+      mode: 'mock',
+      text: 'Posting a note only.',
+      recipients: 'none',
+    });
+    release();
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(13);
+    const view = await viewOf(f);
+    expect(chainAfterLastMessage(view)).toBe(8);
+    expect(view.hold).toEqual({ kind: 'chain', after: view.rounds.at(-1)?.roundId });
+  });
+
+  it('continue resumes the held mention and counts eight again', async () => {
+    const f = await pingPong(10);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    const held = await viewOf(f);
+    expect(held.hold).toBeDefined();
+    expect(f.seen.at(-1)?.role.name).toBe('Architect');
+    const resumed = await f.meetings.continueChain(f.sessionId, { commandId: 'k1' });
+    expect(resumed).toMatchObject({ ok: true, outcome: 'started' });
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(11);
+    expect(f.seen[9]?.role.name).toBe('Builder');
+    expect(brief(f.seen[9])).toContain('@Builder your turn.');
+    const view = await viewOf(f);
+    expect(view.hold).toBeUndefined();
+    expect(view.rounds[9]).toMatchObject({
+      kind: 'mention',
+      message: null,
+      participantIds: ['builder'],
+      replyTo: { roundId: held.rounds[8]?.roundId, participantId: 'architect' },
+    });
+  });
+
+  it('continue sent again with the same command resumes only once', async () => {
+    const f = await pingPong(100);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    const first = await f.meetings.continueChain(f.sessionId, { commandId: 'k1' });
+    expect(first).toMatchObject({ ok: true, outcome: 'started' });
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(17);
+    const held = await viewOf(f);
+    expect(chainAfterLastMessage(held)).toBe(16);
+    expect(held.hold).toEqual({ kind: 'chain', after: held.rounds.at(-1)?.roundId });
+    expect(await f.meetings.continueChain(f.sessionId, { commandId: 'k1' })).toEqual(first);
+    await f.meetings.idle(f.sessionId);
+    const after = await viewOf(f);
+    expect(f.seen).toHaveLength(17);
+    expect(after.revision).toBe(held.revision);
+    expect(after.hold).toEqual(held.hold);
+  });
+
+  it('continue changes nothing when no chain is held', async () => {
+    const f = await pingPong(2);
+    expect(await f.meetings.continueChain(f.sessionId, { commandId: 'k0' })).toEqual({
+      ok: true,
+      outcome: 'updated',
+    });
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    const before = await viewOf(f);
+    expect(await f.meetings.continueChain(f.sessionId, { commandId: 'k1' })).toEqual({
+      ok: true,
+      outcome: 'updated',
+    });
+    await f.meetings.idle(f.sessionId);
+    const after = await viewOf(f);
+    expect(after.revision).toBe(before.revision);
+    expect(after.rounds).toEqual(before.rounds);
+    expect(f.seen).toHaveLength(3);
+    expect(await f.meetings.continueChain('session_missing', { commandId: 'k2' })).toMatchObject({
+      ok: false,
+      error: 'not_found',
+    });
+    expect(await f.meetings.continueChain(f.sessionId, { commandId: 'not an id!' })).toMatchObject({
+      ok: false,
+      error: 'invalid',
+    });
+  });
+
+  it('a different continue command after the hold was released does nothing', async () => {
+    const f = await pingPong(100);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    expect((await viewOf(f)).hold).toBeDefined();
+    await f.send('c2', 'New topic', [SECRETARY_ID]);
+    await f.meetings.idle(f.sessionId);
+    const before = await viewOf(f);
+    expect(before.hold).toBeUndefined();
+    expect(await f.meetings.continueChain(f.sessionId, { commandId: 'k1' })).toEqual({
+      ok: true,
+      outcome: 'updated',
+    });
+    expect((await viewOf(f)).revision).toBe(before.revision);
+    expect(f.seen).toHaveLength(10);
+  });
+
+  it('stop clears the hold and continue then does nothing', async () => {
+    const f = await pingPong(100);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    const held = await viewOf(f);
+    expect(held.hold).toBeDefined();
+    expect(await f.meetings.stop(f.sessionId, held.hold?.after ?? '')).toMatchObject({
+      ok: true,
+    });
+    expect((await viewOf(f)).hold).toBeUndefined();
+    expect(await f.meetings.continueChain(f.sessionId, { commandId: 'k1' })).toEqual({
+      ok: true,
+      outcome: 'updated',
+    });
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(9);
+  });
+});
+
+describe('a message without recipients keeps replies going', () => {
+  const post = (f: Awaited<ReturnType<typeof fixture>>, text: string) =>
+    f.meetings.send(f.sessionId, {
+      kind: 'message',
+      commandId: 'note',
+      mode: 'mock',
+      text,
+      recipients: 'none',
+    });
+
+  it('a waiting reply still answers and reads the posted message', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const f = await fixture({
+      onStart: (input) => (input.role.name === 'Builder' ? held : undefined),
+      reply: (input) =>
+        input.role.name === 'Architect' ? '@Builder @Tester what do you think?' : 'Fine.',
+    });
+    await f.send('c1', 'Pick one', ['architect']);
+    await vi.waitFor(() => expect(f.seen.map((input) => input.role.name)).toContain('Builder'));
+    expect(await post(f, 'Just so you know: budget is small.')).toMatchObject({ ok: true });
+    release();
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder', 'Tester']);
+    expect(brief(f.seen[2])).toContain('Just so you know: budget is small.');
+    const view = await viewOf(f);
+    expect(view.rounds[1]?.answers.map((answer) => answer.status)).toEqual([
+      'answered',
+      'answered',
+    ]);
+  });
+
+  it('a running reply’s mention is still followed', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const f = await fixture({
+      onStart: (input) => (input.role.name === 'Architect' ? held : undefined),
+      reply: (input) => (input.role.name === 'Architect' ? '@Tester your view?' : 'Mine.'),
+    });
+    await f.send('c1', 'Pick one', ['architect']);
+    await vi.waitFor(() => expect(f.seen).toHaveLength(1));
+    expect(await post(f, 'A side note.')).toMatchObject({ ok: true });
+    release();
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Tester']);
+    expect(brief(f.seen[1])).toContain('A side note.');
+    const view = await viewOf(f);
+    expect(view.rounds.at(-1)).toMatchObject({
+      kind: 'mention',
+      replyTo: { roundId: view.rounds[0]?.roundId, participantId: 'architect' },
+    });
+  });
 });

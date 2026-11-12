@@ -50,15 +50,39 @@ export interface MeetingSelectorResult {
   needsReply?: number;
 }
 
+/** The reason codes each selection strategy may record; the screen words them. */
+export const MEETING_SELECTION_REASONS = {
+  explicit: ['composer_recipients', 'rebuttal', 'saved_recipients'],
+  mention: ['mention', 'participant_mention'],
+  address: ['addressed'],
+  selector: ['top_score', 'continuity', 'no_reply_needed'],
+  fallback: ['reply_target', 'recent_speaker', 'rotation', 'nobody_available', 'analysis_off'],
+  none: ['no_recipients'],
+} as const;
+type SelectionStrategy = keyof typeof MEETING_SELECTION_REASONS;
+export type MeetingSelectionReason<S extends SelectionStrategy = SelectionStrategy> =
+  (typeof MEETING_SELECTION_REASONS)[S][number];
+
 /** How a round's recipients were chosen, kept with the round. */
-export const MeetingSelection = z.strictObject({
-  /** explicit: chosen in the composer; mention: @mention; address: the message's address rules;
-   * selector: selector scores and the policy; fallback: the fallback rule; none: no recipients. */
-  strategy: z.enum(['explicit', 'mention', 'address', 'selector', 'fallback', 'none']),
-  /** The selector's usable scores, when it was consulted. */
-  scores: z.array(MeetingSelectionScore).max(6).optional(),
-  reason: z.string().min(1).max(500),
-});
+export const MeetingSelection = z
+  .strictObject({
+    /** explicit: chosen in the composer; mention: @mention; address: the message's address rules;
+     * selector: selector scores and the policy; fallback: the fallback rule; none: no recipients. */
+    strategy: z.enum(['explicit', 'mention', 'address', 'selector', 'fallback', 'none']),
+    /** The selector's usable scores, when it was consulted. */
+    scores: z.array(MeetingSelectionScore).max(6).optional(),
+    reason: z.enum(
+      Object.values(MEETING_SELECTION_REASONS).flat() as [
+        MeetingSelectionReason,
+        ...MeetingSelectionReason[],
+      ],
+    ),
+  })
+  .refine(
+    ({ strategy, reason }) =>
+      (MEETING_SELECTION_REASONS[strategy] as readonly string[]).includes(reason),
+    'The selection reason does not belong to its strategy',
+  );
 export type MeetingSelection = z.infer<typeof MeetingSelection>;
 
 export const MeetingConfig = z
@@ -124,6 +148,8 @@ const MeetingRoundFields = z.strictObject({
   answers: z.array(MeetingAnswer).max(6),
   /** How the recipients were chosen. Absent in records saved before it was kept. */
   selection: MeetingSelection.optional(),
+  /** A person chose to continue a held mention chain with this round; the chain count restarts. */
+  continued: z.literal(true).optional(),
   createdAt: z.string(),
   stoppedAt: z.string().nullable(),
 });
@@ -235,9 +261,22 @@ export type MeetingAdoptDecisionRequest = z.infer<typeof MeetingAdoptDecisionReq
 export const MeetingWithdrawDecisionRequest = MeetingDecisionWithdrawal.omit({ createdAt: true });
 export type MeetingWithdrawDecisionRequest = z.infer<typeof MeetingWithdrawDecisionRequest>;
 
+/** Set when participant mentions have chained eight rounds with no message from the person. */
+export const MeetingHold = z.strictObject({
+  kind: z.literal('chain'),
+  /** The round whose answer's mentions were not followed yet. */
+  after: Identifier,
+});
+export type MeetingHold = z.infer<typeof MeetingHold>;
+
+/** Continues a held mention chain. */
+export const MeetingContinueRequest = z.strictObject({ commandId: Identifier });
+export type MeetingContinueRequest = z.infer<typeof MeetingContinueRequest>;
+
 export const MeetingState = z.strictObject({
   config: MeetingConfig,
   rounds: z.array(MeetingRound),
+  hold: MeetingHold.optional(),
   /** Legacy unsent draft, retained for older clients. New human messages post immediately. */
   queued: QueuedMeetingMessage.nullable(),
   minutes: z.array(MeetingMinutes).optional(),
@@ -327,6 +366,7 @@ export const MeetingView = z.strictObject({
       }),
   ),
   queued: QueuedMeetingMessage.nullable(),
+  hold: MeetingHold.optional(),
   minutes: z.array(MeetingMinutes).optional(),
   decisions: z.array(MeetingDecisionVersion).optional(),
   decisionWithdrawals: z.array(MeetingDecisionWithdrawal).optional(),
