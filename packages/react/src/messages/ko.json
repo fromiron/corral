@@ -5274,7 +5274,7 @@
     "more": "이전 요청 더 보기",
     "chart": {
       "caption": "불러온 요청 {requests}건, 모델 {models}개",
-      "excluded": "토큰을 알 수 없어 막대에서 뺀 요청 {count}건",
+      "excluded": "토큰 수를 모르는 값이 있는 요청 {count}건",
       "partial": "{value} · 미확인 {count}건",
       "time": "시간순 요청",
       "subscription": "구독 {count}건",

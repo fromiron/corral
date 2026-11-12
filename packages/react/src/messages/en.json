@@ -5274,7 +5274,7 @@
     "more": "Load older requests",
     "chart": {
       "caption": "{requests, number} loaded requests, {models, number} models",
-      "excluded": "{count, plural, one {# request left off the token bars because a count is unknown} other {# requests left off the token bars because a count is unknown}}",
+      "excluded": "{count, plural, one {# request has an unknown token count} other {# requests have an unknown token count}}",
       "partial": "{value} · unknown {count, number}",
       "time": "Requests over time",
       "subscription": "Subscription {count, number}",

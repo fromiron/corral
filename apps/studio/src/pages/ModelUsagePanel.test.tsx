@@ -198,7 +198,7 @@ it('charts loaded pages only, and does not draw an unknown token count as zero',
     expect(requests.mock.calls[0]?.[0]).toEqual({ limit: 50 });
     const chart = () => view.container.querySelector('[data-usage-chart]');
     expect(chart()?.textContent).toContain('3 loaded requests, 2 models');
-    expect(chart()?.textContent).toContain('3 requests left off the token bars');
+    expect(chart()?.textContent).toContain('3 requests have an unknown token count');
     const alpha = chart()?.querySelector('[data-model-summary="alpha · one"]');
     expect(alpha?.textContent).toContain('10 · unknown 1');
     expect(alpha?.textContent).toContain('Input tokens, solid');
