@@ -412,7 +412,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 레인은 같은 파일을 고치는 일을 한 줄로 세운 것이다. 레인 안은 순서대로, 레인끼리는 동시에 돈다.
 
 - 레인 K(계약·Coordinator·worker): B7 → B3 → B6 → B5 → B9 → A1 → A2 → A5 → A9
-- 레인 P(재시도·대기열·회의·순수 코어): B8 → B4 → M1 → M2 → B2 → A3 → A4 → A6
+- 레인 P(재시도·대기열·회의·순수 코어): B8 → B4 → B10 → M1 → M2 → B2 → A3 → A4 → A6
 - 레인 U(대화 화면): V1 → K1 → U1 → U2 → U3 → U4 → U5 → U6 → U7 → U9 → U11 → M3 → M4 → A8 → U13 → V2
 - 레인 L(목록·주변 화면): B1 → U8 → U10 → U12 → A7 → U14
 
@@ -435,6 +435,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 대기 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 대기 |
 | B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 대기 |
+| B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 대기 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 대기 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 대기 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 대기 |
@@ -534,6 +535,13 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 대상: `T/definition.ts`(`RunLimits` 265–281행), `C/limits.ts`, `C/admission/index.ts`(241–253행의 무진전 게이트가 본보기), `C/coordinator.ts`의 `prepareModelRequest`, `T/commands.ts`의 `run_limits` 패치.
 - 구현: `RunLimits.requestBudget`(역할 400·자식 200·감독 60을 기본으로 주는 구조, 패치 50–2000 또는 0). 실행 단위별 모델 요청 수를 세고, 대화에 직접 답하는 실행은 세지 않는다. 예산에서 마무리 지시, 1.5배에서 제출 지시(둘 다 시스템이 낸 지시로 기록), 그 뒤 5회째 요청에서 게이트가 `require_approval`을 돌려 `limit.reached(kind: request_budget)`와 공유 승인을 만든다. 승인이면 예산을 한 번 더 주고, 거절이면 무진전 거절과 같은 경로로 멈춘다.
 - 완료 체크: `packages/core/test/`에 세 단계 각각, 대화 실행 제외, 패치로 끄기, 승인 뒤 계속. `pnpm contracts:check`.
+
+### B10 응답 중간 끊김의 재시도 분류
+- 명세: `llm-runtime.md` 15행(D13). B8 리뷰에서 나온 태스크다. 지금 분류로는 200 응답 뒤 중간에 끊긴 스트림이 대부분 `UNKNOWN`이 되어 B8의 판정이 실제로는 쓰이지 않는다.
+- 대상: `P/ported/dsh/retry.ts`(`providerFailure`), `P/model-bridge.ts`(184행 근처의 오류 분류), `apps/server/src/models/registry.ts`(오류를 분류해 worker에 넘기는 곳), `P/request-retry.ts`, 각 테스트.
+- 구현: 응답 이벤트가 하나라도 온 뒤 연결이 끊겨 끝난 스트림(`terminated`, `premature close`, `ECONNRESET`, `socket hang up`, `other side closed`)과 응답 중에 온 공급자 과부하 알림(`overloaded`, 529)을 일시적 오류로 분류한다. 응답 이벤트 없이 끊긴 연결은 지금처럼 `UNKNOWN`이다(전달 여부를 모르는 요청). 사용자 취소는 지금처럼 `CANCELLED`다. 분류는 원문을 볼 수 있는 쪽에서 하고 원문은 지금처럼 남기지 않는다. 재시도 여부는 B8의 판정을 그대로 탄다.
+- 하지 말 것: 재시도 횟수·대기 변경, 응답 시작 전 끊김의 재시도. 실패 코드 enum을 늘려 계약(`packages/contracts`)을 바꿔야 하면 멈추고 보고.
+- 완료 체크: 생각만 나온 뒤 `terminated` → 재시도, 본문 뒤 `terminated` → 재시도 안 함(끊긴 출력으로 남음), 응답 이벤트 없이 `terminated` → 재시도 안 함, 취소 → 재시도 안 함, 응답 중 과부하 알림 → 재시도. worker 경로(host가 분류해 넘긴 값)와 host 직접 경로 둘 다.
 
 ### K1 킷 `DecisionInbox` 이식
 - 대상: `/home/bell/Toys/design_kit/components/agent/decision-inbox.tsx`를 `K/components/agent/decision-inbox.tsx`로, `K/index.ts` export, `K/README.md`의 적응 기록과 지문, 스토리 `R/components/DecisionInbox.stories.tsx`.
@@ -708,6 +716,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세가 위 브리프보다 우선한다.
 
 - **B4·U5·B5 (시작 요청 스냅샷).** 대기 항목만으로는 서버가 시작 요청을 만들 수 없다(모델·추론·팀 선택이 브라우저에만 있다). 세션 항목이 `start`(시작 요청에서 `commandId`·`brief`·`throughRunId`·`references`를 뺀 것)를 갖는다. B4가 필드와 서버 사용을, U5가 화면에서 새 요청과 다음 요청을 기록할 때 `start`를 채우는 일을, B5가 넘겨받은 항목에 대상 Run을 시작한 항목의 `start`를 복사하는 일을 맡는다. 그 항목에 `start`가 없으면 넘겨받지 않는다.
+- **V1 (측정기).** 추적 대상이 없으면 최상위 값은 0이 아니라 `null`이고 표본 수를 함께 낸다. 항목은 식별 값(`data-chat-item` 값)으로 따라가 같은 값의 새 노드로 바뀌어도 이어서 재고, 사라진 항목은 결과에 따로 적는다. 세로와 가로 이동을 모두 잰다. 입력 줄과 끝 간격의 첫 표본은 `start()` 안에서 읽는다. 전이 구간은 붙잡아 둔 응답으로 만들고 구간 사이에 빈틈을 두지 않는다. `e2e/flow`는 `playwright.flow.config.ts`로만 돌고 확장 구성(`playwright.extended.config.ts`)에서는 뺀다.
+- **B8 (초과 복구와 취소).** 컨텍스트 초과 복구도 같은 판정을 쓴다(생각·공백만 나왔을 때만 강제 압축 뒤 한 번 다시 보냄). 붙잡은 이벤트의 취소 경계 두 가지(붙잡은 중 취소, 재시도 대기 중 취소)를 테스트로 고정한다.
 - **B7 (자동 압축의 보고).** 자동 압축도 수동과 같은 단계(`started` 뒤 `completed`·`failed`·`cancelled`·`skipped`)를 보고하므로 이벤트는 단계마다 하나다. 자동은 보고에 `trigger: 'automatic'`을 싣고 이벤트 envelope의 commandId는 비운다.
 - **B9 (§9 표 테스트).** `apps/server/test/server.test.ts`의 제품 계약 §9 표 테스트에 무인 실행 예산·감독 예산 행이 코드 기본값과 같다는 단언을 더한다.
 - **B9·A5 (감독의 예산).** 감독은 예산(기본 60)을 다 쓰면 승인을 묻지 않고 끝난다. 계속 여부 승인은 팀 역할(400)과 동적 하위 실행(200)에만 있다. 승인의 kind는 `request_budget`이다.
