@@ -1,10 +1,22 @@
 import {
   type AssistantMessage,
+  type AssistantMessageEvent,
   type AssistantMessageEventStream,
   createAssistantMessageEventStream,
   type Model,
 } from '@earendil-works/pi-ai';
 import { cancellableDelay, providerFailure, retryDelay } from './ported/dsh/retry.ts';
+
+/**
+ * A cut response can be asked for again only while it has shown the consumer nothing that
+ * a repeat would duplicate: reasoning and whitespace-only text have not answered yet, while
+ * body text, a tool call (even just begun) or an image would be repeated or re-executed.
+ */
+export function isReplaySafe(partial: Pick<AssistantMessage, 'content'>): boolean {
+  return partial.content.every(
+    (block) => block.type === 'thinking' || (block.type === 'text' && block.text.trim() === ''),
+  );
+}
 
 /** Each open obtains a new host permit; only the final attempt reaches the agent loop. */
 export function managedRetryStream(options: {
@@ -21,21 +33,24 @@ export function managedRetryStream(options: {
     let contextRecovered = false;
     for (let attempt = 0; ; attempt++) {
       const stream = await options.open(attempt);
-      let partial = false;
-      let terminal:
-        | Extract<import('@earendil-works/pi-ai').AssistantMessageEvent, { type: 'done' | 'error' }>
-        | undefined;
+      // Events stay held while the attempt is replay-safe, so a retry leaves no trace in the consumer.
+      let held: AssistantMessageEvent[] | null = [];
+      let terminal: Extract<AssistantMessageEvent, { type: 'done' | 'error' }> | undefined;
       for await (const event of stream) {
         if (event.type === 'done' || event.type === 'error') terminal = event;
-        else {
-          if ('delta' in event && event.delta.length) partial = true;
-          out.push(event);
-        }
+        else if (held) {
+          held.push(event);
+          if (!isReplaySafe(event.partial)) {
+            for (const heldEvent of held) out.push(heldEvent);
+            held = null;
+          }
+        } else out.push(event);
       }
       const message = await stream.result();
+      const replaySafe = held !== null && isReplaySafe(message);
       if (
         message.stopReason === 'error' &&
-        !partial &&
+        replaySafe &&
         !options.signal.aborted &&
         !contextRecovered &&
         attempt < 2 &&
@@ -47,7 +62,7 @@ export function managedRetryStream(options: {
         if (await options.onContextOverflow()) continue;
       }
       const delay =
-        message.stopReason === 'error' && !partial && !options.signal.aborted
+        message.stopReason === 'error' && replaySafe && !options.signal.aborted
           ? retryDelay(
               providerFailure(message.errorMessage ?? ''),
               attempt,
@@ -55,6 +70,7 @@ export function managedRetryStream(options: {
             )
           : null;
       if (delay === null) {
+        for (const heldEvent of held ?? []) out.push(heldEvent);
         out.push(
           terminal ??
             (message.stopReason === 'error' || message.stopReason === 'aborted'
