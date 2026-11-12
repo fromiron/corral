@@ -104,11 +104,13 @@ test('plain completion is announced once and opening history is silent', async (
     await expect(
       dock.locator('[aria-live="polite"]').filter({ hasText: 'Run status: Succeeded' }),
     ).toHaveCount(1);
+    // The sidebar row says the run ended through its mark's name, not in words (presence.md).
+    const sessionId = new URL(page.url()).pathname.split('/')[2];
     await expect(
       page
         .getByTestId('app-sidebar')
-        .getByText(/Succeeded/)
-        .first(),
+        .locator(`[data-session-row="${sessionId}"]`)
+        .getByRole('img', { name: 'Completed', exact: true }),
     ).toBeVisible();
     await page.reload();
     await expect(page.getByTestId('chat-timeline')).toContainText(
