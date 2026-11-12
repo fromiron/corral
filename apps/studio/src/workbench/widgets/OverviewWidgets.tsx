@@ -21,6 +21,7 @@ import {
   PopoverPopup,
   PopoverTrigger,
   Sparkline,
+  Tooltip,
 } from '@corral/react/design-kit';
 import {
   ArrowLeft,
@@ -66,20 +67,44 @@ export type OverviewDetail = 'context' | 'usage' | 'agents';
 /** A single explicit entry to supporting information, without a permanent side column. */
 export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
+  const locale = useLocale();
   const [detail, setDetail] = useState<OverviewDetail | null>(null);
+  // The occupancy pill's click sets this before the popover opens, so that open shows the detail.
+  const fromOccupancy = useRef(false);
   if (!model.runId) return null;
+  const occupancy = model.context.percent;
+  const occupancyName = occupancy != null ? contextLabel(model.context, t, locale) : null;
   return (
-    <div className="session-widget-access ml-auto shrink-0 justify-end">
+    <div className="session-widget-access ml-auto flex shrink-0 items-center justify-end gap-1">
       <Popover
         onOpenChange={(open, change) => {
-          if (open) setDetail(null);
+          if (open) {
+            setDetail(fromOccupancy.current ? 'context' : null);
+            fromOccupancy.current = false;
+            return;
+          }
           // Escape steps back from a detail to the widgets first; the next one closes Overview.
-          else if (detail && change.reason === 'escape-key') {
+          if (detail && change.reason === 'escape-key') {
             change.cancel();
             setDetail(null);
           }
         }}
       >
+        {occupancyName != null && occupancy != null ? (
+          <Tooltip content={occupancyName}>
+            <PopoverTrigger
+              id="composer-context-occupancy"
+              data-testid="composer-context-occupancy"
+              className={chipClass}
+              aria-label={occupancyName}
+              onClick={() => {
+                fromOccupancy.current = true;
+              }}
+            >
+              {t('contextAbout', { percent: occupancy })}
+            </PopoverTrigger>
+          </Tooltip>
+        ) : null}
         <PopoverTrigger data-testid="session-summary-trigger" className={chipClass}>
           <LayoutGrid size={14} aria-hidden="true" className="shrink-0" />
           {/* On the narrowest line the opener is its mark; its name stays for assistive tech. */}

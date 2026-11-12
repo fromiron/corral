@@ -3727,6 +3727,7 @@
     "context": "컨텍스트",
     "contextPending": "컨텍스트 · 측정 전",
     "contextPercent": "컨텍스트 약 {percent}%",
+    "contextAbout": "약 {percent}%",
     "contextMessages": "메시지 약 {count}",
     "contextPartial": "일부만 측정됨",
     "contextError": "컨텍스트 확인 필요",

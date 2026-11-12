@@ -3727,6 +3727,7 @@
     "context": "Context",
     "contextPending": "Context · awaiting request",
     "contextPercent": "Context about {percent}%",
+    "contextAbout": "about {percent}%",
     "contextMessages": "Messages ~{count}",
     "contextPartial": "Partial context",
     "contextError": "Context needs attention",
