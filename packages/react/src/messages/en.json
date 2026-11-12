@@ -5434,7 +5434,9 @@
     "failedCount": "{count} failed",
     "logToggle": "Work log · {state}",
     "changes": "{count, plural, one {# change} other {# changes}}",
-    "results": "{count, plural, one {# result} other {# results}}"
+    "results": "{count, plural, one {# result} other {# results}}",
+    "resultKind": "{count, plural, one {Result} other {Results}}",
+    "partialKind": "{count, plural, one {Partial result} other {Partial results}}"
   },
   "RunMonitor": {
     "backToWork": "Back to work",

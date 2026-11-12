@@ -150,7 +150,6 @@ export function RunMessage({
   const tm = useTranslations('MessageBody');
   const ts = useTranslations('Status');
   const tturn = useTranslations('Turn');
-  const tr = useTranslations('Results');
   const stepName = useStepName();
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const [disclosure, setDisclosure] = useState<{
@@ -178,9 +177,6 @@ export function RunMessage({
   const [watched, setWatched] = useState(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
-  // Whether a result block showed while the run worked: its blocks then stand under one name from
-  // the first, so the next one neither pushes it down nor changes its line.
-  const [groupedEarly, setGroupedEarly] = useState(false);
   const groupLabel = useId();
   const {
     store,
@@ -588,9 +584,6 @@ export function RunMessage({
     // Results drawn as their own folded blocks: images, reviews, partial results.
     const blocks = visible.filter((result) => !inline(result)).length;
     const shownBlocks = shownResults.filter((result) => !inline(result));
-    if (working && shownBlocks.length && !groupedEarly) setGroupedEarly(true);
-    // Two or more blocks say their kind once, over them (features/presence.md).
-    const grouped = shownBlocks.length > 1 || (groupedEarly && shownBlocks.length > 0);
     const resultBlock = (result: ResultItem, index: number) => (
       <ChatResult
         key={result.artifactVersionId}
@@ -603,15 +596,18 @@ export function RunMessage({
         sessionId={sessionId}
         partial={partial}
         first={index === 0}
-        kindShown={!grouped}
+        kindShown={false}
         actionsInTail={result === tailResult}
       />
     );
-    // A list named by its kind, so each block is read as one of those results.
+    // The blocks say their kind once, over them (features/presence.md), from the first block on:
+    // a later one changes only the name's number, so nothing above or in the first block moves.
+    // A list named by its kind, so each block is read as one of those results. Every block of a
+    // row is of one kind: all are final results, or all are partial ones (runResults).
     const resultGroup = (
       <div key="result-group" className="flex min-w-0 flex-col gap-1.5">
         <p id={groupLabel} className="text-caption text-muted-foreground">
-          {partial ? tr('partial') : shownBlocks.length > 1 ? tr('label') : t('result')}
+          {tturn(partial ? 'partialKind' : 'resultKind', { count: shownBlocks.length })}
         </p>
         <ul aria-labelledby={groupLabel} className="flex min-w-0 flex-col gap-3">
           {shownBlocks.map((result) => (
@@ -622,9 +618,9 @@ export function RunMessage({
         </ul>
       </div>
     );
-    // The answers in their places; the blocks, when grouped, where the first of them stands.
+    // The answers in their places; the blocks where the first of them stands.
     const resultParts = shownResults.flatMap((result, index) =>
-      !grouped || inline(result)
+      inline(result)
         ? [resultBlock(result, index)]
         : result === shownBlocks[0]
           ? [resultGroup]

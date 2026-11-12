@@ -5434,7 +5434,9 @@
     "failedCount": "실패 {count}",
     "logToggle": "작업 기록 · {state}",
     "changes": "변경 {count}",
-    "results": "결과 {count}"
+    "results": "결과 {count}",
+    "resultKind": "{count, plural, other {결과}}",
+    "partialKind": "{count, plural, other {부분 결과}}"
   },
   "RunMonitor": {
     "backToWork": "작업으로 돌아가기",

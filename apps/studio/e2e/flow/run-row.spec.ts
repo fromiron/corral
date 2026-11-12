@@ -466,6 +466,120 @@ test('a run that fails after its words holds its head and its body’s top edge'
   );
 });
 
+// A team run whose Output also takes the review: a row with one result block under its kind's
+// name, at the same height on every frame of its return.
+test.describe('a row with one result block', () => {
+  test.use({
+    live: false,
+    codexLogin: false,
+    streamTokensPerSecond: 0,
+    agentReply: { reply: () => `# Release plan\n\n${'A recorded result. '.repeat(12)}` },
+  });
+
+  test('returns at the height it left with', async ({ page, corral }) => {
+    test.setTimeout(180_000);
+    const definition = structuredClone(
+      templateForWorkspace('research-team', 'one_block').definition,
+    );
+    for (const node of definition.nodes)
+      if (node.type === 'output')
+        node.inputBindings.push({ kind: 'task_output', name: 'review', sourceNodeId: 'review' });
+    await corral.open('/');
+    const started = await page.evaluate(
+      async ({ definition }) => {
+        const { csrfToken } = await (await fetch('/api/v1/session')).json();
+        const call = async (path: string, body: unknown) => {
+          const response = await fetch(`/api/v1${path}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+            body: JSON.stringify(body),
+          });
+          if (!response.ok) throw new Error(`Fixture ${path}: ${response.status}`);
+          return response.json();
+        };
+        const { record } = await call('/corrals', { definition });
+        const { session } = await call('/sessions', {
+          projectId: 'default',
+          title: 'Review the release plan',
+          corralId: record.corralId,
+        });
+        const result = await call('/runs', {
+          schemaVersion: '0.1',
+          commandId: 'run-row-one-block',
+          mode: 'mock',
+          sessionId: session.sessionId,
+          corralId: record.corralId,
+          definitionRevision: record.definitionRevision,
+        });
+        await call(`/sessions/${session.sessionId}/entries`, {
+          intent: 'next',
+          text: 'Review the plan',
+          state: 'started',
+          runId: result.runId,
+        });
+        return { sessionId: session.sessionId as string, runId: result.runId as string };
+      },
+      { definition },
+    );
+    await expect
+      .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status, {
+        timeout: 30_000,
+      })
+      .toBe('succeeded');
+    await fillers(page, started.sessionId);
+    await corral.open(`/sessions/${started.sessionId}`);
+    await expect(page.locator('[data-chat-item]').first()).toBeVisible();
+    await waitForStill(page);
+    const target = page.locator(`[data-testid="run-card-${started.runId}"]`);
+    await wheelUntil(page, -2000, () => target.isVisible());
+    await expect(target).toBeVisible();
+    await waitForStill(page);
+    await expect(target.locator('details[data-testid="chat-result"]')).toHaveCount(1);
+    await expect(target.locator('ul[aria-labelledby]')).toHaveCount(1);
+    const item = target.locator('xpath=ancestor::*[@data-chat-item][1]');
+    const before = (await item.boundingBox())?.height ?? 0;
+    expect(before).toBeGreaterThan(0);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await wheelUntil(page, 2000, async () => (await target.count()) === 0);
+    await expect(target).toHaveCount(0);
+    await page.evaluate((runId) => {
+      const holder = window as unknown as { __oneHeights?: number[]; __oneStop?: boolean };
+      holder.__oneHeights = [];
+      holder.__oneStop = false;
+      const frame = () => {
+        const element = document
+          .querySelector(`[data-testid="run-card-${runId}"]`)
+          ?.closest('[data-chat-item]');
+        if (element) holder.__oneHeights?.push(element.getBoundingClientRect().height);
+        if (!holder.__oneStop) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }, started.runId);
+    await wheelUntil(page, -2000, () => target.isVisible());
+    await expect(target).toBeVisible();
+    await waitForStill(page);
+    const heights = await page.evaluate(() => {
+      const holder = window as unknown as { __oneHeights?: number[]; __oneStop?: boolean };
+      holder.__oneStop = true;
+      return holder.__oneHeights ?? [];
+    });
+    record('remount-one-block', {
+      heightBefore: before,
+      heightsAfter: [Math.min(...heights), Math.max(...heights)],
+      sequence: heights.filter((value, index) => index === 0 || value !== heights[index - 1]),
+    });
+    expect(heights.length).toBeGreaterThan(0);
+    expect(
+      Math.max(...heights) - Math.min(...heights),
+      'height over the return',
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs((heights[0] ?? 0) - before),
+      'height right after the return',
+    ).toBeLessThanOrEqual(1);
+  });
+});
+
 // (e) A failed team run whose partial results a later success of the same session released
 // while its row was off screen: no frame of its return shows a released body
 // (docs/specs/api-contract.md, 산출물 본문 수명).

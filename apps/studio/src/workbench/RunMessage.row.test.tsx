@@ -448,29 +448,55 @@ it('names the kind of several partial results once, over their blocks', async ()
   expect(group?.previousElementSibling?.id).toBe(label);
 });
 
-it('one partial result keeps its kind on its own line', async () => {
-  const projection = { ...answered(running()), status: 'cancelled' as const, output: null };
-  const f = await show(projection);
-  expect(f.container.querySelector('ul[aria-labelledby]')).toBeNull();
-  expect(summaries(f.container)).toEqual([`${messages.Results.partial} · Answer v1 · writer #1`]);
+const kindLabel = (container: HTMLElement) =>
+  container.querySelector('ul[aria-labelledby]')?.previousElementSibling ?? null;
+
+it.each([
+  [
+    'partial',
+    () => ({ ...answered(running()), status: 'cancelled' as const, output: null }),
+    'Partial result',
+  ],
+  ['final', () => reviewed(answered(running()), 'answer'), 'Result'],
+])('one %s result block stands under its kind’s name too', async (_kind, projection, name) => {
+  const f = await show(projection());
+  const list = f.container.querySelector('ul[aria-labelledby]');
+  expect(kindLabel(f.container)?.textContent).toBe(name);
+  expect(kindLabel(f.container)?.id).toBe(list?.getAttribute('aria-labelledby'));
+  expect(summaries(f.container)).toEqual(['Answer v1 · writer #1']);
 });
 
-it('one result block keeps its kind on its own line', async () => {
-  const projection = reviewed(answered(running()), 'answer');
-  const f = await show(projection);
+it('a row whose answer is in its body has no kind name', async () => {
+  const f = await show(answered(running()));
   expect(f.container.querySelector('ul[aria-labelledby]')).toBeNull();
-  expect(summaries(f.container)).toEqual([`${messages.Desktop.result} · Answer v1 · writer #1`]);
+  expect(f.container.textContent).not.toContain(messages.Desktop.result);
+});
+
+it('a block’s look comes from the row’s data alone, whether or not it was seen working', async () => {
+  const done = reviewed(answered(running()), 'answer');
+  const seen = await show({ ...done, status: 'running', endedAt: null });
+  await seen.set(done);
+  const seenLook = {
+    name: kindLabel(seen.container)?.textContent,
+    lines: summaries(seen.container),
+  };
+  for (const dispose of cleanup.splice(0)) act(dispose);
+  const fresh = await show(done);
+  expect({
+    name: kindLabel(fresh.container)?.textContent,
+    lines: summaries(fresh.container),
+  }).toEqual(seenLook);
 });
 
 it('a working run’s result blocks keep their place and their line as more arrive', async () => {
-  // While the run works its first block already stands under the group's name, so the second
-  // neither pushes it down nor changes its line.
+  // The first block comes with its kind's name; the second changes only that name's number, so
+  // it neither pushes the first block down nor changes its line.
   const first = reviewed(answered(running()), 'answer');
   const working = { ...first, status: 'running' as const, endedAt: null };
   const f = await show(working);
-  const label = () => f.container.querySelector('ul[aria-labelledby]')?.previousElementSibling;
-  const before = { label: label(), text: label()?.textContent, line: summaries(f.container)[0] };
-  expect(before.label).not.toBeNull();
+  const label = () => kindLabel(f.container);
+  const before = { label: label(), line: summaries(f.container)[0] };
+  expect(before.label?.textContent).toBe('Result');
   expect(before.line).toBe('Answer v1 · writer #1');
   const more = reviewed(
     withArtifact(structuredClone(working), 'second', 'Second', 'helper'),
@@ -481,11 +507,11 @@ it('a working run’s result blocks keep their place and their line as more arri
   expect(label()).toBe(before.label);
   expect(summaries(f.container)[0]).toBe(before.line);
   expect(summaries(f.container)).toHaveLength(2);
-  expect(label()?.textContent).toBe(messages.Results.label);
-  // It ends with them: the group stays as it was.
+  expect(label()?.textContent).toBe('Results');
+  // It ends with them: the name stays as it was.
   await f.set({ ...more, status: 'succeeded', endedAt: '2026-11-13T00:00:09.000Z' });
   expect(label()).toBe(before.label);
-  expect(f.container.textContent?.split(messages.Results.label)).toHaveLength(2);
+  expect(f.container.textContent?.split('Results')).toHaveLength(2);
 });
 
 it('counts the finished file changes in the tail', async () => {
