@@ -240,6 +240,59 @@ describe('local meeting participant selection', () => {
     });
   });
 
+  it('passes aliases to the selector and omits them when a participant has none', async () => {
+    const select = vi.fn(async (_input: MeetingSelectionInput) => ['tester']);
+    const f = await fixture({
+      selectParticipants: select,
+      config: {
+        ...CONFIG,
+        participants: CONFIG.participants.map((person) =>
+          person.participantId === 'builder' ? { ...person, aliases: ['빌더'] } : person,
+        ),
+      },
+    });
+    await f.send('selected', 'Who should answer this?');
+    await f.meetings.idle(f.sessionId);
+    expect(select.mock.calls[0]![0].participants).toEqual([
+      { participantId: 'architect', name: 'Architect', prompt: 'Guard the structure.' },
+      {
+        participantId: 'builder',
+        name: 'Builder',
+        aliases: ['빌더'],
+        prompt: 'Think about building it.',
+      },
+      { participantId: 'tester', name: 'Tester', prompt: 'Look for failures.' },
+    ]);
+  });
+
+  it('passes aliases and the role label to the selector and omits them when absent', async () => {
+    const select = vi.fn(async (_input: MeetingSelectionInput) => ['tester']);
+    const f = await fixture({
+      selectParticipants: select,
+      config: {
+        ...CONFIG,
+        participants: CONFIG.participants.map((person) =>
+          person.participantId === 'builder'
+            ? { ...person, aliases: ['빌더'], role: '구현' }
+            : person,
+        ),
+      },
+    });
+    await f.send('selected', 'Who should answer this?');
+    await f.meetings.idle(f.sessionId);
+    expect(select.mock.calls[0]![0].participants).toEqual([
+      { participantId: 'architect', name: 'Architect', prompt: 'Guard the structure.' },
+      {
+        participantId: 'builder',
+        name: 'Builder',
+        aliases: ['빌더'],
+        role: '구현',
+        prompt: 'Think about building it.',
+      },
+      { participantId: 'tester', name: 'Tester', prompt: 'Look for failures.' },
+    ]);
+  });
+
   it('explicit recipients bypass selection, including secretary requests', async () => {
     const select = vi.fn(async () => ['tester']);
     const f = await fixture({ selectParticipants: select });
@@ -1068,6 +1121,77 @@ describe('meeting messages', () => {
       ok: false,
       error: 'invalid',
     });
+  });
+
+  it('resolves an @alias with the same case and boundary rules as a display name', async () => {
+    const f = await fixture({
+      config: {
+        ...CONFIG,
+        participants: CONFIG.participants.map((person) =>
+          person.participantId === 'builder' ? { ...person, aliases: ['빌더', 'Maker'] } : person,
+        ),
+      },
+    });
+    expect(await f.send('alias', '@maker, please look.')).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    expect((await f.meetings.view(f.sessionId))!.rounds[0]).toMatchObject({
+      kind: 'mention',
+      participantIds: ['builder'],
+    });
+    expect(await f.send('korean', '@빌더 확인해 줘')).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    expect((await f.meetings.view(f.sessionId))!.rounds[1]!.participantIds).toEqual(['builder']);
+    expect(await f.send('both', '@Architect and @maker.')).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    expect((await f.meetings.view(f.sessionId))!.rounds[2]!.participantIds).toEqual([
+      'architect',
+      'builder',
+    ]);
+    expect(await f.send('prefix', '@Makerly please')).toMatchObject({
+      ok: false,
+      error: 'invalid',
+    });
+  });
+
+  it('an agent @alias asks that participant to reply', async () => {
+    const f = await fixture({
+      config: {
+        ...CONFIG,
+        participants: CONFIG.participants.map((person) =>
+          person.participantId === 'tester' ? { ...person, aliases: ['Checker'] } : person,
+        ),
+      },
+      reply: (input) => (input.role.name === 'Architect' ? '@checker please look.' : 'Looking.'),
+    });
+    await f.send('c1', 'Review this', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Tester']);
+  });
+
+  it('does not treat a role label as an @mention', async () => {
+    const f = await fixture({
+      config: {
+        ...CONFIG,
+        participants: CONFIG.participants.map((person) =>
+          person.participantId === 'builder' ? { ...person, role: '구현' } : person,
+        ),
+      },
+    });
+    expect(await f.send('role', '@구현 please')).toMatchObject({ ok: false, error: 'invalid' });
+  });
+
+  it('keeps a meeting saved without role labels loading and answering', async () => {
+    const f = await fixture();
+    const session = (await f.repository.getSession(f.sessionId))!;
+    expect(session.meeting?.config.participants.every((person) => !('role' in person))).toBe(true);
+    const saved = await f.repository.updateSession(f.sessionId, {
+      expectedRevision: session.revision,
+      meeting: session.meeting,
+    });
+    expect(saved.ok).toBe(true);
+    await f.send('c1', 'Hello');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Architect', 'Builder', 'Tester']);
   });
 
   it('a waiting message can be edited without starting it, and stale edits cannot replace a later message', async () => {

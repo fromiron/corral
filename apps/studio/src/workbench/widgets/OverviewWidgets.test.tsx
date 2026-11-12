@@ -7,6 +7,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import { ContextDetail } from './ChatWidgets.tsx';
 import { OverviewPopover, OverviewWidgets } from './OverviewWidgets.tsx';
 import { actionRequired, usageSummary } from './selectors.ts';
 import type { ChatWidgetModel } from './useChatWidgets.tsx';
@@ -357,6 +358,21 @@ it('in the Overview popover Escape first leaves the detail, then closes the popo
   expect(document.activeElement).toBe(trigger);
 });
 
+it('after the occupancy pill closes Overview, the Overview button reopens the widgets', async () => {
+  const container = await render(model(), (value) => <OverviewPopover model={value} />);
+  const pill = container.querySelector<HTMLElement>('[data-testid="composer-context-occupancy"]');
+  const trigger = container.querySelector<HTMLElement>('[data-testid="session-summary-trigger"]');
+  const popup = () => document.querySelector<HTMLElement>('[data-testid="session-summary-popup"]');
+  await act(async () => pill?.click());
+  expect(popup()?.querySelector('[data-testid="context-inspector"]')).toBeTruthy();
+  await act(async () => pill?.click());
+  await vi.waitFor(() => expect(popup()).toBeNull());
+  await act(async () => trigger?.click());
+  expect(popup()).not.toBeNull();
+  expect(popup()?.querySelector('[data-testid="context-inspector"]')).toBeNull();
+  expect(popup()?.querySelector('[data-overview-widget]')).not.toBeNull();
+});
+
 it('keeps pending attention first and links to the same run without an approval command', async () => {
   const container = await render(
     model({
@@ -621,4 +637,40 @@ it('keeps the selected plan in its composer instead of repeating its items in Ov
     'draft v1',
   );
   expect(container.querySelector('[data-testid="environment-chip"]')).toBeNull();
+});
+
+it('the context detail compacts the live execution it is showing', async () => {
+  const request = vi.fn(async () => null);
+  const container = await render(
+    model({
+      compaction: { reason: null, phase: null, pending: false, request },
+    } as Partial<ChatWidgetModel>),
+    (value) => <ContextDetail model={value} />,
+  );
+  const button = [...container.querySelectorAll('button')].find((node) =>
+    node.textContent?.includes(messages.RunStatus.compactRequest),
+  );
+  expect(button).toBeDefined();
+  expect(button?.disabled).toBe(false);
+  await act(async () => button?.click());
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+it('the context detail says why and does not compact without a running execution', async () => {
+  const request = vi.fn(async () => null);
+  const container = await render(
+    model({
+      compaction: { reason: 'compactNoExecution', phase: null, pending: false, request },
+    } as Partial<ChatWidgetModel>),
+    (value) => <ContextDetail model={value} />,
+  );
+  expect(container.textContent).toContain(
+    'No execution is still running, so compaction was not sent.',
+  );
+  expect(
+    [...container.querySelectorAll('button')].some((node) =>
+      node.textContent?.includes(messages.RunStatus.compactRequest),
+    ),
+  ).toBe(false);
+  expect(request).not.toHaveBeenCalled();
 });

@@ -242,7 +242,8 @@ const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
 /**
  * Row heights of the project list, per density. A session row holds its title and one line of
  * state and time, each at its type role's full line height, so neither line is clipped. The
- * virtual list positions rows by these, so the rows are drawn at exactly these heights.
+ * virtual list estimates rows by these and draws session rows at exactly these heights. Every
+ * project row uses one measured button height when that reading is non-zero.
  */
 export function sidebarRowHeights(compact: boolean) {
   return compact
@@ -305,7 +306,7 @@ export const Sidebar = memo(function Sidebar({
   const size = useSize();
   const compact = size.variant === 'compact';
   const heights = useMemo(() => sidebarRowHeights(compact), [compact]);
-  const projectHeight = heights.project;
+  const [projectHeight, setProjectHeight] = useState<number | undefined>(undefined);
   const waiting = useMemo(
     () => needsYouCount(model.sessions, model.runs, model.terminalAttention),
     [model.sessions, model.runs, model.terminalAttention],
@@ -332,34 +333,14 @@ export const Sidebar = memo(function Sidebar({
     }
     return result;
   }, [model.projects, model.sessions, collapsed]);
-  // Keep one virtual range across projects, but retain the source tree ancestry
-  // for every mounted conversation. A project header remains with its visible
-  // children even when that header itself is above the viewport.
-  const tree = useMemo(() => {
-    const groups: {
-      project: ProjectSummary;
-      index: number;
-      start: number;
-      size: number;
-    }[] = [];
-    const byIndex: typeof groups = [];
-    let offset = 0;
-    for (const [index, row] of rows.entries()) {
-      if (row.kind === 'project')
-        groups.push({ project: row.project, index, start: offset, size: 0 });
-      const group = groups.at(-1);
-      if (!group) continue;
-      const height = heights[row.kind];
-      group.size += height;
-      byIndex[index] = group;
-      offset += height;
-    }
-    return { groups, byIndex };
-  }, [rows, heights]);
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroll.current,
-    estimateSize: (index) => heights[rows[index]?.kind ?? 'session'],
+    estimateSize: (index) => {
+      const row = rows[index];
+      if (row?.kind === 'project') return projectHeight ?? heights.project;
+      return heights[row?.kind ?? 'session'];
+    },
     scrollMargin,
     overscan: 8,
     getItemKey: (index) => {
@@ -397,6 +378,64 @@ export const Sidebar = memo(function Sidebar({
     virtual.measure();
   }, [heights, virtual]);
   const virtualItems = virtual.getVirtualItems();
+  const renderedRows = virtualItems.map((item) => item.index).join(',');
+  // A zero height is ignored.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read after the density class commits and when rendered rows change
+  useLayoutEffect(() => {
+    const menu = list.current;
+    if (!menu) return;
+    const projectButton = () =>
+      menu.querySelector<HTMLElement>(
+        ':scope > [data-sidebar="menu-item"] > [data-sidebar="menu-button"]',
+      );
+    const read = () => {
+      const height = projectButton()?.offsetHeight ?? 0;
+      if (height > 0) setProjectHeight((current) => (current === height ? current : height));
+    };
+    read();
+    const button = projectButton();
+    if (!button) return;
+    const observer = new ResizeObserver(read);
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, [renderedRows, heights]);
+  // estimateSize is not a measurement dependency, so a new project height has
+  // to drop the cached estimate explicitly.
+  const measuredProject = useRef(projectHeight);
+  useLayoutEffect(() => {
+    if (measuredProject.current === projectHeight) return;
+    measuredProject.current = projectHeight;
+    virtual.measure();
+  }, [projectHeight, virtual]);
+  const measurements = virtual.measurementsCache;
+  const tree = useMemo(() => {
+    const groups: {
+      project: ProjectSummary;
+      index: number;
+      start: number;
+      size: number;
+      projectSize: number;
+    }[] = [];
+    const byIndex: typeof groups = [];
+    const useMeasured = measurements.length === rows.length;
+    let offset = 0;
+    for (const [index, row] of rows.entries()) {
+      if (row.kind === 'project')
+        groups.push({ project: row.project, index, start: 0, size: 0, projectSize: 0 });
+      const group = groups.at(-1);
+      if (!group) continue;
+      const measured = useMeasured ? measurements[index] : undefined;
+      const size = measured?.size ?? heights[row.kind];
+      if (row.kind === 'project') {
+        group.projectSize = size;
+        group.start = measured ? measured.start - scrollMargin : offset;
+      }
+      group.size += size;
+      byIndex[index] = group;
+      offset += size;
+    }
+    return { groups, byIndex };
+  }, [rows, heights, scrollMargin, measurements]);
   const visibleGroups = new Map<(typeof tree.groups)[number], typeof virtualItems>();
   for (const item of virtualItems) {
     const group = tree.byIndex[item.index];
@@ -409,10 +448,9 @@ export const Sidebar = memo(function Sidebar({
     (row) => row.kind === 'session' && path.startsWith(`/sessions/${row.session.sessionId}`),
   );
   const hasActive = activeIndex >= 0;
-  const mountedRows = virtual.getVirtualItems();
-  const sessionTabIndex = mountedRows.some((row) => row.index === activeIndex)
+  const sessionTabIndex = virtualItems.some((row) => row.index === activeIndex)
     ? activeIndex
-    : mountedRows.find((row) => rows[row.index]?.kind === 'session')?.index;
+    : virtualItems.find((row) => rows[row.index]?.kind === 'session')?.index;
   // Navigation brings the selected session into view; background data changes do not.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only intentional navigation scrolls the sidebar
   useLayoutEffect(() => {
@@ -757,13 +795,18 @@ export const Sidebar = memo(function Sidebar({
                         </SidebarMenuAction>
                       </Tooltip>
                     </SidebarMenuActions>
-                    <SidebarMenuSub open={!folded} style={{ height: group.size - projectHeight }}>
+                    <SidebarMenuSub
+                      // Turn the guide into the last row's title line, or the empty line.
+                      elbow
+                      open={!folded}
+                      style={{ height: group.size - group.projectSize }}
+                    >
                       {items.map((item) => {
                         const row = rows[item.index];
                         if (!row || row.kind === 'project') return null;
                         const position = {
                           position: 'absolute' as const,
-                          top: item.start - scrollMargin - group.start - projectHeight,
+                          top: item.start - scrollMargin - group.start - group.projectSize,
                           // Keep the source submenu's pl-2 content inset for
                           // absolutely positioned virtual rows.
                           left: '0.5rem',
@@ -780,7 +823,7 @@ export const Sidebar = memo(function Sidebar({
                                 'flex items-center px-2 text-muted-foreground',
                               )}
                             >
-                              {tw('noSessions')}
+                              <span data-sidebar-guide-line="">{tw('noSessions')}</span>
                             </li>
                           );
                         const session = row.session;
@@ -836,6 +879,7 @@ export const Sidebar = memo(function Sidebar({
                               <span className="flex min-w-0 flex-1 flex-col">
                                 <span
                                   data-session-line="title"
+                                  data-sidebar-guide-line=""
                                   className={cn(size.type.body, 'truncate')}
                                   style={{
                                     fontVariationSettings: active

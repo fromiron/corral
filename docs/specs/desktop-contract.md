@@ -175,7 +175,7 @@ flowchart LR
 
 ### ABS-10 — 이미지 생성과 산출물
 
-- `generate_image` 제안 도구는 명시된 image profile과 실제 provider operation을 사용한다. 미설정/미지원이면 설정 경로를 보여 주고 다른 모델로 몰래 대체하지 않는다.
+- `generate_image` 제안 도구는 명시된 image profile과 실제 provider operation을 사용한다. 미설정/미지원이면 설정 경로를 보여 주고 다른 모델로 몰래 대체하지 않는다. 프로필을 저장하고 역할이 그 프로필을 고르는 화면은 [모델·추론·리소스](models-and-resources.md#이미지-프로필)가 정한다.
 - 모델 registry/credential store를 재사용한다. Coordinator가 호출마다 공급자 사용량과 금액을 한 번 기록하며 호출 수·금액에 상한을 두지 않는다. 호출 시간은 image profile의 timeout을 따른다. 취소 후 청구/결과 여부가 모호하면 unknown으로 남긴다.
 - binary artifact descriptor에 MIME·bytes·dimensions·hash·blobRef·author/run/effect·버전을 둔다. 기존 text artifact를 유지하고 export/viewer/review/read-artifact 소비자를 함께 확장한다.
 - 제한된 immutable blob 저장과 metadata commit/journal을 설계한다. 성공 이벤트만 있고 bytes가 없는 상태를 성공으로 읽지 않으며 orphan 정리를 제공한다.
