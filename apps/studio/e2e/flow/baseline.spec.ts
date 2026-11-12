@@ -157,8 +157,14 @@ test.describe('conversation', () => {
     await expect(page.getByTestId('chat-result')).toBeVisible();
     // The page itself has seen the run end, so the next request starts a run, not a queue.
     await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+    // The sidebar row says its run ended through its mark's name, not in words (presence.md).
     await expect(
-      page.getByTestId('app-sidebar').getByRole('link', { name: /^First request Succeeded/ }),
+      page
+        .getByTestId('app-sidebar')
+        .locator('[data-session-row]')
+        .filter({ hasText: 'First request' })
+        .getByRole('link')
+        .getByRole('img', { name: 'Completed', exact: true }),
     ).toBeVisible({ timeout: 15_000 });
     await waitForStill(page);
     const chrome = await measureChrome(page);
