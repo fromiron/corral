@@ -15,7 +15,7 @@
 | 화면 | K1, U1–U14 | 진행 중(K1·U1 병합) |
 | 회의 | M1–M4 | 진행 중(M1 병합) |
 | 감독 | A1–A9 | 대기 |
-| 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 수정) |
+| 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
 
@@ -425,7 +425,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | ID | 이름 | 선행 | 주 대상 | 상태 |
 |---|---|---|---|---|
 | S0 | 명세 변경 | — | `docs/specs` | 완료 |
-| V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 재검토 중 |
+| V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 완료 |
 | B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
 | B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 대기 |
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 재검토 중 |
@@ -734,6 +734,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B9·A5 (감독의 예산).** 감독은 예산(기본 60)을 다 쓰면 승인을 묻지 않고 끝난다. 계속 여부 승인은 팀 역할(400)과 동적 하위 실행(200)에만 있다. 승인의 kind는 `request_budget`이다.
 - **A1·A3 (조언의 전달).** 전달 방식의 이름은 `next_request`, `interrupt`, `preserve`다(`aside`, `steer`는 없다). `nit`과 `concern`은 `next_request`, `blocker`는 `interrupt`(대상이 못 받으면 `next_request`), 대상이 끝났으면 `nit`은 버리고 나머지는 `preserve`다. 대상이 사람을 기다리는 경우는 따로 다루지 않고 지시의 일반 규칙대로 결정 뒤에 읽힌다. `advice.suppressed`는 조언의 글을 싣지 않는다.
 - **A1·A5 (검토).** 검토 간격의 기본값은 3이다. 한 번의 검토는 실행 단위 하나의 기록만 다루므로 `advise` 도구는 대상을 인자로 받지 않는다. 지켜보던 실행 단위가 끝나면 마지막 검토를 한 번 하고, 그동안 Run은 끝나지 않는다. 감독의 Task는 Run의 필수 작업이 아니다.
+- **U3·U9·V2 (조각 값은 겹치지 않게).** 측정기는 조각을 `<항목 값>/<조각 값>`으로 따라가고, 같은 값이 여럿이면 문서 순서 서수를 프레임마다 다시 매긴다. 같은 값의 조각이 앞에 끼어들면 트랙이 밀려 잘못된 0이 나올 수 있다. 그래서 한 `data-chat-item` 안에 같은 `data-chat-part` 값은 하나만 둔다. 팀 역할의 행처럼 여럿인 조각은 `data-chat-part="role:<executionId>"`처럼 값이 겹치지 않게 단다. V2는 `samples.duplicateIds`가 구간의 모든 프레임에서 본 중복을 세게 고치고, 모든 장면에서 `duplicateIds === 0`과 `countVisibleLabels().unkeyed === 0`을 단언한다. `waitForStill` 테스트 페이지의 행에 `data-session-row`도 쓴다(지금 그 기본 선택자를 고정하는 테스트가 없다).
 - **U3·U6 (행 안쪽 조각).** 실행 행의 머리 줄·본문·꼬리 줄에 `data-chat-part="head|body|tail"`, 사용자 메시지의 메타 줄에 `data-chat-part="meta"`를 단다. 측정기가 이 조각의 이동도 잰다. `data-chat-item`은 이미 있다(`ChatView.tsx`).
 - **U4 (실행 기록 창).** 세션 화면에서는 대화의 지금 필요한 것이 그 요청에 답하는 하나뿐인 자리다. 같은 세션의 실행 기록 창은 기다리는 요청을 읽기로만 보이고 "응답하기"로 그 자리에 보낸다. `respond` 표시가 있는 링크는 세션의 Run이면 대화의 지금 필요한 것으로 간다.
 - **K1 (낙관적 응답 끄기).** 킷 `DecisionInbox`에 적응 둘을 더한다: `optimistic`(기본 true, false면 누를 때 확인 표시를 띄우지 않고 `onDecide`만 부른다)와 결정의 `pending`(보낸 뒤 receipt를 기다리는 동안 버튼이 기다림 상태). Corral은 `optimistic={false}`로만 쓰고 확인 표시는 `resolution`으로 준다([DESIGN.md](../../DESIGN.md)의 `DecisionInbox` 줄). 스토리는 계속 여부 예만 든다.
