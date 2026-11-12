@@ -38,9 +38,8 @@ import { panelRunId } from '../workbench/panelRun.ts';
 import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
 import { SessionActions } from '../workbench/session/SessionActions.tsx';
-import { SessionConnectionContext } from '../workbench/session/SessionConnection.tsx';
+import { SessionChat } from '../workbench/session/SessionChat.tsx';
 import { ArtifactsPanel, ChecksPanel, RunPanel } from '../workbench/session/SessionPanels.tsx';
-import { WorkTab } from '../workbench/session/WorkTab.tsx';
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useSessionRuns } from '../workbench/useSessionRuns.ts';
@@ -225,28 +224,25 @@ function WorkSessionPage() {
   const renderContext = (view: DockContextView, requestedView: DockContextView = view) => {
     if (view === 'chat')
       return (
-        <SessionConnectionContext.Provider value={{ lost, retry: refresh }}>
-          <div className="flex h-full min-h-0 flex-col">
-            <WorkTab
-              key={panelKey(services, {
-                kind: 'chat',
-                projectId: session.projectId,
-                sessionId: session.sessionId,
-              })}
-              session={session}
-              team={team}
-              corrals={corrals}
-              runs={runs}
-              active={active}
-              liveRunId={liveRun?.runId ?? null}
-              selectedRunId={presentationRunId}
-              onChange={refresh}
-              reference={reference}
-              onReferenceUsed={() => setReference(null)}
-              onPanel={(value, run) => showPanel({ panel: value, ...run })}
-            />
-          </div>
-        </SessionConnectionContext.Provider>
+        <SessionChat
+          key={panelKey(services, {
+            kind: 'chat',
+            projectId: session.projectId,
+            sessionId: session.sessionId,
+          })}
+          connection={{ lost, retry: refresh }}
+          session={session}
+          team={team}
+          corrals={corrals}
+          runs={runs}
+          active={active}
+          liveRunId={liveRun?.runId ?? null}
+          selectedRunId={presentationRunId}
+          onChange={refresh}
+          reference={reference}
+          onReferenceUsed={() => setReference(null)}
+          onPanel={(value, run) => showPanel({ panel: value, ...run })}
+        />
       );
     if (view === 'changes' || view === 'git') {
       // Checks are a sub-view of Changes; Problems still opens beside it.

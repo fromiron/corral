@@ -1,7 +1,6 @@
 import {
   Button,
   cn,
-  Elevated,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSub,
@@ -10,6 +9,7 @@ import {
   Tooltip,
 } from '@corral/react/design-kit';
 import { ArrowDown } from '@corral/react/icons';
+import { defaultRangeExtractor, observeElementRect, useVirtualizer } from '@tanstack/react-virtual';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -89,6 +89,9 @@ export function holdPointer(held: { current: boolean }) {
   window.addEventListener('pointercancel', release, true);
 }
 
+/** A row's height until it is measured. */
+const ESTIMATED_ROW = 260;
+
 /** A session is the conversation; each child turn keeps its Corral Run/Execution identity. */
 export function ChatView({
   sessionId,
@@ -144,11 +147,51 @@ export function ChatView({
   const touchY = useRef<number | null>(null);
   const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
-  // Every row is laid out at its real size, however many there are (one layout for every
-  // length: a list virtualized past some count would re-measure rows and move them).
+  const [focused, setFocused] = useState<string | null>(null);
+  // Rows' last real heights; a hidden or not yet laid out row reads 0 and keeps its last size.
+  const sizes = useRef(new Map<string, number>());
+  // The timeline is always virtualized, whatever its length: one layout for one row or a
+  // thousand, and only the rows in and near the view are mounted.
+  const rows = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => timeline.current,
+    estimateSize: () => ESTIMATED_ROW,
+    getItemKey: (index) => items[index]?.id ?? index,
+    overscan: 4,
+    // Following the end is this view's own (position below); the list only places rows.
+    // A hidden timeline (another view in front, the expanded records) measures 0. It keeps
+    // its rows mounted at their last size instead of unmounting the conversation.
+    initialRect: { width: 0, height: typeof window === 'undefined' ? 800 : window.innerHeight },
+    observeElementRect: (instance, notify) =>
+      observeElementRect(instance, (rect) => {
+        if (rect.width > 0 && rect.height > 0) notify(rect);
+      }),
+    measureElement: (element) => {
+      const key = element.getAttribute('data-chat-item') ?? '';
+      const height = element.getBoundingClientRect().height;
+      if (height > 0) sizes.current.set(key, height);
+      return height > 0 ? height : (sizes.current.get(key) ?? ESTIMATED_ROW);
+    },
+    rangeExtractor: (range) => {
+      const indices = defaultRangeExtractor(range);
+      const index = focused ? items.findIndex((item) => item.id === focused) : -1;
+      if (index >= 0 && !indices.includes(index)) indices.push(index);
+      return indices.sort((a, b) => a - b);
+    },
+  });
+  // Rows enter and leave the window in flow, so the browser's scroll anchoring holds a reader's
+  // row when one above changes size; the list correcting the offset as well would move it twice.
+  rows.shouldAdjustScrollPositionOnItemSizeChange = () => false;
+  const virtual = rows.getVirtualItems();
+  const last = virtual[virtual.length - 1];
+  const windowed = {
+    rows: virtual,
+    before: virtual[0]?.start ?? 0,
+    after: last ? Math.max(0, rows.getTotalSize() - last.end) : 0,
+  };
   const position = useRef<() => void>(() => {});
-  const current = useRef({ items });
-  current.current = { items };
+  const current = useRef({ items, rows });
+  current.current = { items, rows };
   useLayoutEffect(() => {
     const box = timeline.current;
     const body = content.current;
@@ -176,9 +219,10 @@ export function ChatView({
     }
     position.current = () => {
       if (box.hidden) return;
-      const { items } = current.current;
+      const { items, rows } = current.current;
       const anchor = restoreAnchor.current ?? (!follow.current ? readingAnchor.current : null);
       if (anchor && items.some((item) => item.id === anchor.id)) {
+        // Only the mounted rows are looked at, so this costs the window, not the history.
         const row = [...body.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
           (row) => row.dataset.chatItem === anchor.id,
         );
@@ -186,7 +230,11 @@ export function ChatView({
           box.scrollTop +=
             row.getBoundingClientRect().top - box.getBoundingClientRect().top - anchor.offset;
           restoreTop.current = null;
-        }
+        } else
+          rows.scrollToIndex(
+            items.findIndex((item) => item.id === anchor.id),
+            { align: 'start' },
+          );
       } else if (restoreTop.current !== null) {
         box.scrollTop = restoreTop.current;
         if (box.scrollHeight - box.clientHeight >= restoreTop.current) restoreTop.current = null;
@@ -246,9 +294,12 @@ export function ChatView({
       remember();
     };
   }, [sessionId]);
+  // New content places the view again. The list's own renders while scrolling do not: a scroll
+  // is read by its event, and rows the list mounts or measures are seen by the observers.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these are what the view shows
   useLayoutEffect(() => {
     position.current();
-  });
+  }, [items, header, children, expandedHeader]);
   // The timeline keeps the composer's height as its bottom space. A change is applied in the
   // same task that made it (a mutation is seen before the next frame), so following the end
   // stays at the end and a reader's rows never move; resizing covers what no mutation shows.
@@ -321,9 +372,10 @@ export function ChatView({
     follow.current = false;
     restoreTop.current = null;
     restoreAnchor.current = { id: messageId, offset: 0 };
+    rows.scrollToIndex(index, { align: 'start' });
     position.current();
     jumped.current = messageId;
-  }, [messageId, items]);
+  }, [messageId, items, rows]);
   const stopRestoring = () => {
     restoreTop.current = null;
     restoreAnchor.current = null;
@@ -474,42 +526,69 @@ export function ChatView({
             </div>
           ) : null}
           {items.length ? (
-            <ol aria-label={t('conversation')}>
-              {items.map((item, index) => (
-                <li
-                  key={item.id}
-                  data-index={index}
-                  data-chat-item={item.id}
-                  data-latest={index === items.length - 1 || undefined}
-                  aria-current={item.id === messageId ? 'location' : undefined}
-                  className={
-                    item.id === messageId ? 'rounded-lg ring-2 ring-focus-ring' : undefined
-                  }
-                >
-                  {item.content}
-                </li>
-              ))}
+            // The window: the mounted rows in flow, the rest held as the list's padding. A row's
+            // size counts in the layout as soon as it changes, so the end and the composer's
+            // space move together in one frame; the browser keeps a reader's row in place.
+            <ol
+              aria-label={t('conversation')}
+              data-chat-window
+              style={{ paddingTop: windowed.before, paddingBottom: windowed.after }}
+            >
+              {windowed.rows.map(({ index }) => {
+                const item = items[index];
+                if (!item) return null;
+                return (
+                  <li
+                    key={item.id}
+                    aria-posinset={index + 1}
+                    aria-setsize={items.length}
+                    data-index={index}
+                    data-chat-item={item.id}
+                    data-latest={index === items.length - 1 || undefined}
+                    aria-current={item.id === messageId ? 'location' : undefined}
+                    // Its own block, so the row's margins belong to its measured size.
+                    className={cn(
+                      'flow-root',
+                      item.id === messageId && 'rounded-lg ring-2 ring-focus-ring',
+                    )}
+                    ref={rows.measureElement}
+                    onFocusCapture={() => setFocused(item.id)}
+                    onBlurCapture={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null);
+                    }}
+                  >
+                    {item.content}
+                  </li>
+                );
+              })}
             </ol>
           ) : (
             children
           )}
         </div>
       </section>
-      <Elevated
+      <div
         ref={surface}
-        offset={1}
         data-testid="chat-composer"
         data-composer-surface={floating ? 'floating' : 'inline'}
         className={cn(
           'chat-composer flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-4 sm:px-6',
           floating
-            ? // The bottom edge of the conversation, over its scrolling area and inside the view;
-              // the scrollbar beside it stays uncovered.
-              'absolute bottom-0 left-0 right-(--timeline-gutter) z-10 pt-2'
-            : // The home and the expanded records place the composer in the flow, unraised.
-              `relative bg-transparent shadow-none ${centered ? 'mb-auto pt-6' : 'pt-2'}`,
+            ? // The bottom edge of the conversation, over its scrolling area and inside the view,
+              // on the page's own floor; the scrollbar beside it stays uncovered.
+              'absolute bottom-0 left-0 right-(--timeline-gutter) z-10 bg-(--chat-floor) pt-2'
+            : // The home and the expanded records place the composer in the flow.
+              `relative ${centered ? 'mb-auto pt-6' : 'pt-2'}`,
         )}
       >
+        {floating ? (
+          // The conversation fades out under the composer's top edge; paint only, no layout.
+          <div
+            aria-hidden
+            data-composer-fade
+            className="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-linear-to-b from-transparent to-(--chat-floor)"
+          />
+        ) : null}
         {!expandedHeader && !atEnd ? (
           // Centered over the composer, where the conversation continues.
           <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 flex justify-center pb-3">
@@ -533,7 +612,7 @@ export function ChatView({
             {composer}
           </div>
         </div>
-      </Elevated>
+      </div>
       {aside === undefined ? null : (
         <aside data-testid="chat-overview" className="chat-overview">
           {aside}
