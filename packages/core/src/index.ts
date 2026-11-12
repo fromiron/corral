@@ -71,6 +71,13 @@ export {
   type MeetingDecisionsServiceDeps,
   recordMeetingMinutes,
 } from './meeting-decisions.ts';
+export {
+  DEFAULT_MEETING_POLICY,
+  fallbackSpeaker,
+  type MeetingPolicy,
+  type SpeakerChoice,
+  selectSpeakers,
+} from './meeting-policy.ts';
 export type { PartialOutput, RuntimeSnapshot } from './partial-output.ts';
 export * from './profile-context.ts';
 export * from './projection.ts';
