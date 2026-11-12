@@ -148,6 +148,15 @@
   --composer-h: 0px;
   --timeline-gutter: 0px;
 }
+/* The floor the work sits on (RootLayout's .app-main): the page background, one surface up
+   beside the inset sidebar. The composer zone is painted with it, so the conversation passes
+   under the composer without a second surface. */
+.app-main {
+  --chat-floor: var(--background);
+}
+:where(.peer)[data-variant="inset"] ~ .app-main {
+  --chat-floor: var(--surface-2);
+}
 [data-chat-view][data-empty-centered] {
   --chat-composer-width: 672px;
 }
