@@ -366,9 +366,10 @@ export function RunMessage({
     interactions.length === 0 &&
     !streams.some(([, stream]) => stream.text) &&
     visible.length === 0;
-  // The wait names the step in progress, as the log names it; the head already says the state.
+  // The wait names the tool or role in progress, as the log names it; the head already says the
+  // state. A model request's name says nothing to the person, so it waits with the mark alone.
   const activeStep = process.rows.filter((row) => row.active).at(-1);
-  const pendingStep = activeStep ? stepName(activeStep) : null;
+  const pendingStep = activeStep && activeStep.kind !== 'model' ? stepName(activeStep) : null;
   const pendingWord = tw(projection.status === 'running' ? 'activityWorking' : 'activityStarting');
   // A turn that did not finish says so once: its readable cause, whether it made anything,
   // and what to do next. One agent's failure is the turn's failure; a team lists its agents.

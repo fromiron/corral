@@ -401,10 +401,24 @@ it('waits for the reply with the kit mark alone, and names the step in progress'
       .map((node) => node.textContent)
       .join('');
   expect(visibleWords()).toBe('');
-  // A step in progress names itself as the log does, and the log's rows do not end the wait.
+  // A model request in progress has no name worth reading: still the mark alone.
+  const request = {
+    type: 'model.request_prepared',
+    runSeq: 1,
+    actor: { kind: 'agent', id: 'lead' },
+    payload: { executionId: 'lead', modelCallId: 'call_model', directiveIds: [] },
+  };
+  await act(async () => fixture.store?.setState({ events: [request] as unknown as RunEvent[] }));
+  expect(f.container.querySelector('[data-testid="turn-process"]')?.textContent).toContain(
+    messages.Turn.request.replace('{no}', '1'),
+  );
+  expect(pending()).not.toBeNull();
+  expect(visibleWords()).toBe('');
+  // A tool in progress names itself as the log does, and the log's rows do not end the wait.
   await act(async () =>
     fixture.store?.setState({
       events: [
+        request,
         {
           type: 'tool.requested',
           actor: { kind: 'agent', id: 'lead' },
