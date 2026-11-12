@@ -15,13 +15,17 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  applyEvent,
   Coordinator,
+  emptyProjection,
+  exportRunArchive,
   type FileTools,
   InMemoryRunStore,
   InProcessTransport,
   usageTotals,
   waitForProjection,
 } from '../src/index.ts';
+import { readPartialOutputs } from '../src/partial-output.ts';
 
 // Directive delivery paths no other test pins (docs/specs/features/reins.md §2 and §5): a target
 // that has not started, one waiting on the person, one that ends or is stopped before it reads
@@ -489,4 +493,58 @@ describe('a target that has finished', () => {
     const permit = await s.request(writer.host);
     expect(permit.directives).toEqual([]);
   });
+});
+
+describe('an unfinished call', () => {
+  /** One call streams two chunks and ends with the given mark; then the person stops the run. */
+  const unfinished = async (mark: { interrupted: true } | { failed: true }) => {
+    const s = setup({ interrupts: true });
+    const writer = await s.agent(0);
+    const permit = await writer.host.prepareModelRequest();
+    await writer.host.modelRequestDispatched?.(permit.modelCallId);
+    writer.host.streamText({ modelCallId: permit.modelCallId, chunkIndex: 0, text: 'UNFINISHED ' });
+    writer.host.streamText({ modelCallId: permit.modelCallId, chunkIndex: 1, text: 'prefix' });
+    await writer.host.observe({
+      kind: 'model_completed',
+      modelCallId: permit.modelCallId,
+      text: 'UNFINISHED prefix',
+      usage: { inputTokens: 4, outputTokens: 2 },
+      ...mark,
+    });
+    const finished = s.events().find((e) => e.type === 'model.finished');
+    const whole = await s.request(writer.host);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'stopped' }, 'stop');
+    await waitForProjection(s.transport, s.runId, (p) => p.status === 'cancelled');
+    return { s, call: permit.modelCallId, whole: whole.modelCallId, finished };
+  };
+
+  it.each([
+    ['cut by an interrupt', { interrupted: true as const }],
+    ['ended in an error', { failed: true as const }],
+  ])(
+    'a call %s records no confirmed response; its text is partial output only, also on replay, and is not exported',
+    async (_name, mark) => {
+      const { s, call, whole, finished } = await unfinished(mark);
+      expect(finished?.payload).toMatchObject({
+        responseRef: null,
+        certainty: 'reported',
+        normalizedUsage: { inputTokens: 4, outputTokens: 2 },
+      });
+      expect(s.projection().modelCalls[call]).toMatchObject({ finished: true, responseRef: null });
+      expect(s.projection().modelCalls[whole]?.responseRef).toBe(`response_${whole}`);
+      expect(s.coordinator.getSnapshot(s.runId).partialOutputs?.[call]?.text).toBe(
+        'UNFINISHED prefix',
+      );
+      // Rebuilt from the record, the projection and the partial output are the same.
+      const replayed = s.events().reduce(applyEvent, emptyProjection(s.runId));
+      expect(replayed).toEqual(s.projection());
+      expect(readPartialOutputs(s.store, s.runId, replayed)?.[call]?.text).toBe(
+        'UNFINISHED prefix',
+      );
+      for (const privateTranscript of [false, true])
+        expect(
+          JSON.stringify(exportRunArchive(s.store, s.runId, { privateTranscript })),
+        ).not.toContain('UNFINISHED');
+    },
+  );
 });

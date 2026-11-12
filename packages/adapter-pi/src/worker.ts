@@ -66,6 +66,7 @@ import {
   systemPrompt,
   TOOL_TEXT,
   textOf,
+  unfinished,
   userPrompt,
 } from './worker-tools.ts';
 
@@ -411,6 +412,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                             modelCallId: grant.modelCallId,
                             text: textOf(response),
                             ...normalizeUsage(response),
+                            ...(unfinished(response) ? { failed: true } : {}),
                           });
                         },
                       );
@@ -427,6 +429,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                           reasoningTokens: null,
                         },
                         rawUsage: null,
+                        failed: true,
                       });
                       throw error;
                     }
@@ -659,6 +662,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 modelCallId: permit.modelCallId,
                 text: textOf(message),
                 ...normalizeUsage(message),
+                failed: true,
               });
           },
           open: async (attempt) => {
@@ -742,7 +746,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           text: textOf(message),
           usage,
           rawUsage,
-          ...(cut ? { interrupted: true } : {}),
+          ...(cut ? { interrupted: true } : unfinished(message) ? { failed: true } : {}),
         });
         cutFlight = cut ? latest : null;
         // A response that ended on its own was not cut, whatever the abort asked.

@@ -110,6 +110,8 @@ export const WorkerFrame = z.discriminatedUnion('type', [
     rawUsage: z.record(z.string(), z.unknown()).nullable(),
     /** Cut by an interrupt: interrupted output, and the execution goes on. */
     interrupted: z.literal(true).optional(),
+    /** Ended in an error or abort, uncut: partial output, not an answer. */
+    failed: z.literal(true).optional(),
   }),
   z.strictObject({
     type: z.literal('stream'),

@@ -93,6 +93,7 @@ import {
   systemPrompt,
   TOOL_TEXT,
   textOf,
+  unfinished,
   userPrompt,
 } from './worker-tools.ts';
 
@@ -596,7 +597,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                   modelCallId,
                   text: textOf(answer),
                   ...normalizeUsage(answer),
-                  ...(wasCut(flight, answer) ? { interrupted: true } : {}),
+                  ...(wasCut(flight, answer)
+                    ? { interrupted: true }
+                    : unfinished(answer)
+                      ? { failed: true }
+                      : {}),
                 });
                 observed = true;
               }
@@ -617,6 +622,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 modelCallId,
                 text: textOf(answer),
                 ...normalizeUsage(answer),
+                ...(unfinished(answer) ? { failed: true } : {}),
               });
             observed = true;
             out.end(proxyMessage(answer));
@@ -631,7 +637,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 modelCallId,
                 text: '',
                 ...normalizeUsage(answer),
-                ...(wasCut(flight, answer) ? { interrupted: true } : {}),
+                ...(wasCut(flight, answer) ? { interrupted: true } : { failed: true }),
               });
             out.push({
               type: 'error',

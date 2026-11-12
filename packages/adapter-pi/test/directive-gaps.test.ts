@@ -15,6 +15,7 @@ import {
   createFauxCore,
   type FauxResponseStep,
   fauxAssistantMessage,
+  fauxText,
   fauxToolCall,
 } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -218,12 +219,45 @@ describe('directives sent before the worker starts', () => {
   );
 });
 
+/**
+ * Holds the first response after its first text until `release` opens. A provider that hears
+ * the abort meanwhile ends the response there as aborted; a `deaf` one answers in full.
+ */
+const holdFirstText = (streamed: Gate, release: Gate, deaf = false) => {
+  let calls = 0;
+  return (stream: StreamFn): StreamFn =>
+    (model, context, options) => {
+      if (++calls > 1) return stream(model, context, options);
+      const inner = stream(model, context, deaf ? { ...options, signal: undefined } : options);
+      const out = createAssistantMessageEventStream();
+      void (async () => {
+        const source = await inner;
+        let held = false;
+        for await (const event of source) {
+          out.push(event);
+          if (!held && event.type === 'text_delta') {
+            held = true;
+            streamed.open();
+            await release.wait();
+            if (!deaf && options?.signal?.aborted) {
+              const aborted = { ...event.partial, stopReason: 'aborted' as const };
+              out.push({ type: 'error', reason: 'aborted', error: aborted });
+              out.end(aborted);
+              return;
+            }
+          }
+        }
+        out.end(await source.result());
+      })();
+      return out;
+    };
+};
+
 describe('a stream that breaks', () => {
   /** The first response shows text, the test steers, then its stream drops. */
-  const brokenAfterText = async () => {
+  const brokenAfterText = async (worker: Worker) => {
     const streamed = new Gate(),
       release = new Gate();
-    let calls = 0;
     const { transport, coordinator, start } = runtime(
       [
         fauxAssistantMessage('Partial answer before the drop.', {
@@ -232,28 +266,7 @@ describe('a stream that breaks', () => {
         }),
         ...writeThenSubmit(),
       ],
-      {
-        // The first response holds after its first text until the test lets the drop through.
-        wrapStream: (stream) => (model, context, options) => {
-          if (++calls > 1) return stream(model, context, options);
-          const inner = stream(model, context, options);
-          const out = createAssistantMessageEventStream();
-          void (async () => {
-            const source = await inner;
-            let held = false;
-            for await (const event of source) {
-              out.push(event);
-              if (!held && event.type === 'text_delta') {
-                held = true;
-                streamed.open();
-                await release.wait();
-              }
-            }
-            out.end(await source.result());
-          })();
-          return out;
-        },
-      },
+      { worker, wrapStream: holdFirstText(streamed, release) },
     );
     const { runId, executionId, steer, directiveOf } = await start();
     await streamed.wait();
@@ -264,19 +277,34 @@ describe('a stream that breaks', () => {
     return { coordinator, runId, executionId, final, directiveOf };
   };
 
-  it('a stream that breaks after it showed text fails the target without a retry and keeps the partial output', async () => {
-    const { coordinator, runId, executionId, final } = await brokenAfterText();
+  it('a stream that breaks after it showed text fails the target without a retry and keeps the text only as partial output', async () => {
+    const { coordinator, runId, executionId, final } = await brokenAfterText('pi-core');
     expect(final.status).toBe('failed');
     expect(final.executions[executionId]?.status).toBe('failed');
     const [broken, ...rest] = final.executions[executionId]?.modelCallIds ?? [];
     // Text was already shown, so nothing was retried.
     expect(rest).toEqual([]);
+    const call = final.modelCalls[broken ?? ''];
+    expect(call?.finished).toBe(true);
+    expect(call?.responseRef).toBeNull();
+    expect(call?.certainty).toBe('reported');
     const { partialOutputs } = coordinator.getSnapshot(runId);
     expect(partialOutputs?.[broken ?? '']?.text).toContain('Partial');
   });
 
+  it('an SDK call that breaks after it showed text keeps the text only as partial output', async () => {
+    // The SDK session goes on after the failed call; only that call's record is pinned here.
+    const { coordinator, runId, executionId, final } = await brokenAfterText('sdk');
+    const [broken, next] = final.executions[executionId]?.modelCallIds ?? [];
+    expect(final.modelCalls[broken ?? '']).toMatchObject({ finished: true, responseRef: null });
+    expect(coordinator.getSnapshot(runId).partialOutputs?.[broken ?? '']?.text).toContain(
+      'Partial',
+    );
+    expect(final.modelCalls[next ?? '']?.responseRef).toBe(`response_${next}`);
+  });
+
   it('a directive waiting when the stream breaks after text expires with the failed target', async () => {
-    const { coordinator, runId, final, directiveOf } = await brokenAfterText();
+    const { coordinator, runId, final, directiveOf } = await brokenAfterText('pi-core');
     expect(final.status).toBe('failed');
     expect((await directiveOf('cmd_join'))?.status).toBe('expired');
     expect(coordinator.getReceipt(runId, 'cmd_join')?.status).toBe('expired');
@@ -286,7 +314,7 @@ describe('a stream that breaks', () => {
     const entered = new Gate(),
       release = new Gate();
     const seen: unknown[][] = [];
-    const { transport, start } = runtime([
+    const { transport, coordinator, start } = runtime([
       async () => {
         entered.open();
         await release.wait();
@@ -308,6 +336,10 @@ describe('a stream that breaks', () => {
     const directiveId = (await directiveOf('cmd_join'))?.directiveId ?? '';
     const [failed, retry] = final.executions[executionId]?.modelCallIds ?? [];
     expect(final.modelCalls[failed ?? '']?.directiveIds).toEqual([]);
+    // A failure before any text leaves no partial output and no confirmed response.
+    expect(final.modelCalls[failed ?? '']?.responseRef).toBeNull();
+    expect(coordinator.getSnapshot(runId).partialOutputs?.[failed ?? '']).toBeUndefined();
+    expect(final.modelCalls[retry ?? '']?.responseRef).not.toBeNull();
     expect(final.modelCalls[retry ?? '']?.directiveIds).toEqual([directiveId]);
     expect(final.directives[directiveId]?.status).toBe('delivered');
     expect(
@@ -348,5 +380,55 @@ describe('a stream that breaks', () => {
           text.startsWith(`${DIRECTIVE_PREFIX}${directiveId})`),
         ),
       ).toHaveLength(1);
+  });
+});
+
+describe('a response cut by an interrupt', () => {
+  const cutAfterText = async (deaf: boolean) => {
+    const streamed = new Gate(),
+      release = new Gate();
+    const { transport, coordinator, start } = runtime(
+      [
+        fauxAssistantMessage(
+          [
+            fauxText('A long answer the person did not want.'),
+            fauxToolCall('write_artifact', { text: 'Draft.' }),
+          ],
+          { stopReason: 'toolUse' },
+        ),
+        ...writeThenSubmit(),
+      ],
+      { wrapStream: holdFirstText(streamed, release, deaf) },
+    );
+    const { runId, executionId, events, steer } = await start();
+    await streamed.wait();
+    await tick();
+    expect((await steer('Stop and cite.', 'cmd_cut', 'interrupt')).requestedBoundary).toBe(
+      'immediate',
+    );
+    await tick();
+    release.open();
+    const final = await waitForProjection(transport, runId, settled);
+    const [first, next] = final.executions[executionId]?.modelCallIds ?? [];
+    return { coordinator, runId, events, final, first: first ?? '', next: next ?? '' };
+  };
+
+  it('a call cut after it showed text keeps that text only as partial output, and the next call is whole', async () => {
+    const { coordinator, runId, events, final, first, next } = await cutAfterText(false);
+    expect(final.status).toBe('succeeded');
+    expect(final.modelCalls[first]).toMatchObject({ interrupted: true, responseRef: null });
+    const cut = events.find((e) => e.type === 'model.finished' && e.payload.modelCallId === first);
+    expect(cut?.payload).toMatchObject({ interrupted: true, responseRef: null });
+    expect(coordinator.getSnapshot(runId).partialOutputs?.[first]?.text).toContain('A long');
+    expect(final.modelCalls[next]?.responseRef).toBe(`response_${next}`);
+    expect(final.modelCalls[next]).not.toHaveProperty('interrupted');
+  });
+
+  it('a call whose provider ignored the cut and finished is a whole response', async () => {
+    const { coordinator, runId, final, first } = await cutAfterText(true);
+    expect(final.status).toBe('succeeded');
+    expect(final.modelCalls[first]?.responseRef).toBe(`response_${first}`);
+    expect(final.modelCalls[first]).not.toHaveProperty('interrupted');
+    expect(coordinator.getSnapshot(runId).partialOutputs?.[first]).toBeUndefined();
   });
 });
