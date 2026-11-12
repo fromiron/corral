@@ -445,7 +445,7 @@ describe('interrupt on the core worker', () => {
     expect(directiveMessages).toHaveLength(2);
   });
 
-  it('an interrupt while a retry waits for its permit cuts that retry and the execution goes on', async () => {
+  it('an interrupt while a retry waits for its permit is not cut; the reprepared retry carries it', async () => {
     const retrying = new Gate(),
       permit = new Gate();
     const contexts: string[] = [];
@@ -466,6 +466,8 @@ describe('interrupt on the core worker', () => {
           if (prepares === 2) {
             retrying.open();
             await permit.wait();
+            // As the Coordinator does: the protected context now lists the new directive.
+            throw new Error('CONTEXT_STALE');
           }
           return {
             modelCallId: `call_${prepares}`,
@@ -483,8 +485,69 @@ describe('interrupt on the core worker', () => {
     await tick();
     permit.open();
     expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
-    expect(contexts.at(-1)).toContain(`${DIRECTIVE_PREFIX}dir_retry)`);
-    expect(observed.find((o) => o.modelCallId === 'call_2')?.interrupted).toBe(true);
+    expect(prepares).toBe(3);
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.split(`${DIRECTIVE_PREFIX}dir_retry)`)).toHaveLength(2);
+    expect(observed.map((o) => o.interrupted).filter(Boolean)).toEqual([]);
+  });
+
+  const retryUnderCoordinator = async (wait: number) => {
+    const seen: boolean[] = [];
+    let send: (() => void) | undefined;
+    let holdOnce = false;
+    const { transport, clock } = liveRuntime(
+      [
+        fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'fetch failed' }),
+        ...writeThenSubmit(seen),
+      ],
+      {
+        onWorkerFrame: (frame) => {
+          const f = frame as { type?: string; retryIndex?: number };
+          if (f.type !== 'prepare_request' || f.retryIndex !== 1) return;
+          if (!wait) send?.();
+          else {
+            holdOnce = true;
+            // Once the Coordinator holds the retry for the provider wait, interrupt, then let it pass.
+            setTimeout(() => {
+              send?.();
+              setTimeout(() => clock.advance(wait), 20);
+            }, 20);
+          }
+        },
+        retryAfterMs: () => {
+          if (!holdOnce) return 0;
+          holdOnce = false;
+          return wait;
+        },
+      },
+    );
+    const { runId, events, interrupt } = await liveRun(transport);
+    send = () => void interrupt();
+    const final = await waitForProjection(transport, runId, settled);
+    const directiveId = final.directiveOrder[0] ?? '';
+    return { final, events, seen, directiveId };
+  };
+
+  it('an interrupt sent as the retry asks the Coordinator for its permit rides that retry', async () => {
+    const { final, events, seen, directiveId } = await retryUnderCoordinator(0);
+    expect(final.status).toBe('succeeded');
+    expect(seen).toEqual([true]);
+    expect(final.directives[directiveId]?.status).toBe('delivered');
+    expect(
+      Object.values(final.modelCalls).filter((call) => call.directiveIds.includes(directiveId)),
+    ).toHaveLength(1);
+    expect(events.filter((e) => e.type === 'model.finished' && e.payload.interrupted)).toEqual([]);
+  });
+
+  it('an interrupt while the Coordinator holds the retry for a provider wait rides that retry', async () => {
+    const { final, events, seen, directiveId } = await retryUnderCoordinator(150);
+    expect(final.status).toBe('succeeded');
+    expect(seen).toEqual([true]);
+    expect(final.directives[directiveId]?.status).toBe('delivered');
+    expect(
+      Object.values(final.modelCalls).filter((call) => call.directiveIds.includes(directiveId)),
+    ).toHaveLength(1);
+    expect(events.filter((e) => e.type === 'model.finished' && e.payload.interrupted)).toEqual([]);
   });
 
   it('an interrupt while a transient retry is being prepared rides that retry, uncut', async () => {

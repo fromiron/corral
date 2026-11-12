@@ -32,6 +32,10 @@ export function liveRuntime(
     contextPolicy?: ProfileContextPolicy;
     /** Wraps the faux stream, e.g. to see each request's signal. */
     wrapStream?: (stream: StreamFn) => StreamFn;
+    /** Sees each frame the worker sends, before the host handles it. */
+    onWorkerFrame?: (frame: unknown) => void;
+    /** The provider wait the Coordinator holds before a model slot. */
+    retryAfterMs?: () => number;
   } = {},
 ) {
   const faux = createFauxCore(
@@ -42,6 +46,7 @@ export function liveRuntime(
   const adapter = new PiAgentAdapter({
     spawn: () => {
       const { host, worker } = memoryChannelPair();
+      if (options.onWorkerFrame) host.onFrame(options.onWorkerFrame);
       runWorker(worker, {
         streamFn: options.wrapStream ? options.wrapStream(faux.streamSimple) : faux.streamSimple,
         resolveModel: () => faux.getModel(),
@@ -53,30 +58,36 @@ export function liveRuntime(
       return ACCESS_TOKEN;
     },
   });
+  const clock = new FakeClock();
   const transport = new InProcessTransport(
     new Coordinator({
-      clock: new FakeClock(),
+      clock,
+      // A provider wait passes only when the test advances the clock.
+      ...(options.retryAfterMs ? { timers: clock } : {}),
       ids: new SequentialIdFactory(),
       agents: adapter,
-      models: options.contextPolicy
-        ? {
-            resolve: (profile, mode) => {
-              const resolved = liveModels.resolve(profile, mode);
-              if (!resolved.ok || !options.contextPolicy) return resolved;
-              return {
-                ok: true,
-                snapshot: {
-                  ...resolved.snapshot,
-                  contextWindow: options.contextPolicy.contextWindow,
-                  contextPolicy: options.contextPolicy,
-                },
-              };
-            },
-          }
-        : liveModels,
+      models: {
+        ...(options.contextPolicy
+          ? {
+              resolve: (profile, mode) => {
+                const resolved = liveModels.resolve(profile, mode);
+                if (!resolved.ok || !options.contextPolicy) return resolved;
+                return {
+                  ok: true,
+                  snapshot: {
+                    ...resolved.snapshot,
+                    contextWindow: options.contextPolicy.contextWindow,
+                    contextPolicy: options.contextPolicy,
+                  },
+                };
+              },
+            }
+          : liveModels),
+        ...(options.retryAfterMs ? { retryAfterMs: options.retryAfterMs } : {}),
+      },
     }),
   );
-  return { transport, faux, credentialCalls };
+  return { transport, faux, credentialCalls, clock };
 }
 
 /** A host that records calls, for adapter tests without a Coordinator. */

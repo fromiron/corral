@@ -113,7 +113,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   // requests and while a tool runs, when an interrupt has nothing to cut.
   let inFlight: Flight | null = null;
   let directivesInPrepared = new Set<string>();
-  // True while a request is prepared and its directives are not yet fixed in its record.
+  // True while a request is prepared, until its permit: a directive arriving then rides it
+  // (a stale protected context makes the host ask for a new preparation).
   let unrecorded = false;
   // Interrupt directives that cut a response and still have to lead the next request.
   const interrupting = new Map<string, DeliveredDirective>();
@@ -488,7 +489,6 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         lastPrepared = normalizeContext({ messages: preparedContext.messages as Message[] });
         measuredContext = inspectContext(preparedContext);
         directivesInPrepared = new Set(directives.keys());
-        unrecorded = false;
         return call({
           type: 'prepare_request',
           logicalRequestId,
@@ -517,6 +517,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         for (const directive of reply.directives) directives.set(directive.directiveId, directive);
         reply = await prepare();
       }
+      unrecorded = false;
       if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
       permit = {
         modelCallId: reply.modelCallId,
