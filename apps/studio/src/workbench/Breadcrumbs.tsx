@@ -14,6 +14,8 @@ import {
 import { ChevronDown } from '@corral/react/icons';
 import { useTranslations } from 'use-intl';
 import { useRegisteredCommands } from '../commandRegistry.ts';
+import { presenceDot } from './presenceDot.ts';
+import { latestSessionRun, listedRunPresence } from './sessionList.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
 
 // Each segment of the top bar's path is the menu for its level (project / session / run), so
@@ -25,13 +27,6 @@ const crumb = 'min-w-0 gap-1 px-2';
 // (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those. A
 // meeting registers no completion criteria.
 const SESSION_ACTIONS = ['session:rename', 'session:criteria', 'session:pin', 'session:archive'];
-
-function latestRun(runs: readonly RunSummary[], sessionId: string) {
-  let latest: RunSummary | undefined;
-  for (const run of runs)
-    if (run.sessionId === sessionId && (!latest || run.startedAt > latest.startedAt)) latest = run;
-  return latest;
-}
 
 /** The session segment: the page title, and the project's sessions in sidebar order. */
 export function SessionMenu({
@@ -50,7 +45,7 @@ export function SessionMenu({
   onOpen: (sessionId: string) => void;
 }) {
   const n = useTranslations('Navigation');
-  const status = useTranslations('Status');
+  const presenceText = useTranslations('Presence');
   const siblings = sessions
     .filter((session) => session.projectId === projectId && !session.archivedAt)
     .sort(bySidebarOrder);
@@ -93,20 +88,20 @@ export function SessionMenu({
           {actions.length ? <MenuSeparator /> : null}
           <MenuRadioGroup value={sessionId} onValueChange={(value) => onOpen(String(value))}>
             {siblings.map((session) => {
-              const run = latestRun(runs, session.sessionId);
-              const label = run ? (status.has(run.status) ? status(run.status) : run.status) : null;
+              const run = latestSessionRun(session, runs);
+              const presence = run ? listedRunPresence(run) : null;
               return (
                 <MenuRadioItem key={session.sessionId} value={session.sessionId} closeOnClick>
                   {/* A grid, not a flex row: its title column asks for no width of its own, so a
                       long title truncates inside the popup and the status keeps its place. */}
                   <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                     <span className="truncate">{session.title}</span>
-                    {run && label ? (
+                    {presence ? (
                       <span className="flex shrink-0 items-center gap-1.5 text-caption text-muted-foreground">
-                        <StatusDot status={run.status} />
+                        <StatusDot status={presenceDot(presence.tone)} />
                         <span>
                           <span className="sr-only"> · </span>
-                          {label}
+                          <span data-presence-label="">{presenceText(presence.labelKey)}</span>
                         </span>
                       </span>
                     ) : null}
@@ -139,8 +134,9 @@ export function RunMenu({
 }) {
   const tw = useTranslations('Workbench');
   const tr = useTranslations('RunPage');
-  const status = useTranslations('Status');
-  const label = (run: RunSummary) => (status.has(run.status) ? status(run.status) : run.status);
+  const presenceText = useTranslations('Presence');
+  const label = (run: RunSummary) => presenceText(listedRunPresence(run).labelKey);
+  const dot = (run: RunSummary) => presenceDot(listedRunPresence(run).tone);
   const number = (id: string) => runs.findIndex((run) => run.runId === id) + 1;
   const runName = (id: string) => {
     const name = names[id];
@@ -166,7 +162,7 @@ export function RunMenu({
           />
         }
       >
-        {chosen ? <StatusDot status={chosen.status} label={label(chosen)} /> : null}
+        {chosen ? <StatusDot status={dot(chosen)} label={label(chosen)} /> : null}
         {word ? (
           // With no room for "Run #1", the number stands alone ("#1"), never a cut word: the
           // label is one line tall, and the word wraps above that line, out of sight.
@@ -195,11 +191,11 @@ export function RunMenu({
           {[...runs].reverse().map((run) => (
             <MenuRadioItem key={run.runId} value={run.runId} closeOnClick>
               <span className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-                <StatusDot status={run.status} />
+                <StatusDot status={dot(run)} />
                 <span className="truncate">{runName(run.runId)}</span>
                 <span className="text-caption text-muted-foreground">
                   <span className="sr-only"> · </span>
-                  {label(run)}
+                  <span data-presence-label="">{label(run)}</span>
                 </span>
               </span>
             </MenuRadioItem>

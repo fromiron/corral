@@ -1,6 +1,5 @@
 import type { RunSummary, WorkSession } from '@corral/core';
-import { StatusBadge } from '@corral/react';
-import { CheckboxGroup, CheckboxItem } from '@corral/react/design-kit';
+import { AgentStatusBadge, CheckboxGroup, CheckboxItem } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -11,6 +10,7 @@ import {
   runIdentity,
   runIdentityText,
 } from './runIdentity.ts';
+import { listedRunPresence } from './sessionList.ts';
 
 /** Mounted only while the project's Runs tab is open. */
 export function RunList({
@@ -25,6 +25,7 @@ export function RunList({
   onPick(runId: string, selected: boolean): void;
 }) {
   const t = useTranslations('RunIdentity');
+  const presenceText = useTranslations('Presence');
   const format = useFormatter();
   const { transport } = useServices();
   const [identities, setIdentities] = useState<Record<string, RunIdentity>>({});
@@ -49,6 +50,7 @@ export function RunList({
           t('unnamed'),
           (number) => t('number', { number }),
         );
+        const presence = listedRunPresence(run);
         return (
           <li
             key={run.runId}
@@ -67,7 +69,11 @@ export function RunList({
               />
             </CheckboxGroup>
             <span className="justify-self-start">
-              <StatusBadge status={run.status} />
+              <AgentStatusBadge
+                status={presence.glyph ?? 'stopped'}
+                label={<span data-presence-label="">{presenceText(presence.labelKey)}</span>}
+                data-presence={presence.kind}
+              />
             </span>
             <div className="min-w-0">
               <Link

@@ -1,6 +1,6 @@
 import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { CorralSymbol, CorralWordmark, StatusDot } from '@corral/react';
+import { CorralSymbol, CorralWordmark, StatusDot, sessionGroupOf } from '@corral/react';
 import {
   Button,
   cn,
@@ -78,6 +78,7 @@ import {
   notificationDestination,
 } from './notifications.ts';
 import { changePreferences, preferences } from './preferences.ts';
+import { presenceDot } from './presenceDot.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { watchRunList } from './runList.ts';
 import { SessionDeletionDialog } from './SessionDeletionDialog.tsx';
@@ -86,10 +87,16 @@ import {
   type ScheduledRunOutcome,
   scheduledRunOutcomes,
 } from './scheduledRuns.ts';
-import { needsYouCount, sessionListState, uncertainSessionTerminal } from './sessionList.ts';
+import {
+  needsYouCount,
+  sessionPresences,
+  sessionRunOpen,
+  uncertainSessionTerminal,
+} from './sessionList.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
 import { useModelProfiles } from './useModels.ts';
 import { useSessionAge } from './useSessionAge.ts';
+import { useSettledPresence } from './useSettledPresence.ts';
 
 export function useCorralSidebar() {
   const { repository, transport, workspaces, terminals } = useServices();
@@ -238,8 +245,6 @@ export function useCorralSidebar() {
   };
 }
 
-const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
-
 /**
  * Row heights of the project list, per density. A session row holds its title and one line of
  * state and time, each at its type role's full line height, so neither line is clipped. The
@@ -285,7 +290,7 @@ export const Sidebar = memo(function Sidebar({
   const shell = useTranslations('Shell');
   const studio = useTranslations('Studio');
   const ago = useSessionAge();
-  const status = useTranslations('Status');
+  const presenceText = useTranslations('Presence');
   const profiles = useModelProfiles();
   const connected = Boolean(profiles?.some((p) => p.available));
   const { repository, mode, live, sessionDeletion } = useServices();
@@ -313,6 +318,12 @@ export const Sidebar = memo(function Sidebar({
     () => needsYouCount(model.sessions, model.runs, model.terminalAttention),
     [model.sessions, model.runs, model.terminalAttention],
   );
+  // Rows read the held state (exit grace); the badge above and archiving read the live one.
+  const livePresence = useMemo(
+    () => sessionPresences(model.sessions, model.runs),
+    [model.sessions, model.runs],
+  );
+  const shownPresence = useSettledPresence(livePresence);
   const rows = useMemo(() => {
     const result: (
       | { kind: 'project'; project: ProjectSummary }
@@ -830,23 +841,21 @@ export const Sidebar = memo(function Sidebar({
                           );
                         const session = row.session;
                         const active = path.startsWith(`/sessions/${session.sessionId}`);
-                        const run = model.runs
-                          .filter((r) => r.sessionId === session.sessionId)
-                          .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-                        const working = Boolean(run && !ENDED.has(run.status));
+                        const live = livePresence.get(session.sessionId);
+                        const presence = shownPresence.get(session.sessionId) ?? live;
+                        const working = Boolean(live && sessionRunOpen(live));
                         const terminal = uncertainSessionTerminal(
                           session.sessionId,
-                          model.terminalAttention,
-                        );
-                        const state = sessionListState(
-                          session,
-                          model.runs,
                           model.terminalAttention,
                         );
                         return (
                           <SidebarMenuSubItem
                             key={item.key}
                             data-sidebar-index={item.index}
+                            data-session-row={session.sessionId}
+                            data-session-group={
+                              presence ? sessionGroupOf(presence, Boolean(terminal)) : undefined
+                            }
                             data-session-kind={session.meeting ? 'meeting' : 'session'}
                             style={position}
                             onKeyDownCapture={(event) =>
@@ -899,19 +908,26 @@ export const Sidebar = memo(function Sidebar({
                                   )}
                                 >
                                   {/* The state's colour leads its word; the row needs no badge. */}
-                                  {run || terminal ? (
+                                  {presence?.glyph || terminal ? (
                                     <span className="mr-1.5 inline-flex align-middle">
                                       <StatusDot
-                                        status={terminal ? 'awaiting_user' : (run?.status ?? '')}
+                                        status={
+                                          terminal
+                                            ? presenceDot('warning')
+                                            : presenceDot(presence?.tone ?? 'neutral')
+                                        }
                                       />
                                     </span>
                                   ) : null}
                                   {terminal ? `${ts('terminalNeedsAttention')} · ` : null}
-                                  {run
-                                    ? `${status(run.status)} · `
-                                    : terminal
-                                      ? null
-                                      : `${ts(`listState.${state}`)} · `}
+                                  {presence && !terminal ? (
+                                    <>
+                                      <span data-presence-label="" data-presence={presence.kind}>
+                                        {presenceText(presence.labelKey)}
+                                      </span>
+                                      {' · '}
+                                    </>
+                                  ) : null}
                                   {ago(session.updatedAt)}
                                 </span>
                               </span>

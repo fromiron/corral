@@ -1,5 +1,7 @@
 import type { InboxItemView, SessionEvidenceView } from '@corral/client';
+import { RunStatus } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
+import { runPresence } from '@corral/react';
 import { describe, expect, it } from 'vitest';
 import {
   needsYouCount,
@@ -7,6 +9,7 @@ import {
   sessionFacts,
   sessionGroups,
   sessionListState,
+  sessionPresences,
 } from './sessionList.ts';
 
 const session = (sessionId: string, projectId = 'alpha') =>
@@ -252,6 +255,58 @@ describe('sessionGroups', () => {
       'attention',
       ['uncertain_terminal', 'failed'],
     ]);
+  });
+
+  // The group table of docs/specs/features/presence.md, for every Run state of constitution §3.
+  it('groups every Run state as the presence table says', () => {
+    const expected: Record<RunStatus, string> = {
+      created: 'running',
+      validating: 'running',
+      running: 'running',
+      pausing: 'running',
+      cancelling: 'running',
+      awaiting_user: 'attention',
+      failed: 'attention',
+      interrupted: 'attention',
+      paused: 'attention',
+      succeeded: 'completed',
+      cancelled: 'cancelled',
+    };
+    expect(Object.keys(expected).sort()).toEqual([...RunStatus.options].sort());
+    for (const status of RunStatus.options) {
+      const runs = [run('A', status, '2026-11-01T00:00:00Z')];
+      expect([status, sessionListState(listed('A'), runs)]).toEqual([status, expected[status]]);
+      expect([status, ids(sessionGroups([listed('A')], runs, []))]).toEqual([
+        status,
+        [[expected[status], ['A']]],
+      ]);
+    }
+  });
+
+  it('reads each session’s state through the presence rule, latest run first', () => {
+    const shown = sessionPresences(
+      [listed('A'), listed('D', { objective: 'Plan' }), listed('Z')],
+      [
+        run('A', 'failed', '2026-11-01T00:00:00Z'),
+        run('A', 'created', '2026-11-02T00:00:00Z'),
+        run('other', 'running', '2026-11-03T00:00:00Z'),
+      ],
+    );
+    expect(shown.get('A')).toEqual(runPresence({ status: 'created' }, [], []));
+    expect(shown.get('D')?.kind).toBe('ready');
+    expect(shown.get('Z')?.kind).toBe('empty');
+  });
+
+  it('groups by a held presence when one is given, and keeps the badge on the live run', () => {
+    // The run ended a moment ago and the list still holds it in progress (presence.md grace).
+    const runs = [run('A', 'succeeded', '2026-11-01T00:00:00Z')];
+    const held = new Map([['A', runPresence({ status: 'running' }, [], [])]]);
+    expect(ids(sessionGroups([listed('A')], runs, [], held))).toEqual([['running', ['A']]]);
+    expect(sessionListState(listed('A'), runs, [], held.get('A'))).toBe('running');
+    // A terminal to check still puts the row in Needs attention.
+    expect(
+      sessionListState(listed('A'), runs, [item('uncertain_terminal', 'A')], held.get('A')),
+    ).toBe('attention');
   });
 
   it('gives no reason to rows of any other group', () => {

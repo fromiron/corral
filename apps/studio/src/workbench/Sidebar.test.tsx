@@ -5,7 +5,7 @@ import { DesignKitProvider, SidebarProvider } from '@corral/react/design-kit';
 import { act, type ComponentProps, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { shortcutLabel } from '../shortcuts.ts';
 import { Sidebar, sidebarRowHeights } from './Sidebar.tsx';
@@ -205,18 +205,24 @@ async function mount(overrides: Partial<Model> = {}, density: 'default' | 'compa
     await act(async () => root.unmount());
     container.remove();
   });
-  await act(async () => {
+  const draw = (next: Partial<Model>) =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <DesignKitProvider size={density}>
           <SidebarProvider persist={false} shortcut={null} mobileBreakpoint={0}>
-            <Sidebar model={{ ...model, ...overrides }} />
+            <Sidebar model={{ ...model, ...next }} />
           </SidebarProvider>
         </DesignKitProvider>
       </IntlProvider>,
     );
-  });
+  await act(async () => draw(overrides));
+  lastDraw = draw;
   return container;
+}
+let lastDraw: ((next: Partial<Model>) => void) | null = null;
+/** Draws the last mounted sidebar again with a new model, as the run list poll does. */
+async function redraw(overrides: Partial<Model>) {
+  await act(async () => lastDraw?.(overrides));
 }
 
 function conversationLinks(container: HTMLElement) {
@@ -656,7 +662,7 @@ it('puts a session’s title and its state line on full lines of their own, the 
   const lines = [...(waiting?.querySelectorAll('[data-session-line]') ?? [])];
   expect(lines).toHaveLength(2);
   expect(lines[0]?.textContent).toBe('Conversation 0');
-  expect(lines[1]?.textContent).toContain(messages.Status.awaiting_user);
+  expect(lines[1]?.textContent).toContain(messages.Presence.state.awaiting_user);
   expect(lines[1]?.querySelector('[data-status="awaiting_user"]')).not.toBeNull();
   // Neither line borrows a tighter line height than its type role's.
   for (const line of lines) expect(line?.className).not.toMatch(/leading-\d/);
@@ -668,6 +674,137 @@ it('puts a session’s title and its state line on full lines of their own, the 
   ).toBeNull();
   const idle = container.querySelector('a[href="/sessions/session_1"]');
   expect(idle?.querySelector('[data-status]')).toBeNull();
+});
+
+// docs/specs/features/presence.md: the exit grace, and one state name per screen.
+describe('session row presence', () => {
+  const T0 = Date.parse('2026-11-13T00:00:00Z');
+  const first = '2026-11-13T00:00:00Z';
+  const next = '2026-11-13T00:00:05Z';
+  const row = (container: HTMLElement, id = 'session_0') =>
+    container.querySelector<HTMLElement>(`[data-session-row="${id}"]`);
+  const group = (container: HTMLElement, id = 'session_0') =>
+    row(container, id)?.dataset.sessionGroup;
+  const label = (container: HTMLElement, id = 'session_0') =>
+    [...(row(container, id)?.querySelectorAll('[data-presence-label]') ?? [])].map(
+      (element) => element.textContent,
+    );
+  const advance = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps a row in progress when the next run starts within two seconds of the end', async () => {
+    const container = await mount({ runs: [run('session_0', 'running', first)] });
+    expect(group(container)).toBe('running');
+    expect(label(container)).toEqual([messages.Presence.state.working]);
+    await redraw({ runs: [run('session_0', 'succeeded', first)] });
+    expect(group(container)).toBe('running');
+    expect(label(container)).toEqual([messages.Presence.state.working]);
+    await advance(1000);
+    await redraw({
+      runs: [run('session_0', 'succeeded', first), run('session_0', 'created', next)],
+    });
+    expect(group(container)).toBe('running');
+    expect(label(container)).toEqual([messages.Presence.state.starting]);
+    await advance(3000);
+    expect(group(container)).toBe('running');
+    expect(label(container)).toEqual([messages.Presence.state.starting]);
+  });
+
+  it('moves an ended run to Completed two seconds after the end was first seen, on one timer', async () => {
+    const container = await mount({ runs: [run('session_0', 'running', first)] });
+    const timers = vi.spyOn(globalThis, 'setTimeout');
+    await redraw({ runs: [run('session_0', 'succeeded', first)] });
+    await advance(1500);
+    // The next poll judges again; the end of the hold does not move.
+    await redraw({ runs: [run('session_0', 'succeeded', first)] });
+    expect(group(container)).toBe('running');
+    await advance(499);
+    expect(group(container)).toBe('running');
+    await advance(1);
+    expect(group(container)).toBe('completed');
+    expect(label(container)).toEqual([messages.Presence.state.succeeded]);
+    const holds = timers.mock.calls.filter(([, delay]) => (delay ?? 0) > 0 && (delay ?? 0) <= 2000);
+    expect(holds).toHaveLength(1);
+    timers.mockRestore();
+  });
+
+  it('shows a run that waits for the person, fails or is paused at once, and counts it at once', async () => {
+    for (const status of ['awaiting_user', 'failed', 'interrupted', 'paused'] as const) {
+      const container = await mount({ runs: [run('session_0', 'running', first)] });
+      await redraw({ runs: [run('session_0', status, first)] });
+      expect([status, group(container)]).toEqual([status, 'attention']);
+      // These four Run states share their presence kind's name.
+      expect(label(container)).toEqual([messages.Presence.state[status]]);
+      const badge = container
+        .querySelector('a[href="/inbox"]')
+        ?.closest('[data-sidebar="menu-item"]')
+        ?.querySelector('[data-sidebar="menu-badge"]');
+      expect([status, badge?.textContent ?? null]).toEqual([
+        status,
+        status === 'awaiting_user' ? '1' : null,
+      ]);
+      for (const dispose of disposals.splice(0)) await dispose();
+    }
+  });
+
+  it('shows a pause or stop the person pressed at once', async () => {
+    const container = await mount({ runs: [run('session_0', 'running', first)] });
+    await redraw({ runs: [run('session_0', 'pausing', first)] });
+    expect(label(container)).toEqual([messages.Presence.state.pausing]);
+    await redraw({ runs: [run('session_0', 'cancelling', first)] });
+    expect(label(container)).toEqual([messages.Presence.state.stopping]);
+    await redraw({ runs: [run('session_0', 'cancelled', first)] });
+    // Only an end from starting or working is held.
+    expect(group(container)).toBe('cancelled');
+    expect(label(container)).toEqual([messages.Presence.state.cancelled]);
+  });
+
+  it('shows a run that ended long before the sidebar opened as Completed at once', async () => {
+    const container = await mount({ runs: [run('session_0', 'succeeded', first)] });
+    expect(group(container)).toBe('completed');
+  });
+
+  it('keeps every row the same height and structure whatever its state', async () => {
+    const states = ['running', 'awaiting_user', 'succeeded', 'failed', 'paused'] as const;
+    const container = await mount({
+      runs: states.map((status, index) => run(`session_${index}`, status, first)),
+      terminalAttention: [attention('uncertain_terminal', 'session_5')],
+    });
+    const shapes = [0, 1, 2, 3, 4, 5].map((index) => {
+      const item = row(container, `session_${index}`);
+      const button = item?.querySelector('[data-sidebar="menu-sub-button"]');
+      return {
+        item: item?.getAttribute('style'),
+        button: button?.className,
+        lines: [...(button?.querySelectorAll('[data-session-line]') ?? [])].map(
+          (line) => `${line.getAttribute('data-session-line')}:${line.className}`,
+        ),
+      };
+    });
+    const top = (style: string | null | undefined) => style?.replace(/top: [^;]+;/, '');
+    for (const shape of shapes) {
+      expect(top(shape.item)).toBe(top(shapes[0]?.item));
+      expect(shape.button).toBe(shapes[0]?.button);
+      expect(shape.lines).toEqual(shapes[0]?.lines);
+    }
+  });
+
+  it('says a session’s state name once in the sidebar', async () => {
+    const container = await mount({ runs: [run('session_0', 'awaiting_user', first)] });
+    const sidebar = container.querySelector('[data-testid="app-sidebar"]') ?? container;
+    const name = messages.Presence.state.awaiting_user;
+    expect(label(container)).toEqual([name]);
+    expect(visibleText(sidebar)?.split(name).length).toBe(2);
+  });
 });
 
 // jsdom has no layout. Until the last row is mounted the guide is the submenu's
