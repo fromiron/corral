@@ -7,7 +7,11 @@ import {
 } from '@corral/contracts';
 import {
   type CorralRepository,
+  carriedDirectives,
+  carriedEntry,
+  nextQueuedEntry,
   queuedSessionCommandId,
+  type RunProjection,
   type SessionEntryAuto,
   type SessionEntryStart,
 } from '@corral/core';
@@ -15,7 +19,9 @@ import {
 // The server starts a work session's first queued request when a run of that session ends
 // in this process, or when a request is queued while the session has no open run
 // (features/composer-flow.md, "대기 요청과 넘겨받기"). Its start command is the entry's own,
-// so a screen starting the same entry reaches the same single run.
+// so a screen starting the same entry reaches the same single run. A person's directive its
+// target never read because the target succeeded first is carried to the front of the queue
+// and started even without autoStart.
 
 export type QueuedStartRequest = SessionEntryStart & {
   commandId: string;
@@ -42,7 +48,7 @@ export interface QueueRun {
 }
 
 export interface SessionQueueDeps {
-  repository: Pick<CorralRepository, 'getSession' | 'updateSessionEntry'>;
+  repository: Pick<CorralRepository, 'getSession' | 'updateSessionEntry' | 'addSessionEntry'>;
   runs(): readonly QueueRun[];
   start(request: QueuedStartRequest): Promise<QueuedStartOutcome>;
   /** Only the session and an error code; never a request body or a path. */
@@ -74,7 +80,7 @@ export function createSessionQueue(deps: SessionQueueDeps) {
     if (open(sessionId)) return;
     const session = await deps.repository.getSession(sessionId);
     if (!session || session.meeting) return;
-    const entry = session.entries.find((item) => item.state === 'queued');
+    const entry = nextQueuedEntry(session);
     if (!entry?.start || !(session.autoStart || entry.carriedFrom)) return;
     const commandId = queuedSessionCommandId(sessionId, entry);
     const throughRunId = conversationRun(deps.runs(), sessionId);
@@ -106,10 +112,27 @@ export function createSessionQueue(deps: SessionQueueDeps) {
     if (!result.ok) deps.log(sessionId, result.error);
   };
 
-  const schedule = (sessionId: string): Promise<void> => {
+  // The repository records a directive once, so a repeated report adds nothing.
+  const carry = async (sessionId: string, runId: string, projection: RunProjection) => {
+    const directives = carriedDirectives(projection);
+    if (directives.length === 0) return;
+    const session = await deps.repository.getSession(sessionId);
+    if (!session || session.meeting) return;
+    for (const directive of directives) {
+      if (session.entries.some((item) => item.carriedFrom === directive.directiveId)) continue;
+      const entry = carriedEntry(session, runId, directive);
+      if (!entry) continue;
+      const saved = await deps.repository.addSessionEntry(sessionId, entry);
+      if (!saved.ok) deps.log(sessionId, saved.error);
+    }
+    // Saved after the run's end may already have been reported: look at the queue again.
+    if (!open(sessionId)) await pass(sessionId);
+  };
+
+  const schedule = (sessionId: string, work = () => pass(sessionId)): Promise<void> => {
     const previous = passes.get(sessionId) ?? Promise.resolve();
     const next = previous
-      .then(() => pass(sessionId))
+      .then(work)
       .catch((error: unknown) => deps.log(sessionId, errorCode(error)));
     passes.set(sessionId, next);
     void next.finally(() => {
@@ -123,6 +146,13 @@ export function createSessionQueue(deps: SessionQueueDeps) {
     onRunEnded(runId: string): Promise<void> {
       const sessionId = deps.runs().find((run) => run.runId === runId)?.sessionId;
       return sessionId ? schedule(sessionId) : Promise.resolve();
+    },
+    /** Called when this process sees directives of a run expire unread. */
+    onDirectivesExpired(runId: string, projection: RunProjection): Promise<void> {
+      const sessionId = deps.runs().find((run) => run.runId === runId)?.sessionId;
+      return sessionId
+        ? schedule(sessionId, () => carry(sessionId, runId, projection))
+        : Promise.resolve();
     },
     /** Called after a queued entry is saved; a session with an open run waits for its end. */
     onEntryQueued(sessionId: string): Promise<void> {
