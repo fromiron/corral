@@ -241,7 +241,7 @@ SSE event는 `id: runSeq`, `event: domain`을 가진다. SnapshotSeq 이하 even
 
 receipt는 commandId, runId, status, acceptedSeq, target, requestedBoundary, relatedEventIds, error를 갖는다. status는 `accepted / queued / applied / rejected / superseded / expired / cancelled`다. 일부 target에만 적용하는 다중 대상 steer는 MVP에 제공하지 않아 부분 적용 모델을 미룬다.
 
-`steer` 명령의 payload는 `targetExecutionId`, `text`, `delivery`(`next_request` 또는 `interrupt`), 선택적 `attachments`(텍스트 첨부만)다. 대상의 어댑터가 끼어들기를 받지 못하면 Coordinator가 `next_request`로 낮추고 receipt의 `requestedBoundary`에 실제 경계를 남긴다. `submit_advice` 명령은 감독 실행 단위의 `advise` 도구만 보내며 사람의 화면은 보내지 않는다([감독](features/advisor.md)). 의미는 [Reins](features/reins.md)가 정한다.
+`steer` 명령의 payload는 `targetExecutionId`, `text`, `delivery`(`next_request` 또는 `interrupt`), 선택적 `attachments`(텍스트 첨부만)다. 대상의 어댑터가 끼어들기를 받지 못하거나 Coordinator가 그 실행 단위의 worker를 아직 넘겨받지 못했으면 Coordinator가 `next_request`로 낮추고 receipt의 `requestedBoundary`와 `directive.accepted`의 `delivery`에 실제 방식을 남긴다. `submit_advice` 명령은 감독 실행 단위의 `advise` 도구만 보내며 사람의 화면은 보내지 않는다([감독](features/advisor.md)). 의미는 [Reins](features/reins.md)가 정한다.
 
 steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준수 여부는 review로 별도 표시한다. 설정 patch의 applied는 policy commit이며, 미래 execution이 실제 사용한 patch.activated와 구분한다.
 
@@ -328,7 +328,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `tool.started` | effectId,toolCallId |
 | `tool.finished` | resultRef,error |
 | `model.request_prepared` | modelCallId,contextSnapshotId,profile,configRevision,reasoning(선택: 그 요청의 추론 판정 기록. 필드와 규칙은 [추론 판정](features/effort-routing.md#기록)이 정한다) |
-| `model.finished` | responseRef,rawUsage,normalizedUsage,certainty,interrupted(끼어들기로 끊긴 호출일 때만 true) |
+| `model.finished` | responseRef(완료된 확정 응답일 때만. 끼어들기로 끊겼거나 오류로 끝난 호출은 null이고 받은 글은 [부분 출력](#부분-모델-출력-읽기)으로만 읽는다),rawUsage,normalizedUsage,certainty,interrupted(끼어들기로 끊긴 호출일 때만 true) |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `usage.recorded` | usageId,kind(`auto_route`·`image`),profileId,inputTokens,outputTokens,costMicros. Run의 모델 호출 밖에서 쓴 사용량(팀 선택 호출, 이미지 생성)을 호출마다 기록한다. 모르는 값은 null이며 0으로 두지 않는다. 나중에 확인된 값은 같은 usageId로 null이던 값만 채운다. 시작하지 않은 이미지 호출은 기록하지 않는다 |
 | `limit.reached` | limitKind,used,max. `request_budget`은 executionId를 함께 남긴다 |

@@ -407,6 +407,12 @@ export interface CoordinatorDeps {
    * Runs a previous process left open and recovery closes are not reported.
    */
   onRunEnded?: (runId: string) => void;
+  /**
+   * Told once per commit, after it, when this process sees directives of the run expire unread,
+   * with the committed projection. A host reads what to carry over from it (features/reins.md,
+   * "읽히지 못한 지시의 넘겨받기").
+   */
+  onDirectivesExpired?: (runId: string, projection: RunProjection) => void;
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -730,6 +736,9 @@ export class Coordinator {
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly onRunEnded: ((runId: string) => void) | undefined;
+  private readonly onDirectivesExpired:
+    | ((runId: string, projection: RunProjection) => void)
+    | undefined;
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -786,6 +795,7 @@ export class Coordinator {
     this.gates = resolveGates(deps.admission);
     this.observers = deps.admission?.observers ?? [];
     this.onRunEnded = deps.onRunEnded;
+    this.onDirectivesExpired = deps.onDirectivesExpired;
     this.recover();
   }
 
@@ -3965,6 +3975,20 @@ export class Coordinator {
         void Promise.resolve().then(() => this.pump(subscriber));
       }
     }
+    const expired = this.onDirectivesExpired;
+    if (
+      expired &&
+      projection.directiveOrder.some(
+        (id) =>
+          projection.directives[id]?.status === 'expired' &&
+          before.directives[id]?.status !== 'expired',
+      )
+    )
+      void Promise.resolve()
+        .then(() => expired(run.runId, projection))
+        .catch(() => {
+          // The listener owns its failure; the directive's state is already committed.
+        });
     if (TERMINAL_RUN_STATUSES.has(projection.status)) {
       this.live.delete(run.runId);
       this.wake(run);
