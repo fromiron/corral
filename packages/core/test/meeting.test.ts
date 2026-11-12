@@ -4,6 +4,7 @@ import {
   type MeetingConfig,
   MeetingRound,
   type MeetingSelectionInput,
+  type MeetingSelectorResult,
   MeetingView,
   SECRETARY_ID,
 } from '@corral/contracts';
@@ -66,9 +67,21 @@ async function fixture(
     config?: MeetingConfig;
     random?: () => number;
     persistent?: boolean;
+    /** Chosen IDs, each given the same score so the policy keeps the selector's choice. */
     selectParticipants?: (input: MeetingSelectionInput) => Promise<string[] | null>;
+    /** A selector's raw scores, for tests about the policy itself. */
+    scoreParticipants?: (input: MeetingSelectionInput) => Promise<MeetingSelectorResult | null>;
   } = {},
 ) {
+  const { selectParticipants: chosen } = options;
+  const scoreParticipants =
+    options.scoreParticipants ??
+    (chosen
+      ? async (input: MeetingSelectionInput) => {
+          const ids = await chosen(input);
+          return ids && { scores: ids.map((participantId) => ({ participantId, score: 1 })) };
+        }
+      : undefined);
   const clock = new FakeClock();
   const seen: AgentStartInput[] = [];
   const scripted = new ScriptedAgentAdapter({
@@ -153,7 +166,7 @@ async function fixture(
       clock,
       newRoundId: () => `round_${++rounds}`,
       random: options.random ?? (() => 0.999),
-      ...(options.selectParticipants ? { selectParticipants: options.selectParticipants } : {}),
+      ...(scoreParticipants ? { selectParticipants: scoreParticipants } : {}),
       ...(options.persistent
         ? {
             continuation: (
@@ -315,8 +328,11 @@ describe('local meeting participant selection', () => {
   );
 
   it('persists explicit silence, replays it without judging, and starts no Run or rebuttal', async () => {
-    const select = vi.fn(async () => []);
-    const f = await fixture({ selectParticipants: select });
+    const select = vi.fn(async () => ({
+      scores: [{ participantId: 'tester', score: 0.9 }],
+      needsReply: 0,
+    }));
+    const f = await fixture({ scoreParticipants: select });
     expect(await f.send('silent', 'Do not reply yet.')).toMatchObject({ ok: true });
     await f.meetings.idle(f.sessionId);
     const view = (await f.meetings.view(f.sessionId))!;
@@ -430,6 +446,185 @@ describe('local meeting participant selection', () => {
     release(['tester']);
     expect(await sent).toMatchObject({ ok: false, error: 'conflict' });
     expect(f.seen).toHaveLength(0);
+  });
+});
+
+describe('meeting selection record and no recipients', () => {
+  const named = {
+    ...CONFIG,
+    participants: CONFIG.participants.map((person) =>
+      person.participantId === 'builder' ? { ...person, aliases: ['빌더'] } : person,
+    ),
+  };
+  const selectionOf = async (f: Awaited<ReturnType<typeof fixture>>, n: number) =>
+    (await f.meetings.view(f.sessionId))!.rounds[n]!.selection;
+
+  it('posts a message with no recipients: no answer, no model call, no selector, same on replay', async () => {
+    const select = vi.fn(async () => ['tester']);
+    const f = await fixture({ selectParticipants: select });
+    const none = {
+      kind: 'message' as const,
+      commandId: 'nobody',
+      mode: 'mock' as const,
+      text: 'Just noting this.',
+      recipients: 'none' as const,
+    };
+    const first = await f.meetings.send(f.sessionId, none);
+    expect(first).toMatchObject({ ok: true, outcome: 'started' });
+    await f.meetings.idle(f.sessionId);
+    const view = (await f.meetings.view(f.sessionId))!;
+    expect(MeetingView.safeParse(view).success).toBe(true);
+    expect(view.rounds).toHaveLength(1);
+    expect(view.rounds[0]).toMatchObject({
+      kind: 'all',
+      message: 'Just noting this.',
+      participantIds: [],
+      answers: [],
+      active: false,
+      selection: { strategy: 'none' },
+    });
+    expect(view.rounds[0]!.selection!.scores).toBeUndefined();
+    expect(f.seen).toHaveLength(0);
+    expect(f.coordinator.listRuns()).toHaveLength(0);
+    expect(select).not.toHaveBeenCalled();
+    expect(await f.meetings.send(f.sessionId, none)).toEqual(first);
+    expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(1);
+    // The same command without "none" is a different request.
+    expect(await f.send('nobody', 'Just noting this.')).toMatchObject({
+      ok: false,
+      error: 'conflict',
+    });
+    expect(f.seen).toHaveLength(0);
+  });
+
+  it('refuses no recipients together with a recipient', async () => {
+    const f = await fixture();
+    for (const request of [
+      { text: 'Noted.', mentions: ['builder'] },
+      { text: '@Builder noted.' },
+      { text: 'Noted.', mentions: [SECRETARY_ID] },
+    ])
+      expect(
+        await f.meetings.send(f.sessionId, {
+          kind: 'message',
+          commandId: 'both',
+          mode: 'mock',
+          recipients: 'none',
+          ...request,
+        }),
+      ).toMatchObject({ ok: false, error: 'invalid' });
+    expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(0);
+  });
+
+  it('a later message after no recipients still gets an answer', async () => {
+    const f = await fixture({ selectParticipants: async () => ['tester'] });
+    await f.meetings.send(f.sessionId, {
+      kind: 'message',
+      commandId: 'nobody',
+      mode: 'mock',
+      text: 'Noted.',
+      recipients: 'none',
+    });
+    await f.meetings.idle(f.sessionId);
+    await f.send('next', 'Now what?');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Tester']);
+  });
+
+  it('records a composer choice as explicit and a typed mention as mention', async () => {
+    const f = await fixture({ selectParticipants: async () => ['tester'] });
+    await f.send('chosen', 'Your view?', ['builder']);
+    await f.meetings.idle(f.sessionId);
+    await f.send('typed', '@Architect your view?');
+    await f.meetings.idle(f.sessionId);
+    await f.send('minutes', 'Summarize.', [SECRETARY_ID]);
+    await f.meetings.idle(f.sessionId);
+    expect(await selectionOf(f, 0)).toMatchObject({ strategy: 'explicit' });
+    expect(await selectionOf(f, 1)).toMatchObject({ strategy: 'mention' });
+    expect(await selectionOf(f, 2)).toMatchObject({ strategy: 'explicit' });
+    for (const n of [0, 1, 2]) {
+      const selection = (await selectionOf(f, n))!;
+      expect(selection.scores).toBeUndefined();
+      expect(selection.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('records an address-rule choice as address', async () => {
+    const select = vi.fn(async () => ['tester']);
+    const f = await fixture({ config: named, selectParticipants: select });
+    await f.send('called', '빌더야 어떻게 생각해?');
+    await f.meetings.idle(f.sessionId);
+    expect(await selectionOf(f, 0)).toMatchObject({ strategy: 'address' });
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('records the selector scores the policy kept', async () => {
+    const f = await fixture({
+      scoreParticipants: async () => ({
+        scores: [
+          { participantId: 'architect', score: 0.1 },
+          { participantId: 'builder', score: Number.NaN },
+          { participantId: 'tester', score: 0.6 },
+          { participantId: 'foreign', score: 0.9 },
+        ],
+      }),
+    });
+    await f.send('scored', 'How would you reproduce it?');
+    await f.meetings.idle(f.sessionId);
+    const view = (await f.meetings.view(f.sessionId))!;
+    expect(view.rounds[0]!.participantIds).toEqual(['tester']);
+    expect(view.rounds[0]!.selection).toMatchObject({
+      strategy: 'selector',
+      scores: [
+        { participantId: 'architect', score: 0.1 },
+        { participantId: 'tester', score: 0.6 },
+      ],
+    });
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Tester']);
+  });
+
+  it('records the fallback when the selector has no judgement, and when there is no selector', async () => {
+    const judged = await fixture({ selectParticipants: async () => null });
+    await judged.send('fallback', 'Compare your views.');
+    await judged.meetings.idle(judged.sessionId);
+    const fallback = (await selectionOf(judged, 0))!;
+    expect(fallback.strategy).toBe('fallback');
+    expect(fallback.scores).toBeUndefined();
+    const plain = await fixture();
+    await plain.send('everyone', 'Compare your views.');
+    await plain.meetings.idle(plain.sessionId);
+    expect(await selectionOf(plain, 0)).toMatchObject({ strategy: 'fallback' });
+    expect(plain.seen).toHaveLength(3);
+  });
+
+  it('records a mention that a participant wrote as mention', async () => {
+    const f = await fixture({
+      reply: (input) => (input.role.name === 'Builder' ? 'Over to you, @Tester.' : 'Agreed.'),
+    });
+    await f.send('chosen', 'Your view?', ['builder']);
+    await vi.waitFor(async () =>
+      expect((await f.meetings.view(f.sessionId))!.rounds).toHaveLength(2),
+    );
+    await f.meetings.idle(f.sessionId);
+    expect(await selectionOf(f, 1)).toMatchObject({ strategy: 'mention' });
+  });
+
+  it('keeps the previous speaker continuing when the selector says no reply is needed', async () => {
+    const f = await fixture({
+      scoreParticipants: async () => ({
+        scores: [
+          { participantId: 'builder', score: 0.8 },
+          { participantId: 'tester', score: 0.2 },
+        ],
+        needsReply: 0.1,
+      }),
+    });
+    await f.send('first', 'Your view?', ['builder']);
+    await f.meetings.idle(f.sessionId);
+    await f.send('second', 'And then?');
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen.map((input) => input.role.name)).toEqual(['Builder', 'Builder']);
+    expect(await selectionOf(f, 1)).toMatchObject({ strategy: 'selector' });
   });
 });
 

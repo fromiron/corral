@@ -34,6 +34,33 @@ export interface MeetingSelectionInput {
   history: { id?: string; participantId: string | null; text: string }[];
 }
 
+/** One participant's selector score; higher fits the message better. */
+export const MeetingSelectionScore = z.strictObject({
+  participantId: Identifier,
+  score: z.number(),
+});
+export type MeetingSelectionScore = z.infer<typeof MeetingSelectionScore>;
+
+/**
+ * What a selector returns: a score per participant and, optionally, how much the message needs a
+ * reply at all. Who answers, and how many, is the selection policy's call, not the selector's.
+ */
+export interface MeetingSelectorResult {
+  scores: { participantId: string; score: number }[];
+  needsReply?: number;
+}
+
+/** How a round's recipients were chosen, kept with the round. */
+export const MeetingSelection = z.strictObject({
+  /** explicit: chosen in the composer; mention: @mention; address: the message's address rules;
+   * selector: selector scores and the policy; fallback: the fallback rule; none: no recipients. */
+  strategy: z.enum(['explicit', 'mention', 'address', 'selector', 'fallback', 'none']),
+  /** The selector's usable scores, when it was consulted. */
+  scores: z.array(MeetingSelectionScore).max(6).optional(),
+  reason: z.string().min(1).max(500),
+});
+export type MeetingSelection = z.infer<typeof MeetingSelection>;
+
 export const MeetingConfig = z
   .strictObject({
     version: z.literal(1),
@@ -95,6 +122,8 @@ const MeetingRoundFields = z.strictObject({
   rebuttalNo: z.int().min(1).nullable(),
   participantIds: z.array(Identifier).max(6),
   answers: z.array(MeetingAnswer).max(6),
+  /** How the recipients were chosen. Absent in records saved before it was kept. */
+  selection: MeetingSelection.optional(),
   createdAt: z.string(),
   stoppedAt: z.string().nullable(),
 });
@@ -243,6 +272,8 @@ export const MeetingRoundRequest = z.discriminatedUnion('kind', [
     attachments: TextAttachments.optional(),
     /** Participant IDs or the secretary chosen in the composer, besides `@name` in the text. */
     mentions: z.array(Identifier).max(7).optional(),
+    /** `none` posts the message without asking anyone to reply. */
+    recipients: z.literal('none').optional(),
   }),
   z.strictObject({
     kind: z.literal('rebuttal'),
