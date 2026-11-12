@@ -708,6 +708,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세가 위 브리프보다 우선한다.
 
 - **B4·U5·B5 (시작 요청 스냅샷).** 대기 항목만으로는 서버가 시작 요청을 만들 수 없다(모델·추론·팀 선택이 브라우저에만 있다). 세션 항목이 `start`(시작 요청에서 `commandId`·`brief`·`throughRunId`·`references`를 뺀 것)를 갖는다. B4가 필드와 서버 사용을, U5가 화면에서 새 요청과 다음 요청을 기록할 때 `start`를 채우는 일을, B5가 넘겨받은 항목에 대상 Run을 시작한 항목의 `start`를 복사하는 일을 맡는다. 그 항목에 `start`가 없으면 넘겨받지 않는다.
+- **B7 (자동 압축의 보고).** 자동 압축도 수동과 같은 단계(`started` 뒤 `completed`·`failed`·`cancelled`·`skipped`)를 보고하므로 이벤트는 단계마다 하나다. 자동은 보고에 `trigger: 'automatic'`을 싣고 이벤트 envelope의 commandId는 비운다.
+- **B9 (§9 표 테스트).** `apps/server/test/server.test.ts`의 제품 계약 §9 표 테스트에 무인 실행 예산·감독 예산 행이 코드 기본값과 같다는 단언을 더한다.
 - **B9·A5 (감독의 예산).** 감독은 예산(기본 60)을 다 쓰면 승인을 묻지 않고 끝난다. 계속 여부 승인은 팀 역할(400)과 동적 하위 실행(200)에만 있다. 승인의 kind는 `request_budget`이다.
 - **A1·A3 (조언의 전달).** 전달 방식의 이름은 `next_request`, `interrupt`, `preserve`다(`aside`, `steer`는 없다). `nit`과 `concern`은 `next_request`, `blocker`는 `interrupt`(대상이 못 받으면 `next_request`), 대상이 끝났으면 `nit`은 버리고 나머지는 `preserve`다. 대상이 사람을 기다리는 경우는 따로 다루지 않고 지시의 일반 규칙대로 결정 뒤에 읽힌다. `advice.suppressed`는 조언의 글을 싣지 않는다.
 - **A1·A5 (검토).** 검토 간격의 기본값은 3이다. 한 번의 검토는 실행 단위 하나의 기록만 다루므로 `advise` 도구는 대상을 인자로 받지 않는다. 지켜보던 실행 단위가 끝나면 마지막 검토를 한 번 하고, 그동안 Run은 끝나지 않는다. 감독의 Task는 Run의 필수 작업이 아니다.
