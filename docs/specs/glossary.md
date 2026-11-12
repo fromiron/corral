@@ -29,7 +29,7 @@
 | 프로젝트의 원본 폴더·작업 사본 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
 | 경로로 파일 찾아 열기 | Quick open / 빠른 열기 | `quickOpen` | 파일 검색(내용 검색과 구분) |
 | 세션 검사 명령의 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
-| 실행 일시정지·재개·취소 | Active run controls / 진행 중 실행 제어 | `DockRunControls` | — |
+| 실행 상태와 일시정지·재개·중지를 한 줄로 보이는 컴포저 위의 줄 | Activity bar / 활동 바 | `ActivityBar` | 실행 조작 알약, 한 줄 상태, 진행 중 실행 제어 |
 | 앱 전체의 색 구성 선택 | Appearance / 화면 테마 | `theme`(밝기), `palette`(이름 있는 테마) | 스킨, 컬러 스킴 |
 | Corral이 함께 싣는 색 구성 | Built-in theme / 내장 테마 | `builtin:<id>` | 프리셋, 기본 테마(시스템·라이트·다크와 구분) |
 | 이 기기에서 만든 색 구성 | Personal theme / 개인 테마 | `custom:<id>` | 커스텀 테마, 사용자 정의 테마, 내 테마 |
@@ -42,6 +42,19 @@
 | task·미리보기를 다루는 창 | Tasks & preview / 작업·미리보기 | 패널 `tools`, 슬래시 `/preview` | Running commands & preview, 도구 |
 | 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
+| 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 지시(대화 화면에서), Instruction, Steer |
+| 흐르는 응답을 끊고 바로 실리는 전송 | Interrupt / 끼어들기 | 지시 `delivery: interrupt` | 중단(실행을 끝내는 것과 구분), 강제 전달 |
+| 진행 중인 실행이 끝난 뒤 시작할 전송 | Next request / 다음 요청 | intent `queue`, 항목 state `queued` | 큐, 예약 |
+| 합류·끼어들기가 향하는 실행 단위 | Target / 대상 | `targetExecutionId` | 수신자(회의의 수신자와 구분) |
+| 그 메시지를 실은 요청이 시작됨 | Read / 읽힘 | 지시 상태 `delivered` | 전달됨(대화 화면에서), 반영됨, 적용됨 |
+| 읽히지 못한 합류 메시지를 서버가 대기 요청으로 바꾸는 일 | Carried over / 넘겨받음 | `carriedFrom` | 재전송(사람이 누르는 다시 보내기와 구분) |
+| 타임라인 끝의 응답 자리 | Needed now / 지금 필요한 것 | `PendingTray` | 대응 필요 알림, 응답 영역(실행 기록에서) |
+| 실행·실행 단위·세션이 화면에 보이는 상태 | — (낱말은 [표시 상태](features/presence.md)의 표) | `presence`, 메시지 `Presence` | — |
+| 다른 역할을 지켜보다가 조언하는 역할 | Advisor / 감독 | `invocation: observer` | 워치독, 리뷰어(검토 Decision과 구분), 감시자 |
+| 감독이 대상에게 하는 말 | Advice / 조언 | `advice`, 지시 `origin: advice` | 경고, 피드백 |
+| 조언의 심각도 | Note / 참고, Concern / 우려, Blocker / 중단 권고 | `nit`, `concern`, `blocker` | — |
+| 답변의 일부를 골라 요청에 싣는 일 | Quote / 인용 | 첨부 출처 `reply`, 단축키 `reply.quote` | 발췌, 스니펫 |
+| 사람이 계속할지 정하는 응답 | Continue? / 계속 여부 | 승인 kind `loop_cap`·`request_budget`, 무진전, 회의 `hold` | 한도 초과(끝난 것처럼 읽힘) |
 
 기본 프로젝트의 표시 이름은 예약 선택기와 프로젝트 탐색에서 같은 지역화 값을 사용한다. 실행 비교의 복귀 링크는 실제 이동 대상인 프로젝트 홈을 가리킨다. 반영 뒤 외부에서 바뀐 파일을 되돌리지 않은 결과는 변경 시점과 보존한 이유를 함께 설명한다.
 

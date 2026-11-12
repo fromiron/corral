@@ -2622,7 +2622,9 @@ export class Coordinator {
     if (
       Object.values(run.projection.compactions ?? {}).some(
         (item) =>
-          item.executionId === execution.executionId && ['queued', 'started'].includes(item.phase),
+          item.trigger !== 'automatic' &&
+          item.executionId === execution.executionId &&
+          ['queued', 'started'].includes(item.phase),
       )
     )
       return refuse('CAPABILITY_DENIED', 'compaction is already pending');
@@ -8261,9 +8263,23 @@ export class Coordinator {
       reportCompaction: async (raw) => {
         if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
         const report = CompactionReport.parse(raw);
-        const previous = run.projection.compactions?.[report.commandId];
+        const automatic = report.trigger === 'automatic';
+        const recorded = run.projection.compactions?.[report.commandId];
+        // An automatic compaction has no command: its record starts with its own `started`.
+        const previous: typeof recorded =
+          automatic && !recorded && report.phase === 'started'
+            ? {
+                commandId: report.commandId,
+                trigger: 'automatic',
+                executionId,
+                attemptNo: input.attemptNo,
+                phase: 'queued',
+                modelCallIds: [],
+              }
+            : recorded;
         if (
           !previous ||
+          (previous.trigger === 'automatic') !== automatic ||
           previous.executionId !== executionId ||
           previous.attemptNo !== input.attemptNo
         )
@@ -8302,7 +8318,7 @@ export class Coordinator {
         this.commit(run, [
           {
             type: 'context.compaction_changed',
-            commandId: report.commandId,
+            ...(automatic ? {} : { commandId: report.commandId }),
             executionId,
             payload: { ...report, executionId, attemptNo: input.attemptNo },
           },

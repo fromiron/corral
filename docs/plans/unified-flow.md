@@ -10,12 +10,12 @@
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
-| S0 | 명세 변경(오케스트레이터) | 대기 |
-| 백본 | B1–B9 | 대기 |
-| 화면 | K1, U1–U14 | 대기 |
+| S0 | 명세 변경(오케스트레이터) | 완료 |
+| 백본 | B1–B10 | 진행 중(B1·B7·B8 병합) |
+| 화면 | K1, U1–U14 | 진행 중(K1 병합) |
 | 회의 | M1–M4 | 대기 |
 | 감독 | A1–A9 | 대기 |
-| 검증 | V1(기준선), V2(최종 장면) | 대기 |
+| 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 수정) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
 
@@ -33,7 +33,7 @@
 | 6 | 여러 역할이 동시에 일할 때 한 줄로 파악되고, 조작 두 번 안에 특정 역할에 합류한다 | 장면 ② |
 | 7 | 답변 일부를 골라 다음 입력에 싣고, 보낸 뒤 원문 위치로 돌아갈 수 있다 | 장면 ⑤ |
 | 8 | ①~⑤를 키보드만으로 할 수 있다 | 장면별 키보드 실행 |
-| 9 | 밀도: 1280×800에서 고정 영역(상단 줄 + 쉬는 컴포저)이 180px 이하, 본문 열 720–760px | 측정기 |
+| 9 | 밀도: 1280×800에서 상단 줄 + 쉬는 컴포저(활동 바·입력 한 줄·도구 줄·세션 누계 줄)가 200px 이하, 본문 열 720–760px. V1 기준선은 265px과 680px이다 | 측정기 |
 | 10 | 킷 언어만 쓴다. 토큰 밖의 색·간격·반경이 없고 모션은 킷 토큰만 쓰며 reduced motion에서 읽힌다 | diff 검토, 장면 reduced motion |
 
 ## 2. 결정 사항
@@ -50,7 +50,7 @@
 
 **D5. 상태 판정은 함수 하나가 한다.** `packages/react/src/run/presence.ts`가 실행·실행 단위·세션의 표시 상태를 정하고 열네 곳이 이것만 쓴다. `pausing`은 "일시정지하는 중", `cancelling`은 "중지하는 중"으로 따로 보인다(접수와 적용을 구분). 문구는 `Presence` 네임스페이스 하나에 둔다. [용어집](../specs/glossary.md) "남은 불일치"의 상태 어휘 항목이 이것으로 닫힌다.
 
-**D6. 작업 중에서 벗어날 때 2초 유예한다.** 실행이 끝나고 다음 실행이 곧 이어질 때 행이 묶음을 오가는 것을 막는다. 응답 대기와 실패는 유예 없이 바로 보인다. 끝난 지 60초가 넘은 실행에는 유예가 없다.
+**D6. 작업 중에서 벗어날 때 2초 유예한다.** 실행이 끝나고 다음 실행이 곧 이어질 때 행이 묶음을 오가는 것을 막는다. 응답 대기와 실패, 사람이 누른 일시정지·중지는 유예 없이 바로 보인다. 유예는 실행이 끝난 시각부터 2초이고, 끝난 지 2초가 넘은 실행에는 없다.
 
 **D7. 실행 상태 줄은 컴포저 위 활동 바 하나다.** 상단 줄의 실행 알약(`DockRunControls`), 컴포저 머리의 전송 방식·대상 선택, 컴포저 위 행동 배너, 대화 위 유실 알림을 없애고 활동 바가 맡는다. 일시정지·재개·중지는 활동 바를 펼친 곳과 입력이 비었을 때의 보내기 버튼 자리에 둔다. [workbench.md](../specs/workbench.md) 154행의 "Run 전체 중지는 상단 바의 실행 조작에서"를 바꾼다. 활성 실행 단위가 하나면 중지에 확인을 묻지 않는다. 둘 이상을 함께 멈출 때만 확인한다.
 
@@ -339,7 +339,7 @@ S0에서 오케스트레이터가 직접 쓴다. 판단이 드는 일이라 빌�
 | `workbench.md` | 345–361 | 묶음 판정은 `presence.md`를 따른다. 유예 규칙 링크 |
 | `chat-widgets-contract.md` | 11, 20, 27, 29, 39, 230 | 한 줄 상태를 활동 바로, 상단 줄 배치에서 실행 조작 제거, 표시 우선순위를 `presence.md`로 |
 | `features/reins.md` | §2, §7 | 전달 방식 `interrupt`, 넘겨받기, 조언이 지시로 들어오는 경우의 행위자 |
-| `features/inbox.md` | 묶음 표 | 검토 묶음에 `advice`, 응답 대기에 `limit`(계속) |
+| `features/inbox.md` | 묶음 표 | 검토 묶음에 `advice`. 계속 여부 승인은 기존 `decision` 항목이다 |
 | `product-contract.md` | 283, 289–299, §7.2 | D11의 두 장치, 한도 표에 무인 실행 예산, 능력 연결에 `advise` |
 | `harness-contract.md` | 47 | "모델 호출 상한은 없다"를 D11로 |
 | `features/local-intelligence.md` | 63–75 | 점수와 정책의 분리, 선택 기록, 무응답 조건, 연쇄 확인 |
@@ -386,6 +386,7 @@ unverified: [ … ]
 - 지우기로 한 형식은 옮기지 않고 지운다(개발 중에는 마이그레이션을 두지 않는다).
 - 화면 태스크는 `apps/server/resources/builtin/design/skills/`의 `review-components`, `review-motion`, `check-accessibility`와 [DESIGN.md](../../DESIGN.md)의 킷 우선 규칙을 따른다.
 - 마지막 보고: 바꾼 파일, 실행한 명령과 결과, 통과하지 못한 체크.
+- 브리프를 읽은 뒤 §8 끝의 "명세가 정한 차이"에서 자기 태스크 줄을 확인한다. 그 줄과 명세가 브리프보다 우선한다.
 
 **빌더 작업 환경.**
 - 작업 사본은 빌더 전용 git worktree다. 원본 체크아웃(`/home/bell/Toys/corral`)과 다른 worktree·브랜치는 건드리지 않는다.
@@ -411,7 +412,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 레인은 같은 파일을 고치는 일을 한 줄로 세운 것이다. 레인 안은 순서대로, 레인끼리는 동시에 돈다.
 
 - 레인 K(계약·Coordinator·worker): B7 → B3 → B6 → B5 → B9 → A1 → A2 → A5 → A9
-- 레인 P(재시도·대기열·회의·순수 코어): B8 → B4 → M1 → M2 → B2 → A3 → A4 → A6
+- 레인 P(재시도·대기열·회의·순수 코어): B8 → B4 → B10 → M1 → M2 → B2 → A3 → A4 → A6
 - 레인 U(대화 화면): V1 → K1 → U1 → U2 → U3 → U4 → U5 → U6 → U7 → U9 → U11 → M3 → M4 → A8 → U13 → V2
 - 레인 L(목록·주변 화면): B1 → U8 → U10 → U12 → A7 → U14
 
@@ -423,33 +424,34 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 
 | ID | 이름 | 선행 | 주 대상 | 상태 |
 |---|---|---|---|---|
-| S0 | 명세 변경 | — | `docs/specs` | 대기 |
-| V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 대기 |
-| B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 대기 |
+| S0 | 명세 변경 | — | `docs/specs` | 완료 |
+| V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 재검토 중 |
+| B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
 | B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 대기 |
-| B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 대기 |
-| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 대기 |
+| B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 리뷰 중 |
+| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 수정 중 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 대기 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 대기 |
-| B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 대기 |
-| B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 대기 |
+| B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
+| B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 대기 |
-| K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 대기 |
-| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 대기 |
+| B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 리뷰 중 |
+| K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
+| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 리뷰 중 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 대기 |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 대기 |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
-| U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 대기 |
+| U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 구현 중 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 대기 |
 | U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 대기 |
-| U12 | 확인 필요: 같은 카드, 처리 후 다음 | U4 | `pages/InboxPage.tsx` | 대기 |
+| U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 대기 |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
 | U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
-| M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 대기 |
+| M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 구현 중 |
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 대기 |
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 대기 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
@@ -534,6 +536,13 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 구현: `RunLimits.requestBudget`(역할 400·자식 200·감독 60을 기본으로 주는 구조, 패치 50–2000 또는 0). 실행 단위별 모델 요청 수를 세고, 대화에 직접 답하는 실행은 세지 않는다. 예산에서 마무리 지시, 1.5배에서 제출 지시(둘 다 시스템이 낸 지시로 기록), 그 뒤 5회째 요청에서 게이트가 `require_approval`을 돌려 `limit.reached(kind: request_budget)`와 공유 승인을 만든다. 승인이면 예산을 한 번 더 주고, 거절이면 무진전 거절과 같은 경로로 멈춘다.
 - 완료 체크: `packages/core/test/`에 세 단계 각각, 대화 실행 제외, 패치로 끄기, 승인 뒤 계속. `pnpm contracts:check`.
 
+### B10 응답 중간 끊김의 재시도 분류
+- 명세: `llm-runtime.md` 15행(D13). B8 리뷰에서 나온 태스크다. 지금 분류로는 200 응답 뒤 중간에 끊긴 스트림이 대부분 `UNKNOWN`이 되어 B8의 판정이 실제로는 쓰이지 않는다.
+- 대상: `P/ported/dsh/retry.ts`(`providerFailure`), `P/model-bridge.ts`(184행 근처의 오류 분류), `apps/server/src/models/registry.ts`(오류를 분류해 worker에 넘기는 곳), `P/request-retry.ts`, 각 테스트.
+- 구현: 응답 이벤트가 하나라도 온 뒤 연결이 끊겨 끝난 스트림(`terminated`, `premature close`, `ECONNRESET`, `socket hang up`, `other side closed`)과 응답 중에 온 공급자 과부하 알림(`overloaded`, 529)을 일시적 오류로 분류한다. 응답 이벤트 없이 끊긴 연결은 지금처럼 `UNKNOWN`이다(전달 여부를 모르는 요청). 사용자 취소는 지금처럼 `CANCELLED`다. 분류는 원문을 볼 수 있는 쪽에서 하고 원문은 지금처럼 남기지 않는다. 재시도 여부는 B8의 판정을 그대로 탄다.
+- 하지 말 것: 재시도 횟수·대기 변경, 응답 시작 전 끊김의 재시도. 실패 코드 enum을 늘려 계약(`packages/contracts`)을 바꿔야 하면 멈추고 보고.
+- 완료 체크: 생각만 나온 뒤 `terminated` → 재시도, 본문 뒤 `terminated` → 재시도 안 함(끊긴 출력으로 남음), 응답 이벤트 없이 `terminated` → 재시도 안 함, 취소 → 재시도 안 함, 응답 중 과부하 알림 → 재시도. worker 경로(host가 분류해 넘긴 값)와 host 직접 경로 둘 다.
+
 ### K1 킷 `DecisionInbox` 이식
 - 대상: `/home/bell/Toys/design_kit/components/agent/decision-inbox.tsx`를 `K/components/agent/decision-inbox.tsx`로, `K/index.ts` export, `K/README.md`의 적응 기록과 지문, 스토리 `R/components/DecisionInbox.stories.tsx`.
 - 구현: 원본을 그대로 들이고 import 경로와 문구 주입만 Corral 방식에 맞춘다.
@@ -612,11 +621,11 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 구현: 답변 본문 안에서 선택이 끝나면 선택 위에 작은 툴바를 띄운다(인용, 단축키 `Alt Q`). 누르면 U10의 브리지로 칩을 붙이고 입력에 포커스를 준다. 선택이 여러 답변에 걸치면 툴바를 띄우지 않는다. 보낸 칩을 누르면 그 답변으로 스크롤하고 오프셋으로 구절을 찾아 잠깐 강조한다. 오프셋이 맞지 않으면 앞뒤 문맥으로 찾고, 못 찾으면 칩이 "원문 위치를 찾지 못함"을 보인다. 툴바는 본문 흐름 밖에 떠서 줄을 밀지 않는다.
 - 완료 체크: 선택 → 칩, 걸친 선택 무시, 오프셋 복원·문맥 복원·실패 세 경우 테스트. 장면 ⑤ 키보드 실행과 이동 1px 이하.
 
-### U12 확인 필요: 같은 카드, 처리 후 다음
+### U12 확인 필요: 같은 응답 영역, 계속 여부 카드
 - 명세: `features/inbox.md`.
 - 대상: `S/pages/InboxPage.tsx`(638행 부근)와 테스트.
-- 구현: `decision` 항목은 U4와 같은 `RunResponseArea`를 쓴다(이미 그렇다면 그대로). 답한 뒤 같은 묶음의 다음 항목을 고르고 주소의 `item`을 갱신한다. 다음 항목이 없으면 비운다. 답한 항목의 "실행 열기"는 유지한다.
-- 완료 체크: 답한 뒤 다음 항목이 선택되는 테스트, 뒤로가기로 이전 항목 복원.
+- 구현: `decision` 항목은 U4의 지금 필요한 것과 같은 `RunResponseArea`를 쓴다(이미 그렇다면 그대로). 계속 여부 승인(`loop_cap`, 무진전, `request_budget`)이 같은 카드로 보이고 답할 수 있어야 한다. 답한 뒤의 동작은 지금 명세 그대로다: 포커스가 다음 항목으로 가고, 답한 항목의 상세는 "실행 열기"를 유지하며, 다른 항목을 자동으로 고르지 않는다.
+- 완료 체크: 확인 필요와 대화가 같은 응답 컴포넌트를 쓰는 테스트(가져오기 경로 단언), 계속 여부 카드에 답하는 테스트, 기존 확인 필요 테스트 통과.
 
 ### U13 중복·사문 제거
 - 대상: `W/session/composer/send.ts`의 `explain` 분기와 `packages/client/src`의 `startExplain`(다른 호출자가 없을 때만), `W/RunStatusCards.tsx`(273–315행의 압축), `S/pages/SessionPage.context.test.tsx`(411–434행).
@@ -702,6 +711,32 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 구현: 세션 설정 `advisor: { modelProfile } | null`. 켜면 대화 실행의 정의에 감독 노드와 `advise` 연결을 더한다. 새 요청부터 적용하고 진행 중인 실행의 snapshot은 바꾸지 않는다. 도구 줄의 팀 메뉴 옆에서 켜고 끈다.
 - 완료 체크: 설정이 다음 실행의 정의에 반영됨, 진행 중 실행은 그대로, 끄면 사라짐.
 
+### 명세가 정한 차이
+
+S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세가 위 브리프보다 우선한다.
+
+- **B4·U5·B5 (시작 요청 스냅샷).** 대기 항목만으로는 서버가 시작 요청을 만들 수 없다(모델·추론·팀 선택이 브라우저에만 있다). 세션 항목이 `start`(시작 요청에서 `commandId`·`brief`·`throughRunId`·`references`를 뺀 것)를 갖는다. B4가 필드와 서버 사용을, U5가 화면에서 새 요청과 다음 요청을 기록할 때 `start`를 채우는 일을, B5가 넘겨받은 항목에 대상 Run을 시작한 항목의 `start`를 복사하는 일을 맡는다. 그 항목에 `start`가 없으면 넘겨받지 않는다.
+- **V1 (측정기).** 추적 대상이 없으면 최상위 값은 0이 아니라 `null`이고 표본 수를 함께 낸다. 항목은 식별 값(`data-chat-item` 값)으로 따라가 같은 값의 새 노드로 바뀌어도 이어서 재고, 사라진 항목은 결과에 따로 적는다. 세로와 가로 이동을 모두 잰다. 입력 줄과 끝 간격의 첫 표본은 `start()` 안에서 읽는다. 전이 구간은 붙잡아 둔 응답으로 만들고 구간 사이에 빈틈을 두지 않는다. `e2e/flow`는 `playwright.flow.config.ts`로만 돌고 확장 구성(`playwright.extended.config.ts`)에서는 뺀다.
+- **B8 (초과 복구와 취소).** 컨텍스트 초과 복구도 같은 판정을 쓴다(생각·공백만 나왔을 때만 강제 압축 뒤 한 번 다시 보냄). 붙잡은 이벤트의 취소 경계 두 가지(붙잡은 중 취소, 재시도 대기 중 취소)를 테스트로 고정한다.
+- **B1 (유예).** 유예는 `starting`·`working`에서 `succeeded`·`cancelled`로 바뀔 때만 있고 실행이 끝난 시각부터 2초다(끝난 시각을 모르면 변화를 처음 본 시각부터). 60초 규칙은 없다. 유예가 끝나는 시각은 다시 물어도 밀리지 않는다. 열린 요청도 승인 대기도 없는 `awaiting_user` Run의 필요한 것은 `continue`다.
+- **B3 (B7이 남긴 반례).** 같은 파일을 고치는 김에 `packages/adapter-pi/test/pi-adapter.test.ts`에 자동 압축이 실패하면 `started`·`failed` 이벤트가 한 번씩 나오고 실행이 예전처럼 실패로 끝나는 테스트를 더한다(자동 실패를 다시 던지는 줄이 빠지면 실패해야 한다).
+- **B7 (자동 압축의 보고).** 자동 압축도 수동과 같은 단계(`started` 뒤 `completed`·`failed`·`cancelled`·`skipped`)를 보고하므로 이벤트는 단계마다 하나다. 자동은 보고에 `trigger: 'automatic'`을 싣고 이벤트 envelope의 commandId는 비운다.
+- **B9 (§9 표 테스트).** `apps/server/test/server.test.ts`의 제품 계약 §9 표 테스트에 무인 실행 예산·감독 예산 행이 코드 기본값과 같다는 단언을 더한다.
+- **B4 (리뷰에서 정한 것).** `carriedFrom`은 HTTP로 받지 않는다(서버만 적는다). 항목의 권한 방식과 `start`의 권한 방식이 다르면 저장을 거절한다. 서버가 쓰는 `throughRunId`는 화면과 같은 규칙으로 고른다(같은 commandId의 payload가 같아야 한다). 대기 항목이 더해질 때 열린 Run이 없으면 대기열을 바로 살핀다. `start`는 시작 요청에서 `commandId`·`brief`·`throughRunId`·`references`·`sessionId`·`schemaVersion`을 뺀 것이다.
+- **B4 (남긴 한계).** 서버가 Run을 시작한 뒤 항목에 기록하기 전에 죽으면 그 항목은 대기로 남고, 다음 패스에서 같은 commandId가 충돌해 뒤 항목을 막는다. 사람이 그 항목을 편집하거나 지우면 풀린다. 드문 경우라 복구 코드를 넣지 않았다.
+- **B9·A5 (감독의 예산).** 감독은 예산(기본 60)을 다 쓰면 승인을 묻지 않고 끝난다. 계속 여부 승인은 팀 역할(400)과 동적 하위 실행(200)에만 있다. 승인의 kind는 `request_budget`이다.
+- **A1·A3 (조언의 전달).** 전달 방식의 이름은 `next_request`, `interrupt`, `preserve`다(`aside`, `steer`는 없다). `nit`과 `concern`은 `next_request`, `blocker`는 `interrupt`(대상이 못 받으면 `next_request`), 대상이 끝났으면 `nit`은 버리고 나머지는 `preserve`다. 대상이 사람을 기다리는 경우는 따로 다루지 않고 지시의 일반 규칙대로 결정 뒤에 읽힌다. `advice.suppressed`는 조언의 글을 싣지 않는다.
+- **A1·A5 (검토).** 검토 간격의 기본값은 3이다. 한 번의 검토는 실행 단위 하나의 기록만 다루므로 `advise` 도구는 대상을 인자로 받지 않는다. 지켜보던 실행 단위가 끝나면 마지막 검토를 한 번 하고, 그동안 Run은 끝나지 않는다. 감독의 Task는 Run의 필수 작업이 아니다.
+- **U3·U6 (행 안쪽 조각).** 실행 행의 머리 줄·본문·꼬리 줄에 `data-chat-part="head|body|tail"`, 사용자 메시지의 메타 줄에 `data-chat-part="meta"`를 단다. 측정기가 이 조각의 이동도 잰다. `data-chat-item`은 이미 있다(`ChatView.tsx`).
+- **U4 (실행 기록 창).** 세션 화면에서는 대화의 지금 필요한 것이 그 요청에 답하는 하나뿐인 자리다. 같은 세션의 실행 기록 창은 기다리는 요청을 읽기로만 보이고 "응답하기"로 그 자리에 보낸다. `respond` 표시가 있는 링크는 세션의 Run이면 대화의 지금 필요한 것으로 간다.
+- **K1 (낙관적 응답 끄기).** 킷 `DecisionInbox`에 적응 둘을 더한다: `optimistic`(기본 true, false면 누를 때 확인 표시를 띄우지 않고 `onDecide`만 부른다)와 결정의 `pending`(보낸 뒤 receipt를 기다리는 동안 버튼이 기다림 상태). Corral은 `optimistic={false}`로만 쓰고 확인 표시는 `resolution`으로 준다([DESIGN.md](../../DESIGN.md)의 `DecisionInbox` 줄). 스토리는 계속 여부 예만 든다.
+- **U4·M4·U12 (`DecisionInbox` 쓰는 법).** 반드시 `optimistic={false}`로 쓴다(기본값은 킷 원본의 낙관적 응답이다). `onDecide` 안에서 그 결정의 `pending`을 바로 세워 두 번 보내지 않게 하고, receipt가 오면 `resolution`을 주거나 행을 뺀다. 거절되면 `pending`을 풀고 이유를 그 자리에 보인다. 키보드로 답하면 누른 버튼이 사라지며 초점이 본문으로 떨어지므로, 답한 뒤 초점은 다음 열린 결정의 첫 버튼으로, 없으면 입력창으로 옮긴다. 이 세 가지를 호출부 테스트로 고정한다.
+- **U4 (킷 `DecisionInbox`의 머리줄).** 킷은 답한 행을 부모가 목록에서 뺄 때까지 남겨 두고 머리줄에 열린 수를 보인다. 답한 행이 남은 동안 머리줄이 "0건…"으로 읽히지 않게 `heading(0)`은 비운 머리줄 문구를 돌려주고, 서버가 요청을 닫으면 행을 바로 뺀다.
+- **U7 (세션 누계 줄).** 입력창 아래의 세션 누계 한 줄(실행 수·단계 수·토큰·캐시 적중률)은 그대로 둔다. 쉬는 컴포저의 높이 목표는 이 줄을 포함해 148px 이하다.
+- **U9·U14 (용어집).** 용어집 "남은 불일치"의 세 항목은 해당 태스크가 병합될 때 오케스트레이터가 지운다.
+- **M1 (빈 선택).** 빈 선택의 저장 방식은 이미 있다(`local-intelligence.md` 75행). 더하는 것은 사람이 고른 "없음"과 정책의 `needsReply` 경로, 그리고 선택 기록이다.
+- **M2 (계속).** 회의의 계속은 `POST /sessions/:id/meeting/continue`다.
+
 ### V2 최종 장면
 - 대상: `apps/studio/e2e/flow/{idle,multi-agent,join-interrupt,awaiting,citation,sidebar,meeting}.spec.ts`.
 - 구현: §9의 절차를 그대로 테스트로 만든다.
@@ -716,7 +751,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 따라가기: 끝을 따라가는 중에는 타임라인 마지막 항목의 아래 가장자리와 컴포저 위 가장자리의 간격 변화 1px 이하. 위로 올려 둔 상태에서는 화면 기준 위치 변화 1px 이하.
 - 입력 줄: 입력 상자 아래 가장자리의 화면 위치 변화 0px.
 - 상태 이름: 화면에 보이는 `[data-presence-label]` 가운데 같은 글자가 둘 이상이면 실패.
-- 고정 영역: 상단 줄과 쉬는 컴포저 높이의 합 180px 이하, 본문 열 너비 720–760px.
+- 고정 영역: 상단 줄과 쉬는 컴포저 높이의 합 200px 이하(세션 누계 줄 포함), 본문 열 너비 720–760px.
 
 **장면.** 각 장면은 전이 직전·직후 화면을 `test-results/flow/<장면>/<단계>.png`로 남긴다.
 
@@ -730,7 +765,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | 사이드바 | 대기 요청이 있는 세션 | 실행 종료 → 2초 안에 다음 실행 시작 | 행이 묶음을 옮기지 않음, 응답 대기는 즉시 이동 |
 | 회의 | 참가자 셋, 스크립트 응답 | 사람 메시지 → 자동 선택 → 답변, 수신자 "없음", 연쇄 8회에서 계속 카드 | 대화와 같은 컴포저 |
 
-**메인 세션의 디자인 검수.** 수치가 통과한 뒤 메인 세션이 직접 본다. 미리보기 서버(`.claude/launch.json`의 `studio`와 모의 실행 서버 `verify-server`, 부품은 `storybook`)를 띄워 내장 브라우저에서 화면을 열고, 전이를 직접 일으켜 보며 밝은·어두운 테마와 reduced motion을 확인한다. `verify-server`의 작업 폴더는 지난 세션의 임시 경로이므로 시작 전에 갱신한다. 하네스로만 만들 수 있는 상태(붙잡아 둔 응답, 동시에 작업 중인 세 역할)는 그 장면이 남긴 전이 전후 캡처로 본다. 기준은 `verify-changes`, `review-visuals`, `review-motion`, `check-accessibility` 스킬이다. 보는 것은 정보 위계(가장 먼저 읽히는 것이 지금 필요한 것인가), 같은 정보의 반복, 설명 문구의 유무, 킷 밖의 시각 값이다. 엔지니어가 만든 화면처럼 보이면(표 같은 폼, 설명 캡션, 상태의 반복) 수치와 무관하게 `revise`다.
+**메인 세션의 디자인 검수.** 수치가 통과한 뒤 메인 세션이 직접 본다. 병합 전 브랜치는 검수 전용 작업 사본 `.claude/worktrees/flow-review`에서 본다. 그 사본을 `git checkout --detach flow/<id>`로 맞추고 미리보기 서버(`.claude/launch.json`의 `review-studio` 5174, 모의 실행 서버 `review-server` 4318, 부품은 `review-storybook` 6007)를 띄워 내장 브라우저에서 화면을 열고, 전이를 직접 일으켜 보며 밝은·어두운 테마와 reduced motion을 확인한다. 모의 실행 서버의 작업 폴더는 `.claude/worktrees/flow-review-ws`다. 병합된 통합 브랜치는 `studio`·`storybook`으로 본다. 하네스로만 만들 수 있는 상태(붙잡아 둔 응답, 동시에 작업 중인 세 역할)는 그 장면이 남긴 전이 전후 캡처로 본다. 기준은 `verify-changes`, `review-visuals`, `review-motion`, `check-accessibility` 스킬이다. 보는 것은 정보 위계(가장 먼저 읽히는 것이 지금 필요한 것인가), 같은 정보의 반복, 설명 문구의 유무, 킷 밖의 시각 값이다. 엔지니어가 만든 화면처럼 보이면(표 같은 폼, 설명 캡션, 상태의 반복) 수치와 무관하게 `revise`다.
 
 **실행 시점.** V1이 지금 화면의 기준선을 남긴다. 화면 태스크마다 리뷰어가 그 태스크가 건드린 장면의 수치를 재고, 메인 세션이 같은 장면을 디자인 검수한다. V2가 전부를 한 번에 돌리고, 메인 세션이 일곱 장면 전체를 마지막으로 검수한다.
 

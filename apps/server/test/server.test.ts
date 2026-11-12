@@ -1291,7 +1291,7 @@ describe('workspace configuration', () => {
     const number = (text: string) => Number((text.match(/[\d,]+/)?.[0] ?? '').replaceAll(',', ''));
     expect(number(row('실행당 동적 생성')[2] ?? '')).toBe(DEFAULT_LIMITS.maxSpawns);
     expect(number(row('실행당 동적 생성')[3] ?? '')).toBe(SPEC_HARD_CAPS.maxSpawns);
-    expect(section).toContain('실행에 사용량 예산은 없다.');
+    expect(section).toContain('실행을 조용히 끝내는 사용량 상한은 없다.');
     expect(section).not.toMatch(/\| (실행당 모델 요청|총 출력 토큰 예산|전체 wall deadline)/);
     expect(row('요청별 출력 토큰 상한')[2]).toBe('모델 능력·남은 컨텍스트');
     expect(number(row('동시 모델 요청')[2] ?? '')).toBe(DEFAULT_LIMITS.maxModelConcurrency);

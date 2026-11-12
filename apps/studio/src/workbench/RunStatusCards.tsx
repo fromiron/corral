@@ -286,7 +286,9 @@ function ContextCompaction({
   const event = state.events
     .filter(
       (event) =>
-        event.type === 'context.compaction_changed' && event.payload.executionId === executionId,
+        event.type === 'context.compaction_changed' &&
+        event.payload.trigger !== 'automatic' &&
+        event.payload.executionId === executionId,
     )
     .at(-1);
   const phase = event?.type === 'context.compaction_changed' ? event.payload.phase : null;

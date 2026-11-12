@@ -65,13 +65,14 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/search/rebuild | — | 파생 검색 캐시만 비움; 원문 기록 변경 없음 |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함 |
 | POST /sessions | `{projectId, title, objective?, criteria?, corralId?, autoTitle?, meeting?:MeetingConfig}` | 새 세션. `meeting`이 있으면 회의, 없으면 기존 work 세션이며 이후 종류 변환은 하지 않는다. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다. |
-| GET·PATCH /sessions/:id | `{title?, objective?, criteria?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `criteria`는 0~20줄(줄마다 1~200자)의 [세션 완료 기준](workbench.md#세션-완료-기준)이다. 빈 목록은 기준 없음이고, 회의 세션에 비어 있지 않은 기준을 주면 400이다. `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
+| GET·PATCH /sessions/:id | `{title?, objective?, criteria?, corralId?, auto?, pinned?, archived?, autoStart?, advisor?, expectedRevision}` | 세션 읽기·수정(revision 검사). `autoStart`(기본 true)는 Run이 끝나면 서버가 맨 앞 대기 요청을 시작할지다([대화 입력 흐름](features/composer-flow.md#대기-요청과-넘겨받기)). `advisor`는 `{modelProfile}` 또는 null이며 다음 요청부터 대화에 [감독](features/advisor.md)을 붙인다. `criteria`는 0~20줄(줄마다 1~200자)의 [세션 완료 기준](workbench.md#세션-완료-기준)이다. 빈 목록은 기준 없음이고, 회의 세션에 비어 있지 않은 기준을 주면 400이다. `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
 | GET /sessions/:id/deletion | — | 이 세션을 지우면 잃는 것의 읽기 전용 요약. 세션이 없으면 `TARGET_NOT_FOUND`. `runs`는 실행 수, `messages`는 저장된 요청과 회의에서 사람이 쓴 메시지 수, `unfinishedRunIds`는 끝나지 않은 실행, `generatedMedia`는 생성된 이미지 수, `inputImages`는 입력 이미지 수, `schedules`는 이 세션을 대상으로 하고 아직 지워지지 않은 예약의 `id`·`title`, `handoffs`는 인계(`commandId`, `direction`이 `outgoing` 또는 `incoming`, `otherSessionId`, `otherTitle`, `otherDeleted`)다. `checkpoints`는 작업 사본 쪽 준비된 파일 체크포인트 수, `sourceCheckpoints`는 원본 폴더의 준비된 체크포인트 수, `revertibleIntegrations`는 원본 폴더에 쓴 파일이 아직 남은(파일 결과가 applied·uncertain·revert_conflict) 반영 수, `reviewDecisions`는 검토 판단 수, `reviewComments`는 초안을 뺀 검토 의견 수(초안은 `workingCopy.draftComments`), `verifications`는 검사 결과 수다. 살아있는 작업 사본이 있으면 `workingCopy`는 사본 삭제 요약과 같고, 없으면 null이다. 브라우저 초안은 넣지 않는다. 범위는 [세션 삭제](workbench.md#세션-삭제) |
 | DELETE /sessions/:id | `{expectedRevision, copyGeneration?}` | 요약을 읽은 revision으로 세션을 지운다. 성공은 204. 없으면 `TARGET_NOT_FOUND`. revision이 다르거나, 살아있는 사본인데 `copyGeneration`이 없거나 다르면 `REVISION_CONFLICT`이며 세션은 남는다. 끝나지 않은 실행이 있으면 `RUN_ALREADY_ACTIVE`이며 세션과 사본은 남는다. 사본이 있으면 기존 사본 삭제의 확인을 먼저 하고, 그 확인이 거절하거나 폴더가 남으면 세션은 지워지지 않는다. 확인한 삭제의 반복으로 온 `TARGET_NOT_FOUND`는 클라이언트가 끝난 것으로 본다 |
-| POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
+| POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?, start?}` | 요청 기록 추가(본문은 이후 불변). `start`는 그 요청을 시작할 때 쓸 고정된 시작 요청(모델·추론·팀·권한 선택)이고, 서버는 `start`가 있는 대기 항목만 스스로 시작한다. `start`의 권한 방식은 항목의 권한 방식과 같아야 하고 다르면 거절한다. 대기 항목을 더할 때 그 세션에 끝나지 않은 Run이 없으면 서버는 Run이 끝났을 때와 같은 규칙으로 대기열을 바로 살핀다. 항목의 `carriedFrom`(넘겨받은 지시의 ID)은 서버만 적고 이 요청으로는 받지 않는다. `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
 | GET /sessions/:id/meeting | — | `MeetingView`: 저장된 메시지·답·사용량·대기 메시지·회의록·결정. 내부 `rounds`는 기존 기록/실행 소유권을 위한 응답 묶음이며 UI의 진행 단계가 아니다. 새 레코드의 `order`로 메시지·발언 순서를 표현하며 `replyTo`는 에이전트 멘션의 실제 출처다. 조회·재열기는 모델을 호출하지 않는다 |
-| POST /sessions/:id/meeting/rounds | `MeetingRoundRequest` | 사람의 대화 메시지를 즉시 게시한다. 진행 중 답변은 전송을 막지 않고 다음 발언부터 최신 사용자 메시지를 반영한다. 선택한 `TextAttachments`만 고정해 전달한다. 동일 명령·본문·대상·모드는 기존 응답 묶음, 내용 변경은 conflict. legacy 반론 명령/기록은 호환성을 유지하되 새 UI는 사용하지 않으며 횟수 상한도 요구하지 않는다 |
+| POST /sessions/:id/meeting/rounds | `MeetingRoundRequest` | 사람의 대화 메시지를 즉시 게시한다. 수신자를 없음으로 보내면 게시만 하고 아무도 답하지 않는다. 응답 묶음은 선택 기록(`selection`: 방법·점수·이유)을 갖는다. 진행 중 답변은 전송을 막지 않고 다음 발언부터 최신 사용자 메시지를 반영한다. 선택한 `TextAttachments`만 고정해 전달한다. 동일 명령·본문·대상·모드는 기존 응답 묶음, 내용 변경은 conflict. legacy 반론 명령/기록은 호환성을 유지하되 새 UI는 사용하지 않으며 횟수 상한도 요구하지 않는다 |
+| POST /sessions/:id/meeting/continue | `{commandId}` | 멘션 연쇄가 8개 응답 묶음에서 멈춘 회의(`MeetingView.hold`)를 이어 간다. 대기가 없으면 아무 일도 하지 않는다. 같은 명령의 재전송은 한 번만 이어 간다 |
 | POST /sessions/:id/meeting/rounds/:roundId/stop | — | 현재 응답 중인 메시지를 중지하면 진행 중·대기 중 발언과 멘션 응답을 함께 취소. 완료된 과거 메시지에 대한 늦은 중지 요청은 새 대화를 취소하지 않는다. 이미 확정한 답은 보존 |
 | PATCH·DELETE /sessions/:id/meeting/queued | PATCH: `QueuedMeetingMessage` | 이전 버전에서 저장한 미전송 대기 초안 수정/삭제. 새 메시지는 이 슬롯을 사용하지 않는다. 수정은 현재 queued command ID를 확인 |
 | POST /sessions/:id/meeting/queued/send | — | 진행 중 답변이 없을 때 저장된 대기 메시지를 명시 전송 |
@@ -240,6 +241,8 @@ SSE event는 `id: runSeq`, `event: domain`을 가진다. SnapshotSeq 이하 even
 
 receipt는 commandId, runId, status, acceptedSeq, target, requestedBoundary, relatedEventIds, error를 갖는다. status는 `accepted / queued / applied / rejected / superseded / expired / cancelled`다. 일부 target에만 적용하는 다중 대상 steer는 MVP에 제공하지 않아 부분 적용 모델을 미룬다.
 
+`steer` 명령의 payload는 `targetExecutionId`, `text`, `delivery`(`next_request` 또는 `interrupt`), 선택적 `attachments`(텍스트 첨부만)다. 대상의 어댑터가 끼어들기를 받지 못하면 Coordinator가 `next_request`로 낮추고 receipt의 `requestedBoundary`에 실제 경계를 남긴다. `submit_advice` 명령은 감독 실행 단위의 `advise` 도구만 보내며 사람의 화면은 보내지 않는다([감독](features/advisor.md)). 의미는 [Reins](features/reins.md)가 정한다.
+
 steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준수 여부는 review로 별도 표시한다. 설정 patch의 applied는 policy commit이며, 미래 execution이 실제 사용한 patch.activated와 구분한다.
 
 ## 3. 오류
@@ -306,10 +309,13 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `workflow.joined` | nodeId,policy,iterationId,cancelledNodeIds. Join이 길을 이었다. `any`가 멈춘 분기의 단계를 남긴다([병렬 실행](features/team-graph.md#병렬-실행)) |
 | `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion. `breakpoint`는 nodeId |
 | `approval.resolved` | decision,actor,subjectVersions. 사람이 승인한 도구 승인은 `scope`(`once`\|`run`). 등록 검사 승인 종료는 선택 reason(cancelled/timeout/execution_ended)과 runtime actor로 기록한다. "이 실행 동안 허용"이 함께 닫은 도구 승인은 reason `allowed_for_run`과 runtime actor로 기록한다 |
-| `directive.accepted` | directiveId,target,body,commandId |
+| `directive.accepted` | directiveId,targetExecutionId,text,delivery(`next_request`·`interrupt`),origin(`user`·`advice`·`system`),attachments(선택, 텍스트 첨부 전체). 명령 ID는 envelope에 있다 |
 | `directive.attached` | contextSnapshotId,modelCallId |
 | `directive.dispatched` | modelCallId,executionEpoch |
 | `directive.undelivered` | reason |
+| `advice.admitted` | adviceId,observerExecutionId,targetExecutionId,severity,delivery(`next_request`·`interrupt`·`preserve`),directiveId(전달될 때) |
+| `advice.suppressed` | observerExecutionId,targetExecutionId,severity,reason(`noise`·`duplicate`·`over_budget`·`target_terminal`). 조언의 글은 싣지 않는다 |
+| `context.compaction_changed` | executionId,attemptNo,phase,beforeHash,afterHash,modelCallIds,trigger(`manual`·`automatic`). 수동은 명령 ID를, 자동은 worker가 만든 식별자를 갖는다 |
 | `patch.committed` | patchId,scope,before,after,controlRevision |
 | `patch.activated` | patchId,executionId|iterationId |
 | `effect.admitted` | effectId,scope,epoch,modelCallId(모델 요청 효과만) |
@@ -325,7 +331,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `model.finished` | responseRef,rawUsage,normalizedUsage,certainty |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `usage.recorded` | usageId,kind(`auto_route`·`image`),profileId,inputTokens,outputTokens,costMicros. Run의 모델 호출 밖에서 쓴 사용량(팀 선택 호출, 이미지 생성)을 호출마다 기록한다. 모르는 값은 null이며 0으로 두지 않는다. 나중에 확인된 값은 같은 usageId로 null이던 값만 채운다. 시작하지 않은 이미지 호출은 기록하지 않는다 |
-| `limit.reached` | limitKind,used,max |
+| `limit.reached` | limitKind,used,max. `request_budget`은 executionId를 함께 남긴다 |
 | `cancel.requested` | scope,fenceSeq,reason |
 | `cancel.confirmed` | scope,settlementRefs |
 | `observation.late` | originalEvent,whyIgnored |
@@ -337,7 +343,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 
 구현에서 정한 검토·승인 규칙:
 
-- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop가 멈출 때 한 라운드 더, 이유는 `loopStop`), `route`(router가 고르지 못한 route, 고를 수 있는 route는 `routes`), `check`(check Decision의 검사에 판정이 없음, 승인하면 다시 실행), `final_output`(Output의 `requireApproval`), `breakpoint`(중단점이 걸린 단계가 시작 전 멈춤, [중단점](features/fork-and-breakpoints.md#중단점)) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
+- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop가 멈출 때 한 라운드 더, 이유는 `loopStop`), `route`(router가 고르지 못한 route, 고를 수 있는 route는 `routes`), `check`(check Decision의 검사에 판정이 없음, 승인하면 다시 실행), `final_output`(Output의 `requireApproval`), `breakpoint`(중단점이 걸린 단계가 시작 전 멈춤, [중단점](features/fork-and-breakpoints.md#중단점)), `request_budget`(무인 실행 예산에 닿은 실행 단위의 계속 여부, [제품 계약 §9](product-contract.md#9-사용량과-자원-정책)) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
 - `route` 승인을 승인할 때 `resolve_approval.routeId`는 그 승인의 `routes` 중 하나여야 하고, 다른 승인과 거절에는 `routeId`를 보내지 않는다. 어기면 `SCHEMA_INVALID`다. 고른 route는 `approval.resolved.routeId`에 남는다. 의미는 [팀 그래프 모델](features/team-graph.md#router-실행)을 따른다.
 - 도구 승인(`tool.purpose: tool`)을 승인할 때 `resolve_approval.scope`는 `once`(기본) 또는 `run`이다. `run`은 [하네스 계약](harness-contract.md)의 "이 실행 동안 허용"이며, 도구 승인이 아닌 승인이나 거절에 `scope: run`을 보내면 `SCHEMA_INVALID`다. `approval.resolved`는 `scope`를 남기고, 그 허용으로 다시 묻지 않고 넘어간 호출은 `tool.authorized`(executionId, toolCallId, 근거가 된 `approvalId`, fingerprint)를 남긴다. 허용 목록은 따로 저장하지 않고 이 이벤트들에서 만든다. 명령 실행의 승인 요청(`approval.requested.tool`)은 호출별 지문 `fingerprint`와 함께 Run 범위 허용을 대조하는 `grantFingerprint`를 담는다. `grantFingerprint`는 명령 계획의 `launchFingerprint`(호출별 식별자와 트리 내용을 뺀 실행 지문)에 도구 등록 hash와 정책 revision을 더한 것이어서, 도구 등록이나 정책이 달라지면 다시 묻는다. 다른 도구는 `fingerprint`로 대조한다. 한 승인을 `run`으로 승인하면 같은 Run에서 같은 대조 값으로 기다리던 다른 도구 승인도 함께 닫힌다: 각각 `approval.resolved`(decision `approve`, runtime actor, reason `allowed_for_run`)와 사람의 승인을 가리키는 `tool.authorized`를 남긴다.
 - `resolve_approval`의 `subjectVersionId`는 `subjectVersions[0]`이어야 한다. 검사 순서: 없는 승인 `TARGET_NOT_FOUND` → 이미 해결 `APPROVAL_STALE` → `expectedControlRevision` 불일치 `STALE_CONTROL_REVISION` → 다른 버전 `APPROVAL_STALE`. 같은 commandId 재전송은 처음 receipt를 돌려준다.

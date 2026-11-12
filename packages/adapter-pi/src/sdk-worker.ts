@@ -192,7 +192,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     };
     let completionAccepted = false;
     let finalReplyModelCallId: string | undefined;
-    let manualCompactionCalls: string[] | null = null;
+    let compactionCalls: string[] | null = null;
     let notifications = Promise.resolve();
     let reported = false;
     let requiredExtensionFailed = false;
@@ -286,6 +286,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       let requests: Promise<void> = Promise.resolve();
       const meter = new ContextMeter();
       let lastPrepared: Context | undefined;
+      let automaticCompactions = 0;
       let compactSessionContext:
         | ((context: Context, signal: AbortSignal, force?: boolean) => Promise<Context>)
         | undefined;
@@ -489,7 +490,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             }
             modelCallId = permit.modelCallId;
             attempts.modelCallId = modelCallId;
-            if (requestPurpose === 'compaction') manualCompactionCalls?.push(modelCallId);
+            if (requestPurpose === 'compaction') compactionCalls?.push(modelCallId);
             await ack({ type: 'request_dispatched', modelCallId });
             if (cancelled || options?.signal?.aborted) throw new Error('cancelled before dispatch');
             const chosen = reasoningRequest(model, options, permit.reasoning);
@@ -1181,6 +1182,56 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           model.contextWindow - (start.compaction?.reserveTokens ?? budget.requestHeadroom);
         const tokens = meter.measure(context, model).tokens;
         if (!force && tokens <= automaticCompactionThresholdFor({ hardLimit })) return context;
+        // An automatic compaction carries no command: its id is the execution and its order.
+        const owner = {
+          commandId: `compaction.${++automaticCompactions}.${start.executionId}`,
+          trigger: 'automatic' as const,
+        };
+        const beforeHash = hashOf(cleanJson(context.messages));
+        await call({
+          type: 'compaction_report',
+          report: { ...owner, phase: 'started', beforeHash, modelCallIds: [] },
+        });
+        const outer = compactionCalls;
+        const calls: string[] = [];
+        compactionCalls = calls;
+        try {
+          const compacted = await compactRegion(context, signal, force, tokens);
+          await call({
+            type: 'compaction_report',
+            report: {
+              ...owner,
+              phase: 'completed',
+              beforeHash,
+              afterHash: hashOf(cleanJson(compacted.messages)),
+              modelCallIds: calls,
+            },
+          });
+          return compacted;
+        } catch (error) {
+          if (!cancelled)
+            await call({
+              type: 'compaction_report',
+              report: {
+                ...owner,
+                phase: 'failed',
+                beforeHash,
+                afterHash: beforeHash,
+                modelCallIds: calls,
+              },
+            });
+          throw error;
+        } finally {
+          compactionCalls = outer;
+        }
+      };
+      const compactRegion = async (
+        context: Context,
+        signal: AbortSignal,
+        force: boolean,
+        tokens: number,
+      ) => {
+        const budget = contextBudgetLimitsFor(model);
         const region = selectCompactableRange(
           context.messages,
           force ? 0 : (start.compaction?.keepRecentTokens ?? budget.keepRecentTokens),
@@ -1418,7 +1469,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           type: 'compaction_report',
           report: { commandId, phase: 'started', beforeHash, modelCallIds: [] },
         });
-        manualCompactionCalls = [];
+        compactionCalls = [];
         try {
           if (
             loader
@@ -1432,7 +1483,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             throw new Error('custom compaction hooks are unsupported for manual compaction');
           await session.compact();
           await requests;
-          if (!manualCompactionCalls.length) throw new Error('compaction needs a model request');
+          if (!compactionCalls.length) throw new Error('compaction needs a model request');
           await ack({
             type: 'compaction_report',
             report: {
@@ -1440,7 +1491,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               phase: 'completed',
               beforeHash,
               afterHash: hashOf(cleanJson(session.messages)),
-              modelCallIds: manualCompactionCalls,
+              modelCallIds: compactionCalls,
             },
           });
         } catch {
@@ -1454,11 +1505,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 phase: 'failed',
                 beforeHash,
                 afterHash: beforeHash,
-                modelCallIds: manualCompactionCalls,
+                modelCallIds: compactionCalls,
               },
             });
         } finally {
-          manualCompactionCalls = null;
+          compactionCalls = null;
         }
         if (cancelled) break;
         await session.prompt(
