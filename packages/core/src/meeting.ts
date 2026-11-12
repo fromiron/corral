@@ -6,6 +6,7 @@ import {
   type MeetingAnswer,
   type MeetingAnswerView,
   type MeetingConfig,
+  MeetingContinueRequest,
   type MeetingRound,
   MeetingRoundRequest,
   type MeetingRunOrigin,
@@ -63,6 +64,8 @@ export type MeetingResult =
     };
 
 const SECRETARY_NAMES = new Set([SECRETARY_ID, '비서']);
+/** Mention rounds that may follow one another before the person is asked whether to continue. */
+const CHAIN_LIMIT = 8;
 const PARTICIPANT_RULES =
   'You are a participant in a group chat with a person and other AI models. Respond naturally to the latest message in its language, using the conversation so far. For a simple everyday question, offer your own answer briefly, usually in one to three sentences, and leave room for follow-up. Follow-up questions such as "why?" refer to the earlier conversation; explain or revise your opinion as the person adds preferences. Read the messages already posted before yours and respond to them where relevant instead of repeating the same answer. Speak only for yourself. Do not predict or invent another participant’s future words, intentions, reactions or personality; refer to what they have actually said. Role guidance below is optional and applies only when relevant to the current topic: an everyday question does not become a software task or a risk audit. Use detailed analysis, checklists or implementation plans only when the person requests them or the topic calls for that detail. Ask a short clarifying question when needed instead of forcing a finished proposal. You cannot change project files or execute commands. When addressing another participant, use @ followed by their exact display name and a space or punctuation. An explicit @mention asks that participant to reply next, even if they already spoke. Use mentions only when you want a response, not for every reference or courtesy acknowledgement; do not echo a tag automatically. Do not mention yourself. Only the person can request secretary minutes. Conversation does not adopt a decision or start implementation.';
 const SECRETARY_RULES =
@@ -195,6 +198,28 @@ function nextOrder(meeting: MeetingState) {
   );
 }
 
+/** A person's message that asks for replies; a message posted without recipients does not. */
+const asksForReplies = (round: MeetingRound) =>
+  round.message !== null && round.selection?.strategy !== 'none';
+
+/**
+ * Where the current mention chain is counted from: the person's latest message that asks for
+ * replies, or their latest choice to continue. 0 when neither exists.
+ */
+function chainStart(meeting: MeetingState) {
+  return Math.max(
+    0,
+    meeting.rounds.findLastIndex((round) => asksForReplies(round) || Boolean(round.continued)),
+  );
+}
+
+/** Participant-mention rounds since the chain start; a continued round counts as the first. */
+function chainLength(meeting: MeetingState) {
+  return meeting.rounds
+    .slice(chainStart(meeting))
+    .filter((round) => round.kind === 'mention' && round.message === null).length;
+}
+
 export class MeetingService {
   private readonly deps: MeetingServiceDeps;
   /** One mutation at a time per meeting; storage CAS still guards other writers. */
@@ -240,6 +265,7 @@ export class MeetingService {
       minutes: session.meeting.minutes ?? [],
       decisions: session.meeting.decisions ?? [],
       decisionWithdrawals: session.meeting.decisionWithdrawals ?? [],
+      ...(session.meeting.hold ? { hold: session.meeting.hold } : {}),
       rebuttal: rounds.some((round) => round.active) ? null : this.nextRebuttal(session.meeting),
     };
   }
@@ -292,9 +318,9 @@ export class MeetingService {
           basedOnRoundId: null,
           rebuttalNo: null,
           ...(nobody
-            ? { selection: { strategy: 'none', reason: 'The person chose no recipients.' } }
+            ? { selection: { strategy: 'none', reason: 'no_recipients' } }
             : request.mentions?.length
-              ? { selection: { strategy: 'explicit', reason: 'Chosen in the composer.' } }
+              ? { selection: { strategy: 'explicit', reason: 'composer_recipients' } }
               : {}),
         });
       }
@@ -329,10 +355,7 @@ export class MeetingService {
           : base.participantIds,
         basedOnRoundId: base.roundId,
         rebuttalNo: next.rebuttalNo,
-        selection: {
-          strategy: 'explicit',
-          reason: 'A rebuttal keeps the participants of the round it answers.',
-        },
+        selection: { strategy: 'explicit', reason: 'rebuttal' },
       });
     });
   }
@@ -350,11 +373,17 @@ export class MeetingService {
         if (item.roundId === roundId || (current && (await this.roundView(sessionId, item)).active))
           active.push(item);
       }
+      // Stopping the current chain ends its hold; a late stop of an earlier message does not.
+      const { hold: _hold, ...released } = session.meeting;
+      const meeting =
+        session.meeting.rounds.indexOf(round) >= chainStart(session.meeting)
+          ? released
+          : session.meeting;
       const saved = await this.save(
         session,
         {
-          ...session.meeting,
-          rounds: session.meeting.rounds.map((item) =>
+          ...meeting,
+          rounds: meeting.rounds.map((item) =>
             active.includes(item) ? { ...item, stoppedAt: this.deps.clock.nowIso() } : item,
           ),
         },
@@ -363,6 +392,43 @@ export class MeetingService {
       if (!saved.ok) return saved;
       for (const item of active) await this.cancelAnswers(item.roundId, item.answers);
       return { ok: true, outcome: 'updated', roundId };
+    });
+  }
+
+  /**
+   * Continues a held mention chain: every mention in the current chain that was not followed yet
+   * is followed, and the chain is counted again from the first round this starts, which carries
+   * the command. Without a hold nothing changes; the same command resumes once.
+   */
+  continueChain(sessionId: string, input: MeetingContinueRequest): Promise<MeetingResult> {
+    return this.locked(sessionId, async () => {
+      const parsed = MeetingContinueRequest.safeParse(input);
+      if (!parsed.success) return err('invalid', 'The continue request is not valid.');
+      const { commandId } = parsed.data;
+      const session = await this.deps.repository.getSession(sessionId);
+      if (!session?.meeting) return err('not_found', `Meeting ${sessionId} does not exist.`);
+      const previous = session.meeting.rounds.find(
+        (round) => round.continued && round.commandId === commandId,
+      );
+      if (previous) return { ok: true, outcome: 'started', roundId: previous.roundId };
+      const { hold, ...released } = session.meeting;
+      if (!hold) return { ok: true, outcome: 'updated' };
+      // A round already following a mention is skipped by followMentions' replyTo check.
+      const chain = session.meeting.rounds.slice(chainStart(session.meeting));
+      let result: Extract<MeetingResult, { ok: true }> | null = null;
+      for (const round of chain) {
+        for (const answer of round.answers) {
+          const started = await this.followMentions(
+            sessionId,
+            { round, answer },
+            result ? undefined : commandId,
+          );
+          if (!started.ok) return result ?? started;
+          if (started.outcome === 'started') result ??= started;
+        }
+      }
+      if (result) return result;
+      return this.save(session, released, { ok: true, outcome: 'updated' });
     });
   }
 
@@ -616,20 +682,14 @@ export class MeetingService {
     let selection: MeetingSelection =
       spec.selection ??
       (spec.kind === 'all'
-        ? {
-            strategy: 'fallback',
-            reason: 'Meeting analysis is off; every permitted participant replies.',
-          }
-        : {
-            strategy: 'mention',
-            reason: spec.replyTo ? 'Another participant mentioned them.' : 'Mentioned with @.',
-          });
+        ? { strategy: 'fallback', reason: 'analysis_off' }
+        : { strategy: 'mention', reason: spec.replyTo ? 'participant_mention' : 'mention' });
     const message = spec.kind === 'all' && !nobody ? spec.message : null;
     const address = message ? readMeetingAddress(message, meeting.config.participants) : null;
     if (address) participantIds = participantIds.filter((id) => !address.excluded.includes(id));
     if (address?.participantIds.length) {
       participantIds = address.participantIds;
-      selection = { strategy: 'address', reason: 'The message addresses them by name.' };
+      selection = { strategy: 'address', reason: 'addressed' };
     } else if (message && this.deps.selectParticipants) {
       const history: { id: string; order: number; participantId: string | null; text: string }[] =
         [];
@@ -714,16 +774,20 @@ export class MeetingService {
         detail: null,
       })),
     };
+    // A person's message, or their choice to continue, ends a held chain and restarts its count;
+    // a message posted without recipients leaves both alone.
+    const { hold: _hold, ...released } = meeting;
     const recorded = await this.save(
       session,
       {
-        ...meeting,
+        ...((spec.message !== null && !nobody) || spec.continued ? released : meeting),
         rounds: [
           ...meeting.rounds.map((past) => ({
             ...past,
-            // New human input supersedes unstarted replies; a tag moves its recipients next.
+            // New human input supersedes unstarted replies; a tag moves its recipients next,
+            // and a message posted without recipients leaves them waiting.
             answers: past.answers.filter(
-              (answer) => answer.state !== 'queued' || Boolean(spec.replyTo),
+              (answer) => answer.state !== 'queued' || Boolean(spec.replyTo) || nobody,
             ),
           })),
           round,
@@ -899,8 +963,16 @@ export class MeetingService {
     );
   }
 
-  /** Only a completed participant message can request another chat reply. */
-  private async followMentions(sessionId: string, speaker: Speaker): Promise<MeetingResult> {
+  /**
+   * Only a completed participant message can request another chat reply. After CHAIN_LIMIT mention
+   * rounds with no message from the person, the meeting holds instead. `continued` is the command
+   * of the person's choice to continue: it follows the held mentions and restarts the count.
+   */
+  private async followMentions(
+    sessionId: string,
+    speaker: Speaker,
+    continued?: string,
+  ): Promise<MeetingResult> {
     const session = await this.deps.repository.getSession(sessionId);
     if (!session?.meeting) return err('not_found', 'The meeting no longer exists.');
     const { meeting } = session;
@@ -911,7 +983,8 @@ export class MeetingService {
       source.stoppedAt ||
       !source.mode ||
       source.kind === 'secretary' ||
-      meeting.rounds.slice(index + 1).some((item) => item.message !== null) ||
+      // A message posted without recipients does not interrupt the conversation it joins.
+      meeting.rounds.slice(index + 1).some(asksForReplies) ||
       meeting.rounds.some(
         (item) =>
           item.replyTo?.roundId === source.roundId &&
@@ -926,8 +999,18 @@ export class MeetingService {
       (id) => id !== speaker.answer.participantId && id !== SECRETARY_ID,
     );
     if (!participantIds.length) return { ok: true, outcome: 'updated' };
+    // The first hold stays: `after` shows where the chain stopped, and continue reads the chain.
+    if (!continued && chainLength(meeting) >= CHAIN_LIMIT)
+      return meeting.hold
+        ? { ok: true, outcome: 'updated' }
+        : this.save(
+            session,
+            { ...meeting, hold: { kind: 'chain', after: source.roundId } },
+            { ok: true, outcome: 'updated' },
+          );
     return this.start(session, {
-      commandId: this.deps.newRoundId(),
+      commandId: continued ?? this.deps.newRoundId(),
+      ...(continued ? { continued: true } : {}),
       mode: source.mode,
       kind: 'mention',
       message: null,
@@ -1013,12 +1096,7 @@ export class MeetingService {
         basedOnRoundId: null,
         rebuttalNo: null,
         ...(mentions.length
-          ? {
-              selection: {
-                strategy: 'explicit',
-                reason: 'Recipients saved with the waiting message.',
-              },
-            }
+          ? { selection: { strategy: 'explicit', reason: 'saved_recipients' } }
           : {}),
       },
       true,

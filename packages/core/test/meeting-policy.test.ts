@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { fallbackSpeaker, type MeetingPolicy, selectSpeakers } from '../src/meeting-policy.ts';
+import {
+  DEFAULT_MEETING_POLICY,
+  fallbackSpeaker,
+  type MeetingPolicy,
+  selectSpeakers,
+} from '../src/meeting-policy.ts';
 
 const roster = ['architect', 'builder', 'tester'];
 const policy: MeetingPolicy = { needsReplyThreshold: 0.5 };
-const fallback = { participantId: 'architect', reason: 'Rotation.' };
+const fallback = { participantId: 'architect', reason: 'rotation' as const };
 
 describe('meeting selection policy', () => {
   it('chooses the single highest score', () => {
@@ -19,7 +24,11 @@ describe('meeting selection policy', () => {
       policy,
       { continuityId: null, fallback },
     );
-    expect(choice).toMatchObject({ strategy: 'selector', participantIds: ['tester'] });
+    expect(choice).toMatchObject({
+      strategy: 'selector',
+      participantIds: ['tester'],
+      reason: 'top_score',
+    });
     expect(choice.scores).toEqual([
       { participantId: 'architect', score: 0.2 },
       { participantId: 'tester', score: 0.7 },
@@ -109,8 +118,20 @@ describe('meeting selection policy', () => {
     expect(selectSpeakers(roster, result, policy, { continuityId: 'tester', fallback })).toEqual({
       strategy: 'fallback',
       participantIds: ['architect'],
-      reason: 'Rotation.',
+      reason: 'rotation',
     });
+  });
+
+  it('with no usable score left, falls back before reading needsReply', () => {
+    for (const result of [
+      { scores: [], needsReply: 0 },
+      { scores: [{ participantId: 'foreign', score: 1 }], needsReply: 0 },
+    ])
+      expect(selectSpeakers(roster, result, policy, { continuityId: null, fallback })).toEqual({
+        strategy: 'fallback',
+        participantIds: ['architect'],
+        reason: 'rotation',
+      });
   });
 
   it('chooses nobody when needsReply is below the threshold', () => {
@@ -120,7 +141,11 @@ describe('meeting selection policy', () => {
       policy,
       { continuityId: null, fallback },
     );
-    expect(choice).toMatchObject({ strategy: 'selector', participantIds: [] });
+    expect(choice).toMatchObject({
+      strategy: 'selector',
+      participantIds: [],
+      reason: 'no_reply_needed',
+    });
     expect(choice.scores).toEqual([{ participantId: 'tester', score: 0.9 }]);
   });
 
@@ -133,8 +158,8 @@ describe('meeting selection policy', () => {
       selectSpeakers(roster, { scores, needsReply: 0.1 }, policy, {
         continuityId: 'builder',
         fallback,
-      }).participantIds,
-    ).toEqual(['builder']);
+      }),
+    ).toMatchObject({ participantIds: ['builder'], reason: 'continuity' });
     // Another participant would have been chosen: continuity does not override the threshold.
     expect(
       selectSpeakers(roster, { scores, needsReply: 0.1 }, policy, {
@@ -146,7 +171,13 @@ describe('meeting selection policy', () => {
 
   it('replies at or above the threshold, and treats an unusable needsReply as absent', () => {
     const scores = [{ participantId: 'tester', score: 0.9 }];
-    for (const needsReply of [0.5, 0.9, Number.NaN, Number.POSITIVE_INFINITY])
+    for (const needsReply of [
+      0.5,
+      0.9,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ])
       expect(
         selectSpeakers(roster, { scores, needsReply }, policy, { continuityId: null, fallback })
           .participantIds,
@@ -175,17 +206,35 @@ describe('meeting selection policy', () => {
   });
 });
 
+describe('the default meeting policy', () => {
+  it('stays silent below a needsReply of 0.5 and answers at 0.5', () => {
+    const scores = [{ participantId: 'tester', score: 0.9 }];
+    const options = { continuityId: null, fallback };
+    expect(
+      selectSpeakers(roster, { scores, needsReply: 0.49 }, DEFAULT_MEETING_POLICY, options)
+        .participantIds,
+    ).toEqual([]);
+    expect(
+      selectSpeakers(roster, { scores, needsReply: 0.5 }, DEFAULT_MEETING_POLICY, options)
+        .participantIds,
+    ).toEqual(['tester']);
+  });
+});
+
 describe('meeting fallback speaker', () => {
   it('prefers the reply target, then the recent speaker, then rotation', () => {
-    expect(
-      fallbackSpeaker(roster, { replyTo: 'tester', recent: 'builder', turn: 0 }).participantId,
-    ).toBe('tester');
-    expect(
-      fallbackSpeaker(roster, { replyTo: 'foreign', recent: 'builder', turn: 0 }).participantId,
-    ).toBe('builder');
-    expect(fallbackSpeaker(roster, { replyTo: null, recent: null, turn: 4 }).participantId).toBe(
-      'builder',
-    );
+    expect(fallbackSpeaker(roster, { replyTo: 'tester', recent: 'builder', turn: 0 })).toEqual({
+      participantId: 'tester',
+      reason: 'reply_target',
+    });
+    expect(fallbackSpeaker(roster, { replyTo: 'foreign', recent: 'builder', turn: 0 })).toEqual({
+      participantId: 'builder',
+      reason: 'recent_speaker',
+    });
+    expect(fallbackSpeaker(roster, { replyTo: null, recent: null, turn: 4 })).toEqual({
+      participantId: 'builder',
+      reason: 'rotation',
+    });
   });
 
   it('never falls back to the secretary and has nobody when nobody is allowed', () => {
@@ -193,8 +242,9 @@ describe('meeting fallback speaker', () => {
       fallbackSpeaker(['secretary', 'tester'], { replyTo: 'secretary', recent: null, turn: 0 })
         .participantId,
     ).toBe('tester');
-    expect(
-      fallbackSpeaker(['secretary'], { replyTo: null, recent: null, turn: 0 }).participantId,
-    ).toBeNull();
+    expect(fallbackSpeaker(['secretary'], { replyTo: null, recent: null, turn: 0 })).toEqual({
+      participantId: null,
+      reason: 'nobody_available',
+    });
   });
 });

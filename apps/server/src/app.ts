@@ -39,6 +39,7 @@ import {
   LanguageStart,
   MeetingAdoptDecisionRequest,
   MeetingConfig,
+  MeetingContinueRequest,
   MeetingRoundRequest,
   MeetingWithdrawDecisionRequest,
   MessageBranchPoint,
@@ -3330,6 +3331,15 @@ async function createCorralServer(
       if (!body) return reply;
       const { sessionId } = request.params;
       return meetingReply(reply, sessionId, await meetings.send(sessionId, body));
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/continue',
+    async (request, reply) => {
+      const body = parse(MeetingContinueRequest, request, reply);
+      if (!body) return reply;
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetings.continueChain(sessionId, body));
     },
   );
   app.post<{ Params: { sessionId: string; roundId: string } }>(

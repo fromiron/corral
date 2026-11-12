@@ -1,5 +1,5 @@
 import {
-  type MeetingSelection,
+  type MeetingSelectionReason,
   type MeetingSelectionScore,
   type MeetingSelectorResult,
   SECRETARY_ID,
@@ -15,34 +15,34 @@ export interface MeetingPolicy {
 
 export const DEFAULT_MEETING_POLICY: MeetingPolicy = { needsReplyThreshold: 0.5 };
 
-export interface SpeakerChoice {
-  strategy: Extract<MeetingSelection['strategy'], 'selector' | 'fallback'>;
+export type SpeakerChoice = {
   participantIds: string[];
   /** The scores the policy kept; present when the selector's result was used. */
   scores?: MeetingSelectionScore[];
-  reason: string;
+} & (
+  | { strategy: 'selector'; reason: MeetingSelectionReason<'selector'> }
+  | { strategy: 'fallback'; reason: MeetingSelectionReason<'fallback'> }
+);
+
+export interface FallbackSpeaker {
+  participantId: string | null;
+  reason: Exclude<MeetingSelectionReason<'fallback'>, 'analysis_off'>;
 }
 
 /** The fallback when no usable score remains: the reply target, the recent speaker, then rotation. */
 export function fallbackSpeaker(
   candidates: readonly string[],
   context: { replyTo: string | null | undefined; recent: string | null | undefined; turn: number },
-): { participantId: string | null; reason: string } {
+): FallbackSpeaker {
   const allowed = candidates.filter((id) => id !== SECRETARY_ID);
   if (context.replyTo && allowed.includes(context.replyTo))
-    return {
-      participantId: context.replyTo,
-      reason: 'No usable selector scores; the reply target answers.',
-    };
+    return { participantId: context.replyTo, reason: 'reply_target' };
   if (context.recent && allowed.includes(context.recent))
-    return {
-      participantId: context.recent,
-      reason: 'No usable selector scores; the most recent speaker answers.',
-    };
+    return { participantId: context.recent, reason: 'recent_speaker' };
   const next = allowed[context.turn % allowed.length];
   return next
-    ? { participantId: next, reason: 'No usable selector scores; participants take turns.' }
-    : { participantId: null, reason: 'No usable selector scores and nobody may answer.' };
+    ? { participantId: next, reason: 'rotation' }
+    : { participantId: null, reason: 'nobody_available' };
 }
 
 /**
@@ -58,7 +58,7 @@ export function selectSpeakers(
   policy: MeetingPolicy,
   context: {
     continuityId: string | null | undefined;
-    fallback: { participantId: string | null; reason: string };
+    fallback: FallbackSpeaker;
   },
 ): SpeakerChoice {
   const allowed = candidates.filter((id) => id !== SECRETARY_ID);
@@ -93,18 +93,18 @@ export function selectSpeakers(
           strategy: 'selector',
           participantIds: [top],
           scores,
-          reason: 'No reply was needed, but the previous speaker continues.',
+          reason: 'continuity',
         }
       : {
           strategy: 'selector',
           participantIds: [],
           scores,
-          reason: 'The selector judged that no reply was needed.',
+          reason: 'no_reply_needed',
         };
   return {
     strategy: 'selector',
     participantIds: [top],
     scores,
-    reason: 'The highest selector score answers.',
+    reason: 'top_score',
   };
 }

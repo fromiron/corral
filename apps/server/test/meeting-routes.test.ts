@@ -75,7 +75,7 @@ it('uses the shared local selector through HTTP and preserves its choice on repl
         { participantId: 'first', score: 0.1 },
         { participantId: 'second', score: 0.4 },
       ],
-      reason: expect.any(String),
+      reason: 'top_score',
     });
     expect(select).toHaveBeenCalledOnce();
     expect(server.coordinator.listRuns()).toHaveLength(1);
@@ -276,6 +276,115 @@ it('a meeting is created, answers a round over HTTP, and its state only changes 
       ).status,
     ).toBe(400);
     expect((await call('GET', '/api/v1/sessions/session_missing/meeting')).status).toBe(404);
+  } finally {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('continues a held mention chain over HTTP', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'corral-meeting-continue-'));
+  const token = 'test-bootstrap-token-0123456789abcdef';
+  let replies = 0;
+  const server = await startCorralServer({
+    workspace: root,
+    worktreeRoot: join(root, 'copies'),
+    port: 0,
+    bootstrapToken: token,
+    agents: new ScriptedAgentAdapter({
+      turns: 1,
+      collaborate: false,
+      appendNotes: false,
+      reply: (_turn, input) =>
+        ++replies <= 10 ? `@${input.role.name === 'First' ? 'Second' : 'First'} go on.` : 'Done.',
+    }),
+  });
+  try {
+    const login = await fetch(`${server.url}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: server.url },
+      body: JSON.stringify({ token }),
+    });
+    const headers = {
+      cookie: (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
+      origin: server.url,
+      'content-type': 'application/json',
+      'x-corral-csrf': login.headers.get('x-corral-csrf') ?? '',
+    };
+    const call = (method: string, path: string, body?: unknown) =>
+      fetch(`${server.url}/api/v1${path}`, {
+        method,
+        headers,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    const create = async (meeting?: unknown) =>
+      (
+        (await (
+          await call('POST', '/sessions', {
+            projectId: 'default',
+            title: 'Chain',
+            ...(meeting ? { meeting } : {}),
+          })
+        ).json()) as { session: { sessionId: string } }
+      ).session.sessionId;
+    const sessionId = await create({
+      version: 1,
+      participants: [
+        { participantId: 'first', name: 'First', prompt: '', modelProfile: 'model-a' },
+        { participantId: 'second', name: 'Second', prompt: '', modelProfile: 'model-b' },
+      ],
+      secretary: { modelProfile: 'model-a' },
+    });
+    const path = `/sessions/${sessionId}/meeting`;
+    const idle = await call('POST', `${path}/continue`, { commandId: 'k0' });
+    expect(idle.status).toBe(200);
+    expect(await idle.json()).toMatchObject({ ok: true, outcome: 'updated' });
+    const sent = await call('POST', `${path}/rounds`, {
+      kind: 'message',
+      commandId: 'c1',
+      mode: 'mock',
+      text: 'Go',
+      mentions: ['first'],
+    });
+    expect(sent.status).toBe(200);
+    const held = await vi.waitFor(
+      async () => {
+        const view = (await (await call('GET', path)).json()) as MeetingView;
+        expect(view.hold).toBeDefined();
+        expect(view.rounds.some((round) => round.active)).toBe(false);
+        return view;
+      },
+      { timeout: 10_000 },
+    );
+    expect(held.rounds).toHaveLength(9);
+    expect(held.hold).toEqual({ kind: 'chain', after: held.rounds[8]?.roundId });
+    expect(server.coordinator.listRuns()).toHaveLength(9);
+    const resumed = await call('POST', `${path}/continue`, { commandId: 'k1' });
+    expect(resumed.status).toBe(200);
+    const body = (await resumed.json()) as { ok: boolean; roundId: string; view: MeetingView };
+    expect(body).toMatchObject({ ok: true, outcome: 'started' });
+    expect(body.view.hold).toBeUndefined();
+    await vi.waitFor(
+      async () => {
+        const view = (await (await call('GET', path)).json()) as MeetingView;
+        expect(view.rounds).toHaveLength(11);
+        expect(view.rounds.some((round) => round.active)).toBe(false);
+      },
+      { timeout: 10_000 },
+    );
+    expect(server.coordinator.listRuns()).toHaveLength(11);
+    const replay = await call('POST', `${path}/continue`, { commandId: 'k1' });
+    expect(((await replay.json()) as { roundId: string }).roundId).toBe(body.roundId);
+    expect(server.coordinator.listRuns()).toHaveLength(11);
+    expect((await call('POST', `${path}/continue`, {})).status).toBe(400);
+    expect(
+      (await call('POST', '/sessions/session_missing/meeting/continue', { commandId: 'k2' }))
+        .status,
+    ).toBe(404);
+    const work = await create();
+    expect(
+      (await call('POST', `/sessions/${work}/meeting/continue`, { commandId: 'k3' })).status,
+    ).toBe(404);
   } finally {
     await server.close();
     rmSync(root, { recursive: true, force: true });
