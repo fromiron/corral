@@ -39,24 +39,36 @@ const later = (globalThis as unknown as { setTimeout(fn: () => void, ms: number)
 const flush = () => new Promise<void>((resolve) => later(resolve, 20));
 
 function setup(
-  runEnded: (runId: string, coordinator: Coordinator) => void | Promise<void>,
+  runEnded: (runId: string, coordinator: () => Coordinator) => unknown,
   held: Record<string, Gate> = {},
   store = new InMemoryRunStore(),
 ) {
   const clock = new FakeClock();
+  // Every report is counted before the listener runs, and the listener reads the coordinator
+  // only when it asks: a report from inside the constructor (recovery) is still counted.
+  const reported: string[] = [];
+  let instance: Coordinator | undefined;
+  const current = () => {
+    if (!instance) throw new Error('reported before the coordinator existed');
+    return instance;
+  };
   const coordinator: Coordinator = new Coordinator({
     clock,
     ids: new SequentialIdFactory(),
     timers: clock,
     store,
-    onRunEnded: (runId) => runEnded(runId, coordinator) as void,
+    onRunEnded: (runId) => {
+      reported.push(runId);
+      return runEnded(runId, current);
+    },
     agents: new ScriptedAgentAdapter({
       turns: 1,
       appendNotes: false,
       beforeReply: async (_turn, input) => held[input.nodeId]?.wait(),
     }),
   });
-  return { coordinator, transport: new InProcessTransport(coordinator), store };
+  instance = coordinator;
+  return { coordinator, transport: new InProcessTransport(coordinator), store, reported };
 }
 
 it('reports a successful end once, after the commit', async () => {
@@ -64,7 +76,9 @@ it('reports a successful end once, after the commit', async () => {
   const { transport } = setup((runId, coordinator) => {
     seen.push({
       runId,
-      status: coordinator.listRuns().find((run) => run.runId === runId)?.status,
+      status: coordinator()
+        .listRuns()
+        .find((run) => run.runId === runId)?.status,
     });
   });
   const { runId } = await transport.startRun(startRequest(linearCorral(['research']), 'cmd_ok'));
@@ -80,7 +94,11 @@ it('reports a failed end and a cancelled end once each', async () => {
   const { transport } = setup(
     (runId, coordinator) => {
       seen.push(runId);
-      statuses.push(coordinator.listRuns().find((run) => run.runId === runId)?.status);
+      statuses.push(
+        coordinator()
+          .listRuns()
+          .find((run) => run.runId === runId)?.status,
+      );
     },
     { research: gate },
   );
@@ -140,6 +158,7 @@ it('recovery of a run another process left open is not reported', async () => {
     'interrupted',
   );
   expect(seen).toEqual([]);
+  expect(second.reported).toEqual([]);
   gate.open();
 });
 
@@ -197,7 +216,11 @@ it('a run that keeps committing after it failed is reported once', async () => {
   const { transport } = setup(
     (runId, coordinator) => {
       seen.push(runId);
-      statuses.push(coordinator.listRuns().find((run) => run.runId === runId)?.status);
+      statuses.push(
+        coordinator()
+          .listRuns()
+          .find((run) => run.runId === runId)?.status,
+      );
     },
     { b: gate },
   );

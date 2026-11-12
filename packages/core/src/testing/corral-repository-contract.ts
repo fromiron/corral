@@ -884,6 +884,10 @@ export function describeCorralRepositoryContract(
         for (const refused of [
           { intent: 'queue' as const, start: { ...start, mode: 'later' } },
           { intent: 'queue' as const, start: { ...start, extra: true } },
+          // Only new and queued requests carry a start snapshot.
+          { intent: 'steer' as const, start, permissionMode: 'ask' as const },
+          { intent: 'explain' as const, start, permissionMode: 'ask' as const },
+          { intent: 'next' as const, start, permissionMode: 'auto' as const },
           { intent: 'next' as const, start },
           { intent: 'next' as const, carriedFrom: 'directive_original' },
           // The snapshot's permission mode is the request's: both absent, or the same.
@@ -903,6 +907,21 @@ export function describeCorralRepositoryContract(
             } as Parameters<CorralRepository['addSessionEntry']>[1]),
           ).toMatchObject({ ok: false, error: 'invalid' });
         expect((await repo.getSession(id))?.entries).toHaveLength(2);
+        // A new request keeps the snapshot it started with, so a carried request can copy it.
+        const sent = await repo.addSessionEntry(id, {
+          intent: 'next',
+          text: 'Started by the screen',
+          state: 'started',
+          runId: 'run_sent',
+          permissionMode: 'ask',
+          start,
+        });
+        if (!sent.ok) throw new Error(sent.message);
+        expect((await repo.getSession(id))?.entries[2]).toMatchObject({
+          intent: 'next',
+          state: 'started',
+          start,
+        });
       });
 
       it('a resent queued command keeps its start and carried source, and refuses others', async () => {

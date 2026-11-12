@@ -505,3 +505,50 @@ it('a restart alone starts nothing, even with autoStart back on', async () => {
     again.server.coordinator.listRuns().filter((run) => run.sessionId === session.sessionId),
   ).toHaveLength(0);
 });
+
+it('accepts a start snapshot on a new request, and saving a non-queued entry starts nothing', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const db = openDatabase(join(s.root, 'workspace', '.corral', 'corral.db'));
+  cleanup.push(() => {
+    db.close();
+  });
+  const direct = new SqliteCorralRepository(db, { clock: new FakeClock(), newCorralId: () => 'x' });
+  // Written past the HTTP route, so nothing looked at the queue yet.
+  const waiting = await direct.addSessionEntry(session.sessionId, {
+    intent: 'queue',
+    text: 'Waiting in the queue.',
+    state: 'queued',
+    start: START,
+  });
+  if (!waiting.ok) throw new Error(waiting.message);
+  const waitingId = waiting.session.entries.at(-1)?.entryId ?? '';
+  const sent = await s.send('POST', `/sessions/${session.sessionId}/entries`, {
+    intent: 'next',
+    text: 'Started by the screen.',
+    state: 'started',
+    runId: 'run_screen',
+    commandId: 'cmd_screen',
+    start: START,
+  });
+  expect(sent.status).toBe(201);
+  expect(sent.body.session.entries.at(-1)).toMatchObject({ intent: 'next', start: START });
+  const refused = await s.send('POST', `/sessions/${session.sessionId}/entries`, {
+    intent: 'next',
+    text: 'Refused by the server.',
+    state: 'refused',
+    detail: 'no',
+    start: START,
+  });
+  expect(refused.status).toBe(201);
+  expect(await s.settledEntry(session.sessionId, waitingId, 400)).toMatchObject({
+    state: 'queued',
+  });
+  expect(s.runsOf(session.sessionId)).toHaveLength(0);
+  // A queued save does look: the first queued entry starts, not the one just added.
+  s.hold();
+  const later = await s.queue(session.sessionId, 'Queued after it.', { start: START });
+  expect(await s.settledEntry(session.sessionId, waitingId)).toMatchObject({ state: 'started' });
+  expect(await s.entryOf(session.sessionId, later.entryId)).toMatchObject({ state: 'queued' });
+  expect(s.runsOf(session.sessionId)).toHaveLength(1);
+});

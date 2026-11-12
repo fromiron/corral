@@ -492,11 +492,11 @@ export function planSessionEntry(
   if (entry.refusal != null && !CommandError.safeParse(entry.refusal).success)
     return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
   const start = entry.start === undefined ? undefined : SessionEntryStart.safeParse(entry.start);
-  if (start && (!start.success || entry.intent !== 'queue'))
+  if (start && (!start.success || !['next', 'queue'].includes(entry.intent)))
     return {
       ok: false,
       error: 'invalid',
-      message: 'a start request requires a valid queued request',
+      message: 'a start request requires a valid new or queued request',
     };
   // The server starts with the snapshot; it must not run another permission than the one chosen.
   if (start?.success && (start.data.permissionMode ?? null) !== (entry.permissionMode ?? null))

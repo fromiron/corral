@@ -156,6 +156,14 @@ it('chooses the conversation run like the screen, open runs and other sessions a
   ];
   expect(conversationRun(runs, 's1')).toBe('run_mid');
   expect(conversationRun([], 's1')).toBeNull();
+  // The list is not in start order: the run that started last wins wherever it is listed.
+  const shuffled = [
+    run('run_one', '2026-01-01T00:00:01Z'),
+    run('run_three', '2026-01-01T00:00:03Z'),
+    run('run_two', '2026-01-01T00:00:02Z'),
+  ];
+  expect(conversationRun(shuffled, 's1')).toBe('run_three');
+  expect(conversationRun([...shuffled].reverse(), 's1')).toBe('run_three');
   // Equal start times: the earlier listed of the two wins after the reverse, as on the screen.
   const tie = [run('run_x', '2026-01-01T00:00:01Z'), run('run_y', '2026-01-01T00:00:01Z')];
   expect(conversationRun(tie, 's1')).toBe('run_x');
