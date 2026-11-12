@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { SessionSummaryStore } from '../sessionSummaryStore.ts';
 import { WorkTab } from './WorkTab.tsx';
 
 type ComposerProps = {
@@ -16,6 +17,7 @@ const fixture = vi.hoisted(() => ({
   composer: [] as ComposerProps[],
   workspaces: null as object | null,
   copyMissing: false,
+  summaries: undefined as object | undefined,
 }));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({
@@ -23,6 +25,7 @@ vi.mock('../../services.tsx', () => ({
     sessionFor: () => ({ getState: () => ({ open: async () => {} }) }),
     retainRun: () => () => {},
     workspaces: fixture.workspaces,
+    sessionSummaries: fixture.summaries,
   }),
 }));
 vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
@@ -56,6 +59,7 @@ beforeEach(() => {
   fixture.composer = [];
   fixture.workspaces = null;
   fixture.copyMissing = false;
+  fixture.summaries = undefined;
 });
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
@@ -156,4 +160,57 @@ it('marks a missing working copy once, in the composer row, in place of the fold
   expect(fixture.composer.at(-1)?.onWorkFolder).toBeUndefined();
   // Nothing above the conversation repeats it.
   expect(container.textContent).not.toContain(messages.Sessions.noWorkingCopy);
+});
+
+it('puts the summary divider in the conversation once an accepted compaction completes', async () => {
+  const fire: (() => void)[] = [];
+  let done = false;
+  const store = new SessionSummaryStore(
+    async (_sessionId, commandId) =>
+      commandId && done
+        ? {
+            compaction: {
+              commandId,
+              throughRunId: 'run_first',
+              coveredRunIds: ['run_first'],
+              sessionRevision: 1,
+            },
+            outcome: { commandId, phase: 'completed' },
+          }
+        : { compaction: null, outcome: commandId ? { commandId, phase: 'pending' } : null },
+    {
+      setTimeout: (run) => fire.push(run),
+      clearTimeout: () => {},
+    },
+  );
+  fixture.summaries = store;
+  const container = await show(
+    session([
+      {
+        entryId: 'first',
+        intent: 'next',
+        text: 'First request',
+        state: 'started',
+        createdAt: '2026-11-09T00:00:00Z',
+        runId: 'run_first',
+        executionId: null,
+        detail: null,
+      },
+    ]),
+  );
+  const divider = () => container.querySelector('[data-testid="session-summary"]');
+  expect(divider()).toBeNull();
+  await act(async () => store.accepted('session_home', 'cmd_compact'));
+  await act(async () => {
+    fire.shift()?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(divider()).toBeNull();
+  done = true;
+  await act(async () => {
+    fire.shift()?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(divider()?.textContent).toBe(messages.Sessions.sessionSummarized);
+  expect(fire).toHaveLength(0);
 });

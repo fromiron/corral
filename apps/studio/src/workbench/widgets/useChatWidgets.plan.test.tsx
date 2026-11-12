@@ -129,6 +129,7 @@ async function mount(live: boolean) {
             sessionId="session_plan"
             presentationRunId="run_plan"
             live={isLive}
+            sessionRunning={isLive}
             runIds={['run_plan']}
           >
             <Probe />

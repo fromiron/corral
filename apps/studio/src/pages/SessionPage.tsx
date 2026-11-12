@@ -403,6 +403,7 @@ function WorkSessionPage() {
           sessionId={session.sessionId}
           presentationRunId={presentationRunId}
           live={Boolean(liveRun)}
+          sessionRunning={sessionRuns.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
           runIds={sessionRunIds}
         >
           <div className="flex h-full min-h-0 min-w-0 flex-1">

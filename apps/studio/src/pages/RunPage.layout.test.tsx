@@ -1639,6 +1639,7 @@ it('does not list a cancelled tool as a failed step or choose it as the failure 
           presentationRunId="run_layout"
           runIds={['run_layout']}
           live={false}
+          sessionRunning={false}
         >
           <Probe />
         </ChatWidgetProvider>

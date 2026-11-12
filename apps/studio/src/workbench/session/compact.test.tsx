@@ -9,6 +9,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setCommands } from '../../commandRegistry.ts';
 import { requestSessionCompaction, summaryCut } from '../sessionCompact.ts';
+import { SessionSummaryStore } from '../sessionSummaryStore.ts';
 import { Composer } from './Composer.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -96,6 +97,7 @@ async function mount(
   running: RunSummary | null,
   snapshot = projection(),
   compactSession?: (command: { commandId: string }) => Promise<{ status: string }>,
+  extra: Record<string, unknown> = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -133,6 +135,7 @@ async function mount(
     startAuto: vi.fn(),
     startExplain: vi.fn(),
     ...(compactSession ? { compactSession } : {}),
+    ...extra,
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -194,8 +197,12 @@ it('reports a lost session compaction and asks again under the same command id',
       throw new Error('offline');
     },
   } as unknown as Parameters<typeof requestSessionCompaction>[0];
-  await expect(requestSessionCompaction(services, 'session_lost')).resolves.toBe('offline');
-  await expect(requestSessionCompaction(services, 'session_lost')).resolves.toBe('offline');
+  await expect(requestSessionCompaction(services, 'session_lost')).resolves.toMatchObject({
+    failure: 'offline',
+  });
+  await expect(requestSessionCompaction(services, 'session_lost')).resolves.toMatchObject({
+    failure: 'offline',
+  });
   expect(ids).toHaveLength(4);
   expect(new Set(ids).size).toBe(1);
 });
@@ -235,4 +242,30 @@ it('/compact compacts the idle session through the same command id path', async 
       expectedSessionRevision: 1,
     }),
   );
+});
+
+it('/compact says on its error line when the accepted session summary is not kept', async () => {
+  const fire: (() => void)[] = [];
+  const summaries = new SessionSummaryStore(
+    async (_sessionId, commandId) => ({
+      compaction: null,
+      outcome: commandId ? { commandId, phase: 'discarded' } : null,
+    }),
+    { setTimeout: (run) => fire.push(run), clearTimeout: () => {} },
+  );
+  const compactSession = vi.fn(async (command: { commandId: string }) => ({
+    commandId: command.commandId,
+    status: 'accepted' as const,
+  }));
+  const { container } = await mount(null, undefined, compactSession, {
+    sessionSummaries: summaries,
+  });
+  await chooseCompact(container);
+  expect(compactSession).toHaveBeenCalledTimes(1);
+  expect(document.body.textContent).not.toContain(messages.RunStatus.compactPhase.discarded);
+  await act(async () => {
+    fire.shift()?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(document.body.textContent).toContain(messages.RunStatus.compactPhase.discarded);
 });

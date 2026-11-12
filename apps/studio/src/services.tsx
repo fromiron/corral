@@ -28,7 +28,6 @@ import type {
   Clock,
   CompactSessionCommand,
   Receipt,
-  SessionCompactionView,
 } from '@corral/contracts';
 import {
   type AutoStartResult,
@@ -50,6 +49,7 @@ import type {} from './desktop.tsx';
 import { createRunSessions } from './runSessions.ts';
 import { createDemoRuntime } from './runtime.ts';
 import { sessionFetch } from './sessionConnection.ts';
+import { SessionSummaryStore } from './workbench/sessionSummaryStore.ts';
 
 // App-wide services. Studio served by the local server talks to it (saved Corrals, persistent
 // runs); opened any other way it runs the in-browser runtime with simulated agents.
@@ -90,7 +90,8 @@ export interface StudioServices {
   /** Idle session compaction. Absent in the browser runtime, which has no model call. */
   compactSession?: (command: CompactSessionCommand) => Promise<Receipt>;
   cancelSessionCompaction?: (command: CancelSessionCompactionCommand) => Promise<Receipt>;
-  readSessionCompaction?: (sessionId: string) => Promise<SessionCompactionView | null>;
+  /** The kept session summary and the outcome of an accepted compaction, shared by every view. */
+  sessionSummaries?: SessionSummaryStore;
   /** Work folders and file changes; the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
   /** Session deletion exists on the local server. The browser demo has no delete. */
@@ -224,8 +225,9 @@ export async function createStudioServices(): Promise<StudioServices> {
       cancelAuto: (request) => transport.cancelAuto(request),
       compactSession: (command) => sessionCompaction.compact(command),
       cancelSessionCompaction: (command) => sessionCompaction.cancel(command),
-      readSessionCompaction: async (sessionId) =>
-        (await sessionCompaction.read(sessionId)).compaction,
+      sessionSummaries: new SessionSummaryStore((sessionId, commandId) =>
+        sessionCompaction.read(sessionId, commandId),
+      ),
       workspaces: new WorkspacesApi(http),
       meetings: new MeetingsApi(http),
       meetingHandoffs: new MeetingHandoffsApi(http),

@@ -113,7 +113,7 @@ import { PermissionModePicker } from '../PermissionModePicker.tsx';
 import { ProjectMaterialPicker } from '../ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../preferences.ts';
 import { EDIT_REQUEST, RESEND_REQUEST, RefusalHelp } from '../RefusalHelp.tsx';
-import { requestSessionCompaction } from '../sessionCompact.ts';
+import { requestSessionCompaction, useSessionSummaryState } from '../sessionCompact.ts';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -277,6 +277,16 @@ export function Composer({
   }, [services, session.sessionId, transport]);
   useEffect(() => () => cancelAuto(), [cancelAuto]);
   const [error, setError] = useState<string | null>(null);
+  // The idle /compact this composer sent. A summary that did not land shows on the error line.
+  const sentCompaction = useRef<string | null>(null);
+  const { outcome: compactionOutcome } = useSessionSummaryState(session.sessionId);
+  useEffect(() => {
+    if (!compactionOutcome || compactionOutcome.commandId !== sentCompaction.current) return;
+    if (compactionOutcome.phase === 'pending') return;
+    sentCompaction.current = null;
+    if (compactionOutcome.phase !== 'completed')
+      setError(tStatus(`compactPhase.${compactionOutcome.phase}`));
+  }, [compactionOutcome, tStatus]);
   // UX-04: why the last request did not start; the text stays in the box to send again.
   const [refusal, setRefusal] = useState<{
     message: string;
@@ -1070,8 +1080,9 @@ export function Composer({
         setError(tStatus('compactSessionNeedsServer'));
         return;
       }
-      const failure = await requestSessionCompaction(services, session.sessionId);
-      if (failure) setError(failure);
+      const sent = await requestSessionCompaction(services, session.sessionId);
+      if (sent.failure) setError(sent.failure);
+      else sentCompaction.current = sent.commandId;
       onChange();
       return;
     }

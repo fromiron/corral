@@ -3501,7 +3501,9 @@
       "completed": "History compacted. Protected context remains available.",
       "failed": "Compaction failed. Previous history was retained.",
       "cancelled": "Compaction cancelled.",
-      "skipped": "Compaction was skipped because the task had already finished."
+      "skipped": "Compaction was skipped because the task had already finished.",
+      "retained": "The summary was not shorter, so the earlier turns stay.",
+      "discarded": "The session changed while summarizing, so the summary was not used."
     }
   },
   "Hunks": {

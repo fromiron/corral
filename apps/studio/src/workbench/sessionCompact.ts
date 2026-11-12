@@ -1,7 +1,16 @@
 import type { CompactSessionCommand, Receipt } from '@corral/contracts';
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { type StudioServices, useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
+import type { SessionSummaryState } from './sessionSummaryStore.ts';
+
+type Requester = Pick<StudioServices, 'repository' | 'compactSession' | 'sessionSummaries'>;
+
+/** The refusal or lost-request message, or null when accepted; and the command id that was sent. */
+export interface SessionCompactionSent {
+  failure: string | null;
+  commandId: string | null;
+}
 
 type Slot = {
   commandId: string;
@@ -13,13 +22,14 @@ const inflight = new Map<string, Slot>();
 
 /**
  * Sends session compaction. A lost response is asked again with the same command id.
- * A new click after a stored receipt uses a new id.
+ * A new click after a stored receipt uses a new id. An accepted command is then followed in
+ * the shared session summary until it settles.
  */
 export async function requestSessionCompaction(
-  services: Pick<StudioServices, 'repository' | 'compactSession'>,
+  services: Requester,
   sessionId: string,
-): Promise<string | null> {
-  if (!services.compactSession) return null;
+): Promise<SessionCompactionSent> {
+  if (!services.compactSession) return { failure: null, commandId: null };
   let slot = inflight.get(sessionId);
   if (!slot || slot.done) {
     slot = { commandId: newCommandId(), pending: null, done: false };
@@ -40,13 +50,15 @@ export async function requestSessionCompaction(
     );
     current.pending = pending;
   }
-  return pending.catch((error: unknown) =>
+  const commandId = slot.commandId;
+  const failure = await pending.catch((error: unknown) =>
     error instanceof Error ? error.message : String(error),
   );
+  return { failure, commandId };
 }
 
 async function send(
-  services: Pick<StudioServices, 'repository' | 'compactSession'>,
+  services: Requester,
   sessionId: string,
   commandId: string,
 ): Promise<string | null> {
@@ -68,6 +80,7 @@ async function send(
   } catch {
     receipt = await once();
   }
+  if (receipt.status === 'accepted') services.sessionSummaries?.accepted(sessionId, commandId);
   return receipt.error?.message ?? null;
 }
 
@@ -82,24 +95,19 @@ export function summaryCut(runIds: readonly (string | null)[], covered: readonly
   return index;
 }
 
+const NONE: SessionSummaryState = { view: null, outcome: null };
+
+/** The session's kept summary and the outcome of the compaction it is waiting on. */
+export function useSessionSummaryState(sessionId: string): SessionSummaryState {
+  const { sessionSummaries } = useServices();
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      sessionSummaries ? sessionSummaries.subscribe(sessionId, listener) : () => {},
+    [sessionSummaries, sessionId],
+  );
+  return useSyncExternalStore(subscribe, () => sessionSummaries?.get(sessionId) ?? NONE);
+}
+
 export function useSessionSummary(sessionId: string) {
-  const { readSessionCompaction } = useServices();
-  const [view, setView] = useState<Awaited<
-    ReturnType<NonNullable<StudioServices['readSessionCompaction']>>
-  > | null>(null);
-  useEffect(() => {
-    setView(null);
-    if (!readSessionCompaction) return;
-    let current = true;
-    readSessionCompaction(sessionId).then(
-      (next) => {
-        if (current) setView(next);
-      },
-      () => {},
-    );
-    return () => {
-      current = false;
-    };
-  }, [readSessionCompaction, sessionId]);
-  return view;
+  return useSessionSummaryState(sessionId).view;
 }

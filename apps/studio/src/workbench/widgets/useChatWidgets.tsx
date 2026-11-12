@@ -1,4 +1,8 @@
-import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
+import {
+  type SessionCompactionOutcome,
+  TERMINAL_EXECUTION_STATUSES,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
 import {
   canReadArtifactBody,
   canReleaseArtifactBodies,
@@ -31,7 +35,7 @@ import { useServices } from '../../services.tsx';
 import { type CompactReason, compactTarget } from '../compactTarget.ts';
 import { useQuestionNotice } from '../questionNotice.ts';
 import { readRunView } from '../readRunView.ts';
-import { requestSessionCompaction, useSessionSummary } from '../sessionCompact.ts';
+import { requestSessionCompaction, useSessionSummaryState } from '../sessionCompact.ts';
 import { contextCalls } from './contextCalls.ts';
 import {
   actionRequired,
@@ -94,7 +98,16 @@ export interface ChatWidgetModel {
     /** No execution is running, so the button compacts the session. */
     idle?: boolean;
     pending: boolean;
-    phase: 'queued' | 'started' | 'completed' | 'failed' | 'cancelled' | 'skipped' | null;
+    phase:
+      | 'queued'
+      | 'started'
+      | 'completed'
+      | 'failed'
+      | 'cancelled'
+      | 'skipped'
+      | 'retained'
+      | 'discarded'
+      | null;
     request: () => Promise<string | null>;
   };
   /** A kept session summary the next request will attach. */
@@ -133,17 +146,20 @@ export function ChatWidgetProvider({
   sessionId,
   presentationRunId,
   live,
+  sessionRunning,
   runIds,
   children,
 }: {
   sessionId: string;
   presentationRunId: string | null;
   live: boolean;
+  /** Some run in the session has not ended, whichever run is presented. */
+  sessionRunning: boolean;
   /** The session's runs, oldest first. */
   runIds: readonly string[];
   children: ReactNode;
 }) {
-  const model = useChatWidgetState(sessionId, presentationRunId, live, runIds);
+  const model = useChatWidgetState(sessionId, presentationRunId, live, sessionRunning, runIds);
   return <ChatWidgetContext.Provider value={model}>{children}</ChatWidgetContext.Provider>;
 }
 
@@ -151,11 +167,12 @@ function useChatWidgetState(
   sessionId: string,
   presentationRunId: string | null,
   live: boolean,
+  sessionRunning: boolean,
   runIds: readonly string[],
 ): ChatWidgetModel {
   const services = useServices();
   const { runFor, sessionFor, retainRun, transport, readHistory, workspaces, mode } = services;
-  const summaryView = useSessionSummary(sessionId);
+  const { view: summaryView, outcome: summaryOutcome } = useSessionSummaryState(sessionId);
   const prices = useModelPrices();
   const session = presentationRunId ? runFor(presentationRunId) : sessionFor(sessionId);
   useEffect(() => {
@@ -607,6 +624,8 @@ function useChatWidgetState(
       compactions,
       services,
       sessionId,
+      sessionRunning,
+      summaryOutcome,
     ),
     sessionSummary: summaryView
       ? { commandId: summaryView.commandId, covered: summaryView.coveredRunIds.length }
@@ -633,6 +652,20 @@ function useChatWidgetState(
   };
 }
 
+/** The accept state, then the outcome, where the context detail shows an execution's phase. */
+const IDLE_PHASE: Record<
+  SessionCompactionOutcome['phase'],
+  NonNullable<ChatWidgetModel['compaction']>['phase']
+> = {
+  pending: 'started',
+  // The summary note says this already.
+  completed: null,
+  failed: 'failed',
+  cancelled: 'cancelled',
+  retained: 'retained',
+  discarded: 'discarded',
+};
+
 function compactionControl(
   session: RunSessionStore,
   presentationRunId: string | null,
@@ -642,11 +675,23 @@ function compactionControl(
     executionId?: string;
     phase: NonNullable<ChatWidgetModel['compaction']>['phase'];
   }[],
-  services: Pick<ReturnType<typeof useServices>, 'compactSession' | 'repository'>,
+  services: Pick<
+    ReturnType<typeof useServices>,
+    'compactSession' | 'repository' | 'sessionSummaries'
+  >,
   sessionId: string,
+  sessionRunning: boolean,
+  outcome: SessionCompactionOutcome | null,
 ): NonNullable<ChatWidgetModel['compaction']> {
   const decision = compactTarget(projection, executionId);
-  if (!decision.ok && decision.reason === 'compactNoExecution') {
+  // The session path is for a session with nothing running. A live run whose shown execution
+  // already ended is not idle: the server would refuse compact_session.
+  const idle =
+    !decision.ok &&
+    decision.reason === 'compactNoExecution' &&
+    !sessionRunning &&
+    (!projection || TERMINAL_RUN_STATUSES.has(projection.status));
+  if (idle) {
     if (!services.compactSession) {
       return {
         reason: 'compactSessionNeedsServer',
@@ -655,12 +700,13 @@ function compactionControl(
         request: async () => null,
       };
     }
+    const phase = outcome ? IDLE_PHASE[outcome.phase] : null;
     return {
       reason: null,
       idle: true,
-      pending: false,
-      phase: null,
-      request: () => requestSessionCompaction(services, sessionId),
+      pending: outcome?.phase === 'pending',
+      phase,
+      request: async () => (await requestSessionCompaction(services, sessionId)).failure,
     };
   }
   const targetId = decision.ok ? decision.executionId : executionId;
