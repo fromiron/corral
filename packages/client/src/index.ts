@@ -1603,6 +1603,10 @@ export class ModelsApi {
   cancelLocalAiInstall(): Promise<LocalAiView> {
     return this.http.json('/local-ai/install', { method: 'DELETE' });
   }
+  /** Deletes the meeting bundle only. The judge model stays. */
+  removeLocalAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai', { method: 'DELETE' });
+  }
   decisionApis(): Promise<DecisionApiView[]> {
     return this.http.json('/decision-apis');
   }
@@ -1633,6 +1637,10 @@ export class ModelsApi {
   }
   cancelLocalRoutingInstall(): Promise<EffortRoutingView> {
     return this.http.json('/effort-routing/local/install', { method: 'DELETE' });
+  }
+  /** Deletes the installed Local judge model only. The saved setting and the meeting bundle stay. */
+  removeLocalRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local', { method: 'DELETE' });
   }
   /** Prepares the saved, installed Local engine again. */
   startLocalRouting(): Promise<EffortRoutingView> {

@@ -134,3 +134,126 @@ it('compaction is attempt-scoped, idempotent, and completed only with an owned s
     done.open();
   }
 });
+
+it('a live Core execution accepts manual compaction without a harness', async () => {
+  const ready = new Gate(),
+    done = new Gate();
+  const request = vi.fn();
+  let input!: AgentStartInput;
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    models: {
+      resolve: (profile, mode) => ({
+        ok: true,
+        snapshot:
+          mode === 'mock'
+            ? { profile, provider: null, modelId: null, auth: 'mock' }
+            : { profile, provider: 'fixture', modelId: 'fixture', auth: 'api_key' },
+      }),
+    },
+    agents: {
+      start: async (start) => {
+        input = start;
+        ready.open();
+        return {
+          requestCompaction: request,
+          cancel: async () => done.open(),
+          waitForSettlement: async () => {
+            await done.wait();
+            return { outcome: 'cancelled' as const };
+          },
+        };
+      },
+    },
+  });
+  const definition = linearCorral(['writer']);
+  const result = coordinator.startRun({
+    schemaVersion: '0.1',
+    commandId: 'start_core_compact',
+    definition,
+    mode: 'live',
+  });
+  expect(result.runId).not.toBeNull();
+  await ready.wait();
+  await Promise.resolve();
+  try {
+    expect(input.harness).toBeUndefined();
+    expect(input.role.harness).toBeUndefined();
+    const command: CompactContextCommand = {
+      schemaVersion: '0.1',
+      commandId: 'compact_core',
+      runId: result.runId!,
+      type: 'compact_context',
+      expectedControlRevision: coordinator.getSnapshot(result.runId!).projection.controlRevision,
+      payload: { executionId: input.executionId, attemptNo: input.attemptNo },
+    };
+    expect(coordinator.submit(command).status).toBe('accepted');
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(command.commandId);
+    expect(
+      coordinator.submit({
+        ...command,
+        commandId: 'compact_core_stale',
+        payload: { ...command.payload, attemptNo: input.attemptNo + 1 },
+      }).status,
+    ).toBe('rejected');
+  } finally {
+    done.open();
+  }
+});
+
+it('a simulated run refuses manual compaction even when the agent offers it', async () => {
+  const ready = new Gate(),
+    done = new Gate();
+  const request = vi.fn();
+  let input!: AgentStartInput;
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    models: {
+      resolve: (profile) => ({
+        ok: true,
+        snapshot: { profile, provider: null, modelId: null, auth: 'mock' as const },
+      }),
+    },
+    agents: {
+      start: async (start) => {
+        input = start;
+        ready.open();
+        return {
+          requestCompaction: request,
+          cancel: async () => done.open(),
+          waitForSettlement: async () => {
+            await done.wait();
+            return { outcome: 'cancelled' as const };
+          },
+        };
+      },
+    },
+  });
+  const result = coordinator.startRun({
+    schemaVersion: '0.1',
+    commandId: 'start_mock_compact',
+    definition: linearCorral(['writer']),
+    mode: 'mock',
+  });
+  expect(result.runId).not.toBeNull();
+  await ready.wait();
+  await Promise.resolve();
+  try {
+    expect(
+      coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'compact_mock',
+        runId: result.runId!,
+        type: 'compact_context',
+        expectedControlRevision: coordinator.getSnapshot(result.runId!).projection.controlRevision,
+        payload: { executionId: input.executionId, attemptNo: input.attemptNo },
+      }).status,
+    ).toBe('rejected');
+    expect(request).not.toHaveBeenCalled();
+  } finally {
+    done.open();
+  }
+});

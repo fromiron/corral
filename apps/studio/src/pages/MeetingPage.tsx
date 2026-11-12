@@ -112,6 +112,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
   const refreshId = useRef(0);
   const sessionId = session.sessionId;
   const composer = useRef<ComposerHandle>(null);
+  const [sent, setSent] = useState(0);
   const narrow = useNarrowScreen();
   // The side panel's open state is this meeting's; the drawer opens only when asked.
   const [panelOpen, rememberPanel] = useRemembered<boolean>(
@@ -229,6 +230,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
             centerEmpty
             expandedHeader={recordsWide}
             sessionId={sessionId}
+            sent={sent}
             header={
               <>
                 <MeetingParticipants
@@ -303,6 +305,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                     ? () => void act(() => meetings.stop(sessionId, active.roundId))
                     : undefined
                 }
+                onSent={() => setSent((count) => count + 1)}
                 send={(request) => act(() => meetings.send(sessionId, request))}
                 sendQueued={() => act(() => meetings.sendQueued(sessionId))}
                 dropQueued={() => act(() => meetings.dropQueued(sessionId))}
@@ -690,6 +693,7 @@ function MeetingComposer({
   error,
   onStop,
   send,
+  onSent,
   sendQueued,
   dropQueued,
   editQueued,
@@ -701,6 +705,8 @@ function MeetingComposer({
   error: string;
   onStop?: (() => void) | undefined;
   send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
+  /** The person sent. The conversation follows the end again. */
+  onSent?: () => void;
   sendQueued(): Promise<MeetingResult | null>;
   dropQueued(): Promise<MeetingResult | null>;
   editQueued(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
@@ -748,6 +754,7 @@ function MeetingComposer({
     request: Omit<Extract<MeetingRoundRequest, { kind: 'message' }>, 'commandId' | 'mode'>,
   ) => {
     if (inFlight.current || attachmentLoading) return;
+    onSent?.();
     const key = JSON.stringify([request, mode]);
     if (pending.current?.key !== key) pending.current = { key, commandId: newCommandId() };
     inFlight.current = true;

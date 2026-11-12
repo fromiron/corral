@@ -38,6 +38,25 @@ export interface ProfileOption extends ProfileChoice {
   reasoningCapabilities?: ReasoningCapabilities | undefined;
 }
 
+/** A saved image profile a role can choose. The value stored on the role is profileId. */
+export interface ImageProfileChoice {
+  profileId: string;
+  label: string;
+}
+
+function imageProfileChoices(
+  saved: readonly ImageProfileChoice[] | null,
+  current: string | null | undefined,
+  missing: (id: string) => string,
+): { value: string; label: string }[] {
+  // Unknown list: keep the role's saved id on screen and do not pretend the list is empty.
+  if (!saved) return current ? [{ value: current, label: current }] : [];
+  const options = saved.map((profile) => ({ value: profile.profileId, label: profile.label }));
+  if (current && !saved.some((profile) => profile.profileId === current))
+    options.unshift({ value: current, label: missing(current) });
+  return options;
+}
+
 export type RoleSettings = (role: AgentRole, nodeId: string) => ReactNode;
 export type LoopSettings = (node: LoopNode) => ReactNode;
 
@@ -62,12 +81,14 @@ export function NodeSettings({
   editor,
   node,
   profiles,
+  imageProfiles,
   roleSettings,
   loopSettings,
 }: {
   editor: EditorStore;
   node: CorralNode;
   profiles: ProfileOption[] | null;
+  imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings: RoleSettings | undefined;
   loopSettings: LoopSettings | undefined;
 }) {
@@ -217,16 +238,18 @@ export function NodeSettings({
           </div>
           {role.allowedWorkTools.includes('generate_image') ? (
             <div className="flex flex-col gap-1 text-caption">
-              <KitInputGroup className="w-full" {...session}>
-                <KitInputField
-                  index={0}
-                  label={t('imageProfile')}
-                  value={role.imageProfile ?? ''}
-                  onChange={(value) => update(node.id, { imageProfile: value || null })}
-                  required
-                  aria-describedby={`${id}-image-profile-hint`}
-                />
-              </KitInputGroup>
+              <Select
+                label={t('imageProfile')}
+                describedBy={`${id}-image-profile-hint`}
+                value={role.imageProfile ?? null}
+                placeholder={t('imageProfilePlaceholder')}
+                onValueChange={(imageProfile) => update(node.id, { imageProfile })}
+                options={imageProfileChoices(
+                  imageProfiles,
+                  role.imageProfile,
+                  (profileId) => `${profileId} (${t('imageProfileMissing')})`,
+                )}
+              />
               <span id={`${id}-image-profile-hint`} className="text-muted-foreground">
                 {t('imageProfileHint')}
               </span>

@@ -26,6 +26,7 @@ export function Select<T extends string>({
   onValueChange,
   options,
   label,
+  describedBy,
   placeholder,
   variant = 'outline',
   size,
@@ -41,6 +42,8 @@ export function Select<T extends string>({
   onValueChange: (value: T) => void;
   options: readonly SelectOption<T>[];
   label: string;
+  /** id of the note that describes this select. */
+  describedBy?: string;
   placeholder?: ReactNode;
   variant?: 'outline' | 'ghost' | 'chip';
   size?: 'xs' | 'sm';
@@ -93,6 +96,7 @@ export function Select<T extends string>({
       <SelectTrigger
         id={id}
         aria-label={label}
+        aria-describedby={describedBy}
         placeholder={placeholder ?? t('placeholder')}
         leadingContent={icon}
         variant={variant === 'outline' ? 'bordered' : 'borderless'}

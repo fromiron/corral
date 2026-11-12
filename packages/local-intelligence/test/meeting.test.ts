@@ -41,6 +41,26 @@ describe('meeting selector', () => {
     ]);
   });
 
+  it('puts aliases and the short role label into the participant text', () => {
+    const { participants } = meetingTexts({
+      ...input,
+      participants: [
+        {
+          participantId: 'a',
+          name: 'Ann',
+          aliases: ['앤', 'Anne'],
+          role: '설계',
+          prompt: 'role a',
+        },
+        { participantId: 'b', name: 'Bo', prompt: '' },
+      ],
+    });
+    expect(participants.map((person) => person.role)).toEqual([
+      'Ann\n앤\nAnne\n설계\nrole a',
+      'Bo',
+    ]);
+  });
+
   it("weighs a person's own turns above their role and keeps the roster order on a tie", () => {
     expect(
       closestParticipant([
@@ -191,6 +211,44 @@ describe('meeting selector', () => {
     );
     await expect(selector.select(input)).resolves.toBeNull();
     expect(embed).not.toHaveBeenCalled();
+  });
+
+  it('scores a short role label when the longer description is empty', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({ question: [1, 0, 0], 'Ann\n설계': [1, 0, 0], Bo: [0, 1, 0] }),
+      'release',
+    );
+    await expect(
+      selector.select({
+        ...input,
+        participants: [
+          { participantId: 'a', name: 'Ann', role: '설계', prompt: '' },
+          { participantId: 'b', name: 'Bo', prompt: '' },
+        ],
+        history: [],
+      }),
+    ).resolves.toEqual(['a']);
+  });
+
+  it('does not let aliases alone decide who answers', async () => {
+    const fake = engine({
+      question: [1, 0, 0],
+      'Bo\n질문': [1, 0, 0],
+      Bo: [1, 0, 0],
+      'Ann\nrole a': [0, 1, 0],
+      'answer a': [0, 1, 0],
+    });
+    const selector = new LocalMeetingSelector(fake, 'release');
+    await expect(
+      selector.select({
+        ...input,
+        participants: [
+          input.participants[0]!,
+          { participantId: 'b', name: 'Bo', aliases: ['질문'], prompt: '' },
+        ],
+        history: [{ participantId: 'a', text: 'answer a' }],
+      }),
+    ).resolves.toEqual(['a']);
   });
 
   it('abstains when no role or posted turn can tell ordinary participants apart', async () => {
