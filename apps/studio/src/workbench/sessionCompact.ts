@@ -25,9 +25,10 @@ export async function requestSessionCompaction(
     slot = { commandId: newCommandId(), pending: null, done: false };
     inflight.set(sessionId, slot);
   }
-  if (!slot.pending) {
+  let pending = slot.pending;
+  if (!pending) {
     const current = slot;
-    current.pending = send(services, sessionId, current.commandId).then(
+    pending = send(services, sessionId, current.commandId).then(
       (message) => {
         current.done = true;
         return message;
@@ -37,8 +38,11 @@ export async function requestSessionCompaction(
         throw error;
       },
     );
+    current.pending = pending;
   }
-  return slot.pending;
+  return pending.catch((error: unknown) =>
+    error instanceof Error ? error.message : String(error),
+  );
 }
 
 async function send(
@@ -84,14 +88,15 @@ export function useSessionSummary(sessionId: string) {
     ReturnType<NonNullable<StudioServices['readSessionCompaction']>>
   > | null>(null);
   useEffect(() => {
-    if (!readSessionCompaction) {
-      setView(null);
-      return;
-    }
+    setView(null);
+    if (!readSessionCompaction) return;
     let current = true;
-    void readSessionCompaction(sessionId).then((next) => {
-      if (current) setView(next);
-    });
+    readSessionCompaction(sessionId).then(
+      (next) => {
+        if (current) setView(next);
+      },
+      () => {},
+    );
     return () => {
       current = false;
     };

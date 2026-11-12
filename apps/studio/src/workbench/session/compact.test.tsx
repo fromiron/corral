@@ -8,7 +8,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setCommands } from '../../commandRegistry.ts';
-import { summaryCut } from '../sessionCompact.ts';
+import { requestSessionCompaction, summaryCut } from '../sessionCompact.ts';
 import { Composer } from './Composer.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -183,6 +183,21 @@ async function chooseCompact(container: HTMLElement) {
 it('places the session summary after the last covered turn', () => {
   expect(summaryCut(['run_a', 'run_b', 'run_c'], ['run_a', 'run_b'])).toBe(1);
   expect(summaryCut(['run_c'], ['run_a'])).toBe(-1);
+});
+
+it('reports a lost session compaction and asks again under the same command id', async () => {
+  const ids: string[] = [];
+  const services = {
+    repository: { getSession: async () => ({ revision: 1 }) },
+    compactSession: async (command: { commandId: string }) => {
+      ids.push(command.commandId);
+      throw new Error('offline');
+    },
+  } as unknown as Parameters<typeof requestSessionCompaction>[0];
+  await expect(requestSessionCompaction(services, 'session_lost')).resolves.toBe('offline');
+  await expect(requestSessionCompaction(services, 'session_lost')).resolves.toBe('offline');
+  expect(ids).toHaveLength(4);
+  expect(new Set(ids).size).toBe(1);
 });
 
 it('/compact sends compact_context for the live execution', async () => {

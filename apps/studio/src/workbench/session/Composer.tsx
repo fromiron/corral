@@ -1065,10 +1065,7 @@ export function Composer({
         setError(tStatus('compactSessionNeedsServer'));
         return;
       }
-      const failure = await requestSessionCompaction(services, session.sessionId).catch(
-        (error: unknown) =>
-          error instanceof Error ? error.message : tStatus('compactUnavailable'),
-      );
+      const failure = await requestSessionCompaction(services, session.sessionId);
       if (failure) setError(failure);
       onChange();
       return;
