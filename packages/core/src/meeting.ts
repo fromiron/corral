@@ -198,15 +198,26 @@ function nextOrder(meeting: MeetingState) {
   );
 }
 
-/** Mention rounds since the person last posted a message or chose to continue. */
+/** A person's message that asks for replies; a message posted without recipients does not. */
+const asksForReplies = (round: MeetingRound) =>
+  round.message !== null && round.selection?.strategy !== 'none';
+
+/**
+ * Where the current mention chain is counted from: the person's latest message that asks for
+ * replies, or their latest choice to continue. 0 when neither exists.
+ */
+function chainStart(meeting: MeetingState) {
+  return Math.max(
+    0,
+    meeting.rounds.findLastIndex((round) => asksForReplies(round) || Boolean(round.continued)),
+  );
+}
+
+/** Participant-mention rounds since the chain start; a continued round counts as the first. */
 function chainLength(meeting: MeetingState) {
-  let length = 0;
-  for (const round of meeting.rounds.toReversed()) {
-    if (round.message !== null) break;
-    if (round.kind === 'mention') length++;
-    if (round.continued) break;
-  }
-  return length;
+  return meeting.rounds
+    .slice(chainStart(meeting))
+    .filter((round) => round.kind === 'mention' && round.message === null).length;
 }
 
 export class MeetingService {
@@ -362,8 +373,12 @@ export class MeetingService {
         if (item.roundId === roundId || (current && (await this.roundView(sessionId, item)).active))
           active.push(item);
       }
-      // Stopping also ends a held mention chain; nothing is left to continue.
-      const { hold: _hold, ...meeting } = session.meeting;
+      // Stopping the current chain ends its hold; a late stop of an earlier message does not.
+      const { hold: _hold, ...released } = session.meeting;
+      const meeting =
+        session.meeting.rounds.indexOf(round) >= chainStart(session.meeting)
+          ? released
+          : session.meeting;
       const saved = await this.save(
         session,
         {
@@ -381,8 +396,9 @@ export class MeetingService {
   }
 
   /**
-   * Continues a held mention chain: the mentions the hold left unanswered are followed and the
-   * chain is counted again. Without a hold nothing changes; the same command resumes once.
+   * Continues a held mention chain: every mention in the current chain that was not followed yet
+   * is followed, and the chain is counted again from the first round this starts, which carries
+   * the command. Without a hold nothing changes; the same command resumes once.
    */
   continueChain(sessionId: string, input: MeetingContinueRequest): Promise<MeetingResult> {
     return this.locked(sessionId, async () => {
@@ -397,17 +413,19 @@ export class MeetingService {
       if (previous) return { ok: true, outcome: 'started', roundId: previous.roundId };
       const { hold, ...released } = session.meeting;
       if (!hold) return { ok: true, outcome: 'updated' };
-      const source = session.meeting.rounds.find((round) => round.roundId === hold.after);
+      // A round already following a mention is skipped by followMentions' replyTo check.
+      const chain = session.meeting.rounds.slice(chainStart(session.meeting));
       let result: Extract<MeetingResult, { ok: true }> | null = null;
-      for (const answer of source?.answers ?? []) {
-        if (!source) break;
-        const started = await this.followMentions(
-          sessionId,
-          { round: source, answer },
-          result ? undefined : commandId,
-        );
-        if (!started.ok) return result ?? started;
-        if (started.outcome === 'started') result ??= started;
+      for (const round of chain) {
+        for (const answer of round.answers) {
+          const started = await this.followMentions(
+            sessionId,
+            { round, answer },
+            result ? undefined : commandId,
+          );
+          if (!started.ok) return result ?? started;
+          if (started.outcome === 'started') result ??= started;
+        }
       }
       if (result) return result;
       return this.save(session, released, { ok: true, outcome: 'updated' });
@@ -756,12 +774,13 @@ export class MeetingService {
         detail: null,
       })),
     };
-    // A person's message, or their choice to continue, ends a held chain and restarts its count.
+    // A person's message, or their choice to continue, ends a held chain and restarts its count;
+    // a message posted without recipients leaves both alone.
     const { hold: _hold, ...released } = meeting;
     const recorded = await this.save(
       session,
       {
-        ...(spec.message !== null || spec.continued ? released : meeting),
+        ...((spec.message !== null && !nobody) || spec.continued ? released : meeting),
         rounds: [
           ...meeting.rounds.map((past) => ({
             ...past,
@@ -965,9 +984,7 @@ export class MeetingService {
       !source.mode ||
       source.kind === 'secretary' ||
       // A message posted without recipients does not interrupt the conversation it joins.
-      meeting.rounds
-        .slice(index + 1)
-        .some((item) => item.message !== null && item.selection?.strategy !== 'none') ||
+      meeting.rounds.slice(index + 1).some(asksForReplies) ||
       meeting.rounds.some(
         (item) =>
           item.replyTo?.roundId === source.roundId &&
@@ -982,6 +999,7 @@ export class MeetingService {
       (id) => id !== speaker.answer.participantId && id !== SECRETARY_ID,
     );
     if (!participantIds.length) return { ok: true, outcome: 'updated' };
+    // The first hold stays: `after` shows where the chain stopped, and continue reads the chain.
     if (!continued && chainLength(meeting) >= CHAIN_LIMIT)
       return meeting.hold
         ? { ok: true, outcome: 'updated' }

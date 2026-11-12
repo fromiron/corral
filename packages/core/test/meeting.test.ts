@@ -1718,21 +1718,39 @@ it('a parallel answer completing before the first participant still schedules it
 });
 
 describe('meeting mention chain hold', () => {
-  /** Architect and Builder call each other until `mentions` replies have mentioned someone. */
+  /**
+   * Architect and Builder call each other until `mentions` of their replies have mentioned
+   * someone; Tester only acknowledges.
+   */
   const pingPong = (mentions: number, extra: Parameters<typeof fixture>[0] = {}) => {
     let replies = 0;
     return fixture({
       ...extra,
       reply: (input) =>
-        ++replies <= mentions
-          ? `@${input.role.name === 'Architect' ? 'Builder' : 'Architect'} your turn.`
-          : 'Done.',
+        input.role.name === 'Tester'
+          ? 'Noted.'
+          : ++replies <= mentions
+            ? `@${input.role.name === 'Architect' ? 'Builder' : 'Architect'} your turn.`
+            : 'Done.',
     });
   };
+  /** Mention rounds after the person's last message that asked for replies. */
   const chainAfterLastMessage = (view: MeetingView) => {
-    const last = view.rounds.findLastIndex((round) => round.message !== null);
-    return view.rounds.slice(last + 1).filter((round) => round.kind === 'mention').length;
+    const last = view.rounds.findLastIndex(
+      (round) => round.message !== null && round.selection?.strategy !== 'none',
+    );
+    return view.rounds
+      .slice(last + 1)
+      .filter((round) => round.kind === 'mention' && round.message === null).length;
   };
+  const postOnly = (f: Awaited<ReturnType<typeof fixture>>, commandId: string, text: string) =>
+    f.meetings.send(f.sessionId, {
+      kind: 'message',
+      commandId,
+      mode: 'mock',
+      text,
+      recipients: 'none',
+    });
 
   it('stops before the ninth mention response and keeps the hold after a restart', async () => {
     const f = await pingPong(100);
@@ -1780,24 +1798,28 @@ describe('meeting mention chain hold', () => {
     expect(view.hold).not.toEqual(first);
   });
 
-  it('a person’s message without recipients clears the hold too', async () => {
-    const f = await pingPong(100);
+  it('a message without recipients leaves the hold, and continue still resumes it', async () => {
+    const f = await pingPong(10);
     await f.send('c1', 'Go', ['architect']);
     await f.meetings.idle(f.sessionId);
-    expect((await viewOf(f)).hold).toBeDefined();
-    await f.meetings.send(f.sessionId, {
-      kind: 'message',
-      commandId: 'note',
-      mode: 'mock',
-      text: 'Noted.',
-      recipients: 'none',
+    const held = (await viewOf(f)).hold;
+    expect(held).toBeDefined();
+    expect(await postOnly(f, 'note', 'Posted while held.')).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    expect((await viewOf(f)).hold).toEqual(held);
+    expect(f.seen).toHaveLength(9);
+    expect(await f.meetings.continueChain(f.sessionId, { commandId: 'k1' })).toMatchObject({
+      ok: true,
+      outcome: 'started',
     });
     await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(11);
+    expect(f.seen[9]?.role.name).toBe('Builder');
+    expect(brief(f.seen[9])).toContain('Posted while held.');
     expect((await viewOf(f)).hold).toBeUndefined();
-    expect(f.seen).toHaveLength(9);
   });
 
-  it('a message without recipients posted mid-chain restarts the count', async () => {
+  it('a message without recipients posted mid-chain neither breaks nor restarts the count', async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -1806,19 +1828,93 @@ describe('meeting mention chain hold', () => {
     const f = await pingPong(100, { onStart: () => (++starts === 5 ? held : undefined) });
     await f.send('c1', 'Go', ['architect']);
     await vi.waitFor(() => expect(f.seen).toHaveLength(5));
-    await f.meetings.send(f.sessionId, {
-      kind: 'message',
-      commandId: 'note',
-      mode: 'mock',
-      text: 'Posting a note only.',
-      recipients: 'none',
-    });
+    await postOnly(f, 'note', 'Posting a note only.');
     release();
     await f.meetings.idle(f.sessionId);
-    expect(f.seen).toHaveLength(13);
+    expect(f.seen).toHaveLength(9);
     const view = await viewOf(f);
     expect(chainAfterLastMessage(view)).toBe(8);
     expect(view.hold).toEqual({ kind: 'chain', after: view.rounds.at(-1)?.roundId });
+  });
+
+  it('continue follows every mention left unfollowed in the chain, and only the first round carries the command', async () => {
+    let replies = 0;
+    const f = await fixture({
+      reply: (input) => {
+        replies++;
+        if (input.role.name === 'Tester') return '@Architect from Tester.';
+        if (replies === 1) return '@Builder @Tester what do you think?';
+        return replies <= 10
+          ? `@${input.role.name === 'Architect' ? 'Builder' : 'Architect'} your turn.`
+          : 'Done.';
+      },
+    });
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    const held = await viewOf(f);
+    // Tester waited in the first mention round and answered only after the hold.
+    expect(f.seen.map((input) => input.role.name).at(-1)).toBe('Tester');
+    expect(f.seen).toHaveLength(10);
+    const first = held.rounds[1];
+    expect(first?.participantIds).toEqual(['builder', 'tester']);
+    // A later source does not replace the first hold.
+    expect(held.hold).toEqual({ kind: 'chain', after: held.rounds[8]?.roundId });
+    expect(held.rounds).toHaveLength(9);
+    const resumed = await f.meetings.continueChain(f.sessionId, { commandId: 'k1' });
+    expect(resumed).toMatchObject({ ok: true, outcome: 'started' });
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(12);
+    const view = await viewOf(f);
+    const added = view.rounds.slice(9);
+    expect(added.map((round) => round.replyTo)).toEqual([
+      { roundId: first?.roundId, participantId: 'tester' },
+      { roundId: held.rounds[8]?.roundId, participantId: 'architect' },
+    ]);
+    expect(added.map((round) => round.continued)).toEqual([true, undefined]);
+    expect(added[0]?.commandId).toBe('k1');
+    expect(added[1]?.commandId).not.toBe('k1');
+    expect(resumed).toMatchObject({ roundId: added[0]?.roundId });
+    expect(view.hold).toBeUndefined();
+  });
+
+  it('a legacy rebuttal round does not count toward the chain', async () => {
+    let mentions = 7;
+    let replies = 0;
+    const f = await fixture({
+      reply: (input) =>
+        ++replies <= mentions
+          ? `@${input.role.name === 'Architect' ? 'Builder' : 'Architect'} your turn.`
+          : 'Done.',
+    });
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    expect(f.seen).toHaveLength(8);
+    mentions = 100;
+    expect(await f.rebut('r1')).toMatchObject({ ok: true });
+    await f.meetings.idle(f.sessionId);
+    const view = await viewOf(f);
+    expect(view.rounds.filter((round) => round.kind === 'rebuttal')).toHaveLength(1);
+    expect(chainAfterLastMessage(view)).toBe(8);
+    expect(f.seen).toHaveLength(10);
+    expect(view.hold).toEqual({ kind: 'chain', after: view.rounds.at(-1)?.roundId });
+  });
+
+  it('a late stop of an earlier finished message keeps the hold', async () => {
+    const f = await pingPong(100);
+    await f.send('c0', 'Hello', ['tester']);
+    await f.meetings.idle(f.sessionId);
+    await f.send('c1', 'Go', ['architect']);
+    await f.meetings.idle(f.sessionId);
+    const held = await viewOf(f);
+    expect(held.hold).toBeDefined();
+    expect(await f.meetings.stop(f.sessionId, held.rounds[0]?.roundId ?? '')).toMatchObject({
+      ok: true,
+    });
+    expect((await viewOf(f)).hold).toEqual(held.hold);
+    expect(await f.meetings.stop(f.sessionId, held.rounds[1]?.roundId ?? '')).toMatchObject({
+      ok: true,
+    });
+    expect((await viewOf(f)).hold).toBeUndefined();
   });
 
   it('continue resumes the held mention and counts eight again', async () => {
