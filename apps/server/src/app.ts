@@ -525,12 +525,13 @@ async function createCorralServer(
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // linked folders, session worktrees and the file broker.
+  const worktreeRoot = options.worktreeRoot ?? defaultWorktreeRoot();
   const files: WorkspaceService = new WorkspaceService({
     db,
     clock,
     hostId: workspace.id,
     allowSharedDevelopment: options.allowSharedDevelopment,
-    worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
+    worktreeRoot,
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
     ...(options.fff
@@ -3158,7 +3159,7 @@ async function createCorralServer(
       }
     }
     schedules.releaseSession(sessionId);
-    const removed = deleteSessionRecords(db, sessionId, body.expectedRevision);
+    const removed = deleteSessionRecords(db, sessionId, body.expectedRevision, worktreeRoot);
     if (!removed.ok) {
       if (removed.error === 'not_found') return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
       if (removed.error === 'conflict')

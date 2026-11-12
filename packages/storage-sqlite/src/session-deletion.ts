@@ -1,5 +1,5 @@
 import { rmSync } from 'node:fs';
-import { isAbsolute, parse, resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { type RunStatus, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { Db } from './database.ts';
 
@@ -226,12 +226,12 @@ function ownedPaths(db: Db, sessionId: string) {
   return [...copies, ...candidates].map((row) => row.path);
 }
 
-/** A session path is removed only when it is absolute and not the filesystem root. */
-function removeOwnedPath(path: string) {
+/** A session path is removed only when it lies strictly inside the copies folder. */
+function removeOwnedPath(path: string, copiesRoot: string) {
   if (!isAbsolute(path)) return;
-  const resolved = resolve(path);
-  if (resolved === parse(resolved).root) return;
-  rmSync(resolved, { recursive: true, force: true });
+  const inside = relative(resolve(copiesRoot), resolve(path));
+  if (!inside || inside.startsWith('..') || isAbsolute(inside)) return;
+  rmSync(resolve(path), { recursive: true, force: true });
 }
 
 function deleteMatching(db: Db, sql: string, ids: string[]) {
@@ -405,6 +405,7 @@ export function deleteSessionRecords(
   db: Db,
   sessionId: string,
   expectedRevision: number,
+  copiesRoot: string,
 ): SessionDeletionResult {
   const paths: string[] = [];
   const result = db.transaction((): SessionDeletionResult => {
@@ -425,6 +426,6 @@ export function deleteSessionRecords(
     );
     return { ok: true };
   })();
-  if (result.ok) for (const path of paths) removeOwnedPath(path);
+  if (result.ok) for (const path of paths) removeOwnedPath(path, copiesRoot);
   return result;
 }

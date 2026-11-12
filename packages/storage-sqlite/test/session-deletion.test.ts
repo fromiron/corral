@@ -306,9 +306,9 @@ const count = (db: ReturnType<typeof database>['db'], sql: string, ...args: unkn
   (db.prepare(sql).get(...args) as { n: number }).n;
 
 it('removes one session’s rows and leaves the other session, its runs and the team', async () => {
-  const { db, alpha, beta } = await seed();
+  const { db, dir, alpha, beta } = await seed();
   const before = count(db, 'SELECT COUNT(*) AS n FROM runs WHERE session_id=?', beta.sessionId);
-  const removed = deleteSessionRecords(db, alpha.sessionId, 1);
+  const removed = deleteSessionRecords(db, alpha.sessionId, 1, dir);
   expect(removed).toEqual({ ok: true });
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', alpha.sessionId)).toBe(0);
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', beta.sessionId)).toBe(1);
@@ -388,33 +388,39 @@ it('removes one session’s rows and leaves the other session, its runs and the 
 });
 
 it('refuses while a run is unfinished and does not remove the other session', async () => {
-  const { db, repository, runs } = database();
+  const { db, dir, repository, runs } = database();
   const alpha = await session(db, repository, 'Alpha');
   const beta = await session(db, repository, 'Beta');
   addRun(runs, 'run_open', alpha.sessionId, 'running');
   addRun(runs, 'run_beta', beta.sessionId, 'succeeded');
-  const refused = deleteSessionRecords(db, alpha.sessionId, 1);
+  const refused = deleteSessionRecords(db, alpha.sessionId, 1, dir);
   expect(refused).toMatchObject({ ok: false, error: 'unfinished', runIds: ['run_open'] });
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', alpha.sessionId)).toBe(1);
   expect(count(db, 'SELECT COUNT(*) AS n FROM runs WHERE id=?', 'run_beta')).toBe(1);
   db.prepare("UPDATE runs SET status='succeeded' WHERE id='run_open'").run();
-  expect(deleteSessionRecords(db, alpha.sessionId, 1)).toEqual({ ok: true });
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, dir)).toEqual({ ok: true });
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', beta.sessionId)).toBe(1);
   db.close();
 });
 
 it('a stale revision is a conflict and a repeated delete is not found', async () => {
-  const { db, repository } = database();
+  const { db, dir, repository } = database();
   const alpha = await session(db, repository, 'Alpha');
-  expect(deleteSessionRecords(db, alpha.sessionId, 2)).toEqual({ ok: false, error: 'conflict' });
+  expect(deleteSessionRecords(db, alpha.sessionId, 2, dir)).toEqual({
+    ok: false,
+    error: 'conflict',
+  });
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', alpha.sessionId)).toBe(1);
-  expect(deleteSessionRecords(db, alpha.sessionId, 1)).toEqual({ ok: true });
-  expect(deleteSessionRecords(db, alpha.sessionId, 1)).toEqual({ ok: false, error: 'not_found' });
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, dir)).toEqual({ ok: true });
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, dir)).toEqual({
+    ok: false,
+    error: 'not_found',
+  });
   db.close();
 });
 
 it('deletes the session another session branched from and keeps the branch', async () => {
-  const { db, repository, runs } = database();
+  const { db, dir, repository, runs } = database();
   const source = await session(db, repository, 'Source');
   const branch = await session(db, repository, 'Branch');
   addRun(runs, 'run_source', source.sessionId, 'succeeded');
@@ -427,7 +433,7 @@ it('deletes the session another session branched from and keeps the branch', asy
     branch.sessionId,
     now,
   );
-  expect(deleteSessionRecords(db, source.sessionId, 1)).toEqual({ ok: true });
+  expect(deleteSessionRecords(db, source.sessionId, 1, dir)).toEqual({ ok: true });
   expect(count(db, 'SELECT COUNT(*) AS n FROM runs WHERE id=?', 'run_source')).toBe(0);
   expect(count(db, 'SELECT COUNT(*) AS n FROM message_branches')).toBe(0);
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', branch.sessionId)).toBe(1);
@@ -436,8 +442,8 @@ it('deletes the session another session branched from and keeps the branch', asy
 });
 
 it('keeps a meeting handoff for the session that remains and names the deleted side', async () => {
-  const { db, alpha, beta } = await seed();
-  expect(deleteSessionRecords(db, alpha.sessionId, 1)).toEqual({ ok: true });
+  const { db, dir, alpha, beta } = await seed();
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, dir)).toEqual({ ok: true });
   const row = db
     .prepare('SELECT payload_json FROM meeting_handoffs WHERE command_id=?')
     .get('handoff_1') as { payload_json: string };
@@ -448,13 +454,13 @@ it('keeps a meeting handoff for the session that remains and names the deleted s
   expect(payload.receipt.sourceTitle).toBe('Alpha');
   expect(payload.receipt.targetSessionId).toBe(beta.sessionId);
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', beta.sessionId)).toBe(1);
-  expect(deleteSessionRecords(db, beta.sessionId, 1)).toEqual({ ok: true });
+  expect(deleteSessionRecords(db, beta.sessionId, 1, dir)).toEqual({ ok: true });
   expect(count(db, 'SELECT COUNT(*) AS n FROM meeting_handoffs')).toBe(0);
   db.close();
 });
 
 it('removes that session’s generated media bytes and its file in a temp directory', async () => {
-  const { db, alpha, media } = await seed();
+  const { db, dir, alpha, media } = await seed();
   const preview = previewSessionDeletion(db, alpha.sessionId);
   expect(preview).toMatchObject({
     runs: 1,
@@ -464,12 +470,21 @@ it('removes that session’s generated media bytes and its file in a temp direct
     schedules: [{ id: 'sched_a', title: 'Schedule a' }],
   });
   expect(preview?.schedules.map((item) => item.id)).not.toContain('sched_alpha_gone');
-  expect(deleteSessionRecords(db, alpha.sessionId, 1)).toEqual({ ok: true });
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, dir)).toEqual({ ok: true });
   expect(existsSync(media.alpha)).toBe(false);
   expect(existsSync(media.beta)).toBe(true);
   expect(count(db, 'SELECT COUNT(*) AS n FROM generated_media WHERE run_id=?', 'run_alpha')).toBe(
     0,
   );
   expect(count(db, 'SELECT COUNT(*) AS n FROM generated_media WHERE run_id=?', 'run_beta')).toBe(1);
+  db.close();
+});
+
+it('leaves a recorded copy path outside the copies folder on disk', async () => {
+  const { db, dir, alpha, media } = await seed();
+  const copies = join(dir, 'copies');
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, copies)).toEqual({ ok: true });
+  expect(existsSync(media.alpha)).toBe(true);
+  expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', alpha.sessionId)).toBe(0);
   db.close();
 });
