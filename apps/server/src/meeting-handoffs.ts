@@ -490,6 +490,8 @@ export class MeetingHandoffService {
   private updateEntry(stored: Stored) {
     const receipt = stored.receipt;
     const session = this.repository.session(receipt.targetSessionId);
+    // The target session can already be gone; the surviving side still reads this handoff.
+    if (!session) return;
     sessionOrThrow(
       this.repository.saveSession(
         planSessionEntryUpdate(

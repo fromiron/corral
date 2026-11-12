@@ -175,6 +175,17 @@ export function clearSentComposerDraft(
   );
 }
 
+/** Drop this session's unsent composer text, including the copy kept in memory. */
+export function clearSessionDraft(sessionId: string) {
+  revisions.delete(sessionId);
+  consumed.delete(sessionId);
+  try {
+    window.localStorage.removeItem(key(sessionId));
+  } catch {
+    // Storage can be refused; the in-memory revision is already gone.
+  }
+}
+
 /** The text of a draft (older callers and the new-session purpose). */
 export function readDraft(sessionId: string) {
   return readComposerDraft(sessionId).text;

@@ -12,3 +12,10 @@ export { SqliteModelAttemptStore } from './model-attempt-store.ts';
 export { acquireDatabaseLock } from './ownership.ts';
 export { SqliteProjectToolStore } from './project-tool-store.ts';
 export { SqliteRunStore } from './run-store.ts';
+export {
+  deleteSessionRecords,
+  previewSessionDeletion,
+  type SessionDeletionHandoff,
+  type SessionDeletionPreview,
+  type SessionDeletionResult,
+} from './session-deletion.ts';

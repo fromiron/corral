@@ -96,7 +96,9 @@ import {
 } from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
+  deleteSessionRecords,
   openDatabase,
+  previewSessionDeletion,
   SqliteCorralRepository,
   SqliteHarnessStore,
   SqliteModelAttemptStore,
@@ -341,6 +343,10 @@ const CreateSession = z.strictObject({
   /** creates a meeting with these participants. */
   meeting: MeetingConfig.optional(),
 });
+const DeleteSession = z.strictObject({
+  expectedRevision: z.int().min(1),
+  copyGeneration: z.int().min(1).optional(),
+});
 const UpdateSession = z.strictObject({
   title: z.string().max(200).optional(),
   objective: z.string().max(20_000).optional(),
@@ -520,12 +526,13 @@ async function createCorralServer(
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // linked folders, session worktrees and the file broker.
+  const worktreeRoot = options.worktreeRoot ?? defaultWorktreeRoot();
   const files: WorkspaceService = new WorkspaceService({
     db,
     clock,
     hostId: workspace.id,
     allowSharedDevelopment: options.allowSharedDevelopment,
-    worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
+    worktreeRoot,
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
     ...(options.fff
@@ -3140,6 +3147,64 @@ async function createCorralServer(
       );
     },
   );
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/deletion', async (request, reply) => {
+    const preview = previewSessionDeletion(db, request.params.sessionId);
+    if (!preview) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    if (preview.copyGeneration === null) return { ...preview, workingCopy: null };
+    try {
+      return { ...preview, workingCopy: await files.removalPlan(request.params.sessionId) };
+    } catch (error) {
+      if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
+        return { ...preview, copyGeneration: null, workingCopy: null };
+      return workspaceFail(reply, error);
+    }
+  });
+  app.delete<SessionParams>('/api/v1/sessions/:sessionId', async (request, reply) => {
+    const body = parse(DeleteSession, request, reply);
+    if (!body) return reply;
+    const { sessionId } = request.params;
+    const preview = previewSessionDeletion(db, sessionId);
+    if (!preview) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    if (preview.revision !== body.expectedRevision)
+      return fail(
+        reply,
+        'REVISION_CONFLICT',
+        'the session changed since this deletion was confirmed',
+      );
+    const live = coordinator
+      .listRuns()
+      .filter((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
+    if (preview.unfinishedRunIds.length || live.length)
+      return fail(reply, 'RUN_ALREADY_ACTIVE', 'a run in this session has not finished');
+    if (preview.copyGeneration !== null) {
+      if (body.copyGeneration !== preview.copyGeneration)
+        return fail(
+          reply,
+          'REVISION_CONFLICT',
+          'the working copy generation is not the one that was confirmed',
+        );
+      try {
+        await files.removeWorktree(sessionId, body.copyGeneration);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    }
+    // A refused delete leaves the schedules' in-flight dispatches running.
+    const releaseDispatches = schedules.sessionDispatches(sessionId);
+    const removed = deleteSessionRecords(db, sessionId, body.expectedRevision, worktreeRoot);
+    if (!removed.ok) {
+      if (removed.error === 'not_found') return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      if (removed.error === 'conflict')
+        return fail(
+          reply,
+          'REVISION_CONFLICT',
+          'the session changed since this deletion was confirmed',
+        );
+      return fail(reply, 'RUN_ALREADY_ACTIVE', 'a run in this session has not finished');
+    }
+    releaseDispatches();
+    return reply.code(204).send();
+  });
   // ── Meetings ──────────────────────────────────────────────────────
   const meetingReply = async (
     reply: FastifyReply,
