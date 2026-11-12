@@ -309,9 +309,15 @@ export function TurnProcess({
         {canOpen ? (
           <button
             type="button"
-            // A stable name: the role, the state and the log it opens, never the ticking time.
+            // A stable name: what the line says but the ticking time, so a failed step is told
+            // before the log opens (chat-widgets-contract.md §6.3).
             aria-label={t('logToggle', {
-              state: [role, ts.has(projection.status) ? ts(projection.status) : projection.status]
+              state: [
+                role,
+                ts.has(projection.status) ? ts(projection.status) : projection.status,
+                summary.steps ? t('steps', { count: summary.steps }) : null,
+                failed ? t('failedCount', { count: failed }) : null,
+              ]
                 .filter(Boolean)
                 .join(' · '),
             })}

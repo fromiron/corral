@@ -285,15 +285,62 @@ it.each([
   },
 );
 
-it('names the head button by its role, state and log, never by its ticking time', async () => {
+const logName = (...values: string[]) =>
+  messages.Turn.logToggle.replace('{state}', values.join(' · '));
+
+it('names the head button by its role, state, steps and log, never by its ticking time', async () => {
   const f = await show(running());
-  const name = `${messages.Turn.logToggle.replace('{state}', `writer · ${messages.Status.running}`)}`;
-  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(name);
+  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+    logName('writer', messages.Status.running, '1 step'),
+  );
   expect(toggle(f.container)?.textContent).toMatch(/\d+s/);
   await f.set(failed(running()));
   expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
-    messages.Turn.logToggle.replace('{state}', `writer · ${messages.Status.failed}`),
+    logName('writer', messages.Status.failed, '1 step'),
   );
+});
+
+// docs/specs/chat-widgets-contract.md §6.3: a failed step is told outside the fold, to assistive
+// tech as well, before the log is opened.
+it.each([
+  ['succeeded', (p: RunProjection) => answered(p)],
+  ['paused', (p: RunProjection) => ({ ...p, status: 'paused' as const })],
+  ['running', (p: RunProjection) => p],
+])('a %s turn with a failed step names the failure on its head button', async (status, as) => {
+  const projection = running();
+  projection.toolCalls.broken = {
+    toolCallId: 'broken',
+    executionId: 'lead',
+    name: 'run_command',
+    status: 'requested',
+    phase: 'failed',
+    reason: 'exit 1',
+  };
+  const f = await show(as(projection));
+  expect(part(f.container, 'head')?.textContent).toContain('1 failed');
+  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+    logName('writer', messages.Status[status as 'running'], '2 steps', '1 failed'),
+  );
+});
+
+it('a turn with no failed step has no failure in its head button’s name', async () => {
+  const f = await show(answered(running()));
+  expect(toggle(f.container)?.getAttribute('aria-label')).not.toContain('failed');
+});
+
+it('the head button’s name stays the same while the time runs', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'setTimeout', 'Date', 'requestAnimationFrame'] });
+  vi.setSystemTime(new Date('2026-11-13T00:00:02.000Z'));
+  try {
+    const f = await show(running());
+    const name = toggle(f.container)?.getAttribute('aria-label');
+    const time = toggle(f.container)?.textContent;
+    await act(async () => vi.advanceTimersByTime(5_000));
+    expect(toggle(f.container)?.textContent).not.toBe(time);
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(name);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('names the run once and each team role once, each by its own target', async () => {
@@ -337,6 +384,107 @@ it('counts the results drawn as their own folded blocks', async () => {
   expect(f.container.querySelector('details[data-testid="chat-result"]')).not.toBeNull();
   expect(part(f.container, 'tail')?.textContent).toBe('1 result');
   expect(part(f.container, 'tail')?.textContent).not.toMatch(/—|0 /);
+});
+
+/** Another version made by another role, beside the answer. */
+function withArtifact(projection: RunProjection, id: string, name: string, executionId: string) {
+  const answer = projection.artifacts.answer;
+  if (!answer) throw new Error('no answer');
+  projection.executions[executionId] ??= execution(executionId, {
+    nodeId: 'writer',
+    status: 'succeeded',
+  });
+  if (!projection.executionOrder.includes(executionId)) projection.executionOrder.push(executionId);
+  projection.artifacts[id] = {
+    ...answer,
+    artifactVersionId: id,
+    artifactId: id,
+    name,
+    authorExecutionId: executionId,
+  };
+  return projection;
+}
+
+/** A recorded review of the answer, which the conversation folds as its own block. */
+function reviewed(projection: RunProjection, id: string) {
+  projection.reviews[id] = {
+    stale: false,
+    newCriteriaVersionId: null,
+    reviewVersionId: id,
+    targetVersionId: 'answer',
+    criteriaVersionId: 'criteria',
+    verdict: 'pass',
+    issues: [],
+  };
+  return projection;
+}
+
+const summaries = (container: HTMLElement) =>
+  [...container.querySelectorAll('details[data-testid="chat-result"] > summary')].map(
+    // The line's values are spaced by the layout, not by spaces.
+    (node) => (node.textContent ?? '').replace(/\s*·\s*/g, ' · '),
+  );
+
+// The kind of the results is said once in the row (features/presence.md, "한 화면에 한 번").
+it('names the kind of several partial results once, over their blocks', async () => {
+  const projection = { ...answered(running()), status: 'failed' as const, output: null };
+  withArtifact(projection, 'review', 'review', 'helper');
+  withArtifact(projection, 'draft', 'draft', 'helper_2');
+  const f = await show(projection);
+  const group = f.container.querySelector<HTMLElement>('ul[aria-labelledby]');
+  const label = group?.getAttribute('aria-labelledby');
+  expect(label && f.container.querySelector(`[id="${label}"]`)?.textContent).toBe(
+    messages.Results.partial,
+  );
+  expect(f.container.textContent?.split(messages.Results.partial)).toHaveLength(2);
+  expect(summaries(f.container)).toHaveLength(3);
+  for (const line of summaries(f.container)) {
+    expect(line).not.toContain(messages.Results.partial);
+    expect(line).toMatch(/^\w+ v1 · writer #\d$/);
+  }
+  // The blocks are in the named list, its name above them.
+  expect(group?.querySelectorAll('details[data-testid="chat-result"]')).toHaveLength(3);
+  expect(group?.previousElementSibling?.id).toBe(label);
+});
+
+it('one partial result keeps its kind on its own line', async () => {
+  const projection = { ...answered(running()), status: 'cancelled' as const, output: null };
+  const f = await show(projection);
+  expect(f.container.querySelector('ul[aria-labelledby]')).toBeNull();
+  expect(summaries(f.container)).toEqual([`${messages.Results.partial} · Answer v1 · writer #1`]);
+});
+
+it('one result block keeps its kind on its own line', async () => {
+  const projection = reviewed(answered(running()), 'answer');
+  const f = await show(projection);
+  expect(f.container.querySelector('ul[aria-labelledby]')).toBeNull();
+  expect(summaries(f.container)).toEqual([`${messages.Desktop.result} · Answer v1 · writer #1`]);
+});
+
+it('a working run’s result blocks keep their place and their line as more arrive', async () => {
+  // While the run works its first block already stands under the group's name, so the second
+  // neither pushes it down nor changes its line.
+  const first = reviewed(answered(running()), 'answer');
+  const working = { ...first, status: 'running' as const, endedAt: null };
+  const f = await show(working);
+  const label = () => f.container.querySelector('ul[aria-labelledby]')?.previousElementSibling;
+  const before = { label: label(), text: label()?.textContent, line: summaries(f.container)[0] };
+  expect(before.label).not.toBeNull();
+  expect(before.line).toBe('Answer v1 · writer #1');
+  const more = reviewed(
+    withArtifact(structuredClone(working), 'second', 'Second', 'helper'),
+    'second',
+  );
+  more.output = { nodeId: 'output', artifactVersionIds: ['answer', 'second'] };
+  await f.set(more);
+  expect(label()).toBe(before.label);
+  expect(summaries(f.container)[0]).toBe(before.line);
+  expect(summaries(f.container)).toHaveLength(2);
+  expect(label()?.textContent).toBe(messages.Results.label);
+  // It ends with them: the group stays as it was.
+  await f.set({ ...more, status: 'succeeded', endedAt: '2026-11-13T00:00:09.000Z' });
+  expect(label()).toBe(before.label);
+  expect(f.container.textContent?.split(messages.Results.label)).toHaveLength(2);
 });
 
 it('counts the finished file changes in the tail', async () => {

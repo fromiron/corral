@@ -38,6 +38,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -149,6 +150,7 @@ export function RunMessage({
   const tm = useTranslations('MessageBody');
   const ts = useTranslations('Status');
   const tturn = useTranslations('Turn');
+  const tr = useTranslations('Results');
   const stepName = useStepName();
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const [disclosure, setDisclosure] = useState<{
@@ -176,11 +178,16 @@ export function RunMessage({
   const [watched, setWatched] = useState(false);
   const [resultError, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
+  // Whether a result block showed while the run worked: its blocks then stand under one name from
+  // the first, so the next one neither pushes it down nor changes its line.
+  const [groupedEarly, setGroupedEarly] = useState(false);
+  const groupLabel = useId();
   const {
     store,
     state,
     conversationTurn,
     bodyMetadataCurrent = true,
+    bodyCheckFailed = false,
     settled = true,
   } = useCorralRun(runId, live, expanded, artifactMetadataVersion);
   // A conversation row the timeline mounts again keeps the height it left with until its record
@@ -580,6 +587,49 @@ export function RunMessage({
     const changes = fileChangeCount(toolCalls);
     // Results drawn as their own folded blocks: images, reviews, partial results.
     const blocks = visible.filter((result) => !inline(result)).length;
+    const shownBlocks = shownResults.filter((result) => !inline(result));
+    if (working && shownBlocks.length && !groupedEarly) setGroupedEarly(true);
+    // Two or more blocks say their kind once, over them (features/presence.md).
+    const grouped = shownBlocks.length > 1 || (groupedEarly && shownBlocks.length > 0);
+    const resultBlock = (result: ResultItem, index: number) => (
+      <ChatResult
+        key={result.artifactVersionId}
+        result={result}
+        text={textOf(result)}
+        projection={projection}
+        bodyMetadataCurrent={bodyMetadataCurrent}
+        readEnded={bodyCheckFailed || resultError}
+        label={label}
+        sessionId={sessionId}
+        partial={partial}
+        first={index === 0}
+        kindShown={!grouped}
+        actionsInTail={result === tailResult}
+      />
+    );
+    // A list named by its kind, so each block is read as one of those results.
+    const resultGroup = (
+      <div key="result-group" className="flex min-w-0 flex-col gap-1.5">
+        <p id={groupLabel} className="text-caption text-muted-foreground">
+          {partial ? tr('partial') : shownBlocks.length > 1 ? tr('label') : t('result')}
+        </p>
+        <ul aria-labelledby={groupLabel} className="flex min-w-0 flex-col gap-3">
+          {shownBlocks.map((result) => (
+            <li key={result.artifactVersionId} className="min-w-0">
+              {resultBlock(result, shownResults.indexOf(result))}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+    // The answers in their places; the blocks, when grouped, where the first of them stands.
+    const resultParts = shownResults.flatMap((result, index) =>
+      !grouped || inline(result)
+        ? [resultBlock(result, index)]
+        : result === shownBlocks[0]
+          ? [resultGroup]
+          : [],
+    );
     const tailValues = [
       changes ? { key: 'changes', node: tturn('changes', { count: changes }) } : null,
       blocks ? { key: 'results', node: tturn('results', { count: blocks }) } : null,
@@ -677,20 +727,7 @@ export function RunMessage({
             </Button>
           </p>
         ) : null}
-        {shownResults.map((result, index) => (
-          <ChatResult
-            key={result.artifactVersionId}
-            result={result}
-            text={textOf(result)}
-            projection={projection}
-            bodyMetadataCurrent={bodyMetadataCurrent}
-            label={label}
-            sessionId={sessionId}
-            partial={partial}
-            first={index === 0}
-            actionsInTail={result === tailResult}
-          />
-        ))}
+        {resultParts}
         {state.streamError ? (
           <p role="alert" className="text-caption text-danger">
             {state.streamError}
@@ -861,6 +898,7 @@ export function RunMessage({
           text={textOf(result)}
           projection={projection}
           bodyMetadataCurrent={bodyMetadataCurrent}
+          readEnded={bodyCheckFailed || resultError}
           label={label}
           sessionId={sessionId}
           partial={partial}
@@ -954,6 +992,8 @@ function ChatResult({
   partial,
   first,
   bodyMetadataCurrent,
+  readEnded = false,
+  kindShown = true,
   actionsInTail = false,
 }: {
   result: ResultItem;
@@ -964,6 +1004,10 @@ function ChatResult({
   partial: boolean;
   first: boolean;
   bodyMetadataCurrent: boolean;
+  /** Reading ended without this body: the row's error says why, so it does not say loading. */
+  readEnded?: boolean;
+  /** Whether its line names its kind; a group of blocks names it once, over them. */
+  kindShown?: boolean;
   /** The run row's tail holds this answer's icon actions. */
   actionsInTail?: boolean;
 }) {
@@ -983,6 +1027,8 @@ function ChatResult({
   const review = projection.reviews[result.artifactVersionId];
   const readable = bodyMetadataCurrent && canReadArtifactBody(projection, result.artifactVersionId);
   const target = review ? projection.artifacts[review.targetVersionId] : null;
+  // No body is on its way: what is unconfirmed or readable but unread waits for nothing.
+  const unread = readEnded && (!bodyMetadataCurrent || (readable && !result.media && !review));
   const { location, search } = resultLink(projection, sessionId);
   const actions = actionsInTail ? null : (
     <ResultActions
@@ -997,12 +1043,12 @@ function ChatResult({
   if (sessionId && !partial && !result.media && !review)
     return (
       <div className="flex min-w-0 flex-col gap-1 wrap-anywhere" data-testid="chat-result">
-        {text === undefined ? (
+        {text !== undefined ? (
+          <MessageBody text={text} markdown size="chat" copy={false} />
+        ) : unread ? null : (
           <p className="text-caption text-muted-foreground">
             {ta(!bodyMetadataCurrent || readable ? 'loading' : 'retired')}
           </p>
-        ) : (
-          <MessageBody text={text} markdown size="chat" copy={false} />
         )}
         {actions}
       </div>
@@ -1016,7 +1062,8 @@ function ChatResult({
     >
       <summary className="flex w-fit cursor-pointer list-none flex-wrap items-center gap-1.5 text-caption text-muted-foreground hover:text-foreground">
         <FileText size={13} />
-        {partial ? tr('partial') : t('result')} · {result.name} v{result.version}
+        {kindShown ? `${partial ? tr('partial') : t('result')} · ` : null}
+        {result.name} v{result.version}
         {author ? (
           <span>
             · {label(author.nodeId)} #{projection.executionOrder.indexOf(author.executionId) + 1}
@@ -1029,7 +1076,7 @@ function ChatResult({
       </summary>
       {open === true ? (
         <div className="mt-2 flex min-w-0 flex-col gap-1">
-          {!bodyMetadataCurrent ? (
+          {unread ? null : !bodyMetadataCurrent ? (
             <p className="text-caption text-muted-foreground">{ta('loading')}</p>
           ) : !readable ? (
             <p className="text-caption text-muted-foreground">{ta('retired')}</p>

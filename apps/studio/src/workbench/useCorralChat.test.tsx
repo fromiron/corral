@@ -278,3 +278,29 @@ it('refreshes only eligibility metadata after a sibling success, preserving the 
   expect(services.transport.subscribe).not.toHaveBeenCalled();
   expect(fixture.live?.getState().pendingCommandIds).toEqual(['owned_command']);
 });
+
+it('remembers the views of the 64 most recently shown finished runs, dropping the oldest', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const firstRender = new Map<string, string | null>();
+  function Row({ runId }: { runId: string }) {
+    const { state } = useCorralRun(runId, false, false);
+    if (!firstRender.has(runId)) firstRender.set(runId, state.projection?.status ?? null);
+    return null;
+  }
+  const show = async (runId: string, read: boolean) => {
+    firstRender.delete(runId);
+    const root = createRoot(document.createElement('div'));
+    await act(async () => root.render(<Row runId={runId} />));
+    if (read)
+      await act(async () =>
+        fixture.read?.resolve({ runId, projection: projection(runId, 'succeeded') }),
+      );
+    await act(async () => root.unmount());
+    return firstRender.get(runId);
+  };
+  for (let index = 0; index <= 64; index += 1) await show(`run_${index}`, true);
+  // 65 runs shown: the first is no longer remembered, the second still is.
+  expect(await show('run_0', false)).toBeNull();
+  expect(await show('run_1', false)).toBe('succeeded');
+  expect(await show('run_64', false)).toBe('succeeded');
+});
