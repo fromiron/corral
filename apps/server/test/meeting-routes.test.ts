@@ -11,7 +11,12 @@ it('uses the shared local selector through HTTP and preserves its choice on repl
   const root = mkdtempSync(join(tmpdir(), 'corral-meeting-selection-'));
   const token = 'test-bootstrap-token-0123456789abcdef';
   const local = createLocalIntelligence({ root: join(root, 'ai'), env: {} });
-  const select = vi.fn(async () => ['second']);
+  const select = vi.fn(async () => ({
+    scores: [
+      { participantId: 'first', score: 0.1 },
+      { participantId: 'second', score: 0.4 },
+    ],
+  }));
   local.meeting.select = select;
   const server = await startCorralServer({
     workspace: root,
@@ -64,6 +69,28 @@ it('uses the shared local selector through HTTP and preserves its choice on repl
     const first = await post(path, request);
     expect(first.view.rounds[0].participantIds).toEqual(['second']);
     expect((await post(path, request)).roundId).toBe(first.roundId);
+    expect(first.view.rounds[0].selection).toEqual({
+      strategy: 'selector',
+      scores: [
+        { participantId: 'first', score: 0.1 },
+        { participantId: 'second', score: 0.4 },
+      ],
+      reason: expect.any(String),
+    });
+    expect(select).toHaveBeenCalledOnce();
+    expect(server.coordinator.listRuns()).toHaveLength(1);
+    const nobody = { ...request, commandId: 'no_recipients', recipients: 'none' };
+    const silent = await post(path, nobody);
+    const posted = silent.view.rounds.find(
+      (round: { roundId: string }) => round.roundId === silent.roundId,
+    );
+    expect(posted).toMatchObject({
+      message: 'Explain that idea.',
+      participantIds: [],
+      answers: [],
+      selection: { strategy: 'none' },
+    });
+    expect((await post(path, nobody)).roundId).toBe(silent.roundId);
     expect(select).toHaveBeenCalledOnce();
     expect(server.coordinator.listRuns()).toHaveLength(1);
   } finally {

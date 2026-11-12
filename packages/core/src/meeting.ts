@@ -9,7 +9,9 @@ import {
   type MeetingRound,
   MeetingRoundRequest,
   type MeetingRunOrigin,
+  type MeetingSelection,
   type MeetingSelectionInput,
+  type MeetingSelectorResult,
   type MeetingState,
   type MeetingView,
   QueuedMeetingMessage,
@@ -20,6 +22,12 @@ import { validTextAttachments } from './attachments.ts';
 import { readMeetingAddress } from './meeting-address.ts';
 import { recordMeetingMinutes, SECRETARY_MINUTES_INSTRUCTIONS } from './meeting-decisions.ts';
 import { formatMeetingEvidence } from './meeting-evidence.ts';
+import {
+  DEFAULT_MEETING_POLICY,
+  fallbackSpeaker,
+  type MeetingPolicy,
+  selectSpeakers,
+} from './meeting-policy.ts';
 import type { CorralRepository, SessionResult, WorkSession } from './repository/index.ts';
 import { type RuntimeTransport, waitForProjection } from './transport.ts';
 import { usageTotals } from './usage.ts';
@@ -33,7 +41,10 @@ export interface MeetingServiceDeps {
   clock: Clock;
   newRoundId(): string;
   random(): number;
-  selectParticipants?(input: MeetingSelectionInput): Promise<string[] | null>;
+  /** Scores the participants; the meeting policy decides who answers. */
+  selectParticipants?(input: MeetingSelectionInput): Promise<MeetingSelectorResult | null>;
+  /** The selection policy's values; the default when absent. */
+  meetingPolicy?: MeetingPolicy;
   continuation?(
     runId: string,
     sessionId: string,
@@ -248,6 +259,9 @@ export class MeetingService {
         const mentions = messageMentions(request.text, request.mentions ?? [], meeting.config);
         if (!mentions)
           return err('invalid', 'Mention meeting participants, or call the secretary on its own.');
+        const nobody = request.recipients === 'none';
+        if (nobody && mentions.length)
+          return err('invalid', 'A message with no recipients cannot also name one.');
         const participantIds = mentions.length
           ? mentions
           : meeting.config.participants.map((p) => p.participantId);
@@ -256,7 +270,7 @@ export class MeetingService {
             (previous.mode === undefined || previous.mode === request.mode) &&
             (mentions.length
               ? previous.kind !== 'all' && sameParticipants(previous.participantIds, participantIds)
-              : previous.kind === 'all') &&
+              : previous.kind === 'all' && (previous.selection?.strategy === 'none') === nobody) &&
             canonicalJson(previous.attachments ?? []) === canonicalJson(request.attachments ?? [])
             ? { ok: true, outcome: 'started', roundId: previous.roundId }
             : err('conflict', 'This command was already sent with different arguments.');
@@ -273,10 +287,15 @@ export class MeetingService {
           mode: request.mode,
           kind: mentions.includes(SECRETARY_ID) ? 'secretary' : mentions.length ? 'mention' : 'all',
           message: request.text,
-          participantIds,
+          participantIds: nobody ? [] : participantIds,
           ...(request.attachments ? { attachments: request.attachments } : {}),
           basedOnRoundId: null,
           rebuttalNo: null,
+          ...(nobody
+            ? { selection: { strategy: 'none', reason: 'The person chose no recipients.' } }
+            : request.mentions?.length
+              ? { selection: { strategy: 'explicit', reason: 'Chosen in the composer.' } }
+              : {}),
         });
       }
       if (previous) {
@@ -310,6 +329,10 @@ export class MeetingService {
           : base.participantIds,
         basedOnRoundId: base.roundId,
         rebuttalNo: next.rebuttalNo,
+        selection: {
+          strategy: 'explicit',
+          reason: 'A rebuttal keeps the participants of the round it answers.',
+        },
       });
     });
   }
@@ -589,11 +612,25 @@ export class MeetingService {
   ): Promise<MeetingResult> {
     const meeting = session.meeting!;
     let participantIds = [...spec.participantIds];
-    const message = spec.kind === 'all' ? spec.message : null;
+    const nobody = spec.selection?.strategy === 'none';
+    let selection: MeetingSelection =
+      spec.selection ??
+      (spec.kind === 'all'
+        ? {
+            strategy: 'fallback',
+            reason: 'Meeting analysis is off; every permitted participant replies.',
+          }
+        : {
+            strategy: 'mention',
+            reason: spec.replyTo ? 'Another participant mentioned them.' : 'Mentioned with @.',
+          });
+    const message = spec.kind === 'all' && !nobody ? spec.message : null;
     const address = message ? readMeetingAddress(message, meeting.config.participants) : null;
     if (address) participantIds = participantIds.filter((id) => !address.excluded.includes(id));
-    if (address?.participantIds.length) participantIds = address.participantIds;
-    else if (message && this.deps.selectParticipants) {
+    if (address?.participantIds.length) {
+      participantIds = address.participantIds;
+      selection = { strategy: 'address', reason: 'The message addresses them by name.' };
+    } else if (message && this.deps.selectParticipants) {
       const history: { id: string; order: number; participantId: string | null; text: string }[] =
         [];
       for (const past of meeting.rounds.slice(-6)) {
@@ -617,7 +654,7 @@ export class MeetingService {
         }
       }
       history.sort((a, b) => a.order - b.order);
-      const selected = await this.deps
+      const result = await this.deps
         .selectParticipants({
           message,
           participants: meeting.config.participants
@@ -634,25 +671,29 @@ export class MeetingService {
             .map(({ id, participantId, text }) => ({ id, participantId, text })),
         })
         .catch(() => null);
-      if (
-        selected !== null &&
-        new Set(selected).size === selected.length &&
-        selected.every((id) => participantIds.includes(id))
-      )
-        participantIds = selected;
-      else {
-        const allowed = participantIds.filter((id) => id !== SECRETARY_ID);
-        const replyTarget = spec.replyTo?.participantId;
-        const recent = history.findLast(
-          (entry) => entry.participantId !== null && allowed.includes(entry.participantId),
-        )?.participantId;
-        const turn = meeting.rounds.filter((past) => past.kind === 'all').length;
-        const fallback =
-          (replyTarget && allowed.includes(replyTarget) ? replyTarget : null) ??
-          recent ??
-          allowed[turn % allowed.length];
-        participantIds = fallback ? [fallback] : [];
-      }
+      const allowed = participantIds.filter((id) => id !== SECRETARY_ID);
+      const recent = history.findLast(
+        (entry) => entry.participantId !== null && allowed.includes(entry.participantId),
+      )?.participantId;
+      const choice = selectSpeakers(
+        participantIds,
+        result,
+        this.deps.meetingPolicy ?? DEFAULT_MEETING_POLICY,
+        {
+          continuityId: history.findLast((entry) => entry.participantId !== null)?.participantId,
+          fallback: fallbackSpeaker(participantIds, {
+            replyTo: spec.replyTo?.participantId,
+            recent,
+            turn: meeting.rounds.filter((past) => past.kind === 'all').length,
+          }),
+        },
+      );
+      participantIds = choice.participantIds;
+      selection = {
+        strategy: choice.strategy,
+        ...(choice.scores ? { scores: choice.scores } : {}),
+        reason: choice.reason,
+      };
     }
     for (let i = participantIds.length - 1; i > 0; i--) {
       const j = Math.floor(this.deps.random() * (i + 1));
@@ -661,6 +702,7 @@ export class MeetingService {
     const round: MeetingRound = {
       ...spec,
       participantIds,
+      selection,
       roundId: this.deps.newRoundId(),
       createdAt: this.deps.clock.nowIso(),
       stoppedAt: null,
@@ -970,6 +1012,14 @@ export class MeetingService {
           : session.meeting.config.participants.map((p) => p.participantId),
         basedOnRoundId: null,
         rebuttalNo: null,
+        ...(mentions.length
+          ? {
+              selection: {
+                strategy: 'explicit',
+                reason: 'Recipients saved with the waiting message.',
+              },
+            }
+          : {}),
       },
       true,
     );
