@@ -222,6 +222,48 @@ describe('local AI install from the settings panel', () => {
     await li.close();
   });
 
+  it('starts no helper for an embedding that arrives while removal stops the helper', async () => {
+    const root = tempDir();
+    const bundle = testBundle();
+    markInstalled(root, bundle);
+    const launcher = fakeLauncher();
+    let exit!: () => void;
+    const li = createLocalIntelligence({
+      root,
+      bundle,
+      launch: (command) => {
+        const helper = launcher.launch(command);
+        const kill = helper.kill.bind(helper);
+        helper.kill = async () => {
+          await new Promise<void>((resolve) => {
+            exit = resolve;
+          });
+          await kill();
+        };
+        return helper;
+      },
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
+      platform: 'linux',
+      arch: 'x64',
+    });
+    const warm = li.engine.warmUp();
+    await vi.waitFor(() => expect(launcher.helpers).toHaveLength(1));
+    launcher.last().ready();
+    await warm;
+
+    const removing = li.remove();
+    await vi.waitFor(() => expect(exit).toBeDefined());
+    const late = li.engine.embed({ texts: ['hi'], task: 'classification', overflow: 'truncate' });
+    exit();
+    await removing;
+
+    await expect(late).rejects.toThrow('not installed');
+    expect(launcher.helpers).toHaveLength(1);
+    expect(existsSync(bundleDir(root, bundle))).toBe(false);
+    expect(li.status().state).toBe('missing');
+    await li.close();
+  });
+
   it('refuses to remove a meeting bundle while it is installing', async () => {
     const root = tempDir();
     const judge = join(root, 'd1', 'd1-test');

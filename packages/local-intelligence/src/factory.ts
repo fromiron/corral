@@ -145,9 +145,12 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
       if (installer.running()) throw new BundleBusyError('installing');
       if (engine.busy()) throw new BundleBusyError('computing');
       installer.invalidate();
-      await engine.stop();
-      removeMeetingReleases(root, bundle);
-      engine.refreshInstall();
+      try {
+        await engine.stop();
+        removeMeetingReleases(root, bundle);
+      } finally {
+        engine.refreshInstall();
+      }
       return status();
     },
     close: async () => {

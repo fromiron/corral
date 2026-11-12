@@ -148,10 +148,12 @@ export class LocalEmbeddingEngine {
 
   /**
    * Ends the helper this engine started and leaves it able to start again. In-flight embeddings
-   * are rejected; callers that must not cancel them check `busy` first.
+   * are rejected; callers that must not cancel them check `busy` first. It reads as not installed
+   * until `refreshInstall`, so nothing starts a helper while its files are being removed.
    */
   async stop(): Promise<void> {
     if (this.closing) return;
+    this.install = 'missing';
     await this.stopHelper(new Error('the local AI model was removed'));
     if (this.closing) return;
     this.running = 'idle';

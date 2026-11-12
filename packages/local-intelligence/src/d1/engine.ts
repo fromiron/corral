@@ -339,7 +339,7 @@ export class D1Engine {
 
   /** Readies the runtime in the background, also after an error. */
   prepare(threads: number): void {
-    if (this.runtime && this.installed()) void this.runtime.prepare(threads);
+    if (this.runtime && !this.removing && this.installed()) void this.runtime.prepare(threads);
   }
 
   /** Ends the owned child; a judgment in flight settles at its exit. */
@@ -375,7 +375,7 @@ export class D1Engine {
   ): { ok: true; lease: RoutingLease } | { ok: false; reason: RoutingFallbackReason } {
     const runtime = this.runtime;
     const manifest = this.options.manifest;
-    if (!runtime || !manifest || this.job || !this.installed())
+    if (!runtime || !manifest || this.job || this.removing || !this.installed())
       return { ok: false, reason: 'unavailable' };
     // Busy is decided before anything is counted.
     if (this.lease) return { ok: false, reason: 'busy' };

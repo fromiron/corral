@@ -119,6 +119,22 @@ describe('removing the Local judge model', () => {
     lease.release();
   });
 
+  it('starts no child for a request that arrives while removal waits for the exit', async () => {
+    const s = setup({ ignoreTerm: true });
+    await ready(s);
+
+    const removing = s.engine.remove();
+    await until(() => s.engine.status().runtime === 'stopped');
+    expect(s.backend().admit()).toEqual({ ok: false, reason: 'unavailable' });
+    s.engine.prepare(2);
+    await removing;
+
+    expect(s.fake.children).toHaveLength(1);
+    expect(s.fake.children[0]!.alive).toBe(false);
+    expect(existsSync(s.dir)).toBe(false);
+    expect(s.engine.status()).toMatchObject({ install: 'absent', runtime: 'stopped' });
+  });
+
   it('refuses while an install is in progress and does not delete the other bundle', async () => {
     const root = tempRoot();
     const manifest = testManifest();
