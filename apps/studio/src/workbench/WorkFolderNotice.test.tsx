@@ -2,10 +2,14 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import { useWorkingCopyMissing, WorkingCopyChip } from './WorkFolderNotice.tsx';
+import { FolderAccessNotice, useFolderAccess } from './WorkFolderNotice.tsx';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
-const fixture = vi.hoisted(() => ({ worktree: vi.fn(), workspaceId: 'host' }));
+const fixture = vi.hoisted(() => ({
+  worktree: vi.fn(),
+  binding: vi.fn(),
+  workspaceId: 'host',
+}));
 vi.mock('../services.tsx', () => ({
   useServices: () => ({ mode: 'server', workspaces: fixture, workspaceId: fixture.workspaceId }),
 }));
@@ -13,22 +17,22 @@ vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetAllMocks();
-  window.localStorage.clear();
   fixture.workspaceId = 'host';
 });
 
-/** The composer row as the conversation fills it: the chip only while the copy is missing. */
 function Row({
   sessionId,
+  projectId,
   revision,
-  onSetup,
+  onAction,
 }: {
   sessionId: string;
+  projectId: string;
   revision: string;
-  onSetup(): void;
+  onAction(): void;
 }) {
-  const missing = useWorkingCopyMissing(sessionId, revision);
-  return missing ? <WorkingCopyChip onSetup={onSetup} /> : null;
+  const access = useFolderAccess(sessionId, projectId, revision);
+  return <FolderAccessNotice access={access} onAction={onAction} />;
 }
 
 async function mount() {
@@ -36,9 +40,16 @@ async function mount() {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  const render = async (sessionId: string, revision: string, onSetup = () => {}) =>
+  const render = async (
+    sessionId: string,
+    projectId: string,
+    revision: string,
+    onAction = () => {},
+  ) =>
     act(async () =>
-      root.render(<Row sessionId={sessionId} revision={revision} onSetup={onSetup} />),
+      root.render(
+        <Row sessionId={sessionId} projectId={projectId} revision={revision} onAction={onAction} />,
+      ),
     );
   const dispose = async () => {
     await act(async () => root.unmount());
@@ -47,65 +58,77 @@ async function mount() {
   return { container, render, dispose };
 }
 
-it('marks a missing copy with one chip that opens file setup and stays after requests', async () => {
+it('an unlinked folder says the agent cannot read or change files and offers linking', async () => {
+  fixture.binding.mockResolvedValue(null);
   fixture.worktree.mockResolvedValue(null);
-  const setup = vi.fn();
+  const action = vi.fn();
   const { container, render, dispose } = await mount();
   try {
-    await render('one', '', setup);
+    await render('one', 'project', '', action);
     const chip = container.querySelector('button');
-    expect(chip?.textContent).toBe('noWorkingCopy');
-    // The visible words lead the name; the name also says what pressing it does.
-    expect(chip?.getAttribute('aria-label')).toBe('noWorkingCopy · prepareWorkingCopy');
-    // One control: no dismiss button, no second sentence.
+    expect(chip?.textContent).toBe('agentNoFiles');
+    expect(chip?.getAttribute('aria-label')).toBe('agentNoFiles. linkFolder');
     expect(container.querySelectorAll('button')).toHaveLength(1);
     await act(async () => chip?.click());
-    expect(setup).toHaveBeenCalledOnce();
-    await render('one', 'run:running', setup);
-    await render('one', 'run:succeeded', setup);
-    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-    expect(container.textContent).toBe('noWorkingCopy');
+    expect(action).toHaveBeenCalledOnce();
   } finally {
     await dispose();
   }
 });
 
-it('follows the copy: shown while missing or removed, gone once a copy exists', async () => {
-  const copy = { bindingId: 'folder', copyGeneration: 1, missing: true, removedAt: null };
-  fixture.worktree.mockResolvedValue(copy);
-  const { container, render, dispose } = await mount();
-  try {
-    await render('one', '');
-    expect(container.textContent).toBe('noWorkingCopy');
-    fixture.worktree.mockResolvedValue({ ...copy, copyGeneration: 2, missing: false });
-    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-    expect(container.textContent).toBe('');
-    fixture.worktree.mockResolvedValue({
-      ...copy,
-      copyGeneration: 2,
-      missing: false,
-      removedAt: '2026-10-30T00:00:00Z',
-    });
-    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-    expect(container.textContent).toBe('noWorkingCopy');
-    fixture.workspaceId = 'other-host';
-    fixture.worktree.mockResolvedValue({ ...copy, missing: false });
-    await render('two', '');
-    expect(container.textContent).toBe('');
-  } finally {
-    await dispose();
-  }
-});
-
-it('never reads a failed lookup as no copy', async () => {
+it('an untrusted folder offers trust, and a trusted folder without a copy offers nothing', async () => {
+  fixture.binding.mockResolvedValue({ trusted: false, missing: false });
   fixture.worktree.mockResolvedValue(null);
   const { container, render, dispose } = await mount();
   try {
-    await render('one', '');
-    expect(container.textContent).toBe('noWorkingCopy');
-    fixture.worktree.mockRejectedValue(new Error('offline'));
+    await render('one', 'project', '');
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'agentNoFiles. trustFolder',
+    );
+    fixture.binding.mockResolvedValue({ trusted: true, missing: false });
+    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.textContent).toBe('agentDirect');
+  } finally {
+    await dispose();
+  }
+});
+
+it('a working copy says the agent can read and change it, with no next step', async () => {
+  fixture.binding.mockResolvedValue({ trusted: true, missing: false });
+  fixture.worktree.mockResolvedValue({ missing: false, removedAt: null });
+  const { container, render, dispose } = await mount();
+  try {
+    await render('one', 'project', '');
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.textContent).toBe('agentCopy');
+    fixture.worktree.mockResolvedValue({ missing: false, removedAt: '2026-11-01T00:00:00Z' });
+    await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
+    expect(container.textContent).toBe('agentDirect');
+  } finally {
+    await dispose();
+  }
+});
+
+it('a missing folder offers the folder settings, and a failed lookup says nothing', async () => {
+  fixture.binding.mockResolvedValue({ trusted: true, missing: true });
+  fixture.worktree.mockResolvedValue(null);
+  const { container, render, dispose } = await mount();
+  try {
+    await render('one', 'project', '');
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'agentFolderMissing. checkFolder',
+    );
+    fixture.binding.mockRejectedValue(new Error('offline'));
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
     expect(container.textContent).toBe('');
+    fixture.workspaceId = 'other-host';
+    fixture.binding.mockResolvedValue(null);
+    fixture.worktree.mockResolvedValue(null);
+    await render('two', 'project', '');
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'agentNoFiles. linkFolder',
+    );
   } finally {
     await dispose();
   }

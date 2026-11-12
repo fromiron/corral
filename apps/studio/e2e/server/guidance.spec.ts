@@ -79,11 +79,13 @@ test('file setup remains reachable after a request without a working copy', asyn
   await expect(page.getByTestId('chat-timeline')).toContainText('Add a comment to example.js.');
   // One chip in the composer row says it, and nothing above the conversation repeats it.
   const setup = page.getByRole('button', {
-    name: 'No working copy · Set up file work',
+    name: 'The agent cannot read or change files. Link a folder.',
     exact: true,
   });
-  await expect(setup).toHaveText('No working copy');
-  await expect(page.getByTestId('chat-timeline')).not.toContainText('No working copy');
+  await expect(setup).toHaveText('The agent cannot read or change files.');
+  await expect(page.getByTestId('chat-timeline')).not.toContainText(
+    'The agent cannot read or change files.',
+  );
   await page.reload();
   await expect(setup).toBeVisible();
   await setup.click();

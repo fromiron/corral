@@ -10,7 +10,7 @@ import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
-import { useWorkingCopyMissing } from '../WorkFolderNotice.tsx';
+import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
 
@@ -62,10 +62,13 @@ export function WorkTab({
   const size = useSize();
   // Nothing asked and nothing run: the conversation is the kit home composition.
   const home = session.entries.length === 0 && loose.length === 0;
-  const copyMissing = useWorkingCopyMissing(
+  const folderAccess = useFolderAccess(
     session.sessionId,
+    session.projectId,
     runs.map((run) => `${run.runId}:${run.status}`).join(','),
   );
+  const folderAction =
+    folderAccess === 'unlinked' || folderAccess === 'untrusted' || folderAccess === 'missing';
   return (
     <RunChecks.Provider value={runChecks}>
       <ChatView
@@ -124,9 +127,10 @@ export function WorkTab({
             reference={reference}
             onReferenceUsed={onReferenceUsed}
             home={home}
-            {...(copyMissing
-              ? { onSetUpWorkingCopy: () => onPanel('changes') }
-              : home && workspaces && binding === null
+            folderAccess={folderAccess}
+            {...(folderAction
+              ? { onFolderAction: () => onPanel('changes') }
+              : folderAccess === 'unknown' && home && workspaces && binding === null
                 ? { onWorkFolder: () => onPanel('changes') }
                 : {})}
           />
