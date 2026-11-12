@@ -393,17 +393,17 @@ function LocalEngine({
   const prepareHint = useId();
   const [confirming, setConfirming] = useState(false);
   const local = view.local;
-  const catalog = local.devices ?? [
-    {
-      kind: 'cpu' as const,
-      installed: local.install === 'installed',
-      downloadBytes: local.downloadBytes ?? 0,
-      requirement: null,
-    },
-  ];
-  const picked = catalog.find((entry) => entry.kind === form.device) ?? catalog[0]!;
+  const offered = local.devices?.length ? local.devices : null;
+  const cpu = {
+    kind: 'cpu' as const,
+    installed: local.install === 'installed',
+    downloadBytes: local.downloadBytes ?? 0,
+    requirement: null,
+  };
+  const catalog = offered ?? [cpu];
+  const picked = catalog.find((entry) => entry.kind === form.device) ?? cpu;
   const mb = (bytes: number) => format.number(Math.round(bytes / MB));
-  const downloadBytes = local.devices ? picked.downloadBytes : local.downloadBytes;
+  const downloadBytes = offered ? picked.downloadBytes : local.downloadBytes;
   const removeBytes = local.installedBytes ?? local.downloadBytes;
   const download =
     downloadBytes === null
@@ -413,7 +413,7 @@ function LocalEngine({
     removeBytes === null
       ? null
       : formatDownload(removeBytes, (value, options) => format.number(value, options));
-  const pickedInstalled = local.devices ? picked.installed : local.install === 'installed';
+  const pickedInstalled = offered ? picked.installed : local.install === 'installed';
   const status = !local.supported
     ? t('unsupported')
     : local.install === 'downloading'
@@ -426,8 +426,7 @@ function LocalEngine({
         })
       : local.install === 'verifying'
         ? t('install.verifying')
-        : local.install === 'install-error' &&
-            (!local.devices || form.device === local.device.requested)
+        : local.install === 'install-error' && (!offered || form.device === local.device.requested)
           ? t('install.install-error')
           : !pickedInstalled
             ? t('install.absent', {
@@ -451,7 +450,7 @@ function LocalEngine({
     local.install !== 'verifying';
   const canRemove =
     local.supported &&
-    (local.devices ? catalog.some((entry) => entry.installed) : local.install === 'installed');
+    (offered ? offered.some((entry) => entry.installed) : local.install === 'installed');
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">

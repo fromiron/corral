@@ -322,7 +322,15 @@ it('prepares the saved Local engine again after an error', async () => {
 it('a computer without the Local engine cannot save it', async () => {
   const api = models();
   api.effortRouting.mockResolvedValue(
-    view({ local: local({ supported: false, reason: 'not here', downloadBytes: null }) }),
+    view({
+      local: local({
+        supported: false,
+        reason: 'not here',
+        downloadBytes: null,
+        installedBytes: null,
+        devices: [],
+      }),
+    }),
   );
   const container = await render(api);
   await act(async () => radio(container, 'Manual')?.click());
