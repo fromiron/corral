@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ModelAttempt } from '@corral/contracts';
 import { DesignKitProvider } from '@corral/react/design-kit';
-import { act, type ReactNode } from 'react';
+import { act, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -270,6 +270,37 @@ it('does not read history until the usage tab is selected, and does not reread i
     expect(requests).toHaveBeenCalledTimes(1);
   } finally {
     await view.unmount();
+  }
+});
+
+it('still shows the first page when it mounts already selected under StrictMode', async () => {
+  const requests = vi.fn().mockResolvedValue({ items: [row('first')], nextCursor: null });
+  fixture.services = { models: { requests } };
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    // StrictMode must wrap the root (as main.tsx does) for React to replay mount effects.
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <IntlProvider locale="en" messages={messages} timeZone="UTC">
+            <ModelUsagePanel active />
+          </IntlProvider>
+        </StrictMode>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // The replayed cleanup aborts the first read; the replayed effect reads again.
+    const signals = requests.mock.calls.map(([, signal]) => signal as AbortSignal);
+    expect(signals.map((signal) => signal.aborted)).toEqual([true, false]);
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
   }
 });
 

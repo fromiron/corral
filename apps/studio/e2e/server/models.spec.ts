@@ -373,9 +373,10 @@ test('asks the signed-in model for a team draft once and opens it after review',
   await expect(teamCanvas(page).locator('[data-node]', { hasText: 'Copywriter' })).toHaveCount(1);
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   await openModels(page);
+  // Selecting the tab reads the first page; there is no separate load button.
   await modelSettingsTab(page, 'Usage');
   const usage = page.getByRole('region', { name: 'Model request history' });
-  await usage.getByRole('button', { name: 'Load history', exact: true }).click();
+  await expect(usage.getByRole('table')).toBeVisible();
   await expect(usage.getByRole('table')).toContainText('Subscription');
   await expect(usage.getByRole('table')).toContainText('Draft');
   const replay = await page.evaluate(async (body) => {

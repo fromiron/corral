@@ -49,6 +49,12 @@ export function ModelUsagePanel({ active = true }: { active?: boolean }) {
     if (!active || started.current || !models) return;
     started.current = true;
     void load();
+    const first = request.current;
+    // StrictMode replays mount effects: the unmount cleanup above aborts this first
+    // read, so let the replayed effect start it again.
+    return () => {
+      if (request.current === first && first?.signal.aborted) started.current = false;
+    };
   }, [active, models, load]);
   return (
     <section id="models-usage" aria-labelledby="models-usage-heading" className="space-y-3">
