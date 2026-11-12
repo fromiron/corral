@@ -95,7 +95,10 @@ test('plain completion is announced once and opening history is silent', async (
     await session(page, corral);
     await send(page, 'Review the current state.');
     const dock = page.getByTestId('composer-dock');
-    await expect(page.getByTestId('active-run-status')).toContainText('Running');
+    // The pill names the state to assistive tech; the run row says it in words.
+    await expect(
+      page.getByTestId('active-run-status').locator('button[data-pill-toggle]'),
+    ).toHaveAttribute('aria-label', /Running/);
     await expect(dock.getByText('Running', { exact: true })).toHaveCount(0);
     await expect(
       page.getByTestId('chat-timeline').getByText('Created', { exact: true }),

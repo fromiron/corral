@@ -123,6 +123,19 @@ function Sources({ sources }: { sources: ProcessRow['sources'] }) {
   ) : null;
 }
 
+/** A step's name as the work log shows it on its row. */
+export function useStepName() {
+  const t = useTranslations('Turn');
+  return (row: ProcessRow) =>
+    row.kind === 'model'
+      ? t('request', { no: row.no })
+      : row.kind === 'agent'
+        ? row.label
+        : t.has(`tool.${row.name}`)
+          ? t(`tool.${row.name}`)
+          : row.name;
+}
+
 /**
  * The run row's head and the work log it opens: the source kit's progressive work log, composed
  * from observed requests and tools. The head is the log's toggle; the log opens right under it.
@@ -167,6 +180,7 @@ export function TurnProcess({
   const tt = useTranslations('Transcript');
   const size = useSize();
   const panel = useId();
+  const stepName = useStepName();
   const process = useMemo(
     () => given ?? buildTurnProcess(events, projection, {}, label),
     [given, events, projection, label],
@@ -308,7 +322,7 @@ export function TurnProcess({
           {process.rows.map((row, index) => {
             const last = index === process.rows.length - 1;
             if (row.kind === 'model') {
-              const label = t('request', { no: row.no });
+              const label = stepName(row);
               // The applied level stays on the row. A judged request also shows its judgement;
               // any other keeps the rest of the record in the details.
               const judged = Boolean(row.call.reasoning?.route);
@@ -343,7 +357,7 @@ export function TurnProcess({
               );
             }
             if (row.kind === 'tool') {
-              const label = t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name;
+              const label = stepName(row);
               // The open ask's question shows only in the notice above the composer, so its row
               // offers no details until it is answered.
               const pendingAsk =

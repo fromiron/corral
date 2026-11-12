@@ -8,7 +8,8 @@ import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
 // The run row's fixed parts (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 3): the
 // head line, the body's top edge and the tail line hold their place within 1px while (a) the
-// reply's first words replace the wait for them and (b) the run ends after its last words.
+// reply's first words replace the wait for them and (b) the run ends after its last words; the
+// head line and the body's top edge hold while (c) a run fails after its words.
 // The reply is one line long, so the body does not grow in either interval: anything that moves
 // is the row's own structure. Intervals are bounded by held responses, as in the baseline.
 
@@ -62,7 +63,13 @@ function partShifts(result: ShiftResult, item: string): PartShift {
   );
 }
 
-async function measure(page: Page, item: string, name: string, happen: () => Promise<void>) {
+async function measure(
+  page: Page,
+  item: string,
+  name: string,
+  happen: () => Promise<void>,
+  held: readonly (typeof PARTS)[number][] = PARTS,
+) {
   const probe = createProbe(page, probeOptions);
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: join(SHOTS, `${name}-before.png`) });
@@ -74,7 +81,7 @@ async function measure(page: Page, item: string, name: string, happen: () => Pro
   const shifts = partShifts(result, item);
   record(name, shifts);
   expect(result.samples.frames, `${name}: frames`).toBeGreaterThan(0);
-  for (const part of PARTS) {
+  for (const part of held) {
     const shift = shifts[part];
     expect.soft(shift, `${name}: the ${part} line is there throughout`).not.toBeNull();
     expect
@@ -157,4 +164,68 @@ test('the run row holds its lines from the first words to the end', async ({ pag
     await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
   });
   expect(corral.errors).toEqual([]);
+});
+
+test('a run that fails after its words holds its head and its body’s top edge', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  const last = hold();
+  const line = 'Words shown before the failure.';
+  const runs = () => [...corral.server.coordinator.listRuns()];
+  const status = () => {
+    const run = runs()[0];
+    return run ? corral.server.coordinator.getSnapshot(run.runId).projection.status : null;
+  };
+  corral.fake?.setResponses([
+    async () => {
+      const run = runs()[0];
+      if (!run) throw new Error('missing run');
+      const { projection } = corral.server.coordinator.getSnapshot(run.runId);
+      return fauxAssistantMessage(
+        [
+          { type: 'text', text: line },
+          fauxToolCall('update_plan', {
+            scope: 'execution',
+            expectedRevision: 0,
+            criteriaVersionId: projection.currentCriteriaVersionId,
+            items: [{ id: 'answer', title: 'Answer the request', status: 'in_progress' }],
+          }),
+        ],
+        { stopReason: 'toolUse' },
+      );
+    },
+    async () => {
+      last.reach();
+      await last.opened;
+      return fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'Fixture failure' });
+    },
+  ]);
+
+  await corral.open('/projects/default');
+  await newConversation(page);
+  await requestBox(page).fill('A request');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await last.reached;
+  const row = page.locator('[data-chat-item]').filter({ has: page.getByTestId('turn-run') });
+  await expect(row.getByTestId('live-text')).toContainText(line, { timeout: 30_000 });
+  const item = (await row.getAttribute('data-chat-item')) as string;
+  await waitForStill(page);
+
+  // (c) The last words are in and the run fails; its end closes the body. The body's height may
+  // change, so its tail moves; the head and the body's top edge do not. Whether the words stay
+  // depends on their body's lifetime: a complete response's body is released when the run ends
+  // (api-contract.md, 산출물 본문 수명), and the client does not show a released body.
+  await measure(
+    page,
+    item,
+    'words-to-failure',
+    async () => {
+      last.open();
+      await expect.poll(status, { timeout: 30_000 }).toBe('failed');
+      await expect(row.getByTestId('turn-end')).toBeVisible();
+    },
+    ['head', 'body'],
+  );
 });

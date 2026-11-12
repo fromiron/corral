@@ -13,6 +13,7 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { ChatDensityMenu, ChatView } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
+import { resetProcessChoices } from './processChoices.ts';
 import { RunMessage } from './RunMessage.tsx';
 
 const fixture = vi.hoisted(() => ({ store: null as RunSessionStore | null, read: vi.fn() }));
@@ -39,6 +40,7 @@ Element.prototype.getAnimations ??= () => [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   preferences.setState(parsePreferences(null));
+  resetProcessChoices();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });

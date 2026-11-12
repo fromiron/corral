@@ -50,8 +50,9 @@ import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { holdPointer } from './ChatView.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
+import { chooseProcess, processChoice } from './processChoices.ts';
 import { RunHead, RunRow, RunTail, TurnEnd } from './RunRow.tsx';
-import { TurnProcess } from './TurnProcess.tsx';
+import { TurnProcess, useStepName } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { fileChangeCount, toolRows } from './widgets/selectors.ts';
 
@@ -148,15 +149,22 @@ export function RunMessage({
   const tm = useTranslations('MessageBody');
   const ts = useTranslations('Status');
   const tturn = useTranslations('Turn');
+  const stepName = useStepName();
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
   const [disclosure, setDisclosure] = useState<{
     runId: string;
     density: ChatDensity;
     open: boolean;
   } | null>(null);
-  // What the person chose for this run's process holds while the density stays the same.
-  const chosen =
+  // What the person chose for this run's process holds while the density stays the same. In a
+  // conversation it outlives the row, which the timeline may unmount off screen.
+  const local =
     disclosure?.runId === runId && disclosure.density === chatDensity ? disclosure.open : null;
+  const chosen = sessionId ? (processChoice(runId, chatDensity) ?? local) : local;
+  const choose = (open: boolean) => {
+    if (sessionId) chooseProcess(runId, chatDensity, open);
+    setDisclosure({ runId, density: chatDensity, open });
+  };
   // Whether the run's steps are read: a live turn in a conversation reads them while it works,
   // closed or open, so its head counts them.
   const expanded = chosen ?? (chatDensity === 'detailed' || (sessionId !== null && live));
@@ -329,7 +337,10 @@ export function RunMessage({
             (!sessionId || !owner || owner === lead) &&
             (working ||
               handoff ||
-              (!projection.modelCalls[id]?.responseRef && Boolean(state.streams[id]?.text)))
+              // A conversation turn that ended with no result keeps the last words it showed
+              // in their place; elsewhere only an unfinished response stays.
+              ((sessionId !== null || !projection.modelCalls[id]?.responseRef) &&
+                Boolean(state.streams[id]?.text)))
           );
         })
       : [];
@@ -346,15 +357,18 @@ export function RunMessage({
   const writing = current ?? streams.filter(([, stream]) => stream.text).at(-1);
   const writer = writing ? projection.modelCalls[writing[0]]?.executionId : undefined;
   const processShown = Boolean(sessionId) && (!working || chatDensity !== 'results');
-  // Observed only: the run is starting or working, nothing waits on the person, and no step,
-  // words or result have shown yet. A paused or waiting run does not animate.
+  // Observed only: the run is starting or working, nothing waits on the person, and no words or
+  // result have shown yet. The log's steps do not count: it is closed. A paused or waiting run
+  // does not animate.
   const replyPending =
     Boolean(sessionId) &&
     ['created', 'validating', 'running'].includes(projection.status) &&
     interactions.length === 0 &&
-    !(processShown && process.rows.length > 0) &&
     !streams.some(([, stream]) => stream.text) &&
     visible.length === 0;
+  // The wait names the step in progress, as the log names it; the head already says the state.
+  const activeStep = process.rows.filter((row) => row.active).at(-1);
+  const pendingStep = activeStep ? stepName(activeStep) : null;
   const pendingWord = tw(projection.status === 'running' ? 'activityWorking' : 'activityStarting');
   // A turn that did not finish says so once: its readable cause, whether it made anything,
   // and what to do next. One agent's failure is the turn's failure; a team lists its agents.
@@ -498,29 +512,46 @@ export function RunMessage({
       <span
         data-presence-label={`run:${runId}`}
         className={
-          projection.status === 'failed'
-            ? 'text-danger'
-            : projection.status === 'interrupted'
-              ? 'text-warning'
-              : undefined
+          // A working run's word shimmers as the kit's work does; reduced motion stills it.
+          ['created', 'validating', 'running'].includes(projection.status)
+            ? 'shimmer-text'
+            : projection.status === 'failed'
+              ? 'text-danger'
+              : projection.status === 'interrupted'
+                ? 'text-warning'
+                : undefined
         }
       >
         {ts.has(projection.status) ? ts(projection.status) : projection.status}
       </span>
     );
     const shownText = writing && chatDensity !== 'results' ? writing : undefined;
-    const interrupted = shownText && !working && !handoff ? shownText[1].text : null;
-    // The one answer the conversation shows as it is hands its icon actions to the tail.
+    // The words an ended turn kept; only a response that never completed is marked as cut off.
+    const kept = shownText && !working && !handoff ? shownText[1].text : null;
+    const cutOff =
+      kept !== null && shownText !== undefined && !projection.modelCalls[shownText[0]]?.responseRef;
+    // The answer the conversation shows as it is: the body itself, not a result to count.
+    const inline = (result: ResultItem) =>
+      !partial && !result.media && !projection.reviews[result.artifactVersionId];
+    // The one such answer hands its icon actions to the tail.
     const sole = shownResults.length === 1 ? shownResults[0] : undefined;
-    const tailResult =
-      sole && !partial && !sole.media && !projection.reviews[sole.artifactVersionId]
-        ? sole
-        : undefined;
+    const tailResult = sole && inline(sole) ? sole : undefined;
     const changes = fileChangeCount(toolCalls);
+    // Results drawn as their own folded blocks: images, reviews, partial results.
+    const blocks = visible.filter((result) => !inline(result)).length;
     const tailValues = [
       changes ? { key: 'changes', node: tturn('changes', { count: changes }) } : null,
-      visible.length ? { key: 'results', node: tturn('results', { count: visible.length }) } : null,
+      blocks ? { key: 'results', node: tturn('results', { count: blocks }) } : null,
     ].filter((value) => value !== null);
+    // The head names the answering role and the run's state: a reason saying only that this
+    // role failed, or that the run was cancelled, would say it again.
+    const code = projection.statusReason;
+    const at = code ? code.indexOf(': ') : -1;
+    const reasonHead = code && at >= 0 ? code.slice(0, at) : code;
+    const reasonRest = code && at >= 0 ? code.slice(at + 2) : '';
+    const repeatsHead =
+      reasonHead === 'cancel_confirmed' ||
+      (reasonHead === 'execution_failed' && reasonRest.split(' ')[0] === leadExecution?.nodeId);
     return (
       <RunRow
         head={
@@ -531,7 +562,7 @@ export function RunMessage({
             streams={state.streams}
             label={label}
             open={processOpen}
-            onOpenChange={(open) => setDisclosure({ runId, density: chatDensity, open })}
+            onOpenChange={choose}
             trailing={runLine}
             role={leadExecution ? label(leadExecution.nodeId) : null}
             status={status}
@@ -554,9 +585,9 @@ export function RunMessage({
                 }
                 sessionId={sessionId}
               />
-            ) : interrupted !== null ? (
+            ) : kept !== null ? (
               <TurnActions>
-                <CopyTextButton text={interrupted} />
+                <CopyTextButton text={kept} />
               </TurnActions>
             ) : null}
           </RunTail>
@@ -570,7 +601,8 @@ export function RunMessage({
             data-testid="reply-pending"
             aria-live="off"
             className="h-(--lh-title) p-0"
-            labels={{ status: pendingWord, words: [pendingWord] }}
+            // No words until a step is in progress: the mark alone.
+            labels={{ status: pendingStep ?? pendingWord, words: [pendingStep ?? ''] }}
           />
         ) : null}
         {shownText ? (
@@ -586,7 +618,7 @@ export function RunMessage({
               <MessageBody text={shownText[1].text} markdown size="chat" copy={false} />
             )}
             {/* Under the words it stopped at, so they keep their place. */}
-            {interrupted !== null ? (
+            {cutOff ? (
               <p className="text-caption text-muted-foreground" role="note">
                 {tm('interrupted')}
                 {shownText[1].truncated ? ` · ${tm('truncated')}` : ''}
@@ -626,8 +658,8 @@ export function RunMessage({
         {unfinished || endActions ? (
           <TurnEnd
             reason={
-              unfinished && projection.statusReason ? (
-                <RunReason code={projection.statusReason} nodeLabel={label} />
+              unfinished && code && !repeatsHead ? (
+                <RunReason code={code} nodeLabel={label} />
               ) : null
             }
             failure={
