@@ -1,7 +1,12 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { EffectiveHarnessSnapshot, RunEvent } from '@corral/contracts';
+import type {
+  EffectiveHarnessSnapshot,
+  ProfileContextPolicy,
+  Receipt,
+  RunEvent,
+} from '@corral/contracts';
 import {
   Coordinator,
   InProcessTransport,
@@ -22,6 +27,7 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
+import type { SdkResources } from '../src/protocol.ts';
 import { runSdkWorker } from '../src/sdk-worker.ts';
 import { runWorker } from '../src/worker.ts';
 import { DIRECTIVE_PREFIX, SDK_DIRECTIVE_PREFIX, unfinished } from '../src/worker-tools.ts';
@@ -54,6 +60,7 @@ const harness: EffectiveHarnessSnapshot = {
 };
 
 type Worker = 'pi-core' | 'sdk';
+type WorkerFrame = { type?: string; failed?: boolean; [key: string]: unknown };
 
 /** The user-role texts of one request, in order. */
 const userTexts = (context: { messages: unknown[] }) =>
@@ -96,7 +103,16 @@ const writeThenSubmit = (seen: unknown[][] = []): FauxResponseStep[] => [
  */
 function runtime(
   responses: FauxResponseStep[],
-  options: { worker?: Worker; workerGate?: Gate; wrapStream?: (stream: StreamFn) => StreamFn } = {},
+  options: {
+    worker?: Worker;
+    workerGate?: Gate;
+    wrapStream?: (stream: StreamFn) => StreamFn;
+    contextPolicy?: ProfileContextPolicy;
+    /** Sees each frame the worker sends, before the host handles it. */
+    onWorkerFrame?: (frame: WorkerFrame) => void;
+    /** The adapter's harness resources, which an SDK role waits for before its worker. */
+    harness?: () => Promise<SdkResources>;
+  } = {},
 ) {
   const faux = createFauxCore({});
   faux.setResponses(responses);
@@ -107,14 +123,22 @@ function runtime(
     if (options.workerGate) void options.workerGate.wait().then(run);
     else run();
   };
+  const pair = () => {
+    const channels = memoryChannelPair();
+    if (options.onWorkerFrame) {
+      const seen = options.onWorkerFrame;
+      channels.host.onFrame((frame) => seen(frame as WorkerFrame));
+    }
+    return channels;
+  };
   const adapter = new PiAgentAdapter({
     spawn: () => {
-      const { host, worker } = memoryChannelPair();
+      const { host, worker } = pair();
       later(() => runWorker(worker, { streamFn: stream, resolveModel: () => faux.getModel() }));
       return host;
     },
     spawnSdk: () => {
-      const { host, worker } = memoryChannelPair();
+      const { host, worker } = pair();
       const directory = mkdtempSync(join(tmpdir(), 'corral-directive-gaps-'));
       scratch.push(directory);
       later(() =>
@@ -127,20 +151,62 @@ function runtime(
       );
       return host;
     },
-    harness: async () => ({ bundles: [], extensions: [], skills: [], startupCommands: [] }),
+    harness:
+      options.harness ??
+      (async () => ({ bundles: [], extensions: [], skills: [], startupCommands: [] })),
     credentials: async () => ACCESS_TOKEN,
   });
   const sdk = options.worker === 'sdk';
   const coordinator = new Coordinator({
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),
-    models: liveModels,
+    models: options.contextPolicy
+      ? {
+          resolve: (profile, mode) => {
+            const resolved = liveModels.resolve(profile, mode);
+            if (!resolved.ok || !options.contextPolicy) return resolved;
+            return {
+              ok: true,
+              snapshot: {
+                ...resolved.snapshot,
+                contextWindow: options.contextPolicy.contextWindow,
+                contextPolicy: options.contextPolicy,
+              },
+            };
+          },
+        }
+      : liveModels,
     agents: adapter,
     ...(sdk ? { harnesses: { resolve: () => harness } } : {}),
   });
   const transport = new InProcessTransport(coordinator);
-  const start = async () => {
+  const current = { runId: '', executionId: '' };
+  /** A steer submitted synchronously, usable from a frame hook. */
+  const steerNow = (
+    text: string,
+    commandId: string,
+    delivery: 'next_request' | 'interrupt' = 'next_request',
+  ) =>
+    coordinator.submit({
+      schemaVersion: '0.1',
+      commandId,
+      runId: current.runId,
+      type: 'steer',
+      payload: { targetExecutionId: current.executionId, text, delivery },
+    });
+  /** A manual compaction of the current attempt. */
+  const compactNow = (commandId: string) =>
+    coordinator.submit({
+      schemaVersion: '0.1',
+      commandId,
+      runId: current.runId,
+      type: 'compact_context',
+      expectedControlRevision: coordinator.getSnapshot(current.runId).projection.controlRevision,
+      payload: { executionId: current.executionId, attemptNo: 1 },
+    });
+  const start = async (brief?: string) => {
     const definition = linearCorral(['writer']);
+    if (brief) definition.input.brief = brief;
     if (sdk) for (const role of definition.roles) role.harness = harness.binding;
     const { runId, receipt } = await transport.startRun({
       schemaVersion: '0.1',
@@ -155,6 +221,8 @@ function runtime(
       await waitForProjection(transport, runId, (p) => p.executionOrder.length === 1)
     ).executionOrder[0];
     if (!executionId) throw new Error('no execution');
+    current.runId = runId;
+    current.executionId = executionId;
     const steer = (
       text: string,
       commandId: string,
@@ -177,7 +245,7 @@ function runtime(
     };
     return { runId, executionId, events, steer, directiveOf };
   };
-  return { transport, coordinator, start };
+  return { transport, coordinator, start, steerNow, compactNow };
 }
 
 describe('directives sent while the worker is starting', () => {
@@ -621,5 +689,532 @@ describe('what marks a call unfinished', () => {
     expect(summaries.length).toBeGreaterThan(0);
     for (const id of summaries)
       expect(final.modelCalls[id]).toMatchObject({ finished: true, responseRef: null });
+  });
+});
+
+const contextPolicy = (mode: 'core-auto' | 'core-manual', contextWindow: number) => {
+  const policy = resolveProfileContext(
+    { contextWindow, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+    { contextWindow, source: 'catalog' },
+    mode,
+    256,
+  ).policy;
+  if (!policy) throw new Error('context policy');
+  return policy;
+};
+
+/** The first response shows its first text, waits for `release`, then its socket closes. */
+const throwAfterFirstText = (streamed: Gate, release: Gate) => {
+  let calls = 0;
+  return (stream: StreamFn): StreamFn =>
+    (model, context, options) => {
+      if (++calls > 1) return stream(model, context, options);
+      const inner = stream(model, context, options);
+      return {
+        async *[Symbol.asyncIterator]() {
+          for await (const event of await inner) {
+            yield event;
+            if (event.type === 'text_delta') {
+              streamed.open();
+              await release.wait();
+              throw new Error('socket closed');
+            }
+          }
+        },
+        result: () => Promise.reject(new Error('socket closed')),
+      } as unknown as ReturnType<StreamFn>;
+    };
+};
+
+const compactionPhases = (events: RunEvent[]) =>
+  events.flatMap((e) =>
+    e.type === 'context.compaction_changed'
+      ? [`${e.payload.trigger ?? 'manual'}:${e.payload.phase}`]
+      : [],
+  );
+const purposes = (events: RunEvent[]) =>
+  events.flatMap((e) => (e.type === 'model.request_recorded' ? [e.payload.purpose] : []));
+
+describe('an automatic compaction whose summary fails', () => {
+  /** The first request is a summary; it shows text, the test may steer, then it fails. */
+  const summaryFails = async (worker: Worker, steering: boolean, ending: 'error' | 'throws') => {
+    const streamed = new Gate(),
+      release = new Gate();
+    const { transport, coordinator, start } = runtime(
+      [
+        ending === 'error'
+          ? fauxAssistantMessage('Partial summary before the drop.', {
+              stopReason: 'error',
+              errorMessage: 'fetch failed',
+            })
+          : fauxAssistantMessage('Partial summary, then the socket closed.'),
+        // What a run that went on anyway would use: a valid summary, then the task.
+        fauxAssistantMessage('Summary: keep the requirement; nothing done yet.'),
+        ...writeThenSubmit(),
+      ],
+      {
+        worker,
+        contextPolicy: contextPolicy('core-auto', 4000),
+        wrapStream:
+          ending === 'error'
+            ? holdFirstText(streamed, release)
+            : throwAfterFirstText(streamed, release),
+      },
+    );
+    const { runId, executionId, events, steer, directiveOf } = await start(
+      'Keep this requirement. '.repeat(700),
+    );
+    await streamed.wait();
+    await tick();
+    if (steering) expect((await steer('Keep the API.', 'cmd_join')).status).toBe('queued');
+    await tick();
+    release.open();
+    const final = await waitForProjection(transport, runId, settled);
+    return { coordinator, runId, executionId, events, final, directiveOf };
+  };
+
+  it.each<[Worker, boolean, 'error' | 'throws']>([
+    ['pi-core', true, 'error'],
+    ['pi-core', false, 'error'],
+    ['sdk', true, 'error'],
+    ['sdk', false, 'error'],
+    ['pi-core', true, 'throws'],
+    ['pi-core', false, 'throws'],
+    ['sdk', true, 'throws'],
+    ['sdk', false, 'throws'],
+  ])(
+    'a %s execution whose summary fails ends failed after that one call (directive waiting: %s, summary %s)',
+    async (worker, steering, ending) => {
+      const { coordinator, runId, executionId, events, final, directiveOf } = await summaryFails(
+        worker,
+        steering,
+        ending,
+      );
+      expect(final.status).toBe('failed');
+      expect(final.executions[executionId]?.status).toBe('failed');
+      expect(final.executions[executionId]?.modelCallIds).toHaveLength(1);
+      expect(purposes(events)).toEqual(['compaction']);
+      expect(compactionPhases(events)).toEqual(['automatic:started', 'automatic:failed']);
+      if (steering) {
+        expect((await directiveOf('cmd_join'))?.status).toBe('expired');
+        expect(coordinator.getReceipt(runId, 'cmd_join')?.status).toBe('expired');
+      }
+    },
+  );
+});
+
+describe('a manual compaction waiting on the turn in flight', () => {
+  const SUMMARY = 'Summary that keeps the required task.';
+  /**
+   * The first turn shows text and holds; the test asks for a manual compaction, may steer or
+   * interrupt, then lets the turn end as `first` says.
+   */
+  const waitingCompaction = async (
+    worker: Worker,
+    first: 'fails' | 'whole' | 'cut',
+    steering: boolean,
+  ) => {
+    const streamed = new Gate(),
+      release = new Gate();
+    const seen: unknown[][] = [];
+    const { transport, coordinator, start, compactNow } = runtime(
+      [
+        first === 'fails'
+          ? fauxAssistantMessage('Partial answer before the drop.', {
+              stopReason: 'error',
+              errorMessage: 'fetch failed',
+            })
+          : fauxAssistantMessage(
+              [fauxText('Drafting first.'), fauxToolCall('write_artifact', { text: 'Draft.' })],
+              { stopReason: 'toolUse' },
+            ),
+        // The SDK answers the interrupt in a turn of its own before it compacts.
+        ...(first === 'cut' && worker === 'sdk'
+          ? [
+              fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Cited draft.' })], {
+                stopReason: 'toolUse',
+              }),
+            ]
+          : []),
+        fauxAssistantMessage(SUMMARY),
+        ...writeThenSubmit(seen),
+      ],
+      {
+        worker,
+        contextPolicy: contextPolicy('core-manual', 64000),
+        wrapStream: holdFirstText(streamed, release),
+      },
+    );
+    const { runId, executionId, events, steer, directiveOf } = await start(
+      'Keep this requirement. '.repeat(40),
+    );
+    await streamed.wait();
+    await tick();
+    expect(compactNow('cmd_compact').status).toBe('accepted');
+    if (first === 'cut')
+      expect((await steer('Stop and cite.', 'cmd_join', 'interrupt')).requestedBoundary).toBe(
+        'immediate',
+      );
+    else if (steering) expect((await steer('Keep the API.', 'cmd_join')).status).toBe('queued');
+    await tick();
+    release.open();
+    const final = await waitForProjection(transport, runId, settled);
+    return { coordinator, runId, executionId, events, final, directiveOf, seen };
+  };
+
+  it.each<[Worker, boolean]>([
+    ['pi-core', true],
+    ['pi-core', false],
+    ['sdk', true],
+    ['sdk', false],
+  ])(
+    'a %s turn that fails after text ends the execution failed and skips the waiting compaction (directive waiting: %s)',
+    async (worker, steering) => {
+      const { coordinator, runId, executionId, events, final, directiveOf } =
+        await waitingCompaction(worker, 'fails', steering);
+      expect(final.status).toBe('failed');
+      expect(final.executions[executionId]?.status).toBe('failed');
+      expect(final.executions[executionId]?.modelCallIds).toHaveLength(1);
+      expect(purposes(events)).toEqual(['turn']);
+      expect(compactionPhases(events)).toEqual(['manual:queued', 'manual:skipped']);
+      if (steering) {
+        expect((await directiveOf('cmd_join'))?.status).toBe('expired');
+        expect(coordinator.getReceipt(runId, 'cmd_join')?.status).toBe('expired');
+      }
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'after a whole %s turn the waiting compaction runs and the execution goes on',
+    async (worker) => {
+      const { events, final } = await waitingCompaction(worker, 'whole', false);
+      expect(final.status).toBe('succeeded');
+      expect(purposes(events)).toEqual(['turn', 'compaction', 'turn', 'turn']);
+      expect(compactionPhases(events)).toEqual([
+        'manual:queued',
+        'manual:started',
+        'manual:completed',
+      ]);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'after a %s turn cut by an interrupt the waiting compaction still runs and the execution goes on',
+    async (worker) => {
+      const { executionId, events, final, directiveOf } = await waitingCompaction(
+        worker,
+        'cut',
+        false,
+      );
+      expect(final.status).toBe('succeeded');
+      const [cut] = final.executions[executionId]?.modelCallIds ?? [];
+      expect(final.modelCalls[cut ?? '']?.interrupted).toBe(true);
+      // pi-core compacts while preparing the request after the cut; the SDK first answers the
+      // directive in its own turn, then compacts once Pi is idle and prompts it to go on.
+      expect(purposes(events)).toEqual(
+        worker === 'sdk'
+          ? ['turn', 'turn', 'compaction', 'turn', 'turn']
+          : ['turn', 'compaction', 'turn', 'turn'],
+      );
+      expect(compactionPhases(events)).toEqual([
+        'manual:queued',
+        'manual:started',
+        'manual:completed',
+      ]);
+      expect((await directiveOf('cmd_join'))?.status).toBe('delivered');
+    },
+  );
+});
+
+describe('a directive that reaches the worker around the end of a turn', () => {
+  const failingAfterText = () => [
+    fauxAssistantMessage('Partial answer before the drop.', {
+      stopReason: 'error',
+      errorMessage: 'fetch failed',
+    }),
+    ...writeThenSubmit(),
+  ];
+  const microtasks = async (n: number) => {
+    for (let i = 0; i < n; i++) await Promise.resolve();
+  };
+
+  it.each<[Worker, 'next_request' | 'interrupt']>([
+    ['pi-core', 'next_request'],
+    ['pi-core', 'interrupt'],
+    ['sdk', 'next_request'],
+    ['sdk', 'interrupt'],
+  ])(
+    'a %s directive (%s) sent any number of microtasks after the host saw the failed response never carries the execution on',
+    async (worker, delivery) => {
+      const outcomes: string[] = [];
+      for (let n = 0; n <= 60; n++) {
+        let sent: Promise<Receipt> | undefined;
+        const { transport, coordinator, start, steerNow } = runtime(failingAfterText(), {
+          worker,
+          onWorkerFrame: (frame) => {
+            if (frame.type !== 'observe' || !frame.failed || sent) return;
+            sent = microtasks(n).then(() => steerNow('Keep the API.', 'cmd_late', delivery));
+          },
+        });
+        const { runId, executionId, directiveOf } = await start();
+        const final = await waitForProjection(transport, runId, settled);
+        const receipt = await sent;
+        const directive = await directiveOf('cmd_late');
+        const ending =
+          receipt?.status === 'rejected'
+            ? `rejected:${receipt.error?.code}`
+            : `${directive?.status}/${coordinator.getReceipt(runId, 'cmd_late')?.status}`;
+        outcomes.push(
+          `n=${n} ${final.status} calls=${final.executions[executionId]?.modelCallIds.length} ${ending}`,
+        );
+      }
+      const expected = outcomes.map((line) => {
+        const n = line.split(' ')[0];
+        return line.endsWith('rejected:TARGET_TERMINAL')
+          ? `${n} failed calls=1 rejected:TARGET_TERMINAL`
+          : `${n} failed calls=1 expired/expired`;
+      });
+      expect(outcomes).toEqual(expected);
+    },
+    60_000,
+  );
+
+  it('a directive sent while a whole SDK reply without a tool call streams gets a turn of its own', async () => {
+    const streamed = new Gate(),
+      release = new Gate();
+    const { transport, start } = runtime(
+      [fauxAssistantMessage('A first answer without any tool call.'), ...writeThenSubmit()],
+      { worker: 'sdk', wrapStream: holdFirstText(streamed, release) },
+    );
+    const { runId, executionId, steer, directiveOf } = await start();
+    await streamed.wait();
+    await tick();
+    expect((await steer('Keep the API.', 'cmd_join')).status).toBe('queued');
+    await tick();
+    release.open();
+    const final = await waitForProjection(transport, runId, settled);
+    expect(final.status).toBe('succeeded');
+    const directive = await directiveOf('cmd_join');
+    expect(directive?.status).toBe('delivered');
+    const [whole, next] = final.executions[executionId]?.modelCallIds ?? [];
+    expect(final.modelCalls[whole ?? '']?.responseRef).toBe(`response_${whole}`);
+    expect(final.modelCalls[next ?? '']?.directiveIds).toEqual([directive?.directiveId]);
+  });
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a directive that reaches the %s worker after a turn ended in a tool call rides the next request',
+    async (worker) => {
+      let sent: Promise<Receipt> | undefined;
+      const { transport, start, steerNow } = runtime(writeThenSubmit(), {
+        worker,
+        onWorkerFrame: (frame) => {
+          if (frame.type !== 'observe' || sent) return;
+          sent = microtasks(3).then(() => steerNow('Keep the API.', 'cmd_join'));
+        },
+      });
+      const { runId, executionId, directiveOf } = await start();
+      const final = await waitForProjection(transport, runId, settled);
+      expect((await sent)?.status).toBe('queued');
+      expect(final.status).toBe('succeeded');
+      const directive = await directiveOf('cmd_join');
+      expect(directive?.status).toBe('delivered');
+      const [, next] = final.executions[executionId]?.modelCallIds ?? [];
+      expect(final.modelCalls[next ?? '']?.directiveIds).toEqual([directive?.directiveId]);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'an interrupt that reaches the %s worker while it waits to retry a response that showed nothing carries the execution on',
+    async (worker) => {
+      let sent: Promise<Receipt> | undefined;
+      const { transport, start, steerNow } = runtime(
+        [
+          // The provider asks for the retry an hour later: only the cut ends the wait.
+          fauxAssistantMessage('', {
+            stopReason: 'error',
+            errorMessage: JSON.stringify({
+              code: 'RATE_LIMIT',
+              status: 429,
+              retryAfterMs: 3_600_000,
+              requestId: null,
+            }),
+          }),
+          ...writeThenSubmit(),
+        ],
+        {
+          worker,
+          onWorkerFrame: (frame) => {
+            if (frame.type !== 'observe' || !frame.failed || sent) return;
+            sent = microtasks(100).then(() => steerNow('Stop and cite.', 'cmd_cut', 'interrupt'));
+          },
+        },
+      );
+      const { runId, executionId, directiveOf } = await start();
+      const final = await waitForProjection(transport, runId, settled);
+      expect((await sent)?.status).toBe('queued');
+      expect(final.status).toBe('succeeded');
+      const directive = await directiveOf('cmd_cut');
+      expect(directive?.status).toBe('delivered');
+      const [waited, next] = final.executions[executionId]?.modelCallIds ?? [];
+      expect(final.modelCalls[waited ?? '']).toMatchObject({ responseRef: null, directiveIds: [] });
+      expect(final.modelCalls[next ?? '']?.directiveIds).toEqual([directive?.directiveId]);
+    },
+  );
+});
+
+describe('empty and whitespace-only text', () => {
+  /** The stream frames each worker sends and the partial outputs the run keeps. */
+  const streamed = async (worker: Worker, responses: FauxResponseStep[]) => {
+    const frames: string[] = [];
+    const { transport, coordinator, start } = runtime(responses, {
+      worker,
+      onWorkerFrame: (frame) => {
+        if (frame.type === 'stream')
+          frames.push(`${frame.modelCallId}#${frame.chunkIndex}=${JSON.stringify(frame.text)}`);
+      },
+    });
+    const { runId } = await start();
+    const final = await waitForProjection(transport, runId, settled);
+    const partial = Object.fromEntries(
+      Object.entries(coordinator.getSnapshot(runId).partialOutputs ?? {}).map(([id, output]) => [
+        id,
+        output.text,
+      ]),
+    );
+    return { final, frames, partial };
+  };
+  // A transient failure the provider asks to retry at once, so no retry waits.
+  const failing = (text: string) =>
+    fauxAssistantMessage(text, {
+      stopReason: 'error',
+      errorMessage: JSON.stringify({
+        code: 'TRANSPORT',
+        status: null,
+        retryAfterMs: 0,
+        requestId: null,
+      }),
+    });
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call that fails with only an empty text sends no frame and keeps no partial output, retried or not',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(worker, [
+        failing(''),
+        failing(''),
+        failing(''),
+      ]);
+      expect(final.status).toBe('failed');
+      expect(Object.keys(final.modelCalls)).toHaveLength(3);
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a whole %s response that starts with an empty text sends only its text',
+    async (worker) => {
+      const { final, frames } = await streamed(worker, [
+        fauxAssistantMessage(
+          [fauxText(''), fauxText('Hello there.'), fauxToolCall('write_artifact', { text: 'A.' })],
+          { stopReason: 'toolUse' },
+        ),
+        (context) =>
+          fauxAssistantMessage(
+            [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
+            { stopReason: 'toolUse' },
+          ),
+        fauxAssistantMessage('Done.'),
+      ]);
+      expect(final.status).toBe('succeeded');
+      expect(frames).toEqual(['call_0001#0="Hello there."']);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call that fails after only whitespace and is retried sends no frame and keeps no partial output',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(worker, [
+        failing('\n'),
+        ...writeThenSubmit(),
+      ]);
+      expect(final.status).toBe('succeeded');
+      const [retried] = Object.keys(final.modelCalls);
+      expect(frames.filter((frame) => frame.startsWith(`${retried}#`))).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call that fails after only whitespace keeps it only when it is the last attempt',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(worker, [
+        failing('\n'),
+        failing('\n'),
+        failing('\n'),
+      ]);
+      expect(final.status).toBe('failed');
+      expect(frames).toEqual(['call_0003#0="\\n"']);
+      expect(partial).toEqual({ call_0003: '\n' });
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a whole %s response that starts with whitespace streams every character of it, in order',
+    async (worker) => {
+      const text = ['\n', ' \n', '\t', 'Hello there.', ' ', 'Again.'];
+      const { final, frames } = await streamed(worker, [
+        fauxAssistantMessage(
+          [...text.map((part) => fauxText(part)), fauxToolCall('write_artifact', { text: 'A.' })],
+          { stopReason: 'toolUse' },
+        ),
+        (context) =>
+          fauxAssistantMessage(
+            [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
+            { stopReason: 'toolUse' },
+          ),
+        fauxAssistantMessage('Done.'),
+      ]);
+      expect(final.status).toBe('succeeded');
+      const first = frames.filter((frame) => frame.startsWith('call_0001#'));
+      expect(first.map((frame) => frame.replace(/^call_0001#\d+=/, ''))).toEqual(
+        text.map((part) => JSON.stringify(part)),
+      );
+      expect(
+        first.map((frame) => JSON.parse(frame.replace(/^call_0001#\d+=/, '')) as string).join(''),
+      ).toBe(text.join(''));
+      expect(first.map((frame) => frame.match(/#(\d+)=/)?.[1])).toEqual(
+        text.map((_, index) => String(index)),
+      );
+    },
+  );
+});
+
+describe('an interrupt before the adapter hands the SDK worker over', () => {
+  it('is lowered to the next request and rides the first request without cutting anything', async () => {
+    const resources = new Gate();
+    const { transport, start, steerNow } = runtime(writeThenSubmit(), {
+      worker: 'sdk',
+      harness: async () => {
+        await resources.wait();
+        return { bundles: [], extensions: [], skills: [], startupCommands: [] };
+      },
+    });
+    const { runId, executionId, events, directiveOf } = await start();
+    await tick();
+    // The adapter is still preparing the harness resources: start() has not returned.
+    const receipt = steerNow('Cite sources.', 'cmd_cut', 'interrupt');
+    resources.open();
+    const final = await waitForProjection(transport, runId, settled);
+
+    expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'next_request' });
+    expect(
+      events.find((e) => e.type === 'directive.accepted' && e.commandId === 'cmd_cut')?.payload,
+    ).toMatchObject({ delivery: 'next_request' });
+    expect(final.status).toBe('succeeded');
+    const directive = await directiveOf('cmd_cut');
+    expect(directive?.status).toBe('delivered');
+    const [first] = final.executions[executionId]?.modelCallIds ?? [];
+    expect(final.modelCalls[first ?? '']?.directiveIds).toEqual([directive?.directiveId]);
+    expect(events.filter((e) => e.type === 'model.finished' && e.payload.interrupted)).toEqual([]);
   });
 });

@@ -18,6 +18,24 @@ export function isReplaySafe(partial: Pick<AssistantMessage, 'content'>): boolea
   );
 }
 
+/**
+ * The wait before a failed attempt is asked for again, or null when it is not (context-overflow
+ * recovery aside). `responseStarted` says whether the attempt sent any event before it ended.
+ */
+export function retryDelayAfter(
+  message: AssistantMessage,
+  attempt: number,
+  responseStarted: boolean,
+  random: () => number = Math.random,
+): number | null {
+  if (message.stopReason !== 'error' || !isReplaySafe(message)) return null;
+  return retryDelay(
+    providerFailure(message.errorMessage ?? '', undefined, { responseStarted }),
+    attempt,
+    random,
+  );
+}
+
 /** Each open obtains a new host permit; only the final attempt reaches the agent loop. */
 export function managedRetryStream(options: {
   model: Pick<Model<string>, 'id' | 'provider' | 'api'>;
@@ -69,8 +87,8 @@ export function managedRetryStream(options: {
         if (await options.onContextOverflow()) continue;
       }
       const delay =
-        message.stopReason === 'error' && replaySafe && !options.signal.aborted
-          ? retryDelay(failure(), attempt, options.random ?? Math.random)
+        held !== null && !options.signal.aborted
+          ? retryDelayAfter(message, attempt, responseStarted, options.random)
           : null;
       if (delay === null) {
         for (const heldEvent of held ?? []) out.push(heldEvent);

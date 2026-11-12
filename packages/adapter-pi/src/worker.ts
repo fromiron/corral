@@ -715,7 +715,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
 
     agent.subscribe((event) => {
       if (!permit) return;
-      if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
+      // An empty fragment is never sent; whitespace a retry replaced never reaches this agent.
+      if (
+        event.type === 'message_update' &&
+        event.assistantMessageEvent.type === 'text_delta' &&
+        event.assistantMessageEvent.delta
+      ) {
         port.send({
           type: 'stream',
           ...head,

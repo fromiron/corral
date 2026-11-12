@@ -79,7 +79,7 @@ import {
   withProtectedContext,
   withRequiredImages,
 } from './request-record.ts';
-import { managedRetryStream } from './request-retry.ts';
+import { isReplaySafe, managedRetryStream, retryDelayAfter } from './request-retry.ts';
 import { brokerParameters, describeTool } from './static-tools.ts';
 import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
@@ -126,22 +126,46 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
   let pendingCompaction: string | null = null;
   // The turn response in flight and the directives its request carries. Extension and
   // compaction requests are never cut, and none is in flight while a tool runs.
-  type TurnFlight = { abort: AbortController; directiveIds: Set<string>; cut: boolean };
+  // `ended` is how the observe frame of its latest attempt reported the response.
+  type Verdict = 'cut' | 'failed' | 'whole';
+  type TurnFlight = {
+    abort: AbortController;
+    directiveIds: Set<string>;
+    cut: boolean;
+    ended?: Verdict;
+  };
   let turnFlight: TurnFlight | null = null;
   // The mark stays with the request, whichever permit its last attempt got.
   const wasCut = (flight: TurnFlight | null, answer: Pick<AssistantMessage, 'stopReason'>) =>
     flight?.cut === true && (answer.stopReason === 'aborted' || answer.stopReason === 'error');
+  const verdictOf = (
+    flight: TurnFlight | null,
+    answer: Pick<AssistantMessage, 'stopReason'>,
+  ): Verdict => (wasCut(flight, answer) ? 'cut' : unfinished(answer) ? 'failed' : 'whole');
   const steerFailed = () => {
     cancelled = true;
     cancellation.abort();
     void session?.abort();
   };
-  // Set once a turn ended in an error or abort without a cut: the execution fails, and no
-  // waiting directive may start another turn (reins §2).
+  // Set once a turn ended in an error or abort without a cut, or a request could not be
+  // prepared: the execution fails, and no waiting directive or manual compaction may start
+  // another turn (reins §2).
   let endedUnfinished = false;
-  const steer = (directive: DeliveredDirective) => {
+  const endUnfinished = () => {
+    endedUnfinished = true;
+    session?.clearQueue();
+  };
+  const steer = async (directive: DeliveredDirective) => {
     if (endedUnfinished) return;
-    void session?.steer(directiveText(directive)).catch(steerFailed);
+    try {
+      await session?.steer(directiveText(directive));
+    } catch {
+      steerFailed();
+      return;
+    }
+    // Pi queues a steer asynchronously: one begun before the failure was known lands after
+    // the queue was cleared, so it is cleared again.
+    if (endedUnfinished) session?.clearQueue();
   };
   port.onFrame((raw) => {
     const parsed = SdkHostFrame.safeParse(raw);
@@ -192,14 +216,14 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         !flight.directiveIds.has(frame.directiveId)
       ) {
         // Steered first, so Pi goes on with the directive once the cut response has ended.
-        void (known ? Promise.resolve() : session.steer(directiveText(frame))).then(() => {
-          if (!cancelled) flight.abort.abort();
-        }, steerFailed);
+        void (known ? Promise.resolve() : steer(frame)).then(() => {
+          if (!cancelled && !endedUnfinished) flight.abort.abort();
+        });
         return;
       }
       if (!known && session?.isStreaming) {
         if (preparingRequest) deferredSteers.set(frame.directiveId, frame);
-        else steer(frame);
+        else void steer(frame);
       }
     } else {
       waiting.get(frame.requestId)?.(frame);
@@ -403,6 +427,23 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         requests = requests.then(async () => {
           let modelCallId: string | undefined;
           let observed = false;
+          // The one judgement of how this attempt ended: the record and what follows share it.
+          const report = (answer: AssistantMessage, text = textOf(answer)) => {
+            const verdict = verdictOf(flight, answer);
+            if (flight) flight.ended = verdict;
+            send({
+              type: 'observe',
+              modelCallId,
+              text,
+              ...normalizeUsage(answer),
+              ...(verdict === 'cut'
+                ? { interrupted: true }
+                : verdict === 'failed'
+                  ? { failed: true }
+                  : {}),
+            });
+            observed = true;
+          };
           try {
             await registryUpdates;
             if (requiredExtensionFailed) throw new Error('required extension failed');
@@ -585,29 +626,38 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               },
             });
             let chunkIndex = 0;
+            let responseStarted = false;
+            const sendText = (text: string) => {
+              if (!cancelled) send({ type: 'stream', modelCallId, chunkIndex: chunkIndex++, text });
+            };
+            // Whitespace before the first text is held, as the retry wrapper holds it from the
+            // agent: an attempt that is asked for again has shown nothing.
+            let held: string[] | null = [];
+            const release = (ended?: AssistantMessage) => {
+              const pending = held;
+              held = null;
+              if (
+                !pending ||
+                (ended &&
+                  !options?.signal?.aborted &&
+                  retryDelayAfter(ended, retryIndex, responseStarted) !== null)
+              )
+                return;
+              for (const text of pending) sendText(text);
+            };
             for await (const event of stream) {
-              if (event.type === 'text_delta' && event.delta && !cancelled)
-                send({
-                  type: 'stream',
-                  modelCallId,
-                  chunkIndex: chunkIndex++,
-                  text: event.delta,
-                });
               if (event.type === 'done' || event.type === 'error') {
                 const answer = event.type === 'done' ? event.message : event.error;
                 meter.observe(requestContext, model, answer);
-                send({
-                  type: 'observe',
-                  modelCallId,
-                  text: textOf(answer),
-                  ...normalizeUsage(answer),
-                  ...(wasCut(flight, answer)
-                    ? { interrupted: true }
-                    : unfinished(answer)
-                      ? { failed: true }
-                      : {}),
-                });
-                observed = true;
+                release(answer);
+                report(answer);
+              } else {
+                responseStarted = true;
+                if (held && !isReplaySafe(event.partial)) release();
+                if (event.type === 'text_delta' && event.delta) {
+                  if (held) held.push(event.delta);
+                  else sendText(event.delta);
+                }
               }
               out.push(proxyEvent(event));
             }
@@ -620,29 +670,17 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               !answer.content.some((part) => part.type === 'toolCall')
                 ? modelCallId
                 : undefined;
-            if (!observed)
-              send({
-                type: 'observe',
-                modelCallId,
-                text: textOf(answer),
-                ...normalizeUsage(answer),
-                ...(unfinished(answer) ? { failed: true } : {}),
-              });
-            observed = true;
+            if (!observed) {
+              release(answer);
+              report(answer);
+            }
             out.end(proxyMessage(answer));
           } catch {
             const answer = failedMessage(
               cancelled || options?.signal?.aborted ? 'aborted' : 'error',
               deps.now(),
             );
-            if (modelCallId && !observed)
-              send({
-                type: 'observe',
-                modelCallId,
-                text: '',
-                ...normalizeUsage(answer),
-                ...(wasCut(flight, answer) ? { interrupted: true } : { failed: true }),
-              });
+            if (modelCallId && !observed) report(answer, '');
             out.push({
               type: 'error',
               reason: answer.stopReason === 'aborted' ? 'aborted' : 'error',
@@ -715,6 +753,14 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 }
               : {}),
             signal,
+            // An attempt asked for again ended nothing; the wait before it can still be cut.
+            ...(flight
+              ? {
+                  beforeRetry: () => {
+                    flight.ended = undefined;
+                  },
+                }
+              : {}),
             open: (attempt) =>
               oneRequest(
                 selected,
@@ -730,9 +776,9 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             void stream
               .result()
               .then((answer) => {
-                if (!unfinished(answer) || wasCut(flight, answer)) return;
-                endedUnfinished = true;
-                session?.clearQueue();
+                // The verdict its observe frame reported, so a cut that lands after the host
+                // recorded a failure does not carry the execution on.
+                if ((flight.ended ?? verdictOf(flight, answer)) === 'failed') endUnfinished();
               })
               .finally(() => {
                 if (turnFlight === flight) turnFlight = null;
@@ -1358,13 +1404,20 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       };
       const prepareSessionRequest = session.agent.prepareRequest;
       session.agent.prepareRequest = async (request, signal) => {
-        const prepared = await prepareSessionRequest?.(request, signal);
-        const base = prepared?.context ?? request.context;
-        const context = await compactSessionContext!(
-          normalizeContext({ messages: convertToLlm(base.messages) }),
-          signal ?? cancellation.signal,
-        );
-        return { ...prepared, context: { ...base, messages: context.messages } };
+        try {
+          const prepared = await prepareSessionRequest?.(request, signal);
+          const base = prepared?.context ?? request.context;
+          const context = await compactSessionContext!(
+            normalizeContext({ messages: convertToLlm(base.messages) }),
+            signal ?? cancellation.signal,
+          );
+          return { ...prepared, context: { ...base, messages: context.messages } };
+        } catch (error) {
+          // The Pi run ends in this failure (a failed automatic summary, say); a directive
+          // waiting in its queue must not continue it.
+          endUnfinished();
+          throw error;
+        }
       };
       const finishTurn = session.agent.finishTurn;
       session.agent.finishTurn = async (turn, signal) => {
@@ -1536,7 +1589,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       await session.waitForIdle();
       await notifications;
       await requests;
-      while (pendingCompaction && !completionAccepted && !cancelled) {
+      // A turn that failed ends the execution: the waiting compaction is skipped below.
+      while (pendingCompaction && !completionAccepted && !cancelled && !endedUnfinished) {
         const commandId = pendingCompaction;
         pendingCompaction = null;
         const beforeHash = hashOf(cleanJson(session.messages));
