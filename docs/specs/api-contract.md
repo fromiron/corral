@@ -309,7 +309,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `workflow.joined` | nodeId,policy,iterationId,cancelledNodeIds. Join이 길을 이었다. `any`가 멈춘 분기의 단계를 남긴다([병렬 실행](features/team-graph.md#병렬-실행)) |
 | `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion. `breakpoint`는 nodeId |
 | `approval.resolved` | decision,actor,subjectVersions. 사람이 승인한 도구 승인은 `scope`(`once`\|`run`). 등록 검사 승인 종료는 선택 reason(cancelled/timeout/execution_ended)과 runtime actor로 기록한다. "이 실행 동안 허용"이 함께 닫은 도구 승인은 reason `allowed_for_run`과 runtime actor로 기록한다 |
-| `directive.accepted` | directiveId,target,body,commandId,delivery(`next_request`·`interrupt`),origin(`user`·`advice`·`system`),attachments(선택) |
+| `directive.accepted` | directiveId,targetExecutionId,text,delivery(`next_request`·`interrupt`),origin(`user`·`advice`·`system`),attachments(선택, 텍스트 첨부 전체). 명령 ID는 envelope에 있다 |
 | `directive.attached` | contextSnapshotId,modelCallId |
 | `directive.dispatched` | modelCallId,executionEpoch |
 | `directive.undelivered` | reason |
