@@ -13,14 +13,15 @@ import {
 } from '@corral/core';
 
 // The server starts a work session's first queued request when a run of that session ends
-// in this process (features/composer-flow.md, "대기 요청과 넘겨받기"). Its start command is
-// the entry's own, so a screen starting the same entry reaches the same single run.
+// in this process, or when a request is queued while the session has no open run
+// (features/composer-flow.md, "대기 요청과 넘겨받기"). Its start command is the entry's own,
+// so a screen starting the same entry reaches the same single run.
 
 export type QueuedStartRequest = SessionEntryStart & {
   commandId: string;
   sessionId: string;
   brief: string;
-  conversation: { throughRunId: string };
+  conversation?: { throughRunId: string };
   references?: RunReference[];
 };
 
@@ -33,39 +34,56 @@ export type QueuedStartOutcome =
       autoRoute: AutoRoute | null;
     };
 
+export interface QueueRun {
+  runId: string;
+  sessionId?: string | null;
+  status: RunStatus;
+  startedAt: string;
+}
+
 export interface SessionQueueDeps {
   repository: Pick<CorralRepository, 'getSession' | 'updateSessionEntry'>;
-  runs(): readonly { runId: string; sessionId?: string | null; status: RunStatus }[];
+  runs(): readonly QueueRun[];
   start(request: QueuedStartRequest): Promise<QueuedStartOutcome>;
   /** Only the session and an error code; never a request body or a path. */
   log(sessionId: string, code: string): void;
 }
 
+/**
+ * The run a session's next request continues, chosen as the screen chooses it: the ended run
+ * that started last (the runs in list order, reversed, then stably ordered by start time).
+ * The same entry then has the same start payload from the server and from a screen.
+ */
+export function conversationRun(runs: readonly QueueRun[], sessionId: string): string | null {
+  const ordered = runs
+    .filter((run) => run.sessionId === sessionId)
+    .reverse()
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  return ordered.findLast((run) => TERMINAL_RUN_STATUSES.has(run.status))?.runId ?? null;
+}
+
 export function createSessionQueue(deps: SessionQueueDeps) {
   // One pass at a time per session, so two runs ending together start one request.
   const passes = new Map<string, Promise<void>>();
-
-  const pass = async (sessionId: string, endedRunId: string) => {
-    const active = deps
+  const open = (sessionId: string) =>
+    deps
       .runs()
-      .some(
-        (run) =>
-          run.sessionId === sessionId &&
-          run.runId !== endedRunId &&
-          !TERMINAL_RUN_STATUSES.has(run.status),
-      );
-    if (active) return;
+      .some((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
+
+  const pass = async (sessionId: string) => {
+    if (open(sessionId)) return;
     const session = await deps.repository.getSession(sessionId);
     if (!session || session.meeting) return;
     const entry = session.entries.find((item) => item.state === 'queued');
     if (!entry?.start || !(session.autoStart || entry.carriedFrom)) return;
     const commandId = queuedSessionCommandId(sessionId, entry);
+    const throughRunId = conversationRun(deps.runs(), sessionId);
     const outcome = await deps.start({
       ...entry.start,
       commandId,
       sessionId,
       brief: entry.text,
-      conversation: { throughRunId: endedRunId },
+      ...(throughRunId ? { conversation: { throughRunId } } : {}),
       ...(entry.attachments?.length ? { references: entry.attachments } : {}),
     });
     if (!outcome.ok) {
@@ -88,20 +106,27 @@ export function createSessionQueue(deps: SessionQueueDeps) {
     if (!result.ok) deps.log(sessionId, result.error);
   };
 
+  const schedule = (sessionId: string): Promise<void> => {
+    const previous = passes.get(sessionId) ?? Promise.resolve();
+    const next = previous
+      .then(() => pass(sessionId))
+      .catch((error: unknown) => deps.log(sessionId, errorCode(error)));
+    passes.set(sessionId, next);
+    void next.finally(() => {
+      if (passes.get(sessionId) === next) passes.delete(sessionId);
+    });
+    return next;
+  };
+
   return {
     /** Called once when this process sees a run reach a terminal state. */
-    runEnded(runId: string): Promise<void> {
+    onRunEnded(runId: string): Promise<void> {
       const sessionId = deps.runs().find((run) => run.runId === runId)?.sessionId;
-      if (!sessionId) return Promise.resolve();
-      const previous = passes.get(sessionId) ?? Promise.resolve();
-      const next = previous
-        .then(() => pass(sessionId, runId))
-        .catch((error: unknown) => deps.log(sessionId, errorCode(error)));
-      passes.set(sessionId, next);
-      void next.finally(() => {
-        if (passes.get(sessionId) === next) passes.delete(sessionId);
-      });
-      return next;
+      return sessionId ? schedule(sessionId) : Promise.resolve();
+    },
+    /** Called after a queued entry is saved; a session with an open run waits for its end. */
+    onEntryQueued(sessionId: string): Promise<void> {
+      return open(sessionId) ? Promise.resolve() : schedule(sessionId);
     },
   };
 }

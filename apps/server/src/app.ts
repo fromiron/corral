@@ -670,7 +670,7 @@ async function createCorralServer(
   // Bound once the auto start path exists; runs cannot end before the server is ready.
   let sessionQueue: ReturnType<typeof createSessionQueue> | null = null;
   const coordinator = new Coordinator({
-    runEnded: (runId) => void sessionQueue?.runEnded(runId),
+    onRunEnded: (runId) => void sessionQueue?.onRunEnded(runId),
     previewTools,
     imageGeneration: {
       read: (runId, versionId) => {
@@ -3385,11 +3385,11 @@ async function createCorralServer(
     async (request, reply) => {
       const body = parse(NewEntry, request, reply);
       if (!body) return reply;
-      return sessionReply(
-        reply,
-        await corrals.addSessionEntry(request.params.sessionId, body),
-        true,
-      );
+      const saved = await corrals.addSessionEntry(request.params.sessionId, body);
+      // A request queued just after the session's run ended would otherwise wait for a person.
+      if (saved.ok && body.state === 'queued')
+        void sessionQueue?.onEntryQueued(request.params.sessionId);
+      return sessionReply(reply, saved, true);
     },
   );
   app.patch<{ Params: { sessionId: string; entryId: string } }>(

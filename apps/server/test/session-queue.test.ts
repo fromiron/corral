@@ -182,7 +182,6 @@ it('starts the first queued request once when the run ends, and records its run'
   const first = await s.ask(session.sessionId, 'cmd_first');
   const next = await s.queue(session.sessionId, 'Second request.', { start: START });
   const later = await s.queue(session.sessionId, 'Third request.', { start: START });
-  // A queued request whose start was not saved stays for a person.
   gate.open();
   await s.ended(first.runId);
   const started = await s.settledEntry(session.sessionId, next.entryId);
@@ -381,4 +380,128 @@ it('does not start the queue on restart behind runs that already ended', async (
     again.server.coordinator.listRuns().filter((run) => run.sessionId === session.sessionId),
   ).toHaveLength(1);
   expect(first.runId).toBeTruthy();
+});
+
+it('continues through the ended run that started last when two runs end out of order', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const gate = s.hold();
+  const a = await s.ask(session.sessionId, 'cmd_a', 'Run A.');
+  const holdA = s.holdRun(a.runId ?? '');
+  const b = await s.ask(session.sessionId, 'cmd_b', 'Run B.');
+  const entry = await s.queue(session.sessionId, 'After both.', { start: START });
+  // B, started later, ends first; A ends last.
+  gate.open();
+  await s.ended(b.runId);
+  holdA.open();
+  await s.ended(a.runId);
+  const started = await s.settledEntry(session.sessionId, entry.entryId);
+  expect(started).toMatchObject({ state: 'started' });
+  // The screen sends the same payload: the ended run that started last.
+  const screen = await s.transport.startAuto({
+    ...START,
+    commandId: queuedSessionCommandId(session.sessionId, entry),
+    sessionId: session.sessionId,
+    brief: 'After both.',
+    conversation: { throughRunId: b.runId ?? '' },
+  });
+  expect(screen.receipt.error).toBeUndefined();
+  expect(screen.runId).toBe(started?.runId);
+});
+
+it('refuses a carried source sent over HTTP', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const refused = await s.send('POST', `/sessions/${session.sessionId}/entries`, {
+    intent: 'queue',
+    text: 'Pretend to be carried.',
+    state: 'queued',
+    start: START,
+    carriedFrom: 'dir_forged',
+  });
+  expect(refused.status).toBe(400);
+  expect(refused.body.error.code).toBe('SCHEMA_INVALID');
+  expect((await s.repository.getSession(session.sessionId))?.entries).toEqual([]);
+});
+
+it('starts a request queued while the session has no open run, once', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const first = await s.ask(session.sessionId, 'cmd_first');
+  await s.ended(first.runId);
+  const entry = await s.queue(session.sessionId, 'Arrived late.', { start: START });
+  const started = await s.settledEntry(session.sessionId, entry.entryId);
+  expect(started).toMatchObject({ state: 'started' });
+  await s.ended(started?.runId ?? null);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(s.runsOf(session.sessionId)).toHaveLength(2);
+  // A request queued in a session that never ran starts too, without a conversation run.
+  const fresh = await s.session();
+  const alone = await s.queue(fresh.sessionId, 'First of all.', { start: START });
+  expect(await s.settledEntry(fresh.sessionId, alone.entryId)).toMatchObject({ state: 'started' });
+});
+
+it('a request queued with no open run waits without autoStart or a start snapshot', async () => {
+  const s = await setup();
+  const off = await s.session();
+  const saved = await s.repository.updateSession(off.sessionId, {
+    autoStart: false,
+    expectedRevision: 1,
+  });
+  if (!saved.ok) throw new Error(saved.message);
+  const waiting = await s.queue(off.sessionId, 'Wait for me.', { start: START });
+  const bare = await s.session();
+  const noSnapshot = await s.queue(bare.sessionId, 'No snapshot.');
+  expect(await s.settledEntry(off.sessionId, waiting.entryId, 400)).toMatchObject({
+    state: 'queued',
+  });
+  expect(await s.settledEntry(bare.sessionId, noSnapshot.entryId, 100)).toMatchObject({
+    state: 'queued',
+  });
+  expect(s.runsOf(off.sessionId)).toHaveLength(0);
+  expect(s.runsOf(bare.sessionId)).toHaveLength(0);
+});
+
+it('a request queued behind an open run starts when that run ends', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const gate = s.hold();
+  const first = await s.ask(session.sessionId, 'cmd_first');
+  const entry = await s.queue(session.sessionId, 'Behind the open run.', { start: START });
+  expect(await s.settledEntry(session.sessionId, entry.entryId, 300)).toMatchObject({
+    state: 'queued',
+  });
+  expect(s.runsOf(session.sessionId)).toHaveLength(1);
+  gate.open();
+  await s.ended(first.runId);
+  expect(await s.settledEntry(session.sessionId, entry.entryId)).toMatchObject({
+    state: 'started',
+  });
+});
+
+it('a restart alone starts nothing, even with autoStart back on', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const off = await s.repository.updateSession(session.sessionId, {
+    autoStart: false,
+    expectedRevision: 1,
+  });
+  if (!off.ok) throw new Error(off.message);
+  const entry = await s.queue(session.sessionId, 'Left for later.', { start: START });
+  await s.close();
+  const again = await boot(s.root);
+  const on = await again.repository.updateSession(session.sessionId, {
+    autoStart: true,
+    expectedRevision: 2,
+  });
+  if (!on.ok) throw new Error(on.message);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(
+    (await again.repository.getSession(session.sessionId))?.entries.find(
+      (e) => e.entryId === entry.entryId,
+    ),
+  ).toMatchObject({ state: 'queued', runId: null });
+  expect(
+    again.server.coordinator.listRuns().filter((run) => run.sessionId === session.sessionId),
+  ).toHaveLength(0);
 });

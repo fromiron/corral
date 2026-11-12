@@ -863,6 +863,7 @@ export function describeCorralRepositoryContract(
           intent: 'queue',
           text: 'Start me later',
           state: 'queued',
+          permissionMode: 'ask',
           start,
           carriedFrom: 'directive_original',
         });
@@ -885,6 +886,14 @@ export function describeCorralRepositoryContract(
           { intent: 'queue' as const, start: { ...start, extra: true } },
           { intent: 'next' as const, start },
           { intent: 'next' as const, carriedFrom: 'directive_original' },
+          // The snapshot's permission mode is the request's: both absent, or the same.
+          { intent: 'queue' as const, start },
+          { intent: 'queue' as const, start, permissionMode: 'auto' as const },
+          {
+            intent: 'queue' as const,
+            start: { ...start, permissionMode: undefined },
+            permissionMode: 'ask' as const,
+          },
         ])
           expect(
             await repo.addSessionEntry(id, {
@@ -894,6 +903,39 @@ export function describeCorralRepositoryContract(
             } as Parameters<CorralRepository['addSessionEntry']>[1]),
           ).toMatchObject({ ok: false, error: 'invalid' });
         expect((await repo.getSession(id))?.entries).toHaveLength(2);
+      });
+
+      it('a resent queued command keeps its start and carried source, and refuses others', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Resend' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const start = { choice: { modelProfile: 'model-a' }, mode: 'mock' as const };
+        const entry = {
+          commandId: 'queue_resent',
+          intent: 'queue' as const,
+          text: 'Once',
+          state: 'queued' as const,
+          start,
+          carriedFrom: 'directive_one',
+        };
+        const first = await repo.addSessionEntry(id, entry);
+        if (!first.ok) throw new Error(first.message);
+        const again = await repo.addSessionEntry(id, clone(entry));
+        expect(again).toMatchObject({ ok: true });
+        expect(again.ok && again.session.entries).toEqual(first.session.entries);
+        for (const changed of [
+          { ...entry, start: { ...start, choice: { modelProfile: 'model-b' } } },
+          { ...entry, start: { ...start, team: 'auto' as const } },
+          { ...entry, carriedFrom: 'directive_two' },
+          (({ start: _start, ...rest }) => rest)(entry),
+          (({ carriedFrom: _from, ...rest }) => rest)(entry),
+        ])
+          expect(await repo.addSessionEntry(id, changed)).toMatchObject({
+            ok: false,
+            error: 'invalid',
+          });
+        expect((await repo.getSession(id))?.entries).toHaveLength(1);
       });
     });
   });

@@ -498,6 +498,13 @@ export function planSessionEntry(
       error: 'invalid',
       message: 'a start request requires a valid queued request',
     };
+  // The server starts with the snapshot; it must not run another permission than the one chosen.
+  if (start?.success && (start.data.permissionMode ?? null) !== (entry.permissionMode ?? null))
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'a start request has the same permission mode as its request',
+    };
   if (
     entry.carriedFrom !== undefined &&
     (typeof entry.carriedFrom !== 'string' || !entry.carriedFrom || entry.intent !== 'queue')
