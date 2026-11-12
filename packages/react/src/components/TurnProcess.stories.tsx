@@ -302,7 +302,9 @@ export const RunningFirstRequest: Story = {
     await waitFor(() => expect(canvas.getByText(/Generating response/)).toBeVisible());
     await expect(canvas.getByText('Research brief')).toBeVisible();
     await expect(canvas.queryByText(ordinaryResponse)).toBeNull();
-    // The request's row is the way to its details.
+    // The row says the reasoning record is missing without being opened.
+    await expect(canvas.getByTestId('reasoning-level')).toHaveTextContent('Reasoning not recorded');
+    // The request's row is the way to its details, which do not repeat that.
     const details = canvas.getByRole('button', { name: /^Details of Model request 1/ });
     details.focus();
     await userEvent.keyboard('{Enter}');

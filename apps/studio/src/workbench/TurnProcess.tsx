@@ -272,9 +272,12 @@ export function TurnProcess({
                   </div>
                 ) : (
                   <StepDetails step={label} description={modelDescription(row)}>
-                    <div className="-ml-3">
-                      <ReasoningSummary call={row.call} open={row.open} />
-                    </div>
+                    {/* With no reasoning record there is no rest to show; the row says so. */}
+                    {row.call.reasoning ? (
+                      <div className="-ml-3">
+                        <ReasoningSummary call={row.call} open={row.open} />
+                      </div>
+                    ) : null}
                   </StepDetails>
                 )}
                 <Sources sources={row.sources} />

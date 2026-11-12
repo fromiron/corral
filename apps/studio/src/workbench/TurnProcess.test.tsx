@@ -316,6 +316,8 @@ it('shows each request’s applied level and wire check without opening the row'
   ]);
   for (const label of labels) expect(label.closest('[hidden]')).toBeNull();
   expect(labels[2]?.textContent).not.toContain('공급자 기본값');
+  // The row already says the record is missing; the details do not say it again.
+  expect(container.textContent?.split('추론 설정 미기록')).toHaveLength(2);
   // The longer record stays folded. An empty verified send is not called omitted.
   const summaries = [...container.querySelectorAll('[data-testid="reasoning-summary"]')];
   expect(summaries.map((summary) => summary.textContent)).toEqual([
