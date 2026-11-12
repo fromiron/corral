@@ -219,7 +219,7 @@ describe('team editor', () => {
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
     expect(screen.getByRole('combobox', { name: 'Image profile' }).textContent).toContain(
-      'legacy_hand',
+      `legacy_hand (${messages.Inspector.imageProfileMissing})`,
     );
     expect(editor.getState().draft.definition.roles[0]?.imageProfile).toBe('legacy_hand');
   });
