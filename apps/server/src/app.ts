@@ -2116,6 +2116,14 @@ async function createCorralServer(
   sessionQueue = createSessionQueue({
     repository: corrals,
     runs: () => coordinator.listRuns(),
+    directiveRun: (sessionId, directiveId) =>
+      coordinator
+        .listRuns()
+        .find(
+          (run) =>
+            run.sessionId === sessionId &&
+            coordinator.findSnapshot(run.runId)?.projection.directives[directiveId] !== undefined,
+        )?.runId ?? null,
     start: async (request) => {
       if (queueClosed) return { ok: false, code: 'CANCELLED' };
       const controller = new AbortController();

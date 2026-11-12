@@ -601,7 +601,6 @@ export function planSessionEntry(
   };
 }
 
-/** A saved queue item has one start identity across tabs; model/history changes cannot clone it. */
 /**
  * The queued requests in the order they start: carried requests first, in the order they were
  * carried, then the rest in the order queued. The server and a screen use this one order.
@@ -616,6 +615,7 @@ export function nextQueuedEntry(session: WorkSession): SessionEntry | undefined 
   return queuedEntriesInStartOrder(session)[0];
 }
 
+/** A saved queue item has one start identity across tabs; model/history changes cannot clone it. */
 export function queuedSessionCommandId(sessionId: string, entry: SessionEntry): string {
   return (
     entry.commandId ??
