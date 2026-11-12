@@ -634,6 +634,67 @@ it('a layout-caused scroll offset decrease does not stop following the end', asy
   expect(chat.top).toBe(chat.end());
 });
 
+it('a scrollbar released outside the conversation does not let layout stop following', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [{ id: 'turn-0', content: <p data-testid="streamed-text">words</p> }],
+  });
+  await chat.resize();
+  await act(async () => {
+    chat.box.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    document.body.dispatchEvent(new Event('pointerup', { bubbles: true }));
+  });
+  chat.top = chat.end() - 70;
+  await act(async () => {
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  chat.metrics.height += 250;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+});
+
+it('an upward wheel over a nested box stops following only once that box is at its top', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [
+      {
+        id: 'turn-0',
+        content: (
+          <div data-testid="nested" style={{ overflowY: 'auto' }}>
+            long reply
+          </div>
+        ),
+      },
+    ],
+  });
+  await chat.resize();
+  const nested = chat.container.querySelector<HTMLElement>('[data-testid="nested"]');
+  if (!nested) throw new Error('Nested box missing');
+  let nestedTop = 120;
+  Object.defineProperties(nested, {
+    scrollHeight: { configurable: true, get: () => 400 },
+    clientHeight: { configurable: true, get: () => 160 },
+    scrollTop: { configurable: true, get: () => nestedTop },
+  });
+  await act(async () => {
+    nested.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
+  });
+  chat.metrics.height += 100;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  // The box has nothing left above, so the wheel carries the conversation up.
+  nestedTop = 0;
+  await act(async () => {
+    nested.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
+    chat.top = chat.end() - 120;
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  const reading = chat.top;
+  chat.metrics.height += 250;
+  await chat.resize();
+  expect(chat.top).toBe(reading);
+});
+
 it('a downward key does not stop following the end', async () => {
   sessionStorage.clear();
   const chat = await mountConversation({

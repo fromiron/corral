@@ -50,6 +50,7 @@ import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
+import { holdScrollbar } from './ChatView.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
 import { TurnLine, TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
@@ -64,6 +65,7 @@ function StreamingReply({ children }: { children: ReactNode }) {
   const follow = useRef(true);
   const followed = useRef(0);
   const touchY = useRef<number | null>(null);
+  const scrollbarPointer = useRef(false);
   const pin = () => {
     const el = box.current;
     if (!el || !follow.current) return;
@@ -86,6 +88,9 @@ function StreamingReply({ children }: { children: ReactNode }) {
       onWheel={(event) => {
         if (event.deltaY < 0) follow.current = false;
       }}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) holdScrollbar(scrollbarPointer);
+      }}
       onTouchStart={(event) => {
         touchY.current = event.touches[0]?.clientY ?? null;
       }}
@@ -103,8 +108,9 @@ function StreamingReply({ children }: { children: ReactNode }) {
           if (gap < 1) follow.current = true;
           return;
         }
-        if (el.scrollTop < followed.current - 1) pin();
-        else followed.current = el.scrollTop;
+        if (el.scrollTop >= followed.current - 1) followed.current = el.scrollTop;
+        else if (scrollbarPointer.current) follow.current = false;
+        else pin();
       }}
     >
       {children}

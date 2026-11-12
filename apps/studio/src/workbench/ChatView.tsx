@@ -62,13 +62,29 @@ export function ChatDensityMenu() {
 function scrollingNested(target: EventTarget | null, timeline: HTMLElement) {
   let node = target instanceof Element ? target : null;
   while (node && node !== timeline) {
-    if (node.scrollHeight - node.clientHeight > 1) {
+    // A box already at its top passes the upward scroll on to the conversation.
+    if (node.scrollTop > 0 && node.scrollHeight - node.clientHeight > 1) {
       const overflow = getComputedStyle(node).overflowY;
       if (overflow === 'auto' || overflow === 'scroll') return true;
     }
     node = node.parentElement;
   }
   return false;
+}
+
+/**
+ * Marks a scrollbar as held until the pointer is released anywhere, since a drag often ends
+ * outside the box that was pressed.
+ */
+export function holdScrollbar(held: { current: boolean }) {
+  held.current = true;
+  const release = () => {
+    held.current = false;
+    window.removeEventListener('pointerup', release, true);
+    window.removeEventListener('pointercancel', release, true);
+  };
+  window.addEventListener('pointerup', release, true);
+  window.addEventListener('pointercancel', release, true);
 }
 
 /** A session is the conversation; each child turn keeps its Corral Run/Execution identity. */
@@ -358,16 +374,10 @@ export function ChatView({
         }}
         onPointerDown={(event) => {
           // A scrollbar drag is navigation; clicking message actions is not.
-          if (event.target === event.currentTarget) scrollbarPointer.current = true;
+          if (event.target === event.currentTarget) holdScrollbar(scrollbarPointer);
           // Hit testing can scroll an older action into view before the scroll event.
           // Read that position before focus renders can move the target under the pointer.
           else lockReadingPosition();
-        }}
-        onPointerUp={() => {
-          scrollbarPointer.current = false;
-        }}
-        onPointerCancel={() => {
-          scrollbarPointer.current = false;
         }}
         onTouchStart={(event) => {
           touchY.current = event.touches[0]?.clientY ?? null;

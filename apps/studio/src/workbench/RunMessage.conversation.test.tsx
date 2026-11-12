@@ -275,6 +275,27 @@ it('keeps a capped streaming reply at its own end while the reply grows', async 
       });
     });
     expect(top).toBe(12);
+    // Back at the end, dragging the box's own scrollbar up leaves it there too.
+    top = metrics.height - metrics.client;
+    await act(async () => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    await act(async () => {
+      scroller.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      top = 20;
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+      document.body.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    });
+    expect(top).toBe(20);
+    metrics.height += 60;
+    await act(async () => {
+      store.setState({
+        streams: {
+          current: stream('Hi and more text that keeps going and the person is reading on'),
+        },
+      });
+    });
+    expect(top).toBe(20);
   } finally {
     changePreferences({ chatDensity: previous });
   }
