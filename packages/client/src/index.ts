@@ -1603,7 +1603,7 @@ export class ModelsApi {
   removeLocalAi(): Promise<LocalAiView> {
     return this.http.json('/local-ai', { method: 'DELETE' });
   }
-  /** Saves the meeting engine's device and restarts it. */
+  /** Saves the meeting engine's device and stops its helper until the next computation. */
   setLocalAiDevice(device: 'cpu' | 'gpu' | 'auto'): Promise<LocalAiView> {
     return this.http.json('/local-ai/device', {
       method: 'PUT',

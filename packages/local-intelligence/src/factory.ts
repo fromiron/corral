@@ -72,7 +72,7 @@ export interface LocalIntelligence {
    * install or an embedding is in progress. The judge model under `d1` stays.
    */
   remove(): Promise<LocalAiStatus>;
-  /** Saves the device and restarts the helper. Waiting work is refused. */
+  /** Saves the device and stops the helper until the next computation. Waiting work is refused. */
   setDevice(device: Device): Promise<LocalAiStatus>;
   /** Cancels a running install and stops the engine. */
   close(): Promise<void>;
