@@ -19,8 +19,15 @@ export interface BundleInstallerOptions {
   bundle: Bundle;
   target: string | null;
   fetchFn?: typeof fetch;
-  /** Called after the release stamp is written. */
+  /**
+   * Awaited after the files are on disk and this install is no longer in progress, before it is
+   * accepted. A removal in that gap discards the install.
+   */
+  beforeAccept?(): Promise<void>;
+  /** Called once an install is accepted. */
   onInstalled(): void;
+  /** Called when an install finishes after it was removed. */
+  onDiscarded?(): void;
 }
 
 /** Bytes of the files installed before `file`: the model, then the runtime. */
@@ -39,6 +46,10 @@ function describe(error: unknown): string {
 export class BundleInstaller {
   private job: Job | null = null;
   private failure: string | null = null;
+  private accepting = false;
+  /** Bumped when a removal discards an install that has not been accepted yet. */
+  private generation = 0;
+  private flight: Promise<void> | null = null;
 
   private readonly options: BundleInstallerOptions;
 
@@ -56,8 +67,19 @@ export class BundleInstaller {
     return runtime ? bundle.models.meeting.size + runtime.size : null;
   }
 
+  /** A download is in progress. The gap before an install is accepted is not one. */
   running(): boolean {
     return this.job !== null;
+  }
+
+  /** The in-flight install, including the moment before it is accepted. */
+  installing(): Promise<void> | null {
+    return this.flight;
+  }
+
+  /** A removal happened. An install that has not been accepted yet must not become one. */
+  invalidate(): void {
+    this.generation += 1;
   }
 
   progress(): InstallProgressView | null {
@@ -72,9 +94,10 @@ export class BundleInstaller {
   /** Starts unless one is running, this release is installed, or the machine has no runtime. */
   start(): void {
     const { root, bundle, target, fetchFn } = this.options;
-    if (this.job || !target) return;
+    if (this.job || this.accepting || !target) return;
     const state = installState(root, target, bundle);
     if (state !== 'missing' && state !== 'stale') return;
+    const generation = this.generation;
     const controller = new AbortController();
     const job: Job = { controller, received: 0, done: Promise.resolve() };
     this.failure = null;
@@ -89,15 +112,32 @@ export class BundleInstaller {
       },
     })
       .then(
-        () => this.options.onInstalled(),
+        async () => {
+          if (this.job === job) this.job = null;
+          this.accepting = true;
+          try {
+            await this.options.beforeAccept?.();
+            if (generation !== this.generation) {
+              this.options.onDiscarded?.();
+              return;
+            }
+            this.options.onInstalled();
+          } finally {
+            this.accepting = false;
+          }
+        },
         (error: unknown) => {
-          if (!controller.signal.aborted) this.failure = describe(error);
+          if (!controller.signal.aborted && generation === this.generation)
+            this.failure = describe(error);
         },
       )
       .finally(() => {
         if (this.job === job) this.job = null;
+        this.accepting = false;
+        if (this.flight === job.done) this.flight = null;
       });
     this.job = job;
+    this.flight = job.done;
   }
 
   /** Stops a running install and resolves once its partial files are removed. */

@@ -14,6 +14,10 @@ import {
   BannerTitle,
   Button,
   Checkbox,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
   fontWeights,
   Input,
   RadioGroup,
@@ -24,6 +28,7 @@ import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { formatDownload } from './download-size.ts';
 
 const MB = 1_000_000;
 
@@ -131,7 +136,14 @@ export function EffortRoutingSettings({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<'saved' | null>(null);
   const [problem, setProblem] = useState<
-    'loadFailed' | 'saveFailed' | 'conflict' | 'actionFailed' | null
+    | 'loadFailed'
+    | 'saveFailed'
+    | 'conflict'
+    | 'actionFailed'
+    | 'removeInstalling'
+    | 'removeJudging'
+    | 'removeFailed'
+    | null
   >(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new reloadKey asks for a fresh read.
@@ -226,6 +238,25 @@ export function EffortRoutingSettings({
   };
   const localAction = (action: () => Promise<EffortRoutingView>) =>
     void act(async () => setView(await action()), 'actionFailed');
+  const removeLocal = () => {
+    if (!models) return;
+    const api = models;
+    void act(async () => {
+      try {
+        setView(await api.removeLocalRouting());
+      } catch (error) {
+        if (error instanceof ApiError && error.message === 'an install is in progress') {
+          setProblem('removeInstalling');
+          return;
+        }
+        if (error instanceof ApiError && error.message === 'a judgment is running') {
+          setProblem('removeJudging');
+          return;
+        }
+        setProblem('removeFailed');
+      }
+    }, 'actionFailed');
+  };
 
   if (!models) return null;
   return (
@@ -277,6 +308,7 @@ export function EffortRoutingSettings({
                   install={() => localAction(() => models.installLocalRouting())}
                   cancel={() => localAction(() => models.cancelLocalRoutingInstall())}
                   start={() => localAction(() => models.startLocalRouting())}
+                  remove={removeLocal}
                 />
               ) : (
                 <ApiEngine view={view} form={form} change={change} />
@@ -332,6 +364,7 @@ function LocalEngine({
   install,
   cancel,
   start,
+  remove,
 }: {
   view: EffortRoutingView;
   form: Form;
@@ -340,15 +373,26 @@ function LocalEngine({
   install(): void;
   cancel(): void;
   start(): void;
+  remove(): void;
 }) {
   const t = useTranslations('EffortRouting');
   const format = useFormatter();
+  const downloadHint = useId();
+  const prepareHint = useId();
+  const [confirming, setConfirming] = useState(false);
   const local = view.local;
   const mb = (bytes: number) => format.number(Math.round(bytes / MB));
+  const download =
+    local.downloadBytes === null
+      ? null
+      : formatDownload(local.downloadBytes, (value, options) => format.number(value, options));
   const status = !local.supported
     ? t('unsupported')
     : local.install === 'absent'
-      ? t('install.absent', { size: mb(local.downloadBytes ?? 0) })
+      ? t('install.absent', {
+          size: download?.size ?? mb(local.downloadBytes ?? 0),
+          unit: download?.unit ?? 'MB',
+        })
       : local.install === 'downloading'
         ? t('install.downloading', {
             percent: local.progress
@@ -365,6 +409,9 @@ function LocalEngine({
     saved &&
     local.install === 'installed' &&
     (local.runtime === 'stopped' || local.runtime === 'error');
+  const canInstall =
+    local.supported && (local.install === 'absent' || local.install === 'install-error');
+  const canRemove = local.supported && local.install === 'installed';
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -382,20 +429,82 @@ function LocalEngine({
             </p>
           ) : null}
         </div>
-        {local.supported && (local.install === 'absent' || local.install === 'install-error') ? (
-          <Button variant="secondary" size="compact" disabled={busy} onClick={install}>
-            {t('installAction')}
-          </Button>
+        {canInstall ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {download ? (
+              <p id={downloadHint} className="text-caption text-muted-foreground">
+                {t('download', download)}
+              </p>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={busy}
+              aria-describedby={download ? downloadHint : undefined}
+              onClick={install}
+            >
+              {t('installAction')}
+            </Button>
+          </div>
         ) : local.install === 'downloading' || local.install === 'verifying' ? (
           <Button variant="tertiary" size="compact" disabled={busy} onClick={cancel}>
             {t('cancelInstall')}
           </Button>
-        ) : canPrepare ? (
-          <Button variant="tertiary" size="compact" disabled={busy} onClick={start}>
-            {local.runtime === 'error' ? t('prepareAgain') : t('prepare')}
-          </Button>
+        ) : canPrepare || canRemove ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {canPrepare ? (
+              <>
+                <p id={prepareHint} className="text-caption text-muted-foreground">
+                  {t('prepareHint')}
+                </p>
+                <Button
+                  variant="tertiary"
+                  size="compact"
+                  disabled={busy}
+                  aria-describedby={prepareHint}
+                  onClick={start}
+                >
+                  {local.runtime === 'error' ? t('prepareAgain') : t('prepare')}
+                </Button>
+              </>
+            ) : null}
+            {canRemove ? (
+              <Button
+                variant="tertiary"
+                size="compact"
+                disabled={busy}
+                onClick={() => setConfirming(true)}
+              >
+                {t('remove')}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </div>
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogPopup className="p-6" showCloseButton={false}>
+          <DialogTitle>{t('removeTitle')}</DialogTitle>
+          <DialogDescription className="my-4">
+            {t('removeConfirm', {
+              size: download?.size ?? '0',
+              unit: download?.unit ?? 'MB',
+            })}
+          </DialogDescription>
+          <div className="flex justify-end gap-2">
+            <Button variant="tertiary" onClick={() => setConfirming(false)}>
+              {t('removeDismiss')}
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirming(false);
+                remove();
+              }}
+            >
+              {t('remove')}
+            </Button>
+          </div>
+        </DialogPopup>
+      </Dialog>
       <Labeled label={t('device')}>
         <Select<'cpu' | 'gpu'>
           label={t('device')}
