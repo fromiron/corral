@@ -1,11 +1,18 @@
 import type { AgentStartInput, RunEvent, StreamFrame } from '@corral/contracts';
-import { type RunProjection, resolveProfileContext, waitForProjection } from '@corral/core';
+import {
+  createTextAttachment,
+  directiveWithAttachments,
+  type RunProjection,
+  resolveProfileContext,
+  waitForProjection,
+} from '@corral/core';
 import { collaborationCorral, Gate, linearCorral } from '@corral/testkit';
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { type Channel, memoryChannelPair } from '../src/channel.ts';
 import { LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION, StartFrame } from '../src/protocol.ts';
+import { DIRECTIVE_PREFIX } from '../src/worker-tools.ts';
 import { ACCESS_TOKEN, liveRuntime, recordingHost } from './harness.ts';
 
 const settled = (p: RunProjection) => ['succeeded', 'failed', 'cancelled'].includes(p.status);
@@ -129,6 +136,120 @@ describe('Pi adapter under the Coordinator', () => {
     expect(final.modelCalls[call1 ?? '']?.directiveIds).toEqual([]);
     expect(final.modelCalls[call2 ?? '']?.directiveIds).toEqual([directiveId]);
     expect(final.directives[directiveId]?.status).toBe('delivered');
+  });
+
+  it('a steer carries its text attachments into the request body once, before its text', async () => {
+    const gate = new Gate();
+    const seen: string[] = [];
+    const attachment = createTextAttachment(
+      'figures.csv',
+      'text/csv',
+      'year,value\n2024,ATTACHED-7',
+    );
+    const { transport } = liveRuntime([
+      async (context) => {
+        seen.push(JSON.stringify(context.messages));
+        await gate.wait();
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft.' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      (context) => {
+        seen.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Second.' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      (context) => {
+        seen.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage(
+          [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
+          { stopReason: 'toolUse' },
+        );
+      },
+      fauxAssistantMessage('Done.'),
+    ]);
+    const { runId } = await liveRun(transport);
+    const inFlight = await waitForProjection(
+      transport,
+      runId,
+      (p) => Object.keys(p.modelCalls).length === 1,
+    );
+    const executionId = inFlight.executionOrder[0] ?? '';
+    const receipt = await transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cmd_steer',
+      runId,
+      type: 'steer',
+      payload: {
+        targetExecutionId: executionId,
+        text: 'Use primary sources only.',
+        delivery: 'next_request',
+        attachments: [attachment],
+      },
+    });
+    expect(receipt.status).toBe('queued');
+    gate.open();
+    const final = await waitForProjection(transport, runId, settled);
+    expect(final.status).toBe('succeeded');
+
+    // The model reads the attachment as a new request carries it, then the directive text.
+    const message = JSON.stringify(
+      directiveWithAttachments('Use primary sources only.', [attachment]),
+    ).slice(1, -1);
+    expect(message).toContain('--- Attached source data: figures.csv;');
+    expect(seen[0]).not.toContain('ATTACHED-7');
+    expect(seen).toHaveLength(3);
+    for (const request of seen.slice(1)) {
+      expect(request.split(message)).toHaveLength(2);
+      expect(request.split('ATTACHED-7')).toHaveLength(2);
+      expect(request.split(DIRECTIVE_PREFIX)).toHaveLength(2);
+      expect(request.indexOf('--- Attached source data: figures.csv;')).toBeLessThan(
+        request.indexOf('--- Directive ---\\nUse primary sources only.'),
+      );
+    }
+    const directiveId = final.directiveOrder[0] ?? '';
+    const [, call2, call3] = final.executions[executionId]?.modelCallIds ?? [];
+    expect(final.modelCalls[call2 ?? '']?.directiveIds).toEqual([directiveId]);
+    expect(final.modelCalls[call3 ?? '']?.directiveIds).not.toContain('missing');
+    expect(final.directives[directiveId]?.status).toBe('delivered');
+  });
+
+  it('a failed automatic compaction reports started and failed once each, and the run fails', async () => {
+    const policy = resolveProfileContext(
+      { contextWindow: 4000, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+      { contextWindow: 4000, source: 'catalog' },
+      'core-auto',
+      256,
+    ).policy;
+    if (!policy) throw new Error('context policy');
+    const requests: string[] = [];
+    const { transport } = liveRuntime(
+      [
+        // The summary call is cut by its length limit, so the automatic compaction fails.
+        (context) => {
+          requests.push(JSON.stringify(context.messages));
+          return fauxAssistantMessage('Partial summ', { stopReason: 'length' });
+        },
+        ...writeThenSubmit('Must not run uncompacted.'),
+      ],
+      { contextPolicy: policy },
+    );
+    const { runId, events } = await liveRun(transport, (definition) => {
+      definition.input.brief = 'Keep this requirement. '.repeat(700);
+    });
+    const final = await waitForProjection(transport, runId, settled);
+    await Promise.resolve();
+    expect(final.status).toBe('failed');
+    expect(requests).toHaveLength(1);
+    expect(
+      events.filter((e) => e.type === 'model.request_recorded').map((e) => e.payload.purpose),
+    ).toEqual(['compaction']);
+    const compactions = events.filter((e) => e.type === 'context.compaction_changed');
+    expect(compactions.map((e) => [e.payload.phase, e.payload.trigger, e.commandId])).toEqual([
+      ['started', 'automatic', undefined],
+      ['failed', 'automatic', undefined],
+    ]);
   });
 
   it('a call the host refuses is blocked and never starts, though Pi saw it', async () => {

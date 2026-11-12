@@ -9,7 +9,11 @@ import {
   canonicalJson,
   type EffectiveHarnessSnapshot,
 } from '@corral/contracts';
-import { resolveProfileContext } from '@corral/core';
+import {
+  createTextAttachment,
+  directiveWithAttachments,
+  resolveProfileContext,
+} from '@corral/core';
 import { Gate, linearCorral } from '@corral/testkit';
 import {
   createFauxCore,
@@ -31,6 +35,7 @@ import {
 } from '../src/protocol.ts';
 import { runSdkWorker } from '../src/sdk-worker.ts';
 import { runWorker } from '../src/worker.ts';
+import { sdkDirectiveText } from '../src/worker-tools.ts';
 import { ACCESS_TOKEN, recordingHost } from './harness.ts';
 
 const scratch: string[] = [];
@@ -1441,6 +1446,58 @@ describe('SDK worker through the product adapter (H2)', () => {
     release.open();
     await handle.waitForSettlement();
     expect(run.requests).toMatchObject([{ directiveIds: [] }, { directiveIds: ['directive_1'] }]);
+  });
+
+  it('carries a directive with text attachments into the request body once', async () => {
+    const entered = new Gate();
+    const release = new Gate();
+    const contexts: string[] = [];
+    const directive = {
+      directiveId: 'directive_1',
+      text: directiveWithAttachments('Keep sources.', [
+        createTextAttachment('figures.csv', 'text/csv', 'year,value\n2024,ATTACHED-7'),
+      ]),
+    };
+    const run = runtime([
+      async (context) => {
+        contexts.push(JSON.stringify(context.messages));
+        entered.open();
+        await release.wait();
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      (context) => {
+        contexts.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Again' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      (context) => {
+        contexts.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage('Done.');
+      },
+    ]);
+    const handle = await run.adapter.start(run.input, run.host);
+    await entered.wait();
+    handle.pushDirective?.(directive);
+    release.open();
+    await handle.waitForSettlement();
+    const message = JSON.stringify(sdkDirectiveText(directive)).slice(1, -1);
+    expect(contexts).toHaveLength(3);
+    expect(contexts[0]).not.toContain('ATTACHED-7');
+    for (const context of contexts.slice(1)) {
+      expect(context.split(message)).toHaveLength(2);
+      expect(context.split('ATTACHED-7')).toHaveLength(2);
+      expect(context.indexOf('--- Attached source data: figures.csv;')).toBeLessThan(
+        context.indexOf('Keep sources.'),
+      );
+    }
+    expect(run.requests).toMatchObject([
+      { directiveIds: [] },
+      { directiveIds: ['directive_1'] },
+      { directiveIds: ['directive_1'] },
+    ]);
   });
 
   it('nested model calls made by an extension use their own permits and observations', async () => {
