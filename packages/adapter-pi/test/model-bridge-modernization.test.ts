@@ -10,6 +10,7 @@ import {
 import { expect, it } from 'vitest';
 import { memoryChannelPair } from '../src/channel.ts';
 import { type ModelBroker, modelBridgeChannel, workerModelBridge } from '../src/model-bridge.ts';
+import { managedRetryStream } from '../src/request-retry.ts';
 
 const model = {
   ...createFauxCore({ provider: 'faux', models: [{ id: 'fixture', name: 'Fixture' }] }).models[0]!,
@@ -193,6 +194,84 @@ it('cancellation settles the worker without waiting for channel termination', as
   } finally {
     channel.kill();
   }
+});
+
+/** The host provider stream: optionally starts, shows `content`, then loses the connection. */
+function lostAfter(
+  started: boolean,
+  content: AssistantMessage['content'],
+): ModelBroker['streamFn'] {
+  return () => {
+    const stream = createAssistantMessageEventStream();
+    const base = fauxAssistantMessage('');
+    if (started) stream.push({ type: 'start', partial: { ...base, content: [] } });
+    content.forEach((block, contentIndex) => {
+      const opened = {
+        ...base,
+        content: [
+          ...content.slice(0, contentIndex),
+          block.type === 'thinking' ? { ...block, thinking: '' } : { ...block, text: '' },
+        ] as AssistantMessage['content'],
+      };
+      const partial = { ...base, content: content.slice(0, contentIndex + 1) };
+      if (block.type === 'thinking') {
+        stream.push({ type: 'thinking_start', contentIndex, partial: opened });
+        stream.push({ type: 'thinking_delta', contentIndex, delta: block.thinking, partial });
+      } else if (block.type === 'text') {
+        stream.push({ type: 'text_start', contentIndex, partial: opened });
+        stream.push({ type: 'text_delta', contentIndex, delta: block.text, partial });
+      }
+    });
+    const error = {
+      ...base,
+      content,
+      stopReason: 'error' as const,
+      errorMessage: 'TypeError: terminated',
+    };
+    stream.push({ type: 'error', reason: 'error', error });
+    stream.end(error);
+    return stream;
+  };
+}
+
+async function workerRetry(first: ModelBroker['streamFn']) {
+  let calls = 0;
+  const f = fixture((selected, messages, request) =>
+    calls++ === 0 ? first(selected, messages, request) : completed(selected, messages, request),
+  );
+  const out = managedRetryStream({
+    model,
+    signal: new AbortController().signal,
+    random: () => 0.5,
+    delay: async () => true,
+    open: () => f.request(),
+  });
+  const result = await out.result();
+  return { calls, result, frames: JSON.stringify(f.frames) };
+}
+
+it('the worker retries a host-classified connection loss after only reasoning', async () => {
+  const { calls, result, frames } = await workerRetry(
+    lostAfter(true, [{ type: 'thinking', thinking: 'weighing' }]),
+  );
+  expect(calls).toBe(2);
+  expect(result.stopReason).toBe('stop');
+  expect(frames).toContain('\\"code\\":\\"TRANSPORT\\"');
+  expect(frames).not.toContain('terminated');
+});
+
+it('the worker keeps a host-classified connection loss after body text', async () => {
+  const { calls, result } = await workerRetry(lostAfter(true, [{ type: 'text', text: 'Answer' }]));
+  expect(calls).toBe(1);
+  expect(result.stopReason).toBe('error');
+  expect(JSON.parse(result.errorMessage ?? '')).toMatchObject({ code: 'TRANSPORT' });
+});
+
+it('the worker does not repeat a connection lost before any response event', async () => {
+  const { calls, result, frames } = await workerRetry(lostAfter(false, []));
+  expect(calls).toBe(1);
+  expect(JSON.parse(result.errorMessage ?? '')).toMatchObject({ code: 'UNKNOWN' });
+  expect(frames).not.toContain('terminated');
 });
 
 it('decoder does not duplicate text already present in a mutable provider partial', () => {

@@ -36,9 +36,14 @@ export function managedRetryStream(options: {
       // Events stay held while the attempt is replay-safe, so a retry leaves no trace in the consumer.
       let held: AssistantMessageEvent[] | null = [];
       let terminal: Extract<AssistantMessageEvent, { type: 'done' | 'error' }> | undefined;
+      let responseStarted = false;
       for await (const event of stream) {
-        if (event.type === 'done' || event.type === 'error') terminal = event;
-        else if (held) {
+        if (event.type === 'done' || event.type === 'error') {
+          terminal = event;
+          continue;
+        }
+        responseStarted = true;
+        if (held) {
           held.push(event);
           if (!isReplaySafe(event.partial)) {
             for (const heldEvent of held) out.push(heldEvent);
@@ -47,6 +52,8 @@ export function managedRetryStream(options: {
         } else out.push(event);
       }
       const message = await stream.result();
+      const failure = () =>
+        providerFailure(message.errorMessage ?? '', undefined, { responseStarted });
       const replaySafe = held !== null && isReplaySafe(message);
       if (
         message.stopReason === 'error' &&
@@ -55,7 +62,7 @@ export function managedRetryStream(options: {
         !contextRecovered &&
         attempt < 2 &&
         options.onContextOverflow &&
-        providerFailure(message.errorMessage ?? '').code === 'CONTEXT_OVERFLOW'
+        failure().code === 'CONTEXT_OVERFLOW'
       ) {
         await options.beforeRetry?.(message);
         contextRecovered = true;
@@ -63,11 +70,7 @@ export function managedRetryStream(options: {
       }
       const delay =
         message.stopReason === 'error' && replaySafe && !options.signal.aborted
-          ? retryDelay(
-              providerFailure(message.errorMessage ?? ''),
-              attempt,
-              options.random ?? Math.random,
-            )
+          ? retryDelay(failure(), attempt, options.random ?? Math.random)
           : null;
       if (delay === null) {
         for (const heldEvent of held ?? []) out.push(heldEvent);
