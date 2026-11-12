@@ -14,6 +14,7 @@ import {
 import { ChevronDown } from '@corral/react/icons';
 import { useTranslations } from 'use-intl';
 import { useRegisteredCommands } from '../commandRegistry.ts';
+import { PresenceMark } from './PresenceMark.tsx';
 import { presenceDot } from './presenceDot.ts';
 import { latestSessionRun, listedRunPresence } from './sessionList.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
@@ -45,7 +46,6 @@ export function SessionMenu({
   onOpen: (sessionId: string) => void;
 }) {
   const n = useTranslations('Navigation');
-  const presenceText = useTranslations('Presence');
   const siblings = sessions
     .filter((session) => session.projectId === projectId && !session.archivedAt)
     .sort(bySidebarOrder);
@@ -96,15 +96,8 @@ export function SessionMenu({
                       long title truncates inside the popup and the status keeps its place. */}
                   <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                     <span className="truncate">{session.title}</span>
-                    {presence ? (
-                      <span className="flex shrink-0 items-center gap-1.5 text-caption text-muted-foreground">
-                        <StatusDot status={presenceDot(presence.tone)} />
-                        <span>
-                          <span className="sr-only"> · </span>
-                          <span data-presence-label="">{presenceText(presence.labelKey)}</span>
-                        </span>
-                      </span>
-                    ) : null}
+                    {/* The mark and its name only: the open conversation says the state in words. */}
+                    {presence ? <PresenceMark presence={presence} /> : null}
                   </span>
                 </MenuRadioItem>
               );
@@ -190,13 +183,9 @@ export function RunMenu({
         <MenuRadioGroup value={runId} onValueChange={(value) => onSelect(String(value))}>
           {[...runs].reverse().map((run) => (
             <MenuRadioItem key={run.runId} value={run.runId} closeOnClick>
-              <span className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-                <StatusDot status={dot(run)} />
+              <span className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+                <PresenceMark presence={listedRunPresence(run)} />
                 <span className="truncate">{runName(run.runId)}</span>
-                <span className="text-caption text-muted-foreground">
-                  <span className="sr-only"> · </span>
-                  <span data-presence-label="">{label(run)}</span>
-                </span>
               </span>
             </MenuRadioItem>
           ))}

@@ -45,12 +45,29 @@ export function sessionPresences(
   sessions: readonly WorkSession[],
   runs: readonly RunSummary[],
 ): Map<string, Presence> {
+  return new Map([...sessionLiveStates(sessions, runs)].map(([id, live]) => [id, live.presence]));
+}
+
+/** A session's live state and the run it is of (none without a run). */
+export interface LivePresence {
+  presence: Presence;
+  runId: string | null;
+}
+
+/** `sessionPresences` with each state's run, which the exit grace keys its holds by. */
+export function sessionLiveStates(
+  sessions: readonly WorkSession[],
+  runs: readonly RunSummary[],
+): Map<string, LivePresence> {
   const latest = latestRunsBySession(runs);
   return new Map(
-    sessions.map((session) => [
-      session.sessionId,
-      presenceOf(session, latest.get(session.sessionId), false),
-    ]),
+    sessions.map((session) => {
+      const run = latest.get(session.sessionId);
+      return [
+        session.sessionId,
+        { presence: presenceOf(session, run, false), runId: run?.runId ?? null },
+      ];
+    }),
   );
 }
 

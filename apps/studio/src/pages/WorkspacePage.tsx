@@ -82,12 +82,14 @@ import { readCriteria } from '../workbench/sessionCriteria.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import {
   type AttentionReason,
+  latestSessionRun,
+  listedRunPresence,
   type SessionFact,
   type SessionGroupId,
   type SessionGroupRow,
   sessionFacts,
   sessionGroups,
-  sessionPresences,
+  sessionLiveStates,
   uncertainSessionTerminal,
 } from '../workbench/sessionList.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
@@ -1068,7 +1070,7 @@ function SessionList({
   const archivedCount = sessions.filter((x) => x.archivedAt).length;
   const none = sessions.length === archivedCount && !showArchived;
   // A row stays in its group through the exit grace, held to the same end as its sidebar row.
-  const livePresence = useMemo(() => sessionPresences(sessions, runs), [sessions, runs]);
+  const livePresence = useMemo(() => sessionLiveStates(sessions, runs), [sessions, runs]);
   const shownPresence = useSettledPresence(livePresence);
   const groups = sessionGroups(
     sessions.filter(
@@ -1300,11 +1302,11 @@ function SessionRow({
       : value === 'uncertain_write'
         ? ti('kind.uncertain_write')
         : presenceText(`state.${value}`);
-  const stateNames = new Set(
-    reasons.flatMap((value) =>
-      value === 'uncertain_terminal' || value === 'uncertain_write' ? [] : [reason(value)],
-    ),
-  );
+  // The latest run's own state names that run; a decision's "waiting" is not its state.
+  const latest = latestSessionRun(x, runs);
+  const latestKind = latest ? listedRunPresence(latest).kind : null;
+  const target = (value: AttentionReason) =>
+    latest && value === latestKind ? (`run:${latest.runId}` as const) : undefined;
   return (
     // Narrow, the meta sits under the title, so only the row's own action takes room from it.
     <li
@@ -1335,21 +1337,23 @@ function SessionRow({
           >
             {/* A long line wraps between items, never inside one; the dot ends its line. */}
             {[
-              ...facts.map((fact) => t(`fact.${fact}`)),
-              ...reasons.map(reason),
+              ...facts.map((fact) => ({ text: t(`fact.${fact}`) })),
+              ...reasons.map((value) => ({ text: reason(value), label: target(value) })),
               // What there is to review, by kind: never a count or a request's text.
-              ...review.map((kind) => ti(`kind.${kind}`)),
-              runCount ? t('runCount', { count: runCount }) : null,
-              ago(x.updatedAt),
+              ...review.map((kind) => ({ text: ti(`kind.${kind}`) })),
+              runCount ? { text: t('runCount', { count: runCount }) } : null,
+              { text: ago(x.updatedAt) },
             ]
-              .filter((item): item is string => Boolean(item))
+              .filter((item): item is { text: string; label?: `run:${string}` } => Boolean(item))
               .map((item, index, items) => (
-                <Fragment key={item}>
-                  <span
-                    className="whitespace-nowrap"
-                    data-presence-label={stateNames.has(item) ? '' : undefined}
-                  >
-                    {index < items.length - 1 ? `${item} ·` : item}
+                <Fragment key={item.text}>
+                  <span className="whitespace-nowrap">
+                    {item.label ? (
+                      <span data-presence-label={item.label}>{item.text}</span>
+                    ) : (
+                      item.text
+                    )}
+                    {index < items.length - 1 ? ' ·' : null}
                   </span>
                   {index < items.length - 1 ? ' ' : null}
                 </Fragment>

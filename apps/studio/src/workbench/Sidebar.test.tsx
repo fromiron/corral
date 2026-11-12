@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { shortcutLabel } from '../shortcuts.ts';
 import { Sidebar, sidebarRowHeights } from './Sidebar.tsx';
+import { forgetSharedPresenceHolds } from './useSettledPresence.ts';
 
 const fixture = vi.hoisted(() => ({
   collapsed: {} as Record<string, boolean>,
@@ -195,6 +196,8 @@ beforeEach(() => {
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
+  // Run ids repeat across cases; the views' shared memory of ended runs must not.
+  forgetSharedPresenceHolds();
 });
 
 async function mount(overrides: Partial<Model> = {}, density: 'default' | 'compact' = 'default') {
@@ -654,7 +657,7 @@ it.each([
   },
 );
 
-it('puts a session’s title and its state line on full lines of their own, the state led by its dot', async () => {
+it('puts a session’s title and its state line on full lines of their own, the state led by its mark', async () => {
   const container = await mount({
     runs: [run('session_0', 'awaiting_user', '2026-11-01T00:00:00Z')],
   });
@@ -662,8 +665,11 @@ it('puts a session’s title and its state line on full lines of their own, the 
   const lines = [...(waiting?.querySelectorAll('[data-session-line]') ?? [])];
   expect(lines).toHaveLength(2);
   expect(lines[0]?.textContent).toBe('Conversation 0');
-  expect(lines[1]?.textContent).toContain(messages.Presence.state.awaiting_user);
-  expect(lines[1]?.querySelector('[data-status="awaiting_user"]')).not.toBeNull();
+  // The state is the kit mark and its name, not words: the line's text is the time alone.
+  expect(lines[1]?.textContent).not.toContain(messages.Presence.state.awaiting_user);
+  const mark = lines[1]?.querySelector('[role="img"][data-presence="awaiting_user"]');
+  expect(mark?.getAttribute('aria-label')).toBe(messages.Presence.state.awaiting_user);
+  expect(mark?.querySelector('svg')).not.toBeNull();
   // Neither line borrows a tighter line height than its type role's.
   for (const line of lines) expect(line?.className).not.toMatch(/leading-\d/);
   // The row carries no separate badge: the state is said once.
@@ -673,7 +679,7 @@ it('puts a session’s title and its state line on full lines of their own, the 
       ?.querySelector('[data-sidebar="menu-badge"]'),
   ).toBeNull();
   const idle = container.querySelector('a[href="/sessions/session_1"]');
-  expect(idle?.querySelector('[data-status]')).toBeNull();
+  expect(idle?.querySelector('[role="img"][data-presence]')).toBeNull();
 });
 
 // docs/specs/features/presence.md: the exit grace, and one state name per screen.
@@ -685,10 +691,15 @@ describe('session row presence', () => {
     container.querySelector<HTMLElement>(`[data-session-row="${id}"]`);
   const group = (container: HTMLElement, id = 'session_0') =>
     row(container, id)?.dataset.sessionGroup;
-  const label = (container: HTMLElement, id = 'session_0') =>
-    [...(row(container, id)?.querySelectorAll('[data-presence-label]') ?? [])].map(
-      (element) => element.textContent,
+  /** The state a row says: its mark's name, the only place it says it. */
+  const label = (container: HTMLElement, id = 'session_0') => {
+    const item = row(container, id);
+    // No state words and no state label on a sidebar row.
+    expect(item?.querySelector('[data-presence-label]')).toBeNull();
+    return [...(item?.querySelectorAll('[role="img"][data-presence]') ?? [])].map((mark) =>
+      mark.getAttribute('aria-label'),
     );
+  };
   const advance = (ms: number) =>
     act(async () => {
       await vi.advanceTimersByTimeAsync(ms);
@@ -738,9 +749,13 @@ describe('session row presence', () => {
   });
 
   it('shows a run that waits for the person, fails or is paused at once, and counts it at once', async () => {
-    for (const status of ['awaiting_user', 'failed', 'interrupted', 'paused'] as const) {
-      const container = await mount({ runs: [run('session_0', 'running', first)] });
-      await redraw({ runs: [run('session_0', status, first)] });
+    for (const [index, status] of (
+      ['awaiting_user', 'failed', 'interrupted', 'paused'] as const
+    ).entries()) {
+      // A run of its own each time: one seen ended never shows running again.
+      const startedAt = `2026-11-13T00:00:0${index}Z`;
+      const container = await mount({ runs: [run('session_0', 'running', startedAt)] });
+      await redraw({ runs: [run('session_0', status, startedAt)] });
       expect([status, group(container)]).toEqual([status, 'attention']);
       // These four Run states share their presence kind's name.
       expect(label(container)).toEqual([messages.Presence.state[status]]);
@@ -798,12 +813,72 @@ describe('session row presence', () => {
     }
   });
 
-  it('says a session’s state name once in the sidebar', async () => {
-    const container = await mount({ runs: [run('session_0', 'awaiting_user', first)] });
+  it('never writes a session’s state name in the sidebar; its link still names it', async () => {
+    const container = await mount({
+      runs: [run('session_0', 'awaiting_user', first)],
+      terminalAttention: [attention('uncertain_terminal', 'session_1')],
+    });
     const sidebar = container.querySelector('[data-testid="app-sidebar"]') ?? container;
     const name = messages.Presence.state.awaiting_user;
     expect(label(container)).toEqual([name]);
-    expect(visibleText(sidebar)?.split(name).length).toBe(2);
+    expect(visibleText(sidebar)).not.toContain(name);
+    expect(sidebar.querySelector('[data-presence-label]')).toBeNull();
+    const link = row(container)?.querySelector('a');
+    expect(link?.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(name);
+    // A terminal to check keeps its words, which are not a run's state; no run, no mark.
+    const terminal = row(container, 'session_1');
+    expect(visibleText(terminal)).toContain(messages.Sessions.terminalNeedsAttention);
+    expect(terminal?.querySelector('[role="img"][data-presence]')).toBeNull();
+  });
+
+  it('colours the mark by the tone and draws the kit glyph in that colour', async () => {
+    const container = await mount({
+      runs: [
+        run('session_0', 'paused', first),
+        run('session_1', 'created', first),
+        run('session_2', 'failed', first),
+      ],
+    });
+    const mark = (id: string) => row(container, id)?.querySelector('[role="img"][data-presence]');
+    expect(mark('session_0')?.className).toContain('text-warning');
+    expect(mark('session_1')?.className).toContain('text-primary');
+    expect(mark('session_2')?.className).toContain('text-danger');
+    // The glyph takes the tone's colour, not the kit's own colour for the state.
+    for (const id of ['session_0', 'session_1', 'session_2'])
+      expect(mark(id)?.querySelector('svg')?.getAttribute('style') ?? '').not.toContain('color');
+  });
+
+  // The grace delays only what shows: archiving reads the live run.
+  it('lets a session whose run just ended be archived during the hold, and not a running one', async () => {
+    const archive = async (container: HTMLElement, id: string) => {
+      const trigger = row(container, id)?.querySelector<HTMLButtonElement>('[data-session-menu]');
+      await act(async () => {
+        trigger?.focus();
+        trigger?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+        );
+        await vi.advanceTimersByTimeAsync(20);
+      });
+      const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (element) => visibleText(element) === messages.Sessions.archive,
+      );
+      if (!item)
+        throw new Error(
+          `no Archive item in ${document.querySelector('[role="menu"]')?.textContent}`,
+        );
+      const disabled =
+        item?.getAttribute('aria-disabled') === 'true' || item?.hasAttribute('data-disabled');
+      await act(async () => {
+        item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await vi.advanceTimersByTimeAsync(20);
+      });
+      return disabled;
+    };
+    const container = await mount({ runs: [run('session_0', 'running', first)] });
+    expect(await archive(container, 'session_0')).toBe(true);
+    await redraw({ runs: [run('session_0', 'succeeded', first)] });
+    expect(group(container)).toBe('running');
+    expect(await archive(container, 'session_0')).toBe(false);
   });
 });
 

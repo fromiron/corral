@@ -1,6 +1,6 @@
 import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { CorralSymbol, CorralWordmark, StatusDot, sessionGroupOf } from '@corral/react';
+import { CorralSymbol, CorralWordmark, sessionGroupOf } from '@corral/react';
 import {
   Button,
   cn,
@@ -77,8 +77,8 @@ import {
   type NotificationTarget,
   notificationDestination,
 } from './notifications.ts';
+import { PresenceMark } from './PresenceMark.tsx';
 import { changePreferences, preferences } from './preferences.ts';
-import { presenceDot } from './presenceDot.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { watchRunList } from './runList.ts';
 import { SessionDeletionDialog } from './SessionDeletionDialog.tsx';
@@ -89,7 +89,7 @@ import {
 } from './scheduledRuns.ts';
 import {
   needsYouCount,
-  sessionPresences,
+  sessionLiveStates,
   sessionRunOpen,
   uncertainSessionTerminal,
 } from './sessionList.ts';
@@ -290,7 +290,6 @@ export const Sidebar = memo(function Sidebar({
   const shell = useTranslations('Shell');
   const studio = useTranslations('Studio');
   const ago = useSessionAge();
-  const presenceText = useTranslations('Presence');
   const profiles = useModelProfiles();
   const connected = Boolean(profiles?.some((p) => p.available));
   const { repository, mode, live, sessionDeletion } = useServices();
@@ -320,7 +319,7 @@ export const Sidebar = memo(function Sidebar({
   );
   // Rows read the held state (exit grace); the badge above and archiving read the live one.
   const livePresence = useMemo(
-    () => sessionPresences(model.sessions, model.runs),
+    () => sessionLiveStates(model.sessions, model.runs),
     [model.sessions, model.runs],
   );
   const shownPresence = useSettledPresence(livePresence);
@@ -841,7 +840,7 @@ export const Sidebar = memo(function Sidebar({
                           );
                         const session = row.session;
                         const active = path.startsWith(`/sessions/${session.sessionId}`);
-                        const live = livePresence.get(session.sessionId);
+                        const live = livePresence.get(session.sessionId)?.presence;
                         const presence = shownPresence.get(session.sessionId) ?? live;
                         const working = Boolean(live && sessionRunOpen(live));
                         const terminal = uncertainSessionTerminal(
@@ -907,27 +906,13 @@ export const Sidebar = memo(function Sidebar({
                                     'truncate text-muted-foreground',
                                   )}
                                 >
-                                  {/* The state's colour leads its word; the row needs no badge. */}
-                                  {presence?.glyph || terminal ? (
-                                    <span className="mr-1.5 inline-flex align-middle">
-                                      <StatusDot
-                                        status={
-                                          terminal
-                                            ? presenceDot('warning')
-                                            : presenceDot(presence?.tone ?? 'neutral')
-                                        }
-                                      />
-                                    </span>
-                                  ) : null}
+                                  {/* The state is the kit mark and its name, never words: the
+                                      body says it (docs/specs/features/presence.md). The slot
+                                      stays without a mark, so the time never moves. */}
+                                  <span className="mr-1.5 inline-flex align-middle">
+                                    <PresenceMark presence={presence} />
+                                  </span>
                                   {terminal ? `${ts('terminalNeedsAttention')} · ` : null}
-                                  {presence && !terminal ? (
-                                    <>
-                                      <span data-presence-label="" data-presence={presence.kind}>
-                                        {presenceText(presence.labelKey)}
-                                      </span>
-                                      {' · '}
-                                    </>
-                                  ) : null}
                                   {ago(session.updatedAt)}
                                 </span>
                               </span>

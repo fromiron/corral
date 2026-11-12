@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { SettingsNavigationContext } from '../workbench/navigation.ts';
+import { forgetSharedPresenceHolds } from '../workbench/useSettledPresence.ts';
 import { WorkspacePage } from './WorkspacePage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -54,6 +55,8 @@ afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
   localStorage.clear();
+  // Run ids repeat across cases; the views' shared memory of ended runs must not.
+  forgetSharedPresenceHolds();
 });
 
 const project: ProjectSummary = {
@@ -590,7 +593,10 @@ describe('the exit grace on the session groups', () => {
     const row = container.querySelector(`[role="tabpanel"] [data-session-row="C"]`);
     expect(
       [...(row?.querySelectorAll('[data-presence-label]') ?? [])].map((el) => el.textContent),
-    ).toEqual([`${messages.Presence.state.failed} ·`]);
+    ).toEqual([messages.Presence.state.failed]);
+    expect(row?.querySelector('[data-presence-label]')?.getAttribute('data-presence-label')).toBe(
+      'run:run_C_next',
+    );
   });
 });
 
