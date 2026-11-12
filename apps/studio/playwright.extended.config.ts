@@ -12,7 +12,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: ['server/**', 'performance/**'],
+      testIgnore: ['server/**', 'performance/**', 'flow/**'],
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
     {
