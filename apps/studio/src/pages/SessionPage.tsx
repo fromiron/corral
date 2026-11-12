@@ -38,6 +38,7 @@ import { panelRunId } from '../workbench/panelRun.ts';
 import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
 import { SessionActions } from '../workbench/session/SessionActions.tsx';
+import { SessionConnectionContext } from '../workbench/session/SessionConnection.tsx';
 import { ArtifactsPanel, ChecksPanel, RunPanel } from '../workbench/session/SessionPanels.tsx';
 import { WorkTab } from '../workbench/session/WorkTab.tsx';
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
@@ -115,7 +116,6 @@ function WorkSessionPage() {
   );
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
-  const ts = useTranslations('Sessions');
   const panel = search.panel;
   const { binding } = useBinding(session.projectId);
   const [fileViewerOpen, rememberFileViewer] = useRemembered<boolean>(
@@ -225,37 +225,28 @@ function WorkSessionPage() {
   const renderContext = (view: DockContextView, requestedView: DockContextView = view) => {
     if (view === 'chat')
       return (
-        <div className="flex h-full min-h-0 flex-col">
-          {lost ? (
-            <div
-              role="alert"
-              className="flex items-center gap-2 bg-danger/5 px-4 py-2 text-caption text-danger"
-            >
-              {ts('connectionLost')}
-              <Button variant="tertiary" size="compact" onClick={refresh}>
-                {ts('retry')}
-              </Button>
-            </div>
-          ) : null}
-          <WorkTab
-            key={panelKey(services, {
-              kind: 'chat',
-              projectId: session.projectId,
-              sessionId: session.sessionId,
-            })}
-            session={session}
-            team={team}
-            corrals={corrals}
-            runs={runs}
-            active={active}
-            liveRunId={liveRun?.runId ?? null}
-            selectedRunId={presentationRunId}
-            onChange={refresh}
-            reference={reference}
-            onReferenceUsed={() => setReference(null)}
-            onPanel={(value, run) => showPanel({ panel: value, ...run })}
-          />
-        </div>
+        <SessionConnectionContext.Provider value={{ lost, retry: refresh }}>
+          <div className="flex h-full min-h-0 flex-col">
+            <WorkTab
+              key={panelKey(services, {
+                kind: 'chat',
+                projectId: session.projectId,
+                sessionId: session.sessionId,
+              })}
+              session={session}
+              team={team}
+              corrals={corrals}
+              runs={runs}
+              active={active}
+              liveRunId={liveRun?.runId ?? null}
+              selectedRunId={presentationRunId}
+              onChange={refresh}
+              reference={reference}
+              onReferenceUsed={() => setReference(null)}
+              onPanel={(value, run) => showPanel({ panel: value, ...run })}
+            />
+          </div>
+        </SessionConnectionContext.Provider>
       );
     if (view === 'changes' || view === 'git') {
       // Checks are a sub-view of Changes; Problems still opens beside it.
