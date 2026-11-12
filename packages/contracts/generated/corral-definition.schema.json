@@ -1174,6 +1174,51 @@
           "type": "integer",
           "minimum": 1000,
           "maximum": 300000
+        },
+        "requestBudget": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 0
+                },
+                {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 2000
+                }
+              ]
+            },
+            "child": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 0
+                },
+                {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 2000
+                }
+              ]
+            },
+            "advisor": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 0
+                },
+                {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 2000
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

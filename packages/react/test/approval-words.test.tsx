@@ -96,6 +96,34 @@ describe('an approval a run limit asked for', () => {
     expect(card.textContent).toContain(String(max));
   });
 
+  it.each(['en', 'ko'] as const)(
+    'a request budget approval names the budget and its count, with or without the limit (%s)',
+    (locale) => {
+      const messages = locale === 'ko' ? ko : en;
+      const budget = {
+        ...noProgress,
+        kind: 'request_budget',
+        executionId: 'exec_0001',
+        limit: { kind: 'request_budget', used: 80, max: 50, executionId: 'exec_0001' },
+      };
+      const { container, unmount } = show({ appr_0001: budget }, { locale });
+      const card = screen.getByTestId('approval-appr_0001');
+      expect(card.textContent).toContain(
+        messages.Approvals.limit.title.request_budget
+          .replace('{used}', '80')
+          .replace('{max}', '50'),
+      );
+      expect(container.textContent).not.toMatch(RAW_ID);
+      unmount();
+      // A criteria change asks again without the limit fact; the kind still reads.
+      const { limit: _limit, ...asked } = budget;
+      show({ appr_0001: asked }, { locale });
+      expect(screen.getByTestId('approval-appr_0001').textContent).toContain(
+        messages.Approvals.kind.request_budget,
+      );
+    },
+  );
+
   it('the line of a limit approval already decided says it continued, without an id', () => {
     const { container } = show({
       appr_0001: { ...noProgress, status: 'approved' },

@@ -208,6 +208,7 @@ it('carries each directive as it expires, in send order, without waiting for ear
     directiveId: id,
     targetExecutionId: target,
     text: `text ${id}`,
+    origin: 'user',
     status,
     commandId: null,
     acceptedSeq: 1,

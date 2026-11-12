@@ -1,4 +1,9 @@
-import { type ExecutionStatus, type RunStatus, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import {
+  type EventPayload,
+  type ExecutionStatus,
+  type RunStatus,
+  TERMINAL_RUN_STATUSES,
+} from '@corral/contracts';
 import type { AgentStatus } from '../design-kit/components/agent/agent-primitives.tsx';
 
 // One rule for what a Run, an Execution, and a session look like on screen
@@ -21,6 +26,7 @@ const KINDS = [
 ] as const;
 export type PresenceKind = (typeof KINDS)[number];
 export type PresenceNeed = 'approval' | 'question' | 'continue';
+type ApprovalKind = EventPayload<'approval.requested'>['kind'];
 export type PresenceDetail = 'waiting_agents' | 'waiting_reply' | 'watching';
 export type PresenceTone = 'neutral' | 'active' | 'success' | 'warning' | 'danger';
 export type PresenceGroup = 'attention' | 'running' | 'completed' | 'cancelled' | 'ready' | 'empty';
@@ -88,6 +94,19 @@ const EXECUTION_KIND: Record<ExecutionStatus, PresenceKind> = {
   failed: 'failed',
   cancelled: 'cancelled',
 };
+
+/**
+ * What an open approval asks of the person. Approvals that only ask whether to go on (a Loop
+ * round, the no-progress pause, the request budget) are `continue`; the rest are `approval`.
+ */
+export function approvalNeed(approval: {
+  kind: ApprovalKind;
+  limit?: { kind: string };
+}): Exclude<PresenceNeed, 'question'> {
+  return approval.kind === 'loop_cap' || approval.kind === 'request_budget' || approval.limit
+    ? 'continue'
+    : 'approval';
+}
 
 function presence(kind: PresenceKind, need?: PresenceNeed, detail?: PresenceDetail): Presence {
   return {

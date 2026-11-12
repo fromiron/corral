@@ -1,5 +1,5 @@
 import type { TextAttachment } from '@corral/contracts';
-import type { DirectiveView, RunProjection } from './projection.ts';
+import type { RunProjection } from './projection.ts';
 import type { NewSessionEntry, WorkSession } from './repository/index.ts';
 
 // A person's directive its target never read, because the target succeeded first, is carried
@@ -12,11 +12,6 @@ export interface CarriedDirective {
   attachments?: TextAttachment[];
 }
 
-/** Who made a directive; one recorded without an origin came from a person. */
-function originOf(directive: DirectiveView): string {
-  return (directive as DirectiveView & { origin?: string }).origin ?? 'user';
-}
-
 /**
  * The person's directives of this run that expired unread on a target that succeeded, in the
  * order they were sent. Each is carried when it expires; one still waiting holds nothing back.
@@ -25,7 +20,8 @@ export function carriedDirectives(projection: RunProjection): CarriedDirective[]
   const carried: CarriedDirective[] = [];
   for (const directiveId of projection.directiveOrder) {
     const directive = projection.directives[directiveId];
-    if (!directive || originOf(directive) !== 'user') continue;
+    // Only the person's own words are carried; advice and system notices are not requests.
+    if (!directive || directive.origin !== 'user') continue;
     if (directive.status !== 'expired') continue;
     if (projection.executions[directive.targetExecutionId]?.status !== 'succeeded') continue;
     carried.push({

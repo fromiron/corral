@@ -26,6 +26,7 @@ import {
   CreateRunRequest,
   type DecisionCancellation,
   type DecisionNode,
+  type DeliveredDirective,
   EffectiveHarnessSnapshot,
   EffortRoutingSettings,
   type EventPayload,
@@ -151,7 +152,15 @@ import {
 import { carriedSources, forkPlan, forkSteps } from './fork.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
-import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
+import {
+  effectiveRequestBudget,
+  LogicalDeadline,
+  NO_PROGRESS_TURNS,
+  REQUEST_BUDGET_NOTICES,
+  requestBudgetKind,
+  requestBudgetOf,
+  requestBudgetStage,
+} from './limits.ts';
 import {
   PartialOutputWriter,
   partialOutputRefs,
@@ -514,6 +523,8 @@ interface LiveRun {
   stepApprovals: Map<string, Set<string>>;
   /** A pending run-level limit intervention; concurrent workers wait on this one. */
   limitApproval: Promise<'approve' | 'reject'> | null;
+  /** A pending request-budget intervention per execution; that execution's own limit. */
+  budgetApprovals: Map<string, Promise<'approve' | 'reject'>>;
   /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
@@ -622,6 +633,13 @@ const WORKING: ReadonlySet<RunProjection['status']> = new Set(['running', 'await
 /** What a request delivers for a directive: its text, then its attachments. */
 const deliveredText = (directive: DirectiveView) =>
   directiveWithAttachments(directive.text, directive.attachments);
+
+/** A directive as a worker receives it: its id, delivered text and origin. */
+const delivered = (directive: DirectiveView): DeliveredDirective => ({
+  directiveId: directive.directiveId,
+  text: deliveredText(directive),
+  origin: directive.origin,
+});
 
 /** Error text handed to a model: a retry's last error, or what an error path is told. */
 const clip = (text: string) => text.slice(0, 2000);
@@ -2084,10 +2102,13 @@ export class Coordinator {
       stoppedSteps: new Set(),
       stepApprovals: new Map(),
       limitApproval: null,
-      // A spawn limit above the installation's cap runs with the cap.
+      budgetApprovals: new Map(),
+      // A spawn limit above the installation's cap runs with the cap; omitted request budgets
+      // run with the defaults, and run.started keeps the values used.
       limits: {
         ...definition.limits,
         maxSpawns: Math.min(definition.limits.maxSpawns, this.policy.maxSpawns),
+        requestBudget: effectiveRequestBudget(definition.limits),
       },
       criteriaVersionId: snapshot.criteriaVersionId,
       pendingCriteriaVersionId: null,
@@ -2987,10 +3008,21 @@ export class Coordinator {
       before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
       after = { maxIterations: change.maxIterations };
     } else if (change.kind === 'run_limits') {
-      if (change.changes.maxSpawns > this.policy.maxSpawns)
+      const { changes } = change;
+      const maxSpawns = 'maxSpawns' in changes ? changes.maxSpawns : undefined;
+      const { requestBudget } = changes;
+      if (maxSpawns !== undefined && maxSpawns > this.policy.maxSpawns)
         return refuse('LIMIT_REACHED', 'maxSpawns exceeds installation policy');
-      before = { maxSpawns: run.limits.maxSpawns };
-      after = { maxSpawns: change.changes.maxSpawns };
+      // A budget patch names some budgets; the record keeps all of them, before and after.
+      const budgets = effectiveRequestBudget(run.limits);
+      before = {
+        ...(maxSpawns !== undefined ? { maxSpawns: run.limits.maxSpawns } : {}),
+        ...(requestBudget ? { requestBudget: budgets } : {}),
+      };
+      after = {
+        ...(maxSpawns !== undefined ? { maxSpawns } : {}),
+        ...(requestBudget ? { requestBudget: { ...budgets, ...requestBudget } } : {}),
+      };
     } else {
       if (run.snapshot.definition.nodes.some((node) => node.type === 'loop' && node.reviewRecipe))
         return refuse(
@@ -3076,6 +3108,7 @@ export class Coordinator {
         this.commit(run, [
           {
             type: 'approval.requested',
+            ...(old.executionId ? { executionId: old.executionId } : {}),
             payload: {
               approvalId: nextId,
               kind: old.kind,
@@ -3351,6 +3384,7 @@ export class Coordinator {
             targetExecutionId: executionId,
             text: command.payload.text,
             delivery,
+            origin: 'user',
             ...(attachments ? { attachments } : {}),
           },
         },
@@ -3374,9 +3408,10 @@ export class Coordinator {
         );
       },
     );
-    const delivered = {
+    const delivered: DeliveredDirective = {
       directiveId,
       text: directiveWithAttachments(command.payload.text, attachments),
+      origin: 'user',
     };
     // Only a working target has a response to cut; one waiting on the person, or not started
     // yet, takes the directive with its first request after, as any directive.
@@ -3386,6 +3421,65 @@ export class Coordinator {
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return this.currentReceipt(stored);
+  }
+
+  /**
+   * The request budget's notice for an execution that just started a request, if one is due
+   * (product contract §9). It is a `system` directive: no command or receipt, no authority over
+   * approvals, patches or permissions, and the same delivery as a person's next-request one.
+   * Each stage is given once; the count it reads comes from the events.
+   */
+  private requestBudgetNotice(run: LiveRun, input: AgentStartInput): void {
+    const { executionId } = input;
+    const kind = requestBudgetKind(input);
+    if (!kind) return;
+    const budget = requestBudgetOf(kind, run.limits);
+    const stage = requestBudgetStage(run.projection.requestBudgets?.[executionId], budget);
+    if (stage !== 'wrap_up' && stage !== 'submit') return;
+    const text =
+      stage === 'wrap_up' ? REQUEST_BUDGET_NOTICES.wrapUp(budget) : REQUEST_BUDGET_NOTICES.submit;
+    const directiveId = this.ids.next('directive');
+    this.commit(run, [
+      {
+        type: 'directive.accepted',
+        actor: RUNTIME,
+        executionId,
+        payload: {
+          directiveId,
+          targetExecutionId: executionId,
+          text,
+          delivery: 'next_request',
+          origin: 'system',
+        },
+      },
+    ]);
+    run.handles.get(executionId)?.pushDirective?.({ directiveId, text, origin: 'system' });
+  }
+
+  /** A request-budget approval the run was cancelled under closes with it. */
+  private closeBudgetApproval(run: LiveRun, executionId: string): void {
+    if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
+    for (const approval of Object.values(run.projection.approvals)) {
+      if (
+        approval.kind !== 'request_budget' ||
+        approval.executionId !== executionId ||
+        approval.status !== 'pending'
+      )
+        continue;
+      this.commit(run, [
+        {
+          type: 'approval.resolved',
+          executionId,
+          payload: {
+            approvalId: approval.approvalId,
+            decision: 'reject',
+            actor: RUNTIME.id,
+            subjectVersionIds: approval.subjectVersionIds,
+            reason: 'cancelled',
+          },
+        },
+      ]);
+    }
   }
 
   /** A steer receipt follows its directive: queued until a request carries it. */
@@ -6038,6 +6132,8 @@ export class Coordinator {
     routes?: EventPayload<'approval.requested'>['routes'],
     /** The step that waits on it, so stopping that step's branch can withdraw it. */
     step?: string,
+    /** The execution that waits on it, for an execution's own limit (`request_budget`). */
+    executionId?: string,
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
     if (step) {
@@ -6053,6 +6149,7 @@ export class Coordinator {
       [
         {
           type: 'approval.requested',
+          ...(executionId ? { executionId } : {}),
           payload: {
             approvalId,
             kind,
@@ -8158,7 +8255,7 @@ export class Coordinator {
         run.projection.directiveOrder.flatMap((id) => {
           const d = run.projection.directives[id];
           return d?.targetExecutionId === executionId && d.status === 'queued'
-            ? [{ directiveId: id, text: deliveredText(d) }]
+            ? [delivered(d)]
             : [];
         }),
       checkpointContext: async (raw) => {
@@ -8425,31 +8522,53 @@ export class Coordinator {
           const request = runGates(this.gates['model.request'], view);
           if (request.kind === 'refuse') this.refuseModelRequest(run, request);
           if (request.kind === 'require_approval') {
-            // A limit belongs to the run, not to one branch: every worker that reaches it
-            // waits on the same intervention.
-            if (!run.limitApproval) {
+            // A run limit belongs to the run, not to one branch: every worker that reaches it
+            // waits on the same intervention. A request budget is the execution's own.
+            const own = request.limit.executionId;
+            const pending = own ? run.budgetApprovals.get(own) : run.limitApproval;
+            let decision = pending ?? null;
+            if (!decision) {
               this.commit(run, [
                 {
                   type: 'limit.reached',
+                  ...(own ? { executionId: own } : {}),
                   payload: {
                     limitKind: request.limit.kind,
                     used: request.limit.used,
                     max: request.limit.max,
+                    ...(own ? { executionId: own } : {}),
                   },
                 },
               ]);
-              const shared = this.requestApproval(run, 'user_action', [
-                run.criteriaVersionId,
-              ]).decision;
-              run.limitApproval = shared;
-              void shared.then(() => {
-                if (run.limitApproval === shared) run.limitApproval = null;
-              });
+              const shared = this.requestApproval(
+                run,
+                request.approval,
+                [run.criteriaVersionId],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                own,
+              ).decision;
+              decision = shared;
+              if (own) {
+                run.budgetApprovals.set(own, shared);
+                void shared.then(() => {
+                  if (run.budgetApprovals.get(own) === shared) run.budgetApprovals.delete(own);
+                });
+              } else {
+                run.limitApproval = shared;
+                void shared.then(() => {
+                  if (run.limitApproval === shared) run.limitApproval = null;
+                });
+              }
             }
-            const decision = run.limitApproval;
             run.boundaries.add(executionId);
             try {
-              if ((await decision) !== 'approve') throw new Error(`${request.limit.kind} stopped`);
+              if ((await decision) !== 'approve') {
+                if (own) this.closeBudgetApproval(run, own);
+                throw new Error(`${request.limit.kind} stopped`);
+              }
             } finally {
               run.boundaries.delete(executionId);
             }
@@ -8620,10 +8739,7 @@ export class Coordinator {
                 d.status === 'queued' &&
                 (!record || record.directiveIds.includes(d.directiveId)),
             )
-            .map((d) => ({
-              directiveId: d?.directiveId ?? '',
-              text: d ? deliveredText(d) : '',
-            }));
+            .flatMap((d) => (d ? [delivered(d)] : []));
           const directiveIds = queued.map((d) => d.directiveId);
           this.commit(run, [
             ...(record
@@ -8681,6 +8797,9 @@ export class Coordinator {
               },
             },
           ]);
+          // Past its budget, the execution is told to wrap up, then to submit; the notice rides
+          // its next request.
+          this.requestBudgetNotice(run, input);
           lastCall = { modelCallId, contextSnapshotId, effectId };
           lastRoute = prepared.stored ? { modelCallId, stored: prepared.stored } : null;
           pendingShadow = prepared.shadow

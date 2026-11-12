@@ -391,7 +391,7 @@ describe('interrupt delivery', () => {
     expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'immediate' });
     expect(s.accepted().map((event) => event.payload)).toMatchObject([{ delivery: 'interrupt' }]);
     const directiveId = Object.keys(s.coordinator.getSnapshot(s.runId).projection.directives)[0];
-    expect(s.interrupts).toEqual([{ directiveId, text: 'Stop and cite sources.' }]);
+    expect(s.interrupts).toEqual([{ directiveId, text: 'Stop and cite sources.', origin: 'user' }]);
     expect(s.pushed).toEqual([]);
     // The same command sent again is the same intent: one directive, one interrupt.
     expect(s.steer(executionId)).toEqual(receipt);

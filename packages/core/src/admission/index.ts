@@ -21,7 +21,14 @@ import {
 } from '@corral/contracts';
 import { utf8ToBytes } from '@noble/hashes/utils.js';
 import type { InstallationPolicy } from '../config.ts';
-import { createsWaitCycle, NO_PROGRESS_TURNS, noProgressReached } from '../limits.ts';
+import {
+  createsWaitCycle,
+  NO_PROGRESS_TURNS,
+  noProgressReached,
+  requestBudgetKind,
+  requestBudgetOf,
+  requestBudgetStage,
+} from '../limits.ts';
 import type { RunProjection } from '../projection.ts';
 
 // Admission gates and observers.
@@ -42,9 +49,11 @@ export type AdmissionStage =
   | 'tool.execute';
 
 export interface LimitHit {
-  kind: 'spawns' | 'questions' | 'depth' | 'no_progress';
+  kind: 'spawns' | 'questions' | 'depth' | 'no_progress' | 'request_budget';
   used: number;
   max: number;
+  /** The execution whose own limit this is (`request_budget`); the others are the run's. */
+  executionId?: string;
 }
 
 export type GateDecision =
@@ -55,8 +64,8 @@ export type GateDecision =
       message: string;
       limit?: LimitHit;
     }
-  /** Only the person can let this request through (no progress, product contract §9). */
-  | { kind: 'require_approval'; approval: 'user_action'; limit: LimitHit };
+  /** Only the person can let this request through (no progress, request budget; §9). */
+  | { kind: 'require_approval'; approval: 'user_action' | 'request_budget'; limit: LimitHit };
 
 export interface ModelGateView {
   projection: RunProjection;
@@ -250,6 +259,28 @@ const noProgress: Gate<ModelGateView> = {
           limit: { kind: 'no_progress', used: projection.progress.turns, max: NO_PROGRESS_TURNS },
         }
       : { kind: 'allow' },
+};
+
+/**
+ * An execution five requests past its submit notice waits for the person (the unattended
+ * request budget, product contract §9). An execution that answers the conversation has none.
+ */
+const requestBudget: Gate<ModelGateView> = {
+  id: 'request_budget',
+  version: 1,
+  check: ({ projection, limits, input }) => {
+    const kind = requestBudgetKind(input);
+    if (!kind) return { kind: 'allow' };
+    const max = requestBudgetOf(kind, limits);
+    const state = projection.requestBudgets?.[input.executionId];
+    return requestBudgetStage(state, max) === 'approval' && state
+      ? {
+          kind: 'require_approval',
+          approval: 'request_budget',
+          limit: { kind: 'request_budget', used: state.used, max, executionId: input.executionId },
+        }
+      : { kind: 'allow' };
+  },
 };
 
 /** A reply to a question that has already closed. */
@@ -780,7 +811,7 @@ const limits: Gate<ToolGateView> = {
 
 /** Today's checks as gates, in today's order. */
 export const DEFAULT_GATES: AdmissionGates = {
-  'model.request': [noProgress],
+  'model.request': [noProgress, requestBudget],
   'tool.pre_boundary': [questionOpen],
   'tool.authorize': [roleAllowlist, limits],
   'tool.execute': [roleAllowlist, limits],

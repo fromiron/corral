@@ -42,7 +42,9 @@ describe('the call snapshot a worker sends', () => {
       messages: [
         { role: 'system', content: 'system rules', timestamp: 1 } as unknown as AgentMessage,
         user(`${assignmentMetadata('{"criteriaVersionId":"crit_1"}')}## brief\n\nFix the parser.`),
-        user(directiveText({ directiveId: 'dir_1', text: 'Keep the API.' })),
+        user(
+          directiveText({ directiveId: 'dir_1', text: 'Keep the API.', origin: 'user' as const }),
+        ),
         { role: 'user', content: '[Corral current state]\n{"questions":[]}', timestamp: 0 },
       ],
     });
@@ -59,7 +61,13 @@ describe('the call snapshot a worker sends', () => {
         user('Fix the parser bug.'),
         assistant('Running the tests first.', [{ id: 't1', name: 'bash', arguments: {} }]),
         result('t1', '1 failing', true),
-        user(sdkDirectiveText({ directiveId: 'dir_1', text: 'Keep the public API.' })),
+        user(
+          sdkDirectiveText({
+            directiveId: 'dir_1',
+            text: 'Keep the public API.',
+            origin: 'user' as const,
+          }),
+        ),
       ],
     });
     expect(snapshot.request?.text).toBe('Fix the parser bug.');

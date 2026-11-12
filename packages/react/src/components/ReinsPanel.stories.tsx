@@ -16,6 +16,7 @@ function withDirectives(
         directiveId: `dir_000${index + 1}`,
         targetExecutionId: target.executionId,
         text: item.text,
+        origin: 'user' as const,
         status: item.status,
         commandId: `cmd_${index + 1}`,
         acceptedSeq: index + 10,

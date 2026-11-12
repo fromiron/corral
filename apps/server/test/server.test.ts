@@ -9,6 +9,7 @@ import {
   type AgentAdapter,
   type CorralDefinition,
   DEFAULT_LIMITS,
+  DEFAULT_REQUEST_BUDGET,
   type RunEvent,
 } from '@corral/contracts';
 import { SPEC_HARD_CAPS, waitForProjection } from '@corral/core';
@@ -1301,6 +1302,13 @@ describe('workspace configuration', () => {
     expect(row('Loop 회차 상한')[3]).toContain('설치 상한 없음');
     expect(SPEC_HARD_CAPS).not.toHaveProperty('maxLoopIterations');
     expect(number(row('동적 위임 깊이')[2] ?? '')).toBe(DEFAULT_LIMITS.maxDelegationDepth);
+    const budget = row('무인 실행 예산')[2] ?? '';
+    expect(number(budget.match(/팀 역할 ([\d,]+)/)?.[1] ?? '')).toBe(DEFAULT_REQUEST_BUDGET.role);
+    expect(number(budget.match(/동적 하위 실행 ([\d,]+)/)?.[1] ?? '')).toBe(
+      DEFAULT_REQUEST_BUDGET.child,
+    );
+    expect(row('무인 실행 예산')[3]).toContain('50–2,000 또는 0(끔)');
+    expect(number(row('감독 예산')[2] ?? '')).toBe(DEFAULT_REQUEST_BUDGET.advisor);
   });
 });
 

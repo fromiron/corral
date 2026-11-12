@@ -235,6 +235,7 @@ const directiveView = (directiveId: string, status = 'expired', target = 'ex_1')
   directiveId,
   targetExecutionId: target,
   text: `unread ${directiveId}`,
+  origin: 'user',
   status,
   commandId: null,
   acceptedSeq: 1,

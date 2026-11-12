@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import en from '../src/messages/en.json' with { type: 'json' };
 import ko from '../src/messages/ko.json' with { type: 'json' };
 import {
+  approvalNeed,
   executionPresence,
   PRESENCE_EXIT_GRACE_MS,
   type Presence,
@@ -372,5 +373,20 @@ describe('settle', () => {
     const first = settle(null, succeeded, { endedAt: now, now });
     expect(first.presence).toEqual(succeeded);
     expect(first.holdUntil).toBeNull();
+  });
+});
+
+describe('what an approval asks', () => {
+  it('reads the request budget, a Loop round and a run limit as continue, the rest as approval', () => {
+    expect(approvalNeed({ kind: 'request_budget' })).toBe('continue');
+    expect(approvalNeed({ kind: 'request_budget', limit: { kind: 'request_budget' } })).toBe(
+      'continue',
+    );
+    expect(approvalNeed({ kind: 'loop_cap' })).toBe('continue');
+    expect(approvalNeed({ kind: 'user_action', limit: { kind: 'no_progress' } })).toBe('continue');
+    expect(approvalNeed({ kind: 'user_action' })).toBe('approval');
+    expect(approvalNeed({ kind: 'final_output' })).toBe('approval');
+    expect(en.Presence.need[approvalNeed({ kind: 'request_budget' })]).toBe('Continue?');
+    expect(ko.Presence.need[approvalNeed({ kind: 'request_budget' })]).toBe('계속 여부');
   });
 });

@@ -28,6 +28,7 @@ function events(count: number, from = 1): RunEvent[] {
           targetExecutionId: executionId,
           text: 'Steer',
           delivery: 'next_request',
+          origin: 'user',
         },
       } as RunEvent;
     }
