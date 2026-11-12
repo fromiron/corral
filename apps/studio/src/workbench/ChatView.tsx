@@ -89,6 +89,25 @@ export function holdPointer(held: { current: boolean }) {
   window.addEventListener('pointercancel', release, true);
 }
 
+/**
+ * The row at the top of the view, its offset, and the scroll position it was read at: a
+ * reader's place. Read before the list has mounted the rows for a new position, no row is in
+ * view and there is no place to hold yet.
+ */
+function readPlace(box: HTMLElement) {
+  const top = box.getBoundingClientRect().top;
+  const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+    (item) => item.getBoundingClientRect().bottom > top,
+  );
+  if (!row?.dataset.chatItem || row.getBoundingClientRect().top >= top + box.clientHeight)
+    return null;
+  return {
+    id: row.dataset.chatItem,
+    offset: row.getBoundingClientRect().top - top,
+    top: box.scrollTop,
+  };
+}
+
 /** A row's height until it is measured. */
 const ESTIMATED_ROW = 260;
 
@@ -139,7 +158,8 @@ export function ChatView({
   const seenTop = useRef(0);
   const restoreTop = useRef<number | null>(null);
   const restoreAnchor = useRef<{ id: string; offset: number } | null>(null);
-  const readingAnchor = useRef<{ id: string; offset: number } | null>(null);
+  // The row a reader is on, its offset, and the scroll position it was read at.
+  const readingAnchor = useRef<ReturnType<typeof readPlace>>(null);
   // A pointer is down on the scrollbar, so the next upward scroll is the person, not layout.
   const scrollbarPointer = useRef(false);
   // A pointer is down in the messages, so focus that follows is a click, not keyboard navigation.
@@ -220,6 +240,19 @@ export function ChatView({
     position.current = () => {
       if (box.hidden) return;
       const { items, rows } = current.current;
+      const reading = readingAnchor.current;
+      // While reading, the place is read again when the person or the browser moved the view
+      // since it was read: a key or a wheel animating over frames, a focused row scrolled into
+      // view. Rows mounting for that move are seen here before its scroll event, and the move
+      // stands. A scroll event read before the list mounted the rows in view left no place;
+      // the rows are there now.
+      if (
+        !follow.current &&
+        restoreAnchor.current === null &&
+        restoreTop.current === null &&
+        (!reading || Math.abs(box.scrollTop - reading.top) >= 0.5)
+      )
+        readingAnchor.current = readPlace(box);
       const anchor = restoreAnchor.current ?? (!follow.current ? readingAnchor.current : null);
       if (anchor && items.some((item) => item.id === anchor.id)) {
         // Only the mounted rows are looked at, so this costs the window, not the history.
@@ -227,14 +260,17 @@ export function ChatView({
           (row) => row.dataset.chatItem === anchor.id,
         );
         if (row) {
-          box.scrollTop +=
+          const shift =
             row.getBoundingClientRect().top - box.getBoundingClientRect().top - anchor.offset;
+          // A write, even of the same offset, would stop a scroll the browser is animating.
+          if (Math.abs(shift) >= 0.5) box.scrollTop += shift;
           restoreTop.current = null;
         } else
           rows.scrollToIndex(
             items.findIndex((item) => item.id === anchor.id),
             { align: 'start' },
           );
+        if (anchor === readingAnchor.current) readingAnchor.current.top = box.scrollTop;
       } else if (restoreTop.current !== null) {
         box.scrollTop = restoreTop.current;
         if (box.scrollHeight - box.clientHeight >= restoreTop.current) restoreTop.current = null;
@@ -294,12 +330,6 @@ export function ChatView({
       remember();
     };
   }, [sessionId]);
-  // New content places the view again. The list's own renders while scrolling do not: a scroll
-  // is read by its event, and rows the list mounts or measures are seen by the observers.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: these are what the view shows
-  useLayoutEffect(() => {
-    position.current();
-  }, [items, header, children, expandedHeader]);
   // The timeline keeps the composer's height as its bottom space. A change is applied in the
   // same task that made it (a mutation is seen before the next frame), so following the end
   // stays at the end and a reader's rows never move; resizing covers what no mutation shows.
@@ -383,14 +413,7 @@ export function ChatView({
     follow.current = false;
   };
   const rememberPlace = (box: HTMLElement) => {
-    const top = box.getBoundingClientRect().top;
-    const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
-      (item) => item.getBoundingClientRect().bottom > top,
-    );
-    readingAnchor.current =
-      !follow.current && row
-        ? { id: row.dataset.chatItem!, offset: row.getBoundingClientRect().top - top }
-        : null;
+    readingAnchor.current = follow.current ? null : readPlace(box);
     setAtEnd(follow.current);
   };
   const readPosition = () => {
@@ -504,10 +527,25 @@ export function ChatView({
           stopRestoring();
         }}
         onKeyDown={(event) => {
-          if (!['ArrowUp', 'PageUp', 'Home'].includes(event.key)) return;
           const box = timeline.current;
-          if (!box || box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
+          if (!box) return;
+          // On the timeline itself, Home and End go to the first row and to the end: rows not
+          // yet measured would leave the browser's own scroll short of either.
+          const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+          if (event.target === event.currentTarget && plain && event.key === 'End') {
+            event.preventDefault();
+            followEnd();
+            return;
+          }
+          if (!['ArrowUp', 'PageUp', 'Home'].includes(event.key)) return;
+          if (box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
           stopRestoring();
+          if (event.target === event.currentTarget && plain && event.key === 'Home') {
+            event.preventDefault();
+            // The first row starts at the top whatever the rows below it measure.
+            box.scrollTop = 0;
+            rememberPlace(box);
+          }
         }}
         onScroll={readPosition}
       >
@@ -534,9 +572,13 @@ export function ChatView({
               data-chat-window
               style={{ paddingTop: windowed.before, paddingBottom: windowed.after }}
             >
-              {windowed.rows.map(({ index }) => {
+              {windowed.rows.map(({ index, start }, at) => {
                 const item = items[index];
                 if (!item) return null;
+                // A focused row kept mounted away from the window: the rows between are held
+                // as space above it, so the list keeps its height.
+                const previous = windowed.rows[at - 1];
+                const between = previous ? start - previous.end : 0;
                 return (
                   <li
                     key={item.id}
@@ -552,6 +594,7 @@ export function ChatView({
                       item.id === messageId && 'rounded-lg ring-2 ring-focus-ring',
                     )}
                     ref={rows.measureElement}
+                    style={between > 0 ? { marginTop: between } : undefined}
                     onFocusCapture={() => setFocused(item.id)}
                     onBlurCapture={(event) => {
                       if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null);
