@@ -221,16 +221,25 @@ interface AgentAdapter {
   start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle>;
 }
 interface AgentHandle {
-  requestPause(): Promise<void>; // 경계 도달은 별도 observation
   cancel(reason: string): Promise<void>;
-  waitForSettlement(): Promise<Settlement>;
+  waitForSettlement(): Promise<AgentSettlement>;
+  pushDirective?(directive: DeliveredDirective): void; // 다음 요청에 실을 지시가 생겼음을 알린다
+  interrupt?(directive: DeliveredDirective): void; // 진행 중인 모델 응답을 끊고 지시를 다음 요청에 싣게 한다
+  requestCompaction?(commandId: string): void;
 }
 interface AgentHost {
-  prepareModelRequest(input: RequestProposal): Promise<RequestPermit>;
-  invokeTool(input: ToolProposal): Promise<ToolOutcome>;
-  observe(event: AgentObservation): Promise<void>;
+  prepareModelRequest(record?: ModelRequestRecord, preparation?: RequestPreparation): Promise<RequestPermit>;
+  modelRequestDispatched?(modelCallId: string): Promise<void>;
+  pendingDirectives?(): DeliveredDirective[];
+  authorizeTool(proposal: ToolProposal): Promise<ToolAuthorization>;
+  executeTool(toolCallId: string): Promise<ToolOutcome>;
+  invokeTool(proposal: ToolProposal): Promise<ToolOutcome>;
+  observe(observation: AgentObservation): Promise<void>;
+  streamText(delta: TextDelta): void;
 }
 ```
+
+정본은 `packages/contracts/src/ports.ts`다. 일시정지는 핸들의 동작이 아니다. Coordinator가 다음 요청의 허가를 내주지 않아 안전한 경계에서 멈춘다. `interrupt`가 없는 어댑터에서 끼어들기는 다음 요청 전달로 낮아진다([Reins](features/reins.md)).
 
 지시 큐는 worker 내부의 유일한 비가시 상태로 두지 않는다. Coordinator가 directive 상태를 보관하고 request permit을 발급할 때 실제 요청 snapshot을 확정한다. Pi의 steering hook은 이 확정된 지시를 전달하는 수단이지 command 성공의 근거 자체가 아니다.
 
