@@ -906,6 +906,21 @@ export function describeCorralRepositoryContract(
               ...(refused as object),
             } as Parameters<CorralRepository['addSessionEntry']>[1]),
           ).toMatchObject({ ok: false, error: 'invalid' });
+        // Without a permission mode, only the intent rule can refuse these.
+        const bare = { choice: { modelProfile: 'model-a' }, mode: 'mock' as const };
+        for (const intent of ['steer', 'explain'] as const)
+          expect(
+            await repo.addSessionEntry(id, {
+              intent,
+              text: 'Refused',
+              state: 'queued',
+              start: bare,
+            }),
+          ).toEqual({
+            ok: false,
+            error: 'invalid',
+            message: 'a start request requires a valid new or queued request',
+          });
         expect((await repo.getSession(id))?.entries).toHaveLength(2);
         // A new request keeps the snapshot it started with, so a carried request can copy it.
         const sent = await repo.addSessionEntry(id, {

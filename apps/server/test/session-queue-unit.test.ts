@@ -36,7 +36,9 @@ const run = (runId: string, startedAt: string, status: RunStatus = 'succeeded'):
   startedAt,
 });
 
-function harness(options: { startDelayMs?: number; failStart?: boolean } = {}) {
+function harness(
+  options: { startDelayMs?: number; failStart?: boolean; entries?: SessionEntry[] } = {},
+) {
   const runs: QueueRun[] = [
     run('run_a', '2026-01-01T00:00:01Z'),
     run('run_b', '2026-01-01T00:00:02Z'),
@@ -54,7 +56,7 @@ function harness(options: { startDelayMs?: number; failStart?: boolean } = {}) {
     updatedAt: 'x',
     archivedAt: null,
     autoStart: true,
-    entries: [entry('e1'), entry('e2')],
+    entries: options.entries ?? [entry('e1'), entry('e2')],
   };
   const starts: QueuedStartRequest[] = [];
   const logs: [string, string][] = [];
@@ -115,6 +117,25 @@ it('an end or a new entry reported while a pass is starting does not start again
   await Promise.all([first, h.queue.onRunEnded('run_b'), h.queue.onEntryQueued('s1')]);
   expect(h.starts).toHaveLength(1);
   expect(h.states()).toEqual(['started', 'queued']);
+});
+
+it('new requests that started or were refused before the queue are not started again', async () => {
+  // A new request keeps its start snapshot after it starts or is refused, ahead of the queue.
+  const h = harness({
+    entries: [
+      entry('sent', { intent: 'next', state: 'started', runId: 'run_b', commandId: 'cmd_sent' }),
+      entry('refused', { intent: 'next', state: 'refused', detail: 'no' }),
+      entry('e1'),
+    ],
+  });
+  await h.queue.onRunEnded('run_b');
+  expect(h.starts.map((request) => request.brief)).toEqual(['text e1']);
+  expect(h.states()).toEqual(['started', 'refused', 'started']);
+  // When that run ends, nothing is left to start.
+  for (const item of h.runs) item.status = 'succeeded';
+  await h.queue.onRunEnded('run_new_1');
+  expect(h.starts).toHaveLength(1);
+  expect(h.session.entries.map((item) => item.runId)).toEqual(['run_b', null, 'run_new_1']);
 });
 
 it('a queued entry with no open run starts; with an open run it waits', async () => {

@@ -552,3 +552,63 @@ it('accepts a start snapshot on a new request, and saving a non-queued entry sta
   expect(await s.entryOf(session.sessionId, later.entryId)).toMatchObject({ state: 'queued' });
   expect(s.runsOf(session.sessionId)).toHaveLength(1);
 });
+
+it('starts the queued request behind new requests that started or were refused', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const gate = s.hold();
+  const first = await s.ask(session.sessionId, 'cmd_first');
+  // The screen records its new requests with their snapshots ahead of the queue.
+  const sent = await s.send('POST', `/sessions/${session.sessionId}/entries`, {
+    intent: 'next',
+    text: 'First request.',
+    state: 'started',
+    runId: first.runId,
+    commandId: 'cmd_first',
+    start: START,
+  });
+  expect(sent.status).toBe(201);
+  const refused = await s.send('POST', `/sessions/${session.sessionId}/entries`, {
+    intent: 'next',
+    text: 'Refused by the server.',
+    state: 'refused',
+    detail: 'no',
+    start: START,
+  });
+  expect(refused.status).toBe(201);
+  const entry = await s.queue(session.sessionId, 'Behind both.', { start: START });
+  gate.open();
+  await s.ended(first.runId);
+  const started = await s.settledEntry(session.sessionId, entry.entryId);
+  expect(started).toMatchObject({ state: 'started' });
+  const second = await s.transport.getRunDefinition(started?.runId ?? '');
+  expect(second?.input.brief).toContain('Behind both.');
+  // Once that run ends too, the earlier new requests are not started again.
+  await s.ended(started?.runId ?? null);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(s.runsOf(session.sessionId)).toHaveLength(2);
+  expect(
+    (await s.repository.getSession(session.sessionId))?.entries.map((e) => [e.state, e.runId]),
+  ).toEqual([
+    ['started', first.runId],
+    ['refused', null],
+    ['started', started?.runId],
+  ]);
+});
+
+it('refuses a start snapshot on a steer over HTTP, and starts nothing', async () => {
+  const s = await setup();
+  const session = await s.session();
+  const bare: SessionEntryStart = { choice: { modelProfile: 'model-a' }, mode: 'mock' };
+  const refused = await s.send('POST', `/sessions/${session.sessionId}/entries`, {
+    intent: 'steer',
+    text: 'Steer with a snapshot.',
+    state: 'queued',
+    start: bare,
+  });
+  expect(refused.status).toBe(400);
+  expect(refused.body.error.message).toBe('a start request requires a valid new or queued request');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect((await s.repository.getSession(session.sessionId))?.entries).toEqual([]);
+  expect(s.runsOf(session.sessionId)).toHaveLength(0);
+});

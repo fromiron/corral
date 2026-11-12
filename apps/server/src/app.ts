@@ -378,7 +378,7 @@ const NewEntry = z.strictObject({
   commandId: Identifier.nullable().optional(),
   // The template an auto request ran with.
   auto: SessionEntryAuto.nullable().optional(),
-  // How the server starts a queued request when the session's run ends.
+  // The start request of a new or next request; the server starts only a `queued` entry with it.
   start: SessionEntryStart.optional(),
 });
 const EntryChange = z.strictObject({

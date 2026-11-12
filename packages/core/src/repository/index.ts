@@ -95,7 +95,10 @@ export interface SessionEntry {
   commandId?: string | null;
   /** The template an auto request ran with; absent for a chosen team. */
   auto?: SessionEntryAuto | null;
-  /** How a queued request starts when the server starts it; absent means only a person can. */
+  /**
+   * The start request of a new or next request. The server starts only an entry still
+   * `queued` with it; absent means only a person can start a queued one.
+   */
   start?: SessionEntryStart;
   /** The instruction this request was carried over from; it starts even without autoStart. */
   carriedFrom?: string;
