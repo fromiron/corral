@@ -60,15 +60,17 @@ const SECRETARY_RULES =
 const err = (error: Extract<MeetingResult, { ok: false }>['error'], message: string) =>
   ({ ok: false, error, message }) as const;
 
-/** Mentions written as `@name` (a participant's name or ID, or the secretary). */
+/** Mentions written as `@name` (a display name, alias, participant ID, or the secretary). */
 function mentionsIn(text: string, config: MeetingConfig, strict = true): string[] | null {
   const found = new Set<string>();
   const names = [
     ...[...SECRETARY_NAMES].map((name) => ({ name, participantId: SECRETARY_ID })),
-    ...config.participants.flatMap((participant) => [
-      { name: participant.name.toLowerCase(), participantId: participant.participantId },
-      { name: participant.participantId.toLowerCase(), participantId: participant.participantId },
-    ]),
+    ...config.participants.flatMap((participant) =>
+      [participant.name, ...(participant.aliases ?? []), participant.participantId].map((name) => ({
+        name: name.toLowerCase(),
+        participantId: participant.participantId,
+      })),
+    ),
   ].sort((a, b) => b.name.length - a.name.length);
   for (const match of text.matchAll(/(?<![\p{L}\p{N}_])@/gu)) {
     const rest = text.slice(match.index + 1).toLowerCase();
@@ -620,7 +622,13 @@ export class MeetingService {
           message,
           participants: meeting.config.participants
             .filter(({ participantId }) => participantIds.includes(participantId))
-            .map(({ participantId, name, prompt }) => ({ participantId, name, prompt })),
+            .map(({ participantId, name, aliases, role, prompt }) => ({
+              participantId,
+              name,
+              ...(aliases?.length ? { aliases } : {}),
+              ...(role?.trim() ? { role: role.trim() } : {}),
+              prompt,
+            })),
           history: history
             .slice(-12)
             .map(({ id, participantId, text }) => ({ id, participantId, text })),

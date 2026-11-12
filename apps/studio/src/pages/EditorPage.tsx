@@ -44,6 +44,7 @@ import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
+import { useImageProfiles } from '../workbench/useImageProfiles.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useRunMode } from '../workbench/useRunMode.ts';
 import { useRunStats } from '../workbench/useRunStats.ts';
@@ -232,6 +233,7 @@ function Editor({
     return view;
   }, [services, record.projectId, record.corralId]);
   const profiles = useModelProfiles();
+  const imageProfiles = useImageProfiles();
   const draft = useStore(editor, (s) => s.draft);
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
@@ -442,6 +444,7 @@ function Editor({
             <TeamEditor
               editor={editor}
               profiles={profiles}
+              imageProfiles={imageProfiles}
               teams={teams.references}
               resolveTeam={teams.resolve}
               resolvesHarness={resolvesHarness}

@@ -226,8 +226,9 @@ export interface ConversationRoster {
 
 /**
  * session chat is one lead agent that answers with its final reply. It keeps the auto
- * single role's tools, model, harness and reasoning, minus the output tools. Without a roster
- * it may call a helper on explicit request; with one, it leads that team by itself.
+ * single role's tools, model and harness, minus the output tools. Without a roster, per-request
+ * reasoning is judged on each of the lead's requests and the helper copies that choice; with a
+ * roster, it leads that team by itself.
  */
 export function conversationDefinition(
   input: Omit<AutoDefinitionInput, 'template'> & {
@@ -236,9 +237,12 @@ export function conversationDefinition(
 ): CorralDefinition {
   const { roster, ...rest } = input;
   const base = autoDefinition({ ...rest, template: 'single' });
+  // Team none has no start-model level, so per request is judged like automatic reasoning.
+  const perRequest = !roster && rest.choice.reasoning?.mode === 'route';
   const duty = roster ? leadTeamDuty(roster) : LEAD_DUTY;
   const roles = base.roles.map((role) => ({
     ...role,
+    ...(perRequest ? { reasoning: { mode: 'auto' as const } } : {}),
     name: 'Assistant',
     prompt: role.prompt.replace(WORDING.roles.worker.duty, duty),
     answer: 'final_reply' as const,

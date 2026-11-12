@@ -83,6 +83,7 @@ import {
 } from '../autoChoice.ts';
 import { ComposerInput } from '../ComposerInput.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
+import { compactTarget } from '../compactTarget.ts';
 import {
   type IntentChoice,
   type IntentLock,
@@ -150,6 +151,7 @@ export function Composer({
   onViewRun,
   queued,
   onChange,
+  onSent,
   reference,
   onReferenceUsed,
   runControlsOwnConfirmation = false,
@@ -167,6 +169,8 @@ export function Composer({
   onViewRun?: (runId: string) => void;
   queued: SessionEntry[];
   onChange: () => void;
+  /** The person sent. The conversation follows the end again. */
+  onSent?: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
   /** The active session view already has one RunActions confirmation host. */
@@ -192,6 +196,7 @@ export function Composer({
   const materialMessages = useTranslations('Materials');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
+  const tStatus = useTranslations('RunStatus');
   const services = useServices();
   const { repository, transport, mode, live } = services;
   const prefs = usePreferences();
@@ -750,6 +755,7 @@ export function Composer({
       };
     voiceSubmitting.current = true;
     setBusy(true);
+    onSent?.();
     try {
       if (utterance.delivery === 'queue') {
         await record({
@@ -842,6 +848,7 @@ export function Composer({
   const send = async () => {
     const body = text.trim();
     if (!body || busy || autoSaving.current || unavailable) return;
+    onSent?.();
     const submittedRevision = writeComposerDraft(session.sessionId, composerDraft);
     draftRevision.current = submittedRevision;
     setBusy(true);
@@ -1049,6 +1056,43 @@ export function Composer({
       }));
     if (receipt.error) setError(receipt.error.message);
     onChange();
+  };
+  const compactContext = async () => {
+    if (!ownActive) {
+      setError(tStatus('compactNoExecution'));
+      return;
+    }
+    if (ownActive.status === 'cancelling') {
+      setError(tStatus('compactCancelling'));
+      return;
+    }
+    const snapshot = await transport.getSnapshot(ownActive.runId).catch((failure: unknown) => {
+      setError(failure instanceof Error ? failure.message : tStatus('compactUnavailable'));
+      return null;
+    });
+    if (!snapshot || snapshot.projection.runId !== ownActive.runId) return;
+    const decision = compactTarget(snapshot.projection, null);
+    if (!decision.ok) {
+      setError(tStatus(decision.reason));
+      return;
+    }
+    if (decision.pending) {
+      setError(tStatus('compactPhase.queued'));
+      return;
+    }
+    const receipt = await transport
+      .sendCommand({
+        schemaVersion: '0.1',
+        commandId: newCommandId(),
+        runId: ownActive.runId,
+        type: 'compact_context',
+        expectedControlRevision: decision.expectedControlRevision,
+        payload: { executionId: decision.executionId, attemptNo: decision.attemptNo },
+      })
+      .catch((failure: unknown) => ({
+        error: { message: failure instanceof Error ? failure.message : String(failure) },
+      }));
+    if (receipt.error) setError(receipt.error.message);
   };
 
   const entryCommandKey = (entry: SessionEntry, resend: boolean) =>
@@ -1367,6 +1411,14 @@ export function Composer({
       disabled: ownActive?.status !== 'paused',
       hint: why(ownActive?.status === 'paused'),
       run: () => void runCommand('resume'),
+    },
+    {
+      id: 'run:compact',
+      title: tStatus('compactRequest'),
+      group: tc('groupRun'),
+      slash: 'compact',
+      keywords: ['context'],
+      run: () => void compactContext(),
     },
     {
       id: 'run:stop',

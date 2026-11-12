@@ -87,6 +87,7 @@ import {
   ToolRefusal,
 } from '@corral/core';
 import {
+  BundleBusyError,
   bundledManifest,
   type D1Engine,
   d1Threads,
@@ -641,8 +642,13 @@ async function createCorralServer(
   // Manual + Local readies the engine ahead of the first request; it never downloads.
   const prepareLocal = () => {
     const saved = currentEffortRouting(workspace.root);
-    if (saved.mode === 'manual' && saved.engine.kind === 'local')
-      localRouting?.prepare(saved.engine.device.threads);
+    if (
+      localRouting &&
+      saved.mode === 'manual' &&
+      saved.engine.kind === 'local' &&
+      localRouting.installed()
+    )
+      localRouting.prepare(saved.engine.device.threads);
   };
   if (localRouting) {
     resources.defer(() => localRouting.close());
@@ -1222,6 +1228,20 @@ async function createCorralServer(
   app.delete('/api/v1/local-ai/install', async (_request, reply) =>
     local ? await local.cancelInstall() : noLocalAi(reply),
   );
+  const bundleRefusal = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof BundleBusyError) return fail(reply, 'RESOURCE_CAPACITY', error.message);
+    throw error;
+  };
+  app.delete('/api/v1/local-ai', async (_request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (local.status().state === 'unsupported')
+      return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
+    try {
+      return await local.remove();
+    } catch (error) {
+      return bundleRefusal(reply, error);
+    }
+  });
   // ── decision APIs (features/decision-apis.md) ─────────────────────
   type DecisionApiParams = { Params: { id: string } };
   const listDecisionApis = () => decisionApis?.list() ?? decisionApiList();
@@ -1321,6 +1341,17 @@ async function createCorralServer(
   app.delete('/api/v1/effort-routing/local/install', async (_request, reply) => {
     if (!options.live) return routingDenied(reply);
     await localRouting?.cancelInstall();
+    return effortRoutingView();
+  });
+  app.delete('/api/v1/effort-routing/local', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    if (!localRouting?.status().supported)
+      return fail(reply, 'CAPABILITY_DENIED', 'the Local engine is not available on this computer');
+    try {
+      await localRouting.remove();
+    } catch (error) {
+      return bundleRefusal(reply, error);
+    }
     return effortRoutingView();
   });
   app.post('/api/v1/effort-routing/local/start', async (_request, reply) => {
