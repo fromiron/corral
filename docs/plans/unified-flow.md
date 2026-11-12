@@ -431,15 +431,15 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 완료 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 대기 |
-| B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 리뷰 중 |
+| B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 재검토 중(`flow/b6-interrupt-2`) |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 리뷰 중 |
-| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 구현 중(U2 브랜치 위) |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재검토 중 |
+| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 리뷰 중(U2 브랜치 위) |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
@@ -758,6 +758,11 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U3 (행의 모양).** 머리 줄이 곧 작업 과정을 여닫는 줄이다: 여닫는 표식 · 역할 · 상태 · 경과 · 과정의 셈, 오른쪽 끝에 실행 번호. "작업 과정" 이름표 줄을 따로 두지 않는다(§4.4 그림의 두 줄을 한 줄로 합친다). 대화에서 작업 과정은 기본이 닫힘이고 밀도가 `detailed`이거나 사람이 누를 때만 열린다. 실행이 시작되거나 끝난다고 저절로 여닫지 않는다(열린 과정이 본문 위에서 자라면 본문이 밀린다). 실패한 도구·실행 단위는 셈 끝의 "실패 n"이 알리고 내용은 과정 안에 있다. 끝맺지 못한 턴의 이유·실패 글·`endActions`는 본문의 맨 끝 블록 하나다(배너 면 없음). 꼬리 줄은 값이 있는 것만 쓰고 줄표를 쓰지 않는다. 답이 하나면 그 답의 아이콘 동작(복사·결과 열기)이 꼬리 줄 안에 온다(답 아래 줄을 하나 더 두지 않는다).
 - **U4 (U3가 남긴 것).** U3는 `ApprovalPanel`을 없애지 않고 행의 세 구역 밖, 꼬리 줄 다음으로 옮겨 둔다(통합 브랜치에서 승인이 끊기지 않게). U4가 그것을 `RunMessage`에서 빼고 타임라인 끝의 `PendingTray`로 옮긴다.
 - **U7 (면은 하나).** 컴포저의 올라온 면은 열 너비의 `Elevated` 카드 하나다. 활동 바, 칩, 입력, 도구 줄이 그 카드 안에 있고 입력 상자는 자기 테두리를 갖지 않는다. 세션 누계 줄은 카드 아래에 온다. U2가 만든 컴포저 구역 자체는 면이 아니다(배경과 같은 바탕, 위쪽으로 짧게 옅어지는 가림뿐이다).
+- **U2 (리뷰에서 정한 것).** 타임라인은 항목 수와 무관하게 가상화 한 방식이다(마운트된 행은 흐름 안, 창 밖은 목록의 위·아래 padding). 가상화를 없앤 첫 구현은 200개 이상에서 쓸 수 없게 느려 되돌렸다. 컴포저 구역은 면이 아니다: 페이지 바탕(`--chat-floor`)과 위쪽 가림(`data-composer-fade`)뿐이다.
+- **U3 (리뷰에서 정한 것).** 답을 기다리는 표시는 진행 중 단계가 도구이면 그 이름, 모델 요청이거나 단계가 없으면 글자 없이 킷 표시만 쓴다(상태 이름을 쓰지 않는다). 꼬리 줄의 결과는 접힌 결과 블록으로 따로 그려지는 것만 센다(본문에 바로 보이는 답은 세지 않는다). 변경은 파일 쓰기 도구 호출 수이고 검사는 꼬리 줄에 없다(투영에 근거가 없다). 끝맺음 블록의 이유 줄은 머리 줄을 되풀이하면(`cancel_confirmed`, 답하는 역할의 `execution_failed`) 그리지 않는다. 실패한 턴에서 해제된 본문의 글은 사라진다(본문 수명 계약이 우선이다). 사람이 고른 과정 열림 상태와 실행의 마지막 뷰는 모듈 메모리에 기억해 행이 창 밖에서 돌아와도 같은 높이로 그린다. 머리 줄의 셈은 "N단계"다.
+- **U7 (U3가 남긴 것).** 상단 바 pill(`DockRunControls`)은 상태 이름을 접근 이름으로만 갖는다. U7이 그 부품을 지울 때 그 접근 이름을 보던 단언(`DockRunControls.test.tsx`, `ApprovalWaiting.once.test.tsx`, `run-page.spec.ts`, `chat-widgets.spec.ts`)을 활동 바로 옮긴다. 컴포저 줄의 "Succeeded · Last run"은 실행 행이 화면에 보이면 상태 이름을 쓰지 않는다.
+- **U5·U6 (B6가 남긴 것).** 끊긴 호출은 투영의 모델 호출 기록 `interrupted: true`로 안다(`model.finished.interrupted`). 끊긴 출력은 그 호출의 응답으로 저장되므로 화면이 "중단된 출력"으로 표시하려면 이 값을 본다. 요청을 준비하는 중이거나 permit을 기다리는 중의 끼어들기는 끊지 않고 그 요청에 실린다(그 호출에는 `interrupted`가 없다). 그때 메타 줄은 "끼어듦 · 응답을 끊고 전달됨"이 아니라 읽힘으로 보여야 한다.
+- **B6 (남긴 한계).** 모델은 다음 요청에서 자기 끊긴 글을 보지 못한다(공급자 변환이 끊긴 assistant 메시지를 통째로 뺀다). 컨텍스트 초과 복구 중에 지시가 오면 재준비가 압축 결과를 버린다(B6 이전부터 있던 동작). 끊긴 호출은 무진전 턴으로 세지 않는다.
 
 ### V2 최종 장면
 - 대상: `apps/studio/e2e/flow/{idle,multi-agent,join-interrupt,awaiting,citation,sidebar,meeting}.spec.ts`.
