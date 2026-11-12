@@ -1,5 +1,5 @@
 import { canReadArtifactBody, type RunProjection, type StoredConversationTurn } from '@corral/core';
-import { createRunSession } from '@corral/react';
+import { createRunSession, type RunSessionState } from '@corral/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
@@ -14,8 +14,12 @@ export function useCorralRun(
 ) {
   const { transport, readHistory, runFor, retainRun } = useServices();
   const own = useMemo(() => {
-    void runId;
-    return createRunSession(transport);
+    const session = createRunSession(transport);
+    // A row the timeline unmounted off screen comes back with what it last showed, at the
+    // same height, while its record is read again.
+    const kept = runViews.get(runId);
+    if (kept) session.setState(kept.view);
+    return session;
   }, [transport, runId]);
   // WorkTab owns the live store and its transport. A card may mount before that owner's
   // open() resolves; starting an independent subscription during that gap duplicates it.
@@ -32,7 +36,10 @@ export function useCorralRun(
   const [conversation, setConversation] = useState<{
     runId: string;
     turn: StoredConversationTurn | null;
-  } | null>(null);
+  } | null>(() => {
+    const kept = runViews.get(runId);
+    return kept ? { runId, turn: kept.turn } : null;
+  });
   const conversationTurn = !live && conversation?.runId === runId ? conversation.turn : null;
   useEffect(() => {
     if (live) {
@@ -130,7 +137,10 @@ export function useCorralRun(
   const current = state.runId === runId ? state : null;
   // A finishing turn swaps the live store for a finished snapshot that loads asynchronously.
   // Keep the last loaded view of this run meanwhile, so its work log stays mounted.
-  if (current?.projection) last.current = { runId, store, state: current };
+  if (current?.projection) {
+    last.current = { runId, store, state: current };
+    keepRunView(runId, current, conversationTurn);
+  }
   const kept = last.current;
   if (!current?.projection && !current?.streamError && kept?.runId === runId)
     return { store: kept.store, state: kept.state, conversationTurn, bodyMetadataCurrent };
@@ -140,6 +150,42 @@ export function useCorralRun(
     conversationTurn,
     bodyMetadataCurrent,
   };
+}
+
+type RunState = RunSessionState;
+type KeptView = {
+  source: RunState;
+  turn: StoredConversationTurn | null;
+  view: Pick<
+    RunState,
+    'runId' | 'projection' | 'definition' | 'events' | 'streams' | 'artifactTexts'
+  >;
+};
+
+// What recently shown runs last showed, newest kept. It outlives the row, not the page.
+const RUN_VIEW_LIMIT = 64;
+const runViews = new Map<string, KeptView>();
+
+function keepRunView(runId: string, state: RunState, turn: StoredConversationTurn | null) {
+  const prior = runViews.get(runId);
+  if (prior?.source === state && prior.turn === turn) return;
+  const { projection, definition, events, streams, artifactTexts } = state;
+  runViews.delete(runId);
+  runViews.set(runId, {
+    source: state,
+    turn,
+    view: { runId, projection, definition, events, streams, artifactTexts },
+  });
+  while (runViews.size > RUN_VIEW_LIMIT) {
+    const oldest = runViews.keys().next().value;
+    if (oldest === undefined) break;
+    runViews.delete(oldest);
+  }
+}
+
+/** Forgets the kept run views; tests start from none. */
+export function resetRunViews() {
+  runViews.clear();
 }
 
 /** A late archive read cannot restore a body already confirmed as released for this Run. */

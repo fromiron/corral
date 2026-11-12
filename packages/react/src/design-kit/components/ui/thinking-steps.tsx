@@ -35,6 +35,10 @@ import { Badge } from './badge.tsx';
 /** Open state of the nearest ThinkingSteps root, for the header trigger/panel. */
 const ThinkingStepsOpenContext = createContext(false);
 
+/** True while a panel that mounted open is still snapping to its first height:
+ *  steps that arrive with it are already there and must not grow in. */
+const ArrivedOpenContext = createContext(false);
+
 interface TriggerRowProps extends HTMLAttributes<HTMLButtonElement> {
   open: boolean;
   children: ReactNode;
@@ -206,7 +210,9 @@ function CollapsePanel({ open, children }: CollapsePanelProps) {
                   typeClass('body', compactStep ? 'compact' : 'default'),
                 )}
               >
-                {children}
+                <ArrivedOpenContext.Provider value={needsSnap}>
+                  {children}
+                </ArrivedOpenContext.Provider>
               </div>
             </motion.div>
           </div>
@@ -345,6 +351,16 @@ function ThinkingStep({
   const shape = useShape();
   const sizeClasses = useSize();
   const [stepRef, stepHeight] = useStepHeight();
+  // A step that mounts with an already-open panel (a row remounted into view)
+  // keeps its natural height until measured, then snaps once; later steps grow in.
+  const arrivedOpen = useContext(ArrivedOpenContext);
+  const [arrived] = useState(arrivedOpen);
+  const [snap, setSnap] = useState(arrivedOpen);
+  useEffect(() => {
+    if (!snap || stepHeight === null) return;
+    const frame = requestAnimationFrame(() => setSnap(false));
+    return () => cancelAnimationFrame(frame);
+  }, [snap, stepHeight]);
 
   if (status === 'pending') return null;
 
@@ -354,13 +370,13 @@ function ThinkingStep({
     /* Outer animates height; inner fades in and is the measured element. */
     <motion.div
       className={cn('relative z-10 overflow-hidden', className)}
-      initial={{ height: 0 }}
-      animate={{ height: stepHeight ?? 0 }}
-      transition={spring.slow}
+      initial={{ height: arrived ? 'auto' : 0 }}
+      animate={{ height: stepHeight ?? (arrived ? 'auto' : 0) }}
+      transition={snap ? { duration: 0 } : spring.slow}
     >
       <motion.div
         ref={stepRef}
-        initial={{ opacity: 0 }}
+        initial={arrived ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ ...tween.slow, delay }}
       >

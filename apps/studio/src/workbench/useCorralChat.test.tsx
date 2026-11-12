@@ -25,12 +25,13 @@ vi.mock('./readRunView.ts', () => ({
     });
   },
 }));
-const { useCorralRun } = await import('./useCorralChat.ts');
+const { resetRunViews, useCorralRun } = await import('./useCorralChat.ts');
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
+  resetRunViews();
 });
 
 function projection(runId: string, status: 'running' | 'succeeded') {
@@ -143,6 +144,43 @@ it('a failed finished read shows its error instead of the kept live view', async
   await f.render('run', false);
   await act(async () => fixture.read?.reject(new Error('read failed')));
   expect(f.latest()).toEqual({ runId: 'run', status: null, error: 'read failed' });
+});
+
+it('a row mounted again shows what it last showed on its first render, then reads again', async () => {
+  const f = await mount();
+  await f.render('run', false);
+  await act(async () =>
+    fixture.read?.resolve({
+      runId: 'run',
+      projection: resultProjection(true),
+      artifactTexts: { result: 'Loaded answer' },
+      conversationTurn: { runId: 'run', answer: 'Kept answer' },
+    }),
+  );
+  expect(f.latest()).toMatchObject({ status: 'succeeded', answer: 'Kept answer' });
+  // The timeline unmounts the row off screen, then mounts it again.
+  await disposals.splice(0)[0]?.();
+  const first: { status: string | null; texts: Record<string, string>; answer: string | null }[] =
+    [];
+  function Again() {
+    const { state, conversationTurn } = useCorralRun('run', false, false);
+    first.push({
+      status: state.projection?.status ?? null,
+      texts: state.artifactTexts,
+      answer: conversationTurn?.answer ?? null,
+    });
+    return null;
+  }
+  const reads = fixture.reads;
+  const root = createRoot(document.createElement('div'));
+  disposals.push(async () => act(async () => root.unmount()));
+  await act(async () => root.render(<Again />));
+  expect(first[0]).toEqual({
+    status: 'succeeded',
+    texts: { result: 'Loaded answer' },
+    answer: 'Kept answer',
+  });
+  expect(fixture.reads).toBe(reads + 1);
 });
 
 it('another run never shows the previous run as its own', async () => {

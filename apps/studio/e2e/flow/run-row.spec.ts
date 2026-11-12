@@ -9,7 +9,9 @@ import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 // The run row's fixed parts (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 3): the
 // head line, the body's top edge and the tail line hold their place within 1px while (a) the
 // reply's first words replace the wait for them and (b) the run ends after its last words; the
-// head line and the body's top edge hold while (c) a run fails after its words.
+// head line and the body's top edge hold while (c) a run fails after its words. A log the
+// person opened stays open, at the same height on every frame, when the windowed timeline
+// unmounts its row off screen and mounts it again.
 // The reply is one line long, so the body does not grow in either interval: anything that moves
 // is the row's own structure. Intervals are bounded by held responses, as in the baseline.
 
@@ -25,10 +27,11 @@ const probeOptions = {
 };
 
 type PartShift = Record<string, { y: number; x: number } | null>;
+type Remount = { heightBefore: number; heightsAfter: number[]; sequence: number[] };
 
-function record(name: string, shift: PartShift) {
+function record(name: string, shift: PartShift | Remount) {
   mkdirSync(OUT, { recursive: true });
-  const results: Record<string, PartShift> = existsSync(RESULTS)
+  const results: Record<string, PartShift | Remount> = existsSync(RESULTS)
     ? JSON.parse(readFileSync(RESULTS, 'utf8'))
     : {};
   results[name] = shift;
@@ -164,6 +167,101 @@ test('the run row holds its lines from the first words to the end', async ({ pag
     await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
   });
   expect(corral.errors).toEqual([]);
+});
+
+test('an opened log stays open, at the same height, when its row leaves the window and returns', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  corral.fake?.setResponses([fauxAssistantMessage('A short answer on one line.')]);
+  await corral.open('/projects/default');
+  await newConversation(page);
+  await requestBox(page).fill('A request');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const row = page.locator('[data-chat-item]').filter({ has: page.getByTestId('turn-run') });
+  await expect(row.getByTestId('chat-result')).toContainText('A short answer on one line.', {
+    timeout: 30_000,
+  });
+  const item = (await row.getAttribute('data-chat-item')) as string;
+  const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
+  // Later requests that never ran, enough to push the run's row out of the window.
+  await page.evaluate(async (id) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    for (let index = 0; index < 64; index += 1) {
+      const response = await fetch(`/api/v1/sessions/${id}/entries`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({
+          intent: 'next',
+          text: `Later request ${index + 1}. ${'Long enough to wrap over several lines. '.repeat(4)}`,
+          state: 'refused',
+        }),
+      });
+      if (!response.ok) throw new Error(`filler entry: ${response.status}`);
+    }
+  }, sessionId);
+  const box = page.getByTestId('chat-timeline');
+  const target = page.locator(`[data-chat-item="${item}"]`);
+  await page.reload();
+  await expect(page.locator('[data-chat-item]').first()).toBeVisible();
+  await waitForStill(page);
+  // Up to the start by the wheel, as a person reads back (so the timeline stops following).
+  await box.hover({ position: { x: 16, y: 200 } });
+  for (let step = 0; step < 40 && !(await target.isVisible()); step += 1)
+    await page.mouse.wheel(0, -2000);
+  await expect(target).toBeVisible();
+  await target.scrollIntoViewIfNeeded();
+  await waitForStill(page);
+  // The person opens the run's log.
+  const toggle = target.locator('[data-chat-part="head"] button[aria-expanded]');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await waitForStill(page);
+  const before = (await target.boundingBox())?.height ?? 0;
+  expect(before).toBeGreaterThan(0);
+  // Away to the end: the row leaves the window and unmounts (focus leaves it first, since a row
+  // holding focus may be kept).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (let step = 0; step < 40 && (await target.count()) > 0; step += 1)
+    await page.mouse.wheel(0, 2000);
+  await expect(target).toHaveCount(0);
+  // Back by the wheel: the row's height on every frame from its return until it is still.
+  await page.evaluate((selector) => {
+    const holder = window as unknown as { __rowHeights?: number[]; __rowStop?: boolean };
+    holder.__rowHeights = [];
+    holder.__rowStop = false;
+    const frame = () => {
+      const element = document.querySelector(selector);
+      if (element) holder.__rowHeights?.push(element.getBoundingClientRect().height);
+      if (!holder.__rowStop) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }, `[data-chat-item="${item}"]`);
+  for (let step = 0; step < 40 && !(await target.isVisible()); step += 1)
+    await page.mouse.wheel(0, -2000);
+  await expect(target).toBeVisible();
+  await waitForStill(page);
+  await page.screenshot({ path: join(SHOTS, 'remount-after.png') });
+  const heights = await page.evaluate(() => {
+    const holder = window as unknown as { __rowHeights?: number[]; __rowStop?: boolean };
+    holder.__rowStop = true;
+    return holder.__rowHeights ?? [];
+  });
+  mkdirSync(OUT, { recursive: true });
+  record('remount', {
+    heightBefore: before,
+    heightsAfter: [Math.min(...heights), Math.max(...heights)],
+    sequence: heights.filter((value, index) => index === 0 || value !== heights[index - 1]),
+  });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(heights.length).toBeGreaterThan(0);
+  expect(Math.max(...heights) - Math.min(...heights), 'height over the return').toBeLessThanOrEqual(
+    1,
+  );
+  expect(Math.abs((heights[0] ?? 0) - before), 'height right after the return').toBeLessThanOrEqual(
+    1,
+  );
 });
 
 test('a run that fails after its words holds its head and its body’s top edge', async ({
