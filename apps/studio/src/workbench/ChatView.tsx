@@ -1,5 +1,7 @@
 import {
   Button,
+  cn,
+  Elevated,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSub,
@@ -8,11 +10,11 @@ import {
   Tooltip,
 } from '@corral/react/design-kit';
 import { ArrowDown } from '@corral/react/icons';
-import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { changePreferences, preferences } from './preferences.ts';
+import { ConnectionNotice } from './session/SessionConnection.tsx';
 
 /**
  * How much of each reply the conversation shows; a display preference kept in the page's menu
@@ -120,6 +122,10 @@ export function ChatView({
   const t = useTranslations('Desktop');
   const centered = centerEmpty && items.length === 0 && !expandedHeader;
   const headerInFlow = !expandedHeader && !centered;
+  // With a timeline in view, the composer lies over its bottom edge instead of below it.
+  const floating = !centered && !expandedHeader;
+  const view = useRef<HTMLDivElement>(null);
+  const surface = useRef<HTMLDivElement>(null);
   const timeline = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -138,27 +144,11 @@ export function ChatView({
   const touchY = useRef<number | null>(null);
   const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
-  const [focused, setFocused] = useState<string | null>(null);
-  const virtualized = items.length > 40;
-  const rows = useVirtualizer({
-    count: items.length,
-    enabled: virtualized,
-    getScrollElement: () => timeline.current,
-    estimateSize: () => 260,
-    getItemKey: (index) => items[index]!.id,
-    overscan: 4,
-    anchorTo: 'end',
-    followOnAppend: true,
-    rangeExtractor: (range) => {
-      const indices = defaultRangeExtractor(range);
-      const index = focused ? items.findIndex((item) => item.id === focused) : -1;
-      if (index >= 0 && !indices.includes(index)) indices.push(index);
-      return indices.sort((a, b) => a - b);
-    },
-  });
+  // Every row is laid out at its real size, however many there are (one layout for every
+  // length: a list virtualized past some count would re-measure rows and move them).
   const position = useRef<() => void>(() => {});
-  const current = useRef({ items, rows, virtualized });
-  current.current = { items, rows, virtualized };
+  const current = useRef({ items });
+  current.current = { items };
   useLayoutEffect(() => {
     const box = timeline.current;
     const body = content.current;
@@ -186,7 +176,7 @@ export function ChatView({
     }
     position.current = () => {
       if (box.hidden) return;
-      const { items, rows, virtualized } = current.current;
+      const { items } = current.current;
       const anchor = restoreAnchor.current ?? (!follow.current ? readingAnchor.current : null);
       if (anchor && items.some((item) => item.id === anchor.id)) {
         const row = [...body.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
@@ -196,11 +186,7 @@ export function ChatView({
           box.scrollTop +=
             row.getBoundingClientRect().top - box.getBoundingClientRect().top - anchor.offset;
           restoreTop.current = null;
-        } else if (virtualized)
-          rows.scrollToIndex(
-            items.findIndex((item) => item.id === anchor.id),
-            { align: 'start' },
-          );
+        }
       } else if (restoreTop.current !== null) {
         box.scrollTop = restoreTop.current;
         if (box.scrollHeight - box.clientHeight >= restoreTop.current) restoreTop.current = null;
@@ -240,10 +226,22 @@ export function ChatView({
     // The same owner restores the reader's row/offset or follows the end in both cases.
     const port = new ResizeObserver(() => position.current());
     port.observe(box);
+    // A row that renders on its own (a streamed reply, a run's state) is placed in the task
+    // that changed it, before the next frame, rather than one frame later by the observer.
+    const grown = new MutationObserver(() => position.current());
+    grown.observe(body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      // A collapse animating its height writes its style.
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden', 'open'],
+    });
     window.addEventListener('pagehide', remember);
     return () => {
       observer.disconnect();
       port.disconnect();
+      grown.disconnect();
       window.removeEventListener('pagehide', remember);
       remember();
     };
@@ -251,6 +249,43 @@ export function ChatView({
   useLayoutEffect(() => {
     position.current();
   });
+  // The timeline keeps the composer's height as its bottom space. A change is applied in the
+  // same task that made it (a mutation is seen before the next frame), so following the end
+  // stays at the end and a reader's rows never move; resizing covers what no mutation shows.
+  useLayoutEffect(() => {
+    const root = view.current;
+    const face = surface.current;
+    const box = timeline.current;
+    if (!root || !face || !box) return;
+    let height = -1;
+    let gutter = -1;
+    const fit = () => {
+      const nextHeight = floating ? face.getBoundingClientRect().height : 0;
+      const nextGutter = floating ? box.offsetWidth - box.clientWidth : 0;
+      if (nextGutter !== gutter) {
+        gutter = nextGutter;
+        root.style.setProperty('--timeline-gutter', `${nextGutter}px`);
+      }
+      if (nextHeight === height) return;
+      height = nextHeight;
+      root.style.setProperty('--composer-h', `${nextHeight}px`);
+      position.current();
+    };
+    fit();
+    const resized = new ResizeObserver(fit);
+    resized.observe(face);
+    const mutated = new MutationObserver(fit);
+    mutated.observe(face, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+    return () => {
+      resized.disconnect();
+      mutated.disconnect();
+    };
+  }, [floating]);
   const followEnd = () => {
     restoreTop.current = null;
     restoreAnchor.current = null;
@@ -286,10 +321,9 @@ export function ChatView({
     follow.current = false;
     restoreTop.current = null;
     restoreAnchor.current = { id: messageId, offset: 0 };
-    if (virtualized) rows.scrollToIndex(index, { align: 'start' });
     position.current();
     jumped.current = messageId;
-  }, [messageId, items, rows, virtualized]);
+  }, [messageId, items]);
   const stopRestoring = () => {
     restoreTop.current = null;
     restoreAnchor.current = null;
@@ -345,6 +379,7 @@ export function ChatView({
 
   return (
     <div
+      ref={view}
       data-chat-view
       data-empty-centered={centered || undefined}
       className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col ${centered ? 'overflow-y-auto' : 'overflow-clip'}`}
@@ -367,12 +402,17 @@ export function ChatView({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the scrolling conversation must be keyboard reachable
         tabIndex={0}
         aria-label={t('conversation')}
-        className={`chat-timeline min-h-0 overscroll-contain ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
+        // A focused row scrolls into view above the composer, not behind it.
+        className={`chat-timeline min-h-0 overscroll-contain scroll-pb-(--composer-h) ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
         onWheel={(event) => {
           if (!(event.deltaY < 0)) return;
           const box = timeline.current;
-          if (!box || box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
+          // The scroll a wheel causes can land before its event, already at the top; what
+          // counts is that the conversation could move up, not where it is now.
+          if (!box || box.scrollHeight <= box.clientHeight || scrollingNested(event.target, box))
+            return;
           stopRestoring();
+          rememberPlace(box);
         }}
         onPointerDown={(event) => {
           // A scrollbar drag is navigation; clicking message actions is not.
@@ -421,7 +461,8 @@ export function ChatView({
       >
         <div
           ref={content}
-          className={`mx-auto w-full max-w-(--chat-column-width) px-4 sm:px-6 ${centered ? '' : 'pt-6 pb-2'}`}
+          // The last row ends above the composer, which lies over the bottom of this area.
+          className={`mx-auto w-full max-w-(--chat-column-width) px-4 sm:px-6 ${centered ? '' : 'pt-6 pb-[calc(var(--composer-h)+0.5rem)]'}`}
         >
           {header && headerInFlow ? (
             // One line in the flow: it scrolls away with the messages and never covers them.
@@ -433,59 +474,41 @@ export function ChatView({
             </div>
           ) : null}
           {items.length ? (
-            <ol
-              aria-label={t('conversation')}
-              style={
-                virtualized ? { height: rows.getTotalSize(), position: 'relative' } : undefined
-              }
-            >
-              {(virtualized
-                ? rows.getVirtualItems().map((row) => ({ index: row.index, start: row.start }))
-                : items.map((_, index) => ({ index, start: 0 }))
-              ).map(({ index, start }) => {
-                const item = items[index]!;
-                return (
-                  <li
-                    key={item.id}
-                    aria-posinset={index + 1}
-                    aria-setsize={items.length}
-                    data-index={index}
-                    data-chat-item={item.id}
-                    data-latest={index === items.length - 1 || undefined}
-                    aria-current={item.id === messageId ? 'location' : undefined}
-                    className={
-                      item.id === messageId ? 'rounded-lg ring-2 ring-focus-ring' : undefined
-                    }
-                    ref={virtualized ? rows.measureElement : undefined}
-                    onFocusCapture={() => setFocused(item.id)}
-                    onBlurCapture={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null);
-                    }}
-                    style={
-                      virtualized
-                        ? {
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            transform: `translateY(${start}px)`,
-                          }
-                        : undefined
-                    }
-                  >
-                    {item.content}
-                  </li>
-                );
-              })}
+            <ol aria-label={t('conversation')}>
+              {items.map((item, index) => (
+                <li
+                  key={item.id}
+                  data-index={index}
+                  data-chat-item={item.id}
+                  data-latest={index === items.length - 1 || undefined}
+                  aria-current={item.id === messageId ? 'location' : undefined}
+                  className={
+                    item.id === messageId ? 'rounded-lg ring-2 ring-focus-ring' : undefined
+                  }
+                >
+                  {item.content}
+                </li>
+              ))}
             </ol>
           ) : (
             children
           )}
         </div>
       </section>
-      <div
+      <Elevated
+        ref={surface}
+        offset={1}
         data-testid="chat-composer"
-        className={`chat-composer relative flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-4 sm:px-6 ${centered ? 'mb-auto pt-6' : 'pt-2'}`}
+        data-composer-surface={floating ? 'floating' : 'inline'}
+        className={cn(
+          'chat-composer flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-4 sm:px-6',
+          floating
+            ? // The bottom edge of the conversation, over its scrolling area and inside the view;
+              // the scrollbar beside it stays uncovered.
+              'absolute bottom-0 left-0 right-(--timeline-gutter) z-10 pt-2'
+            : // The home and the expanded records place the composer in the flow, unraised.
+              `relative bg-transparent shadow-none ${centered ? 'mb-auto pt-6' : 'pt-2'}`,
+        )}
       >
         {!expandedHeader && !atEnd ? (
           // Centered over the composer, where the conversation continues.
@@ -504,9 +527,13 @@ export function ChatView({
           </div>
         ) : null}
         <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">
-          <div className="mx-auto w-full max-w-(--chat-composer-width)">{composer}</div>
+          <div className="mx-auto w-full max-w-(--chat-composer-width)">
+            {/* Where the activity bar will say it (U7); until then the same line, first. */}
+            <ConnectionNotice />
+            {composer}
+          </div>
         </div>
-      </div>
+      </Elevated>
       {aside === undefined ? null : (
         <aside data-testid="chat-overview" className="chat-overview">
           {aside}

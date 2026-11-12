@@ -7,6 +7,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ChatView } from './ChatView.tsx';
+import { SessionConnectionContext } from './session/SessionConnection.tsx';
 
 const resizeCallbacks = new Set<(entries?: unknown) => void>();
 const disposals: (() => Promise<void>)[] = [];
@@ -795,4 +796,221 @@ it('a downward key does not stop following the end', async () => {
   chat.metrics.height += 200;
   await chat.resize();
   expect(chat.top).toBe(chat.end());
+});
+
+/** The composer surface of a mounted conversation, with a height the test sets. */
+function composerFace(container: HTMLElement, initial: number) {
+  const face = container.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+  if (!face) throw new Error('Composer surface missing');
+  const size = { height: initial };
+  face.getBoundingClientRect = () =>
+    ({ top: 600 - size.height, bottom: 600, height: size.height }) as DOMRect;
+  const view = container.querySelector<HTMLElement>('[data-chat-view]');
+  if (!view) throw new Error('Conversation view missing');
+  return { face, size, space: () => view.style.getPropertyValue('--composer-h') };
+}
+
+/** Renders a plain conversation, optionally inside the session's connection. */
+async function mountPlain(
+  items: { id: string; content: React.ReactNode }[],
+  connection?: React.ComponentProps<typeof SessionConnectionContext.Provider>['value'],
+) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const view = (
+    <ChatView sessionId="plain" items={items} composer={<textarea aria-label="request" />} />
+  );
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        {connection === undefined ? (
+          view
+        ) : (
+          <SessionConnectionContext.Provider value={connection}>
+            {view}
+          </SessionConnectionContext.Provider>
+        )}
+      </IntlProvider>,
+    ),
+  );
+  return container;
+}
+
+it('the composer lies over the timeline’s bottom edge, which keeps the composer’s height as its space', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [
+      { id: 'turn-0', content: <p>Earlier</p> },
+      { id: 'turn-1', content: <p>Latest</p> },
+    ],
+  });
+  const composer = composerFace(chat.container, 180);
+  await chat.resize();
+  // Inside the conversation view, outside the scrolling timeline, and not the window's overlay.
+  expect(composer.face.closest('[data-chat-view]')).not.toBeNull();
+  expect(composer.face.closest('[data-testid="chat-timeline"]')).toBeNull();
+  expect(composer.face.className).toMatch(/(^|\s)absolute(\s|$)/);
+  expect(composer.face.className).not.toMatch(/(^|\s)fixed(\s|$)/);
+  expect(composer.space()).toBe('180px');
+  // The timeline's last row ends above it, and a focused row scrolls into view above it.
+  const content = chat.box.firstElementChild as HTMLElement;
+  expect(content.className).toContain('pb-[calc(var(--composer-h)+0.5rem)]');
+  expect(chat.box.className).toContain('scroll-pb-(--composer-h)');
+});
+
+it('while following the end, the composer growing or shrinking keeps the end in view', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({ items: liveTurn(['read'], 'Working') });
+  const composer = composerFace(chat.container, 160);
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  // The composer grows by 100 (a queued request, a lost connection), and so does the space.
+  composer.size.height = 260;
+  chat.metrics.height += 100;
+  await chat.resize();
+  expect(composer.space()).toBe('260px');
+  expect(chat.top).toBe(chat.end());
+  composer.size.height = 160;
+  chat.metrics.height -= 100;
+  await chat.resize();
+  expect(composer.space()).toBe('160px');
+  expect(chat.top).toBe(chat.end());
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).toBeNull();
+});
+
+it('while reading earlier messages, the composer changing height leaves them in place', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [
+      { id: 'turn-0', content: <p>Earlier</p> },
+      { id: 'turn-1', content: <p>Latest</p> },
+    ],
+  });
+  const composer = composerFace(chat.container, 160);
+  await chat.resize();
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
+    chat.top = 100;
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  for (const height of [260, 160, 300]) {
+    chat.metrics.height += height - composer.size.height;
+    composer.size.height = height;
+    await chat.resize();
+    expect(composer.space()).toBe(`${height}px`);
+    expect(chat.top).toBe(100);
+  }
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
+});
+
+it('an upward wheel whose scroll already reached the top stops following the end', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [{ id: 'turn-0', content: <p data-testid="streamed-text">words</p> }],
+  });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  // One wheel moves a short conversation to its top before the wheel event is handled.
+  await act(async () => {
+    chat.top = 0;
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
+  });
+  chat.metrics.height += 120;
+  await chat.resize();
+  expect(chat.top).toBe(0);
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
+});
+
+it('lays out every row the same way whatever the number of rows', async () => {
+  sessionStorage.clear();
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `turn-${index}`,
+      content: <p>Turn {index}</p>,
+    }));
+  const chat = await mountConversation({ items: rows(4) });
+  await chat.resize();
+  const layout = () => {
+    const list = chat.container.querySelector('[data-testid="chat-timeline"] ol');
+    if (!list) throw new Error('Conversation list missing');
+    return {
+      list: list.getAttribute('style'),
+      rows: [...list.children].map((row) => row.getAttribute('style')),
+    };
+  };
+  const few = layout();
+  expect(few.rows).toHaveLength(4);
+  for (const count of [40, 41, 60, 200]) {
+    await chat.update({ items: rows(count) });
+    await chat.resize();
+    const many = layout();
+    expect(many.list).toBe(few.list);
+    expect(many.rows).toHaveLength(count);
+    expect(new Set(many.rows)).toEqual(new Set(few.rows));
+  }
+});
+
+it('marks every timeline row with its item’s identity', async () => {
+  const items = [
+    { id: 'entry-user', content: <p>A request</p> },
+    { id: 'run-1', content: <section>A run</section> },
+    { id: 'notice-2', content: <div>Something else</div> },
+  ];
+  const container = await mountPlain(items);
+  const rows = [...container.querySelectorAll('[data-testid="chat-timeline"] ol > li')];
+  expect(rows.map((row) => row.getAttribute('data-chat-item'))).toEqual(
+    items.map((item) => item.id),
+  );
+  // What the scene probe reads: the timeline, and the composer surface around the input.
+  expect(container.querySelector('[data-testid="chat-timeline"]')).not.toBeNull();
+  expect(container.querySelector('[data-testid="chat-composer"] textarea')).not.toBeNull();
+});
+
+it('a lost connection is said at the top of the composer, never above or inside the timeline', async () => {
+  const retry = vi.fn();
+  const container = await mountPlain([{ id: 'entry', content: <p>reply</p> }], {
+    lost: true,
+    retry,
+  });
+  const alert = container.querySelector<HTMLElement>('[role="alert"]');
+  const timeline = container.querySelector('[data-testid="chat-timeline"]');
+  const composer = container.querySelector('[data-testid="chat-composer"]');
+  const input = container.querySelector('textarea');
+  if (!alert || !timeline || !composer || !input) throw new Error('Conversation fixture missing');
+  expect(alert.textContent).toContain(messages.Sessions.connectionLost);
+  expect(composer.contains(alert)).toBe(true);
+  expect(timeline.contains(alert)).toBe(false);
+  // After the timeline, first in the composer: where the activity bar will say it.
+  expect(timeline.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(alert.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await act(async () => {
+    alert.querySelector('button')?.click();
+  });
+  expect(retry).toHaveBeenCalledOnce();
+  // The session page no longer puts its own banner above the conversation.
+  const page = readFileSync(join(import.meta.dirname, '..', 'pages', 'SessionPage.tsx'), 'utf8');
+  expect(page).not.toContain("'connectionLost'");
+});
+
+it('says nothing about the connection while it holds', async () => {
+  const container = await mountPlain([{ id: 'entry', content: <p>reply</p> }], {
+    lost: false,
+    retry: () => {},
+  });
+  expect(container.querySelector('[role="alert"]')).toBeNull();
 });
