@@ -602,12 +602,18 @@ export function planSessionEntry(
 }
 
 /** A saved queue item has one start identity across tabs; model/history changes cannot clone it. */
-/** The queued request the server starts next: carried requests first, then the queue in order. */
+/**
+ * The queued requests in the order they start: carried requests first, in the order they were
+ * carried, then the rest in the order queued. The server and a screen use this one order.
+ */
+export function queuedEntriesInStartOrder(session: WorkSession): SessionEntry[] {
+  const queued = session.entries.filter((entry) => entry.state === 'queued');
+  return [...queued.filter((entry) => entry.carriedFrom), ...queued.filter((e) => !e.carriedFrom)];
+}
+
+/** The queued request the server starts next. */
 export function nextQueuedEntry(session: WorkSession): SessionEntry | undefined {
-  return (
-    session.entries.find((entry) => entry.state === 'queued' && entry.carriedFrom) ??
-    session.entries.find((entry) => entry.state === 'queued')
-  );
+  return queuedEntriesInStartOrder(session)[0];
 }
 
 export function queuedSessionCommandId(sessionId: string, entry: SessionEntry): string {

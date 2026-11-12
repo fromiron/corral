@@ -408,11 +408,11 @@ export interface CoordinatorDeps {
    */
   onRunEnded?: (runId: string) => void;
   /**
-   * Told after the commit when this process sees a directive of the run leave the wait for a
-   * request (delivered, or never delivered), with the committed projection. A host reads what
-   * to carry over from it (features/reins.md, "읽히지 못한 지시의 넘겨받기").
+   * Told once per commit, after it, when this process sees directives of the run expire unread,
+   * with the committed projection. A host reads what to carry over from it (features/reins.md,
+   * "읽히지 못한 지시의 넘겨받기").
    */
-  onDirectivesResolved?: (runId: string, projection: RunProjection) => void;
+  onDirectivesExpired?: (runId: string, projection: RunProjection) => void;
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -736,7 +736,7 @@ export class Coordinator {
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly onRunEnded: ((runId: string) => void) | undefined;
-  private readonly onDirectivesResolved:
+  private readonly onDirectivesExpired:
     | ((runId: string, projection: RunProjection) => void)
     | undefined;
   private readonly corrals: DefinitionSource | undefined;
@@ -795,7 +795,7 @@ export class Coordinator {
     this.gates = resolveGates(deps.admission);
     this.observers = deps.admission?.observers ?? [];
     this.onRunEnded = deps.onRunEnded;
-    this.onDirectivesResolved = deps.onDirectivesResolved;
+    this.onDirectivesExpired = deps.onDirectivesExpired;
     this.recover();
   }
 
@@ -3975,17 +3975,17 @@ export class Coordinator {
         void Promise.resolve().then(() => this.pump(subscriber));
       }
     }
-    const resolved = this.onDirectivesResolved;
+    const expired = this.onDirectivesExpired;
     if (
-      resolved &&
+      expired &&
       projection.directiveOrder.some(
         (id) =>
-          ['queued', 'attached_to_request'].includes(before.directives[id]?.status ?? '') &&
-          !['queued', 'attached_to_request'].includes(projection.directives[id]?.status ?? ''),
+          projection.directives[id]?.status === 'expired' &&
+          before.directives[id]?.status !== 'expired',
       )
     )
       void Promise.resolve()
-        .then(() => resolved(run.runId, projection))
+        .then(() => expired(run.runId, projection))
         .catch(() => {
           // The listener owns its failure; the directive's state is already committed.
         });

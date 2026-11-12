@@ -251,7 +251,7 @@ const projectionOf = (directives: ReturnType<typeof directiveView>[], target = '
 
 it('carries an unread directive to the front of the queue and starts it with the source start', async () => {
   const h = harness({ entries: [source(), entry('plain', { start: START })] });
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_1')]));
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')]));
   expect(h.starts).toHaveLength(1);
   expect(h.starts[0]).toMatchObject({ ...PERMITTED, brief: 'unread dir_1', sessionId: 's1' });
   const carried = h.session.entries.find((item) => item.carriedFrom === 'dir_1');
@@ -268,7 +268,7 @@ it('carries an unread directive to the front of the queue and starts it with the
 
 it('starts a carried entry with autoStart off, and not the plain entry behind it', async () => {
   const h = harness({ autoStart: false, entries: [source(), entry('plain', { start: START })] });
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_1')]));
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')]));
   expect(h.starts.map((request) => request.brief)).toEqual(['unread dir_1']);
   for (const item of h.runs) item.status = 'succeeded';
   await h.queue.onRunEnded('run_new_1');
@@ -280,7 +280,7 @@ it('starts a carried entry saved after the run end was already reported', async 
   const h = harness({ entries: [source()] });
   await h.queue.onRunEnded('run_b');
   expect(h.starts).toHaveLength(0);
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_1')]));
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')]));
   expect(h.starts.map((request) => request.brief)).toEqual(['unread dir_1']);
 });
 
@@ -289,7 +289,7 @@ it('a carried entry waits for an open run to end', async () => {
   const h = harness({ entries: [source()] });
   const open = h.runs.find((item) => item.runId === 'run_b');
   if (open) open.status = 'running';
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_1')]));
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')]));
   expect(h.starts).toHaveLength(0);
   expect(h.session.entries.find((item) => item.carriedFrom === 'dir_1')?.state).toBe('queued');
   if (open) open.status = 'succeeded';
@@ -300,15 +300,15 @@ it('a carried entry waits for an open run to end', async () => {
 it('carries nothing without the start of the request that started the run', async () => {
   const { start: _start, permissionMode: _mode, ...bare } = source();
   const h = harness({ entries: [bare] });
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_1')]));
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')]));
   expect(h.session.entries).toHaveLength(1);
   expect(h.starts).toHaveLength(0);
 });
 
 it('carries nothing for a failed target, a cancelled run or a directive already read', async () => {
   const h = harness({ entries: [source()] });
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_1')], 'failed'));
-  await h.queue.onDirectivesResolved(
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')], 'failed'));
+  await h.queue.onDirectivesExpired(
     'run_b',
     projectionOf([directiveView('dir_2', 'not_delivered'), directiveView('dir_3', 'delivered')]),
   );
@@ -320,42 +320,65 @@ it('the same directive reported twice is carried and started once', async () => 
   const h = harness({ entries: [source()], startDelayMs: 20 });
   const projection = projectionOf([directiveView('dir_1')]);
   await Promise.all([
-    h.queue.onDirectivesResolved('run_b', projection),
-    h.queue.onDirectivesResolved('run_b', projection),
+    h.queue.onDirectivesExpired('run_b', projection),
+    h.queue.onDirectivesExpired('run_b', projection),
     h.queue.onRunEnded('run_b'),
   ]);
-  await h.queue.onDirectivesResolved('run_b', projection);
+  await h.queue.onDirectivesExpired('run_b', projection);
   expect(h.session.entries.filter((item) => item.carriedFrom === 'dir_1')).toHaveLength(1);
   expect(h.starts).toHaveLength(1);
 });
 
-it('carries several directives in the order sent, ahead of the queue', async () => {
+it('carries a directive as soon as it expires, ahead of an earlier one still waiting', async () => {
   const h = harness({ entries: [source(), entry('plain', { start: START })] });
   const open = h.runs.find((item) => item.runId === 'run_b');
   if (open) open.status = 'running';
   // The later directive's target ended first; the earlier one is still waiting to be read.
   const later = directiveView('dir_late', 'expired', 'ex_2');
-  await h.queue.onDirectivesResolved(
+  await h.queue.onDirectivesExpired(
     'run_b',
     projectionOf([directiveView('dir_early', 'queued'), later], 'active'),
   );
-  expect(h.session.entries.some((item) => item.carriedFrom)).toBe(false);
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_early'), later]));
   expect(h.session.entries.filter((item) => item.carriedFrom).map((item) => item.text)).toEqual([
-    'unread dir_early',
     'unread dir_late',
   ]);
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_early'), later]));
+  expect(h.session.entries.filter((item) => item.carriedFrom).map((item) => item.text)).toEqual([
+    'unread dir_late',
+    'unread dir_early',
+  ]);
+  // Carried ones start in the order carried, ahead of the plain queue.
   if (open) open.status = 'succeeded';
   await h.queue.onRunEnded('run_b');
-  expect(h.starts.map((request) => request.brief)).toEqual(['unread dir_early']);
   for (const item of h.runs) item.status = 'succeeded';
   await h.queue.onRunEnded('run_new_1');
-  expect(h.starts.map((request) => request.brief)).toEqual(['unread dir_early', 'unread dir_late']);
+  for (const item of h.runs) item.status = 'succeeded';
+  await h.queue.onRunEnded('run_new_2');
+  expect(h.starts.map((request) => request.brief)).toEqual([
+    'unread dir_late',
+    'unread dir_early',
+    'text plain',
+  ]);
+});
+
+it('directives expiring together are carried in the order sent', async () => {
+  const h = harness({ entries: [source()] });
+  const open = h.runs.find((item) => item.runId === 'run_b');
+  if (open) open.status = 'running';
+  await h.queue.onDirectivesExpired(
+    'run_b',
+    projectionOf([directiveView('dir_1'), directiveView('dir_2'), directiveView('dir_3')]),
+  );
+  expect(h.session.entries.filter((item) => item.carriedFrom).map((item) => item.text)).toEqual([
+    'unread dir_1',
+    'unread dir_2',
+    'unread dir_3',
+  ]);
 });
 
 it('a carried entry whose start is refused is recorded refused, as any queued entry', async () => {
   const h = harness({ entries: [source()], refuseStart: true });
-  await h.queue.onDirectivesResolved('run_b', projectionOf([directiveView('dir_1')]));
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')]));
   expect(h.session.entries.find((item) => item.carriedFrom === 'dir_1')).toMatchObject({
     state: 'refused',
     runId: null,

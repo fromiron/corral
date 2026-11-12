@@ -147,8 +147,8 @@ export function createSessionQueue(deps: SessionQueueDeps) {
       const sessionId = deps.runs().find((run) => run.runId === runId)?.sessionId;
       return sessionId ? schedule(sessionId) : Promise.resolve();
     },
-    /** Called when this process sees directives of a run delivered or left undelivered. */
-    onDirectivesResolved(runId: string, projection: RunProjection): Promise<void> {
+    /** Called when this process sees directives of a run expire unread. */
+    onDirectivesExpired(runId: string, projection: RunProjection): Promise<void> {
       const sessionId = deps.runs().find((run) => run.runId === runId)?.sessionId;
       return sessionId
         ? schedule(sessionId, () => carry(sessionId, runId, projection))

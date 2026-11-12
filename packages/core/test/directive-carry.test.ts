@@ -17,6 +17,7 @@ import {
   InProcessTransport,
   type KeyValueStore,
   nextQueuedEntry,
+  queuedEntriesInStartOrder,
   type RunProjection,
   type SessionEntry,
   type SessionEntryStart,
@@ -41,7 +42,7 @@ function setup(options: { fail?: boolean } = {}) {
     store: new InMemoryRunStore(),
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),
-    onDirectivesResolved: (runId, projection) =>
+    onDirectivesExpired: (runId, projection) =>
       void resolved.push({
         runId,
         statuses: projection.directiveOrder.map((id) => projection.directives[id]?.status ?? ''),
@@ -144,7 +145,8 @@ it('does not carry a directive a cancelled run left undelivered', async () => {
   expect(projection.directives[directiveId ?? '']?.status).toBe('not_delivered');
   expect(carriedDirectives(projection)).toEqual([]);
   await flush();
-  expect(s.resolved.at(-1)).toEqual({ runId: s.runId, statuses: ['not_delivered'] });
+  // Only an expiry is reported.
+  expect(s.resolved).toEqual([]);
 });
 
 it('does not carry a directive from advice or the system', async () => {
@@ -200,8 +202,8 @@ it('a directive already read is not carried', async () => {
   expect(carriedDirectives(projection)).toEqual([]);
 });
 
-// The send order: an earlier user directive still waiting holds back the later ones.
-it('keeps the send order and waits behind an earlier directive still pending', () => {
+// Each directive is carried when it expires; those expiring together keep the send order.
+it('carries each directive as it expires, in send order, without waiting for earlier ones', () => {
   const view = (id: string, status: string, target: string) => ({
     directiveId: id,
     targetExecutionId: target,
@@ -226,7 +228,7 @@ it('keeps the send order and waits behind an earlier directive still pending', (
         d3: view('d3', 'expired', 'ex_b'),
       },
     }) as unknown as RunProjection;
-  expect(carriedDirectives(projection('queued'))).toEqual([]);
+  expect(carriedDirectives(projection('queued')).map((d) => d.directiveId)).toEqual(['d2', 'd3']);
   expect(carriedDirectives(projection('expired')).map((d) => d.directiveId)).toEqual([
     'd1',
     'd2',
@@ -315,6 +317,12 @@ it('a carried entry is the front of the queue, in the order carried', () => {
   expect(nextQueuedEntry(session([plain, carriedA, carriedB]))?.entryId).toBe('q2');
   expect(nextQueuedEntry(session([plain]))?.entryId).toBe('q1');
   expect(nextQueuedEntry(session([{ ...carriedA, state: 'started' }, plain]))?.entryId).toBe('q1');
+  const later = entry('q4', { intent: 'queue', state: 'queued' });
+  expect(
+    queuedEntriesInStartOrder(session([plain, carriedA, entry('s', {}), later, carriedB])).map(
+      (e) => e.entryId,
+    ),
+  ).toEqual(['q2', 'q3', 'q1', 'q4']);
 });
 
 it('records one carried entry per directive, however often it is carried', async () => {
