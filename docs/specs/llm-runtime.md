@@ -46,7 +46,7 @@ Checkpoint v2 reuses immutable message and artifact bodies through a versioned m
 
 Source closure follows owned finished tool records, not only toolResult messages still visible after compaction. The execution reuses successfully committed chunk/source references, while message snapshots and restored body hashes remain validated. Selecting one checkpoint does not hydrate every other checkpoint.
 
-Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings. The Settings screen that reads them is [설정의 모델 요청 이력](#설정의-모델-요청-이력).
+Usage reports retain reported/estimated/unknown provenance and nullable counts. Zero is not inferred from missing data. Subscription usage has no invented zero-dollar API price. Late usage completes the original attempt and its Run usage record without reviving tasks. History pages are bounded and do not load the whole ledger into Settings. The Settings screen that reads them is [Model request history in Settings](#model-request-history-in-settings).
 
 Chooser usage in the Run derives from the existing attempt ledger: one `usage.recorded` per prepared physical request, with its reported usage or null when unknown. No payload prepared means no usage record. Late usage fills only the matching record; past snapshots and choice text are not rewritten. Callers without a managed ledger record only reported usage. The chooser prompt and visible-text gate share a 4,096-byte JSON bound; model output allowance and reasoning are separate from that byte bound.
 
@@ -54,12 +54,12 @@ Each physical chooser attempt has 30 seconds from provider SDK dispatch to compl
 
 [Port notices](../../THIRD-PARTY-NOTICES/llm-runtime-ports.md) describe pinned DSH MIT and PI LGPL sources, modifications, corresponding source distribution and rebuild/replacement steps.
 
-## 설정의 모델 요청 이력
+## Model request history in Settings
 
-설정 → 모델 → **사용량** 탭을 선택하면 요청 이력의 첫 페이지를 읽는다. 호출은 `GET /api/v1/model-attempts`이고 `limit`은 50이다. 원장 전체를 읽지 않는다. 그 탭이 선택되기 전에는 읽지 않는다. 탭을 떠나갔다 다시 선택해도 저절로 다시 읽지 않는다. **새로고침**은 첫 페이지를 다시 읽고, **이전 요청 더 보기**는 다음 커서가 있을 때만 `before`로 다음 페이지를 이미 읽은 것 뒤에 붙인다.
+Selecting the **Usage** tab under Settings → Models reads the first page of request history with `GET /api/v1/model-attempts` and `limit` 50. It never reads the whole ledger. Nothing is read before the tab is selected, and leaving the tab and selecting it again does not reread on its own. **Refresh** rereads the first page; **Load older requests** appears only when there is a next cursor and appends the next page, read with `before`, after the pages already loaded.
 
-읽은 페이지만 표 위에 차트로 보인다. 더 보기로 붙인 페이지도 같은 차트에 들어간다. 모델은 공급자와 모델 ID로 묶는다. 막대는 확인된 입력·출력·캐시 읽기 토큰의 합이다. 없는 값은 0으로 그리지 않는다. 한 계열이 모두 없으면 미확인 표시만 둔다. 일부만 없으면 확인된 합만 막대로 그리고, 빠진 수를 글과 미확인 표시로 남긴다. 확인된 0은 0으로 두어 미확인과 구분한다. 토큰이 미확인인 요청도 시간순 요청에는 넣는다. 시간 위치는 그 요청의 `startedAt`이다. 추론 토큰과 캐시 쓰기 토큰은 차트와 표에 보이지 않는다.
+A chart above the table shows only the loaded pages, including pages appended by loading older requests. Models are grouped by provider and model ID. Each bar is the sum of the known input, output and cache-read tokens. A missing count is never drawn as zero. When every count in a series is missing, the series shows only the unknown mark. When some are missing, the bar shows the known sum and the missing count stays in the text and as the unknown mark. A known zero stays zero, distinct from unknown. Requests with unknown tokens still appear on the request timeline, placed at their `startedAt`. Reasoning and cache-write tokens appear in neither the chart nor the table.
 
-비용은 막대 길이로 그리지 않는다. 구독, 가격 미확인, 보고된 0, 추정된 0은 차트의 글에서 서로 다른 말로 센다. 읽은 페이지에 없는 구분은 0건으로 만들지 않는다. 표는 요청별 상세다. 구독, 가격 미확인, 추정 금액, 보고 금액은 표에서 서로 다르게 읽히고, 보고된 0은 보고된 0으로 남는다.
+Cost is never drawn as bar length. The chart text counts subscription, unknown price, reported zero and estimated zero in distinct words, and a category absent from the loaded pages is not shown as zero requests. The table is the per-request detail: subscription, unknown price, estimated amount and reported amount read differently there, and a reported zero stays a reported zero.
 
-차트의 합계는 막대 옆 글로도 읽힌다. 계열은 무늬와 이름으로 구분하고 색만으로 구분하지 않는다. 차트는 움직이지 않으며, 동작 줄이기에서도 같은 값을 바로 보인다. 글자 크기는 인터페이스 밀도(기본 또는 compact)를 따른다.
+Every total in the chart is also readable as text beside its bars. Series are told apart by pattern and name, not by color alone. The chart does not animate, so reduced motion shows the same values at once. Its text size follows the interface density (default or compact).
