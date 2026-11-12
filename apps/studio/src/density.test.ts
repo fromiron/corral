@@ -97,6 +97,9 @@ const panels: Record<string, string[]> = {
   ],
   conversation: [
     'apps/studio/src/workbench/session/Composer.tsx',
+    'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
+    'apps/studio/src/workbench/session/composer/ComposerTools.tsx',
+    'apps/studio/src/workbench/session/composer/dialogs.tsx',
     'apps/studio/src/workbench/session/ComposerQueue.tsx',
     'apps/studio/src/workbench/session/ComposerStatus.tsx',
     'apps/studio/src/workbench/session/SessionEntries.tsx',
@@ -161,10 +164,16 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /view\.rounds\.length === 0/ },
   // An icon button inside a chip.
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'removeEvidence'/ },
-  { file: 'apps/studio/src/workbench/session/Composer.tsx', near: /'removeReference'/ },
+  {
+    file: 'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
+    near: /'removeReference'/,
+  },
   // The request composer's action row: the kit composer's slot controls are compact.
-  { file: 'apps/studio/src/workbench/session/Composer.tsx', near: /'attachmentActions'/ },
-  { file: 'apps/studio/src/workbench/session/Composer.tsx', near: /'workFolder'/ },
+  {
+    file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx',
+    near: /'attachmentActions'/,
+  },
+  { file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx', near: /'workFolder'/ },
   { file: 'apps/studio/src/workbench/WorkFolderNotice.tsx', near: /working-copy-chip/ },
   { file: 'apps/studio/src/workbench/LiveVoice.tsx', near: /ref=\{trigger\}/ },
   // The copy button over a code block: an icon button inside a field.
