@@ -25,13 +25,12 @@ vi.mock('./readRunView.ts', () => ({
     });
   },
 }));
-const { resetRunViews, useCorralRun } = await import('./useCorralChat.ts');
+const { useCorralRun } = await import('./useCorralChat.ts');
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
-  resetRunViews();
 });
 
 function projection(runId: string, status: 'running' | 'succeeded') {

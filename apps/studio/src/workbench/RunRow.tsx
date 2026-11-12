@@ -1,5 +1,5 @@
 import { cn, MetaDot, useSize } from '@corral/react/design-kit';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactNode, type Ref } from 'react';
 
 // The run row in a conversation (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 3):
 // a head line, a body and a tail line, the same three from the run's start to its end. The head
@@ -103,15 +103,24 @@ export function RunRow({
   head,
   tail,
   after,
+  minHeight,
+  ref,
   children,
 }: {
   head: ReactNode;
   tail: ReactNode;
   after?: ReactNode;
+  /** The height the row keeps while it is read again after the timeline mounted it again. */
+  minHeight?: number;
+  ref?: Ref<HTMLDivElement>;
   children?: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    <div
+      ref={ref}
+      className="flex min-w-0 flex-col gap-3"
+      style={minHeight === undefined ? undefined : { minHeight }}
+    >
       <div className="turn-actions-scope flex min-w-0 flex-col">
         {head}
         {/* At least one line of the answer's text, so the first words take the wait's place. */}

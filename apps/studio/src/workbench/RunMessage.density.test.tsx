@@ -13,7 +13,6 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { ChatDensityMenu, ChatView } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
-import { resetProcessChoices } from './processChoices.ts';
 import { RunMessage } from './RunMessage.tsx';
 
 const fixture = vi.hoisted(() => ({ store: null as RunSessionStore | null, read: vi.fn() }));
@@ -40,7 +39,6 @@ Element.prototype.getAnimations ??= () => [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   preferences.setState(parsePreferences(null));
-  resetProcessChoices();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -255,13 +253,12 @@ it('changes only display density while keeping results, the decision and the fai
     );
     expect(fixture.store?.getState().projection).toBe(f.projection);
     expect(fixture.store?.getState().events).toBe(f.events);
-    if (chatDensity === 'results') {
-      // A working turn shows no process in this density: no log to open, no steps listed.
-      expect(log()).toBeNull();
-      expect(f.container.textContent).not.toContain('failed_tool');
-      continue;
-    }
-    // Which steps failed, and the lead's failure, are in the log the head opens.
+    // Which steps failed, and the lead's failure, are in the log the head opens, in every
+    // density: the head is the same in all three.
+    const toggle = head()?.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    expect(toggle).not.toBeNull();
+    if (toggle?.getAttribute('aria-expanded') === 'false') await act(async () => toggle.click());
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
     expect(log()?.textContent).toContain('failed_tool');
     expect(log()?.querySelector('[data-testid="team-activity"]')?.textContent).toContain(
       'Execution failed visibly',
@@ -433,15 +430,15 @@ it('the turn process sits above the reply, closed while working and still closed
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
   // The answer is visible without opening anything.
   expect(f.container.querySelector('[data-testid="chat-result"]')?.closest('details')).toBeNull();
-  // The results-only density still hides the process while the turn works: the head keeps its
-  // line and its state, with nothing to open.
+  // The results-only density keeps the same head while the turn works: closed, its steps
+  // counted, ready to open. It differs only in hiding the words being written.
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'running' } }),
   );
   await act(async () => preferences.setState({ chatDensity: 'results' }));
-  expect(f.container.querySelector('[data-chat-part="head"]')).not.toBeNull();
-  expect(toggle() ?? null).toBeNull();
-  expect(f.container.querySelector('.turn-process-row')).toBeNull();
+  expect(expandedState()).toBe('false');
+  expect(toggle()?.textContent).toContain('1 step');
+  expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
   expect(f.container.querySelector('[data-presence-label="run:run_density"]')?.textContent).toBe(
     messages.Status.running,
   );

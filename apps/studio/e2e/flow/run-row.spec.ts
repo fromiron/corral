@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
+import { templateForWorkspace } from '../../src/demo/templates.ts';
 import { expect, test } from '../server/harness.ts';
 import { newConversation, requestBox } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
@@ -9,9 +10,10 @@ import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 // The run row's fixed parts (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 3): the
 // head line, the body's top edge and the tail line hold their place within 1px while (a) the
 // reply's first words replace the wait for them and (b) the run ends after its last words; the
-// head line and the body's top edge hold while (c) a run fails after its words. A log the
-// person opened stays open, at the same height on every frame, when the windowed timeline
-// unmounts its row off screen and mounts it again.
+// head line and the body's top edge hold while (c) a run fails after its words; (d) the head
+// keeps one line's height however narrow. A log the person opened stays open, at the same height
+// on every frame, when the windowed timeline unmounts its row off screen and mounts it again;
+// (e) a body released meanwhile is in no frame of the row's return.
 // The reply is one line long, so the body does not grow in either interval: anything that moves
 // is the row's own structure. Intervals are bounded by held responses, as in the baseline.
 
@@ -28,14 +30,42 @@ const probeOptions = {
 
 type PartShift = Record<string, { y: number; x: number } | null>;
 type Remount = { heightBefore: number; heightsAfter: number[]; sequence: number[] };
+type Released = { released: number; framesWithBody: number; frames: number };
+type HeadLine = { wide: number; narrow: number; tallestValue: number };
+type Recorded = PartShift | Remount | Released | HeadLine;
 
-function record(name: string, shift: PartShift | Remount) {
+function record(name: string, shift: Recorded) {
   mkdirSync(OUT, { recursive: true });
-  const results: Record<string, PartShift | Remount> = existsSync(RESULTS)
+  const results: Record<string, Recorded> = existsSync(RESULTS)
     ? JSON.parse(readFileSync(RESULTS, 'utf8'))
     : {};
   results[name] = shift;
   writeFileSync(RESULTS, `${JSON.stringify(results, null, 2)}\n`);
+}
+
+/** Later requests that never ran, enough to push the earlier rows out of the window. */
+async function fillers(page: Page, sessionId: string) {
+  await page.evaluate(async (id) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    for (let index = 0; index < 64; index += 1) {
+      const response = await fetch(`/api/v1/sessions/${id}/entries`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({
+          intent: 'next',
+          text: `Later request ${index + 1}. ${'Long enough to wrap over several lines. '.repeat(4)}`,
+          state: 'refused',
+        }),
+      });
+      if (!response.ok) throw new Error(`filler entry: ${response.status}`);
+    }
+  }, sessionId);
+}
+
+/** Scrolls the timeline by the wheel, as a person does, until `done`. */
+async function wheelUntil(page: Page, delta: number, done: () => Promise<boolean>) {
+  await page.getByTestId('chat-timeline').hover({ position: { x: 16, y: 200 } });
+  for (let step = 0; step < 60 && !(await done()); step += 1) await page.mouse.wheel(0, delta);
 }
 
 function hold() {
@@ -86,7 +116,15 @@ async function measure(
   expect(result.samples.frames, `${name}: frames`).toBeGreaterThan(0);
   for (const part of held) {
     const shift = shifts[part];
-    expect.soft(shift, `${name}: the ${part} line is there throughout`).not.toBeNull();
+    expect.soft(shift, `${name}: the ${part} line is there at the start`).not.toBeNull();
+    // On every sampled frame, not only at both ends.
+    const track = result.items.find(
+      (entry) =>
+        entry.kind === 'part' && entry.id === `data-chat-item=${item}/data-chat-part=${part}`,
+    );
+    expect
+      .soft(track?.frames, `${name}: the ${part} line is there throughout`)
+      .toBe(result.samples.frames);
     expect
       .soft(shift?.y ?? Number.POSITIVE_INFINITY, `${name}: ${part} vertical`)
       .toBeLessThanOrEqual(1);
@@ -166,6 +204,32 @@ test('the run row holds its lines from the first words to the end', async ({ pag
     await expect(row.getByTestId('chat-result')).toContainText(line);
     await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
   });
+
+  // (d) The head keeps one line's height whatever it holds: squeezed far narrower than its
+  // values, they give way and none wraps onto a second line.
+  const head = row.locator('[data-chat-part="head"]');
+  const headLine = (width: string | null) =>
+    head.evaluate((node, width) => {
+      const element = node as HTMLElement;
+      element.style.width = width ?? '';
+      element.style.maxWidth = width ?? '';
+      const texts = [...element.querySelectorAll('span')].filter(
+        (span) => span.childElementCount === 0 && span.textContent?.trim(),
+      );
+      return {
+        height: element.getBoundingClientRect().height,
+        tallest: Math.max(...texts.map((span) => span.getBoundingClientRect().height)),
+      };
+    }, width);
+  const wide = await headLine(null);
+  const narrow = await headLine('96px');
+  await headLine(null);
+  // One control line: the tail line's own fixed height, which the head shares.
+  const control = (await row.locator('[data-chat-part="tail"]').boundingBox())?.height ?? 0;
+  record('head-line', { wide: wide.height, narrow: narrow.height, tallestValue: narrow.tallest });
+  expect(Math.abs(wide.height - control), 'head height is one control line').toBeLessThanOrEqual(1);
+  expect(Math.abs(narrow.height - wide.height), 'head height when narrow').toBeLessThanOrEqual(1);
+  expect(narrow.tallest, 'no head value wraps').toBeLessThanOrEqual(wide.tallest + 1);
   expect(corral.errors).toEqual([]);
 });
 
@@ -185,31 +249,13 @@ test('an opened log stays open, at the same height, when its row leaves the wind
   });
   const item = (await row.getAttribute('data-chat-item')) as string;
   const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
-  // Later requests that never ran, enough to push the run's row out of the window.
-  await page.evaluate(async (id) => {
-    const { csrfToken } = await (await fetch('/api/v1/session')).json();
-    for (let index = 0; index < 64; index += 1) {
-      const response = await fetch(`/api/v1/sessions/${id}/entries`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
-        body: JSON.stringify({
-          intent: 'next',
-          text: `Later request ${index + 1}. ${'Long enough to wrap over several lines. '.repeat(4)}`,
-          state: 'refused',
-        }),
-      });
-      if (!response.ok) throw new Error(`filler entry: ${response.status}`);
-    }
-  }, sessionId);
-  const box = page.getByTestId('chat-timeline');
+  await fillers(page, sessionId);
   const target = page.locator(`[data-chat-item="${item}"]`);
   await page.reload();
   await expect(page.locator('[data-chat-item]').first()).toBeVisible();
   await waitForStill(page);
   // Up to the start by the wheel, as a person reads back (so the timeline stops following).
-  await box.hover({ position: { x: 16, y: 200 } });
-  for (let step = 0; step < 40 && !(await target.isVisible()); step += 1)
-    await page.mouse.wheel(0, -2000);
+  await wheelUntil(page, -2000, () => target.isVisible());
   await expect(target).toBeVisible();
   await target.scrollIntoViewIfNeeded();
   await waitForStill(page);
@@ -223,8 +269,7 @@ test('an opened log stays open, at the same height, when its row leaves the wind
   // Away to the end: the row leaves the window and unmounts (focus leaves it first, since a row
   // holding focus may be kept).
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  for (let step = 0; step < 40 && (await target.count()) > 0; step += 1)
-    await page.mouse.wheel(0, 2000);
+  await wheelUntil(page, 2000, async () => (await target.count()) === 0);
   await expect(target).toHaveCount(0);
   // Back by the wheel: the row's height on every frame from its return until it is still.
   await page.evaluate((selector) => {
@@ -238,8 +283,7 @@ test('an opened log stays open, at the same height, when its row leaves the wind
     };
     requestAnimationFrame(frame);
   }, `[data-chat-item="${item}"]`);
-  for (let step = 0; step < 40 && !(await target.isVisible()); step += 1)
-    await page.mouse.wheel(0, -2000);
+  await wheelUntil(page, -2000, () => target.isVisible());
   await expect(target).toBeVisible();
   await waitForStill(page);
   await page.screenshot({ path: join(SHOTS, 'remount-after.png') });
@@ -326,4 +370,163 @@ test('a run that fails after its words holds its head and its body’s top edge'
     },
     ['head', 'body'],
   );
+});
+
+// (e) A failed team run whose partial results a later success of the same session released
+// while its row was off screen: no frame of its return shows a released body
+// (docs/specs/api-contract.md, 산출물 본문 수명).
+let failWriter = true;
+test.describe('a released body', () => {
+  test.use({
+    live: false,
+    codexLogin: false,
+    streamTokensPerSecond: 0,
+    agentReply: {
+      reply: () => `# Release plan\n\nRELEASED-BODY-MARK ${'A recorded result. '.repeat(30)}`,
+      beforeReply: async (_turn, input) => {
+        if (failWriter && input.nodeId === 'write' && input.round === 2)
+          throw new Error('Fixture writer failed after the first recorded review');
+      },
+    },
+  });
+
+  test('is in no frame when its row returns', async ({ page, corral }) => {
+    test.setTimeout(240_000);
+    failWriter = true;
+    const template = templateForWorkspace('research-team', 'audit_team');
+    await corral.open('/');
+    const started = await page.evaluate(async ({ definition }) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const call = async (path: string, body: unknown) => {
+        const response = await fetch(`/api/v1${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(`Fixture ${path}: ${response.status}`);
+        return response.json();
+      };
+      const { record } = await call('/corrals', { definition });
+      const { session } = await call('/sessions', {
+        projectId: 'default',
+        title: 'Review the release plan',
+        corralId: record.corralId,
+      });
+      const result = await call('/runs', {
+        schemaVersion: '0.1',
+        commandId: 'run-row-released-first',
+        mode: 'mock',
+        sessionId: session.sessionId,
+        corralId: record.corralId,
+        definitionRevision: record.definitionRevision,
+      });
+      return {
+        sessionId: session.sessionId as string,
+        runId: result.runId as string,
+        corralId: record.corralId as string,
+        definitionRevision: record.definitionRevision as number,
+      };
+    }, template);
+    const statusOf = (runId: string) =>
+      corral.server.coordinator.getSnapshot(runId).projection.status;
+    await expect.poll(() => statusOf(started.runId), { timeout: 30_000 }).toBe('failed');
+    // The request that names the run, so its row leads the timeline.
+    await page.evaluate(async ({ runId, sessionId }) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const response = await fetch(`/api/v1/sessions/${sessionId}/entries`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({ intent: 'next', text: 'Review the plan', state: 'started', runId }),
+      });
+      if (!response.ok) throw new Error(`entry setup: ${response.status}`);
+    }, started);
+    await fillers(page, started.sessionId);
+    await corral.open(`/sessions/${started.sessionId}`);
+    await expect(page.locator('[data-chat-item]').first()).toBeVisible();
+    await waitForStill(page);
+    const target = page.locator(`[data-testid="run-card-${started.runId}"]`);
+    await wheelUntil(page, -2000, () => target.isVisible());
+    await expect(target).toBeVisible();
+    await waitForStill(page);
+    // Open every partial result, so its body's text is on screen.
+    const blocks = target.locator('details[data-testid="chat-result"]');
+    const count = await blocks.count();
+    for (let index = 0; index < count; index += 1) {
+      const block = blocks.nth(index);
+      if (!(await block.evaluate((node) => (node as HTMLDetailsElement).open)))
+        await block.locator('summary').click();
+    }
+    await expect(target).toContainText('RELEASED-BODY-MARK', { timeout: 30_000 });
+    // Away to the end: the row unmounts.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await wheelUntil(page, 2000, async () => (await target.count()) === 0);
+    await expect(target).toHaveCount(0);
+    // A later run of the session succeeds; the server releases the earlier run's bodies.
+    failWriter = false;
+    const second = await page.evaluate(async (first) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const response = await fetch('/api/v1/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({
+          schemaVersion: '0.1',
+          commandId: 'run-row-released-second',
+          mode: 'mock',
+          sessionId: first.sessionId,
+          corralId: first.corralId,
+          definitionRevision: first.definitionRevision,
+        }),
+      });
+      if (!response.ok) throw new Error(`second run: ${response.status}`);
+      return (await response.json()).runId as string;
+    }, started);
+    for (let step = 0; step < 120 && statusOf(second) !== 'succeeded'; step += 1) {
+      if (statusOf(second) === 'awaiting_user') {
+        const approve = page
+          .locator('[data-testid^="approval-"]')
+          .getByRole('button', {
+            name: /Continue with this version|Confirm as final result|Approve/,
+          })
+          .first();
+        if (await approve.isVisible().catch(() => false)) await approve.click().catch(() => {});
+      }
+      await page.waitForTimeout(250);
+    }
+    expect(statusOf(second)).toBe('succeeded');
+    await expect(target).toHaveCount(0);
+    const released = Object.values(
+      corral.server.coordinator.getSnapshot(started.runId).projection.artifacts,
+    ).filter((artifact) => artifact.bodyAvailable === false).length;
+    expect(released).toBeGreaterThan(0);
+    await waitForStill(page);
+    // Back: on every frame from the row's return until it is still, whether a body shows.
+    await page.evaluate((runId) => {
+      const holder = window as unknown as { __bodyFrames?: boolean[]; __bodyStop?: boolean };
+      holder.__bodyFrames = [];
+      holder.__bodyStop = false;
+      const tick = () => {
+        const row = document.querySelector(`[data-testid="run-card-${runId}"]`);
+        if (row) holder.__bodyFrames?.push((row.textContent ?? '').includes('RELEASED-BODY-MARK'));
+        if (!holder.__bodyStop) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, started.runId);
+    await wheelUntil(page, -2000, () => target.isVisible());
+    await expect(target).toBeVisible();
+    await waitForStill(page);
+    const frames = await page.evaluate(() => {
+      const holder = window as unknown as { __bodyFrames?: boolean[]; __bodyStop?: boolean };
+      holder.__bodyStop = true;
+      return holder.__bodyFrames ?? [];
+    });
+    await page.screenshot({ path: join(SHOTS, 'released-after.png') });
+    record('released', {
+      released,
+      framesWithBody: frames.filter(Boolean).length,
+      frames: frames.length,
+    });
+    expect(frames.length).toBeGreaterThan(0);
+    expect(frames.filter(Boolean).length, 'frames showing a released body').toBe(0);
+    await expect(target).toContainText('no longer available');
+  });
 });

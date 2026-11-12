@@ -11,7 +11,6 @@ import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
 import { changePreferences, parsePreferences, preferences } from './preferences.ts';
-import { resetProcessChoices } from './processChoices.ts';
 import { RunMessage } from './RunMessage.tsx';
 
 // The run row in a conversation keeps one fixed set of parts from its start to its end
@@ -61,7 +60,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
-  resetProcessChoices();
   preferences.setState(parsePreferences(null));
   vi.unstubAllGlobals();
 });
@@ -261,6 +259,43 @@ it('an unfinished turn says its state once in the head and its cause at the end 
   expect(f.container.querySelector('[data-testid="run-made-results"]')).toBeNull();
 });
 
+it.each([
+  [
+    'with',
+    <button key="retry" type="button">
+      Retry request
+    </button>,
+  ],
+  ['without', undefined],
+])(
+  'a team turn whose answering role failed ends its body with that failure, %s next steps',
+  async (_name, endActions) => {
+    const projection = failed(running());
+    projection.executions.helper = execution('helper', { nodeId: 'reviewer', status: 'succeeded' });
+    projection.executionOrder = ['lead', 'helper'];
+    const f = await show(projection, endActions);
+    const end = f.container.querySelector('[data-testid="turn-end"]');
+    expect(end).not.toBeNull();
+    expect(part(f.container, 'body')?.lastElementChild).toBe(end);
+    expect(end?.textContent).toContain(messages.Failure.provider.RATE_LIMIT);
+    // Said once: the log does not list the answering role's failure again.
+    expect(f.container.textContent?.split(messages.Failure.provider.RATE_LIMIT)).toHaveLength(2);
+    // The answering role is the head's, so the head does not count it among failed steps.
+    expect(part(f.container, 'head')?.textContent).not.toContain('failed');
+  },
+);
+
+it('names the head button by its role, state and log, never by its ticking time', async () => {
+  const f = await show(running());
+  const name = `${messages.Turn.logToggle.replace('{state}', `writer · ${messages.Status.running}`)}`;
+  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(name);
+  expect(toggle(f.container)?.textContent).toMatch(/\d+s/);
+  await f.set(failed(running()));
+  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+    messages.Turn.logToggle.replace('{state}', `writer · ${messages.Status.failed}`),
+  );
+});
+
 it('names the run once and each team role once, each by its own target', async () => {
   const projection = running();
   projection.executions.helper_a = execution('helper_a', { status: 'failed', error: 'Broke' });
@@ -318,6 +353,31 @@ it('counts the finished file changes in the tail', async () => {
     toolCallId: 'write',
     executionId: 'lead',
     name: 'write_file',
+    status: 'requested',
+    phase: 'finished',
+    reason: null,
+  };
+  // Not changes: a write that failed, one still running, and a command (whatever it did).
+  projection.toolCalls.failedWrite = {
+    toolCallId: 'failedWrite',
+    executionId: 'lead',
+    name: 'write_file',
+    status: 'requested',
+    phase: 'failed',
+    reason: 'denied',
+  };
+  projection.toolCalls.runningEdit = {
+    toolCallId: 'runningEdit',
+    executionId: 'lead',
+    name: 'edit',
+    status: 'requested',
+    phase: 'running',
+    reason: null,
+  };
+  projection.toolCalls.command = {
+    toolCallId: 'command',
+    executionId: 'lead',
+    name: 'run_command',
     status: 'requested',
     phase: 'finished',
     reason: null,

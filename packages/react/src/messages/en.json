@@ -5385,9 +5385,6 @@
     }
   },
   "Turn": {
-    "working": "Working · {time}",
-    "worked": "Worked {time}",
-    "workedSteps": "Worked {time} · {count, plural, one {# step} other {# steps}}",
     "seconds": "{s}s",
     "minutes": "{m}m {s}s",
     "think": "Think",
@@ -5435,6 +5432,7 @@
     "allowedForRun": "Allowed for this run",
     "steps": "{count, plural, one {# step} other {# steps}}",
     "failedCount": "{count} failed",
+    "logToggle": "Work log · {state}",
     "changes": "{count, plural, one {# change} other {# changes}}",
     "results": "{count, plural, one {# result} other {# results}}"
   },

@@ -35,8 +35,8 @@ import { Badge } from './badge.tsx';
 /** Open state of the nearest ThinkingSteps root, for the header trigger/panel. */
 const ThinkingStepsOpenContext = createContext(false);
 
-/** True while a panel that mounted open is still snapping to its first height:
- *  steps that arrive with it are already there and must not grow in. */
+/** True while a panel that mounted open with `settledOnMount` is still snapping to
+ *  its first height: steps that arrive with it are already there and do not grow in. */
 const ArrivedOpenContext = createContext(false);
 
 interface TriggerRowProps extends HTMLAttributes<HTMLButtonElement> {
@@ -128,6 +128,7 @@ TriggerRow.displayName = 'ThinkingStepsTriggerRow';
 
 interface CollapsePanelProps {
   open: boolean;
+  settledOnMount?: boolean;
   children: ReactNode;
 }
 
@@ -136,7 +137,7 @@ interface CollapsePanelProps {
  * soon as it closes, cutting the JS exit short, so we strip it and apply it
  * after the exit. The panel stays mounted to keep `aria-controls` valid.
  */
-function CollapsePanel({ open, children }: CollapsePanelProps) {
+function CollapsePanel({ open, settledOnMount = false, children }: CollapsePanelProps) {
   const compactStep = useSize().variant === 'compact';
   // Animate to a measured offsetHeight, not "auto": framer resolves "auto"
   // from the transformed size and overshoots under a scaled ancestor.
@@ -210,7 +211,7 @@ function CollapsePanel({ open, children }: CollapsePanelProps) {
                   typeClass('body', compactStep ? 'compact' : 'default'),
                 )}
               >
-                <ArrivedOpenContext.Provider value={needsSnap}>
+                <ArrivedOpenContext.Provider value={settledOnMount && needsSnap}>
                   {children}
                 </ArrivedOpenContext.Provider>
               </div>
@@ -282,14 +283,17 @@ ThinkingStepsHeader.displayName = 'ThinkingStepsHeader';
 // ─── ThinkingStepsContent ────────────────────────────────────────────────────
 
 interface ThinkingStepsContentProps extends HTMLAttributes<HTMLDivElement> {
+  /** The panel is open at mount and its steps were already shown (a view mounted
+   *  again): they start at their own height instead of growing in. */
+  settledOnMount?: boolean;
   children: ReactNode;
 }
 
 const ThinkingStepsContent = forwardRef<HTMLDivElement, ThinkingStepsContentProps>(
-  ({ children, className, ...props }, ref) => {
+  ({ settledOnMount, children, className, ...props }, ref) => {
     const isOpen = useContext(ThinkingStepsOpenContext);
     return (
-      <CollapsePanel open={isOpen}>
+      <CollapsePanel open={isOpen} settledOnMount={settledOnMount}>
         <div ref={ref} className={cn('flex flex-col', className)} {...props}>
           {children}
         </div>

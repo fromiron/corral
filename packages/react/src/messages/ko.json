@@ -5385,9 +5385,6 @@
     }
   },
   "Turn": {
-    "working": "작업 중 · {time}",
-    "worked": "작업 {time}",
-    "workedSteps": "작업 {time} · {count}단계",
     "seconds": "{s}초",
     "minutes": "{m}분 {s}초",
     "think": "생각",
@@ -5435,6 +5432,7 @@
     "allowedForRun": "이 실행 동안 허용됨",
     "steps": "{count}단계",
     "failedCount": "실패 {count}",
+    "logToggle": "작업 기록 · {state}",
     "changes": "변경 {count}",
     "results": "결과 {count}"
   },

@@ -152,6 +152,7 @@ export function TurnProcess({
   status,
   failed = 0,
   toggle = true,
+  returning = false,
   children,
 }: {
   events: readonly RunEvent[];
@@ -172,6 +173,11 @@ export function TurnProcess({
   failed?: number;
   /** Whether the log can be opened here; without it the head keeps its line and its state. */
   toggle?: boolean;
+  /**
+   * The row is mounted again with its log already open (the timeline brought it back): its
+   * steps are already there, so they do not grow in.
+   */
+  returning?: boolean;
   /** What the log holds after its steps: what went wrong in them, why the run stands still. */
   children?: ReactNode;
 }) {
@@ -303,6 +309,12 @@ export function TurnProcess({
         {canOpen ? (
           <button
             type="button"
+            // A stable name: the role, the state and the log it opens, never the ticking time.
+            aria-label={t('logToggle', {
+              state: [role, ts.has(projection.status) ? ts(projection.status) : projection.status]
+                .filter(Boolean)
+                .join(' · '),
+            })}
             aria-expanded={shown}
             aria-controls={panel}
             onClick={() => onOpenChange(!shown)}
@@ -318,7 +330,7 @@ export function TurnProcess({
         )}
       </RunHead>
       {canOpen ? (
-        <ThinkingStepsContent id={panel}>
+        <ThinkingStepsContent id={panel} settledOnMount={returning}>
           {process.rows.map((row, index) => {
             const last = index === process.rows.length - 1;
             if (row.kind === 'model') {

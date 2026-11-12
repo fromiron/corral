@@ -1,9 +1,11 @@
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, type RunProjection, type StoredConversationTurn } from '@corral/core';
 import { createRunSession, type RunSessionState } from '@corral/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import { readRunView } from './readRunView.ts';
+import { forgetOnReset } from './viewMemory.ts';
 
 /** Reading another turn must not replace the active run's command/retry state. */
 export function useCorralRun(
@@ -13,12 +15,27 @@ export function useCorralRun(
   metadataVersion?: string,
 ) {
   const { transport, readHistory, runFor, retainRun } = useServices();
+  const revision = useRef(metadataVersion);
+  revision.current = metadataVersion;
+  const checked = useRef<{
+    store: RunSession;
+    runId: string;
+    revision: string | undefined;
+  } | null>(null);
+  // The answer the remembered view may show; null when its body is not confirmed for now.
+  const recalledTurn = useRef<{ runId: string; turn: StoredConversationTurn | null } | null>(null);
   const own = useMemo(() => {
     const session = createRunSession(transport);
-    // A row the timeline unmounted off screen comes back with what it last showed, at the
-    // same height, while its record is read again.
+    // A finished row the timeline unmounted off screen comes back with what it last showed
+    // while its record is read again. Its bodies count only when they were confirmed for the
+    // artifact metadata the session has now (api-contract.md, 산출물 본문 수명).
     const kept = runViews.get(runId);
-    if (kept) session.setState(kept.view);
+    if (kept) {
+      const confirmed = kept.revision === revision.current;
+      session.setState(confirmed ? kept.view : withoutBodies(kept.view));
+      checked.current = { store: session, runId, revision: kept.revision };
+      recalledTurn.current = { runId, turn: confirmed ? kept.turn : null };
+    }
     return session;
   }, [transport, runId]);
   // WorkTab owns the live store and its transport. A card may mount before that owner's
@@ -26,21 +43,21 @@ export function useCorralRun(
   const store = live ? runFor(runId) : own;
   const readDetails = !live && details;
   const state = useStore(store);
-  const revision = useRef(metadataVersion);
-  revision.current = metadataVersion;
-  const checked = useRef<{ store: typeof own; runId: string; revision: string | undefined } | null>(
-    null,
-  );
+  // Which store's record read has settled (resolved or failed).
+  const [readOf, setReadOf] = useState<RunSession | null>(null);
 
   const last = useRef<{ runId: string; store: typeof store; state: typeof state } | null>(null);
   const [conversation, setConversation] = useState<{
     runId: string;
     turn: StoredConversationTurn | null;
-  } | null>(() => {
-    const kept = runViews.get(runId);
-    return kept ? { runId, turn: kept.turn } : null;
-  });
-  const conversationTurn = !live && conversation?.runId === runId ? conversation.turn : null;
+  } | null>(null);
+  const conversationTurn = live
+    ? null
+    : conversation?.runId === runId
+      ? conversation.turn
+      : recalledTurn.current?.runId === runId
+        ? recalledTurn.current.turn
+        : null;
   useEffect(() => {
     if (live) {
       const release = retainRun(runId);
@@ -56,6 +73,7 @@ export function useCorralRun(
           const projection = keepKnownReleases(view.projection, own.getState().projection);
           checked.current = { store: own, runId, revision: readRevision };
           setConversation({ runId, turn });
+          setReadOf(own);
           own.setState({
             ...runView,
             projection,
@@ -71,11 +89,12 @@ export function useCorralRun(
         }
       },
       (error: unknown) => {
-        if (current)
-          own.setState({
-            runId,
-            streamError: error instanceof Error ? error.message : String(error),
-          });
+        if (!current) return;
+        setReadOf(own);
+        own.setState({
+          runId,
+          streamError: error instanceof Error ? error.message : String(error),
+        });
       },
     );
     return () => {
@@ -85,8 +104,11 @@ export function useCorralRun(
   }, [own, store, runId, transport, readHistory, live, readDetails, retainRun]);
   // A newer successful sibling can retire a completed result while this card stays mounted.
   // The host already observes that success; this reads only current metadata, never its archive/body.
+  // A remembered view waits for its record read, which reads the snapshot itself: one read per
+  // mount, as for a row seen for the first time.
   useEffect(() => {
     if (live || metadataVersion === undefined || state.runId !== runId || !state.projection) return;
+    if (readOf !== own) return;
     if (
       checked.current?.store === own &&
       checked.current.runId === runId &&
@@ -125,7 +147,7 @@ export function useCorralRun(
     return () => {
       current = false;
     };
-  }, [own, runId, transport, live, metadataVersion, state.runId, state.projection]);
+  }, [own, runId, transport, live, metadataVersion, state.runId, state.projection, readOf]);
   const bodyMetadataCurrent =
     live ||
     metadataVersion === undefined ||
@@ -139,40 +161,76 @@ export function useCorralRun(
   // Keep the last loaded view of this run meanwhile, so its work log stays mounted.
   if (current?.projection) {
     last.current = { runId, store, state: current };
-    keepRunView(runId, current, conversationTurn);
+    // Only a finished run is remembered, and only as far as its bodies are confirmed: a run
+    // still working comes back by reading its record.
+    if (TERMINAL_RUN_STATUSES.has(current.projection.status) && bodyMetadataCurrent)
+      keepRunView(runId, current, conversationTurn, metadataVersion);
   }
+  // A view read from the server again, or a live one: nothing remembered is still settling.
+  const settled = live || readOf === own;
   const kept = last.current;
   if (!current?.projection && !current?.streamError && kept?.runId === runId)
-    return { store: kept.store, state: kept.state, conversationTurn, bodyMetadataCurrent };
+    return { store: kept.store, state: kept.state, conversationTurn, bodyMetadataCurrent, settled };
   return {
     store,
     state: current ?? { ...state, projection: null, definition: null, streamError: null },
     conversationTurn,
     bodyMetadataCurrent,
+    settled,
   };
 }
 
-type RunState = RunSessionState;
+type RunSession = ReturnType<typeof createRunSession>;
+type ViewData = Pick<
+  RunSessionState,
+  'runId' | 'projection' | 'definition' | 'events' | 'streams' | 'artifactTexts'
+>;
 type KeptView = {
-  source: RunState;
+  /** The artifact metadata version its bodies were confirmed for. */
+  revision: string | undefined;
   turn: StoredConversationTurn | null;
-  view: Pick<
-    RunState,
-    'runId' | 'projection' | 'definition' | 'events' | 'streams' | 'artifactTexts'
-  >;
+  view: ViewData;
 };
 
-// What recently shown runs last showed, newest kept. It outlives the row, not the page.
+// What recently shown finished runs last showed, newest kept. It outlives the row, not the page.
 const RUN_VIEW_LIMIT = 64;
 const runViews = new Map<string, KeptView>();
 
-function keepRunView(runId: string, state: RunState, turn: StoredConversationTurn | null) {
-  const prior = runViews.get(runId);
-  if (prior?.source === state && prior.turn === turn) return;
+/** The view without anything read from an artifact body: those wait for a fresh check. */
+function withoutBodies(view: ViewData): ViewData {
+  const projection = view.projection;
+  return {
+    ...view,
+    artifactTexts: {},
+    // A response's words are its body once the response is recorded.
+    streams: Object.fromEntries(
+      Object.entries(view.streams).filter(([id]) => !projection?.modelCalls[id]?.responseRef),
+    ),
+  };
+}
+
+function keepRunView(
+  runId: string,
+  state: RunSessionState,
+  turn: StoredConversationTurn | null,
+  revision: string | undefined,
+) {
   const { projection, definition, events, streams, artifactTexts } = state;
+  const prior = runViews.get(runId);
+  if (
+    prior &&
+    prior.revision === revision &&
+    prior.turn === turn &&
+    prior.view.projection === projection &&
+    prior.view.definition === definition &&
+    prior.view.events === events &&
+    prior.view.streams === streams &&
+    prior.view.artifactTexts === artifactTexts
+  )
+    return;
   runViews.delete(runId);
   runViews.set(runId, {
-    source: state,
+    revision,
     turn,
     view: { runId, projection, definition, events, streams, artifactTexts },
   });
@@ -183,10 +241,7 @@ function keepRunView(runId: string, state: RunState, turn: StoredConversationTur
   }
 }
 
-/** Forgets the kept run views; tests start from none. */
-export function resetRunViews() {
-  runViews.clear();
-}
+forgetOnReset(() => runViews.clear());
 
 /** A late archive read cannot restore a body already confirmed as released for this Run. */
 function keepKnownReleases(next: RunProjection, previous: RunProjection | null): RunProjection {

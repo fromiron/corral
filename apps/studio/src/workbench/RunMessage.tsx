@@ -50,7 +50,7 @@ import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
 import { holdPointer } from './ChatView.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
-import { chooseProcess, processChoice } from './processChoices.ts';
+import { chooseProcess, keepRowHeight, processChoice, rowHeight } from './processChoices.ts';
 import { RunHead, RunRow, RunTail, TurnEnd } from './RunRow.tsx';
 import { TurnProcess, useStepName } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
@@ -181,7 +181,28 @@ export function RunMessage({
     state,
     conversationTurn,
     bodyMetadataCurrent = true,
+    settled = true,
   } = useCorralRun(runId, live, expanded, artifactMetadataVersion);
+  // A conversation row the timeline mounts again keeps the height it left with until its record
+  // and bodies are read again; what the read then changes is a real change.
+  const [returning] = useState(() => Boolean(sessionId) && rowHeight(runId) !== null);
+  const [hold, setHold] = useState(() => (sessionId ? rowHeight(runId) : null));
+  const observer = useRef<ResizeObserver | null>(null);
+  const rowRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      observer.current?.disconnect();
+      observer.current = null;
+      if (!element || typeof ResizeObserver === 'undefined') return;
+      const measure = () => {
+        const height = element.getBoundingClientRect().height;
+        if (height > 0) keepRowHeight(runId, height);
+      };
+      measure();
+      observer.current = new ResizeObserver(measure);
+      observer.current.observe(element);
+    },
+    [runId],
+  );
   const label = useCallback(
     (nodeId: string) => state.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
     [state.definition],
@@ -233,6 +254,14 @@ export function RunMessage({
       current = false;
     };
   }, [ids, store, retry]);
+  const bodiesPending =
+    !resultError &&
+    ids
+      .split(',')
+      .filter(Boolean)
+      .some((id) => !(id in state.artifactTexts));
+  if (hold !== null && settled && !bodiesPending) setHold(null);
+  const held = hold !== null ? { ref: rowRef, minHeight: hold } : { ref: rowRef };
   const projection = state.projection;
   // The turn's observed work steps; the conversation's process lists them.
   const process = useMemo(
@@ -247,6 +276,7 @@ export function RunMessage({
     // The row's three lines before its record is read; the words come into the same places.
     return (
       <RunRow
+        {...held}
         head={
           <RunHead trailing={runLine}>
             <Skeleton className="h-3 w-40 max-w-full" />
@@ -356,7 +386,8 @@ export function RunMessage({
   // does not vanish and return with every call.
   const writing = current ?? streams.filter(([, stream]) => stream.text).at(-1);
   const writer = writing ? projection.modelCalls[writing[0]]?.executionId : undefined;
-  const processShown = Boolean(sessionId) && (!working || chatDensity !== 'results');
+  // The head is the same in every density: it opens the log whenever the log holds something.
+  const processShown = Boolean(sessionId);
   // Observed only: the run is starting or working, nothing waits on the person, and no words or
   // result have shown yet. The log's steps do not count: it is closed. A paused or waiting run
   // does not animate.
@@ -376,6 +407,13 @@ export function RunMessage({
   const unfinished = Boolean(sessionId) && !working && projection.status !== 'succeeded';
   const soleFailure = unfinished && executions.length <= 1 ? exposed[0] : undefined;
   const listed = soleFailure ? [] : exposed;
+  // An unfinished conversation turn always ends with its cause: the answering role's failure,
+  // however many roles the team has. Other roles' failures stay in the log and its count.
+  const endFailure =
+    soleFailure ??
+    (unfinished && sessionId
+      ? exposed.find((execution) => execution.executionId === projection.executionOrder[0])
+      : undefined);
   const agentRow = (execution: (typeof executions)[number]) => (
     <li
       key={execution.executionId}
@@ -492,7 +530,9 @@ export function RunMessage({
   if (sessionId) {
     // The row's three lines (composer-flow.md "튐 없는 본문" rule 3). The team's role rows, what
     // went wrong in the steps and why the run stands still are in the log the head opens.
-    const team = listed.filter((execution) => execution.executionId === lead);
+    const team = listed.filter(
+      (execution) => execution.executionId === lead && execution !== endFailure,
+    );
     const log =
       toolAttention || reasonLine || team.length ? (
         <>
@@ -555,6 +595,7 @@ export function RunMessage({
       (reasonHead === 'execution_failed' && reasonRest.split(' ')[0] === leadExecution?.nodeId);
     return (
       <RunRow
+        {...held}
         head={
           <TurnProcess
             events={state.events}
@@ -569,6 +610,7 @@ export function RunMessage({
             status={status}
             failed={failed}
             toggle={processShown}
+            returning={returning}
           >
             {log}
           </TurnProcess>
@@ -664,10 +706,10 @@ export function RunMessage({
               ) : null
             }
             failure={
-              soleFailure?.error ? (
+              endFailure?.error ? (
                 <FailureNotice
-                  message={soleFailure.error}
-                  cancelled={soleFailure.status === 'cancelled'}
+                  message={endFailure.error}
+                  cancelled={endFailure.status === 'cancelled'}
                 />
               ) : null
             }

@@ -353,10 +353,15 @@ export const Paused: Story = {
   args: {
     projection: pausedProjection(),
     events: toolEvents.slice(0, 3),
+    // The head line as a conversation draws it: the answering role and the run's state.
+    role: 'Assistant',
+    status: 'Paused',
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    // The head names the paused state, and does not animate it as work going on.
     const header = canvas.getByRole('button', { name: /Paused/ });
+    await expect(header).toHaveTextContent('Paused');
     await expect(header).toBeVisible();
     await expect(header.querySelector('.shimmer-text')).toBeNull();
     await waitFor(() => expect(canvas.getByText(/^Model request 1/)).toBeVisible());

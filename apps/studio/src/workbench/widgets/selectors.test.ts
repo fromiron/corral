@@ -7,6 +7,7 @@ import {
   agentActivity,
   changesPresentation,
   composerShowsRunStatus,
+  fileChangeCount,
   fileChangeSignals,
   planBodyStatus,
   presentContext,
@@ -755,4 +756,19 @@ it.each(['created', 'validating'])('activity shows startup, not working, for %s'
       needsUser: false,
     }).text,
   ).toBe('starting');
+});
+
+it('counts only finished file writes as changes', () => {
+  expect(
+    fileChangeCount([
+      { name: 'write_file', phase: 'finished' },
+      { name: 'edit_hashline', phase: 'finished' },
+      { name: 'write_file', phase: 'failed' },
+      { name: 'edit', phase: 'running' },
+      { name: 'move_file', phase: 'allowed' },
+      { name: 'delete_file' },
+      { name: 'run_command', phase: 'finished' },
+      { name: 'read_file', phase: 'finished' },
+    ]),
+  ).toBe(2);
 });
