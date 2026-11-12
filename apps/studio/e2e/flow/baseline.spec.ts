@@ -51,6 +51,9 @@ function expectMeasured(result: ShiftResult) {
   for (const value of [
     result.maxContainerShiftPx,
     result.maxViewportShiftPx,
+    // Every transition has a conversation item, a composer and an input box on screen.
+    result.maxTailGapChangePx,
+    result.maxInputBottomChangePx,
     ...result.items.flatMap((item) => [item.maxContainerShiftPx, item.maxViewportShiftPx]),
   ])
     expect(Number.isFinite(value), `${result.name}: finite shift`).toBe(true);
