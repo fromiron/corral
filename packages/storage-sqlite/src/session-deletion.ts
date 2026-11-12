@@ -30,6 +30,16 @@ export interface SessionDeletionPreview {
   inputImages: number;
   schedules: SessionDeletionSchedule[];
   handoffs: SessionDeletionHandoff[];
+  /** Ready file checkpoints of the working copy. */
+  checkpoints: number;
+  /** Ready checkpoints of the linked source folder, such as the one pinned before applying. */
+  sourceCheckpoints: number;
+  /** Applies whose written files are still in the source folder; their revert record goes too. */
+  revertibleIntegrations: number;
+  reviewDecisions: number;
+  /** Sent review comments; drafts are in the working copy summary. */
+  reviewComments: number;
+  verifications: number;
   /** Set only while a working copy row is still live. */
   copyGeneration: number | null;
 }
@@ -212,6 +222,40 @@ export function previewSessionDeletion(db: Db, sessionId: string): SessionDeleti
     ),
     schedules: schedulesTargeting(db, sessionId, false).map(({ id, title }) => ({ id, title })),
     handoffs: handoffSides(db, sessionId),
+    checkpoints: countOf(
+      db,
+      `SELECT COUNT(*) AS n FROM file_checkpoints WHERE session_id=? AND state='ready'
+         AND COALESCE(json_extract(manifest_json, '$.target'), 'working_copy') <> 'original'`,
+      sessionId,
+    ),
+    sourceCheckpoints: countOf(
+      db,
+      `SELECT COUNT(*) AS n FROM file_checkpoints WHERE session_id=? AND state='ready'
+         AND json_extract(manifest_json, '$.target')='original'`,
+      sessionId,
+    ),
+    revertibleIntegrations: countOf(
+      db,
+      `SELECT COUNT(DISTINCT integration_id) AS n FROM integration_files
+       WHERE outcome IN ('applied', 'uncertain', 'revert_conflict')
+         AND integration_id IN (SELECT id FROM integrations WHERE session_id=?)`,
+      sessionId,
+    ),
+    reviewDecisions: countOf(
+      db,
+      'SELECT COUNT(*) AS n FROM review_decisions WHERE session_id=?',
+      sessionId,
+    ),
+    reviewComments: countOf(
+      db,
+      "SELECT COUNT(*) AS n FROM review_comments WHERE session_id=? AND state <> 'draft'",
+      sessionId,
+    ),
+    verifications: countOf(
+      db,
+      'SELECT COUNT(*) AS n FROM verifications WHERE session_id=?',
+      sessionId,
+    ),
     copyGeneration: copyGeneration(db, sessionId),
   };
 }

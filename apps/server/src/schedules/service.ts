@@ -151,13 +151,21 @@ export class ScheduleService {
     return schedule;
   }
 
-  /** Drop in-memory timers for schedules that name this session before its rows are removed. */
-  releaseSession(sessionId: string) {
-    for (const schedule of this.store.list()) {
-      if (schedule.sessionId !== sessionId) continue;
-      this.pending.get(schedule.id)?.abort();
-      this.pending.delete(schedule.id);
-    }
+  /**
+   * Schedules that name this session. Read before its rows go; the returned release aborts their
+   * in-flight dispatches and is called only once the session is deleted.
+   */
+  sessionDispatches(sessionId: string) {
+    const ids = this.store
+      .list()
+      .filter((schedule) => schedule.sessionId === sessionId)
+      .map((schedule) => schedule.id);
+    return () => {
+      for (const id of ids) {
+        this.pending.get(id)?.abort();
+        this.pending.delete(id);
+      }
+    };
   }
 
   remove(id: string, expectedRevision: number) {

@@ -2234,6 +2234,14 @@ export interface SessionDeletionSummary {
     otherTitle: string;
     otherDeleted: boolean;
   }[];
+  checkpoints: number;
+  /** Restore points of the linked source folder that go with the session. */
+  sourceCheckpoints: number;
+  /** Applies still in the source folder that Corral could revert until the session is gone. */
+  revertibleIntegrations: number;
+  reviewDecisions: number;
+  reviewComments: number;
+  verifications: number;
   copyGeneration: number | null;
   /** The working-copy removal summary when a copy is still live; browser drafts are absent. */
   workingCopy: CopyRemovalPlan | null;

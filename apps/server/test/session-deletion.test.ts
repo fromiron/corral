@@ -5,9 +5,27 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
+import type { WorkSession } from '@corral/core';
+import { openDatabase } from '@corral/storage-sqlite';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
+import { ScheduleService } from '../src/schedules/service.ts';
+import { ScheduleStore } from '../src/schedules/store.ts';
+
+// Lets a test make the final record delete refuse, as a run that started after the checks would.
+const storage = vi.hoisted(() => ({ refuseOnce: false }));
+vi.mock('@corral/storage-sqlite', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@corral/storage-sqlite')>();
+  return {
+    ...actual,
+    deleteSessionRecords: (...args: Parameters<typeof actual.deleteSessionRecords>) => {
+      if (!storage.refuseOnce) return actual.deleteSessionRecords(...args);
+      storage.refuseOnce = false;
+      return { ok: false, error: 'unfinished', runIds: ['run_late'] };
+    },
+  };
+});
 
 const require = createRequire(
   new URL('../../../packages/storage-sqlite/package.json', import.meta.url),
@@ -23,7 +41,44 @@ vi.setConfig({ testTimeout: 40_000 });
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
+  vi.restoreAllMocks();
+  storage.refuseOnce = false;
 });
+
+async function signedIn(prefix: string) {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  const token = `${prefix}fixture-0123456789abcdef0123`;
+  const server = await startCorralServer({
+    workspace: join(root, 'workspace'),
+    worktreeRoot: join(root, 'copies'),
+    bootstrapToken: token,
+    agents: new ScriptedAgentAdapter({ turns: 1 }),
+    port: 0,
+  });
+  cleanups.push(async () => {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  const login = await fetch(`${server.url}/api/v1/session`, {
+    method: 'POST',
+    headers: { origin: server.url, 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  const call: typeof fetch = (url, init = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('origin', server.url);
+    headers.set('cookie', cookie);
+    headers.set('x-corral-csrf', login.headers.get('x-corral-csrf') ?? '');
+    return fetch(url, { ...init, headers });
+  };
+  return {
+    root,
+    server,
+    call,
+    repository: new RestCorralRepository({ baseUrl: server.url, fetch: call }),
+  };
+}
 
 it('deletes a session only after the confirmed copy generation, and a repeat is done', async () => {
   const root = mkdtempSync(join(tmpdir(), 'corral-session-delete-'));
@@ -174,4 +229,100 @@ it('refuses to delete a session while one of its runs is unfinished', async () =
     'RUN_ALREADY_ACTIVE',
   );
   expect((await repository.getSession(created.session.sessionId))?.title).toBe('Busy');
+});
+
+it('a delete refused at the record step leaves the session’s schedule dispatches alone', async () => {
+  const released: string[] = [];
+  const original = ScheduleService.prototype.sessionDispatches;
+  vi.spyOn(ScheduleService.prototype, 'sessionDispatches').mockImplementation(function (
+    this: ScheduleService,
+    sessionId: string,
+  ) {
+    const release = original.call(this, sessionId);
+    return () => {
+      released.push(sessionId);
+      release();
+    };
+  });
+  const { server, call, repository } = await signedIn('corral-session-late-');
+  const created = await repository.createSession({ projectId: 'default', title: 'Scheduled' });
+  assert(created.ok);
+  const { sessionId, revision } = created.session;
+  const remove = () =>
+    call(`${server.url}/api/v1/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedRevision: revision }),
+    });
+  storage.refuseOnce = true;
+  const refused = await remove();
+  expect(refused.status).toBe(409);
+  expect(((await refused.json()) as { error: { code: string } }).error.code).toBe(
+    'RUN_ALREADY_ACTIVE',
+  );
+  expect(released).toEqual([]);
+  expect((await repository.getSession(sessionId))?.title).toBe('Scheduled');
+  expect((await remove()).status).toBe(204);
+  expect(released).toEqual([sessionId]);
+});
+
+it('releasing a session aborts only its schedules’ in-flight dispatches', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'corral-session-dispatch-'));
+  const db = openDatabase(join(root, 'corral.db'));
+  cleanups.push(async () => {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  const session = (sessionId: string) =>
+    ({ sessionId, projectId: 'default', corralId: null, archivedAt: null }) as WorkSession;
+  const signals = new Map<string, AbortSignal>();
+  let ids = 0;
+  const service = new ScheduleService(new ScheduleStore(db), {
+    now: () => '2026-11-12T00:00:00.000Z',
+    id: () => `schedule_${++ids}`,
+    repository: {
+      getSession: async (sessionId: string) => session(sessionId),
+      addSessionEntry: async (sessionId: string) => ({ ok: true, session: session(sessionId) }),
+    },
+    start: (request, signal) => {
+      signals.set(request.sessionId ?? '', signal);
+      return new Promise((_, reject) =>
+        signal.addEventListener('abort', () => reject(signal.reason)),
+      );
+    },
+    previous: () => null,
+    isRunActive: () => false,
+  });
+  const scheduleFor = (sessionId: string) =>
+    service.create({
+      title: sessionId,
+      hostId: 'local',
+      projectId: 'default',
+      sessionId,
+      timezone: 'UTC',
+      rule: { kind: 'daily', time: '09:00' },
+      enabled: true,
+      request: {
+        brief: 'Check the changes.',
+        choice: { modelProfile: 'simulated' },
+        mode: 'mock',
+        permissionMode: 'ask',
+        configRevision: 1,
+      },
+    });
+  const gone = await scheduleFor('session_gone');
+  const stays = await scheduleFor('session_stays');
+  const running = [
+    service.runNow(gone.id, gone.revision, 'cmd_gone'),
+    service.runNow(stays.id, stays.revision, 'cmd_stays'),
+  ];
+  await vi.waitFor(() => expect(signals.size).toBe(2));
+  const release = service.sessionDispatches('session_gone');
+  expect(signals.get('session_gone')?.aborted).toBe(false);
+  release();
+  expect(signals.get('session_gone')?.aborted).toBe(true);
+  expect(signals.get('session_stays')?.aborted).toBe(false);
+  await running[0];
+  service.sessionDispatches('session_stays')();
+  await running[1];
 });

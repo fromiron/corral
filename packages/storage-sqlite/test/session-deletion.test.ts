@@ -488,3 +488,65 @@ it('leaves a recorded copy path outside the copies folder on disk', async () => 
   expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', alpha.sessionId)).toBe(0);
   db.close();
 });
+
+it('names the checkpoints, reviews and source folder changes the session would lose', async () => {
+  const { db, dir, alpha, beta } = await seed();
+  const checkpoint = db.prepare(
+    `INSERT INTO file_checkpoints
+       (id, session_id, run_id, kind, manifest_json, manifest_hash, state, pinned, created_at)
+     VALUES (?, ?, NULL, 'before_restore', ?, NULL, ?, 1, ?)`,
+  );
+  const original = JSON.stringify({ target: 'original', label: 'Before whole-file integration' });
+  checkpoint.run('checkpoint_original', alpha.sessionId, original, 'ready', now);
+  checkpoint.run('checkpoint_original_old', alpha.sessionId, original, 'expired', now);
+  checkpoint.run(
+    'checkpoint_copy',
+    alpha.sessionId,
+    JSON.stringify({ target: 'working_copy' }),
+    'ready',
+    now,
+  );
+  db.prepare(
+    `INSERT INTO review_comments
+       (id, session_id, from_tree, to_tree, path, side, start_line, end_line, quote, body,
+        state, batch_id, created_at, updated_at)
+     VALUES ('comment_sent', ?, ?, ?, 'a.txt', 'after', 1, 1, 'q', 'note', 'submitted', NULL, ?, ?)`,
+  ).run(alpha.sessionId, tree, tree, now, now);
+  const integration = db.prepare(
+    `INSERT INTO integrations
+       (id, session_id, decision_id, from_tree, to_tree, state, created_at, updated_at)
+     VALUES (?, ?, 'decision_a', ?, ?, ?, ?, ?)`,
+  );
+  const written = db.prepare(
+    `INSERT INTO integration_files
+       (integration_id, path, action, expected_hash, after_hash, outcome, detail)
+     VALUES (?, ?, 'write', NULL, NULL, ?, NULL)`,
+  );
+  integration.run('integ_reverted', alpha.sessionId, tree, tree, 'reverted', now, now);
+  written.run('integ_reverted', 'a.txt', 'reverted');
+  integration.run('integ_stuck', alpha.sessionId, tree, tree, 'partial', now, now);
+  written.run('integ_stuck', 'a.txt', 'reverted');
+  written.run('integ_stuck', 'b.txt', 'revert_conflict');
+  expect(previewSessionDeletion(db, alpha.sessionId)).toMatchObject({
+    checkpoints: 2,
+    sourceCheckpoints: 1,
+    revertibleIntegrations: 2,
+    reviewDecisions: 1,
+    reviewComments: 1,
+    verifications: 1,
+  });
+  expect(previewSessionDeletion(db, beta.sessionId)).toMatchObject({
+    checkpoints: 1,
+    sourceCheckpoints: 0,
+    revertibleIntegrations: 1,
+    reviewComments: 0,
+  });
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, dir)).toEqual({ ok: true });
+  expect(
+    count(db, 'SELECT COUNT(*) AS n FROM file_checkpoints WHERE session_id=?', alpha.sessionId),
+  ).toBe(0);
+  expect(
+    count(db, 'SELECT COUNT(*) AS n FROM integrations WHERE session_id=?', beta.sessionId),
+  ).toBe(1);
+  db.close();
+});

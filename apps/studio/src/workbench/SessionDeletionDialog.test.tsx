@@ -59,6 +59,12 @@ const summary = (patch: Partial<SessionDeletionSummary> = {}): SessionDeletionSu
       otherDeleted: false,
     },
   ],
+  checkpoints: 0,
+  sourceCheckpoints: 0,
+  revertibleIntegrations: 0,
+  reviewDecisions: 0,
+  reviewComments: 0,
+  verifications: 0,
   copyGeneration: 3,
   workingCopy: {
     sessionId: 'session',
@@ -219,4 +225,37 @@ it('a repeated delete that is no longer found is done and clears this browser', 
   expect(localStorage.getItem('corral:meeting-handoff:session:decision_1')).toBeNull();
   expect(localStorage.getItem('corral:meeting-records:v1:session')).toBeNull();
   expect(localStorage.getItem('corral:session-draft:other')).toBe('stay');
+});
+
+it('warns that applied source folder changes and their restore points go with the session', async () => {
+  fixture.documents = {};
+  fixture.recoveries = [];
+  const plain = await mount(summary());
+  const quiet = plain.dialog()?.textContent ?? '';
+  expect(quiet).not.toContain('source folder');
+  expect(quiet).not.toContain('checkpoint');
+  await cleanups.splice(0)[0]?.();
+  const applied = await mount(
+    summary({
+      checkpoints: 4,
+      sourceCheckpoints: 1,
+      revertibleIntegrations: 2,
+      reviewDecisions: 1,
+      reviewComments: 2,
+      verifications: 3,
+    }),
+  );
+  const items = [
+    ...(applied.dialog()?.querySelectorAll('[data-testid="session-deletion"] li') ?? []),
+  ];
+  const line = (text: string) => items.find((item) => item.textContent === text);
+  expect(line('4 file checkpoints')).toBeTruthy();
+  expect(line('3 review decisions and comments')).toBeTruthy();
+  expect(line('3 check results')).toBeTruthy();
+  const restore = items.find((item) => item.textContent?.includes('1 source folder checkpoint'));
+  expect(restore?.className).toContain('text-warning');
+  const revert = items.find((item) => item.textContent?.includes('applied to the source folder'));
+  expect(revert?.textContent).toContain('2 times');
+  expect(revert?.className).toContain('text-warning');
+  expect(applied.dialog()?.textContent).toContain(messages.Sessions.deleteExplain);
 });

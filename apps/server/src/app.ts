@@ -3189,7 +3189,8 @@ async function createCorralServer(
         return workspaceFail(reply, error);
       }
     }
-    schedules.releaseSession(sessionId);
+    // A refused delete leaves the schedules' in-flight dispatches running.
+    const releaseDispatches = schedules.sessionDispatches(sessionId);
     const removed = deleteSessionRecords(db, sessionId, body.expectedRevision, worktreeRoot);
     if (!removed.ok) {
       if (removed.error === 'not_found') return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
@@ -3201,6 +3202,7 @@ async function createCorralServer(
         );
       return fail(reply, 'RUN_ALREADY_ACTIVE', 'a run in this session has not finished');
     }
+    releaseDispatches();
     return reply.code(204).send();
   });
   // ── Meetings ──────────────────────────────────────────────────────

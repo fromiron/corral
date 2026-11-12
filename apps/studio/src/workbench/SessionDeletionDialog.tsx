@@ -150,6 +150,27 @@ export function SessionDeletionDialog({
                 : t('deleteNoSchedules')}
             </li>
             <li>{t('deleteHandoffs', { count: summary.handoffs.length })}</li>
+            {summary.checkpoints ? (
+              <li>{t('deleteCheckpoints', { count: summary.checkpoints })}</li>
+            ) : null}
+            {summary.reviewDecisions + summary.reviewComments ? (
+              <li>
+                {t('deleteReviews', { count: summary.reviewDecisions + summary.reviewComments })}
+              </li>
+            ) : null}
+            {summary.verifications ? (
+              <li>{t('deleteChecks', { count: summary.verifications })}</li>
+            ) : null}
+            {summary.revertibleIntegrations ? (
+              <li className="text-warning">
+                {t('deleteApplied', { count: summary.revertibleIntegrations })}
+              </li>
+            ) : null}
+            {summary.sourceCheckpoints ? (
+              <li className="text-warning">
+                {t('deleteSourceCheckpoints', { count: summary.sourceCheckpoints })}
+              </li>
+            ) : null}
             {unfinished ? (
               <li className="text-danger">{t('deleteUnfinished', { count: unfinished })}</li>
             ) : null}
