@@ -971,6 +971,30 @@ export function describeCorralRepositoryContract(
           });
         expect((await repo.getSession(id))?.entries).toHaveLength(1);
       });
+
+      it('records one carried request per directive, however often it is carried', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Carry' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const carried = {
+          intent: 'queue' as const,
+          text: 'Read this after all.',
+          state: 'queued' as const,
+          start: { choice: { modelProfile: 'model-a' }, mode: 'mock' as const },
+          carriedFrom: 'directive_unread',
+        };
+        const first = await repo.addSessionEntry(id, carried);
+        if (!first.ok) throw new Error(first.message);
+        const again = await repo.addSessionEntry(id, clone(carried));
+        expect(again).toMatchObject({ ok: true });
+        expect(again.ok && again.session.entries).toEqual(first.session.entries);
+        const other = await repo.addSessionEntry(id, { ...carried, carriedFrom: 'directive_next' });
+        expect(other.ok && other.session.entries.map((e) => e.carriedFrom)).toEqual([
+          'directive_unread',
+          'directive_next',
+        ]);
+      });
     });
   });
 }

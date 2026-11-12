@@ -407,6 +407,12 @@ export interface CoordinatorDeps {
    * Runs a previous process left open and recovery closes are not reported.
    */
   onRunEnded?: (runId: string) => void;
+  /**
+   * Told after the commit when this process sees a directive of the run leave the wait for a
+   * request (delivered, or never delivered), with the committed projection. A host reads what
+   * to carry over from it (features/reins.md, "읽히지 못한 지시의 넘겨받기").
+   */
+  onDirectivesResolved?: (runId: string, projection: RunProjection) => void;
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -730,6 +736,9 @@ export class Coordinator {
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
   private readonly onRunEnded: ((runId: string) => void) | undefined;
+  private readonly onDirectivesResolved:
+    | ((runId: string, projection: RunProjection) => void)
+    | undefined;
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -786,6 +795,7 @@ export class Coordinator {
     this.gates = resolveGates(deps.admission);
     this.observers = deps.admission?.observers ?? [];
     this.onRunEnded = deps.onRunEnded;
+    this.onDirectivesResolved = deps.onDirectivesResolved;
     this.recover();
   }
 
@@ -3965,6 +3975,20 @@ export class Coordinator {
         void Promise.resolve().then(() => this.pump(subscriber));
       }
     }
+    const resolved = this.onDirectivesResolved;
+    if (
+      resolved &&
+      projection.directiveOrder.some(
+        (id) =>
+          ['queued', 'attached_to_request'].includes(before.directives[id]?.status ?? '') &&
+          !['queued', 'attached_to_request'].includes(projection.directives[id]?.status ?? ''),
+      )
+    )
+      void Promise.resolve()
+        .then(() => resolved(run.runId, projection))
+        .catch(() => {
+          // The listener owns its failure; the directive's state is already committed.
+        });
     if (TERMINAL_RUN_STATUSES.has(projection.status)) {
       this.live.delete(run.runId);
       this.wake(run);

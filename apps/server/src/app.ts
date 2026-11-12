@@ -672,6 +672,8 @@ async function createCorralServer(
   let sessionQueue: ReturnType<typeof createSessionQueue> | null = null;
   const coordinator = new Coordinator({
     onRunEnded: (runId) => void sessionQueue?.onRunEnded(runId),
+    onDirectivesResolved: (runId, projection) =>
+      void sessionQueue?.onDirectivesResolved(runId, projection),
     previewTools,
     imageGeneration: {
       read: (runId, versionId) => {

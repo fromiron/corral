@@ -33,6 +33,7 @@ export {
   ToolTerminationUnconfirmed,
 } from './coordinator.ts';
 export { definitionHash } from './definition-hash.ts';
+export * from './directive-carry.ts';
 export { SERIALIZER_VERSION } from './effort-routing/frame.ts';
 export {
   type EffortRoutingDeps,

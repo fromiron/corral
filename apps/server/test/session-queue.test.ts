@@ -2,7 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HttpSseTransport, RestCorralRepository } from '@corral/client';
+import { type RunCommand, SCHEMA_VERSION, type TextAttachment } from '@corral/contracts';
 import {
+  createTextAttachment,
   type NewSessionEntry,
   queuedSessionCommandId,
   type SessionEntryStart,
@@ -611,4 +613,131 @@ it('refuses a start snapshot on a steer over HTTP, and starts nothing', async ()
   await new Promise((resolve) => setTimeout(resolve, 200));
   expect((await s.repository.getSession(session.sessionId))?.entries).toEqual([]);
   expect(s.runsOf(session.sessionId)).toHaveLength(0);
+});
+
+// A person's message the target never read is carried over when the target succeeded first
+// (features/composer-flow.md, "대기 요청과 넘겨받기").
+async function carrySetup(options: { autoStart?: boolean } = {}) {
+  const s = await setup();
+  const session = await s.session();
+  if (options.autoStart === false) {
+    const off = await s.repository.updateSession(session.sessionId, {
+      autoStart: false,
+      expectedRevision: 1,
+    });
+    if (!off.ok) throw new Error(off.message);
+  }
+  const gate = s.hold();
+  const first = await s.ask(session.sessionId, 'cmd_carry_first');
+  // The screen records the new request with the start it sent.
+  const sent = await s.repository.addSessionEntry(session.sessionId, {
+    intent: 'next',
+    text: 'First request.',
+    state: 'started',
+    runId: first.runId,
+    commandId: 'cmd_carry_first',
+    start: START,
+  });
+  if (!sent.ok) throw new Error(sent.message);
+  // Steered after the run's only request went out, so nothing reads the message any more.
+  const projection = await waitForProjection(
+    s.transport,
+    first.runId ?? '',
+    (p) => Object.keys(p.modelCalls).length > 0,
+  );
+  const steer = (
+    text: string,
+    commandId: string,
+    extra: { delivery?: 'interrupt'; attachments?: TextAttachment[] } = {},
+  ) =>
+    s.transport.sendCommand({
+      schemaVersion: SCHEMA_VERSION,
+      commandId,
+      runId: first.runId ?? '',
+      type: 'steer',
+      payload: {
+        targetExecutionId: projection.executionOrder[0] ?? '',
+        text,
+        delivery: 'next_request',
+        ...extra,
+      },
+    } as RunCommand);
+  const carried = async (ms = 2_000) => {
+    const until = Date.now() + ms;
+    for (;;) {
+      const found = (await s.repository.getSession(session.sessionId))?.entries.find(
+        (e) => e.carriedFrom,
+      );
+      if ((found && found.state !== 'queued') || Date.now() > until) return found;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
+  return { ...s, session, gate, first, steer, carried };
+}
+
+it('starts an unread message as a new request when its target succeeded, even with autoStart off', async () => {
+  const s = await carrySetup({ autoStart: false });
+  const attachment = createTextAttachment('notes.txt', 'text/plain', 'attached words');
+  const receipt = await s.steer('Also check the tests.', 'steer_carry', {
+    attachments: [attachment],
+  });
+  expect(receipt.status).toBe('queued');
+  const plain = await s.queue(s.session.sessionId, 'Plain queued request.', { start: START });
+  s.gate.open();
+  const done = await s.ended(s.first.runId);
+  expect(done.status).toBe('succeeded');
+  const directiveId = done.directiveOrder[0] ?? '';
+  expect(done.directives[directiveId]?.status).toBe('expired');
+  const carried = await s.carried();
+  expect(carried).toMatchObject({
+    intent: 'queue',
+    state: 'started',
+    text: 'Also check the tests.',
+    attachments: [attachment],
+    start: START,
+    carriedFrom: directiveId,
+  });
+  expect(carried?.runId).toBeTruthy();
+  const definition = await s.transport.getRunDefinition(carried?.runId ?? '');
+  expect(definition?.input.brief).toContain('Also check the tests.');
+  expect(JSON.stringify(definition)).toContain('notes.txt');
+  // The plain request behind it keeps waiting for a person: autoStart is off.
+  await s.ended(carried?.runId ?? null);
+  expect(await s.settledEntry(s.session.sessionId, plain.entryId, 400)).toMatchObject({
+    state: 'queued',
+  });
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(2);
+  // The directive's record stays expired.
+  const again = await waitForProjection(s.transport, s.first.runId ?? '', () => true);
+  expect(again.directives[directiveId]?.status).toBe('expired');
+});
+
+it('carries an interrupt that was never read the same way', async () => {
+  const s = await carrySetup();
+  await s.steer('Cut in here.', 'steer_carry_cut', { delivery: 'interrupt' });
+  s.gate.open();
+  await s.ended(s.first.runId);
+  const carried = await s.carried();
+  expect(carried).toMatchObject({ state: 'started', text: 'Cut in here.' });
+  await s.ended(carried?.runId ?? null);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(2);
+});
+
+it('does not carry a message a cancelled run never delivered, and starts no run', async () => {
+  const s = await carrySetup();
+  await s.steer('Never mind.', 'steer_carry_cancel');
+  await s.transport.sendCommand({
+    schemaVersion: SCHEMA_VERSION,
+    commandId: 'cancel_carry',
+    runId: s.first.runId ?? '',
+    type: 'cancel',
+    payload: { scope: { kind: 'run' }, reason: 'stop' },
+  } as RunCommand);
+  s.gate.open();
+  const done = await s.ended(s.first.runId);
+  expect(done.status).toBe('cancelled');
+  expect(Object.values(done.directives).map((d) => d.status)).toEqual(['not_delivered']);
+  expect(await s.carried(400)).toBeUndefined();
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(1);
 });

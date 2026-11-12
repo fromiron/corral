@@ -544,6 +544,9 @@ export function planSessionEntry(
           };
     }
   }
+  // A directive is carried once, however many times its end is reported.
+  if (entry.carriedFrom && current.entries.some((value) => value.carriedFrom === entry.carriedFrom))
+    return { ok: true, session: current };
   if (current.entries.length >= ENTRIES_MAX)
     return { ok: false, error: 'invalid', message: 'This session is full; start a new one.' };
   const nameFromRequest =
@@ -599,6 +602,14 @@ export function planSessionEntry(
 }
 
 /** A saved queue item has one start identity across tabs; model/history changes cannot clone it. */
+/** The queued request the server starts next: carried requests first, then the queue in order. */
+export function nextQueuedEntry(session: WorkSession): SessionEntry | undefined {
+  return (
+    session.entries.find((entry) => entry.state === 'queued' && entry.carriedFrom) ??
+    session.entries.find((entry) => entry.state === 'queued')
+  );
+}
+
 export function queuedSessionCommandId(sessionId: string, entry: SessionEntry): string {
   return (
     entry.commandId ??
