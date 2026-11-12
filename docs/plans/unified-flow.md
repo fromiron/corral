@@ -438,8 +438,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 수정 중(`flow/u2-timeline-frame-2`) |
-| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 리뷰 수정 중(U2 브랜치 위) |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 중(`flow/u2-timeline-frame-2`) |
+| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 수정 중(`flow/u3-run-row-2`, 두 번째 revise 뒤 새 빌더) |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
@@ -759,6 +759,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U7 (면은 하나).** 컴포저의 올라온 면은 열 너비의 `Elevated` 카드 하나다. 활동 바, 칩, 입력, 도구 줄이 그 카드 안에 있고 입력 상자는 자기 테두리를 갖지 않는다. 세션 누계 줄은 카드 아래에 온다. U2가 만든 컴포저 구역 자체는 면이 아니다(배경과 같은 바탕, 위쪽으로 짧게 옅어지는 가림뿐이다).
 - **U2 (리뷰에서 정한 것).** 타임라인은 항목 수와 무관하게 가상화 한 방식이다(마운트된 행은 흐름 안, 창 밖은 목록의 위·아래 padding). 가상화를 없앤 첫 구현은 200개 이상에서 쓸 수 없게 느려 되돌렸다. 컴포저 구역은 면이 아니다: 페이지 바탕(`--chat-floor`)과 위쪽 가림(`data-composer-fade`)뿐이다.
 - **U3 (리뷰에서 정한 것).** 답을 기다리는 표시는 진행 중 단계가 도구이면 그 이름, 모델 요청이거나 단계가 없으면 글자 없이 킷 표시만 쓴다(상태 이름을 쓰지 않는다). 꼬리 줄의 결과는 접힌 결과 블록으로 따로 그려지는 것만 센다(본문에 바로 보이는 답은 세지 않는다). 변경은 파일 쓰기 도구 호출 수이고 검사는 꼬리 줄에 없다(투영에 근거가 없다). 끝맺음 블록의 이유 줄은 머리 줄을 되풀이하면(`cancel_confirmed`, 답하는 역할의 `execution_failed`) 그리지 않는다. 실패한 턴에서 해제된 본문의 글은 사라진다(본문 수명 계약이 우선이다). 사람이 고른 과정 열림 상태와 실행의 마지막 뷰는 모듈 메모리에 기억해 행이 창 밖에서 돌아와도 같은 높이로 그린다. 머리 줄의 셈은 "N단계"다.
+- **U3 (두 번째 리뷰에서 정한 것).** 머리 버튼의 접근 이름은 역할·상태·단계 수·실패 수를 담고 경과 시간은 뺀다. 대화 턴의 보존된 답은 산출물 본문과 달리 해제되지 않으므로 행이 창 밖에서 돌아올 때 판과 무관하게 바로 보인다(이전 답이 "Loading…"으로 깜박이지 않게). 한 실행 행에 결과 블록이 둘 이상이면 종류 이름("부분 결과"·"결과")은 묶음 위에 한 번만 쓴다.
 - **U7 (U3가 남긴 것).** 상단 바 pill(`DockRunControls`)은 상태 이름을 접근 이름으로만 갖는다. U7이 그 부품을 지울 때 그 접근 이름을 보던 단언(`DockRunControls.test.tsx`, `ApprovalWaiting.once.test.tsx`, `run-page.spec.ts`, `chat-widgets.spec.ts`)을 활동 바로 옮긴다. 컴포저 줄의 "Succeeded · Last run"은 실행 행이 화면에 보이면 상태 이름을 쓰지 않는다.
 - **U5·U6 (B6가 남긴 것).** 끊긴 호출은 투영의 모델 호출 기록 `interrupted: true`로 안다(`model.finished.interrupted`). 끊긴 호출과 오류로 끝난 호출은 확정 응답이 없고(B2) 받은 글은 `partialOutputs`에만 있으므로, 화면이 "중단된 출력"으로 표시하려면 `partialOutputs`와 이 값을 본다. 요청을 준비하는 중이거나 permit을 기다리는 중의 끼어들기는 끊지 않고 그 요청에 실린다(그 호출에는 `interrupted`가 없다). 그때 메타 줄은 "끼어듦 · 응답을 끊고 전달됨"이 아니라 읽힘으로 보여야 한다.
 - **B6 (남긴 한계).** 모델은 다음 요청에서 자기 끊긴 글을 보지 못한다(공급자 변환이 끊긴 assistant 메시지를 통째로 뺀다). 컨텍스트 초과 복구 중에 지시가 오면 재준비가 압축 결과를 버린다(B6 이전부터 있던 동작). 끊긴 호출은 무진전 턴으로 세지 않는다.
