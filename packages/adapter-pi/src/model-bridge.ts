@@ -127,6 +127,7 @@ export function modelBridgeChannel(channel: Channel, options: ModelBroker): Chan
     };
     void (async () => {
       let response: { status: number; headers: Headers } | undefined;
+      let responseStarted = false;
       try {
         const fence = providerRequestFence(options.model, undefined, request.abort.signal);
         // No worker-provided URL, headers, key, output limit or provider-specific options.
@@ -173,6 +174,7 @@ export function modelBridgeChannel(channel: Channel, options: ModelBroker): Chan
         let terminal: AssistantMessageEvent | undefined;
         try {
           for await (const event of stream) {
+            if (event.type !== 'done' && event.type !== 'error') responseStarted = true;
             // Provider exceptions can include authentication headers; never pass diagnostic bodies.
             const safeEvent =
               event.type === 'error'
@@ -181,7 +183,9 @@ export function modelBridgeChannel(channel: Channel, options: ModelBroker): Chan
                     error: {
                       ...event.error,
                       errorMessage: JSON.stringify(
-                        providerFailure(event.error.errorMessage ?? '', response),
+                        providerFailure(event.error.errorMessage ?? '', response, {
+                          responseStarted,
+                        }),
                       ),
                     },
                   }

@@ -37,7 +37,7 @@ export {
 } from './install.ts';
 export { cleanupLegacyJudge } from './legacy.ts';
 export {
-  closestParticipant,
+  blendedScores,
   LocalMeetingSelector,
   MEETING_PREPROCESS_VERSION,
   type MeetingEngine,
