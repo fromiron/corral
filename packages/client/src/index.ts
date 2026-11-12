@@ -74,6 +74,7 @@ import type {
   QueuedMeetingMessage,
   ReasoningCapabilities,
   RestoreCheckpoint,
+  SessionCompactionOutcome,
   SessionCompactionView,
   SkillAdoption,
   SkillAdoptRequest,
@@ -525,6 +526,11 @@ export class MeetingsApi implements MeetingsClient {
   }
 }
 
+export interface SessionCompactionRead {
+  compaction: SessionCompactionView | null;
+  outcome: SessionCompactionOutcome | null;
+}
+
 /** Idle session compaction. A repeated command id returns the stored receipt. */
 export class SessionCompactionApi {
   private readonly http: Http;
@@ -540,12 +546,14 @@ export class SessionCompactionApi {
       command,
     );
   }
-  async read(sessionId: string): Promise<{ compaction: SessionCompactionView | null }> {
+  /** With a command id, also where that accepted command stands; null when the server lost it. */
+  async read(sessionId: string, commandId?: string): Promise<SessionCompactionRead> {
+    const query = commandId ? `?commandId=${encodeURIComponent(commandId)}` : '';
     const response = await this.http.request(
-      `/sessions/${encodeURIComponent(sessionId)}/compaction`,
+      `/sessions/${encodeURIComponent(sessionId)}/compaction${query}`,
     );
     if (!response.ok) throw await apiError(response);
-    return (await response.json()) as { compaction: SessionCompactionView | null };
+    return (await response.json()) as SessionCompactionRead;
   }
   private async command(path: string, body: unknown): Promise<Receipt> {
     const response = await this.http.request(path, {

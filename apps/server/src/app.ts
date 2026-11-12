@@ -3175,13 +3175,18 @@ async function createCorralServer(
       );
     },
   );
-  app.get<{ Params: { sessionId: string } }>(
+  app.get<SessionParams & { Querystring: { commandId?: string } }>(
     '/api/v1/sessions/:sessionId/compaction',
     async (request, reply) => {
-      if (!(await corrals.getSession(request.params.sessionId)))
+      const { commandId } = request.query;
+      if (commandId !== undefined && !Identifier.safeParse(commandId).success)
+        return fail(reply, 'SCHEMA_INVALID', 'commandId is not an identifier');
+      const { sessionId } = request.params;
+      if (!(await corrals.getSession(sessionId)))
         return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
       return {
-        compaction: coordinator.sessionCompactionView(request.params.sessionId),
+        compaction: coordinator.sessionCompactionView(sessionId),
+        outcome: commandId ? coordinator.sessionCompactionOutcome(sessionId, commandId) : null,
       };
     },
   );

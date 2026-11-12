@@ -35,7 +35,7 @@ type Complete = NonNullable<
 function setup(complete: Complete, options: { revision?: number; hold?: Gate } = {}) {
   const calls: Parameters<Complete>[0][] = [];
   const starts: AgentStartInput[] = [];
-  let revision = options.revision ?? 4;
+  let revision: number | null = options.revision ?? 4;
   const store = new InMemoryRunStore();
   const coordinator = new Coordinator({
     store,
@@ -70,7 +70,7 @@ function setup(complete: Complete, options: { revision?: number; hold?: Gate } =
     store,
     calls,
     starts,
-    setRevision: (next: number) => {
+    setRevision: (next: number | null) => {
       revision = next;
     },
   };
@@ -291,5 +291,46 @@ describe('session compaction', () => {
     expect(s.calls).toHaveLength(1);
     gate.open();
     hold.open();
+  });
+
+  it('reports a pending, settled or unknown outcome for one command id', async () => {
+    const gate = new Gate();
+    const s = setup(async () => {
+      await gate.wait();
+      return { text: 'Goal.', stopReason: 'stop' };
+    });
+    await turn(s, 'cmd_first', 'A request long enough to summarize into something shorter.');
+    expect(s.coordinator.sessionCompactionOutcome(SESSION, 'cmd_compact')).toBeNull();
+    s.coordinator.submitSession(compact());
+    expect(s.coordinator.sessionCompactionOutcome(SESSION, 'cmd_compact')).toEqual({
+      commandId: 'cmd_compact',
+      phase: 'pending',
+    });
+    expect(s.coordinator.sessionCompactionOutcome('session_other', 'cmd_compact')).toBeNull();
+    gate.open();
+    await settled(s);
+    expect(s.coordinator.sessionCompactionOutcome(SESSION, 'cmd_compact')).toEqual({
+      commandId: 'cmd_compact',
+      phase: 'completed',
+    });
+    const refused = s.coordinator.submitSession({ ...compact(9), commandId: 'cmd_stale' });
+    expect(refused.status).toBe('rejected');
+    expect(s.coordinator.sessionCompactionOutcome(SESSION, 'cmd_stale')).toBeNull();
+  });
+
+  it('records nothing when the session is deleted before the summary returns', async () => {
+    const gate = new Gate();
+    const s = setup(async () => {
+      await gate.wait();
+      return { text: 'late summary', stopReason: 'stop' };
+    });
+    await turn(s, 'cmd_first', 'This session is deleted while its summary is in flight.');
+    s.coordinator.submitSession(compact());
+    for (let i = 0; i < 20 && s.calls.length === 0; i++) await Promise.resolve();
+    s.setRevision(null);
+    gate.open();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(s.coordinator.sessionCompactions(SESSION)).toEqual([]);
+    expect(s.coordinator.sessionCompactionOutcome(SESSION, 'cmd_compact')).toBeNull();
   });
 });

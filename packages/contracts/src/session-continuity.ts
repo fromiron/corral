@@ -168,6 +168,13 @@ export const SessionCompactionRecord = z.strictObject({
 });
 export type SessionCompactionRecord = z.infer<typeof SessionCompactionRecord>;
 
+/** Where one accepted session compaction command stands. */
+export const SessionCompactionOutcome = z.strictObject({
+  commandId: Identifier,
+  phase: z.union([z.literal('pending'), SessionCompactionPhase]),
+});
+export type SessionCompactionOutcome = z.infer<typeof SessionCompactionOutcome>;
+
 /** What the conversation and context detail show. The summary body stays in the run record. */
 export const SessionCompactionView = z.strictObject({
   commandId: Identifier,

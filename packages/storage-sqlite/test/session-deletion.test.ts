@@ -550,3 +550,43 @@ it('names the checkpoints, reviews and source folder changes the session would l
   ).toBe(1);
   db.close();
 });
+
+it('removes that session’s summaries and session command receipts and keeps the other’s', async () => {
+  const { db, dir, runs, alpha, beta } = await seed();
+  for (const [sessionId, runId] of [
+    [alpha.sessionId, 'run_alpha'],
+    [beta.sessionId, 'run_beta'],
+  ] as const) {
+    runs.putSessionCompaction({
+      commandId: 'cmd_compact',
+      sessionId,
+      sessionRevision: 1,
+      phase: 'completed',
+      throughRunId: runId,
+      coveredRunIds: [runId],
+      omittedTurns: 0,
+      sourceHash: 'c'.repeat(64),
+      summary: 'Goal.',
+      summaryHash: 'd'.repeat(64),
+      recordedAt: now,
+    });
+    db.prepare(
+      `INSERT INTO commands
+         (scope, command_id, run_id, payload_hash, receipt_json, directive_id, original_request_hash)
+       VALUES (?, 'cmd_compact', NULL, 'hash', '{}', NULL, NULL)`,
+    ).run(`session:${sessionId}`);
+  }
+  expect(deleteSessionRecords(db, alpha.sessionId, 1, dir)).toEqual({ ok: true });
+  expect(runs.listSessionCompactions(alpha.sessionId)).toEqual([]);
+  expect(runs.listSessionCompactions(beta.sessionId)).toHaveLength(1);
+  expect(
+    count(db, 'SELECT COUNT(*) AS n FROM commands WHERE scope=?', `session:${alpha.sessionId}`),
+  ).toBe(0);
+  expect(
+    count(db, 'SELECT COUNT(*) AS n FROM commands WHERE scope=?', `session:${beta.sessionId}`),
+  ).toBe(1);
+  expect(() =>
+    db.prepare('DELETE FROM session_compactions WHERE session_id=?').run(beta.sessionId),
+  ).toThrow(/immutable/);
+  db.close();
+});

@@ -53,6 +53,7 @@ const DELETE_TRIGGERS = [
   'run_events_no_delete',
   'conversation_turns_no_delete',
   'model_attempt_events_no_delete',
+  'session_compactions_no_delete',
 ] as const;
 
 interface SessionRow {
@@ -329,6 +330,8 @@ CREATE TRIGGER conversation_turns_no_delete BEFORE DELETE ON conversation_turns
 BEGIN SELECT RAISE(ABORT, 'conversation_turns rows are immutable'); END;
 CREATE TRIGGER model_attempt_events_no_delete BEFORE DELETE ON model_attempt_events
 BEGIN SELECT RAISE(ABORT, 'model_attempt_events rows are immutable'); END;
+CREATE TRIGGER session_compactions_no_delete BEFORE DELETE ON session_compactions
+BEGIN SELECT RAISE(ABORT, 'session_compactions rows are immutable'); END;
 `);
 }
 
@@ -349,6 +352,9 @@ function removeRows(db: Db, sessionId: string, runIds: string[], title: string) 
   ])
     deleteMatching(db, byRun(table), runIds);
   deleteMatching(db, byRun('commands'), runIds);
+  // Session commands, such as compact_session, name no run.
+  db.prepare('DELETE FROM commands WHERE scope=?').run(`session:${sessionId}`);
+  db.prepare('DELETE FROM session_compactions WHERE session_id=?').run(sessionId);
   deleteMatching(
     db,
     'DELETE FROM candidate_executions WHERE run_id IN (SELECT value FROM json_each(?))',

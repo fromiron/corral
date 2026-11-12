@@ -86,6 +86,7 @@ import {
   type RuntimeFiles,
   type Scheduler,
   SessionCommand,
+  type SessionCompactionOutcome,
   SessionCompactionRecord,
   SessionConversation,
   type SetBreakpointsCommand,
@@ -2563,6 +2564,17 @@ export class Coordinator {
     return this.store.listSessionCompactions(sessionId);
   }
 
+  /** Pending, or how it settled. Null when this server never accepted the command or lost it. */
+  sessionCompactionOutcome(sessionId: string, commandId: string): SessionCompactionOutcome | null {
+    const record = this.store
+      .listSessionCompactions(sessionId)
+      .find((item) => item.commandId === commandId);
+    if (record) return { commandId, phase: record.phase };
+    return this.pendingSessionCompaction.has(`${sessionId}\u0000${commandId}`)
+      ? { commandId, phase: 'pending' }
+      : null;
+  }
+
   /** The summary the next request attaches, or null when the source turns are still attached. */
   sessionCompactionView(sessionId: string) {
     const applied = this.appliedSessionCompaction(sessionId);
@@ -2741,6 +2753,8 @@ export class Coordinator {
       )
         return;
       const revision = this.sessionFacts?.revision(command.sessionId);
+      // A deleted session keeps no record of a summary that came back after it.
+      if (revision === null) return;
       const text = answer.text.trim();
       let phase: SessionCompactionRecord['phase'];
       let summary: string | null = null;
