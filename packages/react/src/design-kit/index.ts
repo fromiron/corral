@@ -151,6 +151,14 @@ export {
   type ConnectionsProps,
 } from './components/agent/connections.tsx';
 export {
+  type Decision,
+  type DecisionAction,
+  type DecisionChoice,
+  DecisionInbox,
+  type DecisionInboxLabels,
+  type DecisionInboxProps,
+} from './components/agent/decision-inbox.tsx';
+export {
   type DecisionNode,
   type DecisionOption,
   DecisionTree,
