@@ -23,7 +23,7 @@ export function presenceDot(tone: PresenceTone) {
 
 /** The text colour a kit mark drawn in `currentColor` takes for a tone: StatusDot's colours. */
 const TEXT: Record<PresenceTone, string> = {
-  neutral: 'text-muted-foreground',
+  neutral: 'text-muted-foreground/60',
   active: 'text-primary',
   success: 'text-success',
   warning: 'text-warning',

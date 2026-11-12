@@ -19,6 +19,8 @@ export function PresenceMark({ presence }: { presence: Presence | null | undefin
         <span
           role="img"
           aria-label={t(presence.labelKey)}
+          // The shape alone cannot tell a pause from a cancel: hovering names it, as a dot did.
+          title={t(presence.labelKey)}
           data-presence={presence.kind}
           className={cn('inline-flex', presenceToneText(presence.tone))}
         >

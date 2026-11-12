@@ -108,6 +108,16 @@ it('names the current session as the page title and switches within the project 
   expect(visibleText(items[2] as HTMLElement)).not.toContain(messages.Presence.state.succeeded);
   expect(items[0]?.querySelector('[role="img"]')).toBeNull();
   for (const item of items) expect(item.querySelector('[data-presence-label]')).toBeNull();
+  // The item's accessible name carries the state, which the mark alone does not give it.
+  expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
+    'Session pinned',
+    'Session current',
+    `Session old, ${messages.Presence.state.succeeded}`,
+  ]);
+  // Hovering the mark names it too.
+  expect(items[2]?.querySelector('[role="img"]')?.getAttribute('title')).toBe(
+    messages.Presence.state.succeeded,
+  );
   await act(async () => items[0]?.click());
   expect(onOpen).toHaveBeenCalledWith('pinned');
 });
@@ -138,6 +148,10 @@ it('lists the session runs newest first by number and status and selects one', a
     expect(item.querySelector('[data-presence-label]')).toBeNull();
     expect(visibleText(item)).not.toMatch(/Completed|Failed/);
   }
+  expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
+    `Run #2, ${messages.Presence.state.succeeded}`,
+    `Run #1, ${messages.Presence.state.failed}`,
+  ]);
   expect(items[1]?.getAttribute('aria-checked')).toBe('true');
   await act(async () => items[0]?.click());
   expect(onSelect).toHaveBeenCalledWith('second');

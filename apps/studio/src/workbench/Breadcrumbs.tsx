@@ -12,7 +12,7 @@ import {
   MenuTrigger,
 } from '@corral/react/design-kit';
 import { ChevronDown } from '@corral/react/icons';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useRegisteredCommands } from '../commandRegistry.ts';
 import { PresenceMark } from './PresenceMark.tsx';
 import { presenceDot } from './presenceDot.ts';
@@ -46,6 +46,8 @@ export function SessionMenu({
   onOpen: (sessionId: string) => void;
 }) {
   const n = useTranslations('Navigation');
+  const presenceText = useTranslations('Presence');
+  const format = useFormatter();
   const siblings = sessions
     .filter((session) => session.projectId === projectId && !session.archivedAt)
     .sort(bySidebarOrder);
@@ -91,7 +93,19 @@ export function SessionMenu({
               const run = latestSessionRun(session, runs);
               const presence = run ? listedRunPresence(run) : null;
               return (
-                <MenuRadioItem key={session.sessionId} value={session.sessionId} closeOnClick>
+                <MenuRadioItem
+                  key={session.sessionId}
+                  value={session.sessionId}
+                  // The item's name is its title and its state: the mark alone is not read.
+                  label={
+                    presence
+                      ? format.list([session.title, presenceText(presence.labelKey)], {
+                          type: 'unit',
+                        })
+                      : session.title
+                  }
+                  closeOnClick
+                >
                   {/* A grid, not a flex row: its title column asks for no width of its own, so a
                       long title truncates inside the popup and the status keeps its place. */}
                   <span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
@@ -128,6 +142,7 @@ export function RunMenu({
   const tw = useTranslations('Workbench');
   const tr = useTranslations('RunPage');
   const presenceText = useTranslations('Presence');
+  const format = useFormatter();
   const label = (run: RunSummary) => presenceText(listedRunPresence(run).labelKey);
   const dot = (run: RunSummary) => presenceDot(listedRunPresence(run).tone);
   const number = (id: string) => runs.findIndex((run) => run.runId === id) + 1;
@@ -182,7 +197,12 @@ export function RunMenu({
       <MenuPopup align="start" aria-label={tw('chooseRun')} className="min-w-48 max-w-96">
         <MenuRadioGroup value={runId} onValueChange={(value) => onSelect(String(value))}>
           {[...runs].reverse().map((run) => (
-            <MenuRadioItem key={run.runId} value={run.runId} closeOnClick>
+            <MenuRadioItem
+              key={run.runId}
+              value={run.runId}
+              label={format.list([runName(run.runId), label(run)], { type: 'unit' })}
+              closeOnClick
+            >
               <span className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
                 <PresenceMark presence={listedRunPresence(run)} />
                 <span className="truncate">{runName(run.runId)}</span>

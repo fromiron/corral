@@ -1305,8 +1305,16 @@ function SessionRow({
   // The latest run's own state names that run; a decision's "waiting" is not its state.
   const latest = latestSessionRun(x, runs);
   const latestKind = latest ? listedRunPresence(latest).kind : null;
+  // A decision's run is the one that waits, whatever the latest run is doing.
+  const decisionRun = attention.find(
+    (item) => item.kind === 'decision' && item.sessionId === x.sessionId,
+  )?.runId;
   const target = (value: AttentionReason) =>
-    latest && value === latestKind ? (`run:${latest.runId}` as const) : undefined;
+    latest && value === latestKind
+      ? (`run:${latest.runId}` as const)
+      : value === 'awaiting_user' && decisionRun
+        ? (`run:${decisionRun}` as const)
+        : undefined;
   return (
     // Narrow, the meta sits under the title, so only the row's own action takes room from it.
     <li

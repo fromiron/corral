@@ -837,12 +837,16 @@ describe('session row presence', () => {
         run('session_0', 'paused', first),
         run('session_1', 'created', first),
         run('session_2', 'failed', first),
+        run('session_3', 'cancelled', first),
       ],
     });
     const mark = (id: string) => row(container, id)?.querySelector('[role="img"][data-presence]');
     expect(mark('session_0')?.className).toContain('text-warning');
     expect(mark('session_1')?.className).toContain('text-primary');
     expect(mark('session_2')?.className).toContain('text-danger');
+    // Neutral is the dot's own grey (bg-muted-foreground/60), not a darker one.
+    expect(mark('session_3')?.className).toContain('text-muted-foreground/60');
+    expect(mark('session_3')?.getAttribute('title')).toBe(messages.Presence.state.cancelled);
     // The glyph takes the tone's colour, not the kit's own colour for the state.
     for (const id of ['session_0', 'session_1', 'session_2'])
       expect(mark(id)?.querySelector('svg')?.getAttribute('style') ?? '').not.toContain('color');

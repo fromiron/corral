@@ -803,6 +803,21 @@ it('says on each row only what its group does not', async () => {
   );
 });
 
+it('keys every state name a Needs attention row writes by the run it names', async () => {
+  // C runs, and a decision of its run waits: the reason is the decision's run.
+  stateFixture(async () => [{ ...inboxItem('decision', 'C'), runId: 'run_C' }]);
+  const { container } = await render();
+  const labels = (id: string) =>
+    [
+      ...(container
+        .querySelector(`[role="tabpanel"] [data-session-row="${id}"]`)
+        ?.querySelectorAll('[data-presence-label]') ?? []),
+    ].map((label) => [label.textContent, label.getAttribute('data-presence-label')]);
+  expect(labels('C')).toEqual([[messages.Presence.state.awaiting_user, 'run:run_C']]);
+  // A run that waits names itself.
+  expect(labels('A')).toEqual([[messages.Presence.state.awaiting_user, 'run:run_A']]);
+});
+
 it('gives a row the time as the sidebar does, without "Saved"', async () => {
   fixture.data = {
     ...fixture.data,
