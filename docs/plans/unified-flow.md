@@ -427,10 +427,10 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | S0 | 명세 변경 | — | `docs/specs` | 완료 |
 | V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 완료 |
 | B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
-| B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 테스트 20개(2개 실패), 찾은 빈틈 수정 중 |
+| B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 수정 중(`flow/b2-delivery-gaps-2`, 두 번째 revise 뒤 새 빌더) |
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 완료 |
-| B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 완료(후속 `flow/b5-followup` 진행 중) |
+| B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 완료 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
@@ -438,8 +438,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 수정 중(`flow/u2-timeline-frame-2`) |
-| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 리뷰 수정 중(U2 브랜치 위) |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 중(`flow/u2-timeline-frame-2`) |
+| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 수정 중(`flow/u3-run-row-2`, 두 번째 revise 뒤 새 빌더) |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
@@ -759,14 +759,16 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U7 (면은 하나).** 컴포저의 올라온 면은 열 너비의 `Elevated` 카드 하나다. 활동 바, 칩, 입력, 도구 줄이 그 카드 안에 있고 입력 상자는 자기 테두리를 갖지 않는다. 세션 누계 줄은 카드 아래에 온다. U2가 만든 컴포저 구역 자체는 면이 아니다(배경과 같은 바탕, 위쪽으로 짧게 옅어지는 가림뿐이다).
 - **U2 (리뷰에서 정한 것).** 타임라인은 항목 수와 무관하게 가상화 한 방식이다(마운트된 행은 흐름 안, 창 밖은 목록의 위·아래 padding). 가상화를 없앤 첫 구현은 200개 이상에서 쓸 수 없게 느려 되돌렸다. 컴포저 구역은 면이 아니다: 페이지 바탕(`--chat-floor`)과 위쪽 가림(`data-composer-fade`)뿐이다.
 - **U3 (리뷰에서 정한 것).** 답을 기다리는 표시는 진행 중 단계가 도구이면 그 이름, 모델 요청이거나 단계가 없으면 글자 없이 킷 표시만 쓴다(상태 이름을 쓰지 않는다). 꼬리 줄의 결과는 접힌 결과 블록으로 따로 그려지는 것만 센다(본문에 바로 보이는 답은 세지 않는다). 변경은 파일 쓰기 도구 호출 수이고 검사는 꼬리 줄에 없다(투영에 근거가 없다). 끝맺음 블록의 이유 줄은 머리 줄을 되풀이하면(`cancel_confirmed`, 답하는 역할의 `execution_failed`) 그리지 않는다. 실패한 턴에서 해제된 본문의 글은 사라진다(본문 수명 계약이 우선이다). 사람이 고른 과정 열림 상태와 실행의 마지막 뷰는 모듈 메모리에 기억해 행이 창 밖에서 돌아와도 같은 높이로 그린다. 머리 줄의 셈은 "N단계"다.
+- **U3 (두 번째 리뷰에서 정한 것).** 머리 버튼의 접근 이름은 역할·상태·단계 수·실패 수를 담고 경과 시간은 뺀다. 대화 턴의 보존된 답은 산출물 본문과 달리 해제되지 않으므로 행이 창 밖에서 돌아올 때 판과 무관하게 바로 보인다(이전 답이 "Loading…"으로 깜박이지 않게). 한 실행 행에 결과 블록이 둘 이상이면 종류 이름("부분 결과"·"결과")은 묶음 위에 한 번만 쓴다.
 - **U7 (U3가 남긴 것).** 상단 바 pill(`DockRunControls`)은 상태 이름을 접근 이름으로만 갖는다. U7이 그 부품을 지울 때 그 접근 이름을 보던 단언(`DockRunControls.test.tsx`, `ApprovalWaiting.once.test.tsx`, `run-page.spec.ts`, `chat-widgets.spec.ts`)을 활동 바로 옮긴다. 컴포저 줄의 "Succeeded · Last run"은 실행 행이 화면에 보이면 상태 이름을 쓰지 않는다.
-- **U5·U6 (B6가 남긴 것).** 끊긴 호출은 투영의 모델 호출 기록 `interrupted: true`로 안다(`model.finished.interrupted`). 끊긴 출력은 그 호출의 응답으로 저장되므로 화면이 "중단된 출력"으로 표시하려면 이 값을 본다. 요청을 준비하는 중이거나 permit을 기다리는 중의 끼어들기는 끊지 않고 그 요청에 실린다(그 호출에는 `interrupted`가 없다). 그때 메타 줄은 "끼어듦 · 응답을 끊고 전달됨"이 아니라 읽힘으로 보여야 한다.
+- **U5·U6 (B6가 남긴 것).** 끊긴 호출은 투영의 모델 호출 기록 `interrupted: true`로 안다(`model.finished.interrupted`). 끊긴 호출과 오류로 끝난 호출은 확정 응답이 없고(B2) 받은 글은 `partialOutputs`에만 있으므로, 화면이 "중단된 출력"으로 표시하려면 `partialOutputs`와 이 값을 본다. 요청을 준비하는 중이거나 permit을 기다리는 중의 끼어들기는 끊지 않고 그 요청에 실린다(그 호출에는 `interrupted`가 없다). 그때 메타 줄은 "끼어듦 · 응답을 끊고 전달됨"이 아니라 읽힘으로 보여야 한다.
 - **B6 (남긴 한계).** 모델은 다음 요청에서 자기 끊긴 글을 보지 못한다(공급자 변환이 끊긴 assistant 메시지를 통째로 뺀다). 컨텍스트 초과 복구 중에 지시가 오면 재준비가 압축 결과를 버린다(B6 이전부터 있던 동작). 끊긴 호출은 무진전 턴으로 세지 않는다.
 - **B5 (정한 것).** 조건을 만족한 지시는 `expired`가 되는 순간 바로 넘겨받는다(앞 지시가 풀리기를 기다리지 않는다). 같은 순간에 만료된 여럿은 보낸 순서, 다른 때에 넘겨받은 것은 넘겨받은 순서로 시작한다. 넘겨받은 항목은 세션 기록의 끝에 붙고, 다음에 시작할 것을 고를 때 먼저다(`@corral/core`의 `queuedEntriesInStartOrder`, `nextQueuedEntry`). 지시 기록에 `origin`이 생길 때까지(A1) `origin ?? 'user'`로 읽는다.
-- **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 명세에 적었고 후속 브랜치 `flow/b5-followup`이 구현한다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
+- **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 판정은 그 지시가 속한 Run이 취소됐는지로 한다(세션의 마지막 Run이 아니다). 그 지시를 가진 Run을 찾지 못하면 특권은 그대로다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
 - **A1 (B5가 남긴 것).** `packages/core/src/directive-carry.ts`의 `originOf`는 `origin`을 캐스트로 읽는다. A1이 지시 기록에 출처를 타입 있는 필드로 더하면서 이 캐스트를 없애고, 손으로 붙인 `origin`이 아니라 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다.
 - **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
 - **B2 (찾은 빈틈과 정한 것).** 반례 테스트가 둘을 찾았다. (1) worker가 아직 시작되지 않은 대상에 온 끼어들기는 끊을 응답이 없으니 `next_request`로 낮춘다(receipt와 지시 기록 모두). (2) 끼어들기로 끊겼거나 오류로 끝난 호출은 확정 응답(`responseRef`)으로 기록하지 않고 받은 글은 부분 출력(`partialOutputs`)으로만 읽는다. 명세를 그렇게 고쳤고 B2 브랜치에서 구현을 고친다.
+- **B2 (리뷰에서 정한 것).** 낮추는 조건은 "Coordinator가 worker를 아직 넘겨받지 못했을 때"로 좁힌다(어댑터가 끼어들 수 있는지 그때는 알 수 없다). worker가 뜨는 중(준비 신호 전)의 끼어들기는 요청 준비 중과 같이 끊지 않고 첫 요청에 실리며 기록은 `interrupt` 그대로다. 글이 보인 뒤 스트림이 깨졌을 때 대기 중인 지시가 있으면 SDK 런타임만 실행을 이어 가 성공으로 끝나던 차이(B2 이전부터)는 없앤다: 어느 런타임에서나 실행 단위는 실패하고 지시는 `expired`다. 실패·끊긴 호출의 글은 스트림 조각으로만 남고 Run이 끝난 뒤에도 중단된 응답으로 읽힌다(`workbench.md` "대화 본문과 중단된 출력"). 두 번째 리뷰: 자동 압축의 요약 응답이 오류로 끝난 경우와 수동 압축이 대기 중인 경우에도 SDK가 실행을 이어 가던 것을 같은 규칙으로 막는다. 남기는 차이: 도구 없는 온전한 마지막 응답이 흐르는 동안 온 지시는 SDK에서는 한 턴을 더 돌아 그 요청에 실리고(`delivered`), pi-core에서는 실행이 끝나 `expired`가 된 뒤 넘겨받는다. 어느 쪽도 지시를 잃지 않는다.
 - **U6 (끼어듦의 표시).** 메타 줄의 "끼어듦 · 응답을 끊고 전달됨"은 지시의 `delivery`가 `interrupt`이고, 그 지시를 실은 호출 바로 앞의 같은 실행 단위 호출이 `interrupted`일 때만 쓴다. 아니면(끊을 응답이 없어 그냥 실린 경우) "읽힘"이다.
 
 ### V2 최종 장면

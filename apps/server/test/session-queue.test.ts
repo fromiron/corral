@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HttpSseTransport, RestCorralRepository } from '@corral/client';
-import { type RunCommand, SCHEMA_VERSION, type TextAttachment } from '@corral/contracts';
+import {
+  type AgentAdapter,
+  type RunCommand,
+  type RunEvent,
+  SCHEMA_VERSION,
+  type TextAttachment,
+} from '@corral/contracts';
 import {
   createTextAttachment,
   type NewSessionEntry,
@@ -35,21 +41,30 @@ async function boot(root: string) {
   let hold: Gate | null = null;
   // A run named here waits on its own gate after the shared one opens.
   const runGates = new Map<string, Gate>();
+  const scripted = new ScriptedAgentAdapter({
+    turns: 1,
+    collaborate: false,
+    appendNotes: false,
+    beforeReply: async (_turn, input) => {
+      await hold?.wait();
+      await runGates.get(input.runId)?.wait();
+    },
+    reply: () => 'Done.',
+  });
+  // Handles take an interrupt (the reply still finishes), so an interrupt is not lowered.
+  const interrupted: string[] = [];
+  const agents: AgentAdapter = {
+    async start(input, host) {
+      const handle = await scripted.start(input, host);
+      return { ...handle, interrupt: (d) => void interrupted.push(d.directiveId) };
+    },
+  };
   const server: CorralServer = await startCorralServer({
     workspace: join(root, 'workspace'),
     worktreeRoot: join(root, 'copies'),
     port: 0,
     bootstrapToken: TOKEN,
-    agents: new ScriptedAgentAdapter({
-      turns: 1,
-      collaborate: false,
-      appendNotes: false,
-      beforeReply: async (_turn, input) => {
-        await hold?.wait();
-        await runGates.get(input.runId)?.wait();
-      },
-      reply: () => 'Done.',
-    }),
+    agents,
   });
   let closed = false;
   const close = async () => {
@@ -89,6 +104,7 @@ async function boot(root: string) {
   const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
   return {
     server,
+    interrupted,
     close,
     send,
     repository,
@@ -714,9 +730,24 @@ it('starts an unread message as a new request when its target succeeded, even wi
 
 it('carries an interrupt that was never read the same way', async () => {
   const s = await carrySetup();
-  await s.steer('Cut in here.', 'steer_carry_cut', { delivery: 'interrupt' });
+  // Sent once the target's handle exists and its only request is out.
+  const receipt = await s.steer('Cut in here.', 'steer_carry_cut', { delivery: 'interrupt' });
+  expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'immediate' });
+  const accepted = await new Promise<RunEvent>((resolve) => {
+    const stop = s.transport.subscribe(s.first.runId ?? '', 0, {
+      onEvent: (event) => {
+        if (event.type !== 'directive.accepted') return;
+        stop();
+        resolve(event);
+      },
+    });
+  });
+  expect(accepted?.type === 'directive.accepted' && accepted.payload.delivery).toBe('interrupt');
+  const directiveId = accepted?.type === 'directive.accepted' ? accepted.payload.directiveId : '';
+  expect(s.interrupted).toEqual([directiveId]);
   s.gate.open();
-  await s.ended(s.first.runId);
+  const done = await s.ended(s.first.runId);
+  expect(done.directives[directiveId]?.status).toBe('expired');
   const carried = await s.carried();
   expect(carried).toMatchObject({ state: 'started', text: 'Cut in here.' });
   await s.ended(carried?.runId ?? null);
@@ -740,4 +771,75 @@ it('does not carry a message a cancelled run never delivered, and starts no run'
   expect(Object.values(done.directives).map((d) => d.status)).toEqual(['not_delivered']);
   expect(await s.carried(400)).toBeUndefined();
   expect(s.runsOf(s.session.sessionId)).toHaveLength(1);
+});
+
+// Carried, then the person cancelled the run the message came from: autoStart decides.
+async function carriedThenCancelled(autoStart: boolean) {
+  const s = await carrySetup({ autoStart });
+  await s.steer('Read this after all.', 'steer_then_cancel');
+  const open = await waitForProjection(s.transport, s.first.runId ?? '', () => true);
+  const directiveId = open.directiveOrder[0] ?? '';
+  // The carry already happened (its target succeeded); written as the server writes it.
+  const db = openDatabase(join(s.root, 'workspace', '.corral', 'corral.db'));
+  cleanup.push(() => {
+    db.close();
+  });
+  const direct = new SqliteCorralRepository(db, { clock: new FakeClock(), newCorralId: () => 'x' });
+  const added = await direct.addSessionEntry(s.session.sessionId, {
+    intent: 'queue',
+    text: 'Read this after all.',
+    state: 'queued',
+    start: START,
+    carriedFrom: directiveId,
+  });
+  if (!added.ok) throw new Error(added.message);
+  const carriedId = added.session.entries.at(-1)?.entryId ?? '';
+  await s.transport.sendCommand({
+    schemaVersion: SCHEMA_VERSION,
+    commandId: 'cancel_after_carry',
+    runId: s.first.runId ?? '',
+    type: 'cancel',
+    payload: { scope: { kind: 'run' }, reason: 'stop' },
+  } as RunCommand);
+  s.gate.open();
+  expect((await s.ended(s.first.runId)).status).toBe('cancelled');
+  return { ...s, carriedId };
+}
+
+it('with autoStart off, a request carried from a run the person cancelled stays queued, also after a restart', async () => {
+  const s = await carriedThenCancelled(false);
+  expect(await s.settledEntry(s.session.sessionId, s.carriedId, 400)).toMatchObject({
+    state: 'queued',
+  });
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(1);
+  // Another run of the session that succeeds later does not give the carry back.
+  const second = await s.ask(s.session.sessionId, 'cmd_after_cancel', 'Another request.');
+  await s.ended(second.runId);
+  expect(await s.settledEntry(s.session.sessionId, s.carriedId, 400)).toMatchObject({
+    state: 'queued',
+  });
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(2);
+  // After a restart, a new queued request makes the server look at the queue again.
+  await s.close();
+  const again = await boot(s.root);
+  const queued = await again.repository.addSessionEntry(s.session.sessionId, {
+    intent: 'queue',
+    text: 'Queued after the restart.',
+    state: 'queued',
+    start: START,
+  });
+  if (!queued.ok) throw new Error(queued.message);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const after = await again.repository.getSession(s.session.sessionId);
+  expect(after?.entries.find((e) => e.entryId === s.carriedId)).toMatchObject({ state: 'queued' });
+  expect(
+    again.server.coordinator.listRuns().filter((run) => run.sessionId === s.session.sessionId),
+  ).toHaveLength(2);
+});
+
+it('with autoStart on, a request carried from a run the person cancelled starts as any queued request', async () => {
+  const s = await carriedThenCancelled(true);
+  const started = await s.settledEntry(s.session.sessionId, s.carriedId);
+  expect(started).toMatchObject({ state: 'started' });
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(2);
 });
