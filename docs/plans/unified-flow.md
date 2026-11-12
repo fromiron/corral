@@ -428,16 +428,16 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 재검토 중 |
 | B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
 | B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 대기 |
-| B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 구현 중 |
-| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 리뷰 중 |
+| B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 리뷰 중 |
+| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 수정 중 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 대기 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 대기 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 대기 |
-| B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 구현 중 |
+| B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 리뷰 중 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
-| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 구현 중 |
+| U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 리뷰 중 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 대기 |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 대기 |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
@@ -451,7 +451,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 대기 |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
 | U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
-| M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 대기 |
+| M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 구현 중 |
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 대기 |
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 대기 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
@@ -722,6 +722,8 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B3 (B7이 남긴 반례).** 같은 파일을 고치는 김에 `packages/adapter-pi/test/pi-adapter.test.ts`에 자동 압축이 실패하면 `started`·`failed` 이벤트가 한 번씩 나오고 실행이 예전처럼 실패로 끝나는 테스트를 더한다(자동 실패를 다시 던지는 줄이 빠지면 실패해야 한다).
 - **B7 (자동 압축의 보고).** 자동 압축도 수동과 같은 단계(`started` 뒤 `completed`·`failed`·`cancelled`·`skipped`)를 보고하므로 이벤트는 단계마다 하나다. 자동은 보고에 `trigger: 'automatic'`을 싣고 이벤트 envelope의 commandId는 비운다.
 - **B9 (§9 표 테스트).** `apps/server/test/server.test.ts`의 제품 계약 §9 표 테스트에 무인 실행 예산·감독 예산 행이 코드 기본값과 같다는 단언을 더한다.
+- **B4 (리뷰에서 정한 것).** `carriedFrom`은 HTTP로 받지 않는다(서버만 적는다). 항목의 권한 방식과 `start`의 권한 방식이 다르면 저장을 거절한다. 서버가 쓰는 `throughRunId`는 화면과 같은 규칙으로 고른다(같은 commandId의 payload가 같아야 한다). 대기 항목이 더해질 때 열린 Run이 없으면 대기열을 바로 살핀다. `start`는 시작 요청에서 `commandId`·`brief`·`throughRunId`·`references`·`sessionId`·`schemaVersion`을 뺀 것이다.
+- **B4 (남긴 한계).** 서버가 Run을 시작한 뒤 항목에 기록하기 전에 죽으면 그 항목은 대기로 남고, 다음 패스에서 같은 commandId가 충돌해 뒤 항목을 막는다. 사람이 그 항목을 편집하거나 지우면 풀린다. 드문 경우라 복구 코드를 넣지 않았다.
 - **B9·A5 (감독의 예산).** 감독은 예산(기본 60)을 다 쓰면 승인을 묻지 않고 끝난다. 계속 여부 승인은 팀 역할(400)과 동적 하위 실행(200)에만 있다. 승인의 kind는 `request_budget`이다.
 - **A1·A3 (조언의 전달).** 전달 방식의 이름은 `next_request`, `interrupt`, `preserve`다(`aside`, `steer`는 없다). `nit`과 `concern`은 `next_request`, `blocker`는 `interrupt`(대상이 못 받으면 `next_request`), 대상이 끝났으면 `nit`은 버리고 나머지는 `preserve`다. 대상이 사람을 기다리는 경우는 따로 다루지 않고 지시의 일반 규칙대로 결정 뒤에 읽힌다. `advice.suppressed`는 조언의 글을 싣지 않는다.
 - **A1·A5 (검토).** 검토 간격의 기본값은 3이다. 한 번의 검토는 실행 단위 하나의 기록만 다루므로 `advise` 도구는 대상을 인자로 받지 않는다. 지켜보던 실행 단위가 끝나면 마지막 검토를 한 번 하고, 그동안 Run은 끝나지 않는다. 감독의 Task는 Run의 필수 작업이 아니다.
