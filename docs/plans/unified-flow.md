@@ -430,7 +430,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 테스트 25개 통과, 리뷰 수정 중 |
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 완료 |
-| B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 완료(후속 `flow/b5-followup` 진행 중) |
+| B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 완료 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
@@ -763,7 +763,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U5·U6 (B6가 남긴 것).** 끊긴 호출은 투영의 모델 호출 기록 `interrupted: true`로 안다(`model.finished.interrupted`). 끊긴 호출과 오류로 끝난 호출은 확정 응답이 없고(B2) 받은 글은 `partialOutputs`에만 있으므로, 화면이 "중단된 출력"으로 표시하려면 `partialOutputs`와 이 값을 본다. 요청을 준비하는 중이거나 permit을 기다리는 중의 끼어들기는 끊지 않고 그 요청에 실린다(그 호출에는 `interrupted`가 없다). 그때 메타 줄은 "끼어듦 · 응답을 끊고 전달됨"이 아니라 읽힘으로 보여야 한다.
 - **B6 (남긴 한계).** 모델은 다음 요청에서 자기 끊긴 글을 보지 못한다(공급자 변환이 끊긴 assistant 메시지를 통째로 뺀다). 컨텍스트 초과 복구 중에 지시가 오면 재준비가 압축 결과를 버린다(B6 이전부터 있던 동작). 끊긴 호출은 무진전 턴으로 세지 않는다.
 - **B5 (정한 것).** 조건을 만족한 지시는 `expired`가 되는 순간 바로 넘겨받는다(앞 지시가 풀리기를 기다리지 않는다). 같은 순간에 만료된 여럿은 보낸 순서, 다른 때에 넘겨받은 것은 넘겨받은 순서로 시작한다. 넘겨받은 항목은 세션 기록의 끝에 붙고, 다음에 시작할 것을 고를 때 먼저다(`@corral/core`의 `queuedEntriesInStartOrder`, `nextQueuedEntry`). 지시 기록에 `origin`이 생길 때까지(A1) `origin ?? 'user'`로 읽는다.
-- **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 명세에 적었고 후속 브랜치 `flow/b5-followup`이 구현한다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
+- **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 판정은 그 지시가 속한 Run이 취소됐는지로 한다(세션의 마지막 Run이 아니다). 그 지시를 가진 Run을 찾지 못하면 특권은 그대로다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
 - **A1 (B5가 남긴 것).** `packages/core/src/directive-carry.ts`의 `originOf`는 `origin`을 캐스트로 읽는다. A1이 지시 기록에 출처를 타입 있는 필드로 더하면서 이 캐스트를 없애고, 손으로 붙인 `origin`이 아니라 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다.
 - **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
 - **B2 (찾은 빈틈과 정한 것).** 반례 테스트가 둘을 찾았다. (1) worker가 아직 시작되지 않은 대상에 온 끼어들기는 끊을 응답이 없으니 `next_request`로 낮춘다(receipt와 지시 기록 모두). (2) 끼어들기로 끊겼거나 오류로 끝난 호출은 확정 응답(`responseRef`)으로 기록하지 않고 받은 글은 부분 출력(`partialOutputs`)으로만 읽는다. 명세를 그렇게 고쳤고 B2 브랜치에서 구현을 고친다.
