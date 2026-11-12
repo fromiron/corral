@@ -4,7 +4,7 @@ import {
   fauxAssistantMessage,
 } from '@earendil-works/pi-ai';
 import { expect, it } from 'vitest';
-import { providerFailure } from '../src/ported/dsh/retry.ts';
+import { cancellableDelay, providerFailure } from '../src/ported/dsh/retry.ts';
 import { isReplaySafe, managedRetryStream } from '../src/request-retry.ts';
 
 it('identifies Hive exhausted balance as quota and preserves safe metadata', () => {
@@ -218,4 +218,106 @@ it('streams a retried attempt live once it carries body text', async () => {
   const { opened, seen } = await run([[thinking]], () => cutAfter([thinking, bodyText]));
   expect(opened).toEqual([0, 1]);
   expect(seen).toEqual(['start', 'thinking_delta', 'text_delta', 'error']);
+});
+
+const overflow = 'prompt is too long: 250000 tokens > 200000 maximum';
+
+async function runOverflow(content: Block[]) {
+  const opened: number[] = [],
+    seen: string[] = [];
+  let recoveries = 0;
+  const out = managedRetryStream({
+    model: { id: 'fixture', provider: 'faux', api: 'faux' },
+    signal: new AbortController().signal,
+    random: () => 0.5,
+    delay: async () => true,
+    onContextOverflow: () => {
+      recoveries++;
+      return true;
+    },
+    open: (attempt) => {
+      opened.push(attempt);
+      return attempt === 0 ? cutAfter(content, overflow) : succeed();
+    },
+  });
+  for await (const event of out) seen.push(event.type);
+  return { opened, seen, recoveries, result: await out.result() };
+}
+
+it.each([
+  ['reasoning', [thinking]],
+  ['whitespace text', [whitespace]],
+])('recovers once from a context overflow after only %s', async (_name, content) => {
+  const { opened, seen, recoveries, result } = await runOverflow(content);
+  expect(recoveries).toBe(1);
+  expect(opened).toEqual([0, 1]);
+  expect(result.stopReason).toBe('stop');
+  expect(seen).toEqual(['start', 'done']);
+});
+
+it.each([
+  ['body text', [bodyText]],
+  ['a started tool call', [toolCall]],
+])('does not recover from a context overflow after %s', async (_name, content) => {
+  const { opened, recoveries, result } = await runOverflow(content);
+  expect(recoveries).toBe(0);
+  expect(opened).toEqual([0]);
+  expect(result.stopReason).toBe('error');
+});
+
+it('delivers held reasoning in order and then aborts when cancelled mid-attempt', async () => {
+  const controller = new AbortController();
+  const opened: number[] = [],
+    seen: string[] = [];
+  const base = fauxAssistantMessage('');
+  const usage = { ...base.usage, input: 5, output: 2, totalTokens: 7 };
+  const out = managedRetryStream({
+    model: { id: 'fixture', provider: 'faux', api: 'faux' },
+    signal: controller.signal,
+    random: () => 0.5,
+    delay: async () => true,
+    open: (attempt) => {
+      opened.push(attempt);
+      const stream = createAssistantMessageEventStream();
+      const partial = { ...base, content: [thinking], usage };
+      stream.push({ type: 'start', partial: { ...partial, content: [] } });
+      stream.push({ type: 'thinking_delta', contentIndex: 0, delta: 'w', partial });
+      controller.abort();
+      const aborted = { ...partial, stopReason: 'aborted' as const, errorMessage: 'CANCELLED' };
+      stream.push({ type: 'error', reason: 'aborted', error: aborted });
+      stream.end(aborted);
+      return stream;
+    },
+  });
+  for await (const event of out) seen.push(event.type);
+  const result = await out.result();
+  expect(seen).toEqual(['start', 'thinking_delta', 'error']);
+  expect(result.stopReason).toBe('aborted');
+  expect(result.usage).toEqual(usage);
+  expect(opened).toEqual([0]);
+});
+
+it('ends as cancelled when cancelled while waiting to retry after reasoning', async () => {
+  const controller = new AbortController();
+  const opened: number[] = [],
+    seen: string[] = [];
+  const out = managedRetryStream({
+    model: { id: 'fixture', provider: 'faux', api: 'faux' },
+    signal: controller.signal,
+    random: () => 0.5,
+    delay: async (ms, signal) => {
+      queueMicrotask(() => controller.abort());
+      return cancellableDelay(ms, signal);
+    },
+    open: (attempt) => {
+      opened.push(attempt);
+      return cutAfter([thinking]);
+    },
+  });
+  for await (const event of out) seen.push(event.type);
+  const result = await out.result();
+  expect(result.stopReason).toBe('aborted');
+  expect(result.errorMessage).toBe('CANCELLED');
+  expect(opened).toEqual([0]);
+  expect(seen).toEqual(['error']);
 });
