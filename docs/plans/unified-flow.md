@@ -387,6 +387,25 @@ unverified: [ … ]
 - 화면 태스크는 `apps/server/resources/builtin/design/skills/`의 `review-components`, `review-motion`, `check-accessibility`와 [DESIGN.md](../../DESIGN.md)의 킷 우선 규칙을 따른다.
 - 마지막 보고: 바꾼 파일, 실행한 명령과 결과, 통과하지 못한 체크.
 
+**빌더 작업 환경.**
+- 작업 사본은 빌더 전용 git worktree다. 원본 체크아웃(`/home/bell/Toys/corral`)과 다른 worktree·브랜치는 건드리지 않는다.
+- 시작: `git checkout -b flow/<id>-<이름> feat/unified-flow`, 이어서 `pnpm install --frozen-lockfile --offline`. `e2e/flow`를 돌리거나 화면을 브라우저로 확인하는 태스크는 `pnpm --filter @corral/studio build`도 한다(E2E 하네스가 `apps/studio/dist`를 정적으로 제공한다).
+- 셸: `ls`는 별칭이라 경로 인자를 주면 실패한다. `command ls`나 `find`를 쓴다. zsh이므로 글롭은 따옴표로 감싼다.
+- 명세(`docs/specs`)와 이 플랜은 고치지 않는다. 명세와 브리프가 다르면 명세를 따르고 차이를 보고한다.
+- 커밋: 바꾼 파일만 경로를 적어 add 한다(`git add -A` 금지). 메시지는 영어 한 줄(Conventional Commits). 서명·attribution 줄을 넣지 않는다. push와 PR은 하지 않는다.
+- localhost 밖으로 나가는 네트워크 호출을 하지 않는다.
+- 보고 형식(마지막 메시지는 이것만):
+
+```
+branch: flow/<id>-<이름>
+worktree: <절대 경로>
+commits: <해시와 제목>
+files_changed: <경로 목록>
+commands: <실행한 명령 · 종료 코드 · 한 줄 요약>
+checks_not_passed: <없으면 none>
+notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
+```
+
 ## 7. 태스크 분해표
 
 레인은 같은 파일을 고치는 일을 한 줄로 세운 것이다. 레인 안은 순서대로, 레인끼리는 동시에 돈다.
