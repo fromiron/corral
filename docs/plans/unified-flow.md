@@ -11,7 +11,7 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
-| 백본 | B1–B10 | 진행 중(B1·B3·B7·B8·B10 병합) |
+| 백본 | B1–B10 | 진행 중(B1·B3·B4·B7·B8·B10 병합) |
 | 화면 | K1, U1–U14 | 진행 중(K1·U1 병합) |
 | 회의 | M1–M4 | 진행 중(M1 병합) |
 | 감독 | A1–A9 | 대기 |
@@ -429,7 +429,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
 | B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 대기 |
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
-| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 재검토 중 |
+| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 완료 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 대기 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 구현 중 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
