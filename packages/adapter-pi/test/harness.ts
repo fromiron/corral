@@ -9,6 +9,7 @@ import type {
 } from '@corral/contracts';
 import { Coordinator, InProcessTransport, type ModelResolver } from '@corral/core';
 import { FakeClock, SequentialIdFactory } from '@corral/testkit';
+import type { StreamFn } from '@earendil-works/pi-agent-core';
 import { createFauxCore, type FauxResponseStep } from '@earendil-works/pi-ai';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
@@ -26,7 +27,16 @@ export const liveModels: ModelResolver = {
 /** The Coordinator with the Pi adapter; the worker runs Pi in-process on pi-ai's faux model. */
 export function liveRuntime(
   responses: FauxResponseStep[],
-  options: { tokensPerSecond?: number; contextPolicy?: ProfileContextPolicy } = {},
+  options: {
+    tokensPerSecond?: number;
+    contextPolicy?: ProfileContextPolicy;
+    /** Wraps the faux stream, e.g. to see each request's signal. */
+    wrapStream?: (stream: StreamFn) => StreamFn;
+    /** Sees each frame the worker sends, before the host handles it. */
+    onWorkerFrame?: (frame: unknown) => void;
+    /** The provider wait the Coordinator holds before a model slot. */
+    retryAfterMs?: () => number;
+  } = {},
 ) {
   const faux = createFauxCore(
     options.tokensPerSecond ? { tokensPerSecond: options.tokensPerSecond } : {},
@@ -36,7 +46,11 @@ export function liveRuntime(
   const adapter = new PiAgentAdapter({
     spawn: () => {
       const { host, worker } = memoryChannelPair();
-      runWorker(worker, { streamFn: faux.streamSimple, resolveModel: () => faux.getModel() });
+      if (options.onWorkerFrame) host.onFrame(options.onWorkerFrame);
+      runWorker(worker, {
+        streamFn: options.wrapStream ? options.wrapStream(faux.streamSimple) : faux.streamSimple,
+        resolveModel: () => faux.getModel(),
+      });
       return host;
     },
     credentials: async (model) => {
@@ -44,30 +58,36 @@ export function liveRuntime(
       return ACCESS_TOKEN;
     },
   });
+  const clock = new FakeClock();
   const transport = new InProcessTransport(
     new Coordinator({
-      clock: new FakeClock(),
+      clock,
+      // A provider wait passes only when the test advances the clock.
+      ...(options.retryAfterMs ? { timers: clock } : {}),
       ids: new SequentialIdFactory(),
       agents: adapter,
-      models: options.contextPolicy
-        ? {
-            resolve: (profile, mode) => {
-              const resolved = liveModels.resolve(profile, mode);
-              if (!resolved.ok || !options.contextPolicy) return resolved;
-              return {
-                ok: true,
-                snapshot: {
-                  ...resolved.snapshot,
-                  contextWindow: options.contextPolicy.contextWindow,
-                  contextPolicy: options.contextPolicy,
-                },
-              };
-            },
-          }
-        : liveModels,
+      models: {
+        ...(options.contextPolicy
+          ? {
+              resolve: (profile, mode) => {
+                const resolved = liveModels.resolve(profile, mode);
+                if (!resolved.ok || !options.contextPolicy) return resolved;
+                return {
+                  ok: true,
+                  snapshot: {
+                    ...resolved.snapshot,
+                    contextWindow: options.contextPolicy.contextWindow,
+                    contextPolicy: options.contextPolicy,
+                  },
+                };
+              },
+            }
+          : liveModels),
+        ...(options.retryAfterMs ? { retryAfterMs: options.retryAfterMs } : {}),
+      },
     }),
   );
-  return { transport, faux, credentialCalls };
+  return { transport, faux, credentialCalls, clock };
 }
 
 /** A host that records calls, for adapter tests without a Coordinator. */

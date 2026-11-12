@@ -3322,6 +3322,12 @@ export class Coordinator {
     if (run.cancelRequested.has(executionId) || run.projection.status === 'cancelling')
       return refuse({ code: 'TARGET_TERMINAL', message: 'the scope is cancelling' });
     const directiveId = this.ids.next('directive');
+    const handle = run.handles.get(executionId);
+    // An interrupt the target's adapter cannot take is lowered to the next request.
+    const delivery =
+      command.payload.delivery === 'interrupt' && handle && !handle.interrupt
+        ? 'next_request'
+        : command.payload.delivery;
     this.commit(
       run,
       [
@@ -3334,6 +3340,7 @@ export class Coordinator {
             directiveId,
             targetExecutionId: executionId,
             text: command.payload.text,
+            delivery,
             ...(attachments ? { attachments } : {}),
           },
         },
@@ -3349,7 +3356,7 @@ export class Coordinator {
               status: 'queued',
               acceptedSeq: accepted?.runSeq ?? null,
               target: `execution:${executionId}`,
-              requestedBoundary: 'next_request',
+              requestedBoundary: delivery === 'interrupt' ? 'immediate' : 'next_request',
               relatedEventIds: accepted ? [accepted.eventId] : [],
             },
             directiveId,
@@ -3357,10 +3364,15 @@ export class Coordinator {
         );
       },
     );
-    run.handles.get(executionId)?.pushDirective?.({
+    const delivered = {
       directiveId,
       text: directiveWithAttachments(command.payload.text, attachments),
-    });
+    };
+    // Only a working target has a response to cut; one waiting on the person, or not started
+    // yet, takes the directive with its first request after, as any directive.
+    if (delivery === 'interrupt' && handle?.interrupt && execution.status === 'active')
+      handle.interrupt(delivered);
+    else handle?.pushDirective?.(delivered);
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return this.currentReceipt(stored);
@@ -8838,6 +8850,7 @@ export class Coordinator {
             payload: {
               ...usage,
               responseRef,
+              ...(observation.interrupted ? { interrupted: true as const } : {}),
             },
           });
         if (effectId && run.projection.effects[effectId]?.status === 'admitted')
@@ -8847,7 +8860,9 @@ export class Coordinator {
             payload: { effectId, outcome: late ? 'unknown' : 'succeeded' },
           });
         const warningRef =
-          !late && run.projection.progress.turns === NO_PROGRESS_TURNS - 1
+          !late &&
+          !observation.interrupted &&
+          run.projection.progress.turns === NO_PROGRESS_TURNS - 1
             ? `notice_${observation.modelCallId}`
             : null;
         const warning =

@@ -93,6 +93,8 @@ export interface ModelCallView {
   certainty: 'reported' | 'estimated' | 'unknown' | null;
   /** Committed response text, available after reconnect even without an output artifact. */
   responseRef?: string | null;
+  /** Cut by an interrupt: the response is interrupted output, not an answer. */
+  interrupted?: true;
 }
 
 export interface ArtifactVersionView {
@@ -490,6 +492,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         rawUsage: event.payload.rawUsage,
         certainty: event.payload.certainty,
         responseRef: event.payload.responseRef,
+        ...(event.payload.interrupted ? { interrupted: true as const } : {}),
       });
     }
     case 'model.usage_reconciled': {
