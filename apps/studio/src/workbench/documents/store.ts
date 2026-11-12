@@ -55,6 +55,7 @@ export interface DocumentStore extends StoreApi<{ documents: Record<string, Docu
   restoreRecovery(key: string, recoveryId: string): Promise<void>;
   discardRecovery(key: string, recoveryId: string): Promise<void>;
   sessionRecoveries(scope: RecoveryScope): Promise<RecoveryDraft[]>;
+  forgetSession(sessionId: string): Promise<void>;
   discardRecoveryCandidate(draft: RecoveryDraft): Promise<void>;
   convertEol(key: string, eol: 'lf' | 'crlf'): void;
   hasUnsaved(): boolean;
@@ -599,6 +600,20 @@ export function documentStore(
       } catch (error) {
         patch(key, { recoveryError: message(error) });
       }
+    },
+    async forgetSession(sessionId: string) {
+      const next = { ...state.getState().documents };
+      for (const [key, entry] of Object.entries(next)) {
+        if (entry.target.sessionId !== sessionId) continue;
+        entry.model?.dispose();
+        listeners.get(key)?.dispose();
+        listeners.delete(key);
+        views.delete(key);
+        persistence.delete(key);
+        delete next[key];
+      }
+      state.setState({ documents: next });
+      await recovery.clearSession(sessionId);
     },
     async sessionRecoveries(scope: RecoveryScope) {
       return (await recovery.listSession(scope)).filter(

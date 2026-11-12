@@ -66,6 +66,8 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함 |
 | POST /sessions | `{projectId, title, objective?, criteria?, corralId?, autoTitle?, meeting?:MeetingConfig}` | 새 세션. `meeting`이 있으면 회의, 없으면 기존 work 세션이며 이후 종류 변환은 하지 않는다. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다. |
 | GET·PATCH /sessions/:id | `{title?, objective?, criteria?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `criteria`는 0~20줄(줄마다 1~200자)의 [세션 완료 기준](workbench.md#세션-완료-기준)이다. 빈 목록은 기준 없음이고, 회의 세션에 비어 있지 않은 기준을 주면 400이다. `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
+| GET /sessions/:id/deletion | — | 이 세션을 지우면 잃는 것의 읽기 전용 요약. 세션이 없으면 `TARGET_NOT_FOUND`. `runs`는 실행 수, `messages`는 저장된 요청과 회의에서 사람이 쓴 메시지 수, `unfinishedRunIds`는 끝나지 않은 실행, `generatedMedia`는 생성된 이미지 수, `inputImages`는 입력 이미지 수, `schedules`는 이 세션을 대상으로 하고 아직 지워지지 않은 예약의 `id`·`title`, `handoffs`는 인계(`commandId`, `direction`이 `outgoing` 또는 `incoming`, `otherSessionId`, `otherTitle`, `otherDeleted`)다. 살아있는 작업 사본이 있으면 `workingCopy`는 사본 삭제 요약과 같고, 없으면 null이다. 브라우저 초안은 넣지 않는다. 범위는 [세션 삭제](workbench.md#세션-삭제) |
+| DELETE /sessions/:id | `{expectedRevision, copyGeneration?}` | 요약을 읽은 revision으로 세션을 지운다. 성공은 204. 없으면 `TARGET_NOT_FOUND`. revision이 다르거나, 살아있는 사본인데 `copyGeneration`이 없거나 다르면 `REVISION_CONFLICT`이며 세션은 남는다. 끝나지 않은 실행이 있으면 `RUN_ALREADY_ACTIVE`이며 세션과 사본은 남는다. 사본이 있으면 기존 사본 삭제의 확인을 먼저 하고, 그 확인이 거절하거나 폴더가 남으면 세션은 지워지지 않는다. 확인한 삭제의 반복으로 온 `TARGET_NOT_FOUND`는 클라이언트가 끝난 것으로 본다 |
 | POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
 | GET /sessions/:id/meeting | — | `MeetingView`: 저장된 메시지·답·사용량·대기 메시지·회의록·결정. 내부 `rounds`는 기존 기록/실행 소유권을 위한 응답 묶음이며 UI의 진행 단계가 아니다. 새 레코드의 `order`로 메시지·발언 순서를 표현하며 `replyTo`는 에이전트 멘션의 실제 출처다. 조회·재열기는 모델을 호출하지 않는다 |
@@ -77,7 +79,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/:id/meeting/decisions/withdraw | `MeetingWithdrawDecisionRequest` | 사람의 철회 사유를 별도 기록. 후보·철회/대체된 버전은 새 실행 인계 불가 |
 | POST /sessions/:id/meeting/handoffs | `MeetingHandoffRequest` | 채택한 결정의 초안/시작. 같은 프로젝트 일반 세션만 대상, 실행 구성·완료 기준 고정. `{handoff:MeetingHandoffReceipt}` |
 | GET /sessions/:id/meeting/handoffs/:commandId | — | 저장된 receipt와 기존 시작 결과를 대조. 새 실행은 하지 않음 |
-| GET /sessions/:id/meeting-handoffs | — | 출처/대상 양방향 인계 이력 `{handoffs}`와 Run·결과 상태 |
+| GET /sessions/:id/meeting-handoffs | — | 출처/대상 양방향 인계 이력 `{handoffs}`와 Run·결과 상태. 한쪽 세션이 지워지면 남은 세션의 이력에 남고, 지워진 쪽은 `sourceDeleted` 또는 `targetDeleted`와 지우기 직전 제목 `sourceTitle`·`targetTitle`로 보인다 |
 | POST /sessions/:id/meeting/handoffs/:commandId/start | `MeetingHandoffStartRequest` | 저장된 초안의 동일 항목·실행 구성으로 명시 시작. 대상의 미전송 입력·진행 중 작업을 다시 확인 |
 | POST /sessions/:id/meeting/handoffs/:commandId/cancel | — | 취소 의도를 저장하고 시작/Run 취소를 확인. 확인 실패는 uncertain으로 남겨 같은 인계에서 재확인 |
 | POST /sessions/:id/meeting/handoffs/:commandId/rediscuss | `{commandId,mode}` | 종료된 결과·출처 ID를 고정해 새 대화 메시지로 보낸다. 자동 토론 없음 |

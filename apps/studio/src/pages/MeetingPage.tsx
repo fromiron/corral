@@ -35,7 +35,7 @@ import {
   Tooltip,
 } from '@corral/react/design-kit';
 import { Ellipsis, FileText, PanelRight, Plus, Square, X } from '@corral/react/icons';
-import { Link, useRouter } from '@tanstack/react-router';
+import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
   type Ref,
@@ -71,6 +71,7 @@ import {
 import { isSendKey, preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { TurnActions } from '../workbench/RunMessage.tsx';
+import { SessionDeletionDialog } from '../workbench/SessionDeletionDialog.tsx';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -366,8 +367,9 @@ function MeetingActions({
   recordsToggle: RefObject<HTMLButtonElement | null>;
   onToggleRecords(): void;
 }) {
-  const { repository } = useServices();
+  const { repository, sessionDeletion } = useServices();
   const router = useRouter();
+  const navigate = useNavigate();
   const t = useTranslations('Sessions');
   const tm = useTranslations('Meetings');
   const td = useTranslations('Desktop');
@@ -375,6 +377,7 @@ function MeetingActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const update = async (change: { title?: string; pinned?: boolean; archived?: boolean }) => {
     if (busy) return false;
     setBusy(true);
@@ -433,6 +436,18 @@ function MeetingActions({
         await update({ archived: !session.archivedAt });
       },
     },
+    ...(sessionDeletion
+      ? [
+          {
+            id: 'session:delete',
+            title: command('deleteSession'),
+            group,
+            slash: 'delete',
+            disabled: busy,
+            run: () => setDeleting(true),
+          },
+        ]
+      : []),
   ]);
   return (
     <TopbarActions>
@@ -478,6 +493,11 @@ function MeetingActions({
           <MenuItem disabled={busy} onClick={() => void update({ archived: !session.archivedAt })}>
             {t(session.archivedAt ? 'restore' : 'archive')}
           </MenuItem>
+          {sessionDeletion ? (
+            <MenuItem disabled={busy} onClick={() => setDeleting(true)}>
+              {t('delete')}
+            </MenuItem>
+          ) : null}
         </MenuPopup>
       </Menu>
       <RenameSessionDialog
@@ -485,6 +505,21 @@ function MeetingActions({
         busy={busy}
         onSave={(title) => update({ title })}
         onClose={() => setRenaming(null)}
+      />
+      <SessionDeletionDialog
+        open={deleting}
+        sessionId={session.sessionId}
+        projectId={session.projectId}
+        onClose={() => setDeleting(false)}
+        onDeleted={() => {
+          setDeleting(false);
+          projectsChanged();
+          void router.invalidate();
+          void navigate({
+            to: '/projects/$projectId',
+            params: { projectId: session.projectId },
+          });
+        }}
       />
     </TopbarActions>
   );

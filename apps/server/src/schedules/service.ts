@@ -151,6 +151,15 @@ export class ScheduleService {
     return schedule;
   }
 
+  /** Drop in-memory timers for schedules that name this session before its rows are removed. */
+  releaseSession(sessionId: string) {
+    for (const schedule of this.store.list()) {
+      if (schedule.sessionId !== sessionId) continue;
+      this.pending.get(schedule.id)?.abort();
+      this.pending.delete(schedule.id);
+    }
+  }
+
   remove(id: string, expectedRevision: number) {
     const schedule = this.require(id, expectedRevision);
     if (

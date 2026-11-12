@@ -80,6 +80,7 @@ import {
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { watchRunList } from './runList.ts';
+import { SessionDeletionDialog } from './SessionDeletionDialog.tsx';
 import {
   completedScheduleRuns,
   type ScheduledRunOutcome,
@@ -286,12 +287,13 @@ export const Sidebar = memo(function Sidebar({
   const status = useTranslations('Status');
   const profiles = useModelProfiles();
   const connected = Boolean(profiles?.some((p) => p.available));
-  const { repository, mode, live } = useServices();
+  const { repository, mode, live, sessionDeletion } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const settingsNavigation = useSettingsNavigation();
   const [editing, setEditing] = useState<WorkSession | null>(null);
+  const [deleting, setDeleting] = useState<WorkSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -908,6 +910,11 @@ export const Sidebar = memo(function Sidebar({
                                 >
                                   {ts('archive')}
                                 </MenuItem>
+                                {sessionDeletion ? (
+                                  <MenuItem disabled={busy} onClick={() => setDeleting(session)}>
+                                    {ts('delete')}
+                                  </MenuItem>
+                                ) : null}
                               </MenuPopup>
                             </Menu>
                           </SidebarMenuSubItem>
@@ -954,6 +961,25 @@ export const Sidebar = memo(function Sidebar({
         onSave={(title) => (editing ? update(editing, { title }) : Promise.resolve(false))}
         onClose={() => setEditing(null)}
       />
+      {deleting ? (
+        <SessionDeletionDialog
+          open
+          sessionId={deleting.sessionId}
+          projectId={deleting.projectId}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            const gone = deleting;
+            setDeleting(null);
+            projectsChanged();
+            void router.invalidate();
+            if (path.startsWith(`/sessions/${gone.sessionId}`))
+              void navigate({
+                to: '/projects/$projectId',
+                params: { projectId: gone.projectId },
+              });
+          }}
+        />
+      ) : null}
     </KitSidebar>
   );
 });

@@ -323,13 +323,21 @@ export function MeetingHandoff({
           {receipt ? (
             <p role="status">
               {t(`state.${receipt.state}`)}{' '}
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: receipt.targetSessionId }}
-                className="underline"
-              >
-                {t('targetLink')}
-              </Link>
+              {receipt.targetDeleted ? (
+                <span>
+                  {t('deletedSession', {
+                    title: receipt.targetTitle || t('untitledSession'),
+                  })}
+                </span>
+              ) : (
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: receipt.targetSessionId }}
+                  className="underline"
+                >
+                  {t('targetLink')}
+                </Link>
+              )}
             </p>
           ) : null}
         </div>
@@ -451,25 +459,40 @@ export function MeetingHandoffLinks({
           </p>
           {receipt.detail ? <p className="wrap-anywhere">{receipt.detail}</p> : null}
           <div className="flex flex-wrap gap-3">
-            <Link
-              to="/sessions/$sessionId"
-              params={{
-                sessionId:
-                  receipt.sourceSessionId === sessionId
-                    ? receipt.targetSessionId
-                    : receipt.sourceSessionId,
-              }}
-              className="underline"
-            >
-              {t(receipt.sourceSessionId === sessionId ? 'targetLink' : 'sourceLink')}
-            </Link>
-            {receipt.runId ? (
+            {receipt.sourceSessionId === sessionId ? (
+              receipt.targetDeleted ? (
+                <span>
+                  {t('deletedSession', { title: receipt.targetTitle || t('untitledSession') })}
+                </span>
+              ) : (
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: receipt.targetSessionId }}
+                  className="underline"
+                >
+                  {t('targetLink')}
+                </Link>
+              )
+            ) : receipt.sourceDeleted ? (
+              <span>
+                {t('deletedSession', { title: receipt.sourceTitle || t('untitledSession') })}
+              </span>
+            ) : (
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId: receipt.sourceSessionId }}
+                className="underline"
+              >
+                {t('sourceLink')}
+              </Link>
+            )}
+            {receipt.runId && !receipt.targetDeleted ? (
               <Link to="/runs/$runId" params={{ runId: receipt.runId }} className="underline">
                 {t('runLink')}
                 {receipt.result ? ` · ${receipt.result.status}` : ''}
               </Link>
             ) : null}
-            {receipt.runId && receipt.result?.artifactVersionId ? (
+            {receipt.runId && !receipt.targetDeleted && receipt.result?.artifactVersionId ? (
               <Link
                 to="/runs/$runId"
                 params={{ runId: receipt.runId }}
@@ -480,7 +503,9 @@ export function MeetingHandoffLinks({
               </Link>
             ) : null}
           </div>
-          {['drafted', 'starting', 'uncertain'].includes(receipt.state) &&
+          {!receipt.sourceDeleted &&
+          !receipt.targetDeleted &&
+          ['drafted', 'starting', 'uncertain'].includes(receipt.state) &&
           (!meeting || activeMeetingDecision(meeting, receipt.decisionVersionId)) ? (
             <div>
               <Button
@@ -492,7 +517,9 @@ export function MeetingHandoffLinks({
               </Button>
             </div>
           ) : null}
-          {receipt.sourceSessionId === sessionId &&
+          {!receipt.sourceDeleted &&
+          !receipt.targetDeleted &&
+          receipt.sourceSessionId === sessionId &&
           receipt.result &&
           TERMINAL_RUN_STATUSES.has(
             RunStatus.safeParse(receipt.result.status).data ?? 'created',
@@ -507,11 +534,13 @@ export function MeetingHandoffLinks({
               </Button>
             </div>
           ) : null}
-          {['starting', 'uncertain'].includes(receipt.state) ||
-          (receipt.state === 'started' &&
-            !TERMINAL_RUN_STATUSES.has(
-              RunStatus.safeParse(receipt.result?.status).data ?? 'created',
-            )) ? (
+          {!receipt.sourceDeleted &&
+          !receipt.targetDeleted &&
+          (['starting', 'uncertain'].includes(receipt.state) ||
+            (receipt.state === 'started' &&
+              !TERMINAL_RUN_STATUSES.has(
+                RunStatus.safeParse(receipt.result?.status).data ?? 'created',
+              ))) ? (
             <div>
               <Button
                 variant="ghost-destructive"

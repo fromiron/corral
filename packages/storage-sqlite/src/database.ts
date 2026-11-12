@@ -679,6 +679,26 @@ DROP TABLE IF EXISTS layouts;
   CHECK (json_valid(criteria_json) AND json_type(criteria_json) = 'array')`);
     },
   },
+  {
+    // A deleted session must leave the other side of a handoff in place.
+    name: '0041_meeting_handoff_survives_session',
+    sql: `
+CREATE TABLE meeting_handoffs_next (
+  source_session_id TEXT NOT NULL,
+  command_id TEXT NOT NULL,
+  target_session_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY (source_session_id, command_id)
+) STRICT;
+INSERT INTO meeting_handoffs_next
+  SELECT source_session_id, command_id, target_session_id, request_hash, payload_json
+  FROM meeting_handoffs;
+DROP TABLE meeting_handoffs;
+ALTER TABLE meeting_handoffs_next RENAME TO meeting_handoffs;
+CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
