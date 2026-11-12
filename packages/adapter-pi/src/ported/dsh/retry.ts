@@ -79,12 +79,13 @@ export function providerFailure(
             ? 'SERVER'
             : /abort|cancel/i.test(text)
               ? 'CANCELLED'
-              : responseStarted && /overloaded|\b529\b/i.test(text)
+              : responseStarted && /overloaded|\b(?:status|http|code)[ :=]*529\b/i.test(text)
                 ? 'SERVER'
                 : (responseStarted &&
-                      /terminated|premature close|ECONNRESET|socket hang up|other side closed/i.test(
-                        text,
-                      )) ||
+                      (/^(?:\w*Error: )?terminated$/i.test(text) ||
+                        /premature close|ECONNRESET|socket hang up|other side closed/i.test(
+                          text,
+                        ))) ||
                     /ECONNREFUSED|ENOTFOUND|connect timeout/i.test(text) ||
                     /^(?:Connection error\.|fetch failed)$/i.test(text)
                   ? 'TRANSPORT'

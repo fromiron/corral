@@ -226,7 +226,7 @@ function lostAfter(
       ...base,
       content,
       stopReason: 'error' as const,
-      errorMessage: 'TypeError: terminated private-body',
+      errorMessage: 'TypeError: terminated',
     };
     stream.push({ type: 'error', reason: 'error', error });
     stream.end(error);
@@ -264,13 +264,13 @@ it('the worker keeps a host-classified connection loss after body text', async (
   const { calls, result } = await workerRetry(lostAfter(true, [{ type: 'text', text: 'Answer' }]));
   expect(calls).toBe(1);
   expect(result.stopReason).toBe('error');
-  expect(JSON.parse(result.errorMessage!)).toMatchObject({ code: 'TRANSPORT' });
+  expect(JSON.parse(result.errorMessage ?? '')).toMatchObject({ code: 'TRANSPORT' });
 });
 
 it('the worker does not repeat a connection lost before any response event', async () => {
   const { calls, result, frames } = await workerRetry(lostAfter(false, []));
   expect(calls).toBe(1);
-  expect(JSON.parse(result.errorMessage!)).toMatchObject({ code: 'UNKNOWN' });
+  expect(JSON.parse(result.errorMessage ?? '')).toMatchObject({ code: 'UNKNOWN' });
   expect(frames).not.toContain('terminated');
 });
 

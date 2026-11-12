@@ -350,11 +350,24 @@ it.each(lostConnection)('keeps "%s" before any response event an unknown outcome
 it.each([
   'Overloaded',
   '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
-  'provider returned 529',
+  'provider returned status 529',
+  'HTTP 529',
+  'error code: 529',
 ])('classifies the overload notice "%s" after the response started as a server error', (text) => {
   const ok = { status: 200, headers: new Headers() };
   expect(providerFailure(text, ok, { responseStarted: true }).code).toBe('SERVER');
   expect(providerFailure(text, ok).code).toBe('UNKNOWN');
+});
+
+it.each([
+  'Your account has been terminated for violating the terms',
+  'The response was terminated due to a content policy violation',
+  'Requested 529.',
+  'at least 529',
+  'request-id: 7f3a-529-88',
+])('keeps "%s" an unknown outcome even after the response started', (text) => {
+  const ok = { status: 200, headers: new Headers() };
+  expect(providerFailure(text, ok, { responseStarted: true }).code).toBe('UNKNOWN');
 });
 
 it.each(['Request was aborted', 'terminated: operation cancelled'])(

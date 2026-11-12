@@ -205,7 +205,7 @@ export function modelBridgeChannel(channel: Channel, options: ModelBroker): Chan
         await delivery;
       } catch (error) {
         if (active === request) active = null;
-        send({ type: 'failed', failure: providerFailure(error, response, { responseStarted }) });
+        send({ type: 'failed', failure: providerFailure(error, response) });
       } finally {
         if (active === request) active = null;
       }

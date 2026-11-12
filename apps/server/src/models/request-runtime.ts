@@ -392,13 +392,9 @@ export class ModelRequestRuntime {
           out.end(result);
         }
       } catch (error) {
-        attempt.status = signal.aborted
-          ? 'cancelled'
-          : attempt.payloadHash && !responseStarted
-            ? 'unknown'
-            : 'failed';
+        attempt.status = signal.aborted ? 'cancelled' : attempt.payloadHash ? 'unknown' : 'failed';
         attempt.endedAt = now();
-        attempt.failure = providerFailure(error, response, { responseStarted });
+        attempt.failure = providerFailure(error, response);
         try {
           save();
         } catch {

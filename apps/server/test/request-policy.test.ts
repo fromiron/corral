@@ -295,7 +295,7 @@ async function draftAfterLostConnection(started: boolean, first: 'thinking' | 't
         ...base,
         content,
         stopReason: 'error' as const,
-        errorMessage: 'TypeError: terminated private-body',
+        errorMessage: 'TypeError: terminated',
       };
       stream.push({ type: 'error', reason: 'error', error });
       stream.end(error);
