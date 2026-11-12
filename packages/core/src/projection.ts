@@ -14,6 +14,7 @@ import type {
   RunLimits,
   RunStatus,
   TaskStatus,
+  TextAttachment,
   WaitingOn,
 } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
@@ -59,6 +60,8 @@ export interface DirectiveView {
   directiveId: string;
   targetExecutionId: string;
   text: string;
+  /** Text attachments carried after the text when a request delivers it. */
+  attachments?: TextAttachment[];
   status: DirectiveStatus;
   commandId: string | null;
   acceptedSeq: number;
@@ -508,11 +511,12 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       });
     }
     case 'directive.accepted': {
-      const { directiveId, targetExecutionId, text } = event.payload;
+      const { directiveId, targetExecutionId, text, attachments } = event.payload;
       const directive: DirectiveView = {
         directiveId,
         targetExecutionId,
         text,
+        ...(attachments?.length ? { attachments } : {}),
         status: 'queued',
         commandId: event.commandId ?? null,
         acceptedSeq: event.runSeq,

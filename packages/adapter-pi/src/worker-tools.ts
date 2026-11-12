@@ -365,9 +365,9 @@ export function userPrompt(start: PromptStart): string {
 export const DIRECTIVE_PREFIX = 'Instruction from the person supervising this run (';
 export const SDK_DIRECTIVE_PREFIX = 'Corral instruction (';
 
-export function directiveText(directives: { directiveId: string; text: string }[]): string {
-  return directives.map((d) => `${DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`).join('\n');
-}
+/** The core worker's form of one delivered directive; each directive is its own message. */
+export const directiveText = (d: { directiveId: string; text: string }) =>
+  `${DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`;
 
 /** The SDK worker's form of one delivered directive. */
 export const sdkDirectiveText = (d: { directiveId: string; text: string }) =>

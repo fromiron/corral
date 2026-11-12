@@ -34,6 +34,8 @@ export const SteerCommand = z.strictObject({
     targetExecutionId: Identifier,
     text: z.string().min(1).max(12000),
     delivery: z.literal('next_request'),
+    /** Text attachments only, under the same caps as a new request's. */
+    attachments: TextAttachments.optional(),
   }),
 });
 export type SteerCommand = z.infer<typeof SteerCommand>;

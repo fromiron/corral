@@ -260,14 +260,19 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         }
         const present = JSON.stringify(preparedContext.messages);
         const missing = [...directives.values()].filter(
-          (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
+          (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
         );
+        // One message per directive: no directive's text follows another's attachment body.
         if (missing.length)
           preparedContext = {
             ...preparedContext,
             messages: [
               ...preparedContext.messages,
-              { role: 'user', content: directiveText(missing), timestamp: Date.now() },
+              ...missing.map((d) => ({
+                role: 'user' as const,
+                content: directiveText(d),
+                timestamp: Date.now(),
+              })),
             ],
           };
         const saved = await call({
@@ -448,7 +453,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             'pi-core',
             [...directives.values()].map((d) => ({
               directiveId: d.directiveId,
-              text: directiveText([d]),
+              text: directiveText(d),
             })),
             protectedSections,
             { usage: measuredContext.usage },
@@ -473,7 +478,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       // Older hosts may deliver a directive only with the permit (compatibility path).
       const present = JSON.stringify(preparedContext.messages);
       const missing = reply.directives.filter(
-        (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
+        (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
       );
       for (const directive of reply.directives) directives.set(directive.directiveId, directive);
       if (missing.length)
@@ -481,7 +486,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           ...preparedContext,
           messages: [
             ...preparedContext.messages,
-            { role: 'user', content: directiveText(missing), timestamp: Date.now() },
+            ...missing.map((d) => ({
+              role: 'user' as const,
+              content: directiveText(d),
+              timestamp: Date.now(),
+            })),
           ],
         };
       // Exactly the questions the routing input held; the host left out those already present.
