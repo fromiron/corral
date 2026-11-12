@@ -121,7 +121,9 @@ export function applyProgressEvent(
           };
     }
     case 'model.finished':
-      if (state.observedCalls.includes(event.payload.modelCallId)) return state;
+      // A response the person cut is not a turn the agent spent without progress.
+      if (event.payload.interrupted || state.observedCalls.includes(event.payload.modelCallId))
+        return state;
       return {
         ...state,
         turns: state.turns + 1,

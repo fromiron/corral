@@ -86,6 +86,15 @@ export interface WorkerDeps {
   ): Model<string> | undefined;
 }
 
+/** One model request's response: what it carried, and whether an interrupt cut it. */
+interface Flight {
+  abort: AbortController;
+  directiveIds: Set<string>;
+  /** The prepared context the request sent, without its response. */
+  messages: AgentContext['messages'];
+  cut: boolean;
+}
+
 type Reply = Exclude<
   HostFrame,
   StartFrame | { type: 'cancel' | 'directive' | 'interrupt' | 'compact' }
@@ -102,12 +111,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   const waiting = new Map<string, (reply: Reply) => void>();
   // The model response in flight and the directives its request carries; null between
   // requests and while a tool runs, when an interrupt has nothing to cut.
-  let inFlight: { abort: AbortController; directiveIds: Set<string> } | null = null;
+  let inFlight: Flight | null = null;
   let directivesInPrepared = new Set<string>();
   // Interrupt directives that cut a response and still have to lead the next request.
   const interrupting = new Map<string, DeliveredDirective>();
-  const cutCalls = new Set<string>();
-  let resumeAfterCut = false;
 
   port.onFrame((raw) => {
     const parsed = HostFrame.safeParse(raw);
@@ -262,6 +269,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }));
 
     let forceCompaction = false;
+    let preparedMessages: AgentContext['messages'] = [];
+    // The flight of the latest response; set when an interrupt cut it.
+    let latest: Flight | null = null;
+    let cutFlight: Flight | null = null;
     let automaticCompactions = 0;
     const prepareRequest = async (context: AgentContext, retryIndex = 0) => {
       if (!retryIndex) logicalRequestId = `request_${++logicalRequests}`;
@@ -527,6 +538,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             },
           ],
         };
+      preparedMessages = [...preparedContext.messages];
       return preparedContext === context ? undefined : { context: preparedContext };
     };
 
@@ -597,8 +609,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       streamFn: (m, context, options) => {
         let current = context;
         // An interrupt cuts this response only; the run's own signal still cancels everything.
-        const flight = { abort: new AbortController(), directiveIds: directivesInPrepared };
+        const flight: Flight = {
+          abort: new AbortController(),
+          directiveIds: directivesInPrepared,
+          messages: preparedMessages,
+          cut: false,
+        };
         inFlight = flight;
+        latest = flight;
         const signal = AbortSignal.any([
           options?.signal ?? cancellation.signal,
           flight.abort.signal,
@@ -629,11 +647,13 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             }
             if (!permit) throw new Error('request has no permit');
             flight.directiveIds = directivesInPrepared;
+            flight.messages = preparedMessages;
             return await sendRequest(permit, m, current, { ...options, signal });
           },
         });
+        // The mark stays with this request, whichever permit its last attempt got.
         flight.abort.signal.addEventListener('abort', () => {
-          if (permit) cutCalls.add(permit.modelCallId);
+          flight.cut = true;
         });
         void stream.result().finally(() => {
           if (inFlight === flight) inFlight = null;
@@ -691,7 +711,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             : undefined;
         const { usage, rawUsage } = normalizeUsage(message);
         const cut =
-          cutCalls.has(permit.modelCallId) &&
+          latest?.cut === true &&
           (message.stopReason === 'aborted' || message.stopReason === 'error');
         port.send({
           type: 'observe',
@@ -702,10 +722,15 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           rawUsage,
           ...(cut ? { interrupted: true } : {}),
         });
-        resumeAfterCut = cut;
+        cutFlight = cut ? latest : null;
       }
     });
 
+    const takeCut = (): Flight | null => {
+      const flight = cutFlight;
+      cutFlight = null;
+      return flight;
+    };
     const lastAssistant = () =>
       [...(agent?.state.messages ?? [])]
         .reverse()
@@ -715,16 +740,20 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         userPrompt(start),
         start.images?.map((image) => ({ type: 'image', data: image.data, mimeType: image.mime })),
       );
-      // A response cut by an interrupt does not end the execution: its directives lead the
-      // next request of the same agent. A cancel, even after the cut, still ends it.
-      while (!cancelled && resumeAfterCut) {
-        resumeAfterCut = false;
-        const present = JSON.stringify(agent.state.messages);
+      // A response cut by an interrupt does not end the execution: the agent goes on from the
+      // context the cut request actually sent (compaction, delivered directives and state
+      // included), then the cut response, then the interrupt directives last. A cancel, even
+      // after the cut, still ends it.
+      for (let flight = takeCut(); !cancelled && flight; flight = takeCut()) {
+        const cutResponse = lastAssistant();
+        const base = cutResponse ? [...flight.messages, cutResponse] : [...flight.messages];
+        const present = JSON.stringify(base);
         const leading = [...interrupting.values()].filter(
           (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
         );
         interrupting.clear();
         if (!leading.length) break;
+        agent.state.messages = base;
         // One message per directive, as the request preparation would add them.
         await agent.prompt(
           leading.map((d) => ({

@@ -409,6 +409,32 @@ describe('interrupt delivery', () => {
     });
   });
 
+  it('the run projection marks a model call cut by an interrupt, and only that one', async () => {
+    const s = interruptSetup({ interrupts: true });
+    const { host } = await s.started();
+    const usage = { inputTokens: 3, outputTokens: 1 };
+    const cut = await host.prepareModelRequest();
+    await host.modelRequestDispatched?.(cut.modelCallId);
+    await host.observe({
+      kind: 'model_completed',
+      modelCallId: cut.modelCallId,
+      text: 'partial',
+      usage,
+      interrupted: true,
+    });
+    const whole = await host.prepareModelRequest();
+    await host.modelRequestDispatched?.(whole.modelCallId);
+    await host.observe({
+      kind: 'model_completed',
+      modelCallId: whole.modelCallId,
+      text: 'x',
+      usage,
+    });
+    const calls = s.coordinator.getSnapshot(s.runId).projection.modelCalls;
+    expect(calls[cut.modelCallId]?.interrupted).toBe(true);
+    expect(calls[whole.modelCallId]).not.toHaveProperty('interrupted');
+  });
+
   it('an adapter that cannot interrupt gets the directive as next_request, and the receipt says so', async () => {
     const s = interruptSetup({ interrupts: false });
     const { executionId, host } = await s.started();

@@ -8846,7 +8846,9 @@ export class Coordinator {
             payload: { effectId, outcome: late ? 'unknown' : 'succeeded' },
           });
         const warningRef =
-          !late && run.projection.progress.turns === NO_PROGRESS_TURNS - 1
+          !late &&
+          !observation.interrupted &&
+          run.projection.progress.turns === NO_PROGRESS_TURNS - 1
             ? `notice_${observation.modelCallId}`
             : null;
         const warning =

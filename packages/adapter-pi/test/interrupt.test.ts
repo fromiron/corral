@@ -1,5 +1,5 @@
 import type { AgentObservation, AgentStartInput, RunEvent } from '@corral/contracts';
-import { type RunProjection, waitForProjection } from '@corral/core';
+import { type RunProjection, resolveProfileContext, waitForProjection } from '@corral/core';
 import { Gate, linearCorral } from '@corral/testkit';
 import {
   type AssistantMessage,
@@ -60,24 +60,30 @@ const writeThenSubmit = (seen: boolean[]): FauxResponseStep[] => [
   fauxAssistantMessage('Done.'),
 ];
 
-async function liveRun(transport: ReturnType<typeof liveRuntime>['transport']) {
+async function liveRun(transport: ReturnType<typeof liveRuntime>['transport'], brief?: string) {
+  const definition = linearCorral(['writer']);
+  if (brief) definition.input.brief = brief;
   const { runId, receipt } = await transport.startRun({
     schemaVersion: '0.1',
     commandId: 'cmd_live',
-    definition: linearCorral(['writer']),
+    definition,
     mode: 'live',
   });
   if (!runId) throw new Error(JSON.stringify(receipt.error));
   const events: RunEvent[] = [];
   transport.subscribe(runId, 0, { onEvent: (e) => events.push(e), onFrame: () => {} });
-  const interrupt = async () => {
+  const interrupt = async (
+    text = TEXT,
+    delivery: 'interrupt' | 'next_request' = 'interrupt',
+    commandId = 'cmd_interrupt',
+  ) => {
     const p = await waitForProjection(transport, runId, (p) => p.executionOrder.length === 1);
     return transport.sendCommand({
       schemaVersion: '0.1',
-      commandId: 'cmd_interrupt',
+      commandId,
       runId,
       type: 'steer',
-      payload: { targetExecutionId: p.executionOrder[0] ?? '', text: TEXT, delivery: 'interrupt' },
+      payload: { targetExecutionId: p.executionOrder[0] ?? '', text, delivery },
     });
   };
   return { runId, events, interrupt };
@@ -343,5 +349,141 @@ describe('interrupt on the core worker', () => {
     await cancelled;
     expect((await handle.waitForSettlement()).outcome).toBe('cancelled');
     expect(later).toBe(0);
+  });
+
+  it('an interrupt after an automatic compaction goes on from the compacted request, not the full history', async () => {
+    const policy = resolveProfileContext(
+      { contextWindow: 4000, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+      { contextWindow: 4000, source: 'catalog' },
+      'core-auto',
+      256,
+    ).policy;
+    if (!policy) throw new Error('context policy');
+    const summaries = async (cut: boolean) => {
+      const entered = new Gate(),
+        release = new Gate();
+      const seen: boolean[] = [];
+      const { transport } = liveRuntime(
+        [
+          fauxAssistantMessage('Summary that keeps the required task.'),
+          async () => {
+            entered.open();
+            await release.wait();
+            return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft.' })], {
+              stopReason: 'toolUse',
+            });
+          },
+          ...(cut ? writeThenSubmit(seen) : writeThenSubmit(seen).slice(1)),
+        ],
+        { contextPolicy: policy },
+      );
+      const { runId, events, interrupt } = await liveRun(
+        transport,
+        'Keep this requirement. '.repeat(700),
+      );
+      await entered.wait();
+      if (cut) await interrupt();
+      await tick();
+      release.open();
+      const final = await waitForProjection(transport, runId, settled);
+      const purposes = events
+        .filter((e) => e.type === 'model.request_recorded')
+        .map((e) => e.payload.purpose);
+      return { status: final.status, compactions: purposes.filter((p) => p === 'compaction') };
+    };
+    const plain = await summaries(false);
+    const interrupted = await summaries(true);
+    expect(plain.status).toBe('succeeded');
+    expect(interrupted.status).toBe('succeeded');
+    expect(interrupted.compactions).toEqual(plain.compactions);
+  });
+
+  it('after a joined directive, an interrupt leads the next request as the last directive', async () => {
+    const first = new Gate(),
+      firstRelease = new Gate(),
+      second = new Gate(),
+      secondRelease = new Gate();
+    let after: unknown[] = [];
+    const { transport } = liveRuntime([
+      async () => {
+        first.open();
+        await firstRelease.wait();
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft.' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      async () => {
+        second.open();
+        await secondRelease.wait();
+        return fauxAssistantMessage('A long answer.');
+      },
+      (context) => {
+        after = JSON.parse(JSON.stringify(context.messages));
+        return fauxAssistantMessage(
+          [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
+          { stopReason: 'toolUse' },
+        );
+      },
+      fauxAssistantMessage('Done.'),
+    ]);
+    const { runId, interrupt } = await liveRun(transport);
+    await first.wait();
+    await interrupt('Joined: keep the API.', 'next_request', 'cmd_join');
+    firstRelease.open();
+    await second.wait();
+    await interrupt('Interrupt: cite sources.');
+    await tick();
+    secondRelease.open();
+    const final = await waitForProjection(transport, runId, settled);
+    expect(final.status).toBe('succeeded');
+    const directiveMessages = after
+      .map((message, index) => ({ index, text: JSON.stringify(message) }))
+      .filter(({ text }) => text.includes(DIRECTIVE_PREFIX));
+    expect(directiveMessages.map(({ text }) => text.includes('Joined'))).toEqual([true, false]);
+    expect(directiveMessages.at(-1)?.text).toContain('Interrupt: cite sources.');
+    // Each directive is in one message only: the joined one, then the interrupt, last.
+    expect(directiveMessages).toHaveLength(2);
+  });
+
+  it('an interrupt while a retry waits for its permit cuts that retry and the execution goes on', async () => {
+    const retrying = new Gate(),
+      permit = new Gate();
+    const contexts: string[] = [];
+    let prepares = 0;
+    const answer = (context: { messages: unknown[] }) => {
+      contexts.push(JSON.stringify(context.messages));
+      return fauxAssistantMessage('Done.');
+    };
+    const { adapter, host, observed } = coreWorker(
+      [
+        fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'fetch failed' }),
+        answer,
+        answer,
+      ],
+      {
+        prepareModelRequest: async () => {
+          prepares++;
+          if (prepares === 2) {
+            retrying.open();
+            await permit.wait();
+          }
+          return {
+            modelCallId: `call_${prepares}`,
+            contextSnapshotId: `ctx_${prepares}`,
+            profile: 'model-a',
+            maxOutputTokens: 256,
+            directives: [],
+          };
+        },
+      },
+    );
+    const handle = await adapter.start(startInput(), host);
+    await retrying.wait();
+    handle.interrupt?.({ directiveId: 'dir_retry', text: TEXT });
+    await tick();
+    permit.open();
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(contexts.at(-1)).toContain(`${DIRECTIVE_PREFIX}dir_retry)`);
+    expect(observed.find((o) => o.modelCallId === 'call_2')?.interrupted).toBe(true);
   });
 });

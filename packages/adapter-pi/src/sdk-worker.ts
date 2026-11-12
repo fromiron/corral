@@ -125,11 +125,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
   let pendingCompaction: string | null = null;
   // The turn response in flight and the directives its request carries. Extension and
   // compaction requests are never cut, and none is in flight while a tool runs.
-  type TurnFlight = { abort: AbortController; directiveIds: Set<string>; modelCallId?: string };
+  type TurnFlight = { abort: AbortController; directiveIds: Set<string>; cut: boolean };
   let turnFlight: TurnFlight | null = null;
-  const cutCalls = new Set<string>();
-  const wasCut = (modelCallId: string, answer: Pick<AssistantMessage, 'stopReason'>) =>
-    cutCalls.has(modelCallId) && (answer.stopReason === 'aborted' || answer.stopReason === 'error');
+  // The mark stays with the request, whichever permit its last attempt got.
+  const wasCut = (flight: TurnFlight | null, answer: Pick<AssistantMessage, 'stopReason'>) =>
+    flight?.cut === true && (answer.stopReason === 'aborted' || answer.stopReason === 'error');
   const steerFailed = () => {
     cancelled = true;
     cancellation.abort();
@@ -339,6 +339,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         attempts: { modelCallId?: string },
       ) => {
         const out = createAssistantMessageEventStream();
+        // The turn this attempt answers; only a turn response can be cut by an interrupt.
+        const flight = requestPurpose === 'turn' || requestPurpose === 'retry' ? turnFlight : null;
         const owned = cleanJson(context) as Context;
         owned.messages = owned.messages.map((message) =>
           message.role === 'assistant' && message.provider === 'corral'
@@ -462,8 +464,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 method: measured.source === 'usage_anchor' ? 'usage-anchor-v2' : 'dsh-density-v2',
               };
               preparedDirectiveIds = record.directiveIds;
-              if (turnFlight && (requestPurpose === 'turn' || requestPurpose === 'retry'))
-                turnFlight.directiveIds = new Set(preparedDirectiveIds);
+              if (flight) flight.directiveIds = new Set(preparedDirectiveIds);
               if (requestPurpose === 'turn' || requestPurpose === 'retry') {
                 const saved = await call({
                   type: 'checkpoint_context',
@@ -520,8 +521,6 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             }
             modelCallId = permit.modelCallId;
             attempts.modelCallId = modelCallId;
-            if (turnFlight && (requestPurpose === 'turn' || requestPurpose === 'retry'))
-              turnFlight.modelCallId = modelCallId;
             if (requestPurpose === 'compaction') compactionCalls?.push(modelCallId);
             await ack({ type: 'request_dispatched', modelCallId });
             if (cancelled || options?.signal?.aborted) throw new Error('cancelled before dispatch');
@@ -597,7 +596,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                   modelCallId,
                   text: textOf(answer),
                   ...normalizeUsage(answer),
-                  ...(wasCut(modelCallId, answer) ? { interrupted: true } : {}),
+                  ...(wasCut(flight, answer) ? { interrupted: true } : {}),
                 });
                 observed = true;
               }
@@ -632,7 +631,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 modelCallId,
                 text: '',
                 ...normalizeUsage(answer),
-                ...(wasCut(modelCallId, answer) ? { interrupted: true } : {}),
+                ...(wasCut(flight, answer) ? { interrupted: true } : {}),
               });
             out.push({
               type: 'error',
@@ -670,7 +669,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           // Only a turn response can be cut by an interrupt; a cut is never retried.
           const flight: TurnFlight | null =
             requestPurpose === 'turn'
-              ? { abort: new AbortController(), directiveIds: new Set<string>() }
+              ? { abort: new AbortController(), directiveIds: new Set<string>(), cut: false }
               : null;
           const signal = AbortSignal.any([
             ...(options?.signal ? [options.signal] : []),
@@ -680,7 +679,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           if (flight) {
             turnFlight = flight;
             flight.abort.signal.addEventListener('abort', () => {
-              if (flight.modelCallId) cutCalls.add(flight.modelCallId);
+              flight.cut = true;
             });
           }
           let current = context;

@@ -486,7 +486,7 @@ export const DirectiveAccepted = event(
     targetExecutionId: Identifier,
     text: z.string().min(1).max(12000),
     /** The delivery actually used: an interrupt the target cannot take is next_request. */
-    delivery: z.enum(['next_request', 'interrupt']).optional(),
+    delivery: z.enum(['next_request', 'interrupt']),
     attachments: TextAttachments.optional(),
   }),
 );

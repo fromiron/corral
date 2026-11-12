@@ -8275,7 +8275,8 @@
           "required": [
             "directiveId",
             "targetExecutionId",
-            "text"
+            "text",
+            "delivery"
           ],
           "additionalProperties": false
         }
