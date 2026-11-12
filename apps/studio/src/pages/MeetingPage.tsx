@@ -35,7 +35,7 @@ import {
   Tooltip,
 } from '@corral/react/design-kit';
 import { Ellipsis, FileText, PanelRight, Plus, Square, X } from '@corral/react/icons';
-import { Link, useNavigate, useRouter } from '@tanstack/react-router';
+import { Link, useRouter } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
   type Ref,
@@ -369,7 +369,6 @@ function MeetingActions({
 }) {
   const { repository, sessionDeletion } = useServices();
   const router = useRouter();
-  const navigate = useNavigate();
   const t = useTranslations('Sessions');
   const tm = useTranslations('Meetings');
   const td = useTranslations('Desktop');
@@ -515,7 +514,7 @@ function MeetingActions({
           setDeleting(false);
           projectsChanged();
           void router.invalidate();
-          void navigate({
+          void router.navigate({
             to: '/projects/$projectId',
             params: { projectId: session.projectId },
           });
