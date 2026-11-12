@@ -18,6 +18,8 @@ const fixture = vi.hoisted(() => ({
   navigate: vi.fn(),
   services: { repository: {}, mode: 'demo', live: false } as Record<string, unknown>,
   profiles: [] as { available: boolean }[] | null,
+  // Optional measured size. Absent, the virtualizer keeps the estimate.
+  rowSize: undefined as ((index: number) => number | undefined) | undefined,
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
@@ -72,22 +74,44 @@ vi.mock('@tanstack/react-virtual', () => ({
     const current = useRef({ options, start });
     current.current = { options, start };
     fixture.virtualCount = options.count;
-    return useMemo(
-      () => ({
+    return useMemo(() => {
+      // The real cache includes scrollMargin in `start`. Tests keep it at 0, so
+      // a running sum matches what the sidebar subtracts back out.
+      const sizeAt = (index: number) =>
+        fixture.rowSize?.(index) ?? current.current.options.estimateSize(index);
+      return {
         getTotalSize: () =>
-          Array.from({ length: current.current.options.count }, (_, index) =>
-            current.current.options.estimateSize(index),
-          ).reduce((total, size) => total + size, 0),
+          Array.from({ length: current.current.options.count }, (_, index) => sizeAt(index)).reduce(
+            (total, size) => total + size,
+            0,
+          ),
+        get measurementsCache() {
+          const { options: next } = current.current;
+          let top = 0;
+          return Array.from({ length: next.count }, (_, index) => {
+            const size = sizeAt(index);
+            const item = {
+              index,
+              key: next.getItemKey?.(index) ?? index,
+              start: top,
+              size,
+              end: top + size,
+              lane: 0,
+            };
+            top += size;
+            return item;
+          });
+        },
         getVirtualItems: () => {
           const { options: next, start: first } = current.current;
           const offset = Math.min(first, Math.max(0, next.count - 8));
-          let top = Array.from({ length: offset }, (_, index) => next.estimateSize(index)).reduce(
+          let top = Array.from({ length: offset }, (_, index) => sizeAt(index)).reduce(
             (total, size) => total + size,
             0,
           );
           return Array.from({ length: Math.min(8, next.count - offset) }, (_, relative) => {
             const index = offset + relative;
-            const size = next.estimateSize(index);
+            const size = sizeAt(index);
             const item = { index, key: next.getItemKey?.(index) ?? index, start: top, size };
             top += size;
             return item;
@@ -98,9 +122,8 @@ vi.mock('@tanstack/react-virtual', () => ({
           fixture.scrollToIndex(index);
           setStart(Math.max(0, index - 3));
         },
-      }),
-      [],
-    );
+      };
+    }, []);
   },
 }));
 
@@ -150,6 +173,7 @@ beforeEach(() => {
   fixture.services = { repository: {}, mode: 'demo', live: false };
   fixture.profiles = [];
   fixture.virtualCount = 0;
+  fixture.rowSize = undefined;
   fixture.scrollToIndex.mockClear();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   Element.prototype.getAnimations ??= () => [];
@@ -648,4 +672,134 @@ it('puts a session’s title and its state line on full lines of their own, the 
   ).toBeNull();
   const idle = container.querySelector('a[href="/sessions/session_1"]');
   expect(idle?.querySelector('[data-status]')).toBeNull();
+});
+
+// jsdom has no layout. The guide is the submenu's left border, so its length is
+// the ul's height, clipped by the wrapper's animated height. A row's box is the
+// absolute top/height the virtual list writes. The next project row paints over
+// anything that crosses its top.
+function px(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function projectRow(container: HTMLElement, projectId: string) {
+  const row = container
+    .querySelector<HTMLElement>(`[data-sidebar-index] a[href="/projects/${projectId}"]`)
+    ?.closest<HTMLElement>('[data-sidebar="menu-item"]');
+  if (!row) throw new Error(`Missing ${projectId} project row`);
+  return row;
+}
+
+function guideExtent(row: HTMLElement) {
+  const button = row.querySelector<HTMLElement>(':scope > [data-sidebar="menu-button"]');
+  const submenu = row.querySelector<HTMLElement>('[data-sidebar="menu-sub"]');
+  if (!button || !submenu) throw new Error('Missing project guide');
+  const origin = px(row.style.top) + button.offsetHeight;
+  const ulHeight = px(submenu.style.height);
+  const clip = submenu.parentElement?.style.height ?? '';
+  const wrapperHeight = clip.endsWith('px') ? px(clip) : ulHeight;
+  let lastBottom = origin;
+  for (const item of submenu.querySelectorAll<HTMLElement>('[data-sidebar="menu-sub-item"]')) {
+    lastBottom = Math.max(lastBottom, origin + px(item.style.top) + px(item.style.height));
+  }
+  const guideBottom = origin + Math.min(ulHeight, wrapperHeight);
+  return { guideBottom, lastBottom };
+}
+
+it('keeps a project guide on the bottom of its last session while rows are remeasured', async () => {
+  const estimated = sidebarRowHeights(false);
+  const projectRowHeight = estimated.project + 8;
+  const sessionRowHeight = estimated.session + 6;
+  const sessionCount = 12;
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get() {
+      const element = this as HTMLElement;
+      if (
+        element.dataset.sidebar === 'menu-button' &&
+        element.parentElement?.querySelector('[data-sidebar="menu-sub"]')
+      ) {
+        return projectRowHeight;
+      }
+      if (element.dataset.sidebar === 'menu-sub') return px(element.style.height);
+      return 0;
+    },
+  });
+  try {
+    // Sessions sit past the eight-row window. Their measured size disagrees
+    // with the estimate, and the project button is taller than its estimate.
+    fixture.rowSize = (index) =>
+      index >= 1 && index <= sessionCount ? sessionRowHeight : undefined;
+    const sample = sessions[0];
+    if (!sample) throw new Error('Missing a session to copy');
+    const guideSessions = Array.from({ length: sessionCount }, (_, index) => ({
+      ...sample,
+      sessionId: `guide_${index}`,
+      projectId: 'alpha',
+      pinned: false,
+      title: `Guide ${index}`,
+      updatedAt: new Date(Date.parse(createdAt) - index * 1000).toISOString(),
+    }));
+    const container = await mount({
+      projects: [project('alpha', 'Alpha'), project('beta', 'Beta')],
+      sessions: guideSessions,
+    });
+    expect(fixture.virtualCount).toBe(sessionCount + 3);
+    expect(conversationLinks(container).length).toBeLessThan(sessionCount);
+    expect(container.querySelector('a[href="/sessions/guide_11"]')).toBeNull();
+
+    const jumpToEnd = async () => {
+      const first = container.querySelector<HTMLAnchorElement>(
+        '[data-sidebar-index] a[href="/projects/alpha"]',
+      );
+      await act(async () => {
+        first?.focus();
+        first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      });
+    };
+    const expectGuideOnLastRow = () => {
+      const alpha = guideExtent(projectRow(container, 'alpha'));
+      const nextTop = px(projectRow(container, 'beta').style.top);
+      const coveredBottom = Math.min(alpha.guideBottom, nextTop);
+      expect({ guideBottom: alpha.guideBottom, coveredBottom }).toEqual({
+        guideBottom: alpha.lastBottom,
+        coveredBottom: alpha.lastBottom,
+      });
+    };
+    // Opening the group tweens the wrapper for 160ms, and that height clips the
+    // border until it lands on the submenu.
+    const settleGuide = async () => {
+      for (let frame = 0; frame < 20; frame += 1) {
+        const submenu = projectRow(container, 'alpha').querySelector<HTMLElement>(
+          '[data-sidebar="menu-sub"]',
+        );
+        const clip = submenu?.parentElement?.style.height ?? '';
+        if (clip.endsWith('px') && Math.abs(px(clip) - px(submenu?.style.height ?? '')) < 0.01) {
+          return;
+        }
+        await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+      }
+    };
+
+    await jumpToEnd();
+    expect(container.querySelector('a[href="/sessions/guide_11"]')).not.toBeNull();
+    expect(conversationLinks(container).length).toBeLessThan(sessionCount);
+    expectGuideOnLastRow();
+
+    const toggle = container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${messages.Desktop.toggleProject.replace('{name}', 'Alpha')}"]`,
+    );
+    if (!toggle) throw new Error('Missing project toggle');
+    await act(async () => toggle.click());
+    expect(container.querySelector('a[href="/sessions/guide_11"]')).toBeNull();
+    await act(async () => toggle.click());
+    await jumpToEnd();
+    expect(container.querySelector('a[href="/sessions/guide_11"]')).not.toBeNull();
+    await settleGuide();
+    expectGuideOnLastRow();
+  } finally {
+    if (descriptor) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', descriptor);
+  }
 });

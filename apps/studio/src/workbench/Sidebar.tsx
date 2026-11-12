@@ -242,7 +242,9 @@ const ENDED = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
 /**
  * Row heights of the project list, per density. A session row holds its title and one line of
  * state and time, each at its type role's full line height, so neither line is clipped. The
- * virtual list positions rows by these, so the rows are drawn at exactly these heights.
+ * virtual list estimates rows by these and draws session rows at exactly these heights. The
+ * project row takes the button's measured height once that exists, so the guide reaches the
+ * last row of the project.
  */
 export function sidebarRowHeights(compact: boolean) {
   return compact
@@ -305,7 +307,7 @@ export const Sidebar = memo(function Sidebar({
   const size = useSize();
   const compact = size.variant === 'compact';
   const heights = useMemo(() => sidebarRowHeights(compact), [compact]);
-  const projectHeight = heights.project;
+  const [projectHeights, setProjectHeights] = useState<Record<string, number>>({});
   const waiting = useMemo(
     () => needsYouCount(model.sessions, model.runs, model.terminalAttention),
     [model.sessions, model.runs, model.terminalAttention],
@@ -332,34 +334,14 @@ export const Sidebar = memo(function Sidebar({
     }
     return result;
   }, [model.projects, model.sessions, collapsed]);
-  // Keep one virtual range across projects, but retain the source tree ancestry
-  // for every mounted conversation. A project header remains with its visible
-  // children even when that header itself is above the viewport.
-  const tree = useMemo(() => {
-    const groups: {
-      project: ProjectSummary;
-      index: number;
-      start: number;
-      size: number;
-    }[] = [];
-    const byIndex: typeof groups = [];
-    let offset = 0;
-    for (const [index, row] of rows.entries()) {
-      if (row.kind === 'project')
-        groups.push({ project: row.project, index, start: offset, size: 0 });
-      const group = groups.at(-1);
-      if (!group) continue;
-      const height = heights[row.kind];
-      group.size += height;
-      byIndex[index] = group;
-      offset += height;
-    }
-    return { groups, byIndex };
-  }, [rows, heights]);
   const virtual = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroll.current,
-    estimateSize: (index) => heights[rows[index]?.kind ?? 'session'],
+    estimateSize: (index) => {
+      const row = rows[index];
+      if (row?.kind === 'project') return projectHeights[row.project.projectId] ?? heights.project;
+      return heights[row?.kind ?? 'session'];
+    },
     scrollMargin,
     overscan: 8,
     getItemKey: (index) => {
@@ -396,7 +378,79 @@ export const Sidebar = memo(function Sidebar({
     laidOut.current = heights;
     virtual.measure();
   }, [heights, virtual]);
+  // The project row is an in-flow button. Its used height can pass the estimate
+  // and slide this group's border under the next project's button. A zero
+  // reading is ignored: jsdom has no layout and must keep the estimate.
+  // `heights` is not read; a density change has already restyled the button.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read after the density class commits
+  useLayoutEffect(() => {
+    const menu = list.current;
+    if (!menu) return;
+    const buttons = () =>
+      menu.querySelectorAll<HTMLElement>(
+        ':scope > [data-sidebar="menu-item"] > [data-sidebar="menu-button"]',
+      );
+    const read = () => {
+      const found = new Map<string, number>();
+      for (const button of buttons()) {
+        const index = Number(button.parentElement?.dataset.sidebarIndex);
+        const row = rows[index];
+        if (row?.kind !== 'project') continue;
+        const height = button.offsetHeight;
+        if (height > 0) found.set(row.project.projectId, height);
+      }
+      setProjectHeights((prev) => {
+        if ([...found].every(([id, height]) => prev[id] === height)) return prev;
+        return { ...prev, ...Object.fromEntries(found) };
+      });
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    for (const button of buttons()) observer.observe(button);
+    return () => observer.disconnect();
+  }, [rows, heights]);
+  // estimateSize is not a measurement dependency, so a new project height has
+  // to drop the cached estimate explicitly.
+  const measuredProjects = useRef(projectHeights);
+  useLayoutEffect(() => {
+    if (measuredProjects.current === projectHeights) return;
+    measuredProjects.current = projectHeights;
+    virtual.measure();
+  }, [projectHeights, virtual]);
   const virtualItems = virtual.getVirtualItems();
+  // One range across projects, with ancestry kept so a project header stays
+  // with its visible children when that header is above the viewport. Offsets
+  // are the virtualizer's measurements, so the submenu border ends on the
+  // group's last row while those measurements change.
+  const measurements = virtual.measurementsCache;
+  const tree = useMemo(() => {
+    const groups: {
+      project: ProjectSummary;
+      index: number;
+      start: number;
+      size: number;
+      projectSize: number;
+    }[] = [];
+    const byIndex: typeof groups = [];
+    const useMeasured = measurements.length === rows.length;
+    let offset = 0;
+    for (const [index, row] of rows.entries()) {
+      if (row.kind === 'project')
+        groups.push({ project: row.project, index, start: 0, size: 0, projectSize: 0 });
+      const group = groups.at(-1);
+      if (!group) continue;
+      const measured = useMeasured ? measurements[index] : undefined;
+      const size = measured?.size ?? heights[row.kind];
+      if (row.kind === 'project') {
+        group.projectSize = size;
+        group.start = measured ? measured.start - scrollMargin : offset;
+      }
+      group.size += size;
+      byIndex[index] = group;
+      offset += size;
+    }
+    return { groups, byIndex };
+  }, [rows, heights, scrollMargin, measurements]);
   const visibleGroups = new Map<(typeof tree.groups)[number], typeof virtualItems>();
   for (const item of virtualItems) {
     const group = tree.byIndex[item.index];
@@ -757,13 +811,16 @@ export const Sidebar = memo(function Sidebar({
                         </SidebarMenuAction>
                       </Tooltip>
                     </SidebarMenuActions>
-                    <SidebarMenuSub open={!folded} style={{ height: group.size - projectHeight }}>
+                    <SidebarMenuSub
+                      open={!folded}
+                      style={{ height: group.size - group.projectSize }}
+                    >
                       {items.map((item) => {
                         const row = rows[item.index];
                         if (!row || row.kind === 'project') return null;
                         const position = {
                           position: 'absolute' as const,
-                          top: item.start - scrollMargin - group.start - projectHeight,
+                          top: item.start - scrollMargin - group.start - group.projectSize,
                           // Keep the source submenu's pl-2 content inset for
                           // absolutely positioned virtual rows.
                           left: '0.5rem',
