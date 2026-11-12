@@ -79,3 +79,19 @@ it('marks a compaction that is already queued so another command is not sent', (
   };
   expect(compactTarget(projection, 'exec_writer')).toMatchObject({ ok: true, pending: true });
 });
+
+it('does not read an automatic compaction in progress as a pending manual one', () => {
+  const projection = running();
+  projection.compactions = {
+    'compaction.1.exec_writer': {
+      commandId: 'compaction.1.exec_writer',
+      trigger: 'automatic',
+      executionId: 'exec_writer',
+      attemptNo: 2,
+      phase: 'started',
+      beforeHash: 'a'.repeat(64),
+      modelCallIds: [],
+    },
+  };
+  expect(compactTarget(projection, 'exec_writer')).toMatchObject({ ok: true, pending: false });
+});

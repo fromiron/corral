@@ -6,7 +6,7 @@ import type {
 } from '@corral/contracts';
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { expect, it, vi } from 'vitest';
-import { Coordinator } from '../src/index.ts';
+import { Coordinator, InMemoryRunStore } from '../src/index.ts';
 
 it('compaction is attempt-scoped, idempotent, and completed only with an owned settled compaction call', async () => {
   const ready = new Gate(),
@@ -199,6 +199,169 @@ it('a live Core execution accepts manual compaction without a harness', async ()
       }).status,
     ).toBe('rejected');
   } finally {
+    done.open();
+  }
+});
+
+it('an automatic compaction is recorded from started without a command and keeps the attempt and evidence rules', async () => {
+  const store = new InMemoryRunStore();
+  const failFirst = new Gate(),
+    second = new Gate(),
+    done = new Gate();
+  const starts: { host: AgentHost; input: AgentStartInput }[] = [];
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    store,
+    models: {
+      resolve: (profile) => ({
+        ok: true,
+        snapshot: { profile, provider: 'fixture', modelId: 'fixture', auth: 'api_key' },
+      }),
+    },
+    agents: {
+      start: async (input, host) => {
+        starts.push({ input, host });
+        const first = starts.length === 1;
+        if (!first) second.open();
+        return {
+          requestCompaction: vi.fn(),
+          cancel: async () => done.open(),
+          waitForSettlement: async () => {
+            if (first) {
+              await failFirst.wait();
+              return { outcome: 'failed' as const, error: 'fixture failure' };
+            }
+            await done.wait();
+            return { outcome: 'cancelled' as const };
+          },
+        };
+      },
+    },
+  });
+  const definition = linearCorral(['writer']);
+  const node = definition.nodes.find((n) => n.type === 'agent')!;
+  if (node.type === 'agent') node.retry = { maxAttempts: 1 };
+  const result = coordinator.startRun({
+    schemaVersion: '0.1',
+    commandId: 'start_auto_compact',
+    definition,
+    mode: 'live',
+  });
+  const runId = result.runId!;
+  expect(runId).not.toBeNull();
+  await vi.waitFor(() => expect(starts).toHaveLength(1));
+  const hash = 'a'.repeat(64);
+  const record: ModelRequestRecord = {
+    purpose: 'compaction',
+    runtime: 'pi-core',
+    contextHash: hash,
+    contextBytes: 100,
+    directiveIds: [],
+    sections: [],
+  };
+  const settledCall = async (host: AgentHost) => {
+    const permit = await host.prepareModelRequest(record);
+    await host.modelRequestDispatched!(permit.modelCallId);
+    await host.observe({
+      kind: 'model_completed',
+      modelCallId: permit.modelCallId,
+      text: 'summary',
+      usage: { inputTokens: 100, outputTokens: 10 },
+    });
+    return permit.modelCallId;
+  };
+  try {
+    const { host, input } = starts[0]!;
+    const id = `compaction.1.${input.executionId}`;
+    const auto = { commandId: id, trigger: 'automatic' as const };
+    // A result is not accepted before its start.
+    await expect(
+      host.reportCompaction!({ ...auto, phase: 'failed', beforeHash: hash, modelCallIds: [] }),
+    ).rejects.toThrow();
+    await host.reportCompaction!({ ...auto, phase: 'started', beforeHash: hash, modelCallIds: [] });
+    // The same report again is ignored.
+    await host.reportCompaction!({ ...auto, phase: 'started', beforeHash: hash, modelCallIds: [] });
+    await expect(
+      host.reportCompaction!({
+        ...auto,
+        phase: 'completed',
+        beforeHash: hash,
+        afterHash: 'b'.repeat(64),
+        modelCallIds: [],
+      }),
+    ).rejects.toThrow();
+    const modelCallId = await settledCall(host);
+    const completed = {
+      ...auto,
+      phase: 'completed' as const,
+      beforeHash: hash,
+      afterHash: 'b'.repeat(64),
+      modelCallIds: [modelCallId],
+    };
+    await host.reportCompaction!(completed);
+    await host.reportCompaction!(completed);
+    await expect(
+      host.reportCompaction!({ ...completed, phase: 'failed', modelCallIds: [] }),
+    ).rejects.toThrow();
+    // An automatic report cannot take over a manual record's id, nor the reverse.
+    await expect(
+      host.reportCompaction!({
+        commandId: id,
+        phase: 'started',
+        beforeHash: hash,
+        modelCallIds: [],
+      }),
+    ).rejects.toThrow();
+
+    const events = store
+      .readEvents(runId, 0)
+      .filter((event) => event.type === 'context.compaction_changed');
+    expect(events.map((event) => event.payload.phase)).toEqual(['started', 'completed']);
+    expect(events.every((event) => event.commandId === undefined)).toBe(true);
+    expect(events.every((event) => event.payload.trigger === 'automatic')).toBe(true);
+    expect(coordinator.getSnapshot(runId).projection.compactions?.[id]?.phase).toBe('completed');
+
+    // A later attempt cannot report on the first attempt's compaction, and the old attempt
+    // cannot report on the new one's.
+    failFirst.open();
+    await second.wait();
+    const next = starts[1]!;
+    expect(next.input.attemptNo).toBe(2);
+    await expect(
+      next.host.reportCompaction!({ ...completed, phase: 'failed', modelCallIds: [] }),
+    ).rejects.toThrow();
+    const nextId = `compaction.1.${next.input.executionId}`;
+    await next.host.reportCompaction!({
+      commandId: nextId,
+      trigger: 'automatic',
+      phase: 'started',
+      beforeHash: hash,
+      modelCallIds: [],
+    });
+    await expect(
+      host.reportCompaction!({
+        commandId: nextId,
+        trigger: 'automatic',
+        phase: 'failed',
+        beforeHash: hash,
+        afterHash: hash,
+        modelCallIds: [],
+      }),
+    ).rejects.toThrow();
+    // An automatic compaction in progress does not make a manual one pending.
+    expect(
+      coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'compact_after_auto',
+        runId,
+        type: 'compact_context',
+        expectedControlRevision: coordinator.getSnapshot(runId).projection.controlRevision,
+        payload: { executionId: next.input.executionId, attemptNo: 2 },
+      }).status,
+    ).toBe('accepted');
+  } finally {
+    failFirst.open();
     done.open();
   }
 });

@@ -141,6 +141,35 @@ it('compacts a live Core execution that is still running, without a harness', as
   );
 });
 
+it('does not show an automatic compaction as the manual request in progress', async () => {
+  const sendCommand = vi.fn(async () => ({ status: 'accepted', error: null }));
+  const session = createRunSession({ sendCommand } as never);
+  const payload = {
+    commandId: 'compaction.1.exec_writer',
+    trigger: 'automatic' as const,
+    executionId: 'exec_writer',
+    attemptNo: 2,
+    phase: 'started' as const,
+    modelCallIds: [],
+  };
+  const projection = liveExecution('active');
+  projection.compactions = { [payload.commandId]: payload };
+  session.setState({
+    runId: 'run_cards',
+    projection,
+    definition: linearCorral(['writer']),
+    events: [{ type: 'context.compaction_changed', executionId: 'exec_writer', payload } as never],
+  });
+  const container = await showOpen(session);
+  expect(container.textContent).not.toContain(messages.RunStatus.compactPhase.started);
+  const button = [...container.querySelectorAll('button')].find((node) =>
+    node.textContent?.includes(messages.RunStatus.compactRequest),
+  );
+  expect(button?.disabled).toBe(false);
+  await act(async () => button?.click());
+  expect(sendCommand).toHaveBeenCalledTimes(1);
+});
+
 it('says why and sends nothing when the live execution has already finished', async () => {
   const sendCommand = vi.fn(async () => ({ status: 'accepted', error: null }));
   const session = createRunSession({ sendCommand } as never);

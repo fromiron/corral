@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   type AgentHost,
   type AgentStartInput,
+  type CompactionReport,
   canonicalJson,
   type EffectiveHarnessSnapshot,
 } from '@corral/contracts';
@@ -1072,6 +1073,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       hash: createHash('sha256').update(canonicalJson(protectedText)).digest('hex'),
     };
     const seen: { purpose: string; text: string }[] = [];
+    const reports: CompactionReport[] = [];
     const responses: FauxResponseStep[] = Array.from({ length: 8 }, () => (context) => {
       seen.push({
         purpose: (run.requests.at(-1) as { purpose: string }).purpose,
@@ -1082,7 +1084,12 @@ describe('SDK worker through the product adapter (H2)', () => {
     const run = runtime(
       responses,
       `export default pi => { let round=0; pi.on('agent_before_settle', ()=>{ if(round<3){ pi.sendUserMessage(round++<2?'Context history. '.repeat(3500):'Continue briefly.',{deliverAs:'followUp'}); } }); };`,
-      { protectedContext: () => protectedValue },
+      {
+        protectedContext: () => protectedValue,
+        reportCompaction: async (report) => {
+          reports.push(report);
+        },
+      },
       { text: 'Always cite sources.', mode: 'mandatory', brief: 'Context history. '.repeat(3500) },
       128000,
     );
@@ -1103,6 +1110,31 @@ describe('SDK worker through the product adapter (H2)', () => {
     expect(seen.at(-1)?.text).toContain(protectedText);
     expect(run.credentials).toHaveBeenCalledTimes(seen.length);
     expect(run.calls.filter((call) => call.startsWith('observe'))).toHaveLength(seen.length);
+    // Each automatic compaction reports its start and its result once, without a command.
+    const compactionCalls = run.requests.flatMap((record, index) =>
+      (record as { purpose: string }).purpose === 'compaction' ? [`call_${index + 1}`] : [],
+    );
+    expect(reports.length).toBeGreaterThan(0);
+    expect(reports.every((report) => report.trigger === 'automatic')).toBe(true);
+    const ids = [...new Set(reports.map((report) => report.commandId))];
+    expect(ids.map((id) => reports.filter((r) => r.commandId === id).map((r) => r.phase))).toEqual(
+      ids.map(() => ['started', 'completed']),
+    );
+    expect(
+      reports.filter((report) => report.phase === 'completed').flatMap((r) => r.modelCallIds),
+    ).toEqual(compactionCalls);
+  });
+  it('a request below the compaction threshold reports no compaction', async () => {
+    const reports: CompactionReport[] = [];
+    const run = runtime([fauxAssistantMessage('A short answer.')], '', {
+      reportCompaction: async (report) => {
+        reports.push(report);
+      },
+    });
+    expect(await (await run.adapter.start(run.input, run.host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(reports).toEqual([]);
   });
   it.each(['success', 'error', 'cancel'])(
     'queued manual compaction resumes at an idle boundary and preserves context on failure (mode=%s)',

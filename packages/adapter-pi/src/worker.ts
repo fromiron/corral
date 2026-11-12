@@ -243,6 +243,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }));
 
     let forceCompaction = false;
+    let automaticCompactions = 0;
     const prepareRequest = async (context: AgentContext, retryIndex = 0) => {
       if (!retryIndex) logicalRequestId = `request_${++logicalRequests}`;
       let preparedContext = context;
@@ -284,18 +285,32 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
           .digest('hex');
         const summaryCalls: string[] = [];
-        if (commandId)
+        // A manual compaction names its command; an automatic one gets a deterministic id.
+        let owner: { commandId: string; trigger?: 'automatic' } | null = commandId
+          ? { commandId }
+          : null;
+        if (owner)
           await call({
             type: 'compaction_report',
-            report: { commandId, phase: 'started', beforeHash, modelCallIds: [] },
+            report: { ...owner, phase: 'started', beforeHash, modelCallIds: [] },
           });
         try {
           if (
-            commandId ||
+            owner ||
             forceCompaction ||
             meter.measure(preparedContext, model).tokens >
               automaticCompactionThresholdFor({ hardLimit })
           ) {
+            if (!owner) {
+              owner = {
+                commandId: `compaction.${++automaticCompactions}.${start.executionId}`,
+                trigger: 'automatic',
+              };
+              await call({
+                type: 'compaction_report',
+                report: { ...owner, phase: 'started', beforeHash, modelCallIds: [] },
+              });
+            }
             const region = selectCompactableRange(
               preparedContext.messages,
               forceCompaction ? 0 : (start.compaction?.keepRecentTokens ?? budget.keepRecentTokens),
@@ -369,17 +384,16 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             if (currentState.type !== 'protected_context')
               throw new Error('protected context refused');
             if (currentState.value?.hash !== state.value?.hash) {
-              if (commandId)
-                await call({
-                  type: 'compaction_report',
-                  report: {
-                    commandId,
-                    phase: 'failed',
-                    beforeHash,
-                    afterHash: beforeHash,
-                    modelCallIds: summaryCalls,
-                  },
-                });
+              await call({
+                type: 'compaction_report',
+                report: {
+                  ...owner,
+                  phase: 'failed',
+                  beforeHash,
+                  afterHash: beforeHash,
+                  modelCallIds: summaryCalls,
+                },
+              });
               return { type: 'reprepare' as const, directives: [] };
             }
             let restored = withRequiredImages(compacted.context, start.images);
@@ -387,33 +401,34 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             if (meter.measure(restored, model).tokens >= hardLimit)
               throw new Error('compacted context still exceeds model capacity');
             preparedContext = { ...preparedContext, messages: restored.messages };
-            if (commandId)
-              await call({
-                type: 'compaction_report',
-                report: {
-                  commandId,
-                  phase: 'completed',
-                  beforeHash,
-                  afterHash: createHash('sha256')
-                    .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
-                    .digest('hex'),
-                  modelCallIds: summaryCalls,
-                },
-              });
+            await call({
+              type: 'compaction_report',
+              report: {
+                ...owner,
+                phase: 'completed',
+                beforeHash,
+                afterHash: createHash('sha256')
+                  .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
+                  .digest('hex'),
+                modelCallIds: summaryCalls,
+              },
+            });
           }
         } catch (error) {
-          if (!commandId) throw error;
+          if (!owner) throw error;
           if (!cancelled)
             await call({
               type: 'compaction_report',
               report: {
-                commandId,
+                ...owner,
                 phase: 'failed',
                 beforeHash,
                 afterHash: beforeHash,
                 modelCallIds: summaryCalls,
               },
             });
+          // Only a manual compaction's failure leaves the request to go on uncompacted.
+          if (owner.trigger === 'automatic') throw error;
         }
         lastPrepared = normalizeContext({ messages: preparedContext.messages as Message[] });
         measuredContext = inspectContext(preparedContext);

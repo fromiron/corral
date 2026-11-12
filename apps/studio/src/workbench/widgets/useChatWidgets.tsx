@@ -394,6 +394,7 @@ function useChatWidgetState(
               {
                 executionId: event.executionId ?? event.payload.executionId,
                 phase: event.payload.phase,
+                automatic: event.payload.trigger === 'automatic',
                 recordedAt: event.recordedAt,
               },
             ]
@@ -629,12 +630,14 @@ function compactionControl(
   compactions: {
     executionId?: string;
     phase: NonNullable<ChatWidgetModel['compaction']>['phase'];
+    automatic?: boolean;
   }[],
 ): NonNullable<ChatWidgetModel['compaction']> {
   const decision = compactTarget(projection, executionId);
   const targetId = decision.ok ? decision.executionId : executionId;
   const phase =
-    [...compactions].reverse().find((item) => item.executionId === targetId)?.phase ?? null;
+    [...compactions].reverse().find((item) => !item.automatic && item.executionId === targetId)
+      ?.phase ?? null;
   return {
     reason: decision.ok ? (presentationRunId ? null : 'compactNoExecution') : decision.reason,
     pending: decision.ok && decision.pending,
