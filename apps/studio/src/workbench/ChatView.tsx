@@ -56,7 +56,7 @@ export function ChatDensityMenu() {
 }
 
 /**
- * A wheel or touch aimed at a scrollable row (a capped reply, a code block) belongs to that
+ * A wheel, touch, or key aimed at a scrollable row (a capped reply, a code block) belongs to that
  * box. The conversation only leaves the end when the person moves the conversation itself.
  */
 function scrollingNested(target: EventTarget | null, timeline: HTMLElement) {
@@ -73,10 +73,10 @@ function scrollingNested(target: EventTarget | null, timeline: HTMLElement) {
 }
 
 /**
- * Marks a scrollbar as held until the pointer is released anywhere, since a drag often ends
- * outside the box that was pressed.
+ * Marks a pointer as held until it is released anywhere, since a drag often ends outside the
+ * box that was pressed.
  */
-export function holdScrollbar(held: { current: boolean }) {
+export function holdPointer(held: { current: boolean }) {
   held.current = true;
   const release = () => {
     held.current = false;
@@ -133,6 +133,8 @@ export function ChatView({
   const readingAnchor = useRef<{ id: string; offset: number } | null>(null);
   // A pointer is down on the scrollbar, so the next upward scroll is the person, not layout.
   const scrollbarPointer = useRef(false);
+  // A pointer is down in the messages, so focus that follows is a click, not keyboard navigation.
+  const contentPointer = useRef(false);
   const touchY = useRef<number | null>(null);
   const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
@@ -374,10 +376,28 @@ export function ChatView({
         }}
         onPointerDown={(event) => {
           // A scrollbar drag is navigation; clicking message actions is not.
-          if (event.target === event.currentTarget) holdScrollbar(scrollbarPointer);
+          if (event.target === event.currentTarget) {
+            holdPointer(scrollbarPointer);
+            return;
+          }
+          holdPointer(contentPointer);
           // Hit testing can scroll an older action into view before the scroll event.
           // Read that position before focus renders can move the target under the pointer.
-          else lockReadingPosition();
+          lockReadingPosition();
+        }}
+        onFocus={(event) => {
+          const box = timeline.current;
+          if (!box || !follow.current || contentPointer.current) return;
+          if (event.target === event.currentTarget) return;
+          // The offset within the content holds whether or not the browser has scrolled the
+          // target into view yet. Following would pull a target above the end's view away.
+          const offset =
+            event.target.getBoundingClientRect().top -
+            box.getBoundingClientRect().top +
+            box.scrollTop;
+          if (offset >= box.scrollHeight - box.clientHeight - 1) return;
+          stopRestoring();
+          rememberPlace(box);
         }}
         onTouchStart={(event) => {
           touchY.current = event.touches[0]?.clientY ?? null;
@@ -394,7 +414,7 @@ export function ChatView({
         onKeyDown={(event) => {
           if (!['ArrowUp', 'PageUp', 'Home'].includes(event.key)) return;
           const box = timeline.current;
-          if (!box || box.scrollTop <= 0) return;
+          if (!box || box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
           stopRestoring();
         }}
         onScroll={readPosition}

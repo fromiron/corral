@@ -296,6 +296,17 @@ it('keeps a capped streaming reply at its own end while the reply grows', async 
       });
     });
     expect(top).toBe(20);
+    // Back at the end, an upward key inside the box leaves it there too.
+    top = metrics.height - metrics.client;
+    await act(async () => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    await act(async () => {
+      scroller.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'PageUp' }));
+      top = 40;
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(top).toBe(40);
   } finally {
     changePreferences({ chatDensity: previous });
   }

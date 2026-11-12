@@ -50,7 +50,7 @@ import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { agentSummary } from './agentSummary.ts';
-import { holdScrollbar } from './ChatView.tsx';
+import { holdPointer } from './ChatView.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
 import { TurnLine, TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
@@ -82,6 +82,7 @@ function StreamingReply({ children }: { children: ReactNode }) {
     pin();
   });
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: browsers focus a scroller for keyboard scrolling; this only observes those keys
     <div
       ref={box}
       className="live-text max-h-40 overflow-auto text-muted-foreground wrap-anywhere"
@@ -89,7 +90,10 @@ function StreamingReply({ children }: { children: ReactNode }) {
         if (event.deltaY < 0) follow.current = false;
       }}
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) holdScrollbar(scrollbarPointer);
+        if (event.target === event.currentTarget) holdPointer(scrollbarPointer);
+      }}
+      onKeyDown={(event) => {
+        if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) follow.current = false;
       }}
       onTouchStart={(event) => {
         touchY.current = event.touches[0]?.clientY ?? null;

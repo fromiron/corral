@@ -695,6 +695,94 @@ it('an upward wheel over a nested box stops following only once that box is at i
   expect(chat.top).toBe(reading);
 });
 
+it('an upward key in a nested box that can still scroll up keeps the conversation following', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [
+      {
+        id: 'turn-0',
+        content: (
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: a focusable scroller, as browsers make one
+          <div data-testid="nested" tabIndex={0} style={{ overflowY: 'auto' }}>
+            long reply
+          </div>
+        ),
+      },
+    ],
+  });
+  await chat.resize();
+  const nested = chat.container.querySelector<HTMLElement>('[data-testid="nested"]');
+  if (!nested) throw new Error('Nested box missing');
+  Object.defineProperties(nested, {
+    scrollHeight: { configurable: true, get: () => 400 },
+    clientHeight: { configurable: true, get: () => 160 },
+    scrollTop: { configurable: true, get: () => 120 },
+  });
+  await act(async () => {
+    nested.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowUp' }));
+  });
+  chat.metrics.height += 200;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+});
+
+function placedAction(label: string, top: number) {
+  return (
+    <button
+      type="button"
+      ref={(node) => {
+        if (node)
+          node.getBoundingClientRect = () =>
+            ({ top, bottom: top + 32, left: 0, right: 80, width: 80, height: 32 }) as DOMRect;
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+it('keyboard focus on an earlier message stops following, and focus at the end does not', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [
+      { id: 'turn-0', content: placedAction('Copy earlier', -300) },
+      { id: 'turn-1', content: placedAction('Copy latest', 120) },
+    ],
+  });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  const [earlier, latest] = chat.container.querySelectorAll('button');
+  await act(async () => latest?.focus());
+  chat.metrics.height += 100;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  await act(async () => {
+    earlier?.focus();
+    chat.top = 300;
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  chat.metrics.height += 250;
+  await chat.resize();
+  expect(chat.top).toBe(300);
+});
+
+it('focus from a click does not stop following the end', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [{ id: 'turn-0', content: placedAction('Expand', -300) }],
+  });
+  await chat.resize();
+  const button = chat.container.querySelector('button');
+  await act(async () => {
+    button?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    button?.focus();
+    document.body.dispatchEvent(new Event('pointerup', { bubbles: true }));
+  });
+  chat.metrics.height += 250;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+});
+
 it('a downward key does not stop following the end', async () => {
   sessionStorage.clear();
   const chat = await mountConversation({
