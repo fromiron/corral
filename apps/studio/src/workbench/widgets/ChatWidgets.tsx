@@ -109,7 +109,9 @@ function CompactRequest({
         <p className="text-caption text-muted-foreground">{t(compaction.reason)}</p>
       ) : (
         <>
-          <p className="text-caption text-muted-foreground">{t('compactHint')}</p>
+          <p className="text-caption text-muted-foreground">
+            {t(compaction.idle ? 'compactSessionHint' : 'compactHint')}
+          </p>
           <Button
             variant="tertiary"
             disabled={busy || compaction.pending || phase !== null}
@@ -143,6 +145,7 @@ function CompactRequest({
 /** ContextInspector: what the presented run's last request held. */
 export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
+  const ts = useTranslations('Sessions');
   const tc = useTranslations('Widgets.category');
   const { context } = model;
   const measured = context.tokens != null;
@@ -303,6 +306,11 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
             })}
           </p>
         </details>
+      ) : null}
+      {model.sessionSummary ? (
+        <p data-testid="session-summary" className="text-caption text-muted-foreground">
+          {ts('sessionSummarized')}
+        </p>
       ) : null}
       {model.compaction ? <CompactRequest compaction={model.compaction} /> : null}
       <RunLink

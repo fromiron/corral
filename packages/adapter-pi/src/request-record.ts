@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson, ModelRequestRecord } from '@corral/contracts';
+import {
+  canonicalJson,
+  compactionCheckpoint,
+  compactionTurnAnswer,
+  ModelRequestRecord,
+} from '@corral/contracts';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { getCurrentSystemMessage, getCurrentSystemPrompt } from '@earendil-works/pi-ai';
 import { type InspectOptions, inspectContext } from './context-usage.ts';
@@ -231,29 +236,37 @@ export function conversationMessages(
 ): import('@earendil-works/pi-ai').Message[] {
   if (!conversation) return [];
   const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-  return conversation.turns.flatMap((turn) => [
-    { role: 'user' as const, content: turn.request, timestamp: 1 },
-    {
-      role: 'assistant' as const,
-      content: [
+  const summary = conversation.summary
+    ? [
         {
-          type: 'text' as const,
-          text:
-            turn.answer ??
-            (turn.answerOmitted
-              ? '(The answer is omitted here because it exceeds the conversation size limit.)'
-              : `(No answer was recorded; this request ended ${turn.status}.)`),
+          role: 'user' as const,
+          content: compactionCheckpoint(conversation.summary.text),
+          timestamp: 1,
         },
-      ],
-      // Not a provider response: no reasoning, tool calls or usage are replayed.
-      api: 'corral-session',
-      provider: 'corral',
-      model: 'session-history',
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: zero },
-      stopReason: 'stop' as const,
-      timestamp: 1,
-    },
-  ]);
+      ]
+    : [];
+  return [
+    ...summary,
+    ...conversation.turns.flatMap((turn) => [
+      { role: 'user' as const, content: turn.request, timestamp: 1 },
+      {
+        role: 'assistant' as const,
+        content: [
+          {
+            type: 'text' as const,
+            text: compactionTurnAnswer(turn),
+          },
+        ],
+        // Not a provider response: no reasoning, tool calls or usage are replayed.
+        api: 'corral-session',
+        provider: 'corral',
+        model: 'session-history',
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: zero },
+        stopReason: 'stop' as const,
+        timestamp: 1,
+      },
+    ]),
+  ];
 }
 
 export function checkpointContext(

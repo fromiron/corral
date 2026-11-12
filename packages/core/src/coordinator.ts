@@ -11,6 +11,7 @@ import {
   type Assignment,
   BinaryArtifact,
   type BrokerFileToolName,
+  type CancelSessionCompactionCommand,
   CheckPlan,
   type Clock,
   type CommandError,
@@ -19,6 +20,7 @@ import {
   CommandReport,
   type CompactContextCommand,
   CompactionReport,
+  type CompactSessionCommand,
   type ContextCheckpointV2,
   type ContinuedConversation,
   type ConversationTurn,
@@ -83,6 +85,8 @@ import {
   RuntimeContext,
   type RuntimeFiles,
   type Scheduler,
+  SessionCommand,
+  SessionCompactionRecord,
   SessionConversation,
   type SetBreakpointsCommand,
   StartRunRequest,
@@ -175,6 +179,15 @@ import {
   SequentialPlanRunner,
   type StepOutcome,
 } from './runner.ts';
+import {
+  CompactionCancellation,
+  compactionMessages,
+  type SessionCompactionAnswer,
+  type SessionCompactionRequest,
+  sessionCompactionHash,
+  shapeSessionConversation,
+  summaryIsSmaller,
+} from './session-compaction.ts';
 import {
   InMemoryRunStore,
   type RunSnapshot,
@@ -395,6 +408,18 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** Effort routing for automatic reasoning (features/effort-routing.md). Absent means Off. */
   effortRouting?: EffortRoutingDeps;
+  /** The session revision and saved model an idle compaction reads. */
+  sessionFacts?: {
+    revision(sessionId: string): number | null;
+    modelProfile(sessionId: string): string | null;
+  };
+  /** The host calls the saved model. Tests replace it. Absent means session compaction is refused. */
+  sessionCompaction?: {
+    complete(
+      request: SessionCompactionRequest,
+      cancellation: ToolCancellation,
+    ): Promise<SessionCompactionAnswer>;
+  };
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -744,6 +769,9 @@ export class Coordinator {
   private readonly serviceRuns = new Set<LiveRun>();
   private readonly previewRuns = new Set<LiveRun>();
   private readonly stoppingServices = new Map<LiveRun, Promise<void>>();
+  private readonly sessionFacts: CoordinatorDeps['sessionFacts'];
+  private readonly sessionCompactionModel: CoordinatorDeps['sessionCompaction'];
+  private readonly pendingSessionCompaction = new Map<string, CompactionCancellation>();
 
   constructor(deps: CoordinatorDeps) {
     this.clock = deps.clock;
@@ -768,6 +796,8 @@ export class Coordinator {
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
     this.observers = deps.admission?.observers ?? [];
+    this.sessionFacts = deps.sessionFacts;
+    this.sessionCompactionModel = deps.sessionCompaction;
     this.recover();
   }
 
@@ -2337,41 +2367,19 @@ export class Coordinator {
         ...(this.store.getConversationTurn(runId) ?? this.primaryConversationTurn(run)),
       });
     }
-    const bytes = (turn: ConversationTurn) =>
-      utf8ToBytes(turn.request).length + (turn.answer ? utf8ToBytes(turn.answer).length : 0);
-    const cap = this.policy.maxArtifactBytes;
-    let total = turns.reduce((sum, turn) => sum + bytes(turn), 0);
-    let omittedTurns = 0;
-    while (turns.length && total > cap) {
-      const oldest = turns[0]!;
-      if (
-        turns.length === 1 &&
-        oldest.answer !== null &&
-        utf8ToBytes(oldest.request).length <= cap
-      ) {
-        // The newest turn alone is too large: keep the request, name the missing answer.
-        total -= bytes(oldest);
-        oldest.answer = null;
-        oldest.answerOmitted = true;
-        oldest.artifactVersionId = null;
-        total += bytes(oldest);
-        continue;
-      }
-      total -= bytes(oldest);
-      turns.shift();
-      omittedTurns += 1;
-    }
-    const conversation: SessionConversation = {
-      turns: turns.map(({ artifactVersionId: _id, ...turn }) => turn),
-      omittedTurns,
-    };
+    const shaped = shapeSessionConversation(
+      turns,
+      this.appliedSessionCompaction(sessionId),
+      this.policy.maxArtifactBytes,
+    );
     return {
-      conversation,
+      conversation: shaped.conversation,
       provenance: {
         throughRunId,
-        turns: turns.map(({ runId, artifactVersionId }) => ({ runId, artifactVersionId })),
-        omittedTurns,
-        contextHash: hashOf(conversation),
+        turns: shaped.provenanceTurns,
+        omittedTurns: shaped.conversation.omittedTurns,
+        contextHash: hashOf(shaped.conversation),
+        ...(shaped.summary ? { summary: shaped.summary } : {}),
       },
     };
   }
@@ -2524,6 +2532,293 @@ export class Coordinator {
     } catch {
       return unavailable(command.commandId, command.runId, this.storageError);
     }
+  }
+
+  /** Compact or cancel the turns the next request would attach. Same id returns the stored receipt. */
+  submitSession(raw: SessionCommand): Receipt {
+    const parsed = SessionCommand.safeParse(raw);
+    const sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : 'none';
+    if (!parsed.success)
+      return rejected(raw.commandId, sessionId, schemaError(parsed.error), `session:${sessionId}`);
+    const command = parsed.data;
+    const payloadHash = hashOf(command);
+    const previous = this.store.getCommand(`session:${command.sessionId}`, command.commandId);
+    if (previous) {
+      if (previous.payloadHash !== payloadHash)
+        return conflict(command.commandId, command.sessionId);
+      return previous.receipt;
+    }
+    if (this.storageError)
+      return unavailable(command.commandId, command.sessionId, this.storageError);
+    try {
+      return command.type === 'cancel_session_compaction'
+        ? this.cancelSessionCompaction(command, payloadHash)
+        : this.compactSession(command, payloadHash);
+    } catch {
+      return unavailable(command.commandId, command.sessionId, this.storageError);
+    }
+  }
+
+  sessionCompactions(sessionId: string): SessionCompactionRecord[] {
+    return this.store.listSessionCompactions(sessionId);
+  }
+
+  /** The summary the next request attaches, or null when the source turns are still attached. */
+  sessionCompactionView(sessionId: string) {
+    const applied = this.appliedSessionCompaction(sessionId);
+    if (!applied?.throughRunId || !applied.summary) return null;
+    return {
+      commandId: applied.commandId,
+      throughRunId: applied.throughRunId,
+      coveredRunIds: [...applied.coveredRunIds],
+      sessionRevision: applied.sessionRevision,
+    };
+  }
+
+  private rememberSession(command: SessionCommand, payloadHash: string, receipt: Receipt): Receipt {
+    this.persist(() => {
+      this.store.putCommand({
+        scope: `session:${command.sessionId}`,
+        commandId: command.commandId,
+        payloadHash,
+        receipt,
+        runId: command.sessionId,
+        directiveId: null,
+      });
+    });
+    return receipt;
+  }
+
+  private refuseSession(
+    command: SessionCommand,
+    payloadHash: string,
+    error: CommandError,
+  ): Receipt {
+    return this.rememberSession(
+      command,
+      payloadHash,
+      rejected(command.commandId, command.sessionId, error, `session:${command.sessionId}`),
+    );
+  }
+
+  private sessionHasActiveRun(sessionId: string): boolean {
+    return this.store.listRuns().some((summary) => {
+      if (summary.sessionId !== sessionId) return false;
+      const status = this.live.get(summary.runId)?.projection.status ?? summary.status;
+      return !TERMINAL_RUN_STATUSES.has(status);
+    });
+  }
+
+  private newestEndedRun(sessionId: string): string | null {
+    const order = this.store
+      .listRuns()
+      .filter((summary) => summary.sessionId === sessionId)
+      .map((summary) => summary.runId)
+      .reverse();
+    for (let index = order.length - 1; index >= 0; index -= 1) {
+      const runId = order[index];
+      if (!runId) continue;
+      const stored = this.store.getRun(runId);
+      const status = this.live.get(runId)?.projection.status ?? stored?.projection.status;
+      if (!stored || stored.snapshot.meeting || !status || !TERMINAL_RUN_STATUSES.has(status))
+        continue;
+      return runId;
+    }
+    return null;
+  }
+
+  private appliedSessionCompaction(sessionId: string): SessionCompactionRecord | null {
+    const records = this.store.listSessionCompactions(sessionId);
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      const record = records[index];
+      if (record?.phase === 'completed' && record.summary) return record;
+    }
+    return null;
+  }
+
+  private compactSession(command: CompactSessionCommand, payloadHash: string): Receipt {
+    const refuse = (code: CommandError['code'], message: string) =>
+      this.refuseSession(command, payloadHash, { code, message });
+    if (!this.sessionFacts || !this.sessionCompactionModel)
+      return refuse('CAPABILITY_DENIED', 'session compaction is not available');
+    const revision = this.sessionFacts.revision(command.sessionId);
+    if (revision === null)
+      return refuse('TARGET_NOT_FOUND', `session ${command.sessionId} does not exist`);
+    if (revision !== command.expectedSessionRevision)
+      return refuse('STALE_CONTROL_REVISION', `session revision is ${revision}`);
+    if (this.sessionHasActiveRun(command.sessionId))
+      return refuse('RUN_ALREADY_ACTIVE', 'a run is still active');
+    if (
+      [...this.pendingSessionCompaction.keys()].some((key) =>
+        key.startsWith(`${command.sessionId}\u0000`),
+      )
+    )
+      return refuse('CAPABILITY_DENIED', 'session compaction is already pending');
+    const profile = this.sessionFacts.modelProfile(command.sessionId);
+    if (!profile) return refuse('CAPABILITY_DENIED', 'this session has no saved model');
+    const model = this.models.resolve(profile, 'live');
+    if (!model.ok) return refuse(model.code, model.reason);
+    if (!model.snapshot.provider || !model.snapshot.modelId)
+      return refuse('CAPABILITY_DENIED', 'session compaction needs a live model');
+    const throughRunId = this.newestEndedRun(command.sessionId);
+    if (!throughRunId) return refuse('CAPABILITY_DENIED', 'there is no session history to compact');
+    const source = this.sessionConversation(command.sessionId, throughRunId);
+    if ('error' in source) return refuse(source.error.code, source.error.message);
+    const lastTurn = source.conversation.turns.at(-1);
+    if (!lastTurn) return refuse('CAPABILITY_DENIED', 'there is no session history to compact');
+    const coveredRunIds = [
+      ...(source.conversation.summary?.coveredRunIds ?? []),
+      ...source.conversation.turns.map((turn) => turn.runId),
+    ];
+    const abort = new CompactionCancellation();
+    const receipt: Receipt = {
+      commandId: command.commandId,
+      runId: command.sessionId,
+      status: 'accepted',
+      acceptedSeq: null,
+      target: `session:${command.sessionId}`,
+      requestedBoundary: 'safe_boundary',
+      relatedEventIds: [],
+    };
+    const stored = this.rememberSession(command, payloadHash, receipt);
+    this.pendingSessionCompaction.set(`${command.sessionId}\u0000${command.commandId}`, abort);
+    const request: SessionCompactionRequest = {
+      commandId: command.commandId,
+      sessionId: command.sessionId,
+      sessionRevision: command.expectedSessionRevision,
+      model: model.snapshot,
+      purpose: 'compaction',
+      toolChoice: 'none',
+      intent: {
+        requestId: command.commandId,
+        owner: { kind: 'session', id: command.sessionId, sessionId: command.sessionId },
+        purpose: 'compaction',
+        revision: command.expectedSessionRevision,
+      },
+      messages: compactionMessages(source.conversation),
+    };
+    void this.finishSessionCompaction(
+      command,
+      source.conversation,
+      coveredRunIds,
+      lastTurn.runId,
+      source.conversation.omittedTurns,
+      abort,
+      request,
+    );
+    return stored;
+  }
+
+  private async finishSessionCompaction(
+    command: CompactSessionCommand,
+    source: SessionConversation,
+    coveredRunIds: string[],
+    throughRunId: string,
+    omittedTurns: number,
+    abort: CompactionCancellation,
+    request: SessionCompactionRequest,
+  ) {
+    const key = `${command.sessionId}\u0000${command.commandId}`;
+    const cancellation: ToolCancellation = {
+      get aborted() {
+        return abort.aborted;
+      },
+      onCancel(fn) {
+        return abort.onCancel(fn);
+      },
+    };
+    let answer: SessionCompactionAnswer;
+    try {
+      answer = await this.sessionCompactionModel!.complete(request, cancellation);
+    } catch {
+      answer = { text: '', stopReason: cancellation.aborted ? 'aborted' : 'error' };
+    }
+    try {
+      if (
+        this.store
+          .listSessionCompactions(command.sessionId)
+          .some((item) => item.commandId === command.commandId)
+      )
+        return;
+      const revision = this.sessionFacts?.revision(command.sessionId);
+      const text = answer.text.trim();
+      let phase: SessionCompactionRecord['phase'];
+      let summary: string | null = null;
+      if (abort.aborted || answer.stopReason === 'aborted') phase = 'cancelled';
+      else if (revision !== command.expectedSessionRevision) phase = 'discarded';
+      else if (answer.stopReason !== 'stop' || !text) phase = 'failed';
+      else if (!summaryIsSmaller(source, text)) phase = 'retained';
+      else {
+        phase = 'completed';
+        summary = text;
+      }
+      this.persist(() =>
+        this.store.putSessionCompaction(
+          SessionCompactionRecord.parse({
+            commandId: command.commandId,
+            sessionId: command.sessionId,
+            sessionRevision: command.expectedSessionRevision,
+            phase,
+            throughRunId,
+            coveredRunIds,
+            omittedTurns,
+            sourceHash: sessionCompactionHash(source),
+            summary,
+            summaryHash: summary ? sessionCompactionHash(summary) : null,
+            recordedAt: this.clock.nowIso(),
+          }),
+        ),
+      );
+    } catch {
+      // The record is already written, or admission is closed. Do not call the model again.
+    } finally {
+      if (this.pendingSessionCompaction.get(key) === abort)
+        this.pendingSessionCompaction.delete(key);
+    }
+  }
+
+  private cancelSessionCompaction(
+    command: CancelSessionCompactionCommand,
+    payloadHash: string,
+  ): Receipt {
+    const refuse = (code: CommandError['code'], message: string) =>
+      this.refuseSession(command, payloadHash, { code, message });
+    const revision = this.sessionFacts?.revision(command.sessionId);
+    if (revision == null)
+      return refuse('TARGET_NOT_FOUND', `session ${command.sessionId} does not exist`);
+    if (revision !== command.expectedSessionRevision)
+      return refuse('STALE_CONTROL_REVISION', `session revision is ${revision}`);
+    const target = this.store.getCommand(`session:${command.sessionId}`, command.targetCommandId);
+    if (!target || target.receipt.status === 'rejected')
+      return refuse('TARGET_NOT_FOUND', 'no session compaction is in progress');
+    const pending = this.pendingSessionCompaction.get(
+      `${command.sessionId}\u0000${command.targetCommandId}`,
+    );
+    const settled = this.store
+      .listSessionCompactions(command.sessionId)
+      .some((item) => item.commandId === command.targetCommandId);
+    if (!pending && settled) {
+      return this.rememberSession(command, payloadHash, {
+        commandId: command.commandId,
+        runId: command.sessionId,
+        status: 'applied',
+        acceptedSeq: null,
+        target: `session:${command.sessionId}`,
+        requestedBoundary: 'immediate',
+        relatedEventIds: [],
+      });
+    }
+    if (!pending) return refuse('TARGET_NOT_FOUND', 'no session compaction is in progress');
+    pending.abort();
+    return this.rememberSession(command, payloadHash, {
+      commandId: command.commandId,
+      runId: command.sessionId,
+      status: 'accepted',
+      acceptedSeq: null,
+      target: `session:${command.sessionId}`,
+      requestedBoundary: 'immediate',
+      relatedEventIds: [],
+    });
   }
 
   /** Persist command identity together with its control facts. */

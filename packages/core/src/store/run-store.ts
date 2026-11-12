@@ -13,6 +13,7 @@ import type {
   ResumedFrom,
   RunEvent,
   RunStatus,
+  SessionCompactionRecord,
 } from '@corral/contracts';
 import type { RunProjection } from '../projection.ts';
 
@@ -106,6 +107,10 @@ export interface RunStore {
   listRuns(): RunSummary[];
   readEvents(runId: string, afterSeq: number, limit?: number): RunEvent[];
   getCommand(scope: string, commandId: string): StoredCommand | null;
+  /** Insert once. A second write for the same session and command throws. */
+  putSessionCompaction(record: SessionCompactionRecord): void;
+  /** Oldest first. */
+  listSessionCompactions(sessionId: string): SessionCompactionRecord[];
   getArtifactText(runId: string, artifactVersionId: string): string | null;
   getArtifactBinary?(runId: string, artifactVersionId: string): Uint8Array | null;
 }
@@ -118,6 +123,7 @@ export class InMemoryRunStore implements RunStore {
   private artifacts = new Map<string, string>();
   private retainedBodies = new Map<string, readonly string[]>();
   private conversationTurns = new Map<string, StoredConversationTurn>();
+  private sessionCompactions: SessionCompactionRecord[] = [];
   private depth = 0;
 
   transaction<T>(write: () => T): T {
@@ -129,6 +135,7 @@ export class InMemoryRunStore implements RunStore {
       artifacts: new Map(this.artifacts),
       retainedBodies: new Map(this.retainedBodies),
       conversationTurns: new Map(this.conversationTurns),
+      sessionCompactions: this.sessionCompactions.map((record) => ({ ...record })),
     };
     this.depth += 1;
     try {
@@ -221,6 +228,22 @@ export class InMemoryRunStore implements RunStore {
 
   getCommand(scope: string, commandId: string) {
     return this.commands.get(`${scope}\u0000${commandId}`) ?? null;
+  }
+
+  putSessionCompaction(record: SessionCompactionRecord) {
+    if (
+      this.sessionCompactions.some(
+        (item) => item.sessionId === record.sessionId && item.commandId === record.commandId,
+      )
+    )
+      throw new Error(`session compaction ${record.commandId} is already recorded`);
+    this.sessionCompactions.push({ ...record, coveredRunIds: [...record.coveredRunIds] });
+  }
+
+  listSessionCompactions(sessionId: string) {
+    return this.sessionCompactions
+      .filter((record) => record.sessionId === sessionId)
+      .map((record) => ({ ...record, coveredRunIds: [...record.coveredRunIds] }));
   }
 
   getArtifactText(runId: string, artifactVersionId: string) {

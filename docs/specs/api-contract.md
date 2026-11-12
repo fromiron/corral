@@ -66,6 +66,9 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함 |
 | POST /sessions | `{projectId, title, objective?, criteria?, corralId?, autoTitle?, meeting?:MeetingConfig}` | 새 세션. `meeting`이 있으면 회의, 없으면 기존 work 세션이며 이후 종류 변환은 하지 않는다. 제목이 비면 목적 첫 줄. `autoTitle:true`는 표시용 임시 제목을 첫 저장된 next/queue 요청으로 한 번 확정하며 수동 제목 저장 시 해제한다. 기본 false로 기존 호출을 보존한다. |
 | GET·PATCH /sessions/:id | `{title?, objective?, criteria?, corralId?, auto?, pinned?, archived?, expectedRevision}` | 세션 읽기·수정(revision 검사). `criteria`는 0~20줄(줄마다 1~200자)의 [세션 완료 기준](workbench.md#세션-완료-기준)이다. 빈 목록은 기준 없음이고, 회의 세션에 비어 있지 않은 기준을 주면 400이다. `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
+| POST /sessions/:id/compaction | `CompactSessionCommand`. 경로의 세션과 본문 `sessionId`가 같아야 한다 | 끝나지 않은 Run이 없을 때 다음 요청에 붙을 이전 턴의 요약. receipt. 같은 명령 ID·본문은 저장된 receipt이고 모델을 다시 부르지 않는다. 다른 본문은 409. 진행 중 Run·리비전 불일치·요약할 턴 없음은 거절. 채택된 요약은 덮는 턴·기준 세션 리비전과 함께 남고, 더 오래된 리비전의 늦은 요약은 버려진다. 원래 Run 기록은 바꾸지 않는다 |
+| POST /sessions/:id/compaction/cancel | `CancelSessionCompactionCommand` | 진행 중인 세션 압축을 취소한다. 같은 명령 ID는 같은 receipt. 이미 채택된 요약은 지우지 않는다 |
+| GET /sessions/:id/compaction | — | `{compaction}`는 다음 요청에 쓰이는 요약 지점 `{commandId, throughRunId, coveredRunIds, sessionRevision}` 또는 null. 모델을 부르지 않는다 |
 | POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?}` | 요청 기록 추가(본문은 이후 불변). `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
 | GET /sessions/:id/meeting | — | `MeetingView`: 저장된 메시지·답·사용량·대기 메시지·회의록·결정. 내부 `rounds`는 기존 기록/실행 소유권을 위한 응답 묶음이며 UI의 진행 단계가 아니다. 새 레코드의 `order`로 메시지·발언 순서를 표현하며 `replyTo`는 에이전트 멘션의 실제 출처다. 조회·재열기는 모델을 호출하지 않는다 |

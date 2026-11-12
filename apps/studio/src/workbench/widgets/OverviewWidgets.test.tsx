@@ -656,6 +656,37 @@ it('the context detail compacts the live execution it is showing', async () => {
   expect(request).toHaveBeenCalledTimes(1);
 });
 
+it('the context detail shows the session summary point', async () => {
+  const container = await render(
+    model({
+      sessionSummary: { commandId: 'cmd_compact', covered: 2 },
+      compaction: { reason: 'compactNotLive', phase: null, pending: false, request: vi.fn() },
+    } as Partial<ChatWidgetModel>),
+    (value) => <ContextDetail model={value} />,
+  );
+  expect(container.querySelector('[data-testid="session-summary"]')?.textContent).toContain(
+    'Earlier turns summarized',
+  );
+});
+
+it('the context detail compacts the idle session', async () => {
+  const request = vi.fn(async () => null);
+  const container = await render(
+    model({
+      compaction: { reason: null, idle: true, phase: null, pending: false, request },
+    } as Partial<ChatWidgetModel>),
+    (value) => <ContextDetail model={value} />,
+  );
+  expect(container.textContent).toContain(
+    'Summarizes earlier turns for the next request. The original messages stay.',
+  );
+  const button = [...container.querySelectorAll('button')].find((node) =>
+    node.textContent?.includes(messages.RunStatus.compactRequest),
+  );
+  await act(async () => button?.click());
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
 it('the context detail says why and does not compact without a running execution', async () => {
   const request = vi.fn(async () => null);
   const container = await render(

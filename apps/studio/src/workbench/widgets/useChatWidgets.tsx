@@ -31,6 +31,7 @@ import { useServices } from '../../services.tsx';
 import { type CompactReason, compactTarget } from '../compactTarget.ts';
 import { useQuestionNotice } from '../questionNotice.ts';
 import { readRunView } from '../readRunView.ts';
+import { requestSessionCompaction, useSessionSummary } from '../sessionCompact.ts';
 import { contextCalls } from './contextCalls.ts';
 import {
   actionRequired,
@@ -87,13 +88,17 @@ export interface ChatWidgetModel {
   /** The waiting questions' notice (first title, count from two), once the first is read. */
   questionNotice: string | null;
   failedExecutionId: string | null;
-  /** Manual compaction for the execution this context is showing. */
+  /** Manual compaction for the execution this context is showing, or the idle session. */
   compaction?: {
-    reason: CompactReason | null;
+    reason: CompactReason | 'compactSessionNeedsServer' | null;
+    /** No execution is running, so the button compacts the session. */
+    idle?: boolean;
     pending: boolean;
     phase: 'queued' | 'started' | 'completed' | 'failed' | 'cancelled' | 'skipped' | null;
     request: () => Promise<string | null>;
   };
+  /** A kept session summary the next request will attach. */
+  sessionSummary?: { commandId: string; covered: number } | null;
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
     open: boolean;
@@ -148,7 +153,9 @@ function useChatWidgetState(
   live: boolean,
   runIds: readonly string[],
 ): ChatWidgetModel {
-  const { runFor, sessionFor, retainRun, transport, readHistory, workspaces, mode } = useServices();
+  const services = useServices();
+  const { runFor, sessionFor, retainRun, transport, readHistory, workspaces, mode } = services;
+  const summaryView = useSessionSummary(sessionId);
   const prices = useModelPrices();
   const session = presentationRunId ? runFor(presentationRunId) : sessionFor(sessionId);
   useEffect(() => {
@@ -598,7 +605,12 @@ function useChatWidgetState(
       projection,
       context.executionId,
       compactions,
+      services,
+      sessionId,
     ),
+    sessionSummary: summaryView
+      ? { commandId: summaryView.commandId, covered: summaryView.coveredRunIds.length }
+      : null,
     activity,
     plan: {
       open,
@@ -630,8 +642,27 @@ function compactionControl(
     executionId?: string;
     phase: NonNullable<ChatWidgetModel['compaction']>['phase'];
   }[],
+  services: Pick<ReturnType<typeof useServices>, 'compactSession' | 'repository'>,
+  sessionId: string,
 ): NonNullable<ChatWidgetModel['compaction']> {
   const decision = compactTarget(projection, executionId);
+  if (!decision.ok && decision.reason === 'compactNoExecution') {
+    if (!services.compactSession) {
+      return {
+        reason: 'compactSessionNeedsServer',
+        pending: false,
+        phase: null,
+        request: async () => null,
+      };
+    }
+    return {
+      reason: null,
+      idle: true,
+      pending: false,
+      phase: null,
+      request: () => requestSessionCompaction(services, sessionId),
+    };
+  }
   const targetId = decision.ok ? decision.executionId : executionId;
   const phase =
     [...compactions].reverse().find((item) => item.executionId === targetId)?.phase ?? null;

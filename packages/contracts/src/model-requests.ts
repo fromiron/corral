@@ -2,7 +2,16 @@ import { z } from 'zod';
 import { Identifier } from './ids.ts';
 
 export const ModelRequestOwner = z.strictObject({
-  kind: z.enum(['execution', 'chooser', 'draft', 'voice', 'image', 'evaluation', 'judge']),
+  kind: z.enum([
+    'execution',
+    'chooser',
+    'draft',
+    'voice',
+    'image',
+    'evaluation',
+    'judge',
+    'session',
+  ]),
   id: z.string().min(1).max(256),
   runId: Identifier.optional(),
   sessionId: Identifier.optional(),

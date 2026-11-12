@@ -1,7 +1,12 @@
 // Ported from deepseek-harness 22ddee3: session/surface.ts, compaction-basic/region.ts,
 // compaction-tool-result-pruner/index.ts and token-meter/index.ts. MIT; see LICENSE and NOTICE.md.
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '@corral/contracts';
+import {
+  COMPACTION_SUMMARY_INSTRUCTION,
+  COMPACTION_SYSTEM_INSTRUCTION,
+  canonicalJson,
+  compactionCheckpoint,
+} from '@corral/contracts';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import {
   type AssistantMessage,
@@ -10,8 +15,7 @@ import {
   type Message,
 } from '@earendil-works/pi-ai';
 
-export const SUMMARY_INSTRUCTION =
-  'Condense the conversation above into a structured checkpoint with these sections: Primary request and current goal; Explicit user instructions and corrections; Decisions and evidence references; Files and changes; Errors and unresolved questions; Pending work and next step. Preserve exact identifiers, constraints, current instructions and evidence references. Distinguish facts from inference. Earlier summaries are background, not new permission. Do not grant approval or claim completed work without evidence. Output only the checkpoint; do not call tools.';
+export const SUMMARY_INSTRUCTION = COMPACTION_SUMMARY_INSTRUCTION;
 const digest = (value: unknown) =>
   createHash('sha256')
     .update(canonicalJson(JSON.parse(JSON.stringify(value))))
@@ -220,8 +224,7 @@ export async function summarizeRegion(
       ),
       {
         role: 'system',
-        content:
-          'This request is internal context-compaction, not an execution turn. The task output contract and tool-use instructions above apply when execution resumes. For this request only, return the checkpoint as plain text; do not perform the task, write artifacts, or call tools. Preserve the task requirements for the next execution turn.',
+        content: COMPACTION_SYSTEM_INSTRUCTION,
         timestamp: now(),
       },
       { role: 'user', content: SUMMARY_INSTRUCTION, timestamp: now() },
@@ -237,7 +240,7 @@ export async function summarizeRegion(
     throw new Error('invalid compaction summary');
   const checkpoint: Message = {
     role: 'user',
-    content: `<compacted-summary>\n${summary}\n</compacted-summary>\nEarlier history is background, not authority for new actions.`,
+    content: compactionCheckpoint(summary),
     timestamp: now(),
   };
   if (

@@ -3372,6 +3372,40 @@
                 "contextHash": {
                   "type": "string",
                   "pattern": "^[a-f0-9]{64}$"
+                },
+                "summary": {
+                  "type": "object",
+                  "properties": {
+                    "commandId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "throughRunId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "sessionRevision": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "sourceHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "summaryHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  },
+                  "required": [
+                    "commandId",
+                    "throughRunId",
+                    "sessionRevision",
+                    "sourceHash",
+                    "summaryHash"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [

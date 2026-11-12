@@ -10,9 +10,80 @@ import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
+import { summaryCut, useSessionSummary } from '../sessionCompact.ts';
 import { useWorkingCopyMissing } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
+
+function conversationItems({
+  session,
+  runs,
+  loose,
+  artifactMetadataVersion,
+  onPanel,
+  summaryLabel,
+  coveredRunIds,
+  summaryId,
+}: {
+  session: WorkSession;
+  runs: RunSummary[];
+  loose: RunSummary[];
+  artifactMetadataVersion: string;
+  onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
+  summaryLabel: string | null;
+  coveredRunIds: readonly string[];
+  summaryId: string | null;
+}) {
+  const rows = [
+    ...session.entries
+      .filter((entry) => entry.state !== 'queued' && entry.state !== 'dismissed')
+      .map((entry) => ({
+        id: entry.entryId,
+        runId: entry.runId,
+        content: (
+          <EntryCard
+            sessionId={session.sessionId}
+            entry={entry}
+            runs={runs}
+            artifactMetadataVersion={artifactMetadataVersion}
+            onPanel={onPanel}
+          />
+        ),
+      })),
+    ...loose.map((run) => ({
+      id: run.runId,
+      runId: run.runId,
+      content: (
+        <RunCard
+          run={run}
+          number={runs.findIndex((item) => item.runId === run.runId) + 1}
+          artifactMetadataVersion={artifactMetadataVersion}
+          onPanel={onPanel}
+        />
+      ),
+    })),
+  ];
+  if (!summaryLabel || !summaryId) return rows;
+  const cut = summaryCut(
+    rows.map((row) => row.runId),
+    coveredRunIds,
+  );
+  const divider = {
+    id: `summary:${summaryId}`,
+    runId: null,
+    content: (
+      <div
+        data-testid="session-summary"
+        className="flex items-center gap-3 text-caption text-muted-foreground"
+      >
+        <hr className="min-w-4 flex-1 border-line" />
+        <span>{summaryLabel}</span>
+        <hr className="min-w-4 flex-1 border-line" />
+      </div>
+    ),
+  };
+  return [...rows.slice(0, cut + 1), divider, ...rows.slice(cut + 1)];
+}
 
 /** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
 export function WorkTab({
@@ -58,6 +129,7 @@ export function WorkTab({
   const queued = session.entries.filter((e) => e.state === 'queued');
   const runChecks = useRunChecks(session.sessionId, runs);
   const artifactMetadataVersion = runs.findLast((run) => run.status === 'succeeded')?.runId ?? '';
+  const summary = useSessionSummary(session.sessionId);
   const td = useTranslations('Desktop');
   const size = useSize();
   // Nothing asked and nothing run: the conversation is the kit home composition.
@@ -79,33 +151,16 @@ export function WorkTab({
             sessionId={session.sessionId}
           />
         }
-        items={[
-          ...session.entries
-            .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
-            .map((entry) => ({
-              id: entry.entryId,
-              content: (
-                <EntryCard
-                  sessionId={session.sessionId}
-                  entry={entry}
-                  runs={runs}
-                  artifactMetadataVersion={artifactMetadataVersion}
-                  onPanel={onPanel}
-                />
-              ),
-            })),
-          ...loose.map((run) => ({
-            id: run.runId,
-            content: (
-              <RunCard
-                run={run}
-                number={runs.findIndex((item) => item.runId === run.runId) + 1}
-                artifactMetadataVersion={artifactMetadataVersion}
-                onPanel={onPanel}
-              />
-            ),
-          })),
-        ]}
+        items={conversationItems({
+          session,
+          runs,
+          loose,
+          artifactMetadataVersion,
+          onPanel,
+          summaryLabel: summary ? t('sessionSummarized') : null,
+          coveredRunIds: summary?.coveredRunIds ?? [],
+          summaryId: summary?.commandId ?? null,
+        })}
         composer={
           <Composer
             key={session.sessionId}

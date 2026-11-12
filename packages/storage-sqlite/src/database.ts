@@ -679,6 +679,21 @@ DROP TABLE IF EXISTS layouts;
   CHECK (json_valid(criteria_json) AND json_type(criteria_json) = 'array')`);
     },
   },
+  {
+    name: '0041_session_compactions',
+    sql: `
+CREATE TABLE IF NOT EXISTS session_compactions (
+  session_id TEXT NOT NULL,
+  command_id TEXT NOT NULL,
+  record_json TEXT NOT NULL,
+  PRIMARY KEY (session_id, command_id)
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS session_compactions_no_update BEFORE UPDATE ON session_compactions
+BEGIN SELECT RAISE(ABORT, 'session_compactions rows are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS session_compactions_no_delete BEFORE DELETE ON session_compactions
+BEGIN SELECT RAISE(ABORT, 'session_compactions rows are immutable'); END;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

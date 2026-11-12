@@ -746,6 +746,71 @@ export class ModelRegistry implements ModelResolver {
   }
 
   /**
+   * One summary of an idle session. The attempt purpose is compaction, so the host
+   * forces toolChoice none and records the usage with that purpose.
+   */
+  async summarizeSession(
+    snapshot: ModelProfileSnapshot,
+    messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+    intent: ModelRequestIntent,
+    signal: AbortSignal,
+  ): Promise<{ text: string; stopReason: 'stop' | 'aborted' | 'error' | 'toolUse' }> {
+    if (intent.purpose !== 'compaction') throw new Error('session summary must be a compaction');
+    const selected = this.snapshotModel(snapshot);
+    if (!selected) throw new Error('the session model is unavailable');
+    const model = snapshot.contextPolicy
+      ? { ...selected, contextWindow: snapshot.contextPolicy.contextWindow }
+      : selected;
+    const answer = await this.managedStream(
+      model,
+      {
+        messages: messages.map((message) => {
+          const timestamp = this.now();
+          if (message.role === 'assistant') {
+            const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+            return {
+              role: 'assistant' as const,
+              content: [{ type: 'text' as const, text: message.content }],
+              api: 'corral-session',
+              provider: 'corral',
+              model: 'session-history',
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: zero,
+              },
+              stopReason: 'stop' as const,
+              timestamp,
+            };
+          }
+          return message.role === 'system'
+            ? { role: 'system' as const, content: message.content, timestamp }
+            : { role: 'user' as const, content: message.content, timestamp };
+        }) as Parameters<Models['streamSimple']>[1]['messages'],
+      },
+      { signal, toolChoice: 'none' },
+      intent,
+      false,
+      snapshot,
+    ).result();
+    if (answer.stopReason === 'aborted') return { text: '', stopReason: 'aborted' };
+    if (answer.stopReason !== 'stop') return { text: '', stopReason: 'error' };
+    if (answer.content.some((part) => part.type === 'toolCall'))
+      return { text: '', stopReason: 'toolUse' };
+    return {
+      text: answer.content
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n')
+        .trim(),
+      stopReason: 'stop',
+    };
+  }
+
+  /**
    * minimum chooser reasoning, model/context output allowance, and bounded JSON text.
    * The shared runtime records physical attempts; the caller records only the parsed choice.
    */

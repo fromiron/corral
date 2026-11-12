@@ -164,6 +164,33 @@ export const AnswerUserCommand = z.strictObject({
 });
 export type AnswerUserCommand = z.infer<typeof AnswerUserCommand>;
 
+/** Compact the turns the next request would attach. There is no run yet. */
+export const CompactSessionCommand = z.strictObject({
+  schemaVersion: SchemaVersion,
+  commandId: Identifier,
+  type: z.literal('compact_session'),
+  sessionId: Identifier,
+  expectedSessionRevision: z.int().positive().max(1_000_000),
+});
+export type CompactSessionCommand = z.infer<typeof CompactSessionCommand>;
+
+/** Stop an in-flight session compaction. A summary already kept stays. */
+export const CancelSessionCompactionCommand = z.strictObject({
+  schemaVersion: SchemaVersion,
+  commandId: Identifier,
+  type: z.literal('cancel_session_compaction'),
+  sessionId: Identifier,
+  targetCommandId: Identifier,
+  expectedSessionRevision: z.int().positive().max(1_000_000),
+});
+export type CancelSessionCompactionCommand = z.infer<typeof CancelSessionCompactionCommand>;
+
+export const SessionCommand = z.discriminatedUnion('type', [
+  CompactSessionCommand,
+  CancelSessionCompactionCommand,
+]);
+export type SessionCommand = z.infer<typeof SessionCommand>;
+
 export const CompactContextCommand = z.strictObject({
   ...requiredRevision,
   type: z.literal('compact_context'),

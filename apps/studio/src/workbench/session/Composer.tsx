@@ -113,6 +113,7 @@ import { PermissionModePicker } from '../PermissionModePicker.tsx';
 import { ProjectMaterialPicker } from '../ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../preferences.ts';
 import { EDIT_REQUEST, RESEND_REQUEST, RefusalHelp } from '../RefusalHelp.tsx';
+import { requestSessionCompaction } from '../sessionCompact.ts';
 import {
   COMPOSER_DRAFT_SENT,
   clearSentComposerDraft,
@@ -1051,19 +1052,36 @@ export function Composer({
     onChange();
   };
   const compactContext = async () => {
-    if (!ownActive) {
-      setError(tStatus('compactNoExecution'));
+    const openRuns = runs.filter(
+      (run) => run.sessionId === session.sessionId && !TERMINAL_RUN_STATUSES.has(run.status),
+    );
+    if (openRuns.length > 1) {
+      setError(tStatus('compactAmbiguous'));
       return;
     }
-    if (ownActive.status === 'cancelling') {
+    const liveRun = openRuns[0];
+    if (!liveRun) {
+      if (!services.compactSession) {
+        setError(tStatus('compactSessionNeedsServer'));
+        return;
+      }
+      const failure = await requestSessionCompaction(services, session.sessionId).catch(
+        (error: unknown) =>
+          error instanceof Error ? error.message : tStatus('compactUnavailable'),
+      );
+      if (failure) setError(failure);
+      onChange();
+      return;
+    }
+    if (liveRun.status === 'cancelling') {
       setError(tStatus('compactCancelling'));
       return;
     }
-    const snapshot = await transport.getSnapshot(ownActive.runId).catch((failure: unknown) => {
+    const snapshot = await transport.getSnapshot(liveRun.runId).catch((failure: unknown) => {
       setError(failure instanceof Error ? failure.message : tStatus('compactUnavailable'));
       return null;
     });
-    if (!snapshot || snapshot.projection.runId !== ownActive.runId) return;
+    if (!snapshot || snapshot.projection.runId !== liveRun.runId) return;
     const decision = compactTarget(snapshot.projection, null);
     if (!decision.ok) {
       setError(tStatus(decision.reason));
@@ -1077,7 +1095,7 @@ export function Composer({
       .sendCommand({
         schemaVersion: '0.1',
         commandId: newCommandId(),
-        runId: ownActive.runId,
+        runId: liveRun.runId,
         type: 'compact_context',
         expectedControlRevision: decision.expectedControlRevision,
         payload: { executionId: decision.executionId, attemptNo: decision.attemptNo },

@@ -15,12 +15,19 @@ import {
   probeServer,
   RestCorralRepository,
   RunModesApi,
+  SessionCompactionApi,
   TerminalsApi,
   VaultApi,
   VoiceApi,
   WorkspacesApi,
 } from '@corral/client';
-import type { Clock } from '@corral/contracts';
+import type {
+  CancelSessionCompactionCommand,
+  Clock,
+  CompactSessionCommand,
+  Receipt,
+  SessionCompactionView,
+} from '@corral/contracts';
 import {
   type AutoStartResult,
   type CorralRepository,
@@ -78,6 +85,10 @@ export interface StudioServices {
   startAuto: (request: AutoRunStart, signal?: AbortSignal) => Promise<AutoStartResult>;
   /** Server cancellation also reconciles a start whose HTTP response was lost. */
   cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
+  /** Idle session compaction. Absent in the browser runtime, which has no model call. */
+  compactSession?: (command: CompactSessionCommand) => Promise<Receipt>;
+  cancelSessionCompaction?: (command: CancelSessionCompactionCommand) => Promise<Receipt>;
+  readSessionCompaction?: (sessionId: string) => Promise<SessionCompactionView | null>;
   /** Work folders and file changes; the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
   /** meeting rounds; the in-browser runtime runs the same service locally. */
@@ -154,6 +165,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     const recovery = window.corralRemote
       ? createRunRecovery(window.localStorage, window.corralRemote.hostId)
       : undefined;
+    const sessionCompaction = new SessionCompactionApi(http);
     const transport = new HttpSseTransport(
       http,
       recovery && window.corralRemote
@@ -198,6 +210,10 @@ export async function createStudioServices(): Promise<StudioServices> {
       startExplain: (request) => transport.startExplain(request),
       startAuto: (request, signal) => transport.startAuto(request, signal),
       cancelAuto: (request) => transport.cancelAuto(request),
+      compactSession: (command) => sessionCompaction.compact(command),
+      cancelSessionCompaction: (command) => sessionCompaction.cancel(command),
+      readSessionCompaction: async (sessionId) =>
+        (await sessionCompaction.read(sessionId)).compaction,
       workspaces: new WorkspacesApi(http),
       meetings: new MeetingsApi(http),
       meetingHandoffs: new MeetingHandoffsApi(http),

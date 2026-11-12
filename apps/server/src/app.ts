@@ -7,9 +7,11 @@ import { hasOwnedProcessReservations } from '@corral/adapter-pi/processes';
 import {
   type AgentAdapter,
   AutoModelChoice,
+  CancelSessionCompactionCommand,
   CaptureCheckpoint,
   type Clock,
   CommandError,
+  CompactSessionCommand,
   ContentHash,
   ContentSearch,
   ConversationSource,
@@ -703,6 +705,32 @@ async function createCorralServer(
     harnesses,
     runner: new LangGraphRunner(),
     corrals,
+    sessionFacts: {
+      revision: (sessionId) => corrals.session(sessionId)?.revision ?? null,
+      modelProfile: (sessionId) => {
+        const session = corrals.session(sessionId);
+        if (!session || session.meeting) return null;
+        return session.auto?.modelProfile ?? null;
+      },
+    },
+    ...(registry
+      ? {
+          sessionCompaction: {
+            complete: (request, cancellation) => {
+              const controller = new AbortController();
+              const stop = cancellation.onCancel(() => controller.abort());
+              return registry
+                .summarizeSession(
+                  request.model,
+                  request.messages,
+                  request.intent,
+                  controller.signal,
+                )
+                .finally(stop);
+            },
+          },
+        }
+      : {}),
     policy: workspace.policy,
     sessionId: backendSessionId,
     effortRouting: {
@@ -3107,6 +3135,38 @@ async function createCorralServer(
         await corrals.updateSession(request.params.sessionId, body),
         false,
       );
+    },
+  );
+  app.get<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/compaction',
+    async (request, reply) => {
+      if (!(await corrals.getSession(request.params.sessionId)))
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      return {
+        compaction: coordinator.sessionCompactionView(request.params.sessionId),
+      };
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/compaction',
+    async (request, reply) => {
+      const body = parse(CompactSessionCommand, request, reply);
+      if (!body) return reply;
+      if (body.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'session id does not match the address');
+      const receipt = coordinator.submitSession(body);
+      return reply.code(receiptStatus(receipt)).send(receipt);
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/compaction/cancel',
+    async (request, reply) => {
+      const body = parse(CancelSessionCompactionCommand, request, reply);
+      if (!body) return reply;
+      if (body.sessionId !== request.params.sessionId)
+        return fail(reply, 'SCHEMA_INVALID', 'session id does not match the address');
+      const receipt = coordinator.submitSession(body);
+      return reply.code(receiptStatus(receipt)).send(receipt);
     },
   );
   // ── Meetings ──────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setCommands } from '../../commandRegistry.ts';
+import { summaryCut } from '../sessionCompact.ts';
 import { Composer } from './Composer.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -91,7 +92,11 @@ function projection() {
   return value;
 }
 
-async function mount(running: RunSummary | null, snapshot = projection()) {
+async function mount(
+  running: RunSummary | null,
+  snapshot = projection(),
+  compactSession?: (command: { commandId: string }) => Promise<{ status: string }>,
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
@@ -127,6 +132,7 @@ async function mount(running: RunSummary | null, snapshot = projection()) {
     voice: null,
     startAuto: vi.fn(),
     startExplain: vi.fn(),
+    ...(compactSession ? { compactSession } : {}),
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -174,6 +180,11 @@ async function chooseCompact(container: HTMLElement) {
   });
 }
 
+it('places the session summary after the last covered turn', () => {
+  expect(summaryCut(['run_a', 'run_b', 'run_c'], ['run_a', 'run_b'])).toBe(1);
+  expect(summaryCut(['run_c'], ['run_a'])).toBe(-1);
+});
+
 it('/compact sends compact_context for the live execution', async () => {
   const { container, sendCommand } = await mount(active);
   await chooseCompact(container);
@@ -187,11 +198,26 @@ it('/compact sends compact_context for the live execution', async () => {
   );
 });
 
-it('/compact says why and sends nothing when no execution is running', async () => {
+it('/compact says why and sends nothing when no execution is running in the browser runtime', async () => {
   const { container, sendCommand } = await mount(null);
   await chooseCompact(container);
   expect(sendCommand).not.toHaveBeenCalled();
-  expect(document.body.textContent).toContain(
-    'No execution is still running, so compaction was not sent.',
+  expect(document.body.textContent).toContain('Session compaction needs the local server.');
+});
+
+it('/compact compacts the idle session through the same command id path', async () => {
+  const compactSession = vi.fn(async (_command: { commandId: string }) => ({
+    status: 'accepted' as const,
+    error: undefined,
+  }));
+  const { container, sendCommand } = await mount(null, undefined, compactSession);
+  await chooseCompact(container);
+  expect(sendCommand).not.toHaveBeenCalled();
+  expect(compactSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'compact_session',
+      sessionId: 'session',
+      expectedSessionRevision: 1,
+    }),
   );
 });

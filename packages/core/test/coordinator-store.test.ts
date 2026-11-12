@@ -109,6 +109,10 @@ class FailingStore implements RunStore {
   readEvents: RunStore['readEvents'] = (runId, after, limit) =>
     this.inner.readEvents(runId, after, limit);
   getCommand: RunStore['getCommand'] = (scope, id) => this.inner.getCommand(scope, id);
+  putSessionCompaction: RunStore['putSessionCompaction'] = (record) =>
+    this.inner.putSessionCompaction(record);
+  listSessionCompactions: RunStore['listSessionCompactions'] = (sessionId) =>
+    this.inner.listSessionCompactions(sessionId);
   getArtifactText: RunStore['getArtifactText'] = (runId, id) =>
     this.inner.getArtifactText(runId, id);
 }

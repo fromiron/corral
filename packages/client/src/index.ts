@@ -1,6 +1,8 @@
 import type {
+  CancelSessionCompactionCommand,
   CheckpointRestore,
   CheckpointRestorePlan,
+  CompactSessionCommand,
   ContentSearch,
   ContentSearchResult,
   DebugBreakpoints,
@@ -72,6 +74,7 @@ import type {
   QueuedMeetingMessage,
   ReasoningCapabilities,
   RestoreCheckpoint,
+  SessionCompactionView,
   SkillAdoption,
   SkillAdoptRequest,
   SkillEvaluationRequest,
@@ -519,6 +522,39 @@ export class MeetingsApi implements MeetingsClient {
       error: MEETING_ERRORS[error?.error?.code ?? ''] ?? 'invalid',
       message: error?.error?.message ?? `HTTP ${response.status}`,
     };
+  }
+}
+
+/** Idle session compaction. A repeated command id returns the stored receipt. */
+export class SessionCompactionApi {
+  private readonly http: Http;
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+  async compact(command: CompactSessionCommand): Promise<Receipt> {
+    return this.command(`/sessions/${encodeURIComponent(command.sessionId)}/compaction`, command);
+  }
+  async cancel(command: CancelSessionCompactionCommand): Promise<Receipt> {
+    return this.command(
+      `/sessions/${encodeURIComponent(command.sessionId)}/compaction/cancel`,
+      command,
+    );
+  }
+  async read(sessionId: string): Promise<{ compaction: SessionCompactionView | null }> {
+    const response = await this.http.request(
+      `/sessions/${encodeURIComponent(sessionId)}/compaction`,
+    );
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as { compaction: SessionCompactionView | null };
+  }
+  private async command(path: string, body: unknown): Promise<Receipt> {
+    const response = await this.http.request(path, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    const receipt = (await response.json()) as Receipt & { error?: unknown };
+    if (!('status' in receipt)) throw await apiErrorFrom(response, receipt);
+    return receipt;
   }
 }
 

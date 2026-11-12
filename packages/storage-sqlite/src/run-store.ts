@@ -1,4 +1,4 @@
-import type { RunEvent, RunStatus } from '@corral/contracts';
+import type { RunEvent, RunStatus, SessionCompactionRecord } from '@corral/contracts';
 import {
   applyEvent,
   emptyProjection,
@@ -24,6 +24,9 @@ export class SqliteRunStore implements RunStore {
     );
     const hasRetention = !!db
       .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_turns'")
+      .get();
+    const hasCompactions = !!db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_compactions'")
       .get();
     this.sql = {
       getConversation: hasRetention
@@ -84,6 +87,16 @@ export class SqliteRunStore implements RunStore {
       getArtifact: db.prepare(
         'SELECT text_body FROM artifact_texts WHERE run_id = ? AND artifact_version_id = ?',
       ),
+      insertCompaction: hasCompactions
+        ? db.prepare(
+            'INSERT INTO session_compactions (session_id, command_id, record_json) VALUES (?, ?, ?)',
+          )
+        : null,
+      listCompactions: hasCompactions
+        ? db.prepare(
+            'SELECT record_json FROM session_compactions WHERE session_id = ? ORDER BY rowid',
+          )
+        : null,
     };
   }
 
@@ -265,6 +278,17 @@ export class SqliteRunStore implements RunStore {
       directiveId: row.directive_id,
       ...(row.original_request_hash ? { originalRequestHash: row.original_request_hash } : {}),
     };
+  }
+
+  putSessionCompaction(record: SessionCompactionRecord) {
+    if (!this.sql.insertCompaction)
+      throw new Error('session compaction writes require the current database schema');
+    this.sql.insertCompaction.run(record.sessionId, record.commandId, JSON.stringify(record));
+  }
+
+  listSessionCompactions(sessionId: string): SessionCompactionRecord[] {
+    const rows = (this.sql.listCompactions?.all(sessionId) ?? []) as { record_json: string }[];
+    return rows.map((row) => JSON.parse(row.record_json) as SessionCompactionRecord);
   }
 
   getArtifactText(runId: string, artifactVersionId: string): string | null {
