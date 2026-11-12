@@ -2918,7 +2918,9 @@
     "payload": "요청 확인",
     "unverified": "아직 확인 안 됨",
     "notVerified": "확인 안 됨",
-    "omitted": "생략",
+    "rowLine": "{level} · {check}",
+    "rowVerified": "확인됨: {value}",
+    "rowVerifiedPlain": "확인됨",
     "level": {
       "off": "끄기",
       "minimal": "최소",
