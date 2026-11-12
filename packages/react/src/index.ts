@@ -98,7 +98,6 @@ export {
 export {
   executionPresence,
   PRESENCE_EXIT_GRACE_MS,
-  PRESENCE_STALE_MS,
   type Presence,
   type PresenceDetail,
   type PresenceGroup,

@@ -5,7 +5,6 @@ import ko from '../src/messages/ko.json' with { type: 'json' };
 import {
   executionPresence,
   PRESENCE_EXIT_GRACE_MS,
-  PRESENCE_STALE_MS,
   type Presence,
   type PresenceKind,
   runPresence,
@@ -212,6 +211,12 @@ describe('priority', () => {
     expect(executionPresence({ status: 'cancelling' }).kind).not.toBe('cancelled');
   });
 
+  it('waits on continue when the Run waits with nothing open', () => {
+    const presence = runPresence(run('awaiting_user'), [], []);
+    expect(presence.kind).toBe('awaiting_user');
+    expect(presence.need).toBe('continue');
+  });
+
   it('carries no need outside awaiting_user', () => {
     expect(runPresence(run('running'), [], []).need).toBeUndefined();
   });
@@ -281,60 +286,88 @@ describe('session', () => {
 
 describe('settle', () => {
   const working = runPresence(run('running'), [], []);
+  const starting = runPresence(run('created'), [], []);
   const succeeded = runPresence(run('succeeded'), [], []);
+  const cancelled = runPresence(run('cancelled'), [], []);
   const now = 1_000_000;
 
-  it('exports the spec times', () => {
+  it('exports the spec grace', () => {
     expect(PRESENCE_EXIT_GRACE_MS).toBe(2_000);
-    expect(PRESENCE_STALE_MS).toBe(60_000);
   });
 
-  it('keeps working for two seconds after a run succeeds', () => {
-    const held = settle(working, succeeded, { endedAt: now, now });
+  it('holds working until two seconds after the run ended', () => {
+    const held = settle(working, succeeded, { endedAt: now - 1_999, now });
     expect(held.presence).toEqual(working);
-    expect(held.holdUntil).toBe(now + PRESENCE_EXIT_GRACE_MS);
-    const still = settle(working, succeeded, { endedAt: now, now: now + 1_999 });
-    expect(still.presence).toEqual(working);
-    expect(still.holdUntil).toBe(now + PRESENCE_EXIT_GRACE_MS);
-    const after = settle(working, succeeded, { endedAt: now, now: now + 2_000 });
-    expect(after.presence).toEqual(succeeded);
-    expect(after.holdUntil).toBeNull();
-  });
-
-  it('holds starting the same way', () => {
-    const starting = runPresence(run('created'), [], []);
-    const cancelled = runPresence(run('cancelled'), [], []);
-    expect(settle(starting, cancelled, { endedAt: now, now }).presence).toEqual(starting);
-  });
-
-  it('moves at once to awaiting_user, failed and interrupted', () => {
-    for (const status of ['awaiting_user', 'failed', 'interrupted'] as const) {
-      const next = runPresence(run(status), [], []);
-      const settled = settle(working, next, { endedAt: now, now });
-      expect(settled.presence).toEqual(next);
-      expect(settled.holdUntil).toBeNull();
+    expect(held.holdUntil).toBe(now - 1_999 + PRESENCE_EXIT_GRACE_MS);
+    for (const elapsed of [2_000, 2_001]) {
+      const settled = settle(working, succeeded, { endedAt: now - elapsed, now });
+      expect({ elapsed, presence: settled.presence, holdUntil: settled.holdUntil }).toEqual({
+        elapsed,
+        presence: succeeded,
+        holdUntil: null,
+      });
     }
   });
 
-  it('does not hold a run that ended more than a minute ago', () => {
-    const settled = settle(working, succeeded, {
-      endedAt: now - PRESENCE_STALE_MS - 1,
-      now,
-    });
-    expect(settled.presence).toEqual(succeeded);
-    expect(settled.holdUntil).toBeNull();
+  it('holds starting into cancelled the same way', () => {
+    const held = settle(starting, cancelled, { endedAt: now, now });
+    expect(held.presence).toEqual(starting);
+    expect(held.holdUntil).toBe(now + PRESENCE_EXIT_GRACE_MS);
   });
 
-  it('stays put when work resumes inside the grace', () => {
+  it('shows every other change at once', () => {
+    const others = [
+      runPresence(run('pausing'), [], []),
+      runPresence(run('cancelling'), [], []),
+      runPresence(run('paused'), [], []),
+      runPresence(run('awaiting_user'), [], []),
+      runPresence(run('failed'), [], []),
+      runPresence(run('interrupted'), [], []),
+      sessionPresence(null, { terminalAttention: false, hasContent: true }),
+      sessionPresence(null, { terminalAttention: false, hasContent: false }),
+    ];
+    for (const next of others)
+      for (const endedAt of [now, undefined]) {
+        const settled = settle(working, next, { endedAt, now });
+        expect({ kind: next.kind, endedAt, ...settled }).toEqual({
+          kind: next.kind,
+          endedAt,
+          presence: next,
+          holdUntil: null,
+          since: null,
+        });
+      }
+  });
+
+  it('counts from first sight when the end is unknown, without moving the end', () => {
+    const first = settle(working, succeeded, { now });
+    expect(first.presence).toEqual(working);
+    expect(first.holdUntil).toBe(now + PRESENCE_EXIT_GRACE_MS);
+    expect(first.since).toBe(now);
+    let since = first.since;
+    for (const at of [now + 500, now + 1_000, now + 1_500, now + 1_999]) {
+      const again = settle(working, succeeded, { since, now: at });
+      expect(again.presence).toEqual(working);
+      expect(again.holdUntil).toBe(now + PRESENCE_EXIT_GRACE_MS);
+      since = again.since;
+    }
+    const released = settle(working, succeeded, { since, now: first.holdUntil ?? 0 });
+    expect(released.presence).toEqual(succeeded);
+    expect(released.holdUntil).toBeNull();
+  });
+
+  it('ends the hold when work starts again', () => {
     const held = settle(working, succeeded, { endedAt: now, now });
-    const resumed = settle(held.presence, working, { endedAt: now, now: now + 1_000 });
-    expect(resumed.presence).toEqual(working);
-    expect(resumed.holdUntil).toBeNull();
+    for (const next of [working, starting]) {
+      const resumed = settle(held.presence, next, { endedAt: now, now: now + 1_000 });
+      expect(resumed.presence).toEqual(next);
+      expect(resumed.holdUntil).toBeNull();
+    }
   });
 
   it('does not hold when nothing was in progress', () => {
-    const settled = settle(succeeded, runPresence(run('cancelled'), [], []), { endedAt: now, now });
-    expect(settled.presence.kind).toBe('cancelled');
+    const settled = settle(succeeded, cancelled, { endedAt: now, now });
+    expect(settled.presence).toEqual(cancelled);
     expect(settled.holdUntil).toBeNull();
     const first = settle(null, succeeded, { endedAt: now, now });
     expect(first.presence).toEqual(succeeded);

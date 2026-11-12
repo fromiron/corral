@@ -44,7 +44,6 @@ export interface PresenceRequest {
 }
 
 export const PRESENCE_EXIT_GRACE_MS = 2_000;
-export const PRESENCE_STALE_MS = 60_000;
 
 const LOOK: Record<PresenceKind, { tone: PresenceTone; glyph: AgentStatus | null }> = {
   awaiting_user: { tone: 'warning', glyph: 'waiting' },
@@ -136,7 +135,8 @@ export function runPresence(
     );
     const approvalWaits = executions.some((execution) => execution.status === 'waiting_approval');
     if (earliest || approvalWaits || run.status === 'awaiting_user')
-      return presence('awaiting_user', earliest?.kind ?? (approvalWaits ? 'approval' : undefined));
+      // With nothing open, the Run waits on whether to restart a cancelled required task.
+      return presence('awaiting_user', earliest?.kind ?? (approvalWaits ? 'approval' : 'continue'));
   }
   return presence(RUN_KIND[run.status]);
 }
@@ -174,24 +174,24 @@ export function sessionGroupOf(
 }
 
 const IN_PROGRESS = new Set<PresenceKind>(['starting', 'working']);
-const AT_ONCE = new Set<PresenceKind>(['awaiting_user', 'failed', 'interrupted']);
+const ENDED = new Set<PresenceKind>(['succeeded', 'cancelled']);
 
 /**
- * What to show when the state changes. Leaving `starting`/`working` keeps the previous state
- * for two seconds from the end, unless the new state needs the person or the run ended over a
- * minute ago. While held, `holdUntil` is when to settle again.
+ * What to show when the state changes. Only an end (`starting`/`working` into
+ * `succeeded`/`cancelled`) is held: the previous state stays until two seconds after `endedAt`,
+ * or, when the end time is unknown, after `since`, the first sight of the change. While held,
+ * the result gives `holdUntil`, when to settle again, and the `since` to pass on that call, so
+ * the end of the hold never moves. Every other change shows at once.
  */
 export function settle(
   previous: Presence | null,
   next: Presence,
-  timing: { endedAt?: number | null; now: number },
-): { presence: Presence; holdUntil: number | null } {
-  const settled = { presence: next, holdUntil: null };
-  if (!previous || !IN_PROGRESS.has(previous.kind)) return settled;
-  if (IN_PROGRESS.has(next.kind) || AT_ONCE.has(next.kind)) return settled;
-  const endedAt = Math.min(timing.endedAt ?? timing.now, timing.now);
-  if (timing.now - endedAt > PRESENCE_STALE_MS) return settled;
-  const holdUntil = endedAt + PRESENCE_EXIT_GRACE_MS;
+  timing: { endedAt?: number | null; since?: number | null; now: number },
+): { presence: Presence; holdUntil: number | null; since: number | null } {
+  const settled = { presence: next, holdUntil: null, since: null };
+  if (!previous || !IN_PROGRESS.has(previous.kind) || !ENDED.has(next.kind)) return settled;
+  const since = timing.endedAt == null ? (timing.since ?? timing.now) : null;
+  const holdUntil = (timing.endedAt ?? since ?? timing.now) + PRESENCE_EXIT_GRACE_MS;
   if (timing.now >= holdUntil) return settled;
-  return { presence: previous, holdUntil };
+  return { presence: previous, holdUntil, since };
 }
