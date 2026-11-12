@@ -1675,9 +1675,11 @@ async function createCorralServer(
   const autoStarter = createAutoStarter<AbortSignal>({
     prepareModels: (request, profiles) =>
       coordinator.prepareModels(profiles ?? [request.choice.modelProfile], request.mode),
-    // the conversation lead gets file tools when the session has a working copy.
-    fileTools: async (request) =>
-      request.sessionId ? (await files.currentTree(request.sessionId)) !== null : false,
+    // file tools follow the session folder: a working copy, or a linked trusted folder.
+    fileTools: (request) =>
+      request.sessionId
+        ? files.sessionFiles(request.sessionId)
+        : { mode: 'none' as const, reason: 'unlinked' as const },
     corral: (corralId) => corrals.get(corralId),
     // a session turn in a trusted folder works in the built-in work style by default.
     sessionHarness: () => harnesses.sessionDefault(),
@@ -1698,6 +1700,9 @@ async function createCorralServer(
           }),
         };
       const route = request.autoRoute;
+      const workspace = request.sessionId
+        ? files.sessionFiles(request.sessionId)
+        : { mode: 'none' as const, reason: 'unlinked' as const };
       const result = coordinator.startRun(
         route
           ? {
@@ -1713,7 +1718,8 @@ async function createCorralServer(
                   modelProfile: route.modelProfile,
                   ...(route.reasoning ? { reasoning: route.reasoning } : {}),
                 },
-                fileTools: startTree !== null,
+                fileTools: workspace.mode !== 'none',
+                workspace,
                 ...(route.harness ? { harness: route.harness, commandTools: true } : {}),
                 ...(route.reasoningChoice ? { routeLevel: route.reasoningChoice.level } : {}),
               }),

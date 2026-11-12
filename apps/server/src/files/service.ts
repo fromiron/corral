@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, existsSync, realpathSync } from 'node:fs';
+import { constants, existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import {
   chmod,
   link,
@@ -123,6 +123,7 @@ import {
   type FileTools,
   type RunProjection,
   rankFuzzy,
+  type SessionFiles,
   type ToolCancellation,
   ToolRefusal,
   ToolTerminationUnconfirmed,
@@ -2801,6 +2802,57 @@ export class WorkspaceService implements FileTools {
     await git(worktree, ['update-ref', ref, tree]);
   }
 
+  /** A command's tree: a Git snapshot of a working copy, or a fingerprint that writes nothing. */
+  private async commandTree(root: string, gitSnapshot: boolean): Promise<string> {
+    return gitSnapshot ? this.snapshotTree(root) : this.folderFingerprint(root);
+  }
+
+  /**
+   * Identity of a linked folder's plain files. Symlinks, `.git` and `.corral` are skipped, so the
+   * hash is not a checkpoint and does not follow a link out of the folder.
+   */
+  private async folderFingerprint(root: string): Promise<string> {
+    const pending = [''];
+    const parts: string[] = [];
+    let visited = 0;
+    let truncated = false;
+    while (pending.length && parts.length <= 500 && visited < 2000) {
+      const rel = pending.shift() ?? '';
+      let dir: Awaited<ReturnType<typeof opendir>>;
+      try {
+        dir = await opendir(join(root, rel));
+      } catch {
+        continue;
+      }
+      for await (const entry of dir) {
+        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.corral')
+          continue;
+        if (entry.isSymbolicLink()) continue;
+        if (++visited >= 2000) {
+          truncated = true;
+          break;
+        }
+        const path = rel ? `${rel}/${entry.name}` : entry.name;
+        try {
+          safeRelative(path);
+        } catch {
+          continue;
+        }
+        if (entry.isDirectory()) pending.push(path);
+        else if (entry.isFile()) {
+          const info = await lstat(join(root, path));
+          parts.push(`${path}\0${info.size}\0${Math.trunc(info.mtimeMs)}`);
+        }
+        if (parts.length > 500) {
+          truncated = true;
+          break;
+        }
+      }
+    }
+    parts.sort();
+    return sha256(Buffer.from(`${truncated ? 'truncated' : 'complete'}\n${parts.join('\n')}`));
+  }
+
   /** The worktree as a git tree, from a temporary index; .gitignore'd files are left out. */
   private async snapshotTree(worktree: string, isolation?: 'linux-bwrap'): Promise<string> {
     const index = join(tmpdir(), `corral-index-${randomUUID()}`);
@@ -4296,6 +4348,38 @@ export class WorkspaceService implements FileTools {
     });
   }
 
+  /**
+   * Where this session's agent works. A working copy wins. Otherwise a linked, trusted folder
+   * that is still there is direct. The result names no path.
+   */
+  sessionFiles(sessionId: string): SessionFiles {
+    if (this.worktree(sessionId)) return { mode: 'copy' };
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    const binding = session ? this.binding(session.project_id) : null;
+    if (!binding) return { mode: 'none', reason: 'unlinked' };
+    if (!binding.trusted) return { mode: 'none', reason: 'untrusted' };
+    try {
+      if (
+        !existsSync(binding.root_path) ||
+        lstatSync(binding.root_path).isSymbolicLink() ||
+        !statSync(binding.root_path).isDirectory()
+      )
+        return { mode: 'none', reason: 'missing' };
+    } catch {
+      return { mode: 'none', reason: 'missing' };
+    }
+    return { mode: 'direct' };
+  }
+
+  private bindingOfSession(sessionId: string): BindingRow | null {
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    return session ? this.binding(session.project_id) : null;
+  }
+
   /** The worktree's tree now, without pinning it. */
   async currentTree(sessionId: string, isolation?: 'linux-bwrap'): Promise<string | null> {
     const row = this.worktree(sessionId);
@@ -5136,21 +5220,34 @@ export class WorkspaceService implements FileTools {
 
   private commandContext(input: CommandExecution) {
     if (this.disposing) throw new ToolRefusal('TARGET_TERMINAL', 'workspace is shutting down');
-    const found = this.worktreeOfRun(input.runId);
     const access = this.runAccess.get(input.runId);
-    if (!found || !access || access.writer !== 1 || access.state !== 'active')
+    if (!access || access.writer !== 1 || access.state !== 'active')
       throw new ToolRefusal('CAPABILITY_DENIED', 'commands require an active working copy writer');
-    const binding = this.db
-      .prepare('SELECT * FROM workspace_bindings WHERE id=?')
-      .get(found.row.binding_id) as BindingRow | undefined;
-    if (!binding?.trusted)
-      throw new ToolRefusal('CAPABILITY_DENIED', 'trust the repository before running commands');
     if (this.criteria.get(input.runId)?.length)
       throw new ToolRefusal(
         'CAPABILITY_DENIED',
         'native commands cannot protect immutable review criteria',
       );
-    return { ...found, binding };
+    const found = this.worktreeOfRun(input.runId);
+    if (found) {
+      const binding = this.db
+        .prepare('SELECT * FROM workspace_bindings WHERE id=?')
+        .get(found.row.binding_id) as BindingRow | undefined;
+      if (!binding?.trusted)
+        throw new ToolRefusal('CAPABILITY_DENIED', 'trust the repository before running commands');
+      return { ...found, binding, gitSnapshot: true };
+    }
+    const sessionId = this.sessionOfRun(input.runId);
+    const binding = sessionId ? this.bindingOfSession(sessionId) : null;
+    if (!sessionId || !binding?.trusted || this.sessionFiles(sessionId).mode !== 'direct')
+      throw new ToolRefusal('CAPABILITY_DENIED', 'trust the folder before running commands');
+    return {
+      row: { worktree_path: binding.root_path } as WorktreeRow,
+      sessionId,
+      binding,
+      // A linked folder is not a checkpoint. Do not write Git objects or refs into it.
+      gitSnapshot: false,
+    };
   }
 
   /** Caller holds the existing worktree mutex; this does not create a second launch path. */
@@ -5188,7 +5285,11 @@ export class WorkspaceService implements FileTools {
       timeoutMs: request.timeoutMs ?? 120000,
       mode: request.mode ?? 'foreground',
     };
-    const plan = { ...launch, operationId, tree: await this.snapshotTree(root) };
+    const plan = {
+      ...launch,
+      operationId,
+      tree: await this.commandTree(root, this.worktree(sessionId) !== null),
+    };
     const executableHash = sha256(await readFile(shell.executable));
     return CommandPlan.parse({
       ...plan,
@@ -5325,8 +5426,10 @@ export class WorkspaceService implements FileTools {
         let after: string | null = null;
         try {
           if (report.cleanupConfirmed) {
-            after = await this.snapshotTree(row.worktree_path);
-            await this.pin(row.worktree_path, `refs/corral/${sessionId}/latest`, after);
+            if (this.worktree(sessionId)) {
+              after = await this.snapshotTree(row.worktree_path);
+              await this.pin(row.worktree_path, `refs/corral/${sessionId}/latest`, after);
+            } else after = await this.folderFingerprint(row.worktree_path);
           }
         } catch {
           report = { ...report, state: 'uncertain' };
@@ -5690,6 +5793,32 @@ export class WorkspaceService implements FileTools {
     return this.taskView(this.taskReceipt(sessionId, operationId));
   }
 
+  private runFolder(runId: string): {
+    root: string;
+    sessionId: string;
+    mode: 'copy' | 'direct';
+    isGit: boolean;
+  } | null {
+    const found = this.worktreeOfRun(runId);
+    if (found)
+      return {
+        root: found.row.worktree_path,
+        sessionId: found.sessionId,
+        mode: 'copy',
+        isGit: true,
+      };
+    const sessionId = this.sessionOfRun(runId);
+    if (!sessionId || this.sessionFiles(sessionId).mode !== 'direct') return null;
+    const binding = this.bindingOfSession(sessionId);
+    if (!binding) return null;
+    return {
+      root: binding.root_path,
+      sessionId,
+      mode: 'direct',
+      isGit: binding.is_git === 1,
+    };
+  }
+
   private worktreeOfRun(runId: string): { row: WorktreeRow; sessionId: string } | null {
     const sessionId = this.sessionOfRun(runId);
     if (!sessionId) return null;
@@ -5698,15 +5827,24 @@ export class WorkspaceService implements FileTools {
   }
 
   available(runId: string): boolean {
-    return this.worktreeOfRun(runId) !== null;
+    const sessionId = this.sessionOfRun(runId);
+    if (!sessionId) return false;
+    const files = this.sessionFiles(sessionId);
+    return files.mode === 'copy' || files.mode === 'direct';
   }
 
   acquireRun(runId: string, sessionId: string | undefined, writer: boolean): void {
     if (sessionId && this.removingWorktrees.has(sessionId))
       throw new ToolRefusal('REVISION_CONFLICT', 'the working copy is being removed');
     const row = sessionId ? this.worktree(sessionId) : null;
-    if (row)
+    if (row) {
       this.runAccess.acquire(runId, row.session_id, row.worktree_path, writer, row.copy_generation);
+      return;
+    }
+    if (!sessionId || !writer || this.sessionFiles(sessionId).mode !== 'direct') return;
+    const binding = this.bindingOfSession(sessionId);
+    if (!binding) return;
+    this.runAccess.acquire(runId, sessionId, binding.root_path, true, 1);
   }
 
   worktreeScope(sessionId: string): string | null {
@@ -5743,8 +5881,11 @@ export class WorkspaceService implements FileTools {
     const access = this.runAccess.get(runId);
     if (!access || (access.tree && this.runTree(runId, 'start'))) return Promise.resolve();
     const row = this.worktree(access.session_id);
-    if (!row)
+    if (!row) {
+      // Direct mode has no Git checkpoint. A removed copy is still a refusal.
+      if (this.sessionFiles(access.session_id).mode === 'direct') return Promise.resolve();
       return Promise.reject(new ToolRefusal('TARGET_NOT_FOUND', 'working copy is unavailable'));
+    }
     const work = this.lease(row.worktree_path, async () => {
       const writer = this.runAccess.writerAt(access.worktree_key);
       // A concurrent reader observes the writer's pinned input, never partially written files.
@@ -6207,6 +6348,7 @@ export class WorkspaceService implements FileTools {
   ): Promise<Record<string, unknown>> {
     const frozen = await this.readPinnedRun(input, cancellation);
     if (frozen) return frozen;
+    if (cancellation.aborted) throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
     if (input.name === 'write') {
       const args = PiWriteInput.parse(input.args);
       return this.execute(
@@ -6214,9 +6356,19 @@ export class WorkspaceService implements FileTools {
         cancellation,
       );
     }
-    const found = this.worktreeOfRun(input.runId);
-    if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
-    const root = found.row.worktree_path;
+    const folder = this.runFolder(input.runId);
+    if (!folder) throw new ToolRefusal('CAPABILITY_DENIED', 'this run has no working copy');
+    if (
+      folder.mode === 'direct' &&
+      (input.name === 'write_file' ||
+        input.name === 'delete_file' ||
+        input.name === 'move_file' ||
+        input.name === 'edit' ||
+        input.name === 'edit_hashline')
+    )
+      throw new ToolRefusal('CAPABILITY_DENIED', 'file tools do not change the linked folder');
+    const found = { sessionId: folder.sessionId };
+    const root = folder.root;
     const reads = this.readsOf(input.runId, input.executionId);
     const name = input.name;
     switch (name) {
@@ -6329,10 +6481,14 @@ export class WorkspaceService implements FileTools {
           return { ...applied, piResult: edited.result };
         });
       }
-      case 'list_files':
-        return this.list(
+      case 'list_files': {
+        const query = typeof input.args.query === 'string' ? input.args.query : '';
+        if (query && (query.length > 200 || /[\r\n\0]/.test(query)))
+          throw new ToolRefusal('SCHEMA_INVALID', 'search one line at a time');
+        const listed = await this.list(
           root,
           typeof input.args.path === 'string' ? safeFolder(input.args.path) : '',
+          folder.isGit,
         ).catch((error: unknown) => {
           if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
             throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
@@ -6340,6 +6496,22 @@ export class WorkspaceService implements FileTools {
             throw new ToolRefusal('TARGET_NOT_FOUND', 'the folder is unavailable');
           throw error;
         });
+        if (!query) return listed;
+        const needle = query.toLowerCase();
+        const files: { path: string; bytes: number }[] = [];
+        for (const file of listed.files) {
+          if (cancellation.aborted)
+            throw new ToolRefusal('TARGET_TERMINAL', 'the task was cancelled');
+          try {
+            const read = await boundedFile(root, file.path, Math.min(MAX_TEXT, file.bytes));
+            const text = read.bytes ? decodeText(read.bytes) : null;
+            if (text?.toLowerCase().includes(needle)) files.push(file);
+          } catch {
+            // A path that is no longer a plain file is not a match.
+          }
+        }
+        return { files, truncated: listed.truncated };
+      }
       case 'read':
       case 'read_file': {
         const rel = safeRelative(String(input.args.path));
