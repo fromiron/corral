@@ -516,7 +516,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         directiveId,
         targetExecutionId,
         text,
-        ...(attachments ? { attachments } : {}),
+        ...(attachments?.length ? { attachments } : {}),
         status: 'queued',
         commandId: event.commandId ?? null,
         acceptedSeq: event.runSeq,

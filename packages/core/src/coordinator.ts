@@ -123,6 +123,7 @@ import {
 } from './artifact-retention.ts';
 import {
   directiveWithAttachments,
+  namedTextAttachment,
   textAttachmentSource,
   validTextAttachments,
 } from './attachments.ts';
@@ -3279,7 +3280,10 @@ export class Coordinator {
       this.persist(() => this.store.putCommand(record(receipt)));
       return receipt;
     };
-    const { attachments } = command.payload;
+    // An empty list is a directive without attachments; the payload hash keeps what was sent.
+    const attachments = command.payload.attachments?.length
+      ? command.payload.attachments
+      : undefined;
     if (attachments && !validTextAttachments(attachments))
       return refuse({ code: 'SCHEMA_INVALID', message: 'text attachment bytes or hash changed' });
     if (
@@ -7274,7 +7278,7 @@ export class Coordinator {
           const directive = run.projection.directives[id];
           if (directive?.targetExecutionId !== executionId) return [];
           // Attachments are named here, like references; their bodies travel in the request.
-          const attachments = directive.attachments?.map(({ text: _, ...named }) => named);
+          const attachments = directive.attachments?.map(namedTextAttachment);
           return [
             { directiveId: id, text: directive.text, ...(attachments ? { attachments } : {}) },
           ];
