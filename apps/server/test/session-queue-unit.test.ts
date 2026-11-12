@@ -45,6 +45,8 @@ function harness(
     refuseStart?: boolean;
     entries?: SessionEntry[];
     autoStart?: boolean;
+    /** The run each carried directive was sent in. */
+    directiveRuns?: Record<string, string>;
   } = {},
 ) {
   const runs: QueueRun[] = [
@@ -95,6 +97,7 @@ function harness(
   const queue = createSessionQueue({
     repository,
     runs: () => runs,
+    directiveRun: (_sessionId, directiveId) => options.directiveRuns?.[directiveId] ?? null,
     start: async (request) => {
       starts.push(request);
       if (options.startDelayMs) await new Promise((r) => setTimeout(r, options.startDelayMs));
@@ -384,4 +387,74 @@ it('a carried entry whose start is refused is recorded refused, as any queued en
     runId: null,
     detail: 'no such team',
   });
+});
+
+// A carried request whose run the person then cancelled follows autoStart like any other.
+const carriedFrom = (directiveId: string, extra: Partial<SessionEntry> = {}) =>
+  entry(`c_${directiveId}`, {
+    carriedFrom: directiveId,
+    start: START,
+    text: directiveId,
+    ...extra,
+  });
+const ending = (h: ReturnType<typeof harness>, runId: string, status: RunStatus) => {
+  const found = h.runs.find((item) => item.runId === runId);
+  if (found) found.status = status;
+  return h.queue.onRunEnded(runId);
+};
+
+it('with autoStart off, a request carried from a cancelled run stays queued', async () => {
+  const h = harness({
+    autoStart: false,
+    entries: [carriedFrom('dir_1')],
+    directiveRuns: { dir_1: 'run_b' },
+  });
+  await ending(h, 'run_b', 'cancelled');
+  expect(h.starts).toHaveLength(0);
+  expect(h.states()).toEqual(['queued']);
+});
+
+it('with autoStart on, a request carried from a cancelled run starts as any queued request', async () => {
+  const h = harness({ entries: [carriedFrom('dir_1')], directiveRuns: { dir_1: 'run_b' } });
+  await ending(h, 'run_b', 'cancelled');
+  expect(h.starts.map((request) => request.brief)).toEqual(['dir_1']);
+});
+
+it('with autoStart off, a request carried from a run that failed, succeeded or was interrupted starts', async () => {
+  for (const status of ['failed', 'succeeded', 'interrupted'] as const) {
+    const h = harness({
+      autoStart: false,
+      entries: [carriedFrom('dir_1')],
+      directiveRuns: { dir_1: 'run_b' },
+    });
+    await ending(h, 'run_b', status);
+    expect(h.starts.map((request) => request.brief)).toEqual(['dir_1']);
+  }
+});
+
+it('a later run of the session that succeeds does not give the cancelled run its carry back', async () => {
+  const h = harness({
+    autoStart: false,
+    entries: [carriedFrom('dir_1')],
+    directiveRuns: { dir_1: 'run_a' },
+  });
+  // run_a, which sent the message, was cancelled; run_b started after it and succeeds.
+  const sent = h.runs.find((item) => item.runId === 'run_a');
+  if (sent) sent.status = 'cancelled';
+  await ending(h, 'run_b', 'succeeded');
+  expect(h.starts).toHaveLength(0);
+  expect(h.states()).toEqual(['queued']);
+});
+
+it('a request carried from a cancelled run holds the queue behind it without autoStart', async () => {
+  const entries = () => [entry('plain'), carriedFrom('dir_1'), carriedFrom('dir_2')];
+  const directiveRuns = { dir_1: 'run_b', dir_2: 'run_a' };
+  const off = harness({ autoStart: false, entries: entries(), directiveRuns });
+  await ending(off, 'run_b', 'cancelled');
+  expect(off.starts).toHaveLength(0);
+  // With autoStart on, the carried ones go first, in order, then the plain one.
+  const on = harness({ entries: entries(), directiveRuns });
+  await ending(on, 'run_b', 'cancelled');
+  for (const runId of ['run_new_1', 'run_new_2']) await ending(on, runId, 'succeeded');
+  expect(on.starts.map((request) => request.brief)).toEqual(['dir_1', 'dir_2', 'text plain']);
 });
