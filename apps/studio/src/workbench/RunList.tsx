@@ -1,16 +1,17 @@
 import type { RunSummary, WorkSession } from '@corral/core';
-import { StatusBadge } from '@corral/react';
 import { CheckboxGroup, CheckboxItem } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { PresenceBadge } from './PresenceMark.tsx';
 import {
   loadRunIdentities,
   type RunIdentity,
   runIdentity,
   runIdentityText,
 } from './runIdentity.ts';
+import { listedRunPresence } from './sessionList.ts';
 
 /** Mounted only while the project's Runs tab is open. */
 export function RunList({
@@ -49,6 +50,7 @@ export function RunList({
           t('unnamed'),
           (number) => t('number', { number }),
         );
+        const presence = listedRunPresence(run);
         return (
           <li
             key={run.runId}
@@ -67,7 +69,7 @@ export function RunList({
               />
             </CheckboxGroup>
             <span className="justify-self-start">
-              <StatusBadge status={run.status} />
+              <PresenceBadge presence={presence} target={`run:${run.runId}`} />
             </span>
             <div className="min-w-0">
               <Link

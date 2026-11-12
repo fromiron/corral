@@ -51,7 +51,16 @@ import {
 } from '@corral/react/design-kit';
 import { ArrowRight, ChevronDown, Ellipsis, MessageCircle, Pin, Users } from '@corral/react/icons';
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { type FormEvent, Fragment, useCallback, useEffect, useId, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { workspaceRoute } from '../router.tsx';
@@ -73,15 +82,19 @@ import { readCriteria } from '../workbench/sessionCriteria.ts';
 import { writeDraft } from '../workbench/sessionDraft.ts';
 import {
   type AttentionReason,
+  latestSessionRun,
+  listedRunPresence,
   type SessionFact,
   type SessionGroupId,
   type SessionGroupRow,
   sessionFacts,
   sessionGroups,
+  sessionLiveStates,
   uncertainSessionTerminal,
 } from '../workbench/sessionList.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
+import { useSettledPresence } from '../workbench/useSettledPresence.ts';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
@@ -1056,6 +1069,9 @@ function SessionList({
   };
   const archivedCount = sessions.filter((x) => x.archivedAt).length;
   const none = sessions.length === archivedCount && !showArchived;
+  // A row stays in its group through the exit grace, held to the same end as its sidebar row.
+  const livePresence = useMemo(() => sessionLiveStates(sessions, runs), [sessions, runs]);
+  const shownPresence = useSettledPresence(livePresence);
   const groups = sessionGroups(
     sessions.filter(
       (x) =>
@@ -1064,6 +1080,7 @@ function SessionList({
     ),
     runs,
     inbox.items,
+    shownPresence,
   );
   // Rows keep room for the pin when any is shown, so pinned or not their meta ends together.
   const pinSlot = groups.some((group) => group.rows.some((row) => row.session.pinned));
@@ -1270,7 +1287,7 @@ function SessionRow({
   onArchive: (session: WorkSession) => void;
   onDelete?: (session: WorkSession) => void;
 }) {
-  const status = useTranslations('Status');
+  const presenceText = useTranslations('Presence');
   const t = useTranslations('Sessions');
   const ti = useTranslations('Inbox');
   const ago = useSessionAge();
@@ -1278,15 +1295,32 @@ function SessionRow({
   const terminal = uncertainSessionTerminal(x.sessionId, attention);
   const Icon = x.meeting ? Users : MessageCircle;
   const runCount = runs.filter((r) => r.sessionId === x.sessionId).length;
+  // A run's state is the one state name this row writes: Needs attention does not name it.
   const reason = (value: AttentionReason) =>
     value === 'uncertain_terminal'
       ? t('terminalNeedsAttention')
       : value === 'uncertain_write'
         ? ti('kind.uncertain_write')
-        : status(value);
+        : presenceText(`state.${value}`);
+  // The latest run's own state names that run; a decision's "waiting" is not its state.
+  const latest = latestSessionRun(x, runs);
+  const latestKind = latest ? listedRunPresence(latest).kind : null;
+  // A decision's run is the one that waits, whatever the latest run is doing.
+  const decisionRun = attention.find(
+    (item) => item.kind === 'decision' && item.sessionId === x.sessionId,
+  )?.runId;
+  const target = (value: AttentionReason) =>
+    latest && value === latestKind
+      ? (`run:${latest.runId}` as const)
+      : value === 'awaiting_user' && decisionRun
+        ? (`run:${decisionRun}` as const)
+        : undefined;
   return (
     // Narrow, the meta sits under the title, so only the row's own action takes room from it.
-    <li className="col-span-full flex items-center gap-2 sm:grid sm:grid-cols-subgrid">
+    <li
+      data-session-row={x.sessionId}
+      className="col-span-full flex items-center gap-2 sm:grid sm:grid-cols-subgrid"
+    >
       <Link
         to="/sessions/$sessionId"
         params={{ sessionId: x.sessionId }}
@@ -1311,18 +1345,23 @@ function SessionRow({
           >
             {/* A long line wraps between items, never inside one; the dot ends its line. */}
             {[
-              ...facts.map((fact) => t(`fact.${fact}`)),
-              ...reasons.map(reason),
+              ...facts.map((fact) => ({ text: t(`fact.${fact}`) })),
+              ...reasons.map((value) => ({ text: reason(value), label: target(value) })),
               // What there is to review, by kind: never a count or a request's text.
-              ...review.map((kind) => ti(`kind.${kind}`)),
-              runCount ? t('runCount', { count: runCount }) : null,
-              ago(x.updatedAt),
+              ...review.map((kind) => ({ text: ti(`kind.${kind}`) })),
+              runCount ? { text: t('runCount', { count: runCount }) } : null,
+              { text: ago(x.updatedAt) },
             ]
-              .filter((item): item is string => Boolean(item))
+              .filter((item): item is { text: string; label?: `run:${string}` } => Boolean(item))
               .map((item, index, items) => (
-                <Fragment key={item}>
+                <Fragment key={item.text}>
                   <span className="whitespace-nowrap">
-                    {index < items.length - 1 ? `${item} ·` : item}
+                    {item.label ? (
+                      <span data-presence-label={item.label}>{item.text}</span>
+                    ) : (
+                      item.text
+                    )}
+                    {index < items.length - 1 ? ' ·' : null}
                   </span>
                   {index < items.length - 1 ? ' ' : null}
                 </Fragment>

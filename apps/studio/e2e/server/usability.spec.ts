@@ -171,11 +171,9 @@ test.describe('instruction delivery', () => {
     await page.getByRole('button', { name: 'Pause run', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Resume run', exact: true })).toBeVisible();
     await expect(timeline(page).getByText('Working…', { exact: true })).toHaveCount(0);
-    // The sidebar row says its latest run's state in its text.
+    // The sidebar row names its latest run's state through its mark.
     await expect(
-      page
-        .getByTestId('app-sidebar')
-        .getByRole('link', { name: /^Draft a release plan Paused · / }),
+      page.getByTestId('app-sidebar').getByRole('link', { name: /^Draft a release plan Paused/ }),
     ).toBeVisible();
     // While a run is active a next request waits behind it by default; an instruction is chosen
     // explicitly (workbench.md: "기본 입력은 다음 요청이며 지시는 사용자가 명시적으로 선택한다").
@@ -371,7 +369,8 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   await expect(
     page
       .getByTestId('app-sidebar')
-      .getByRole('link', { name: /^Review the release plan Waiting for you · / }),
+      // The row's mark names the state; its words are the time alone.
+      .getByRole('link', { name: /^Review the release plan Waiting for you/ }),
   ).toBeVisible();
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(sessionUrl);

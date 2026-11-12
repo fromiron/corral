@@ -100,8 +100,24 @@ it('names the current session as the page title and switches within the project 
     expect(items[index]?.textContent).toContain(title);
   });
   expect(items[1]?.getAttribute('aria-checked')).toBe('true');
-  // The latest run decides a session's status, as in the sidebar.
-  expect(items[2]?.textContent).toContain('Succeeded');
+  // The latest run decides a session's status, as in the sidebar: a mark and its name, no
+  // words, since the open conversation says the state in words.
+  expect(items[2]?.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+    messages.Presence.state.succeeded,
+  );
+  expect(visibleText(items[2] as HTMLElement)).not.toContain(messages.Presence.state.succeeded);
+  expect(items[0]?.querySelector('[role="img"]')).toBeNull();
+  for (const item of items) expect(item.querySelector('[data-presence-label]')).toBeNull();
+  // The item's accessible name carries the state, which the mark alone does not give it.
+  expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
+    'Session pinned',
+    'Session current',
+    `Session old, ${messages.Presence.state.succeeded}`,
+  ]);
+  // Hovering the mark names it too.
+  expect(items[2]?.querySelector('[role="img"]')?.getAttribute('title')).toBe(
+    messages.Presence.state.succeeded,
+  );
   await act(async () => items[0]?.click());
   expect(onOpen).toHaveBeenCalledWith('pinned');
 });
@@ -125,7 +141,17 @@ it('lists the session runs newest first by number and status and selects one', a
     expect.stringContaining('Run #2'),
     expect.stringContaining('Run #1'),
   ]);
-  expect(items[0]?.textContent).toContain('Succeeded');
+  expect(
+    items.map((item) => item.querySelector('[role="img"]')?.getAttribute('aria-label')),
+  ).toEqual([messages.Presence.state.succeeded, messages.Presence.state.failed]);
+  for (const item of items) {
+    expect(item.querySelector('[data-presence-label]')).toBeNull();
+    expect(visibleText(item)).not.toMatch(/Completed|Failed/);
+  }
+  expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
+    `Run #2, ${messages.Presence.state.succeeded}`,
+    `Run #1, ${messages.Presence.state.failed}`,
+  ]);
   expect(items[1]?.getAttribute('aria-checked')).toBe('true');
   await act(async () => items[0]?.click());
   expect(onSelect).toHaveBeenCalledWith('second');
