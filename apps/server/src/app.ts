@@ -646,9 +646,9 @@ async function createCorralServer(
       localRouting &&
       saved.mode === 'manual' &&
       saved.engine.kind === 'local' &&
-      localRouting.installed()
+      localRouting.installed(saved.engine.device.kind)
     )
-      localRouting.prepare(saved.engine.device.threads);
+      localRouting.prepare(saved.engine.device.threads, saved.engine.device.kind);
   };
   if (localRouting) {
     resources.defer(() => localRouting.close());
@@ -1216,6 +1216,7 @@ async function createCorralServer(
       downloadBytes: null,
       progress: null,
       error: null,
+      device: { requested: 'cpu', actual: null },
     };
   };
   app.get('/api/v1/local-ai', async () => (local ? local.status() : noLocalAiView()));
@@ -1228,6 +1229,16 @@ async function createCorralServer(
   app.delete('/api/v1/local-ai/install', async (_request, reply) =>
     local ? await local.cancelInstall() : noLocalAi(reply),
   );
+  app.put('/api/v1/local-ai/device', async (request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (local.status().state === 'unsupported')
+      return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
+    const parsed = z
+      .strictObject({ device: z.enum(['cpu', 'gpu', 'auto']) })
+      .safeParse(request.body);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'choose CPU, GPU, or automatic');
+    return local.setDevice(parsed.data.device);
+  });
   const bundleRefusal = (reply: FastifyReply, error: unknown) => {
     if (error instanceof BundleBusyError) return fail(reply, 'RESOURCE_CAPACITY', error.message);
     throw error;
@@ -1275,9 +1286,11 @@ async function createCorralServer(
     install: 'absent',
     runtime: 'stopped',
     downloadBytes: null,
+    installedBytes: null,
     progress: null,
     error: null,
     device: { requested: 'cpu', active: null },
+    devices: [],
     threads: null,
     defaultThreads: d1Threads(availableParallelism()),
   } as const;
@@ -1314,7 +1327,7 @@ async function createCorralServer(
       if (engine.consentRevision !== decisionApiConsent(engine.id))
         return fail(reply, 'SCHEMA_INVALID', 'agree to the current notice for this decision API');
     }
-    if (engine?.kind === 'local' && !localRouting?.status().supported)
+    if (engine?.kind === 'local' && !localRouting?.supports(engine.device.kind))
       return fail(reply, 'SCHEMA_INVALID', 'the Local engine is not available on this computer');
     const written = writeEffortRouting(workspace.root, settings, revision);
     if (!written.ok)
@@ -1326,16 +1339,32 @@ async function createCorralServer(
     workspace.config = readWorkspaceConfig(workspace.root).config;
     workspace.configRevision = written.revision;
     // Saving never downloads; leaving Local ends the child Corral started.
-    if (engine?.kind === 'local') localRouting?.prepare(engine.device.threads);
+    if (engine?.kind === 'local') localRouting?.prepare(engine.device.threads, engine.device.kind);
     else await localRouting?.stop();
     return effortRoutingView();
   });
-  app.post('/api/v1/effort-routing/local/install', async (_request, reply) => {
+  app.post('/api/v1/effort-routing/local/install', async (request, reply) => {
     if (!options.live) return routingDenied(reply);
     if (!localRouting?.status().supported)
       return fail(reply, 'CAPABILITY_DENIED', 'the Local engine is not available on this computer');
-    localRouting.install();
-    void localRouting.installing()?.then(prepareLocal);
+    const parsed = z
+      .strictObject({ device: z.enum(['cpu', 'vulkan', 'cuda']).optional() })
+      .safeParse(request.body ?? {});
+    if (!parsed.success)
+      return fail(reply, 'SCHEMA_INVALID', 'the Local runtime is not available on this computer');
+    const device = parsed.data.device ?? 'cpu';
+    if (!localRouting.supports(device))
+      return fail(reply, 'SCHEMA_INVALID', 'the Local runtime is not available on this computer');
+    localRouting.install(device);
+    void localRouting.installing()?.then(() => {
+      const saved = currentEffortRouting(workspace.root);
+      if (
+        saved.mode === 'manual' &&
+        saved.engine.kind === 'local' &&
+        saved.engine.device.kind === device
+      )
+        prepareLocal();
+    });
     return reply.code(202).send(effortRoutingView());
   });
   app.delete('/api/v1/effort-routing/local/install', async (_request, reply) => {
@@ -1357,9 +1386,13 @@ async function createCorralServer(
   app.post('/api/v1/effort-routing/local/start', async (_request, reply) => {
     if (!options.live) return routingDenied(reply);
     const saved = currentEffortRouting(workspace.root);
-    if (saved.mode !== 'manual' || saved.engine.kind !== 'local' || !localRouting?.installed())
+    if (
+      saved.mode !== 'manual' ||
+      saved.engine.kind !== 'local' ||
+      !localRouting?.installed(saved.engine.device.kind)
+    )
       return fail(reply, 'SCHEMA_INVALID', 'save Manual with the installed Local engine first');
-    localRouting.prepare(saved.engine.device.threads);
+    localRouting.prepare(saved.engine.device.threads, saved.engine.device.kind);
     return reply.code(202).send(effortRoutingView());
   });
 

@@ -113,6 +113,7 @@ it.skipIf(!target)(
           downloadBytes: bundle.models.meeting.size + runtimeSize,
           progress: null,
           error: null,
+          device: { requested: 'cpu', actual: null },
         },
       });
       expect(await call('/local-ai/install', 'POST')).toMatchObject({
@@ -179,6 +180,7 @@ it('refuses to install where local AI cannot run, and a server without it report
         downloadBytes: null,
         progress: null,
         error: null,
+        device: { requested: 'cpu', actual: null },
       },
     });
     for (const method of ['POST', 'DELETE'])
@@ -401,3 +403,29 @@ it.skipIf(!target)(
     }
   },
 );
+
+it('saves the meeting device and restores it for the next engine', async () => {
+  const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
+  dirs.push(dataRoot);
+  const options = {
+    root: dataRoot,
+    env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+    launch: neverReady,
+    platform: 'linux' as const,
+    arch: 'x64' as const,
+  };
+  const { server, call } = await serve(createLocalIntelligence(options));
+  try {
+    expect((await call('/local-ai')).body).toMatchObject({
+      device: { requested: 'cpu', actual: null },
+    });
+    const saved = await call('/local-ai/device', 'PUT', { device: 'gpu' });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ device: { requested: 'gpu', actual: null } });
+  } finally {
+    await server.close();
+  }
+  const again = createLocalIntelligence(options);
+  expect(again.status().device).toEqual({ requested: 'gpu', actual: null });
+  await again.close();
+});

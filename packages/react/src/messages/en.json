@@ -2997,7 +2997,16 @@
     "removeComputing": "Cannot remove it while a computation is running.",
     "removeFailed": "Could not remove the model. Try again.",
     "loadFailed": "Could not load local AI status. Reload and try again.",
-    "actionFailed": "Could not change the install. Try again."
+    "actionFailed": "Could not change the install. Try again.",
+    "device": "Device",
+    "devices": {
+      "cpu": "CPU",
+      "gpu": "GPU",
+      "auto": "Automatic"
+    },
+    "running": "Running on {device}",
+    "notRunning": "Not running",
+    "notVerified": "Not verified on this computer"
   },
   "DecisionApis": {
     "heading": "Decision APIs",
@@ -3061,7 +3070,12 @@
     "removeFailed": "Could not remove the model. Try again.",
     "device": "Device",
     "cpu": "CPU",
+    "vulkan": "Vulkan",
+    "cuda": "CUDA",
     "gpu": "GPU",
+    "notVerified": "Not verified on this computer",
+    "vulkanRequirement": "Needs the Vulkan loader (libvulkan.so.1).",
+    "cudaRequirement": "Needs an NVIDIA driver for CUDA 12.8 (Linux 570.26 or newer), plus libcuda.so.1, libcudart.so.12, and libcublas.so.12.",
     "gpuUnverified": "No verified GPU setup yet",
     "advanced": "Advanced",
     "timeout": "Longest wait (ms)",

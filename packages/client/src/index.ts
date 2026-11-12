@@ -1432,6 +1432,7 @@ export interface LocalAiView {
   downloadBytes: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
+  device: { requested: 'cpu' | 'gpu' | 'auto'; actual: 'cpu' | 'gpu' | null };
 }
 
 /** GET /decision-apis: judge-only APIs and whether a key is stored, never the key. */
@@ -1452,9 +1453,18 @@ export interface LocalRoutingView {
   install: 'absent' | 'downloading' | 'verifying' | 'installed' | 'install-error';
   runtime: 'stopped' | 'starting' | 'ready' | 'packing' | 'inferring' | 'draining' | 'error';
   downloadBytes: number | null;
+  /** Bytes a removal frees, or null when nothing is installed. */
+  installedBytes?: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
-  device: { requested: 'cpu'; active: 'cpu' | null };
+  device: { requested: 'cpu' | 'vulkan' | 'cuda'; active: string | null };
+  /** Runtimes this computer can install. GPU entries are not a verification. */
+  devices?: {
+    kind: 'cpu' | 'vulkan' | 'cuda';
+    installed: boolean;
+    downloadBytes: number;
+    requirement: string | null;
+  }[];
   /** The running instance's threads. */
   threads: number | null;
   /** What a new Local setting starts with, from the server's processor. */
@@ -1593,6 +1603,13 @@ export class ModelsApi {
   removeLocalAi(): Promise<LocalAiView> {
     return this.http.json('/local-ai', { method: 'DELETE' });
   }
+  /** Saves the meeting engine's device and restarts it. */
+  setLocalAiDevice(device: 'cpu' | 'gpu' | 'auto'): Promise<LocalAiView> {
+    return this.http.json('/local-ai/device', {
+      method: 'PUT',
+      body: JSON.stringify({ device }),
+    });
+  }
   decisionApis(): Promise<DecisionApiView[]> {
     return this.http.json('/decision-apis');
   }
@@ -1618,8 +1635,11 @@ export class ModelsApi {
       body: JSON.stringify({ settings, revision }),
     });
   }
-  installLocalRouting(): Promise<EffortRoutingView> {
-    return this.http.json('/effort-routing/local/install', { method: 'POST' });
+  installLocalRouting(device?: 'cpu' | 'vulkan' | 'cuda'): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/install', {
+      method: 'POST',
+      ...(device ? { body: JSON.stringify({ device }) } : {}),
+    });
   }
   cancelLocalRoutingInstall(): Promise<EffortRoutingView> {
     return this.http.json('/effort-routing/local/install', { method: 'DELETE' });

@@ -202,7 +202,7 @@ export function prepareReasoning(
     device:
       engineKind === 'local'
         ? {
-            requested: 'cpu',
+            requested: manual.engine.kind === 'local' ? manual.engine.device.kind : 'cpu',
             actual: outcome?.device?.actual ?? null,
             host: outcome?.device?.host ?? null,
             threads: outcome?.device?.threads ?? null,

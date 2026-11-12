@@ -254,18 +254,47 @@ it('says a judgment must finish before the judge model can be removed', async ()
   );
 });
 
-it('keeps the GPU unselectable and says why', async () => {
+it('lets the person install Vulkan or CUDA and says they are not verified here', async () => {
   const api = models();
-  api.effortRouting.mockResolvedValue(view({ settings: LOCAL }));
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({
+        devices: [
+          { kind: 'cpu', installed: true, downloadBytes: 1123 * MB, requirement: null },
+          {
+            kind: 'vulkan',
+            installed: false,
+            downloadBytes: 36 * MB,
+            requirement: 'libvulkan.so.1',
+          },
+          {
+            kind: 'cuda',
+            installed: false,
+            downloadBytes: 188 * MB,
+            requirement: 'libcudart.so.12',
+          },
+        ],
+      }),
+    }),
+  );
+  api.installLocalRouting.mockResolvedValue(view({ settings: LOCAL }));
   const container = await render(api);
   await act(async () =>
     container.querySelector<HTMLElement>('button[role="combobox"][aria-label="Device"]')?.click(),
   );
-  const gpu = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
-    node.textContent?.startsWith('GPU'),
-  );
-  expect(gpu?.getAttribute('aria-disabled')).toBe('true');
-  expect(gpu?.textContent).toContain('No verified GPU setup yet');
+  const option = (name: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+      node.textContent?.startsWith(name),
+    );
+  expect(option('Vulkan')?.getAttribute('aria-disabled')).not.toBe('true');
+  expect(option('Vulkan')?.textContent).toContain('Not verified on this computer');
+  expect(option('CUDA')?.textContent).toContain('Not verified on this computer');
+  expect(option('Vulkan')?.textContent).not.toContain('verified GPU');
+  await act(async () => option('Vulkan')?.click());
+  expect(container.textContent).toContain('Downloads about 36 MB.');
+  await act(async () => button(container, 'Install')?.click());
+  expect(api.installLocalRouting).toHaveBeenCalledWith('vulkan');
 });
 
 it('prepares the saved Local engine again after an error', async () => {

@@ -60,6 +60,22 @@ describe('ReasoningSummary', () => {
     expect(line.textContent).toBe('Local · CPU · Recommended low → applied low · 420ms');
   });
 
+  it('shows the device the judge actually used', () => {
+    const line = summary({
+      reasoning: {
+        preparationId: 'prep_gpu',
+        requested: { mode: 'auto' },
+        resolved: 'low',
+        source: 'router',
+        route: route({
+          device: { requested: 'vulkan', actual: 'Vulkan0', host: 'build-host', threads: 4 },
+        }),
+      },
+      reasoningWire: { kind: 'effort', value: 'low' },
+    });
+    expect(line.textContent).toBe('Local · VULKAN0 · Recommended low → applied low · 420ms');
+  });
+
   it('shows measured times as whole milliseconds', async () => {
     const line = summary({
       reasoning: {
