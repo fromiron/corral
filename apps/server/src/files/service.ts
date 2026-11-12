@@ -6151,8 +6151,9 @@ export class WorkspaceService implements FileTools {
   async captureRuntimeFiles(
     runId: string,
     checkpointId: string,
-  ): Promise<import('@corral/contracts').RuntimeFiles> {
+  ): Promise<import('@corral/contracts').RuntimeFiles | null> {
     const found = this.worktreeOfRun(runId);
+    if (!found && this.runFolder(runId)?.mode === 'direct') return null;
     if (!found) throw new ToolRefusal('CAPABILITY_DENIED', 'runtime files require a working copy');
     const row = await this.checkpointTarget(found.sessionId, 'working_copy');
     return this.lease(row.worktree_path, async () => {

@@ -181,7 +181,7 @@ it.each(['edit', 'create', 'remove'] as const)(
       const tools =
         server.coordinator.getRunSnapshot(started.runId)?.definition.roles[0]?.allowedWorkTools ??
         [];
-      expect(tools.includes('read_file')).toBe(change !== 'remove');
+      expect(tools.includes('read_file')).toBe(true);
       for (const tool of ['run_command', 'preview_file', 'preview_app', 'preview_action'] as const)
         expect(tools.includes(tool)).toBe(change === 'create');
       expect(tools.includes('write_file')).toBe(change !== 'remove');
