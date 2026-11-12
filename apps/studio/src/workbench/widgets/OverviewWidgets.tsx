@@ -78,9 +78,10 @@ export function OverviewPopover({ model }: { model: ChatWidgetModel }) {
     <div className="session-widget-access ml-auto flex shrink-0 items-center justify-end gap-1">
       <Popover
         onOpenChange={(open, change) => {
+          const occupancyPressed = fromOccupancy.current;
+          fromOccupancy.current = false;
           if (open) {
-            setDetail(fromOccupancy.current ? 'context' : null);
-            fromOccupancy.current = false;
+            setDetail(occupancyPressed ? 'context' : null);
             return;
           }
           // Escape steps back from a detail to the widgets first; the next one closes Overview.

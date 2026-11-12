@@ -358,6 +358,21 @@ it('in the Overview popover Escape first leaves the detail, then closes the popo
   expect(document.activeElement).toBe(trigger);
 });
 
+it('after the occupancy pill closes Overview, the Overview button reopens the widgets', async () => {
+  const container = await render(model(), (value) => <OverviewPopover model={value} />);
+  const pill = container.querySelector<HTMLElement>('[data-testid="composer-context-occupancy"]');
+  const trigger = container.querySelector<HTMLElement>('[data-testid="session-summary-trigger"]');
+  const popup = () => document.querySelector<HTMLElement>('[data-testid="session-summary-popup"]');
+  await act(async () => pill?.click());
+  expect(popup()?.querySelector('[data-testid="context-inspector"]')).not.toBeNull();
+  await act(async () => pill?.click());
+  await vi.waitFor(() => expect(popup()).toBeNull());
+  await act(async () => trigger?.click());
+  expect(popup()).not.toBeNull();
+  expect(popup()?.querySelector('[data-testid="context-inspector"]')).toBeNull();
+  expect(popup()?.querySelector('[data-overview-widget]')).not.toBeNull();
+});
+
 it('keeps pending attention first and links to the same run without an approval command', async () => {
   const container = await render(
     model({
