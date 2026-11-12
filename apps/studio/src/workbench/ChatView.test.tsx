@@ -8,7 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ChatView } from './ChatView.tsx';
 
-const resizeCallbacks = new Set<() => void>();
+const resizeCallbacks = new Set<(entries?: unknown) => void>();
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
@@ -135,7 +135,7 @@ it('follows growing replies, keeps following after a message click, and pauses f
   await resize();
   expect(top).toBe(500);
   await act(async () => {
-    box.dispatchEvent(new Event('wheel', { bubbles: true }));
+    box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
     box.scrollTop = 100;
     box.dispatchEvent(new Event('scroll', { bubbles: true }));
   });
@@ -185,6 +185,7 @@ it('keeps following when the reply grows between its own scroll to the end and t
   expect(top).toBe(468);
   // Dragging the scrollbar up still stops following.
   await act(async () => {
+    box.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     box.scrollTop = 100;
     box.dispatchEvent(new Event('scroll', { bubbles: true }));
   });
@@ -402,4 +403,247 @@ it('returns to the same search hit after leaving its link and reading elsewhere'
   await resize();
   expect(top).toBe(600);
   expect(row.getAttribute('aria-current')).toBe('location');
+});
+
+/**
+ * A conversation whose scroll port the test owns, so a send, a growing turn, a composer
+ * resizing the port, and a virtual list can be told apart from a person scrolling up.
+ */
+async function mountConversation(initial: {
+  items: { id: string; content: React.ReactNode }[];
+  sent?: number;
+}) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      callback: (..._args: unknown[]) => void;
+      constructor(callback: (...args: unknown[]) => void) {
+        this.callback = callback;
+        resizeCallbacks.add(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {
+        resizeCallbacks.delete(this.callback);
+      }
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  // The virtual list reads the port's offset box, which jsdom leaves at 0, and then paints nothing.
+  const elementProto = HTMLElement.prototype;
+  const offsetHeight = Object.getOwnPropertyDescriptor(elementProto, 'offsetHeight');
+  const offsetWidth = Object.getOwnPropertyDescriptor(elementProto, 'offsetWidth');
+  Object.defineProperty(elementProto, 'offsetHeight', { configurable: true, get: () => 200 });
+  Object.defineProperty(elementProto, 'offsetWidth', { configurable: true, get: () => 480 });
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    if (offsetHeight) Object.defineProperty(elementProto, 'offsetHeight', offsetHeight);
+    if (offsetWidth) Object.defineProperty(elementProto, 'offsetWidth', offsetWidth);
+  });
+  let sent = initial.sent ?? 0;
+  let items = initial.items;
+  const draw = () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ChatView
+          sessionId="session-follow"
+          sent={sent}
+          items={items}
+          composer={<textarea aria-label="request" />}
+        />
+      </IntlProvider>,
+    );
+  await act(draw);
+  const box = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+  if (!box) throw new Error('Conversation fixture missing');
+  const metrics = { height: 800, client: 200 };
+  let top = 0;
+  Object.defineProperties(box, {
+    scrollHeight: { configurable: true, get: () => metrics.height },
+    clientHeight: { configurable: true, get: () => metrics.client },
+    scrollTop: {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, Math.max(0, metrics.height - metrics.client)));
+      },
+    },
+  });
+  box.scrollTo = ((options?: ScrollToOptions | number) => {
+    box.scrollTop = typeof options === 'number' ? options : (options?.top ?? top);
+  }) as HTMLElement['scrollTo'];
+  const resize = () =>
+    act(async () => {
+      for (const callback of [...resizeCallbacks]) callback([]);
+    });
+  const update = async (next: { items?: typeof items; sent?: number }) => {
+    if (next.items) items = next.items;
+    if (next.sent !== undefined) sent = next.sent;
+    await act(draw);
+  };
+  return {
+    container,
+    box,
+    metrics,
+    resize,
+    update,
+    get top() {
+      return top;
+    },
+    set top(value: number) {
+      top = value;
+    },
+    end: () => metrics.height - metrics.client,
+  };
+}
+
+function liveTurn(tools: string[], text: string) {
+  return [
+    {
+      id: 'turn-live',
+      content: (
+        <div>
+          <p>Send the follow-up</p>
+          {tools.map((tool) => (
+            <div key={tool} data-testid="tool-row">
+              {tool}
+            </div>
+          ))}
+          <p data-testid="streamed-text">{text}</p>
+        </div>
+      ),
+    },
+  ];
+}
+
+it('sending a message follows the end again after reading earlier messages', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [
+      { id: 'turn-0', content: <p>Earlier</p> },
+      { id: 'turn-1', content: <p>Also earlier</p> },
+    ],
+  });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
+    chat.top = 40;
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  chat.metrics.height += 420;
+  await chat.update({
+    sent: 1,
+    items: [
+      { id: 'turn-0', content: <p>Earlier</p> },
+      { id: 'turn-1', content: <p>Also earlier</p> },
+      ...liveTurn(['read'], 'Starting'),
+    ],
+  });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+});
+
+it('keeps the end while tool rows and streamed text grow and the composer changes height', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({ items: liveTurn([], '…') });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  await chat.update({ sent: 1, items: liveTurn(['read'], 'First words') });
+  chat.metrics.height += 220;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  // The browser anchors the port upward as rows are measured. The person did not scroll.
+  chat.top = chat.top - 90;
+  await act(async () => {
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  // The composer grew, so the timeline's viewport shrank.
+  chat.metrics.client -= 48;
+  chat.metrics.height += 360;
+  await chat.update({
+    items: liveTurn(['read', 'bash'], 'First words and the rest of the sentence still arriving'),
+  });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  expect(chat.container.querySelectorAll('[data-testid="tool-row"]')).toHaveLength(2);
+  expect(chat.container.querySelector('[data-testid="streamed-text"]')?.textContent).toContain(
+    'still arriving',
+  );
+});
+
+it('keeps the end of a virtualized conversation while a sent turn grows', async () => {
+  sessionStorage.clear();
+  const history = (tools: string[], text: string) => [
+    ...Array.from({ length: 40 }, (_, index) => ({
+      id: `turn-${index}`,
+      content: <p>History {index}</p>,
+    })),
+    ...liveTurn(tools, text),
+  ];
+  const chat = await mountConversation({ items: history([], '') });
+  await chat.resize();
+  expect(chat.container.querySelectorAll('[data-chat-item]').length).toBeGreaterThan(0);
+  expect(chat.top).toBe(chat.end());
+  await chat.update({ sent: 1, items: history(['read'], 'partial') });
+  chat.metrics.height += 500;
+  chat.top = chat.top - 120;
+  await act(async () => {
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  chat.metrics.client -= 32;
+  chat.metrics.height += 280;
+  await chat.update({
+    items: history(['read', 'edit'], 'partial and more streamed text'),
+  });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+});
+
+it('a downward wheel does not stop following the end', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [{ id: 'turn-0', content: <p data-testid="streamed-text">words</p> }],
+  });
+  await chat.resize();
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 140 }));
+  });
+  chat.metrics.height += 300;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+});
+
+it('a layout-caused scroll offset decrease does not stop following the end', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [{ id: 'turn-0', content: <p data-testid="streamed-text">words</p> }],
+  });
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  chat.top = chat.end() - 70;
+  await act(async () => {
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  chat.metrics.height += 250;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+});
+
+it('a downward key does not stop following the end', async () => {
+  sessionStorage.clear();
+  const chat = await mountConversation({
+    items: [{ id: 'turn-0', content: <p data-testid="streamed-text">words</p> }],
+  });
+  await chat.resize();
+  await act(async () => {
+    chat.box.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
+  });
+  chat.metrics.height += 200;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
 });

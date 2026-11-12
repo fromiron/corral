@@ -36,7 +36,15 @@ import {
 } from '@corral/react/design-kit';
 import { ChevronRight, FileText, LoaderCircle, PanelRight, Pause } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
@@ -46,6 +54,63 @@ import { type ChatDensity, preferences } from './preferences.ts';
 import { TurnLine, TurnProcess } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { toolRows } from './widgets/selectors.ts';
+
+/**
+ * A height-capped reply keeps its own end in view until the person scrolls up inside it.
+ * Layout moving the offset is not that person.
+ */
+function StreamingReply({ children }: { children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  const followed = useRef(0);
+  const touchY = useRef<number | null>(null);
+  const pin = () => {
+    const el = box.current;
+    if (!el || !follow.current) return;
+    const max = Math.max(0, el.scrollHeight - el.clientHeight);
+    // Already at the end: assigning scrollTop again would re-enter the scroll handler.
+    if (el.scrollTop >= max - 1) {
+      followed.current = el.scrollTop;
+      return;
+    }
+    el.scrollTop = max;
+    followed.current = el.scrollTop;
+  };
+  useLayoutEffect(() => {
+    pin();
+  });
+  return (
+    <div
+      ref={box}
+      className="live-text max-h-40 overflow-auto text-muted-foreground wrap-anywhere"
+      onWheel={(event) => {
+        if (event.deltaY < 0) follow.current = false;
+      }}
+      onTouchStart={(event) => {
+        touchY.current = event.touches[0]?.clientY ?? null;
+      }}
+      onTouchMove={(event) => {
+        const y = event.touches[0]?.clientY;
+        const start = touchY.current;
+        if (y === undefined || start === null || y <= start) return;
+        follow.current = false;
+      }}
+      onScroll={() => {
+        const el = box.current;
+        if (!el) return;
+        const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (!follow.current) {
+          if (gap < 1) follow.current = true;
+          return;
+        }
+        if (el.scrollTop < followed.current - 1) pin();
+        else followed.current = el.scrollTop;
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** Expandable work log and response surface, projected from Corral executions. */
 export function RunMessage({
@@ -567,7 +632,7 @@ export function RunMessage({
                 ? name(writer)
                 : null}
           </p>
-          <div className="live-text max-h-40 overflow-auto text-muted-foreground wrap-anywhere">
+          <StreamingReply>
             {!working && !handoff ? <p role="note">{tm('interrupted')}</p> : null}
             <SafeMarkdown text={writing[1].text} />
             {current ? (
@@ -576,7 +641,7 @@ export function RunMessage({
                 className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-muted align-text-bottom motion-reduce:animate-none"
               />
             ) : null}
-          </div>
+          </StreamingReply>
         </div>
       ) : null}
       {resultError ? (

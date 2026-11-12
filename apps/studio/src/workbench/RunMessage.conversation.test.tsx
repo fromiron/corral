@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
+import { changePreferences, preferences } from './preferences.ts';
 import { RunMessage } from './RunMessage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -79,7 +80,7 @@ beforeEach(() => {
   };
 });
 
-async function show(endActions?: ReactNode) {
+async function show(endActions?: ReactNode, sessionId: string | null = 'session_chat') {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -93,7 +94,7 @@ async function show(endActions?: ReactNode) {
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <RunMessage
           runId="run_chat"
-          sessionId="session_chat"
+          sessionId={sessionId}
           live={false}
           onOpenArtifact={vi.fn()}
           endActions={endActions}
@@ -208,4 +209,73 @@ it('a cancelled turn points at its results only when it made some', async () => 
   expect(notice?.querySelector('[data-testid="run-made-results"]')?.textContent).toBe(
     messages.Run.madeResults,
   );
+});
+
+it('keeps a capped streaming reply at its own end while the reply grows', async () => {
+  const store = fixture.store;
+  const projection = store?.getState().projection;
+  if (!store || !projection) throw new Error('fixture run missing');
+  const previous = preferences.getState().chatDensity;
+  changePreferences({ chatDensity: 'basic' });
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  try {
+    fixture.turn = null;
+    const stream = (text: string) => ({
+      text,
+      next: text.length,
+      broken: false,
+      completed: false,
+    });
+    store.setState({
+      projection: { ...projection, status: 'running', output: null },
+      streams: { current: stream('Hi') },
+    });
+    const container = await show(undefined, null);
+    const scroller = container.querySelector<HTMLElement>('[data-testid="live-text"] .max-h-40');
+    if (!scroller) throw new Error('Streaming reply missing');
+    const metrics = { height: 400, client: 160 };
+    let top = 0;
+    Object.defineProperties(scroller, {
+      scrollHeight: { configurable: true, get: () => metrics.height },
+      clientHeight: { configurable: true, get: () => metrics.client },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          top = Math.max(0, Math.min(value, metrics.height - metrics.client));
+        },
+      },
+    });
+    await act(async () => {
+      store.setState({ streams: { current: stream('Hi and more text that keeps going') } });
+    });
+    expect(top).toBe(metrics.height - metrics.client);
+    // A measurement dips the box. Following puts the end back.
+    top = top - 30;
+    await act(async () => {
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    expect(top).toBe(metrics.height - metrics.client);
+    await act(async () => {
+      scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -40 }));
+      top = 12;
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    metrics.height += 80;
+    await act(async () => {
+      store.setState({
+        streams: { current: stream('Hi and more text that keeps going and the person is reading') },
+      });
+    });
+    expect(top).toBe(12);
+  } finally {
+    changePreferences({ chatDensity: previous });
+  }
 });
