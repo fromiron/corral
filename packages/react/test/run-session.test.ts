@@ -905,7 +905,12 @@ describe('receipt refresh boundaries', () => {
     await emit({
       type: 'directive.accepted',
       commandId: 'cmd_0',
-      payload: { directiveId: 'dir_0', targetExecutionId: 'exec_writer', text: 'First' },
+      payload: {
+        directiveId: 'dir_0',
+        targetExecutionId: 'exec_writer',
+        text: 'First',
+        delivery: 'next_request',
+      },
     });
     expect(getReceipt).not.toHaveBeenCalled();
     await emit({
@@ -968,7 +973,12 @@ describe('receipt refresh boundaries', () => {
     await emit({
       type: 'directive.accepted',
       commandId: 'cmd_0',
-      payload: { directiveId: 'dir_0', targetExecutionId: 'exec_writer', text: 'First' },
+      payload: {
+        directiveId: 'dir_0',
+        targetExecutionId: 'exec_writer',
+        text: 'First',
+        delivery: 'next_request',
+      },
     });
     const refresh = store.getState().refreshReceipt('cmd_0');
     await emit({
@@ -1010,6 +1020,7 @@ describe('receipt refresh boundaries', () => {
         directiveId: 'dir_race',
         targetExecutionId: 'exec_writer',
         text: 'Already delivered',
+        delivery: 'next_request',
       },
     });
     await emit({

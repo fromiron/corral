@@ -485,6 +485,8 @@ export const DirectiveAccepted = event(
     directiveId: Identifier,
     targetExecutionId: Identifier,
     text: z.string().min(1).max(12000),
+    /** The delivery actually used: an interrupt the target cannot take is next_request. */
+    delivery: z.enum(['next_request', 'interrupt']),
     attachments: TextAttachments.optional(),
   }),
 );
@@ -651,11 +653,13 @@ export const ModelFinished = event(
     rawUsage: z.record(z.string(), z.unknown()).nullable(),
     normalizedUsage: NormalizedUsage,
     certainty: z.enum(['reported', 'estimated', 'unknown']),
+    /** The response was cut by an interrupt; the execution went on with the next request. */
+    interrupted: z.literal(true).optional(),
   }),
 );
 export const ModelUsageReconciled = event(
   'model.usage_reconciled',
-  ModelFinished.shape.payload.omit({ responseRef: true }),
+  ModelFinished.shape.payload.omit({ responseRef: true, interrupted: true }),
 );
 /**
  * Usage spent outside the run's model calls: a team chooser call or an image generation.

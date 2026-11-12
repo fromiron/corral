@@ -988,6 +988,197 @@ it('virtualizes the timeline the same way for three rows as for two hundred', as
   }
 });
 
+/**
+ * A long conversation of rows at the list's estimated height, laid out as the browser would:
+ * each mounted row sits at its index's place below the content's top padding.
+ */
+async function mountLong(count: number, content?: (index: number) => React.ReactNode) {
+  const chat = await mountConversation({
+    items: Array.from({ length: count }, (_, index) => ({
+      id: `turn-${index}`,
+      content: content ? content(index) : <p>Turn {index}</p>,
+    })),
+  });
+  chat.metrics.height = 24 + count * 260 + 8;
+  // A row that grew: every row after it sits that much lower.
+  const grown = { index: count, by: 0 };
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this.tagName !== 'LI' || !this.hasAttribute('data-chat-item')) return rect.call(this);
+    const index = Number(this.dataset.index);
+    const top = 24 + index * 260 + (index > grown.index ? grown.by : 0) - chat.top;
+    return { top, bottom: top + 260, height: 260, left: 0, right: 480, width: 480 } as DOMRect;
+  });
+  disposals.push(async () => {
+    vi.restoreAllMocks();
+  });
+  await chat.resize();
+  const scroll = (top: number) =>
+    act(async () => {
+      chat.top = top;
+      chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+  /** What the list holds for the rows it does not mount, padding and the space between rows. */
+  const held = () => {
+    const list = chat.container.querySelector<HTMLElement>('[data-chat-window]');
+    if (!list) throw new Error('Conversation list missing');
+    const rows = [...list.children] as HTMLElement[];
+    return {
+      mounted: rows.map((row) => Number(row.dataset.index)),
+      space:
+        Number.parseFloat(list.style.paddingTop || '0') +
+        Number.parseFloat(list.style.paddingBottom || '0') +
+        rows.reduce((sum, row) => sum + Number.parseFloat(row.style.marginTop || '0'), 0),
+    };
+  };
+  const key = (target: Element, key: string) =>
+    act(async () => {
+      target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key }));
+    });
+  const grow = (index: number, by: number) => {
+    grown.index = index;
+    grown.by = by;
+    chat.metrics.height += by;
+  };
+  // Assigned onto the fixture, so its scroll position stays a live getter.
+  return Object.assign(chat, { scroll, held, key, grow });
+}
+
+it('a focused row kept mounted away from the window holds the rows between them as space', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(200, (index) => <button type="button">Copy {index}</button>);
+  await chat.scroll(chat.end());
+  const last = chat.container.querySelector<HTMLButtonElement>(
+    '[data-chat-item="turn-199"] button',
+  );
+  if (!last) throw new Error('Last row missing');
+  await act(async () => last.focus());
+  // The person reads far above the focused row.
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
+  });
+  await chat.scroll(20_000);
+  const { mounted, space } = chat.held();
+  // The focused row stays mounted (and focused), apart from the rows in view.
+  expect(mounted).toContain(199);
+  expect(mounted).toContain(Math.floor(20_000 / 260));
+  expect(document.activeElement).toBe(last);
+  // Every row the list does not mount is still held as space, so the list keeps its height.
+  expect(space).toBe((200 - mounted.length) * 260);
+  // And the other way: the focus far above, the person back at the end.
+  const reading = chat.container.querySelector<HTMLButtonElement>(
+    '[data-chat-item="turn-77"] button',
+  );
+  if (!reading) throw new Error('Reading row missing');
+  await act(async () => reading.focus());
+  await chat.scroll(chat.end());
+  const back = chat.held();
+  expect(back.mounted).toContain(77);
+  expect(back.mounted).toContain(199);
+  expect(back.space).toBe((200 - back.mounted.length) * 260);
+});
+
+it('a row above the reader changing size is left to the browser, not corrected by the list', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(200);
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
+  });
+  // Reading, last moving down: a list that corrects would shift by a row above changing size.
+  await chat.scroll(4_900);
+  await chat.scroll(5_000);
+  const row = chat.container.querySelector<HTMLElement>('[data-chat-item="turn-16"]');
+  if (!row) throw new Error('Row above the view missing');
+  // The row grows by 140 entirely above the view. The browser's scroll anchoring holds the
+  // rows in view; the list writing its own correction as well would move them twice.
+  row.getBoundingClientRect = () =>
+    ({ top: -700, bottom: -300, height: 400, left: 0, right: 480, width: 480 }) as DOMRect;
+  await act(async () => {
+    for (const callback of [...resizeCallbacks]) callback([{ target: row }]);
+  });
+  expect(chat.top).toBe(5_000);
+});
+
+it('a scroll that moved on since the reader’s place was read is not pulled back to it', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60);
+  expect(chat.top).toBe(chat.end());
+  // A key scroll animates over frames. Its first frame's scroll event is read before the list
+  // mounts the rows now in view; the place is read once they are.
+  await chat.key(chat.box, 'PageUp');
+  await chat.scroll(15_132);
+  // A row above the reader grows: the reader's row holds its place on screen.
+  chat.grow(50, 100);
+  await chat.resize();
+  expect(chat.top).toBe(15_232);
+  await chat.scroll(15_232);
+  // The next frame moves the view again, and the list mounts rows for it before that frame's
+  // scroll event is handled: placing the view then keeps where the person is going.
+  chat.top = 14_932;
+  await chat.resize();
+  expect(chat.top).toBe(14_932);
+  await chat.scroll(14_632);
+  expect(chat.top).toBe(14_632);
+  // Nothing moved since the place was read, so placing the view writes nothing.
+  let writes = 0;
+  const read = () => chat.top;
+  Object.defineProperty(chat.box, 'scrollTop', {
+    configurable: true,
+    get: read,
+    set: (value: number) => {
+      writes += 1;
+      chat.top = value;
+    },
+  });
+  await chat.resize();
+  expect(writes).toBe(0);
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
+});
+
+for (const count of [30, 300]) {
+  it(`Home and End on the timeline reach the first row and the end (${count} rows)`, async () => {
+    sessionStorage.clear();
+    const chat = await mountLong(count);
+    expect(chat.top).toBe(chat.end());
+    await chat.key(chat.box, 'Home');
+    expect(chat.top).toBe(0);
+    await chat.scroll(0);
+    expect(chat.held().mounted[0]).toBe(0);
+    expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
+    // Rows mounting at the top do not move the reader off the first row.
+    await chat.resize();
+    expect(chat.top).toBe(0);
+    await chat.key(chat.box, 'End');
+    expect(chat.top).toBe(chat.end());
+    // At the end, End follows it: the end growing stays in view.
+    chat.metrics.height += 400;
+    await chat.resize();
+    expect(chat.top).toBe(chat.end());
+    expect(chat.container.querySelector('[aria-label="Jump to latest"]')).toBeNull();
+  });
+}
+
+it('Home and End from a control inside a row are that control’s keys', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(30, (index) => <button type="button">Copy {index}</button>);
+  await chat.scroll(chat.end());
+  const button = chat.container.querySelector<HTMLButtonElement>(
+    '[data-chat-item="turn-29"] button',
+  );
+  if (!button) throw new Error('Row action missing');
+  const at = chat.top;
+  await chat.key(button, 'Home');
+  expect(chat.top).toBe(at);
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
+  });
+  await chat.scroll(1_000);
+  await chat.key(button, 'End');
+  expect(chat.top).toBe(1_000);
+});
+
 it('marks every timeline row with its item’s identity', async () => {
   const items = [
     { id: 'entry-user', content: <p>A request</p> },

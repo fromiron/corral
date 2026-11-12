@@ -193,6 +193,21 @@ describe('waits and finite run limits', () => {
     expect(progress.turns).toBe(0);
   });
 
+  it('a call cut by an interrupt is not a no-progress turn; an uncut call still is', () => {
+    const p = emptyProjection('run');
+    let progress = emptyProgress();
+    for (let i = 0; i < 6; i++)
+      progress = applyProgressEvent(
+        progress,
+        event('model.finished', { modelCallId: `cut_${i}`, interrupted: true }),
+        p,
+      );
+    expect(progress.turns).toBe(0);
+    expect(noProgressReached(progress)).toBe(false);
+    progress = applyProgressEvent(progress, event('model.finished', { modelCallId: 'whole' }), p);
+    expect(progress.turns).toBe(1);
+  });
+
   it('rewording the same unmet review criterion does not claim progress', () => {
     const p = emptyProjection('run');
     const review = (reason: string) =>

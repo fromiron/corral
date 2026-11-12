@@ -177,6 +177,8 @@ export type AgentObservation = {
   usage: ModelUsage;
   /** Provider usage exactly as reported, when available. */
   rawUsage?: Record<string, unknown>;
+  /** The response was cut by an interrupt; its text is interrupted output, not an answer. */
+  interrupted?: true;
 };
 
 export interface ToolProposal {
@@ -247,6 +249,8 @@ export interface AgentHandle {
   cancel(reason: string): Promise<void>;
   waitForSettlement(): Promise<AgentSettlement>;
   pushDirective?(directive: DeliveredDirective): void;
+  /** Cuts the model response in flight, if any, so the directive rides the next request. */
+  interrupt?(directive: DeliveredDirective): void;
 }
 
 export interface AgentAdapter {

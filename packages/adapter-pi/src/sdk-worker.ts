@@ -102,7 +102,10 @@ export interface SdkWorkerDeps extends WorkerDeps {
   workerLeaseDirectory?: string;
   now(): number;
 }
-type Reply = Exclude<SdkHostFrame, { type: 'start' | 'cancel' | 'directive' | 'compact' }>;
+type Reply = Exclude<
+  SdkHostFrame,
+  { type: 'start' | 'cancel' | 'directive' | 'interrupt' | 'compact' }
+>;
 const hashOf = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
 const cleanJson = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 const directiveText = (d: DeliveredDirective) => sdkDirectiveText(d);
@@ -120,12 +123,20 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
   const deferredSteers = new Map<string, DeliveredDirective>();
   let preparingRequest = false;
   let pendingCompaction: string | null = null;
+  // The turn response in flight and the directives its request carries. Extension and
+  // compaction requests are never cut, and none is in flight while a tool runs.
+  type TurnFlight = { abort: AbortController; directiveIds: Set<string>; cut: boolean };
+  let turnFlight: TurnFlight | null = null;
+  // The mark stays with the request, whichever permit its last attempt got.
+  const wasCut = (flight: TurnFlight | null, answer: Pick<AssistantMessage, 'stopReason'>) =>
+    flight?.cut === true && (answer.stopReason === 'aborted' || answer.stopReason === 'error');
+  const steerFailed = () => {
+    cancelled = true;
+    cancellation.abort();
+    void session?.abort();
+  };
   const steer = (directive: DeliveredDirective) => {
-    void session?.steer(directiveText(directive)).catch(() => {
-      cancelled = true;
-      cancellation.abort();
-      void session?.abort();
-    });
+    void session?.steer(directiveText(directive)).catch(steerFailed);
   };
   port.onFrame((raw) => {
     const parsed = SdkHostFrame.safeParse(raw);
@@ -162,10 +173,26 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       void session?.abort();
     } else if (frame.type === 'compact') {
       if (!cancelled && !pendingCompaction) pendingCompaction = frame.commandId;
-    } else if (frame.type === 'directive') {
-      if (directives.has(frame.directiveId) || cancelled) return;
+    } else if (frame.type === 'directive' || frame.type === 'interrupt') {
+      if (cancelled) return;
+      const known = directives.has(frame.directiveId);
+      if (known && frame.type === 'directive') return;
       directives.set(frame.directiveId, frame);
-      if (session?.isStreaming) {
+      const flight = turnFlight;
+      if (
+        frame.type === 'interrupt' &&
+        flight &&
+        !preparingRequest &&
+        session?.isStreaming &&
+        !flight.directiveIds.has(frame.directiveId)
+      ) {
+        // Steered first, so Pi goes on with the directive once the cut response has ended.
+        void (known ? Promise.resolve() : session.steer(directiveText(frame))).then(() => {
+          if (!cancelled) flight.abort.abort();
+        }, steerFailed);
+        return;
+      }
+      if (!known && session?.isStreaming) {
         if (preparingRequest) deferredSteers.set(frame.directiveId, frame);
         else steer(frame);
       }
@@ -312,6 +339,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         attempts: { modelCallId?: string },
       ) => {
         const out = createAssistantMessageEventStream();
+        // The turn this attempt answers; only a turn response can be cut by an interrupt.
+        const flight = requestPurpose === 'turn' || requestPurpose === 'retry' ? turnFlight : null;
         const owned = cleanJson(context) as Context;
         owned.messages = owned.messages.map((message) =>
           message.role === 'assistant' && message.provider === 'corral'
@@ -435,6 +464,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 method: measured.source === 'usage_anchor' ? 'usage-anchor-v2' : 'dsh-density-v2',
               };
               preparedDirectiveIds = record.directiveIds;
+              if (flight) flight.directiveIds = new Set(preparedDirectiveIds);
               if (requestPurpose === 'turn' || requestPurpose === 'retry') {
                 const saved = await call({
                   type: 'checkpoint_context',
@@ -566,6 +596,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                   modelCallId,
                   text: textOf(answer),
                   ...normalizeUsage(answer),
+                  ...(wasCut(flight, answer) ? { interrupted: true } : {}),
                 });
                 observed = true;
               }
@@ -595,7 +626,13 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               deps.now(),
             );
             if (modelCallId && !observed)
-              send({ type: 'observe', modelCallId, text: '', ...normalizeUsage(answer) });
+              send({
+                type: 'observe',
+                modelCallId,
+                text: '',
+                ...normalizeUsage(answer),
+                ...(wasCut(flight, answer) ? { interrupted: true } : {}),
+              });
             out.push({
               type: 'error',
               reason: answer.stopReason === 'aborted' ? 'aborted' : 'error',
@@ -629,11 +666,24 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           const requestPurpose = nativeDepth ? 'extension' : purpose;
           const logicalRequestId = `request_${++logicalRequests}`;
           const attempts: { modelCallId?: string } = {};
-          const signal = options?.signal
-            ? AbortSignal.any([options.signal, cancellation.signal])
-            : cancellation.signal;
+          // Only a turn response can be cut by an interrupt; a cut is never retried.
+          const flight: TurnFlight | null =
+            requestPurpose === 'turn'
+              ? { abort: new AbortController(), directiveIds: new Set<string>(), cut: false }
+              : null;
+          const signal = AbortSignal.any([
+            ...(options?.signal ? [options.signal] : []),
+            cancellation.signal,
+            ...(flight ? [flight.abort.signal] : []),
+          ]);
+          if (flight) {
+            turnFlight = flight;
+            flight.abort.signal.addEventListener('abort', () => {
+              flight.cut = true;
+            });
+          }
           let current = context;
-          return managedRetryStream({
+          const stream = managedRetryStream({
             model: selected,
             ...(requestPurpose === 'turn'
               ? {
@@ -666,6 +716,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 attempts,
               ),
           });
+          if (flight)
+            void stream.result().finally(() => {
+              if (turnFlight === flight) turnFlight = null;
+            });
+          return stream;
         },
       });
       const proxyModel = runtime.getModel('corral', model.id);
@@ -924,6 +979,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         },
         cacheWarming: 'off',
         retry: { enabled: false, maxRetries: 0, baseDelayMs: 500, maxAgentDelayMs: 10000 },
+        // Every queued directive goes into the next turn, each as its own message.
+        steeringMode: 'all',
       });
       const loader = new DefaultResourceLoader({
         cwd,
@@ -1449,20 +1506,16 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             : input,
         ),
       };
-      // session.prompt takes one text, and Pi's steering queue ("one-at-a-time") would hold a
-      // second directive for a later turn, so directives waiting at start follow the request
-      // in this one text. With more than one, a later directive follows an earlier one's
-      // attachment body here.
-      await session.prompt(
-        [userPrompt(start), ...[...directives.values()].map(directiveText)].join('\n\n'),
-        {
-          images: start.images?.map((image) => ({
-            type: 'image',
-            data: image.data,
-            mimeType: image.mime,
-          })),
-        },
-      );
+      // Directives waiting at start are steered before the first prompt; in "all" mode they
+      // follow the request text in its first turn, one message each.
+      for (const directive of directives.values()) await session.steer(directiveText(directive));
+      await session.prompt(userPrompt(start), {
+        images: start.images?.map((image) => ({
+          type: 'image',
+          data: image.data,
+          mimeType: image.mime,
+        })),
+      });
       await session.waitForIdle();
       await notifications;
       await requests;

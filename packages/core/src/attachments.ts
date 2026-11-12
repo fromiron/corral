@@ -53,8 +53,7 @@ export function textAttachmentSource(item: TextAttachment): { listing: string[];
 /**
  * A directive's text as the model reads it: the person's words first, then the attachments in
  * a new request's form. Nothing the person wrote follows an attachment body within one
- * directive; workers put each directive in its own message so that holds across directives,
- * except for directives waiting when the SDK worker starts, which share its first prompt.
+ * directive; workers put each directive in its own message so that holds across directives.
  */
 export function directiveWithAttachments(
   text: string,
