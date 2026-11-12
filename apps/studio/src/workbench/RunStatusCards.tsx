@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
+import { compactTarget } from './compactTarget.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { ProfileContextDetails } from './ProfileContextDetails.tsx';
 import { RunChanges } from './RunChanges.tsx';
@@ -162,7 +163,6 @@ export function RunStatusCards({
                 key={`${state.runId}:${selected}`}
                 session={session}
                 executionId={selected}
-                supported={Boolean(role?.harness) && projection.mode === 'live'}
               />
             ) : null}
             {['interrupted', 'failed', 'cancelled'].includes(projection.status) &&
@@ -242,12 +242,9 @@ export function ExecutionContext({
 }) {
   const t = useTranslations('RunStatus');
   const noInformation = useTranslations('Usage')('noInformation');
-  const { projection, events, definition } = useStore(session);
+  const { projection, events } = useStore(session);
   if (!projection) return null;
   const execution = projection.executions[executionId];
-  const node = definition?.nodes.find((item) => item.id === execution?.nodeId);
-  const role =
-    node?.type === 'agent' ? definition?.roles.find((item) => item.id === node.roleId) : null;
   const request = events
     .filter(
       (event) =>
@@ -268,13 +265,7 @@ export function ExecutionContext({
         <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('contextOnly')}</span> ·{' '}
         {estimate ? t('estimate', { count: estimate.tokens }) : noInformation}
       </p>
-      {open ? (
-        <ContextCompaction
-          session={session}
-          executionId={executionId}
-          supported={Boolean(role?.harness) && projection.mode === 'live'}
-        />
-      ) : null}
+      {execution ? <ContextCompaction session={session} executionId={executionId} /> : null}
     </section>
   );
 }
@@ -282,17 +273,16 @@ export function ExecutionContext({
 function ContextCompaction({
   session,
   executionId,
-  supported,
 }: {
   session: RunSessionStore;
   executionId: string;
-  supported: boolean;
 }) {
   const t = useTranslations('RunStatus');
   const state = useStore(session);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const execution = state.projection?.executions[executionId];
+  const decision = compactTarget(state.projection, executionId);
   const event = state.events
     .filter(
       (event) =>
@@ -308,21 +298,23 @@ function ContextCompaction({
     TERMINAL_RUN_STATUSES.has(state.projection.status);
   return (
     <div className="space-y-1">
-      {supported ? (
+      {decision.ok ? (
         <>
           <p className="text-muted-foreground">{t('compactHint')}</p>
           <Button
             variant="tertiary"
-            disabled={busy || ended || pending}
+            disabled={busy || decision.pending}
             onClick={() => {
-              if (!execution || !state.projection) return;
+              const current = session.getState();
+              const next = compactTarget(current.projection, executionId);
+              if (!next.ok || next.pending) return;
               setBusy(true);
               setError(null);
-              void state
+              void current
                 .sendCommand({
                   type: 'compact_context',
-                  expectedControlRevision: state.projection.controlRevision,
-                  payload: { executionId, attemptNo: execution.attemptNo },
+                  expectedControlRevision: next.expectedControlRevision,
+                  payload: { executionId: next.executionId, attemptNo: next.attemptNo },
                 })
                 .then((receipt) => {
                   if (receipt.error) setError(receipt.error.message);
@@ -337,7 +329,7 @@ function ContextCompaction({
           </Button>
         </>
       ) : (
-        <p className="text-muted-foreground">{t('compactUnavailable')}</p>
+        <p className="text-muted-foreground">{t(decision.reason)}</p>
       )}
       {phase ? (
         <p role="status">

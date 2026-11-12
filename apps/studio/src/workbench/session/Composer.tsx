@@ -83,6 +83,7 @@ import {
 } from '../autoChoice.ts';
 import { ComposerInput } from '../ComposerInput.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
+import { compactTarget } from '../compactTarget.ts';
 import {
   type IntentChoice,
   type IntentLock,
@@ -190,6 +191,7 @@ export function Composer({
   const materialMessages = useTranslations('Materials');
   const navigation = useSettingsNavigation();
   const tr = useTranslations('Reins');
+  const tStatus = useTranslations('RunStatus');
   const services = useServices();
   const { repository, transport, mode, live } = services;
   const prefs = usePreferences();
@@ -1048,6 +1050,43 @@ export function Composer({
     if (receipt.error) setError(receipt.error.message);
     onChange();
   };
+  const compactContext = async () => {
+    if (!ownActive) {
+      setError(tStatus('compactNoExecution'));
+      return;
+    }
+    if (ownActive.status === 'cancelling') {
+      setError(tStatus('compactCancelling'));
+      return;
+    }
+    const snapshot = await transport.getSnapshot(ownActive.runId).catch((failure: unknown) => {
+      setError(failure instanceof Error ? failure.message : tStatus('compactUnavailable'));
+      return null;
+    });
+    if (!snapshot || snapshot.projection.runId !== ownActive.runId) return;
+    const decision = compactTarget(snapshot.projection, null);
+    if (!decision.ok) {
+      setError(tStatus(decision.reason));
+      return;
+    }
+    if (decision.pending) {
+      setError(tStatus('compactPhase.queued'));
+      return;
+    }
+    const receipt = await transport
+      .sendCommand({
+        schemaVersion: '0.1',
+        commandId: newCommandId(),
+        runId: ownActive.runId,
+        type: 'compact_context',
+        expectedControlRevision: decision.expectedControlRevision,
+        payload: { executionId: decision.executionId, attemptNo: decision.attemptNo },
+      })
+      .catch((failure: unknown) => ({
+        error: { message: failure instanceof Error ? failure.message : String(failure) },
+      }));
+    if (receipt.error) setError(receipt.error.message);
+  };
 
   const entryCommandKey = (entry: SessionEntry, resend: boolean) =>
     `${resend ? 'resend' : 'queue'}\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, [...(entry.attachments ?? []), ...(resend ? (entry.images ?? []) : [])], autoChoice, team ? `corral:${team.corralId}` : teamMode)}\u0000${entry.permissionMode ?? ''}`;
@@ -1365,6 +1404,14 @@ export function Composer({
       disabled: ownActive?.status !== 'paused',
       hint: why(ownActive?.status === 'paused'),
       run: () => void runCommand('resume'),
+    },
+    {
+      id: 'run:compact',
+      title: tStatus('compactRequest'),
+      group: tc('groupRun'),
+      slash: 'compact',
+      keywords: ['context'],
+      run: () => void compactContext(),
     },
     {
       id: 'run:stop',

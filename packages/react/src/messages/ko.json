@@ -3441,7 +3441,11 @@
     "linuxIsolationRequested": "모델 프로필이 리눅스 작업자 격리를 요청했습니다. 모델 네트워크는 호스트가 중개합니다. 시작되지 않았다면 실행 오류를 확인하세요. 호스트 도구에는 별도 권한이 적용됩니다.",
     "compactRequest": "다음 안전 경계에서 압축",
     "compactHint": "진행 중 도구와 질문이 끝난 뒤 대화를 압축하도록 요청합니다. 기존 작업과 권한은 유지합니다.",
-    "compactUnavailable": "수동 압축은 SDK 실행에서 지원합니다.",
+    "compactUnavailable": "압축을 보내지 못했습니다.",
+    "compactNoExecution": "진행 중인 실행이 없어 압축을 보내지 않습니다.",
+    "compactNotLive": "라이브 실행 중에만 문맥을 압축합니다.",
+    "compactCancelling": "실행을 취소하는 중이라 압축을 보내지 않습니다.",
+    "compactAmbiguous": "진행 중인 실행이 둘 이상이라 압축을 보내지 않습니다.",
     "compactUnconfirmed": "압축 완료를 확인하기 전에 실행이 종료되었습니다.",
     "compactPhase": {
       "queued": "압축을 요청했습니다. 안전한 경계를 기다립니다.",

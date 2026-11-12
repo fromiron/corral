@@ -3441,7 +3441,11 @@
     "linuxIsolationRequested": "Linux worker isolation requested by model profile. Model network is brokered by the host; inspect execution failures if launch did not complete. Host tools retain their own permissions.",
     "compactRequest": "Compact at next safe boundary",
     "compactHint": "Queues history compaction after current tools and questions settle. Current work and permissions stay in place.",
-    "compactUnavailable": "Manual compaction requires an SDK execution.",
+    "compactUnavailable": "Compaction could not be sent.",
+    "compactNoExecution": "No execution is still running, so compaction was not sent.",
+    "compactNotLive": "Manual compaction is only available during a live run.",
+    "compactCancelling": "This run is cancelling, so compaction was not sent.",
+    "compactAmbiguous": "More than one execution is still running, so compaction was not sent.",
     "compactUnconfirmed": "This execution ended before compaction completion was confirmed.",
     "compactPhase": {
       "queued": "Compaction requested; waiting for a safe boundary.",
