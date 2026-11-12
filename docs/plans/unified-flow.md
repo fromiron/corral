@@ -429,7 +429,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
 | B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 대기 |
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 리뷰 중 |
-| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 수정 중 |
+| B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 재검토 중 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 대기 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 대기 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
@@ -444,14 +444,14 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
-| U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 구현 중 |
+| U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 보완 중 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 대기 |
 | U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 대기 |
 | U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 대기 |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
 | U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
-| M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 구현 중 |
+| M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 리뷰 중 |
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 대기 |
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 대기 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
@@ -723,6 +723,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B7 (자동 압축의 보고).** 자동 압축도 수동과 같은 단계(`started` 뒤 `completed`·`failed`·`cancelled`·`skipped`)를 보고하므로 이벤트는 단계마다 하나다. 자동은 보고에 `trigger: 'automatic'`을 싣고 이벤트 envelope의 commandId는 비운다.
 - **B9 (§9 표 테스트).** `apps/server/test/server.test.ts`의 제품 계약 §9 표 테스트에 무인 실행 예산·감독 예산 행이 코드 기본값과 같다는 단언을 더한다.
 - **B4 (리뷰에서 정한 것).** `carriedFrom`은 HTTP로 받지 않는다(서버만 적는다). 항목의 권한 방식과 `start`의 권한 방식이 다르면 저장을 거절한다. 서버가 쓰는 `throughRunId`는 화면과 같은 규칙으로 고른다(같은 commandId의 payload가 같아야 한다). 대기 항목이 더해질 때 열린 Run이 없으면 대기열을 바로 살핀다. `start`는 시작 요청에서 `commandId`·`brief`·`throughRunId`·`references`·`sessionId`·`schemaVersion`을 뺀 것이다.
+- **U5·B5 (`start`의 모양과 서버의 시작 요청).** `start`는 `{ harness?, permissionMode?, taskScope?, verificationScope?, choice, mode, startFrom?, team? }`다(스키마 `SessionEntryStart`, `packages/core/src/repository/index.ts`). `start.permissionMode`는 항목의 `permissionMode`와 같아야 저장된다(둘 다 없거나 같음). 서버는 `{ ...start, commandId: queuedSessionCommandId(sessionId, entry), sessionId, brief: entry.text, conversation?: { throughRunId }, references?: entry.attachments }`로 시작한다. `throughRunId`는 그 세션의 Run을 시작 시각 순으로 놓았을 때 마지막 종료 Run이다(화면과 같은 규칙). 화면이 같은 항목을 시작할 때도 같은 payload여야 충돌이 없다.
 - **B4 (남긴 한계).** 서버가 Run을 시작한 뒤 항목에 기록하기 전에 죽으면 그 항목은 대기로 남고, 다음 패스에서 같은 commandId가 충돌해 뒤 항목을 막는다. 사람이 그 항목을 편집하거나 지우면 풀린다. 드문 경우라 복구 코드를 넣지 않았다.
 - **B9·A5 (감독의 예산).** 감독은 예산(기본 60)을 다 쓰면 승인을 묻지 않고 끝난다. 계속 여부 승인은 팀 역할(400)과 동적 하위 실행(200)에만 있다. 승인의 kind는 `request_budget`이다.
 - **A1·A3 (조언의 전달).** 전달 방식의 이름은 `next_request`, `interrupt`, `preserve`다(`aside`, `steer`는 없다). `nit`과 `concern`은 `next_request`, `blocker`는 `interrupt`(대상이 못 받으면 `next_request`), 대상이 끝났으면 `nit`은 버리고 나머지는 `preserve`다. 대상이 사람을 기다리는 경우는 따로 다루지 않고 지시의 일반 규칙대로 결정 뒤에 읽힌다. `advice.suppressed`는 조언의 글을 싣지 않는다.
