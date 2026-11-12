@@ -150,6 +150,7 @@ export function Composer({
   onViewRun,
   queued,
   onChange,
+  onSent,
   reference,
   onReferenceUsed,
   runControlsOwnConfirmation = false,
@@ -166,6 +167,8 @@ export function Composer({
   onViewRun?: (runId: string) => void;
   queued: SessionEntry[];
   onChange: () => void;
+  /** The person sent. The conversation follows the end again. */
+  onSent?: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
   /** The active session view already has one RunActions confirmation host. */
@@ -748,6 +751,7 @@ export function Composer({
       };
     voiceSubmitting.current = true;
     setBusy(true);
+    onSent?.();
     try {
       if (utterance.delivery === 'queue') {
         await record({
@@ -840,6 +844,7 @@ export function Composer({
   const send = async () => {
     const body = text.trim();
     if (!body || busy || autoSaving.current || unavailable) return;
+    onSent?.();
     const submittedRevision = writeComposerDraft(session.sessionId, composerDraft);
     draftRevision.current = submittedRevision;
     setBusy(true);
