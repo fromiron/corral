@@ -1,4 +1,4 @@
-import type { RunCommand } from '@corral/contracts';
+import type { AgentAdapter, RunCommand } from '@corral/contracts';
 import {
   FakeClock,
   Gate,
@@ -35,32 +35,49 @@ const ended = (p: RunProjection) => ['succeeded', 'failed', 'cancelled'].include
 
 const ATTACHMENT = createTextAttachment('notes.txt', 'text/plain', 'attached words');
 
-function setup(options: { fail?: boolean } = {}) {
+function setup(options: { fail?: boolean; interrupts?: boolean; store?: InMemoryRunStore } = {}) {
   const gate = new Gate();
+  const store = options.store ?? new InMemoryRunStore();
   const resolved: { runId: string; statuses: string[] }[] = [];
-  const coordinator = new Coordinator({
-    store: new InMemoryRunStore(),
+  // What the store held when the host was told.
+  const stored: string[][] = [];
+  const interrupted: string[] = [];
+  const scripted = new ScriptedAgentAdapter({
+    turns: 1,
+    appendNotes: false,
+    collaborate: false,
+    beforeReply: () => gate.wait(),
+    ...(options.fail
+      ? {
+          script: async () => {
+            await gate.wait();
+            return { outcome: 'failed' as const, error: 'the role gave up' };
+          },
+        }
+      : {}),
+  });
+  // A handle that takes an interrupt (and lets the reply finish), so none is lowered.
+  const agents: AgentAdapter = options.interrupts
+    ? {
+        async start(input, host) {
+          const handle = await scripted.start(input, host);
+          return { ...handle, interrupt: (d) => void interrupted.push(d.directiveId) };
+        },
+      }
+    : scripted;
+  const coordinator: Coordinator = new Coordinator({
+    store,
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),
-    onDirectivesExpired: (runId, projection) =>
-      void resolved.push({
+    onDirectivesExpired: (runId, projection) => {
+      const saved = store.getRun(runId)?.projection;
+      stored.push(saved?.directiveOrder.map((id) => saved.directives[id]?.status ?? '') ?? []);
+      resolved.push({
         runId,
         statuses: projection.directiveOrder.map((id) => projection.directives[id]?.status ?? ''),
-      }),
-    agents: new ScriptedAgentAdapter({
-      turns: 1,
-      appendNotes: false,
-      collaborate: false,
-      beforeReply: () => gate.wait(),
-      ...(options.fail
-        ? {
-            script: async () => {
-              await gate.wait();
-              return { outcome: 'failed' as const, error: 'the role gave up' };
-            },
-          }
-        : {}),
-    }),
+      });
+    },
+    agents,
   });
   const transport = new InProcessTransport(coordinator);
   const started = coordinator.startRun({
@@ -91,7 +108,7 @@ function setup(options: { fail?: boolean } = {}) {
       commandId,
     );
   };
-  return { coordinator, transport, runId, gate, send, steer, resolved };
+  return { coordinator, transport, runId, gate, send, steer, resolved, stored, interrupted, store };
 }
 
 it('carries an unread user directive whose target succeeded, with its text and attachments', async () => {
@@ -115,12 +132,50 @@ it('carries an unread user directive whose target succeeded, with its text and a
 });
 
 it('carries an interrupt the target never read the same way', async () => {
-  const s = setup();
-  await s.steer('Stop and look here.', 'steer_cut', { delivery: 'interrupt' });
+  const s = setup({ interrupts: true });
+  // Sent once the target's handle exists and its only request is out.
+  const receipt = await s.steer('Stop and look here.', 'steer_cut', { delivery: 'interrupt' });
+  expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'immediate' });
+  const accepted = s.store
+    .readEvents(s.runId, 0)
+    .find((event) => event.type === 'directive.accepted');
+  expect(accepted?.type === 'directive.accepted' && accepted.payload.delivery).toBe('interrupt');
+  const directiveId = accepted?.type === 'directive.accepted' ? accepted.payload.directiveId : '';
+  expect(s.interrupted).toEqual([directiveId]);
   s.gate.open();
   const projection = await waitForProjection(s.transport, s.runId, ended);
   expect(projection.status).toBe('succeeded');
+  expect(projection.directives[directiveId]?.status).toBe('expired');
   expect(carriedDirectives(projection).map((d) => d.text)).toEqual(['Stop and look here.']);
+});
+
+it('the host is told after the expiry is stored, never before', async () => {
+  const s = setup();
+  await s.steer('Read me later.', 'steer_stored');
+  s.gate.open();
+  await waitForProjection(s.transport, s.runId, ended);
+  await flush();
+  expect(s.stored).toEqual([['expired']]);
+});
+
+it('the host is not told of an expiry whose commit failed', async () => {
+  const store = new InMemoryRunStore();
+  const append = store.appendEvents.bind(store);
+  let refused = 0;
+  store.appendEvents = (runId, events) => {
+    if (events.some((event) => event.type === 'directive.undelivered')) {
+      refused += 1;
+      throw new Error('disk full');
+    }
+    append(runId, events);
+  };
+  const s = setup({ store });
+  await s.steer('Never stored.', 'steer_unstored');
+  s.gate.open();
+  for (let i = 0; i < 20 && refused === 0; i += 1) await flush();
+  await flush();
+  expect(refused).toBeGreaterThan(0);
+  expect(s.resolved).toEqual([]);
 });
 
 it('does not carry when the target failed', async () => {

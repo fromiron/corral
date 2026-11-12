@@ -50,6 +50,8 @@ export interface QueueRun {
 export interface SessionQueueDeps {
   repository: Pick<CorralRepository, 'getSession' | 'updateSessionEntry' | 'addSessionEntry'>;
   runs(): readonly QueueRun[];
+  /** The run of the session a directive was sent in, read from the runs' records. */
+  directiveRun(sessionId: string, directiveId: string): string | null;
   start(request: QueuedStartRequest): Promise<QueuedStartOutcome>;
   /** Only the session and an error code; never a request body or a path. */
   log(sessionId: string, code: string): void;
@@ -76,12 +78,19 @@ export function createSessionQueue(deps: SessionQueueDeps) {
       .runs()
       .some((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
 
+  // A carried request starts without autoStart unless the person cancelled the run it came from.
+  const carriedPast = (sessionId: string, directiveId: string | undefined) => {
+    if (!directiveId) return false;
+    const runId = deps.directiveRun(sessionId, directiveId);
+    return deps.runs().find((run) => run.runId === runId)?.status !== 'cancelled';
+  };
+
   const pass = async (sessionId: string) => {
     if (open(sessionId)) return;
     const session = await deps.repository.getSession(sessionId);
     if (!session || session.meeting) return;
     const entry = nextQueuedEntry(session);
-    if (!entry?.start || !(session.autoStart || entry.carriedFrom)) return;
+    if (!entry?.start || !(session.autoStart || carriedPast(sessionId, entry.carriedFrom))) return;
     const commandId = queuedSessionCommandId(sessionId, entry);
     const throughRunId = conversationRun(deps.runs(), sessionId);
     const outcome = await deps.start({
