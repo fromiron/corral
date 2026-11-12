@@ -168,6 +168,7 @@ const keptSmall: { file: string; near: RegExp }[] = [
     file: 'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
     near: /'removeReference'/,
   },
+  { file: 'apps/studio/src/workbench/TextAttachments.tsx', near: /'removeQuote'/ },
   // The request composer's action row: the kit composer's slot controls are compact.
   {
     file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx',

@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import {
+  TextAttachment,
   TextAttachmentProvenance,
   TextAttachments,
   textAttachmentKey,
@@ -106,4 +107,55 @@ it('retains preview identity without claiming a source revision or carrying auth
     { url: 'http://127.0.0.1:4317/api/v1/session' },
   ])
     expect(TextAttachmentProvenance.safeParse({ ...source, ...extra }).success).toBe(false);
+});
+
+const reply = {
+  kind: 'reply' as const,
+  runId: 'run_1',
+  modelCallId: 'call_1',
+  start: 4,
+  end: 9,
+  prefix: 'The ',
+  suffix: ' runs',
+};
+const quoted = (text: string, provenance: unknown = reply) => ({
+  ...attachment,
+  name: 'quote.txt',
+  bytes: text.length,
+  text,
+  ...(provenance === null ? {} : { provenance }),
+});
+
+it('accepts a reply quote with its run, model call, UTF-16 offsets and surrounding text', () => {
+  expect(TextAttachmentProvenance.parse(reply)).toEqual(reply);
+  expect(
+    TextAttachmentProvenance.safeParse({ ...reply, start: 0, prefix: '', suffix: '' }).success,
+  ).toBe(true);
+  expect(TextAttachment.safeParse(quoted('quick')).success).toBe(true);
+});
+
+it('bounds a reply quote: offsets, surrounding text and the quoted body', () => {
+  const p32 = 'p'.repeat(32);
+  expect(TextAttachmentProvenance.safeParse({ ...reply, prefix: p32, suffix: p32 }).success).toBe(
+    true,
+  );
+  for (const provenance of [
+    { ...reply, prefix: 'p'.repeat(33) },
+    { ...reply, suffix: 's'.repeat(33) },
+    { ...reply, end: reply.start },
+    { ...reply, end: reply.start - 1 },
+    { ...reply, start: -1 },
+    { ...reply, start: 1.5 },
+    { ...reply, end: 9.5 },
+    { ...reply, runId: '' },
+    { ...reply, verifiedByServer: true },
+    { ...reply, note: 'extra' },
+  ])
+    expect(TextAttachmentProvenance.safeParse(provenance).success).toBe(false);
+  expect(TextAttachment.safeParse(quoted('q'.repeat(8_000))).success).toBe(true);
+  expect(TextAttachment.safeParse(quoted('q'.repeat(8_001))).success).toBe(false);
+  expect(TextAttachment.safeParse(quoted('')).success).toBe(false);
+  // The other sources keep their own rules: an empty or long body is not a reply quote.
+  expect(TextAttachment.safeParse(quoted('', null)).success).toBe(true);
+  expect(TextAttachment.safeParse(quoted('q'.repeat(8_001), check)).success).toBe(true);
 });

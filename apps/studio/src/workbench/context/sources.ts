@@ -38,7 +38,10 @@ async function hunkApplies(
 }
 const sameTarget = (left: WorkspaceTarget, right: WorkspaceTarget) =>
   canonicalJson(left) === canonicalJson(right);
-const ownsSource = (services: StudioServices, source: TextAttachmentProvenance) =>
+const ownsSource = (
+  services: StudioServices,
+  source: Exclude<TextAttachmentProvenance, { kind: 'reply' }>,
+) =>
   services.mode === 'server' &&
   services.workspaceId === ('target' in source ? source.target.hostId : source.hostId);
 
@@ -87,7 +90,8 @@ export async function readAttachmentSource(
   item: TextAttachment,
 ): Promise<SourceRead> {
   const source = item.provenance;
-  if (!source || !ownsSource(services, source)) return unavailable();
+  // A reply quote names no workspace; it is never read back from one.
+  if (!source || source.kind === 'reply' || !ownsSource(services, source)) return unavailable();
   try {
     if (source.kind === 'code') return await readCode(services, item, source);
     if (source.kind === 'terminal')
@@ -209,7 +213,8 @@ export async function recaptureAttachmentSource(
   item: TextAttachment,
 ): Promise<TextAttachment | null> {
   const source = item.provenance;
-  if (!source || !ownsSource(services, source)) return null;
+  // A reply quote names no workspace; it is never read back from one.
+  if (!source || source.kind === 'reply' || !ownsSource(services, source)) return null;
   if (source.kind === 'preview') return null;
   if (source.kind === 'code') {
     if (!services.workspaces) return null;

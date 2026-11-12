@@ -3,6 +3,7 @@ import {
   ImageAttachment,
   ImageAttachments,
   type TextAttachment,
+  type TextAttachmentProvenance,
   textAttachmentKey,
 } from '@corral/contracts';
 import { validTextAttachments } from '@corral/core';
@@ -37,6 +38,21 @@ export interface AttachmentRequest {
 export function beginAttachmentCapture(target: ComposerTarget): AttachmentCapture {
   return { target: { ...target }, revision: composerDraftRevision(target.sessionId) };
 }
+/** A streaming reply grows around a quote, so its passage is the run, call and offsets alone. */
+function samePassage(
+  source: TextAttachmentProvenance | undefined,
+  attachment: TextAttachment,
+): boolean {
+  const other = attachment.provenance;
+  return (
+    source?.kind === 'reply' &&
+    other?.kind === 'reply' &&
+    source.runId === other.runId &&
+    source.modelCallId === other.modelCallId &&
+    source.start === other.start &&
+    source.end === other.end
+  );
+}
 export function mergeComposerAttachment(
   value: TextAttachment[],
   request: AttachmentRequest,
@@ -51,7 +67,10 @@ export function mergeComposerAttachment(
   if (request.replaceKey && index < 0) return { ok: false, reason: 'changed' };
   const next = request.replaceKey
     ? value.map((item, i) => (i === index ? request.attachment : item))
-    : value.some((item) => textAttachmentKey(item) === key)
+    : value.some(
+          (item) =>
+            textAttachmentKey(item) === key || samePassage(item.provenance, request.attachment),
+        )
       ? value
       : [...value, request.attachment];
   return validTextAttachments(next) ? next : { ok: false, reason: 'limit' };
