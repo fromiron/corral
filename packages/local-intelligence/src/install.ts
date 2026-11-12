@@ -70,21 +70,31 @@ export function installState(
 
 /**
  * Deletes this meeting release and any older one. `d1` is the judge model and is left alone,
- * as is anything that is not a meeting release folder.
+ * as is anything that is not a meeting release folder. A filesystem error keeps its path out of
+ * the message.
  */
 export function removeMeetingReleases(root: string, bundle: Bundle = bundledManifest()): void {
-  rmSync(bundleDir(root, bundle), { recursive: true, force: true });
-  let names: string[] = [];
   try {
-    names = readdirSync(root);
-  } catch {
-    return;
-  }
-  for (const name of names) {
-    if (name === 'd1' || name === bundle.release) continue;
-    const dir = join(root, name);
-    const stamp = readStamp(dir);
-    if (typeof stamp?.release === 'string') rmSync(dir, { recursive: true, force: true });
+    rmSync(bundleDir(root, bundle), { recursive: true, force: true });
+    let names: string[] = [];
+    try {
+      names = readdirSync(root);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (name === 'd1' || name === bundle.release) continue;
+      const dir = join(root, name);
+      const stamp = readStamp(dir);
+      if (typeof stamp?.release === 'string') rmSync(dir, { recursive: true, force: true });
+    }
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    throw new Error(
+      typeof code === 'string' && /^E[A-Z]+$/.test(code)
+        ? `cannot remove the local AI files (${code})`
+        : 'cannot remove the local AI files',
+    );
   }
 }
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createLocalIntelligence } from '../src/factory.ts';
@@ -263,6 +263,36 @@ describe('local AI install from the settings panel', () => {
     expect(li.status().state).toBe('missing');
     await li.close();
   });
+
+  it.skipIf(process.getuid?.() === 0)(
+    'keeps the local path out of a failed removal and still reads as installed',
+    async () => {
+      const root = tempDir();
+      const bundle = testBundle();
+      markInstalled(root, bundle);
+      const li = createLocalIntelligence({
+        root,
+        bundle,
+        launch: fakeLauncher().launch,
+        env: { CORRAL_LOCAL_AI_HELPER: '/opt/helper' },
+        platform: 'linux',
+        arch: 'x64',
+      });
+      chmodSync(bundleDir(root, bundle), 0o500);
+      try {
+        const failure = await li.remove().then(
+          () => null,
+          (error: Error) => error,
+        );
+        expect(failure?.message).toBe('cannot remove the local AI files (EACCES)');
+        expect(li.status().state).toBe('idle');
+      } finally {
+        chmodSync(bundleDir(root, bundle), 0o700);
+      }
+      expect(existsSync(join(bundleDir(root, bundle), 'install.json'))).toBe(true);
+      await li.close();
+    },
+  );
 
   it('refuses to remove a meeting bundle while it is installing', async () => {
     const root = tempDir();
