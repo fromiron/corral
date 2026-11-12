@@ -42,6 +42,7 @@ export {
   ROUTING_OFF,
   routingRevision,
 } from './effort-routing/index.ts';
+export { sha256Hex } from './effort-routing/question.ts';
 export * from './evaluation.ts';
 export * from './fork.ts';
 export * from './fuzzy.ts';

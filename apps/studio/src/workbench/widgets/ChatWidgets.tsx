@@ -93,6 +93,53 @@ function DetailTitle({ children }: { children: ReactNode }) {
     </h2>
   );
 }
+function CompactRequest({
+  compaction,
+}: {
+  compaction: NonNullable<ChatWidgetModel['compaction']>;
+}) {
+  const t = useTranslations('RunStatus');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const phase =
+    compaction.phase === 'queued' || compaction.phase === 'started' ? compaction.phase : null;
+  return (
+    <div className="space-y-1 border-t border-line/60 pt-3">
+      {compaction.reason ? (
+        <p className="text-caption text-muted-foreground">{t(compaction.reason)}</p>
+      ) : (
+        <>
+          <p className="text-caption text-muted-foreground">{t('compactHint')}</p>
+          <Button
+            variant="tertiary"
+            disabled={busy || compaction.pending || phase !== null}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              void compaction
+                .request()
+                .then((failure) => setError(failure))
+                .finally(() => setBusy(false));
+            }}
+          >
+            {t('compactRequest')}
+          </Button>
+        </>
+      )}
+      {compaction.phase ? (
+        <p role="status" className="text-caption text-muted-foreground">
+          {t(`compactPhase.${compaction.phase}`)}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-caption text-danger">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** ContextInspector: what the presented run's last request held. */
 export function ContextDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
@@ -257,6 +304,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </p>
         </details>
       ) : null}
+      {model.compaction ? <CompactRequest compaction={model.compaction} /> : null}
       <RunLink
         model={model}
         className="flex items-center justify-between gap-2 border-t border-line/60 pt-3 text-caption text-muted-foreground hover:text-text"

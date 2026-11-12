@@ -10,13 +10,17 @@ const CACHED_VECTORS = 512;
 
 const clean = (text: string) => [...text.trim()].slice(0, 1800).join('');
 
-/** The message, then each participant's name and role and the turns they actually posted. */
+/** The message, then each participant's name, aliases, role and the turns they posted. */
 export function meetingTexts(input: MeetingSelectionInput) {
   return {
     message: clean(input.message),
     participants: input.participants.map((person) => ({
       participantId: person.participantId,
-      role: clean([person.name, person.prompt].filter(Boolean).join('\n')),
+      role: clean(
+        [person.name, ...(person.aliases ?? []), person.role, person.prompt]
+          .filter((part) => part?.trim())
+          .join('\n'),
+      ),
       turns: input.history
         .filter((turn) => turn.participantId === person.participantId)
         .map((turn) => clean(turn.text))
@@ -98,11 +102,13 @@ export class LocalMeetingSelector {
   async select(input: MeetingSelectionInput): Promise<string[] | null> {
     if (this.engine.available() !== true || input.participants.length < 2) return null;
     const { message, participants } = meetingTexts(input);
-    // Nothing but display names tells ordinary participants apart.
+    const described = (person: { prompt: string; role?: string }) =>
+      Boolean(person.prompt.trim() || person.role?.trim());
+    // Names and aliases alone do not say what someone can answer.
     if (
       !message ||
-      (!input.participants.some((p) => p.prompt.trim()) &&
-        !participants.some((p) => p.turns.length))
+      (!input.participants.some((person) => described(person)) &&
+        !participants.some((person) => person.turns.length))
     )
       return null;
     const abort = new AbortController();
@@ -126,8 +132,8 @@ export class LocalMeetingSelector {
         for (const turn of turns) turnScores.push(await similarity(turn));
         scores.push({
           participantId,
-          // A name alone says nothing about what someone can answer.
-          role: turns.length || input.participants[index]!.prompt.trim() ? roleScore : 0,
+          // A name or alias alone says nothing about what someone can answer.
+          role: turns.length || described(input.participants[index]!) ? roleScore : 0,
           history: turnScores.length ? Math.max(...turnScores) : null,
         });
       }

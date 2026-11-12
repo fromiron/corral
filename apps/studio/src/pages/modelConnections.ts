@@ -4,6 +4,7 @@ import type {
   ModelProfileView,
   ProviderAuthView,
 } from '@corral/client';
+import { sha256Hex } from '@corral/core';
 import { profileReady } from '../workbench/modelReadiness.ts';
 
 /**
@@ -190,4 +191,26 @@ export function connectedModels(profiles: ModelProfileView[]): ConnectedModel[] 
       a.providerName.localeCompare(b.providerName, undefined, { sensitivity: 'base' }) ||
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
   );
+}
+
+const HASH_LENGTH = 8;
+
+/**
+ * A new image profile's id: the model-reference rule on `<connection>:<image model>`, numbered
+ * when a saved profile already has that id. Same inputs and the same taken set always agree.
+ */
+export function imageProfileIdFor(
+  modelProfileId: string,
+  modelId: string,
+  taken: Iterable<string>,
+): string {
+  const plain = `${modelProfileId}:${modelId}`;
+  let base = plain;
+  if (!isIdentifier(plain)) {
+    const hash = sha256Hex(plain).slice(0, HASH_LENGTH);
+    base = plain.replace(/[^A-Za-z0-9_.:-]/g, '_');
+    if (!/^[A-Za-z]/.test(base)) base = `m${base}`;
+    base = `${base.slice(0, MAX - HASH_LENGTH - 1)}.${hash}`;
+  }
+  return uniqueName(base, taken);
 }

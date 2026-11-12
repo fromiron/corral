@@ -1,5 +1,5 @@
 import type { AgentStartInput, RunEvent, StreamFrame } from '@corral/contracts';
-import { type RunProjection, waitForProjection } from '@corral/core';
+import { type RunProjection, resolveProfileContext, waitForProjection } from '@corral/core';
 import { collaborationCorral, Gate, linearCorral } from '@corral/testkit';
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
@@ -793,4 +793,74 @@ it('Core recovers a provider overflow once through managed compaction', async ()
     events.filter((e) => e.type === 'model.request_recorded').map((e) => e.payload.purpose),
   ).toEqual(['turn', 'compaction', 'retry', 'turn']);
   expect(Object.keys(final.modelCalls)).toHaveLength(4);
+});
+
+it('a Core worker run accepts manual compaction for the current attempt', async () => {
+  const entered = new Gate();
+  const hold = new Gate();
+  const policy = resolveProfileContext(
+    { contextWindow: 64000, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+    { contextWindow: 64000, source: 'catalog' },
+    'core-manual',
+    256,
+  ).policy;
+  if (!policy) throw new Error('context policy');
+  const { transport } = liveRuntime(
+    [
+      async () => {
+        entered.open();
+        await hold.wait();
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Draft' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      fauxAssistantMessage('Summary that keeps the required task.'),
+      ...writeThenSubmit('After compact.'),
+    ],
+    { contextPolicy: policy },
+  );
+  const { runId, events } = await liveRun(transport, (definition) => {
+    expect(definition.roles[0]?.harness).toBeUndefined();
+    definition.input.brief = 'Keep this requirement. '.repeat(40);
+  });
+  await entered.wait();
+  const running = await waitForProjection(transport, runId, (projection) =>
+    Object.values(projection.executions).some((execution) => execution.status === 'active'),
+  );
+  const execution = Object.values(running.executions).find((item) => item.status === 'active');
+  if (!execution) throw new Error('missing execution');
+  const receipt = await transport.sendCommand({
+    schemaVersion: '0.1',
+    commandId: 'compact_core',
+    runId,
+    type: 'compact_context',
+    expectedControlRevision: running.controlRevision,
+    payload: { executionId: execution.executionId, attemptNo: execution.attemptNo },
+  });
+  expect(receipt.status).toBe('accepted');
+  hold.open();
+  const final = await waitForProjection(transport, runId, settled);
+  expect(final.status, JSON.stringify(final.executions)).toBe('succeeded');
+  expect(
+    events.filter((event) => event.type === 'model.request_recorded').map((event) => event.payload),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ purpose: 'turn', runtime: 'pi-core' }),
+      expect.objectContaining({ purpose: 'compaction', runtime: 'pi-core' }),
+    ]),
+  );
+  expect(
+    events
+      .filter((event) => event.type === 'context.compaction_changed')
+      .map((event) => event.payload.phase),
+  ).toEqual(['queued', 'started', 'completed']);
+  const late = await transport.sendCommand({
+    schemaVersion: '0.1',
+    commandId: 'compact_core_late',
+    runId,
+    type: 'compact_context',
+    expectedControlRevision: final.controlRevision,
+    payload: { executionId: execution.executionId, attemptNo: execution.attemptNo },
+  });
+  expect(late.status).toBe('rejected');
 });

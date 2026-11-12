@@ -24,6 +24,7 @@ import {
 } from './commands.ts';
 import { KIND_ICON, kindOf } from './kinds.ts';
 import {
+  type ImageProfileChoice,
   type LoopSettings,
   NodeSettings,
   type ProfileOption,
@@ -43,6 +44,7 @@ export interface InspectorSheetProps {
   selection: TeamSelection;
   view: SheetView;
   profiles: ProfileOption[] | null;
+  imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings?: RoleSettings | undefined;
   loopSettings?: LoopSettings | undefined;
   /** Other saved teams at their latest revision, for reference teams. */
@@ -129,6 +131,7 @@ export function InspectorSheet({
   selection,
   view,
   profiles,
+  imageProfiles,
   roleSettings,
   loopSettings,
   teams,
@@ -402,6 +405,7 @@ export function InspectorSheet({
           editor={editor}
           node={single}
           profiles={profiles}
+          imageProfiles={imageProfiles}
           roleSettings={roleSettings}
           loopSettings={loopSettings}
         />

@@ -166,13 +166,21 @@ it('names each participant once on its card, and every field keeps a distinct ac
       `participantName${number}`,
       `participantModel${number}`,
       `participantAliases${number}`,
-      `participantRole${number}`,
+      `participantRoleTag${number}`,
+      `participantRoleDescription${number}`,
       `removeParticipant${number}`,
     ].map((name) => controls[names.indexOf(name)]);
     expect(own.every(Boolean)).toBe(true);
     for (const control of own as Element[])
       expect(groupName(control)).toBe(`participantDefault${number}`);
-    const [, , aliases, , remove] = own as [Element, Element, HTMLInputElement, Element, Element];
+    const [, , aliases, , , remove] = own as [
+      Element,
+      Element,
+      HTMLInputElement,
+      Element,
+      Element,
+      Element,
+    ];
     expect(aliases.placeholder).toBe('aliasesPlaceholder');
     // Remove is an icon button: its name is for assistive technology, not a line of red text.
     expect(remove.textContent?.trim()).toBe('');
@@ -200,7 +208,7 @@ it('starts a general chat with distinct model names and optional blank roles', a
 it('saves what the person calls each participant, and leaves it out when blank', async () => {
   const f = await mount([profile('connected')]);
   const aliases = [
-    ...f.container.querySelectorAll<HTMLInputElement>('fieldset input:not([required])'),
+    ...f.container.querySelectorAll<HTMLInputElement>('input[aria-label^="participantAliases"]'),
   ];
   const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input[required]')];
   expect(aliases).toHaveLength(3);
@@ -214,6 +222,32 @@ it('saves what the person calls each participant, and leaves it out when blank',
   const meeting = await submit(f);
   expect(meeting?.participants[0]?.aliases).toEqual(['루나', 'Luna']);
   expect(meeting?.participants[1]).not.toHaveProperty('aliases');
+});
+
+it('saves a short role label and leaves it out when blank', async () => {
+  const f = await mount([profile('connected')]);
+  const roles = [
+    ...f.container.querySelectorAll<HTMLInputElement>('input[aria-label^="participantRoleTag"]'),
+  ];
+  expect(roles).toHaveLength(3);
+  expect(roles.every((role) => role.maxLength === 40)).toBe(true);
+  const descriptions = [...f.container.querySelectorAll('textarea')];
+  expect(descriptions.map((item) => item.getAttribute('aria-label'))).toEqual([
+    'participantRoleDescription1',
+    'participantRoleDescription2',
+    'participantRoleDescription3',
+  ]);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      roles[0],
+      '  설계  ',
+    );
+    roles[0]!.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const meeting = await submit(f);
+  expect(meeting?.participants[0]?.role).toBe('설계');
+  expect(meeting?.participants[0]?.prompt).toBe('');
+  expect(meeting?.participants[1]).not.toHaveProperty('role');
 });
 
 it('development roles are explicit and stay editable', async () => {

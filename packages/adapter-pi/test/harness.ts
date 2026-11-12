@@ -1,6 +1,7 @@
 import type {
   AgentHost,
   AgentObservation,
+  ProfileContextPolicy,
   RequestPermit,
   TextDelta,
   ToolOutcome,
@@ -25,7 +26,7 @@ export const liveModels: ModelResolver = {
 /** The Coordinator with the Pi adapter; the worker runs Pi in-process on pi-ai's faux model. */
 export function liveRuntime(
   responses: FauxResponseStep[],
-  options: { tokensPerSecond?: number } = {},
+  options: { tokensPerSecond?: number; contextPolicy?: ProfileContextPolicy } = {},
 ) {
   const faux = createFauxCore(
     options.tokensPerSecond ? { tokensPerSecond: options.tokensPerSecond } : {},
@@ -48,7 +49,22 @@ export function liveRuntime(
       clock: new FakeClock(),
       ids: new SequentialIdFactory(),
       agents: adapter,
-      models: liveModels,
+      models: options.contextPolicy
+        ? {
+            resolve: (profile, mode) => {
+              const resolved = liveModels.resolve(profile, mode);
+              if (!resolved.ok || !options.contextPolicy) return resolved;
+              return {
+                ok: true,
+                snapshot: {
+                  ...resolved.snapshot,
+                  contextWindow: options.contextPolicy.contextWindow,
+                  contextPolicy: options.contextPolicy,
+                },
+              };
+            },
+          }
+        : liveModels,
     }),
   );
   return { transport, faux, credentialCalls };
