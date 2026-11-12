@@ -2889,7 +2889,9 @@
     "payload": "Payload verified",
     "unverified": "not yet verified",
     "notVerified": "not verified",
-    "omitted": "omitted",
+    "rowLine": "{level} · {check}",
+    "rowVerified": "verified: {value}",
+    "rowVerifiedPlain": "verified",
     "level": {
       "off": "Off",
       "minimal": "Minimal",
