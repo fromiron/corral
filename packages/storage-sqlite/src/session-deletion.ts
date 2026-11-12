@@ -314,6 +314,11 @@ function removeRows(db: Db, sessionId: string, runIds: string[], title: string) 
   db.prepare('DELETE FROM candidate_worktrees WHERE session_id=?').run(sessionId);
   db.prepare('DELETE FROM command_operations WHERE session_id=?').run(sessionId);
   db.prepare('DELETE FROM message_branches WHERE session_id=?').run(sessionId);
+  deleteMatching(
+    db,
+    'DELETE FROM message_branches WHERE source_run_id IN (SELECT value FROM json_each(?))',
+    runIds,
+  );
   db.prepare(
     `DELETE FROM integration_files WHERE integration_id IN
        (SELECT id FROM integrations WHERE session_id=?)`,

@@ -413,6 +413,28 @@ it('a stale revision is a conflict and a repeated delete is not found', async ()
   db.close();
 });
 
+it('deletes the session another session branched from and keeps the branch', async () => {
+  const { db, repository, runs } = database();
+  const source = await session(db, repository, 'Source');
+  const branch = await session(db, repository, 'Branch');
+  addRun(runs, 'run_source', source.sessionId, 'succeeded');
+  addRun(runs, 'run_branch', branch.sessionId, 'succeeded');
+  db.prepare('INSERT INTO message_branches VALUES (?, ?, ?, ?, ?, ?)').run(
+    'branch_cmd',
+    'hash',
+    'run_source',
+    'art',
+    branch.sessionId,
+    now,
+  );
+  expect(deleteSessionRecords(db, source.sessionId, 1)).toEqual({ ok: true });
+  expect(count(db, 'SELECT COUNT(*) AS n FROM runs WHERE id=?', 'run_source')).toBe(0);
+  expect(count(db, 'SELECT COUNT(*) AS n FROM message_branches')).toBe(0);
+  expect(count(db, 'SELECT COUNT(*) AS n FROM work_sessions WHERE id=?', branch.sessionId)).toBe(1);
+  expect(count(db, 'SELECT COUNT(*) AS n FROM runs WHERE id=?', 'run_branch')).toBe(1);
+  db.close();
+});
+
 it('keeps a meeting handoff for the session that remains and names the deleted side', async () => {
   const { db, alpha, beta } = await seed();
   expect(deleteSessionRecords(db, alpha.sessionId, 1)).toEqual({ ok: true });
