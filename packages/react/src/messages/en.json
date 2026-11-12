@@ -361,8 +361,7 @@
       }
     },
     "breakpoints": "Pause before steps",
-    "breakpointsCount": "Pause before steps · {count}",
-    "madeResults": "What it made is in its results."
+    "breakpointsCount": "Pause before steps · {count}"
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
@@ -5433,7 +5432,11 @@
     "requestFinished": "Response complete",
     "requestUnconfirmed": "Response completion not recorded",
     "stepDetails": "Details of {step}",
-    "allowedForRun": "Allowed for this run"
+    "allowedForRun": "Allowed for this run",
+    "steps": "{count, plural, one {# step} other {# steps}}",
+    "failedCount": "{count} failed",
+    "changes": "{count, plural, one {# change} other {# changes}}",
+    "results": "{count, plural, one {# result} other {# results}}"
   },
   "RunMonitor": {
     "backToWork": "Back to work",

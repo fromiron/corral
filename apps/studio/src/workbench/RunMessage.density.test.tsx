@@ -230,40 +230,56 @@ it.each(['en', 'ko'] as const)(
   },
 );
 
-it('changes only display density while keeping results and required attention outside folds', async () => {
+it('changes only display density while keeping results, the decision and the failure count outside folds', async () => {
   const f = await render();
   expect(f.container.querySelector('[data-testid="live-text"]')).not.toBeNull();
   await act(async () => preferences.setState({ chatDensity: 'results' }));
   expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
+  const head = () => f.container.querySelector<HTMLElement>('[data-chat-part="head"]');
+  const log = () => {
+    const id = head()?.querySelector('button[aria-expanded]')?.getAttribute('aria-controls');
+    return id ? document.getElementById(id) : null;
+  };
   for (const chatDensity of ['results', 'basic', 'detailed'] as const) {
     await act(async () => preferences.setState({ chatDensity }));
     const action = f.container.querySelector('[data-testid="approval-approval"]');
     expect(action).not.toBeNull();
     expect(action?.closest('details')).toBeNull();
     expect(action?.textContent).toContain('Continue with this version');
-    expect(f.container.textContent).toContain('failed_tool');
-    expect(f.container.querySelector('[data-testid="team-activity"]')?.textContent).toContain(
-      'Execution failed visibly',
-    );
+    // The failed step is counted on the head in every density.
+    expect(head()?.textContent).toContain('1 failed');
     expect(f.container.querySelector('[data-testid="chat-result"]')?.textContent).toContain(
       'Finished answer',
     );
     expect(fixture.store?.getState().projection).toBe(f.projection);
     expect(fixture.store?.getState().events).toBe(f.events);
+    if (chatDensity === 'results') {
+      // A working turn shows no process in this density: no log to open, no steps listed.
+      expect(log()).toBeNull();
+      expect(f.container.textContent).not.toContain('failed_tool');
+      continue;
+    }
+    // Which steps failed, and the lead's failure, are in the log the head opens.
+    expect(log()?.textContent).toContain('failed_tool');
+    expect(log()?.querySelector('[data-testid="team-activity"]')?.textContent).toContain(
+      'Execution failed visibly',
+    );
   }
   // The kit keeps an agent's name in the step label and state in its description.
-  const log = f.container.querySelector<HTMLElement>('[data-testid="turn-process"]');
-  if (!log) throw new Error('turn process missing');
-  expect(log.tagName).not.toBe('DETAILS');
-  const trigger = () => log.querySelector<HTMLButtonElement>('button[aria-expanded]');
-  expect(trigger()?.textContent).toContain('Working · ');
+  const process = f.container.querySelector<HTMLElement>('[data-testid="turn-process"]');
+  if (!process) throw new Error('turn process missing');
+  expect(process.tagName).not.toBe('DETAILS');
+  const trigger = () => process.querySelector<HTMLButtonElement>('button[aria-expanded]');
+  // The head names the role and the run's state; the detailed density opens the log.
+  expect(trigger()?.textContent).toContain('writer');
+  expect(trigger()?.textContent).toContain(messages.Status.running);
   expect(trigger()?.getAttribute('aria-expanded')).toBe('true');
   // Only the running delegate is an active row; the failed lead is not animated as live work.
-  const active = [...log.querySelectorAll('.turn-process-row .shimmer-text')].map(
+  const active = [...process.querySelectorAll('.turn-process-row .shimmer-text')].map(
     (node) => node.textContent,
   );
   expect(active).toEqual(['writer…']);
-  expect(log.textContent).toContain('Active');
+  expect(process.textContent).toContain('Active');
   // Raw transcripts stay in the run pane beside the conversation.
   expect(f.container.querySelector('[data-testid="density-transcript"]')).toBeNull();
   await act(async () => trigger()?.click());
@@ -391,36 +407,42 @@ it('a result that cannot be read ends the hand-off and shows the error', async (
   expect(f.container.querySelector('[role="alert"]')).not.toBeNull();
 });
 
-it('the turn process sits above the reply, open while working and folded when done', async () => {
+it('the turn process sits above the reply, closed while working and still closed when done', async () => {
   const f = await render();
   const before = (a: Element | null, b: Element | null) =>
     Boolean(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   await act(async () => preferences.setState({ chatDensity: 'basic' }));
   const log = () => f.container.querySelector('[data-testid="turn-process"]');
-  const expandedState = () =>
-    log()?.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded');
-  // Working: the process is open above the live reply.
+  const toggle = () => log()?.querySelector('button[aria-expanded]');
+  const expandedState = () => toggle()?.getAttribute('aria-expanded');
+  // Working: the process is closed above the live reply; the run starting does not open it.
   expect(log()).not.toBeNull();
-  expect(expandedState()).toBe('true');
+  expect(expandedState()).toBe('false');
   expect(before(log(), f.container.querySelector('[data-testid="live-text"]'))).toBe(true);
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
   const working = log();
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'succeeded' } }),
   );
-  // Finishing folds the same element under its duration and steps, above the answer.
+  // Finishing keeps the same element, closed, its steps counted on the head, above the answer.
   expect(log()).toBe(working);
   expect(expandedState()).toBe('false');
-  expect(log()?.textContent).toMatch(/Worked \d+s · 1 step/);
+  expect(toggle()?.textContent).toContain('1 step');
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
   // The answer is visible without opening anything.
   expect(f.container.querySelector('[data-testid="chat-result"]')?.closest('details')).toBeNull();
-  // The results-only density still hides the process while the turn works.
+  // The results-only density still hides the process while the turn works: the head keeps its
+  // line and its state, with nothing to open.
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'running' } }),
   );
   await act(async () => preferences.setState({ chatDensity: 'results' }));
-  expect(log()).toBeNull();
+  expect(f.container.querySelector('[data-chat-part="head"]')).not.toBeNull();
+  expect(toggle() ?? null).toBeNull();
+  expect(f.container.querySelector('.turn-process-row')).toBeNull();
+  expect(f.container.querySelector('[data-presence-label="run:run_density"]')?.textContent).toBe(
+    messages.Status.running,
+  );
 });
 
 it('a turn that finishes without streamed text shows its result only once read', async () => {
