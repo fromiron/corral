@@ -50,6 +50,7 @@ export function compactTarget(
   }
   const pending = Object.values(projection.compactions ?? {}).some(
     (item) =>
+      item.trigger !== 'automatic' &&
       item.executionId === execution.executionId &&
       item.attemptNo === execution.attemptNo &&
       (item.phase === 'queued' || item.phase === 'started'),

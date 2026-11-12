@@ -793,6 +793,47 @@ it('Core recovers a provider overflow once through managed compaction', async ()
     events.filter((e) => e.type === 'model.request_recorded').map((e) => e.payload.purpose),
   ).toEqual(['turn', 'compaction', 'retry', 'turn']);
   expect(Object.keys(final.modelCalls)).toHaveLength(4);
+  const compactions = events.filter((e) => e.type === 'context.compaction_changed');
+  expect(compactions.map((e) => [e.payload.phase, e.payload.trigger, e.commandId])).toEqual([
+    ['started', 'automatic', undefined],
+    ['completed', 'automatic', undefined],
+  ]);
+});
+
+it('Core reports an automatic threshold compaction once, and nothing below the threshold', async () => {
+  const policy = resolveProfileContext(
+    { contextWindow: 4000, compaction: { reserveTokens: 0, keepRecentTokens: 0 } },
+    { contextWindow: 4000, source: 'catalog' },
+    'core-auto',
+    256,
+  ).policy;
+  if (!policy) throw new Error('context policy');
+  const { transport } = liveRuntime(
+    [
+      fauxAssistantMessage('Summary that keeps the required task.'),
+      ...writeThenSubmit('After compact.'),
+    ],
+    { contextPolicy: policy },
+  );
+  const { runId, events } = await liveRun(transport, (definition) => {
+    definition.input.brief = 'Keep this requirement. '.repeat(700);
+  });
+  const final = await waitForProjection(transport, runId, settled);
+  expect(final.status, JSON.stringify(final.executions)).toBe('succeeded');
+  const compactions = events.filter((e) => e.type === 'context.compaction_changed');
+  expect(compactions.map((e) => [e.payload.phase, e.payload.trigger, e.commandId])).toEqual([
+    ['started', 'automatic', undefined],
+    ['completed', 'automatic', undefined],
+  ]);
+  const completed = compactions[1];
+  if (completed?.type !== 'context.compaction_changed') throw new Error('missing completion');
+  expect(completed.payload.modelCallIds).toHaveLength(1);
+  expect(final.modelCalls[completed.payload.modelCallIds[0]!]).toBeDefined();
+
+  const small = liveRuntime(writeThenSubmit('No compaction.'), { contextPolicy: policy });
+  const quiet = await liveRun(small.transport);
+  expect((await waitForProjection(small.transport, quiet.runId, settled)).status).toBe('succeeded');
+  expect(quiet.events.some((e) => e.type === 'context.compaction_changed')).toBe(false);
 });
 
 it('a Core worker run accepts manual compaction for the current attempt', async () => {
