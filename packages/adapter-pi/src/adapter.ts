@@ -190,6 +190,10 @@ class WorkerExecution {
         if (this.state === 'running' && !this.pendingSettlement)
           this.send({ type: 'directive', ...directive });
       },
+      interrupt: (directive: { directiveId: string; text: string }) => {
+        if (this.state === 'running' && !this.pendingSettlement)
+          this.send({ type: 'interrupt', ...directive });
+      },
     };
   }
 
@@ -653,6 +657,7 @@ class WorkerExecution {
             text: frame.text,
             usage: frame.usage,
             ...(frame.rawUsage ? { rawUsage: frame.rawUsage } : {}),
+            ...(frame.interrupted ? { interrupted: true as const } : {}),
           })
           .catch(() => {});
         return;

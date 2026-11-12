@@ -86,7 +86,19 @@ export interface WorkerDeps {
   ): Model<string> | undefined;
 }
 
-type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' | 'directive' | 'compact' }>;
+/** One model request's response: what it carried, and whether an interrupt cut it. */
+interface Flight {
+  abort: AbortController;
+  directiveIds: Set<string>;
+  /** The prepared context the request sent, without its response. */
+  messages: AgentContext['messages'];
+  cut: boolean;
+}
+
+type Reply = Exclude<
+  HostFrame,
+  StartFrame | { type: 'cancel' | 'directive' | 'interrupt' | 'compact' }
+>;
 
 export function runWorker(port: Channel, deps: WorkerDeps): void {
   let executionId: string | null = null;
@@ -97,6 +109,15 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   let pendingCompaction: string | null = null;
   const directives = new Map<string, DeliveredDirective>();
   const waiting = new Map<string, (reply: Reply) => void>();
+  // The model response in flight and the directives its request carries; null between
+  // requests and while a tool runs, when an interrupt has nothing to cut.
+  let inFlight: Flight | null = null;
+  let directivesInPrepared = new Set<string>();
+  // True while a request is prepared, until its permit: a directive arriving then rides it
+  // (a stale protected context makes the host ask for a new preparation).
+  let unrecorded = false;
+  // Interrupt directives that cut a response and still have to lead the next request.
+  const interrupting = new Map<string, DeliveredDirective>();
 
   port.onFrame((raw) => {
     const parsed = HostFrame.safeParse(raw);
@@ -131,6 +152,16 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }
     if (frame.type === 'directive') {
       directives.set(frame.directiveId, frame);
+      return;
+    }
+    if (frame.type === 'interrupt') {
+      directives.set(frame.directiveId, frame);
+      // A response whose request already carries the directive has nothing to gain from a cut.
+      // A request still being prepared takes the directive itself and is never cut for it.
+      if (cancelled || !inFlight || unrecorded || inFlight.directiveIds.has(frame.directiveId))
+        return;
+      interrupting.set(frame.directiveId, frame);
+      inFlight.abort.abort();
       return;
     }
     waiting.get(frame.requestId)?.(frame);
@@ -243,11 +274,44 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }));
 
     let forceCompaction = false;
+    let preparedMessages: AgentContext['messages'] = [];
+    // The flight of the latest response; set when an interrupt cut it.
+    let latest: Flight | null = null;
+    let cutFlight: Flight | null = null;
     let automaticCompactions = 0;
+    // One message per directive: no directive's text follows another's attachment body.
+    const withDirectives = (context: AgentContext, skip?: Set<string>): AgentContext => {
+      const present = JSON.stringify(context.messages);
+      const missing = [...directives.values()].filter(
+        (d) =>
+          !skip?.has(d.directiveId) &&
+          !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
+      );
+      if (!missing.length) return context;
+      return {
+        ...context,
+        messages: [
+          ...context.messages,
+          ...missing.map((d) => ({
+            role: 'user' as const,
+            content: directiveText(d),
+            timestamp: Date.now(),
+          })),
+        ],
+      };
+    };
     const prepareRequest = async (context: AgentContext, retryIndex = 0) => {
+      try {
+        return await prepareFixed(context, retryIndex);
+      } finally {
+        unrecorded = false;
+      }
+    };
+    const prepareFixed = async (context: AgentContext, retryIndex: number) => {
       if (!retryIndex) logicalRequestId = `request_${++logicalRequests}`;
       let preparedContext = context;
       const prepare = async () => {
+        unrecorded = true;
         const state = await call({ type: 'get_protected_context' });
         if (state.type !== 'protected_context') throw new Error('protected context refused');
         if (state.value) {
@@ -258,23 +322,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             protectedState.section,
           ];
         }
-        const present = JSON.stringify(preparedContext.messages);
-        const missing = [...directives.values()].filter(
-          (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
-        );
-        // One message per directive: no directive's text follows another's attachment body.
-        if (missing.length)
-          preparedContext = {
-            ...preparedContext,
-            messages: [
-              ...preparedContext.messages,
-              ...missing.map((d) => ({
-                role: 'user' as const,
-                content: directiveText(d),
-                timestamp: Date.now(),
-              })),
-            ],
-          };
+        preparedContext = withDirectives(preparedContext);
+        const placed = new Set(directives.keys());
         const saved = await call({
           type: 'checkpoint_context',
           value: checkpointContext(preparedContext, 'pi-core'),
@@ -435,8 +484,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           // Only a manual compaction's failure leaves the request to go on uncompacted.
           if (owner.trigger === 'automatic') throw error;
         }
+        // Directives that arrived during preparation (a summary call, say) still go in now.
+        preparedContext = withDirectives(preparedContext, placed);
         lastPrepared = normalizeContext({ messages: preparedContext.messages as Message[] });
         measuredContext = inspectContext(preparedContext);
+        directivesInPrepared = new Set(directives.keys());
         return call({
           type: 'prepare_request',
           logicalRequestId,
@@ -465,6 +517,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         for (const directive of reply.directives) directives.set(directive.directiveId, directive);
         reply = await prepare();
       }
+      unrecorded = false;
       if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
       permit = {
         modelCallId: reply.modelCallId,
@@ -507,6 +560,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             },
           ],
         };
+      preparedMessages = [...preparedContext.messages];
       return preparedContext === context ? undefined : { context: preparedContext };
     };
 
@@ -576,9 +630,23 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       // Each request carries the token and output cap from its own permit.
       streamFn: (m, context, options) => {
         let current = context;
-        return managedRetryStream({
+        // An interrupt cuts this response only; the run's own signal still cancels everything.
+        const flight: Flight = {
+          abort: new AbortController(),
+          directiveIds: directivesInPrepared,
+          messages: preparedMessages,
+          cut: false,
+        };
+        inFlight = flight;
+        latest = flight;
+        const signal = AbortSignal.any([
+          options?.signal ?? cancellation.signal,
+          flight.abort.signal,
+        ]);
+        const stream = managedRetryStream({
           model: m,
-          signal: options?.signal ?? cancellation.signal,
+          // A cut response is never retried: the abort is ours, not a transient failure.
+          signal,
           onContextOverflow: () => {
             forceCompaction = true;
             return true;
@@ -600,9 +668,19 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 current = normalizeContext({ messages: next.context.messages as Message[] });
             }
             if (!permit) throw new Error('request has no permit');
-            return await sendRequest(permit, m, current, options);
+            flight.directiveIds = directivesInPrepared;
+            flight.messages = preparedMessages;
+            return await sendRequest(permit, m, current, { ...options, signal });
           },
         });
+        // The mark stays with this request, whichever permit its last attempt got.
+        flight.abort.signal.addEventListener('abort', () => {
+          flight.cut = true;
+        });
+        void stream.result().finally(() => {
+          if (inFlight === flight) inFlight = null;
+        });
+        return stream;
       },
       getApiKey: () => keyOf(permit?.apiKey),
       toolExecution: 'sequential',
@@ -654,6 +732,9 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             ? permit.modelCallId
             : undefined;
         const { usage, rawUsage } = normalizeUsage(message);
+        const cut =
+          latest?.cut === true &&
+          (message.stopReason === 'aborted' || message.stopReason === 'error');
         port.send({
           type: 'observe',
           ...head,
@@ -661,22 +742,58 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           text: textOf(message),
           usage,
           rawUsage,
+          ...(cut ? { interrupted: true } : {}),
         });
+        cutFlight = cut ? latest : null;
+        // A response that ended on its own was not cut, whatever the abort asked.
+        if (latest && !cut) latest.cut = false;
       }
     });
 
+    const takeCut = (): Flight | null => {
+      const flight = cutFlight;
+      cutFlight = null;
+      return flight;
+    };
+    const lastAssistant = () =>
+      [...(agent?.state.messages ?? [])]
+        .reverse()
+        .find((m): m is AssistantMessage => m.role === 'assistant');
     try {
       await agent.prompt(
         userPrompt(start),
         start.images?.map((image) => ({ type: 'image', data: image.data, mimeType: image.mime })),
       );
+      // A response cut by an interrupt does not end the execution: the agent goes on from the
+      // context the cut request actually sent (compaction, delivered directives and state
+      // included), then the cut response, then every directive that request did not carry,
+      // in arrival order, so the interrupt is the last. A cancel, even after the cut, still
+      // ends it.
+      for (let flight = takeCut(); !cancelled && flight; flight = takeCut()) {
+        const cutResponse = lastAssistant();
+        const base = cutResponse ? [...flight.messages, cutResponse] : [...flight.messages];
+        const present = JSON.stringify(base);
+        const absent = (d: DeliveredDirective) =>
+          !present.includes(JSON.stringify(directiveText(d)).slice(1, -1));
+        const interrupted = [...interrupting.values()].some(absent);
+        interrupting.clear();
+        if (!interrupted) break;
+        const leading = [...directives.values()].filter(absent);
+        agent.state.messages = base;
+        // One message per directive, as the request preparation would add them.
+        await agent.prompt(
+          leading.map((d) => ({
+            role: 'user' as const,
+            content: directiveText(d),
+            timestamp: Date.now(),
+          })),
+        );
+      }
     } catch (error) {
       settle(cancelled ? 'cancelled' : 'failed', String(error));
       return;
     }
-    const last = [...agent.state.messages]
-      .reverse()
-      .find((m): m is AssistantMessage => m.role === 'assistant');
+    const last = lastAssistant();
     if (!cancelled && !completionAccepted && last?.stopReason === 'stop' && lastPrepared)
       await call({
         type: 'checkpoint_context',
