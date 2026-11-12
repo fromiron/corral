@@ -12,7 +12,7 @@
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
 | 백본 | B1–B10 | 진행 중(B1·B3·B4·B7·B8·B10 병합) |
-| 화면 | K1, U1–U14 | 진행 중(K1·U1 병합) |
+| 화면 | K1, U1–U14 | 진행 중(K1·U1·U10 병합) |
 | 회의 | M1–M4 | 진행 중(M1·M2 병합) |
 | 감독 | A1–A9 | 대기 |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
@@ -431,7 +431,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 완료 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 대기 |
-| B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 구현 중 |
+| B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 리뷰 중 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 대기 |
@@ -446,7 +446,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 재검토 중 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
-| U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 리뷰 중 |
+| U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
 | U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 대기 |
 | U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 대기 |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
@@ -736,6 +736,8 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **A1·A3 (조언의 전달).** 전달 방식의 이름은 `next_request`, `interrupt`, `preserve`다(`aside`, `steer`는 없다). `nit`과 `concern`은 `next_request`, `blocker`는 `interrupt`(대상이 못 받으면 `next_request`), 대상이 끝났으면 `nit`은 버리고 나머지는 `preserve`다. 대상이 사람을 기다리는 경우는 따로 다루지 않고 지시의 일반 규칙대로 결정 뒤에 읽힌다. `advice.suppressed`는 조언의 글을 싣지 않는다.
 - **A1·A5 (검토).** 검토 간격의 기본값은 3이다. 한 번의 검토는 실행 단위 하나의 기록만 다루므로 `advise` 도구는 대상을 인자로 받지 않는다. 지켜보던 실행 단위가 끝나면 마지막 검토를 한 번 하고, 그동안 Run은 끝나지 않는다. 감독의 Task는 Run의 필수 작업이 아니다.
 - **U3·U9·V2 (조각 값은 겹치지 않게).** 측정기는 조각을 `<항목 값>/<조각 값>`으로 따라가고, 같은 값이 여럿이면 문서 순서 서수를 프레임마다 다시 매긴다. 같은 값의 조각이 앞에 끼어들면 트랙이 밀려 잘못된 0이 나올 수 있다. 그래서 한 `data-chat-item` 안에 같은 `data-chat-part` 값은 하나만 둔다. 팀 역할의 행처럼 여럿인 조각은 `data-chat-part="role:<executionId>"`처럼 값이 겹치지 않게 단다. V2는 `samples.duplicateIds`가 구간의 모든 프레임에서 본 중복을 세게 고치고, 모든 장면에서 `duplicateIds === 0`과 `countVisibleLabels().unkeyed === 0`을 단언한다. `waitForStill` 테스트 페이지의 행에 `data-session-row`도 쓴다(지금 그 기본 선택자를 고정하는 테스트가 없다).
+- **U11 (U10이 남긴 것).** (1) 캡처는 보내기 전에 본문 길이를 `REPLY_QUOTE_MAX_LENGTH`와 `text.length`(UTF-16)로 견줘, 넘으면 칩을 만들지 않고 이유를 보인다(계약과 같은 단위). (2) 같은 구절(run·call·start·end)인데 글이 다르면(스트리밍 중 본문이 바뀜) 나중에 고른 글로 칩을 바꾼다. 지금은 먼저 것이 남고 결과만 성공이다. (3) 인용 칩 목록(`SourceAttachments.tsx`의 `<ul>`)에 접근 이름을 준다. (4) 공백뿐인 선택은 인용하지 않는다. (5) 칩의 첫머리는 자소 단위로 자른다(`Intl.Segmenter`. 지금은 코드 포인트라 ZWJ 이모지·조합형 한글이 중간에서 잘린다). (6) `samePassage`의 네 비교(runId·modelCallId·start·end)를 각각 고정하는 테스트.
+- **U5 (인용과 합류).** 컴포저의 합류·끼어들기 전송은 지금 텍스트 첨부를 하나도 싣지 않는다(`composer/send.ts`). 서버 쪽은 `reply` 출처까지 받아 전달한다(U10·B3). U5가 싣는다.
 - **U3·U6 (행 안쪽 조각).** 실행 행의 머리 줄·본문·꼬리 줄에 `data-chat-part="head|body|tail"`, 사용자 메시지의 메타 줄에 `data-chat-part="meta"`를 단다. 측정기가 이 조각의 이동도 잰다. `data-chat-item`은 이미 있다(`ChatView.tsx`).
 - **U4 (실행 기록 창).** 세션 화면에서는 대화의 지금 필요한 것이 그 요청에 답하는 하나뿐인 자리다. 같은 세션의 실행 기록 창은 기다리는 요청을 읽기로만 보이고 "응답하기"로 그 자리에 보낸다. `respond` 표시가 있는 링크는 세션의 Run이면 대화의 지금 필요한 것으로 간다.
 - **K1 (낙관적 응답 끄기).** 킷 `DecisionInbox`에 적응 둘을 더한다: `optimistic`(기본 true, false면 누를 때 확인 표시를 띄우지 않고 `onDecide`만 부른다)와 결정의 `pending`(보낸 뒤 receipt를 기다리는 동안 버튼이 기다림 상태). Corral은 `optimistic={false}`로만 쓰고 확인 표시는 `resolution`으로 준다([DESIGN.md](../../DESIGN.md)의 `DecisionInbox` 줄). 스토리는 계속 여부 예만 든다.
