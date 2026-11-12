@@ -9,7 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { RunStatusCards } from './RunStatusCards.tsx';
+import { ExecutionContext, RunStatusCards } from './RunStatusCards.tsx';
 
 vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'server', workspaces: null }) }));
 vi.mock('./navigation.ts', () => ({ useSettingsNavigation: () => ({ link: () => ({}) }) }));
@@ -159,6 +159,41 @@ it('says why and sends nothing when the live execution has already finished', as
     ),
   ).toBe(false);
   expect(sendCommand).not.toHaveBeenCalled();
+});
+
+it('keeps compaction out of a finished execution’s context line', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const projection = liveExecution('succeeded');
+  projection.modelCalls.call_a = { modelCallId: 'call_a', executionId: 'exec_writer' } as never;
+  const session = createRunSession({} as never);
+  session.setState({
+    runId: 'run_cards',
+    projection,
+    definition: linearCorral(['writer']),
+    events: [
+      {
+        type: 'model.request_recorded',
+        payload: { modelCallId: 'call_a', contextEstimate: { tokens: 1200 } },
+      } as never,
+    ],
+  });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionContext session={session} executionId="exec_writer" />
+      </IntlProvider>,
+    ),
+  );
+  const line = container.querySelector('[data-testid="execution-context"]');
+  expect(line?.textContent).toMatch(/1,?200/);
+  expect(line?.textContent).not.toContain(messages.RunStatus.compactNoExecution);
 });
 
 it('says why and sends nothing for a simulated run', async () => {

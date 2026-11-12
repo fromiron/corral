@@ -265,7 +265,7 @@ export function ExecutionContext({
         <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('contextOnly')}</span> ·{' '}
         {estimate ? t('estimate', { count: estimate.tokens }) : noInformation}
       </p>
-      {execution ? <ContextCompaction session={session} executionId={executionId} /> : null}
+      {open ? <ContextCompaction session={session} executionId={executionId} /> : null}
     </section>
   );
 }
