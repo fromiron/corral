@@ -6,7 +6,7 @@
 
 ## 사용자 관측 동작
 
-1. **여섯 종류의 노드.** 팀은 Agent, Decision, Loop, Team, Join, Output으로 만든다. Agent는 `scheduled` 또는 `callable`이다. Decision은 `review`, `approval`, `rule`, `check`, `router` 중 하나이며 모드마다 나가는 포트가 다르다.
+1. **여섯 종류의 노드.** 팀은 Agent, Decision, Loop, Team, Join, Output으로 만든다. Agent는 `scheduled`, `callable`, `observer` 중 하나다. `observer`는 실행 순서에 들지 않고 다른 Agent를 지켜보는 [감독](advisor.md)이다. Decision은 `review`, `approval`, `rule`, `check`, `router` 중 하나이며 모드마다 나가는 포트가 다르다.
 2. **상자.** Loop와 Team은 다른 노드를 담는 상자다. 상자 안에 상자를 담을 수 있다. 루프를 몇 개 두든, 팀을 루프로 감싸든, 루프 안에 팀을 두든 정의할 수 있다.
 3. **루프.** 몸체는 노드 하나 이상이다. 다시 도는 길(`repeat`)은 결정 노드에서만 들어오고, 끝나는 길(`exit`)이 있어야 한다. 반복 상한은 1 이상의 정수이며 시스템 상한은 없다. 상한이나 정체 감지에 걸리면 `exhausted`로 나가고, 연결이 없으면 사용자에게 묻는다.
 4. **병렬과 합류.** 한 출력 포트에 연결을 여러 개 두면 그 대상들이 동시에 실행되는 분기가 된다. 동시에 살아 있을 수 있는 분기가 다시 만나는 곳은 Join이어야 한다. Join은 모든 분기(`all`) 또는 첫 분기(`any`)를 기다린다. 결정의 서로 다른 분기처럼 동시에 살아 있을 수 없는 경로는 Join 없이 한 노드로 모일 수 있다.
@@ -24,7 +24,7 @@
 | 노드 | 필드 |
 |---|---|
 | 공통 | `id`, `type`, `label`, `parentId?`(담고 있는 Loop 또는 Team), `note?`(실행에 쓰지 않음, 정의 revision에는 포함) |
-| Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0) |
+| Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0). `observer`는 `review?: { interval, maxRequestsPerReview }`(1 이상, 기본 3과 8)를 갖고 `inputBindings`·`retry`를 쓰지 않는다 |
 | Decision | `mode`, `inputBindings`(1개 이상). `review`·`approval`·`rule`은 모드별 `rule` 하나. `check`는 `checkIds`(등록 검사 1개 이상). `router`는 `routes: { id, label, description? }[]`(2개 이상, id 고유)와 선택적 `modelProfile` |
 | Loop | `maxIterations`(1 이상), `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
 | Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }`, `inputBindings?`(reference Team만) |
@@ -32,8 +32,8 @@
 | Output | `inputBindings`(1개 이상), `requireApproval` |
 
 - `controlEdges`는 `{ id, source, sourcePort, target, targetPort }`다. `sourcePort`는 아래 포트 표의 이름이거나 router의 route id다.
-- `capabilityLinks`(`delegate`, `question`)는 호출 허용이며 순서가 아니다. 의미는 [제품 계약](../product-contract.md) §7을 따른다.
-- `limits.maxDelegationDepth`는 1 이상의 정수다(기본 2). `limits.maxSpawns`는 1 이상의 정수다.
+- `capabilityLinks`(`delegate`, `question`, `advise`)는 허용 관계이며 순서가 아니다. `delegate`와 `question`의 의미는 [제품 계약](../product-contract.md) §7을, `advise`의 의미는 [감독](advisor.md)을 따른다.
+- `limits.maxDelegationDepth`는 1 이상의 정수다(기본 2). `limits.maxSpawns`는 1 이상의 정수다. `limits.requestBudget`은 [무인 실행 예산](../product-contract.md#9-사용량과-자원-정책)이다.
 - `entryNodeId`는 최상위의 유일한 시작 노드다. 시작 노드는 scheduled Agent, Loop, Team 중 하나다.
 
 ### 포트 표
@@ -44,6 +44,7 @@
 |---|---|---|
 | Agent (scheduled) | `in` | `out`, `error` |
 | Agent (callable) | 없음 (capability link의 대상) | 없음 |
+| Agent (observer) | 없음 (`advise` link의 출발) | 없음 |
 | Decision `review` | `in` | `pass`, `revise` |
 | Decision `approval` | `in` | `approve`, `reject` |
 | Decision `rule` | `in` | `yes`, `no` |
@@ -92,8 +93,14 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
    - 연결 안 된 Decision 출구는 경고한다.
    - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 `needs_user`로 실패한다. 이유에 노드와 출구가 남는다. 연결 안 된 `reject`가 선택되면 Run은 취소된다.
    - router는 route가 둘 미만이면 오류다.
-10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다.
-11. **그 밖의 검사.** 스키마·버전, 중복 id, 존재하지 않는 참조, 포트 방향, 입력 바인딩의 생산자, review 계약, 모델 기능 호환, 허용 목록을 기존처럼 검사한다. 정의 규모는 개수만으로 거절하지 않는다([제품 계약](../product-contract.md) §9).
+10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다. observer Agent는 `advise` 연결이 있으면 고립으로 보지 않는다.
+11. **감독.**
+    - observer Agent는 control edge를 갖지 않고 어느 상자에도 속하지 않는다. `delegate`·`question` 연결의 출발이나 대상이 될 수 없다.
+    - observer Agent는 `advise` 연결을 하나 이상 갖는다. `advise` 연결의 출발은 observer Agent, 대상은 scheduled 또는 callable Agent다. 다른 observer, Decision, 상자, Join, Output을 대상으로 할 수 없다.
+    - observer 역할의 작업 도구는 `search`, `read_document`, `list_files`, `read_file` 가운데에서만 고르고, 협업 도구는 `read_artifact`와 `advise`로 고정한다. 다른 도구를 가진 역할을 observer 노드에 쓰면 오류다.
+    - 다른 호출 방식의 Agent 역할은 `advise` 도구를 가질 수 없다.
+    - 시작 노드가 될 수 없고, `task_output` 입력의 생산자가 될 수 없다.
+12. **그 밖의 검사.** 스키마·버전, 중복 id, 존재하지 않는 참조, 포트 방향, 입력 바인딩의 생산자, review 계약, 모델 기능 호환, 허용 목록을 기존처럼 검사한다. 정의 규모는 개수만으로 거절하지 않는다([제품 계약](../product-contract.md) §9).
 
 ### 진단
 
@@ -171,7 +178,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 ### 실행 한도
 
-런타임은 위 모델 전체를 실행한다. `limits.maxSpawns`가 설치 정책의 하위 실행 상한([제품 계약](../product-contract.md) §9)보다 크면 실행은 설치 상한까지만 하위 실행을 만든다. compiler는 제품 상한(32)을 넘는 값에 `SPAWNS_CAPPED` 경고를 낸다. Run이 실제로 쓰는 한도는 `run.started`의 `limits`에 남고 실행 정보에 보인다.
+런타임은 위 모델 전체를 실행한다. `limits.maxSpawns`가 설치 정책의 하위 실행 상한([제품 계약](../product-contract.md) §9)보다 크면 실행은 설치 상한까지만 하위 실행을 만든다. compiler는 제품 상한(32)을 넘는 값에 `SPAWNS_CAPPED` 경고를 낸다. Run이 실제로 쓰는 한도는 `run.started`의 `limits`에 남고 실행 정보에 보인다. 실행 단위의 모델 요청 예산과 그 예산에 닿았을 때의 동작은 [제품 계약 §9](../product-contract.md#9-사용량과-자원-정책)가 정한다.
 
 ### 계획 IR
 
