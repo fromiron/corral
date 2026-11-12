@@ -434,7 +434,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
-| B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 리뷰 중 |
+| B9 | 무인 실행 예산 | B5 | `contracts/definition.ts`, `core/admission`, `coordinator.ts` | 리뷰 수정 중 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
@@ -765,7 +765,9 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B6 (남긴 한계).** 모델은 다음 요청에서 자기 끊긴 글을 보지 못한다(공급자 변환이 끊긴 assistant 메시지를 통째로 뺀다). 컨텍스트 초과 복구 중에 지시가 오면 재준비가 압축 결과를 버린다(B6 이전부터 있던 동작). 끊긴 호출은 무진전 턴으로 세지 않는다.
 - **B5 (정한 것).** 조건을 만족한 지시는 `expired`가 되는 순간 바로 넘겨받는다(앞 지시가 풀리기를 기다리지 않는다). 같은 순간에 만료된 여럿은 보낸 순서, 다른 때에 넘겨받은 것은 넘겨받은 순서로 시작한다. 넘겨받은 항목은 세션 기록의 끝에 붙고, 다음에 시작할 것을 고를 때 먼저다(`@corral/core`의 `queuedEntriesInStartOrder`, `nextQueuedEntry`). 지시 기록에 `origin`이 생길 때까지(A1) `origin ?? 'user'`로 읽는다.
 - **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 판정은 그 지시가 속한 Run이 취소됐는지로 한다(세션의 마지막 Run이 아니다). 그 지시를 가진 Run을 찾지 못하면 특권은 그대로다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
-- **A1 (B5가 남긴 것).** `packages/core/src/directive-carry.ts`의 `originOf`는 `origin`을 캐스트로 읽는다. A1이 지시 기록에 출처를 타입 있는 필드로 더하면서 이 캐스트를 없애고, 손으로 붙인 `origin`이 아니라 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다.
+- **A1 (B5·B9가 남긴 것).** 지시 기록의 출처(`directive.accepted.origin`, `DirectiveView.origin`)는 B9가 타입 있는 필수 필드로 넣었다(`user`·`advice`·`system`). A1은 `advice` 지시를 만드는 쪽만 더하고, 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다. 모델에 실리는 머리말(`SYSTEM_DIRECTIVE_PREFIX`, `ADVICE_DIRECTIVE_PREFIX`)은 `packages/adapter-pi/src/worker-tools.ts`에 있다.
+- **B9 (리뷰에서 정한 것).** 세는 것·세는 대상·승인 뒤의 셈·패치·승인 닫힘은 `product-contract.md` §9에 적었다. 예산 지시의 단계는 `system` 지시의 순서로 읽는다(다른 `system` 지시가 생기면 단계 필드가 필요하다). 남기는 한계: 실행이 정확히 N번째나 1.5N번째 요청에서 끝나려 할 때 SDK 런타임은 알림을 실으려고 요청을 하나 더 만든다(pi-core에서는 알림이 `expired`). 화면에 예산을 바꾸는 곳은 아직 없다(`SettingsPatchPanel`은 `maxSpawns`만).
+- **U6 (B9가 남긴 것).** 대화 기록·지시 목록(`ExecutionSteering.tsx`)·기록 내보내기(`transcript.ts`)·세션 검색이 `system` 지시를 출처 표시 없이 사람의 지시처럼 보인다. U6이 메타 줄을 만들 때 `origin`이 `user`가 아닌 지시는 사람의 메시지로 그리지 않는다.
 - **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
 - **B2 (찾은 빈틈과 정한 것).** 반례 테스트가 둘을 찾았다. (1) worker가 아직 시작되지 않은 대상에 온 끼어들기는 끊을 응답이 없으니 `next_request`로 낮춘다(receipt와 지시 기록 모두). (2) 끼어들기로 끊겼거나 오류로 끝난 호출은 확정 응답(`responseRef`)으로 기록하지 않고 받은 글은 부분 출력(`partialOutputs`)으로만 읽는다. 명세를 그렇게 고쳤고 B2 브랜치에서 구현을 고친다.
 - **B2 (리뷰에서 정한 것).** 낮추는 조건은 "Coordinator가 worker를 아직 넘겨받지 못했을 때"로 좁힌다(어댑터가 끼어들 수 있는지 그때는 알 수 없다). worker가 뜨는 중(준비 신호 전)의 끼어들기는 요청 준비 중과 같이 끊지 않고 첫 요청에 실리며 기록은 `interrupt` 그대로다. 글이 보인 뒤 스트림이 깨졌을 때 대기 중인 지시가 있으면 SDK 런타임만 실행을 이어 가 성공으로 끝나던 차이(B2 이전부터)는 없앤다: 어느 런타임에서나 실행 단위는 실패하고 지시는 `expired`다. 실패·끊긴 호출의 글은 스트림 조각으로만 남고 Run이 끝난 뒤에도 중단된 응답으로 읽힌다(`workbench.md` "대화 본문과 중단된 출력"). 두 번째 리뷰: 자동 압축의 요약 응답이 오류로 끝난 경우와 수동 압축이 대기 중인 경우에도 SDK가 실행을 이어 가던 것을 같은 규칙으로 막는다. 남기는 차이: 도구 없는 온전한 마지막 응답이 흐르는 동안 온 지시는 SDK에서는 한 턴을 더 돌아 그 요청에 실리고(`delivered`), pi-core에서는 실행이 끝나 `expired`가 된 뒤 넘겨받는다. 어느 쪽도 지시를 잃지 않는다.
