@@ -84,6 +84,27 @@ const FILE_NOTE =
   ' The session has a working copy: read files with the file tools before relying on them.';
 const WRITE_NOTE = ' Make the changes the request asks for with the file tools.';
 
+/**
+ * Where a session turn's file tools point. Absent on a definition means the historical
+ * rule: `fileTools` true is a working copy. Names stay the labels the screen already uses.
+ */
+export type SessionFiles =
+  | { mode: 'copy' }
+  | { mode: 'direct' }
+  | { mode: 'none'; reason: 'unlinked' | 'untrusted' | 'missing' };
+
+function workspaceNote(workspace: SessionFiles): string {
+  if (workspace.mode === 'copy')
+    return " You work in this session's working copy, not in the project source folder.";
+  if (workspace.mode === 'direct')
+    return ' You work directly in the project source folder. List, read and search files there. Commands run in that folder. File tools do not change files.';
+  if (workspace.reason === 'unlinked')
+    return ' You have no file or command tools because this project has no linked folder. The person links a folder in the project settings.';
+  if (workspace.reason === 'untrusted')
+    return ' You have no file or command tools because the linked folder is not trusted. The person trusts the folder in the project settings.';
+  return ' You have no file or command tools because the linked folder is unavailable. The person checks the folder link in the project settings.';
+}
+
 export interface AutoDefinitionInput {
   harness?: HarnessBindingRef;
   commandTools?: boolean;
@@ -96,6 +117,11 @@ export interface AutoDefinitionInput {
   choice: AutoModelChoice;
   /** The session has a working copy, so the roles get file tools. */
   fileTools: boolean;
+  /**
+   * The session folder this turn works in. When set, it decides reads, writes and the
+   * prompt; `fileTools` alone stays the historical working-copy switch.
+   */
+  workspace?: SessionFiles;
   /** With `route` reasoning: the level the start model picked; medium when absent. */
   routeLevel?: AutoRouteLevel;
 }
@@ -123,23 +149,37 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     asked?.mode === 'route'
       ? { mode: 'fixed' as const, level: input.routeLevel ?? ('medium' as const) }
       : asked;
+  const mode = input.workspace?.mode ?? (input.fileTools ? 'copy' : 'none');
+  const reads = mode === 'copy' || mode === 'direct';
   const roles = definition.roles.map((role) => {
-    const writes = WRITERS.has(role.id as TeamSlot) && input.taskScope !== 'review_only';
-    const tools: WorkTool[] = input.fileTools
+    const writes =
+      reads &&
+      mode === 'copy' &&
+      WRITERS.has(role.id as TeamSlot) &&
+      input.taskScope !== 'review_only';
+    const commands =
+      Boolean(input.commandTools) &&
+      reads &&
+      input.taskScope !== 'review_only' &&
+      (writes || mode === 'direct');
+    const tools: WorkTool[] = reads
       ? [
           'write_artifact',
           ...(writes ? FILE_TOOLS : READ_TOOLS),
-          ...(input.commandTools ? ['preview_file' as const] : []),
-          ...(writes && input.commandTools
+          ...(input.commandTools && mode === 'copy' ? ['preview_file' as const] : []),
+          ...(commands && mode === 'copy'
             ? ['run_command' as const, 'preview_app' as const, 'preview_action' as const]
             : []),
+          ...(commands && mode === 'direct' ? ['run_command' as const] : []),
         ]
       : ['write_artifact'];
+    const fileNote =
+      mode === 'copy' && (input.workspace || input.fileTools)
+        ? `${FILE_NOTE}${writes ? WRITE_NOTE : ''}`
+        : '';
     return {
       ...role,
-      prompt: input.fileTools
-        ? `${role.prompt}${FILE_NOTE}${writes ? WRITE_NOTE : ''}`
-        : role.prompt,
+      prompt: `${role.prompt}${fileNote}${input.workspace ? workspaceNote(input.workspace) : ''}`,
       modelProfile: input.choice.modelProfile,
       ...(input.harness ? { harness: { ...input.harness } } : {}),
       ...(reasoning ? { reasoning } : {}),
@@ -438,10 +478,11 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
     request: AutoStart,
   ): AutoStartResult | null;
   /**
-   * whether the session has a working copy for the conversation lead's file tools; the
-   * start context's value when absent. No chooser runs, so the answer is read at start.
+   * whether the session has a working copy for the conversation lead's file tools, or the
+   * folder mode when the server can name it. The start context's boolean when absent.
+   * No chooser runs, so the answer is read at start.
    */
-  fileTools?(request: AutoStart): boolean | Promise<boolean>;
+  fileTools?(request: AutoStart): boolean | SessionFiles | Promise<boolean | SessionFiles>;
   /** a saved Corral whose roles the lead may call; null when it does not exist. */
   corral?(
     corralId: string,
@@ -574,12 +615,17 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       };
     const models = prepared?.models;
     if (request.team !== undefined) {
-      const fileTools = (await deps.fileTools?.(request)) ?? context.fileTools;
+      const reported = deps.fileTools ? await deps.fileTools(request) : undefined;
+      const workspace = reported && typeof reported === 'object' ? reported : undefined;
+      const fileTools = workspace
+        ? workspace.mode !== 'none'
+        : typeof reported === 'boolean'
+          ? reported
+          : context.fileTools;
       if (signal?.aborted) throw cancelled();
-      // in a linked, trusted folder a live session works with commands and previews
-      // by default. An explicit work style wins; otherwise the session's default is layered under
-      // the person's and project's defaults, which may restrict it. Simulated agents get none:
-      // a work style would only be simulated and would take their file tools away.
+      // a live session with a working copy or a direct folder uses the built-in work style
+      // unless one was chosen. The person's and project's defaults may still narrow it.
+      // Simulated agents get none: a work style would only be simulated and would take their file tools away.
       const harness =
         request.harness ??
         (fileTools && request.mode === 'live'
@@ -595,6 +641,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         choice: request.choice,
         ...(harness ? { harness, commandTools: true } : {}),
         fileTools,
+        ...(workspace ? { workspace } : {}),
       };
       let roster: ConversationRoster | undefined;
       let sourceTeam: CorralDefinition['sourceTeam'];
