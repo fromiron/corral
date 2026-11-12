@@ -177,10 +177,32 @@ describe('priority', () => {
     expect(presence.need).toBe('continue');
   });
 
-  it('shows a failed execution of a Run in progress', () => {
-    expect(runPresence(run('running'), [{ status: 'active' }, { status: 'failed' }], []).kind).toBe(
-      'failed',
+  it('leaves a failed or cancelled execution to its own row while the Run goes on', () => {
+    expect(runPresence(run('running'), [{ status: 'failed' }, { status: 'active' }], []).kind).toBe(
+      'working',
     );
+    expect(runPresence(run('running'), [{ status: 'cancelled' }], []).kind).toBe('working');
+  });
+
+  it('waits for the person before showing a pause in progress', () => {
+    const presence = runPresence(run('pausing'), [{ status: 'waiting_approval' }], []);
+    expect(presence.kind).toBe('awaiting_user');
+    expect(presence.need).toBe('approval');
+  });
+
+  it('follows an ended Run over a leftover approval or request', () => {
+    for (const status of ['succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
+      const presence = runPresence(
+        run(status),
+        [{ status: 'waiting_approval' }],
+        [{ kind: 'question', order: 0 }],
+      );
+      expect({ status, kind: presence.kind, need: presence.need }).toEqual({
+        status,
+        kind: RUN_TABLE[status][0],
+        need: undefined,
+      });
+    }
   });
 
   it('shows a pause and a cancel as requested, not applied', () => {

@@ -100,8 +100,6 @@ function presence(kind: PresenceKind, need?: PresenceNeed, detail?: PresenceDeta
   };
 }
 
-const rank = (kind: PresenceKind) => KINDS.indexOf(kind);
-
 export function executionPresence(execution: {
   status: ExecutionStatus;
   observer?: boolean;
@@ -122,30 +120,25 @@ export function executionPresence(execution: {
 }
 
 /**
- * The first matching state over the Run, its executions, and its open requests. An ended Run's
- * own outcome stands: an execution that failed before the Run succeeded does not make it failed.
+ * The Run's own status decides. Its executions and open requests only find out whether it waits
+ * for the person, and an ended Run never does: a failed or cancelled execution shows on its own
+ * row, not as the Run's state.
  */
 export function runPresence(
   run: { status: RunStatus },
   executions: readonly { status: ExecutionStatus }[],
   pending: readonly PresenceRequest[],
 ): Presence {
-  const earliest = pending.reduce<PresenceRequest | undefined>(
-    (first, request) => (!first || request.order < first.order ? request : first),
-    undefined,
-  );
-  const approvalWaits = executions.some((execution) => execution.status === 'waiting_approval');
-  if (earliest || approvalWaits || run.status === 'awaiting_user')
-    return presence('awaiting_user', earliest?.kind ?? (approvalWaits ? 'approval' : undefined));
-  let kind = RUN_KIND[run.status];
-  if (!TERMINAL_RUN_STATUSES.has(run.status))
-    for (const execution of executions) {
-      const candidate = EXECUTION_KIND[execution.status];
-      // Ended executions of a Run in progress say nothing about it, except a failure.
-      if (candidate === 'succeeded' || candidate === 'cancelled') continue;
-      if (rank(candidate) < rank(kind)) kind = candidate;
-    }
-  return presence(kind);
+  if (!TERMINAL_RUN_STATUSES.has(run.status)) {
+    const earliest = pending.reduce<PresenceRequest | undefined>(
+      (first, request) => (!first || request.order < first.order ? request : first),
+      undefined,
+    );
+    const approvalWaits = executions.some((execution) => execution.status === 'waiting_approval');
+    if (earliest || approvalWaits || run.status === 'awaiting_user')
+      return presence('awaiting_user', earliest?.kind ?? (approvalWaits ? 'approval' : undefined));
+  }
+  return presence(RUN_KIND[run.status]);
 }
 
 /** The latest run's state, or `ready`/`empty` for a session without one. */
