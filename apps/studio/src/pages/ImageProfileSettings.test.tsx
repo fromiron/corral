@@ -110,10 +110,9 @@ it('says nothing on the field for a profile that uses an API key', async () => {
 });
 
 function shownProfileId(form: ParentNode): string {
-  const label = all('label', form).find((el) => el.textContent === messages.ImageProfiles.id);
-  const htmlFor = label instanceof HTMLLabelElement ? label.htmlFor : '';
-  const named = htmlFor ? document.getElementById(htmlFor) : null;
-  return named?.textContent?.trim() ?? '';
+  const term = all('dt', form).find((el) => el.textContent === messages.ImageProfiles.id);
+  const value = term?.nextElementSibling;
+  return value?.tagName === 'DD' ? (value.textContent?.trim() ?? '') : '';
 }
 
 async function pickConnection(profileId: string) {
@@ -133,8 +132,9 @@ it('derives a read-only image profile id from the connection and the image model
   const form = container.querySelector('form');
   if (!form) throw new Error('the add form did not open');
   expect(form.querySelector('input[id$="-id"]')).toBeNull();
-  expect(form.querySelector('output')?.tagName).toBe('OUTPUT');
   expect(shownProfileId(form)).toBe(messages.ImageProfiles.idPending);
+  // The id changes with each keystroke; it is read where it stands, not announced.
+  expect(form.querySelector('output, [aria-live], [role="status"], [role="alert"]')).toBeNull();
 
   await pickConnection('keyed');
   await type(field(messages.ImageProfiles.model, form), 'gpt-image-2');

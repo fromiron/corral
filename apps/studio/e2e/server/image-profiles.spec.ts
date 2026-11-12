@@ -19,7 +19,7 @@ test('image profile CRUD and role configuration persist through the normal setti
   if (!profile) throw new Error('No provider profile available');
   await options.first().click();
   await section.getByLabel('Image model ID').fill('image-test');
-  const id = section.getByLabel('Image profile ID', { exact: true });
+  const id = section.getByRole('definition');
   await expect(id).toHaveText(`${profile}:image-test`);
   const profileId = `${profile}:image-test`;
   await section.getByRole('button', { name: 'Save image profile' }).click();

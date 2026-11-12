@@ -186,15 +186,14 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           }}
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1 text-caption">
-              <label htmlFor={`${ids}-id`}>{t('id')}</label>
-              <output
-                id={`${ids}-id`}
+            <dl className="m-0 flex flex-col gap-1 text-caption">
+              <dt>{t('id')}</dt>
+              <dd
                 className={`m-0 break-all font-mono text-body ${idFor(draft) ? 'text-foreground' : 'text-muted-foreground'}`}
               >
                 {idFor(draft) || t('idPending')}
-              </output>
-            </div>
+              </dd>
+            </dl>
             <div className="flex flex-col gap-1 text-caption">
               <span aria-hidden="true">{t('providerProfile')}</span>
               <Select
