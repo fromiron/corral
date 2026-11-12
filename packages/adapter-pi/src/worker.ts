@@ -766,17 +766,19 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       );
       // A response cut by an interrupt does not end the execution: the agent goes on from the
       // context the cut request actually sent (compaction, delivered directives and state
-      // included), then the cut response, then the interrupt directives last. A cancel, even
-      // after the cut, still ends it.
+      // included), then the cut response, then every directive that request did not carry,
+      // in arrival order, so the interrupt is the last. A cancel, even after the cut, still
+      // ends it.
       for (let flight = takeCut(); !cancelled && flight; flight = takeCut()) {
         const cutResponse = lastAssistant();
         const base = cutResponse ? [...flight.messages, cutResponse] : [...flight.messages];
         const present = JSON.stringify(base);
-        const leading = [...interrupting.values()].filter(
-          (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
-        );
+        const absent = (d: DeliveredDirective) =>
+          !present.includes(JSON.stringify(directiveText(d)).slice(1, -1));
+        const interrupted = [...interrupting.values()].some(absent);
         interrupting.clear();
-        if (!leading.length) break;
+        if (!interrupted) break;
+        const leading = [...directives.values()].filter(absent);
         agent.state.messages = base;
         // One message per directive, as the request preparation would add them.
         await agent.prompt(

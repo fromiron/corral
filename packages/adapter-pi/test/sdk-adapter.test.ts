@@ -1856,6 +1856,42 @@ describe('interrupt on the SDK worker', () => {
     expect(cut.usage?.inputTokens).toBeGreaterThan(0);
   });
 
+  it('a joined directive still waiting at the cut goes ahead of the interrupt, which comes last', async () => {
+    const entered = new Gate(),
+      release = new Gate();
+    let seen: string[] = [];
+    const run = runtime([
+      async () => {
+        entered.open();
+        await release.wait();
+        return fauxAssistantMessage('A long answer.');
+      },
+      (context) => {
+        seen = userTexts(context);
+        return fauxAssistantMessage('Done.');
+      },
+    ]);
+    const handle = await run.adapter.start(run.input, run.host);
+    await entered.wait();
+    const joined = { directiveId: 'dir_join', text: 'Keep the API.' };
+    const cutIn = { directiveId: 'dir_cut', text: 'Stop and cite sources.' };
+    handle.pushDirective?.(joined);
+    await tick();
+    handle.interrupt?.(cutIn);
+    await tick();
+    release.open();
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(run.requests).toMatchObject([
+      { directiveIds: [] },
+      { directiveIds: ['dir_join', 'dir_cut'] },
+    ]);
+    expect(seen.filter((text) => text.startsWith(SDK_DIRECTIVE_PREFIX))).toEqual([
+      sdkDirectiveText(joined),
+      sdkDirectiveText(cutIn),
+    ]);
+    expect(observes(run.frames).map((frame) => frame.interrupted)).toEqual([true, undefined]);
+  });
+
   it('a cut the provider reports as a transient error is not retried, and its missing usage is unknown', async () => {
     const entered = new Gate(),
       release = new Gate();

@@ -445,6 +445,159 @@ describe('interrupt on the core worker', () => {
     expect(directiveMessages).toHaveLength(2);
   });
 
+  /** The directive messages of one request, in order, and how many state sections it holds. */
+  const directivesOf = (messages: unknown[]) => ({
+    directives: messages
+      .map((message) => message as { role?: string; content?: unknown })
+      .filter(
+        (m) =>
+          m.role === 'user' &&
+          typeof m.content === 'string' &&
+          m.content.startsWith(DIRECTIVE_PREFIX),
+      )
+      .map((m) => (m.content as string).slice(DIRECTIVE_PREFIX.length).split(')')[0]),
+    states: messages.filter((message) => {
+      const content = (message as { content?: unknown }).content;
+      return typeof content === 'string' && content.startsWith('[Corral current state]');
+    }).length,
+  });
+
+  /** Two directives under a Coordinator, a cut response, then the requests that follow it. */
+  const twoDirectivesAroundCut = async (
+    order: { text: string; delivery: 'interrupt' | 'next_request'; commandId: string }[],
+  ) => {
+    const entered = new Gate(),
+      release = new Gate();
+    const requests: unknown[][] = [];
+    const capture = (context: { messages: unknown[] }) =>
+      void requests.push(JSON.parse(JSON.stringify(context.messages)));
+    const { transport } = liveRuntime([
+      async () => {
+        entered.open();
+        await release.wait();
+        return fauxAssistantMessage('A long answer.');
+      },
+      (context) => {
+        capture(context);
+        return fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'Cited.' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      (context) => {
+        capture(context);
+        return fauxAssistantMessage(
+          [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
+          { stopReason: 'toolUse' },
+        );
+      },
+      fauxAssistantMessage('Done.'),
+    ]);
+    const { runId, interrupt } = await liveRun(transport);
+    await entered.wait();
+    for (const { text, delivery, commandId } of order) await interrupt(text, delivery, commandId);
+    await tick();
+    release.open();
+    const final = await waitForProjection(transport, runId, settled);
+    const ids = Object.fromEntries(
+      final.directiveOrder.map((id) => [final.directives[id]?.text ?? '', id]),
+    );
+    return { final, requests, ids };
+  };
+
+  it('a joined directive still waiting at the cut goes ahead of the interrupt, which comes last', async () => {
+    const { final, requests, ids } = await twoDirectivesAroundCut([
+      { text: 'Joined: keep the API.', delivery: 'next_request', commandId: 'cmd_join' },
+      { text: 'Interrupt: cite sources.', delivery: 'interrupt', commandId: 'cmd_interrupt' },
+    ]);
+    expect(final.status).toBe('succeeded');
+    const joined = ids['Joined: keep the API.'] ?? '';
+    const cutIn = ids['Interrupt: cite sources.'] ?? '';
+    expect(requests).toHaveLength(2);
+    // Right after the cut and in the request after it: arrival order, the interrupt last.
+    for (const messages of requests)
+      expect(directivesOf(messages)).toEqual({ directives: [joined, cutIn], states: 1 });
+    for (const id of [joined, cutIn]) {
+      expect(final.directives[id]?.status).toBe('delivered');
+      expect(
+        Object.values(final.modelCalls).filter((call) => call.directiveIds.includes(id)),
+      ).toHaveLength(1);
+    }
+    const [, resumed] = final.executions[final.executionOrder[0] ?? '']?.modelCallIds ?? [];
+    expect([...(final.modelCalls[resumed ?? '']?.directiveIds ?? [])].sort()).toEqual(
+      [joined, cutIn].sort(),
+    );
+  });
+
+  it('a directive joining after the interrupt follows it', async () => {
+    const { final, requests, ids } = await twoDirectivesAroundCut([
+      { text: 'Interrupt: cite sources.', delivery: 'interrupt', commandId: 'cmd_interrupt' },
+      { text: 'Joined: keep the API.', delivery: 'next_request', commandId: 'cmd_join' },
+    ]);
+    expect(final.status).toBe('succeeded');
+    const joined = ids['Joined: keep the API.'] ?? '';
+    const cutIn = ids['Interrupt: cite sources.'] ?? '';
+    const last = requests.at(-1) ?? [];
+    expect(directivesOf(last)).toEqual({ directives: [cutIn, joined], states: 1 });
+    for (const messages of requests) expect(directivesOf(messages).states).toBe(1);
+    for (const id of [joined, cutIn]) {
+      expect(final.directives[id]?.status).toBe('delivered');
+      expect(
+        Object.values(final.modelCalls).filter((call) => call.directiveIds.includes(id)),
+      ).toHaveLength(1);
+    }
+  });
+
+  it('a directive that arrived while the cut request waited for its permit goes ahead of the interrupt', async () => {
+    const waiting = new Gate(),
+      grant = new Gate(),
+      entered = new Gate(),
+      release = new Gate();
+    const requests: unknown[][] = [];
+    let prepares = 0;
+    const { adapter, host } = coreWorker(
+      [
+        async () => {
+          entered.open();
+          await release.wait();
+          return fauxAssistantMessage('A long answer.');
+        },
+        (context) => {
+          requests.push(JSON.parse(JSON.stringify(context.messages)));
+          return fauxAssistantMessage('Done.');
+        },
+      ],
+      {
+        // A host that grants the permit without asking for a new preparation.
+        prepareModelRequest: async () => {
+          prepares++;
+          if (prepares === 1) {
+            waiting.open();
+            await grant.wait();
+          }
+          return {
+            modelCallId: `call_${prepares}`,
+            contextSnapshotId: `ctx_${prepares}`,
+            profile: 'model-a',
+            maxOutputTokens: 256,
+            directives: [],
+          };
+        },
+      },
+    );
+    const handle = await adapter.start(startInput(), host);
+    await waiting.wait();
+    handle.pushDirective?.({ directiveId: 'dir_wait', text: 'Keep the API.' });
+    await tick();
+    grant.open();
+    await entered.wait();
+    handle.interrupt?.({ directiveId: 'dir_cut', text: TEXT });
+    await tick();
+    release.open();
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(requests).toHaveLength(1);
+    expect(directivesOf(requests[0] ?? []).directives).toEqual(['dir_wait', 'dir_cut']);
+  });
+
   it('an interrupt while a retry waits for its permit is not cut; the reprepared retry carries it', async () => {
     const retrying = new Gate(),
       permit = new Gate();
