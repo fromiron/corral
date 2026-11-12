@@ -329,7 +329,8 @@ it('a turn with no failed step has no failure in its head button’s name', asyn
 });
 
 it('the head button’s name stays the same while the time runs', async () => {
-  vi.useFakeTimers({ toFake: ['setInterval', 'setTimeout', 'Date', 'requestAnimationFrame'] });
+  // Only the clock the head's time reads; animation frames and timeouts stay real.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
   vi.setSystemTime(new Date('2026-11-13T00:00:02.000Z'));
   try {
     const f = await show(running());
