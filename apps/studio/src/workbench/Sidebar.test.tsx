@@ -670,13 +670,29 @@ it('puts a session’s title and its state line on full lines of their own, the 
   expect(idle?.querySelector('[data-status]')).toBeNull();
 });
 
-// jsdom has no layout. The guide is the submenu's left border, so its length is
-// the ul's height, clipped by the wrapper's animated height. A row's box is the
-// absolute top/height the virtual list writes. The next project row paints over
-// anything that crosses its top.
+// jsdom has no layout. Until the last row is mounted the guide is the submenu's
+// left border: its length is the ul height, clipped by the wrapper's animated
+// height. Once that row is mounted, the border stops and a stem of the same
+// colour ends at the guide line's middle, with one elbow into that row only.
+// A row's box is the absolute top/height the virtual list writes. Guide-line
+// offsets are that row's own layout (title padding and leading, or the centered
+// empty line), which the test supplies through offset* and the guide must read.
+const TITLE_PAD = 4;
+
 function px(value: string) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function guideLayout(compact: boolean) {
+  const titleLeading = compact ? 18 : 20;
+  return {
+    titlePad: TITLE_PAD,
+    titleLeading,
+    /** Vertical middle of a session title line, measured from the row's top. */
+    sessionMiddle: TITLE_PAD + titleLeading / 2,
+    projectRowHeight: sidebarRowHeights(compact).project + 8,
+  };
 }
 
 function projectRow(container: HTMLElement, projectId: string) {
@@ -687,63 +703,312 @@ function projectRow(container: HTMLElement, projectId: string) {
   return row;
 }
 
-function guideExtent(row: HTMLElement) {
+/** The readings a real layout would give the guide line and its row. */
+function installGuideLayout(compact: boolean) {
+  const layout = guideLayout(compact);
+  const captionLeading = compact ? 14 : 16;
+  const proto = HTMLElement.prototype;
+  const previous = {
+    offsetHeight: Object.getOwnPropertyDescriptor(proto, 'offsetHeight'),
+    offsetTop: Object.getOwnPropertyDescriptor(proto, 'offsetTop'),
+    offsetLeft: Object.getOwnPropertyDescriptor(proto, 'offsetLeft'),
+    offsetParent: Object.getOwnPropertyDescriptor(proto, 'offsetParent'),
+  };
+  const isProjectButton = (element: HTMLElement) =>
+    element.dataset.sidebar === 'menu-button' &&
+    Boolean(element.parentElement?.querySelector('[data-sidebar="menu-sub"]'));
+  const isSubmenuRow = (element: HTMLElement) =>
+    element.dataset.sidebar === 'menu-sub-item' ||
+    (element.tagName === 'LI' &&
+      element.dataset.sidebar !== 'menu-guide' &&
+      element.parentElement?.dataset.sidebar === 'menu-sub');
+  const guideParent = (element: HTMLElement): HTMLElement | null => {
+    if (element.dataset.sidebarGuideLine !== undefined) {
+      return (
+        element.closest<HTMLElement>('[data-sidebar="menu-sub-button"]') ?? element.parentElement
+      );
+    }
+    if (element.dataset.sidebar === 'menu-sub-button') {
+      return element.closest<HTMLElement>('[data-sidebar="menu-sub-item"]');
+    }
+    if (isSubmenuRow(element)) return element.closest<HTMLElement>('[data-sidebar="menu-sub"]');
+    return null;
+  };
+
+  Object.defineProperty(proto, 'offsetHeight', {
+    configurable: true,
+    get() {
+      const element = this as HTMLElement;
+      if (isProjectButton(element)) return layout.projectRowHeight;
+      if (element.dataset.sidebar === 'menu-sub') return px(element.style.height);
+      if (element.dataset.sidebarGuideLine !== undefined) {
+        return element.closest('[data-sidebar="menu-sub-button"]')
+          ? layout.titleLeading
+          : captionLeading;
+      }
+      if (isSubmenuRow(element)) return px(element.style.height);
+      return 0;
+    },
+  });
+  Object.defineProperty(proto, 'offsetTop', {
+    configurable: true,
+    get() {
+      const element = this as HTMLElement;
+      if (element.dataset.sidebarGuideLine !== undefined) {
+        if (element.closest('[data-sidebar="menu-sub-button"]')) return layout.titlePad;
+        const rowHeight = px(element.parentElement?.style.height ?? '');
+        return (rowHeight - captionLeading) / 2;
+      }
+      if (element.dataset.sidebar === 'menu-sub-button') return 0;
+      if (isSubmenuRow(element)) return px(element.style.top);
+      return 0;
+    },
+  });
+  Object.defineProperty(proto, 'offsetLeft', {
+    configurable: true,
+    get() {
+      const element = this as HTMLElement;
+      const left = element.style.left;
+      if (left.endsWith('rem')) return Number.parseFloat(left) * 16;
+      if (left.endsWith('px')) return px(left);
+      return 0;
+    },
+  });
+  Object.defineProperty(proto, 'offsetParent', {
+    configurable: true,
+    get() {
+      return guideParent(this as HTMLElement);
+    },
+  });
+
+  return {
+    layout,
+    restore() {
+      for (const [key, descriptor] of Object.entries(previous)) {
+        if (descriptor) Object.defineProperty(proto, key, descriptor);
+        else Reflect.deleteProperty(proto, key);
+      }
+    },
+  };
+}
+
+function submenuRows(submenu: HTMLElement) {
+  return [...submenu.querySelectorAll<HTMLElement>(':scope > li')].filter(
+    (row) => row.dataset.sidebar !== 'menu-guide',
+  );
+}
+
+function readGuide(row: HTMLElement) {
   const button = row.querySelector<HTMLElement>(':scope > [data-sidebar="menu-button"]');
   const submenu = row.querySelector<HTMLElement>('[data-sidebar="menu-sub"]');
   if (!button || !submenu) throw new Error('Missing project guide');
   const origin = px(row.style.top) + button.offsetHeight;
+  const stem = submenu.querySelector<HTMLElement>('[data-sidebar="menu-guide-stem"]');
+  const elbow = submenu.querySelector<HTMLElement>('[data-sidebar="menu-guide-elbow"]');
   const ulHeight = px(submenu.style.height);
+  const drawn = stem ? px(stem.style.top) + px(stem.style.height) : ulHeight;
   const clip = submenu.parentElement?.style.height ?? '';
-  const wrapperHeight = clip.endsWith('px') ? px(clip) : ulHeight;
+  const wrapperHeight = clip.endsWith('px') ? px(clip) : drawn;
+  const rows = submenuRows(submenu);
   let lastBottom = origin;
-  for (const item of submenu.querySelectorAll<HTMLElement>('[data-sidebar="menu-sub-item"]')) {
+  for (const item of rows) {
     lastBottom = Math.max(lastBottom, origin + px(item.style.top) + px(item.style.height));
   }
-  const guideBottom = origin + Math.min(ulHeight, wrapperHeight);
-  return { guideBottom, lastBottom };
+  return {
+    origin,
+    submenu,
+    stem,
+    elbow,
+    rows,
+    last: rows.at(-1) ?? null,
+    drawn,
+    guideBottom: origin + Math.min(drawn, wrapperHeight),
+    lastBottom,
+    ulHeight,
+  };
 }
 
-it('keeps a project guide on the bottom of its last session', async () => {
-  const estimated = sidebarRowHeights(false);
-  const projectRowHeight = estimated.project + 8;
-  const sessionCount = 12;
-  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-    configurable: true,
-    get() {
-      const element = this as HTMLElement;
-      if (
-        element.dataset.sidebar === 'menu-button' &&
-        element.parentElement?.querySelector('[data-sidebar="menu-sub"]')
-      ) {
-        return projectRowHeight;
-      }
-      if (element.dataset.sidebar === 'menu-sub') return px(element.style.height);
-      return 0;
-    },
-  });
-  try {
-    // The last session starts outside the eight-row window. The project button
-    // is taller than its estimate; session rows stay on the estimate.
-    const sample = sessions[0];
-    if (!sample) throw new Error('Missing a session to copy');
-    const guideSessions = Array.from({ length: sessionCount }, (_, index) => ({
-      ...sample,
-      sessionId: `guide_${index}`,
-      projectId: 'alpha',
-      pinned: false,
-      title: `Guide ${index}`,
-      updatedAt: new Date(Date.parse(createdAt) - index * 1000).toISOString(),
-    }));
-    const container = await mount({
-      projects: [project('alpha', 'Alpha'), project('beta', 'Beta')],
-      sessions: guideSessions,
-    });
-    expect(fixture.virtualCount).toBe(sessionCount + 3);
-    expect(conversationLinks(container).length).toBeLessThan(sessionCount);
-    expect(container.querySelector('a[href="/sessions/guide_11"]')).toBeNull();
+/** The open guide ends on `kind`'s line and turns only into that last row. */
+function expectElbow(row: HTMLElement, compact: boolean, kind: 'session' | 'empty') {
+  const guide = readGuide(row);
+  const layout = guideLayout(compact);
+  const last = guide.last;
+  if (!last || !guide.elbow || !guide.stem) throw new Error(`Missing ${kind} guide elbow`);
+  const middleInRow = kind === 'session' ? layout.sessionMiddle : px(last.style.height) / 2;
+  const titleMiddle = guide.origin + px(last.style.top) + middleInRow;
+  // The stem's own length, not the submenu box: the line stops at the title
+  // middle even while a collapse tween is still clipping it.
+  expect(guide.origin + guide.drawn).toBe(titleMiddle);
+  expect(titleMiddle).not.toBe(guide.lastBottom);
+  if (kind === 'session') {
+    expect(titleMiddle).not.toBe(guide.origin + px(last.style.top) + px(last.style.height) / 2);
+  }
+  expect(guide.submenu.className).toContain('border-transparent');
+  expect(guide.submenu.className).not.toContain('border-border');
+  expect(guide.stem.className).toContain('bg-border');
+  expect(guide.stem.style.width).toBe('1px');
+  expect(guide.elbow.className).toContain('bg-border');
+  expect(guide.elbow.style.height).toBe('1px');
+  expect(guide.elbow.style.transform).toContain('translateY(-50%)');
+  expect(guide.origin + px(guide.elbow.style.top)).toBe(titleMiddle);
+  // The stroke meets the stem and stops at the row edge, short of the icon
+  // or the empty line (another 0.5rem of padding inside the row). The active
+  // and hover fills are the button box, which starts at that edge.
+  const elbowEnd = px(guide.elbow.style.left) + px(guide.elbow.style.width);
+  expect(elbowEnd).toBe(last.offsetLeft);
+  expect(px(guide.elbow.style.width)).toBeGreaterThan(1);
+  expect(elbowEnd).toBeLessThan(last.offsetLeft + 8);
+  const content = last.querySelector<HTMLElement>('[data-sidebar="menu-sub-button"]') ?? last;
+  expect(content.className).toContain(content === last ? 'px-2' : 'pl-2');
+  expect(guide.rows.filter((item) => item.hasAttribute('data-sidebar-guide-end'))).toEqual([last]);
+  expect(guide.submenu.querySelectorAll('[data-sidebar="menu-guide-elbow"]')).toHaveLength(1);
+  for (const earlier of guide.rows.slice(0, -1)) {
+    expect(earlier.querySelector('[data-sidebar="menu-guide-elbow"]')).toBeNull();
+    expect(earlier.hasAttribute('data-sidebar-guide-end')).toBe(false);
+    const earlierMiddle =
+      guide.origin +
+      px(earlier.style.top) +
+      (earlier.querySelector('[data-sidebar="menu-sub-button"]')
+        ? layout.sessionMiddle
+        : px(earlier.style.height) / 2);
+    expect(guide.origin + px(guide.elbow.style.top)).not.toBe(earlierMiddle);
+  }
+  const clip = guide.submenu.parentElement?.style.height ?? '';
+  if (clip.endsWith('px') && Math.abs(px(clip) - guide.ulHeight) < 0.01) {
+    expect(guide.guideBottom).toBe(titleMiddle);
+  }
+  if (kind === 'empty') expect(last.textContent).toContain('No sessions yet.');
+}
 
-    const jumpToEnd = async () => {
+it.each(['default', 'compact'] as const)(
+  'ends a project guide on the last row’s title line at %s density',
+  async (density) => {
+    const compact = density === 'compact';
+    const sessionCount = 12;
+    const layout = installGuideLayout(compact);
+    try {
+      // The last session starts outside the eight-row window. The project button
+      // is taller than its estimate; session rows stay on the estimate.
+      const sample = sessions[0];
+      if (!sample) throw new Error('Missing a session to copy');
+      const guideSessions = Array.from({ length: sessionCount }, (_, index) => ({
+        ...sample,
+        sessionId: `guide_${index}`,
+        projectId: 'alpha',
+        pinned: false,
+        title: `Guide ${index}`,
+        updatedAt: new Date(Date.parse(createdAt) - index * 1000).toISOString(),
+      }));
+      const container = await mount(
+        {
+          projects: [project('alpha', 'Alpha'), project('beta', 'Beta')],
+          sessions: guideSessions,
+        },
+        density,
+      );
+      expect(fixture.virtualCount).toBe(sessionCount + 3);
+      expect(conversationLinks(container).length).toBeLessThan(sessionCount);
+      expect(container.querySelector('a[href="/sessions/guide_11"]')).toBeNull();
+      // The end row is not mounted, so the border still runs the submenu and
+      // no elbow is drawn on a row that only happens to be last on screen.
+      const early = readGuide(projectRow(container, 'alpha'));
+      expect(early.elbow).toBeNull();
+      expect(early.submenu.className).toContain('border-border');
+      expect(early.submenu.className).not.toContain('border-transparent');
+
+      const jumpToEnd = async () => {
+        const first = container.querySelector<HTMLAnchorElement>(
+          '[data-sidebar-index] a[href="/projects/alpha"]',
+        );
+        await act(async () => {
+          first?.focus();
+          first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+        });
+      };
+      const expectGuides = () => {
+        const alpha = readGuide(projectRow(container, 'alpha'));
+        const nextTop = px(projectRow(container, 'beta').style.top);
+        expectElbow(projectRow(container, 'alpha'), compact, 'session');
+        expect(alpha.origin + alpha.drawn).toBeLessThanOrEqual(nextTop);
+        // Beta has no sessions: the elbow meets the centered empty line.
+        expectElbow(projectRow(container, 'beta'), compact, 'empty');
+      };
+      // Opening the group tweens the wrapper for 160ms, and that height clips the
+      // guide until it lands on the submenu.
+      const settleGuide = async (projectId: string) => {
+        for (let frame = 0; frame < 20; frame += 1) {
+          const submenu = projectRow(container, projectId).querySelector<HTMLElement>(
+            '[data-sidebar="menu-sub"]',
+          );
+          const clip = submenu?.parentElement?.style.height ?? '';
+          if (clip.endsWith('px') && Math.abs(px(clip) - px(submenu?.style.height ?? '')) < 0.01) {
+            return;
+          }
+          await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+        }
+        throw new Error(`Guide for ${projectId} did not finish opening`);
+      };
+
+      await jumpToEnd();
+      expect(container.querySelector('a[href="/sessions/guide_11"]')).not.toBeNull();
+      expect(conversationLinks(container).length).toBeLessThan(sessionCount);
+      expectGuides();
+
+      const toggle = container.querySelector<HTMLButtonElement>(
+        `button[aria-label="${messages.Desktop.toggleProject.replace('{name}', 'Alpha')}"]`,
+      );
+      if (!toggle) throw new Error('Missing project toggle');
+      await act(async () => toggle.click());
+      expect(container.querySelector('a[href="/sessions/guide_11"]')).toBeNull();
+      await act(async () => toggle.click());
+      await jumpToEnd();
+      expect(container.querySelector('a[href="/sessions/guide_11"]')).not.toBeNull();
+      await settleGuide('alpha');
+      await settleGuide('beta');
+      expectGuides();
+    } finally {
+      layout.restore();
+    }
+  },
+);
+
+it.each(['default', 'compact'] as const)(
+  'gives a project that scrolls into view the measured project-button height at %s density',
+  async (density) => {
+    const compact = density === 'compact';
+    const estimated = sidebarRowHeights(compact);
+    const alphaCount = 10;
+    const betaCount = 2;
+    const layout = installGuideLayout(compact);
+    try {
+      const sample = sessions[0];
+      if (!sample) throw new Error('Missing a session to copy');
+      const copied = (sessionId: string, projectId: string, title: string, index: number) => ({
+        ...sample,
+        sessionId,
+        projectId,
+        pinned: false,
+        title,
+        updatedAt: new Date(Date.parse(createdAt) - index * 1000).toISOString(),
+      });
+      const container = await mount(
+        {
+          projects: [project('alpha', 'Alpha'), project('beta', 'Beta'), project('gamma', 'Gamma')],
+          sessions: [
+            ...Array.from({ length: alphaCount }, (_, index) =>
+              copied(`guide_${index}`, 'alpha', `Guide ${index}`, index),
+            ),
+            ...Array.from({ length: betaCount }, (_, index) =>
+              copied(`beta_${index}`, 'beta', `Beta ${index}`, alphaCount + index),
+            ),
+          ],
+        },
+        density,
+      );
+      // Alpha, its sessions, beta, its sessions, gamma, and gamma's empty line.
+      expect(fixture.virtualCount).toBe(alphaCount + betaCount + 4);
+      expect(container.querySelector('a[href="/projects/beta"]')).toBeNull();
+
       const first = container.querySelector<HTMLAnchorElement>(
         '[data-sidebar-index] a[href="/projects/alpha"]',
       );
@@ -751,116 +1016,18 @@ it('keeps a project guide on the bottom of its last session', async () => {
         first?.focus();
         first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
       });
-    };
-    const expectGuideOnLastRow = () => {
-      const alpha = guideExtent(projectRow(container, 'alpha'));
-      const nextTop = px(projectRow(container, 'beta').style.top);
-      const coveredBottom = Math.min(alpha.guideBottom, nextTop);
-      expect({ guideBottom: alpha.guideBottom, coveredBottom }).toEqual({
-        guideBottom: alpha.lastBottom,
-        coveredBottom: alpha.lastBottom,
-      });
-    };
-    // Opening the group tweens the wrapper for 160ms, and that height clips the
-    // border until it lands on the submenu.
-    const settleGuide = async () => {
-      for (let frame = 0; frame < 20; frame += 1) {
-        const submenu = projectRow(container, 'alpha').querySelector<HTMLElement>(
-          '[data-sidebar="menu-sub"]',
-        );
-        const clip = submenu?.parentElement?.style.height ?? '';
-        if (clip.endsWith('px') && Math.abs(px(clip) - px(submenu?.style.height ?? '')) < 0.01) {
-          return;
-        }
-        await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-      }
-    };
 
-    await jumpToEnd();
-    expect(container.querySelector('a[href="/sessions/guide_11"]')).not.toBeNull();
-    expect(conversationLinks(container).length).toBeLessThan(sessionCount);
-    expectGuideOnLastRow();
-
-    const toggle = container.querySelector<HTMLButtonElement>(
-      `button[aria-label="${messages.Desktop.toggleProject.replace('{name}', 'Alpha')}"]`,
-    );
-    if (!toggle) throw new Error('Missing project toggle');
-    await act(async () => toggle.click());
-    expect(container.querySelector('a[href="/sessions/guide_11"]')).toBeNull();
-    await act(async () => toggle.click());
-    await jumpToEnd();
-    expect(container.querySelector('a[href="/sessions/guide_11"]')).not.toBeNull();
-    await settleGuide();
-    expectGuideOnLastRow();
-  } finally {
-    if (descriptor) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', descriptor);
-  }
-});
-
-it('gives a project that scrolls into view the measured project-button height', async () => {
-  const estimated = sidebarRowHeights(false);
-  const projectRowHeight = estimated.project + 8;
-  const alphaCount = 10;
-  const betaCount = 2;
-  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-    configurable: true,
-    get() {
-      const element = this as HTMLElement;
-      if (
-        element.dataset.sidebar === 'menu-button' &&
-        element.parentElement?.querySelector('[data-sidebar="menu-sub"]')
-      ) {
-        return projectRowHeight;
-      }
-      if (element.dataset.sidebar === 'menu-sub') return px(element.style.height);
-      return 0;
-    },
-  });
-  try {
-    const sample = sessions[0];
-    if (!sample) throw new Error('Missing a session to copy');
-    const copied = (sessionId: string, projectId: string, title: string, index: number) => ({
-      ...sample,
-      sessionId,
-      projectId,
-      pinned: false,
-      title,
-      updatedAt: new Date(Date.parse(createdAt) - index * 1000).toISOString(),
-    });
-    const container = await mount({
-      projects: [project('alpha', 'Alpha'), project('beta', 'Beta'), project('gamma', 'Gamma')],
-      sessions: [
-        ...Array.from({ length: alphaCount }, (_, index) =>
-          copied(`guide_${index}`, 'alpha', `Guide ${index}`, index),
-        ),
-        ...Array.from({ length: betaCount }, (_, index) =>
-          copied(`beta_${index}`, 'beta', `Beta ${index}`, alphaCount + index),
-        ),
-      ],
-    });
-    // Alpha, its sessions, beta, its sessions, gamma, and gamma's empty line.
-    expect(fixture.virtualCount).toBe(alphaCount + betaCount + 4);
-    expect(container.querySelector('a[href="/projects/beta"]')).toBeNull();
-
-    const first = container.querySelector<HTMLAnchorElement>(
-      '[data-sidebar-index] a[href="/projects/alpha"]',
-    );
-    await act(async () => {
-      first?.focus();
-      first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-    });
-
-    const betaTop = px(projectRow(container, 'beta').style.top);
-    const gammaTop = px(projectRow(container, 'gamma').style.top);
-    expect(gammaTop - betaTop).toBe(projectRowHeight + betaCount * estimated.session);
-    const beta = guideExtent(projectRow(container, 'beta'));
-    const coveredBottom = Math.min(beta.guideBottom, gammaTop);
-    expect({ guideBottom: beta.guideBottom, coveredBottom }).toEqual({
-      guideBottom: beta.lastBottom,
-      coveredBottom: beta.lastBottom,
-    });
-  } finally {
-    if (descriptor) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', descriptor);
-  }
-});
+      const betaTop = px(projectRow(container, 'beta').style.top);
+      const gammaTop = px(projectRow(container, 'gamma').style.top);
+      expect(gammaTop - betaTop).toBe(
+        layout.layout.projectRowHeight + betaCount * estimated.session,
+      );
+      const beta = readGuide(projectRow(container, 'beta'));
+      expectElbow(projectRow(container, 'beta'), compact, 'session');
+      expect(beta.origin + beta.drawn).toBeLessThanOrEqual(gammaTop);
+      expectElbow(projectRow(container, 'gamma'), compact, 'empty');
+    } finally {
+      layout.restore();
+    }
+  },
+);

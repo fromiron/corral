@@ -796,6 +796,8 @@ export const Sidebar = memo(function Sidebar({
                       </Tooltip>
                     </SidebarMenuActions>
                     <SidebarMenuSub
+                      // Turn the guide into the last row's title line, or the empty line.
+                      elbow
                       open={!folded}
                       style={{ height: group.size - group.projectSize }}
                     >
@@ -821,7 +823,7 @@ export const Sidebar = memo(function Sidebar({
                                 'flex items-center px-2 text-muted-foreground',
                               )}
                             >
-                              {tw('noSessions')}
+                              <span data-sidebar-guide-line="">{tw('noSessions')}</span>
                             </li>
                           );
                         const session = row.session;
@@ -877,6 +879,7 @@ export const Sidebar = memo(function Sidebar({
                               <span className="flex min-w-0 flex-1 flex-col">
                                 <span
                                   data-session-line="title"
+                                  data-sidebar-guide-line=""
                                   className={cn(size.type.body, 'truncate')}
                                   style={{
                                     fontVariationSettings: active
