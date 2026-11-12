@@ -8,6 +8,7 @@ import {
   CorralDefinition,
   CorralDefinitionDraft,
   HarnessBindingRef,
+  Identifier,
   type ImageAttachment,
   ImageAttachments,
   MeetingConfig,
@@ -15,6 +16,7 @@ import {
   MeetingState,
   PermissionMode,
   RunInput,
+  StartFrom,
   type TextAttachment,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -93,7 +95,29 @@ export interface SessionEntry {
   commandId?: string | null;
   /** The template an auto request ran with; absent for a chosen team. */
   auto?: SessionEntryAuto | null;
+  /** How a queued request starts when the server starts it; absent means only a person can. */
+  start?: SessionEntryStart;
+  /** The instruction this request was carried over from; it starts even without autoStart. */
+  carriedFrom?: string;
 }
+
+/**
+ * What a `POST /runs/auto` body holds besides the request itself: the model and reasoning
+ * choice, the team and the permission mode. The command, brief, conversation and references
+ * come from the entry and the run it follows, and the session from the entry's session.
+ */
+export const SessionEntryStart = z.strictObject({
+  harness: HarnessBindingRef.optional(),
+  permissionMode: PermissionMode.optional(),
+  taskScope: RunInput.shape.taskScope,
+  verificationScope: RunInput.shape.verificationScope,
+  choice: AutoModelChoice,
+  mode: z.enum(['mock', 'live']),
+  startFrom: StartFrom.optional(),
+  /** the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
+  team: z.union([z.enum(['none', 'auto']), z.strictObject({ corralId: Identifier })]).optional(),
+});
+export type SessionEntryStart = z.infer<typeof SessionEntryStart>;
 
 export const SessionEntryAuto = AutoRoute.pick({
   harness: true,
@@ -143,6 +167,8 @@ export interface WorkSession {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  /** Whether the server starts the first queued request when the session's run ends. */
+  autoStart: boolean;
   entries: SessionEntry[];
   /** present only for a meeting; changed only by the meeting service. */
   meeting?: MeetingState;
@@ -164,6 +190,7 @@ export interface SessionChange {
   auto?: AutoModelChoice | null;
   pinned?: boolean;
   archived?: boolean;
+  autoStart?: boolean;
   /** the meeting service's next state; a work session cannot become a meeting. */
   meeting?: MeetingState;
   expectedRevision: number;
@@ -194,6 +221,8 @@ export interface NewSessionEntry {
   refusal?: CommandError | null;
   commandId?: string | null;
   auto?: SessionEntryAuto | null;
+  start?: SessionEntryStart;
+  carriedFrom?: string;
 }
 
 export interface CorralRecord {
@@ -321,6 +350,7 @@ export function planSessionCreate(
       createdAt: context.now,
       updatedAt: context.now,
       archivedAt: null,
+      autoStart: true,
       entries: [],
       ...(meeting ? { meeting: { config: meeting.data, rounds: [], queued: null } } : {}),
     },
@@ -341,6 +371,8 @@ export function planSessionUpdate(
       error: 'revision_conflict',
       message: `This session was changed elsewhere (revision ${current.revision}). Reload first.`,
     };
+  if (change.autoStart !== undefined && typeof change.autoStart !== 'boolean')
+    return { ok: false, error: 'invalid', message: 'autoStart is true or false.' };
   if (change.auto && !AutoModelChoice.safeParse(change.auto).success)
     return { ok: false, error: 'invalid', message: 'The auto model choice is not valid.' };
   if (
@@ -378,6 +410,7 @@ export function planSessionUpdate(
       ...(change.corralId !== undefined ? { corralId: change.corralId } : {}),
       ...(change.auto !== undefined ? { auto: change.auto } : {}),
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
+      ...(change.autoStart !== undefined ? { autoStart: change.autoStart } : {}),
       ...(change.meeting !== undefined ? { meeting: MeetingState.parse(change.meeting) } : {}),
       ...(change.archived === undefined
         ? {}
@@ -458,6 +491,18 @@ export function planSessionEntry(
     };
   if (entry.refusal != null && !CommandError.safeParse(entry.refusal).success)
     return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
+  const start = entry.start === undefined ? undefined : SessionEntryStart.safeParse(entry.start);
+  if (start && (!start.success || entry.intent !== 'queue'))
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'a start request requires a valid queued request',
+    };
+  if (
+    entry.carriedFrom !== undefined &&
+    (typeof entry.carriedFrom !== 'string' || !entry.carriedFrom || entry.intent !== 'queue')
+  )
+    return { ok: false, error: 'invalid', message: 'a carried request requires a queued request' };
   const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
@@ -477,6 +522,8 @@ export function planSessionEntry(
           taskScope: value.taskScope ?? null,
           verificationScope: value.verificationScope ?? null,
           meetingHandoff: value.meetingHandoff ?? null,
+          start: value.start ?? null,
+          carriedFrom: value.carriedFrom ?? null,
         });
       return identity(previous) === identity(entry)
         ? { ok: true, session: current }
@@ -523,6 +570,8 @@ export function planSessionEntry(
             ? { meetingHandoff: MeetingHandoffOrigin.parse(entry.meetingHandoff) }
             : {}),
           ...(entry.auto ? { auto: entry.auto } : {}),
+          ...(start?.success ? { start: start.data } : {}),
+          ...(entry.carriedFrom ? { carriedFrom: entry.carriedFrom } : {}),
           ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
           ...(entry.harness ? { harness: HarnessBindingRef.parse(entry.harness) } : {}),
           ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),
@@ -894,7 +943,12 @@ export function createKeyValueCorralRepository(
     const parsed = safeJson(raw);
     if (!Array.isArray(parsed)) throw new Error('The saved session list cannot be read.');
     // Sessions saved before auto mode have no choice yet.
-    return (parsed as WorkSession[]).map((x) => ({ ...x, auto: x.auto ?? null }));
+    // Sessions saved before autoStart start their queue, as new ones do.
+    return (parsed as WorkSession[]).map((x) => ({
+      ...x,
+      auto: x.auto ?? null,
+      autoStart: x.autoStart ?? true,
+    }));
   };
   const findSession = (sessionId: string) =>
     readSessions().find((x) => x.sessionId === sessionId) ?? null;

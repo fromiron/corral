@@ -75,6 +75,7 @@ const session = (entries: SessionEntry[] = []): WorkSession => ({
   createdAt: '2026-11-09T00:00:00Z',
   updatedAt: '2026-11-09T00:00:00Z',
   archivedAt: null,
+  autoStart: true,
   entries,
 });
 

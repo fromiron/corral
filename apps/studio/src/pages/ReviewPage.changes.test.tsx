@@ -107,6 +107,7 @@ const session: WorkSession = {
   createdAt: date,
   updatedAt: date,
   archivedAt: null,
+  autoStart: true,
   entries: [],
 };
 const file = (path: string, provenance = 'managed_agent') => ({

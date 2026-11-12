@@ -55,6 +55,7 @@ const session = (sessionId: string, projectId: string, title: string, objective 
     createdAt,
     updatedAt: createdAt,
     archivedAt: null,
+    autoStart: true,
     entries: [],
   }) as WorkSession;
 const projects = [project('alpha', 'Alpha'), project('beta', 'Beta')];

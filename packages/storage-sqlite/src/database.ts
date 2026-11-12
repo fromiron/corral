@@ -699,6 +699,17 @@ ALTER TABLE meeting_handoffs_next RENAME TO meeting_handoffs;
 CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
 `,
   },
+  {
+    // whether the server starts a session's queue when its run ends; existing sessions do.
+    name: '0042_session_auto_start',
+    sql: '-- the column is added below, once, so running this step again changes nothing.',
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(work_sessions)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'auto_start'))
+        db.exec(`ALTER TABLE work_sessions ADD COLUMN auto_start INTEGER NOT NULL DEFAULT 1
+  CHECK (auto_start IN (0,1))`);
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

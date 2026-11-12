@@ -839,6 +839,62 @@ export function describeCorralRepositoryContract(
         expect(updated.ok && updated.session.entries[0]?.auto).toEqual(auto);
         expect((await repo.getSession(id))?.entries[0]?.auto).toEqual(auto);
       });
+
+      it('saves autoStart, true by default, and a queued start snapshot and carried source', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Server queue' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect(created.session.autoStart).toBe(true);
+        expect((await repo.getSession(id))?.autoStart).toBe(true);
+        const off = await repo.updateSession(id, { autoStart: false, expectedRevision: 1 });
+        expect(off).toMatchObject({ ok: true, session: { autoStart: false, revision: 2 } });
+        expect((await repo.getSession(id))?.autoStart).toBe(false);
+        expect(
+          await repo.updateSession(id, { autoStart: true, expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        const start = {
+          choice: { modelProfile: 'model-a' },
+          mode: 'mock' as const,
+          team: 'none' as const,
+          permissionMode: 'ask' as const,
+        };
+        const queued = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'Start me later',
+          state: 'queued',
+          start,
+          carriedFrom: 'directive_original',
+        });
+        if (!queued.ok) throw new Error(queued.message);
+        expect((await repo.getSession(id))?.entries[0]).toMatchObject({
+          start,
+          carriedFrom: 'directive_original',
+        });
+        const plain = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'No snapshot',
+          state: 'queued',
+        });
+        if (!plain.ok) throw new Error(plain.message);
+        const stored = (await repo.getSession(id))?.entries[1];
+        expect(stored && 'start' in stored).toBe(false);
+        expect(stored && 'carriedFrom' in stored).toBe(false);
+        for (const refused of [
+          { intent: 'queue' as const, start: { ...start, mode: 'later' } },
+          { intent: 'queue' as const, start: { ...start, extra: true } },
+          { intent: 'next' as const, start },
+          { intent: 'next' as const, carriedFrom: 'directive_original' },
+        ])
+          expect(
+            await repo.addSessionEntry(id, {
+              text: 'Refused',
+              state: 'queued',
+              ...(refused as object),
+            } as Parameters<CorralRepository['addSessionEntry']>[1]),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        expect((await repo.getSession(id))?.entries).toHaveLength(2);
+      });
     });
   });
 }

@@ -83,6 +83,7 @@ import {
   planRun,
   type SaveResult,
   SessionEntryAuto,
+  SessionEntryStart,
   type SessionResult,
   ToolRefusal,
 } from '@corral/core';
@@ -176,6 +177,7 @@ import {
   Sessions,
 } from './security.ts';
 import { prepareBranchSession } from './session-branches.ts';
+import { createSessionQueue } from './session-queue.ts';
 import { SessionSearch } from './session-search.ts';
 import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
 import { providersVaultAdapter } from './vault/providers.ts';
@@ -355,6 +357,7 @@ const UpdateSession = z.strictObject({
   auto: AutoModelChoice.nullable().optional(),
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
+  autoStart: z.boolean().optional(),
   expectedRevision: z.int().min(1),
 });
 const EntryRefusal = CommandError.extend({ message: z.string().min(1).max(2000) });
@@ -375,6 +378,8 @@ const NewEntry = z.strictObject({
   commandId: Identifier.nullable().optional(),
   // The template an auto request ran with.
   auto: SessionEntryAuto.nullable().optional(),
+  // How the server starts a queued request when the session's run ends.
+  start: SessionEntryStart.optional(),
 });
 const EntryChange = z.strictObject({
   state: EntryState,
@@ -392,21 +397,13 @@ const ExplainRequest = z.strictObject({
   startFrom: StartFrom.optional(),
 });
 // a request in an auto session; the runtime chooses the template and builds the team.
-const AutoRunRequest = z.strictObject({
-  harness: HarnessBindingRef.optional(),
-  permissionMode: PermissionMode.optional(),
-  taskScope: RunInput.shape.taskScope,
-  verificationScope: RunInput.shape.verificationScope,
+// A queued entry saves the same choices as its start snapshot (SessionEntryStart).
+const AutoRunRequest = SessionEntryStart.extend({
   schemaVersion: SchemaVersion,
   commandId: Identifier,
   sessionId: Identifier,
   brief: z.string().trim().min(1).max(20_000),
-  choice: AutoModelChoice,
-  mode: z.enum(['mock', 'live']),
-  startFrom: StartFrom.optional(),
   conversation: ConversationSource.optional(),
-  /** the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
-  team: z.union([z.enum(['none', 'auto']), z.strictObject({ corralId: Identifier })]).optional(),
   references: RunReferences.optional(),
 });
 const CreateProject = z.strictObject({
@@ -670,7 +667,10 @@ async function createCorralServer(
     modelAttempts,
   );
   imageGeneration.cleanupOrphans();
+  // Bound once the auto start path exists; runs cannot end before the server is ready.
+  let sessionQueue: ReturnType<typeof createSessionQueue> | null = null;
   const coordinator = new Coordinator({
+    runEnded: (runId) => void sessionQueue?.runEnded(runId),
     previewTools,
     imageGeneration: {
       read: (runId, versionId) => {
@@ -2010,15 +2010,74 @@ async function createCorralServer(
     }),
   });
   registerVaultRoutes(app, { vault, directory: vaultDirectory });
+  type AutoRunBody = z.infer<typeof AutoRunRequest>;
+  /**
+   * Admits one auto request the way `POST /runs/auto` does; the server queue calls it too.
+   * A refusal before admission is returned; the start's own refusal is in its receipt.
+   */
+  const startAutoRun = async (
+    body: AutoRunBody,
+    signal: AbortSignal,
+    controller: AbortController,
+  ): Promise<
+    | { ok: false; code: ErrorCode; message: string }
+    | { ok: true; result: AutoResult; resend: boolean }
+  > => {
+    if (body.commandId.startsWith('meeting_'))
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        message: 'Meeting start commands belong to the meeting service.',
+      };
+    const resend = coordinator.hasStartCommand(body.commandId);
+    // A resend returns its first start, so the session is read for a new admission only.
+    let sessionCriteria: string[] | undefined;
+    if (!resend) {
+      const session = await corrals.getSession(body.sessionId);
+      if (!session) return { ok: false, code: 'TARGET_NOT_FOUND', message: 'no such session' };
+      if (session.meeting)
+        return {
+          ok: false,
+          code: 'CAPABILITY_DENIED',
+          message: 'A meeting starts answers through its rounds only.',
+        };
+      sessionCriteria = session.criteria;
+    }
+    const work = autoStarter.start(
+      {
+        commandId: body.commandId,
+        sessionId: body.sessionId,
+        brief: body.brief,
+        choice: body.choice,
+        mode: body.mode,
+        ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
+        ...(body.harness ? { harness: body.harness } : {}),
+        ...(body.taskScope ? { taskScope: body.taskScope } : {}),
+        ...(body.verificationScope ? { verificationScope: body.verificationScope } : {}),
+        ...(body.startFrom ? { startFrom: body.startFrom } : {}),
+        ...(body.conversation ? { conversation: body.conversation } : {}),
+        ...(body.team ? { team: body.team } : {}),
+        ...(body.references ? { references: body.references } : {}),
+      },
+      {
+        fileTools: false,
+        signal,
+        ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+      },
+    );
+    if (!autoRequests.has(body.commandId)) {
+      const pending = { sessionId: body.sessionId, controller, work };
+      autoRequests.set(body.commandId, pending);
+      const clear = () => {
+        if (autoRequests.get(body.commandId) === pending) autoRequests.delete(body.commandId);
+      };
+      void work.then(clear, clear);
+    }
+    return { ok: true, result: await work, resend };
+  };
   app.post('/api/v1/runs/auto', async (request, reply) => {
     const body = parse(AutoRunRequest, request, reply);
     if (!body) return reply;
-    if (body.commandId.startsWith('meeting_'))
-      return fail(
-        reply,
-        'CAPABILITY_DENIED',
-        'Meeting start commands belong to the meeting service.',
-      );
     const dropped = new AbortController();
     const onClose = () => {
       if (!reply.raw.writableEnded) dropped.abort();
@@ -2026,51 +2085,9 @@ async function createCorralServer(
     reply.raw.once('close', onClose);
     if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
-      const resend = coordinator.hasStartCommand(body.commandId);
-      // A resend returns its first start, so the session is read for a new admission only.
-      let sessionCriteria: string[] | undefined;
-      if (!resend) {
-        const session = await corrals.getSession(body.sessionId);
-        if (!session) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
-        if (session.meeting)
-          return fail(
-            reply,
-            'CAPABILITY_DENIED',
-            'A meeting starts answers through its rounds only.',
-          );
-        sessionCriteria = session.criteria;
-      }
-      const work = autoStarter.start(
-        {
-          commandId: body.commandId,
-          sessionId: body.sessionId,
-          brief: body.brief,
-          choice: body.choice,
-          mode: body.mode,
-          ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
-          ...(body.harness ? { harness: body.harness } : {}),
-          ...(body.taskScope ? { taskScope: body.taskScope } : {}),
-          ...(body.verificationScope ? { verificationScope: body.verificationScope } : {}),
-          ...(body.startFrom ? { startFrom: body.startFrom } : {}),
-          ...(body.conversation ? { conversation: body.conversation } : {}),
-          ...(body.team ? { team: body.team } : {}),
-          ...(body.references ? { references: body.references } : {}),
-        },
-        {
-          fileTools: false,
-          signal: dropped.signal,
-          ...(sessionCriteria?.length ? { sessionCriteria } : {}),
-        },
-      );
-      if (!autoRequests.has(body.commandId)) {
-        const pending = { sessionId: body.sessionId, controller: dropped, work };
-        autoRequests.set(body.commandId, pending);
-        const clear = () => {
-          if (autoRequests.get(body.commandId) === pending) autoRequests.delete(body.commandId);
-        };
-        void work.then(clear, clear);
-      }
-      const result = await work;
+      const started = await startAutoRun(body, dropped.signal, dropped);
+      if (!started.ok) return fail(reply, started.code, started.message);
+      const { result, resend } = started;
       const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
       return reply.code(status).send(result);
     } catch (error) {
@@ -2084,6 +2101,36 @@ async function createCorralServer(
     } finally {
       reply.raw.off('close', onClose);
     }
+  });
+  // The server starts a session's first queued request when this process sees its run end.
+  // Each start has its own controller: cancelling one queued start must not stop the others.
+  const queueStarts = new Set<AbortController>();
+  let queueClosed = false;
+  resources.defer(() => {
+    queueClosed = true;
+    for (const controller of queueStarts) controller.abort();
+  });
+  sessionQueue = createSessionQueue({
+    repository: corrals,
+    runs: () => coordinator.listRuns(),
+    start: async (request) => {
+      if (queueClosed) return { ok: false, code: 'CANCELLED' };
+      const controller = new AbortController();
+      queueStarts.add(controller);
+      const started = await startAutoRun(
+        { ...request, schemaVersion: SCHEMA_VERSION },
+        controller.signal,
+        controller,
+      ).finally(() => queueStarts.delete(controller));
+      if (!started.ok) return { ok: false, code: started.code };
+      return {
+        ok: true,
+        runId: started.result.runId,
+        error: started.result.receipt.error ?? null,
+        autoRoute: started.result.autoRoute ?? null,
+      };
+    },
+    log: (sessionId, code) => console.warn(`session queue: ${sessionId} ${code}`),
   });
   app.post<{ Params: { commandId: string } }>(
     '/api/v1/runs/auto/:commandId/cancel',

@@ -88,6 +88,7 @@ async function mount({ embedded = true, noCopy = false } = {}) {
     createdAt: '2026-10-26T00:00:00Z',
     updatedAt: '2026-10-26T00:00:00Z',
     archivedAt: null,
+    autoStart: true,
     entries: [],
   };
   fixture.session = session;

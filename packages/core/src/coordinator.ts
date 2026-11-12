@@ -396,6 +396,11 @@ export interface CoordinatorDeps {
   admission?: AdmissionConfig;
   /** Effort routing for automatic reasoning (features/effort-routing.md). Absent means Off. */
   effortRouting?: EffortRoutingDeps;
+  /**
+   * Told once, after the commit, when this process sees a run reach a terminal state.
+   * Runs a previous process left open and recovery closes are not reported.
+   */
+  runEnded?: (runId: string) => void;
 }
 
 /** Resolves immutable, trusted revisions without importing extension code. */
@@ -714,6 +719,7 @@ export class Coordinator {
   private readonly effortRouting: EffortRoutingDeps | undefined;
   private readonly gates: AdmissionGates;
   private readonly observers: readonly AdmissionObserver[];
+  private readonly runEnded: ((runId: string) => void) | undefined;
   private readonly corrals: DefinitionSource | undefined;
   private readonly sessionId: string;
   private readonly policy: InstallationPolicy;
@@ -769,6 +775,7 @@ export class Coordinator {
     this.runtimeRecovery = deps.runtimeRecovery;
     this.gates = resolveGates(deps.admission);
     this.observers = deps.admission?.observers ?? [];
+    this.runEnded = deps.runEnded;
     this.recover();
   }
 
@@ -3924,6 +3931,13 @@ export class Coordinator {
     if (TERMINAL_RUN_STATUSES.has(projection.status)) {
       this.live.delete(run.runId);
       this.wake(run);
+      const ended = this.runEnded;
+      if (ended && !TERMINAL_RUN_STATUSES.has(before.status))
+        void Promise.resolve()
+          .then(() => ended(run.runId))
+          .catch(() => {
+            // The listener owns its failure; the run is already committed.
+          });
       this.files?.releaseRun?.(
         run.runId,
         !this.drainingRuns.has(run) &&
