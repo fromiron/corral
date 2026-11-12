@@ -293,6 +293,7 @@ it('lets the person install Vulkan or CUDA and says they are not verified here',
   expect(option('Vulkan')?.textContent).not.toContain('verified GPU');
   await act(async () => option('Vulkan')?.click());
   expect(container.textContent).toContain('Downloads about 36 MB.');
+  expect(container.textContent).toContain('Needs the Vulkan loader (libvulkan.so.1).');
   await act(async () => button(container, 'Install')?.click());
   expect(api.installLocalRouting).toHaveBeenCalledWith('vulkan');
 });
