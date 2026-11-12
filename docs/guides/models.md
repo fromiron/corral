@@ -1,6 +1,6 @@
 # 모델 연결
 
-로컬 서버(`pnpm serve` 또는 `pnpm corral dev`)의 **Models** 화면 **연결** 탭에서 모델 공급자에 연결한다. **연결 추가**는 Pi가 지원하는 모든 공급자를 보여 준다. 연결된 공급자의 모델은 프로필을 만들지 않아도 모델 선택기에 나온다([명세](../specs/features/model-connections.md)). 자격 증명은 작업 공간 밖 사용자 설정 디렉터리(`$XDG_CONFIG_HOME/corral` 또는 `~/.config/corral`, Windows `%APPDATA%\corral`)의 `credentials.json`(0600)에만 저장한다. Corral 정의·SQLite·이벤트·export·화면에는 나오지 않는다.
+로컬 서버의 **Models** 화면 **연결** 탭에서 모델 공급자에 연결한다. 빌드된 화면은 `pnpm serve` 또는 `pnpm corral dev`로 열고, 화면을 고치면서 쓰려면 `pnpm dev --live`로 연다. `pnpm dev --live`는 Studio를 빌드하지 않으며, 터미널에 나온 `http://localhost:5173/#bootstrap=…`로 연다. **연결 추가**는 Pi가 지원하는 모든 공급자를 보여 준다. 연결된 공급자의 모델은 프로필을 만들지 않아도 모델 선택기에 나온다([명세](../specs/features/model-connections.md)). 자격 증명은 작업 공간 밖 사용자 설정 디렉터리(`$XDG_CONFIG_HOME/corral` 또는 `~/.config/corral`, Windows `%APPDATA%\corral`)의 `credentials.json`(0600)에만 저장한다. Corral 정의·SQLite·이벤트·export·화면에는 나오지 않는다.
 
 ## 연결 방법
 

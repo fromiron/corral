@@ -14,7 +14,8 @@
     "build": "pnpm -r build",
     "test:e2e": "pnpm --filter @corral/studio test:e2e",
     "test:e2e:extended": "pnpm --filter @corral/studio test:e2e:extended",
-    "dev": "pnpm --filter @corral/studio dev",
+    "dev": "node tools/dev.ts",
+    "test:dev": "node --test tools/dev.test.ts",
     "corral": "node packages/cli/src/main.ts",
     "serve": "pnpm --filter @corral/studio build && node apps/server/src/main.ts --static apps/studio/dist",
     "storybook": "pnpm --filter @corral/react storybook",
@@ -27,7 +28,7 @@
     "release:inventory": "node tools/release/inventory.ts",
     "release:gate": "node tools/release/gate.ts",
     "release:check": "node tools/release/check.ts",
-    "test:release": "node --test tools/release/*.test.ts"
+    "test:release": "node --test tools/release/*.test.ts tools/dev.test.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
