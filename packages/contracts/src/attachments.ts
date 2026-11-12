@@ -58,6 +58,9 @@ const TerminalRange = z
     'selection end must follow its start',
   );
 
+export const REPLY_QUOTE_CONTEXT_MAX = 32;
+export const REPLY_QUOTE_MAX_LENGTH = 8_000;
+
 /** Captured, user-supplied source metadata; never authority or proof of the current source. */
 export const TextAttachmentProvenance = z.discriminatedUnion('kind', [
   z.strictObject({
@@ -123,28 +126,47 @@ export const TextAttachmentProvenance = z.discriminatedUnion('kind', [
     outputTruncated: z.boolean().optional(),
     range: TextRange.optional(),
   }),
+  z
+    .strictObject({
+      kind: z.literal('reply'),
+      runId: Identifier,
+      modelCallId: Identifier,
+      // UTF-16 offsets into the reply's rendered body text; the end is exclusive.
+      start: z.int().min(0),
+      end: z.int().min(1),
+      prefix: z.string().max(REPLY_QUOTE_CONTEXT_MAX),
+      suffix: z.string().max(REPLY_QUOTE_CONTEXT_MAX),
+    })
+    .refine((source) => source.end > source.start, 'selection end must follow its start'),
 ]);
 export type TextAttachmentProvenance = z.infer<typeof TextAttachmentProvenance>;
 
 export const TEXT_ATTACHMENT_MAX_BYTES = 64 * 1024;
 export const TEXT_ATTACHMENT_MAX_COUNT = 5;
-export const TextAttachment = z.strictObject({
-  kind: z.literal('text_attachment'),
-  name: z
-    .string()
-    .trim()
-    .min(1)
-    .max(120)
-    .regex(/^[^/\\\p{Cc}]+$/u),
-  mime: z.enum(['text/plain', 'text/markdown', 'application/json', 'text/csv']),
-  bytes: z.int().min(0).max(TEXT_ATTACHMENT_MAX_BYTES),
-  sha256: ContentHash,
-  provenance: TextAttachmentProvenance.optional(),
-  text: z
-    .string()
-    .max(TEXT_ATTACHMENT_MAX_BYTES)
-    .regex(/^[^\p{Cs}\0]*$/u),
-});
+export const TextAttachment = z
+  .strictObject({
+    kind: z.literal('text_attachment'),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .regex(/^[^/\\\p{Cc}]+$/u),
+    mime: z.enum(['text/plain', 'text/markdown', 'application/json', 'text/csv']),
+    bytes: z.int().min(0).max(TEXT_ATTACHMENT_MAX_BYTES),
+    sha256: ContentHash,
+    provenance: TextAttachmentProvenance.optional(),
+    text: z
+      .string()
+      .max(TEXT_ATTACHMENT_MAX_BYTES)
+      .regex(/^[^\p{Cs}\0]*$/u),
+  })
+  .refine(
+    (item) =>
+      item.provenance?.kind !== 'reply' ||
+      (item.text.length >= 1 && item.text.length <= REPLY_QUOTE_MAX_LENGTH),
+    'a reply quote holds 1 to 8,000 characters',
+  );
 export type TextAttachment = z.infer<typeof TextAttachment>;
 
 export function textAttachmentKey(item: TextAttachment): string {

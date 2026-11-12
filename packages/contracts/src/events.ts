@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TextAttachments } from './attachments.ts';
 import { AutoRoute } from './auto-team.ts';
 import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
@@ -484,6 +485,7 @@ export const DirectiveAccepted = event(
     directiveId: Identifier,
     targetExecutionId: Identifier,
     text: z.string().min(1).max(12000),
+    attachments: TextAttachments.optional(),
   }),
 );
 export const DirectiveAttached = event(

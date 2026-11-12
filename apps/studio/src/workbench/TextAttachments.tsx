@@ -6,6 +6,7 @@ import {
 } from '@corral/contracts';
 import { createTextAttachment, validTextAttachments } from '@corral/core';
 import { Button } from '@corral/react/design-kit';
+import { Quote, X } from '@corral/react/icons';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AttachmentSource } from './context/ContextAttachments.tsx';
@@ -161,5 +162,45 @@ export function TextAttachmentList({ attachments }: { attachments: TextAttachmen
         </li>
       ))}
     </ul>
+  );
+}
+
+const QUOTE_CHIP_LENGTH = 40;
+
+/** A reply quote in the chip row: its mark and opening words; the whole passage is its name. */
+export function QuoteChip({
+  item,
+  disabled,
+  onRemove,
+}: {
+  item: TextAttachment;
+  disabled?: boolean;
+  onRemove(): void;
+}) {
+  const t = useTranslations('Composer');
+  const text = item.text.replace(/\s*[\r\n]+\s*/g, ' ');
+  const characters = [...text];
+  const opening =
+    characters.length > QUOTE_CHIP_LENGTH
+      ? `${characters.slice(0, QUOTE_CHIP_LENGTH).join('')}…`
+      : text;
+  return (
+    <li className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-caption">
+      <Quote className="size-3 shrink-0 text-muted-foreground" />
+      <span aria-hidden="true" className="truncate" title={text}>
+        {opening}
+      </span>
+      <span className="sr-only">{`${t('quote')}: ${text}`}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-tiny"
+        disabled={disabled}
+        aria-label={t('removeQuote', { text: opening })}
+        onClick={onRemove}
+      >
+        <X />
+      </Button>
+    </li>
   );
 }

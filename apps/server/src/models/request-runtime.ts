@@ -174,7 +174,9 @@ export class ModelRequestRuntime {
               : 'completed';
       if (message.content.length) attempt.firstEventAt ??= now();
       if (message.stopReason === 'error')
-        attempt.failure = providerFailure(message.errorMessage ?? '', response);
+        attempt.failure = providerFailure(message.errorMessage ?? '', response, {
+          responseStarted,
+        });
       if (attempt.failure?.code === 'RATE_LIMIT' && attempt.failure.retryAfterMs)
         this.cooldowns.set(
           model.provider,
@@ -196,6 +198,8 @@ export class ModelRequestRuntime {
         );
     };
     let response: { status: number; headers: Headers } | undefined;
+    // A response event before the failure separates a cut response from an unknown delivery.
+    let responseStarted = false;
     void (async () => {
       let release: (() => void) | undefined;
       let finishRequest: (() => void) | undefined;
@@ -364,6 +368,7 @@ export class ModelRequestRuntime {
         );
         for await (const event of stream) {
           if ('delta' in event || event.type === 'done') attempt.firstEventAt ??= now();
+          if (event.type !== 'done' && event.type !== 'error') responseStarted = true;
           if (!ended)
             out.push(
               event.type === 'error'
@@ -372,7 +377,9 @@ export class ModelRequestRuntime {
                     error: {
                       ...event.error,
                       errorMessage: JSON.stringify(
-                        providerFailure(event.error.errorMessage ?? '', response),
+                        providerFailure(event.error.errorMessage ?? '', response, {
+                          responseStarted,
+                        }),
                       ),
                     },
                   }

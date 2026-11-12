@@ -391,16 +391,17 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               const missing = [...directives.values()].filter(
                 (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
               );
+              // One message per directive: no directive's text follows another's attachment body.
               if (missing.length)
                 requestContext = {
                   ...requestContext,
                   messages: [
                     ...requestContext.messages,
-                    {
-                      role: 'user',
-                      content: missing.map(directiveText).join('\n\n'),
+                    ...missing.map((d) => ({
+                      role: 'user' as const,
+                      content: directiveText(d),
                       timestamp: deps.now(),
-                    },
+                    })),
                   ],
                 };
               measuredContext = inspectContext(requestContext, {
@@ -1448,6 +1449,10 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             : input,
         ),
       };
+      // session.prompt takes one text, and Pi's steering queue ("one-at-a-time") would hold a
+      // second directive for a later turn, so directives waiting at start follow the request
+      // in this one text. With more than one, a later directive follows an earlier one's
+      // attachment body here.
       await session.prompt(
         [userPrompt(start), ...[...directives.values()].map(directiveText)].join('\n\n'),
         {

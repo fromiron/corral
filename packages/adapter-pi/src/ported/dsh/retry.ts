@@ -14,10 +14,14 @@ export interface ProviderFailure {
   retryAfterMs: number | null;
   requestId: string | null;
 }
+/**
+ * `responseStarted` says a response event arrived before the failure. Only then does a lost
+ * connection or an overload notice count as transient; before it, delivery is unknown.
+ */
 export function providerFailure(
   error: unknown,
   response?: { status: number; headers: Headers },
-  now = Date.now(),
+  { now = Date.now(), responseStarted = false }: { now?: number; responseStarted?: boolean } = {},
 ): ProviderFailure {
   const text = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   try {
@@ -75,10 +79,17 @@ export function providerFailure(
             ? 'SERVER'
             : /abort|cancel/i.test(text)
               ? 'CANCELLED'
-              : /ECONNREFUSED|ENOTFOUND|connect timeout/i.test(text) ||
-                  /^(?:Connection error\.|fetch failed)$/i.test(text)
-                ? 'TRANSPORT'
-                : 'UNKNOWN';
+              : responseStarted && /overloaded|\b(?:status|http|code)[ :=]*529\b/i.test(text)
+                ? 'SERVER'
+                : (responseStarted &&
+                      (/^(?:\w*Error: )?terminated$/i.test(text) ||
+                        /premature close|ECONNRESET|socket hang up|other side closed/i.test(
+                          text,
+                        ))) ||
+                    /ECONNREFUSED|ENOTFOUND|connect timeout/i.test(text) ||
+                    /^(?:Connection error\.|fetch failed)$/i.test(text)
+                  ? 'TRANSPORT'
+                  : 'UNKNOWN';
   const requestId = response?.headers.get('x-request-id') ?? response?.headers.get('request-id');
   return {
     code,

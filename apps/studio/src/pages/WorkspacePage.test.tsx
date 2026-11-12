@@ -18,20 +18,33 @@ import {
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { SettingsNavigationContext } from '../workbench/navigation.ts';
+import { forgetSharedPresenceHolds } from '../workbench/useSettledPresence.ts';
 import { WorkspacePage } from './WorkspacePage.tsx';
 
 const fixture = vi.hoisted(() => ({
   services: {} as Record<string, unknown>,
   data: {} as Record<string, unknown>,
+  /** Views reading the loader data, told when a test loads new data. */
+  readers: new Set<() => void>(),
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({
-  workspaceRoute: { useLoaderData: () => fixture.data, useSearch: () => ({}) },
-}));
+vi.mock('../router.tsx', async () => {
+  const { useSyncExternalStore } = await import('react');
+  const listen = (change: () => void) => {
+    fixture.readers.add(change);
+    return () => fixture.readers.delete(change);
+  };
+  return {
+    workspaceRoute: {
+      useLoaderData: () => useSyncExternalStore(listen, () => fixture.data),
+      useSearch: () => ({}),
+    },
+  };
+});
 vi.mock('../workbench/ProjectMaterials.tsx', () => ({
   ProjectMaterials: () => <p>Project materials</p>,
 }));
@@ -42,6 +55,8 @@ afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
   localStorage.clear();
+  // Run ids repeat across cases; the views' shared memory of ended runs must not.
+  forgetSharedPresenceHolds();
 });
 
 const project: ProjectSummary = {
@@ -65,6 +80,7 @@ const session = (sessionId: string, title: string): WorkSession => ({
   createdAt: '2026-11-10T00:00:00.000Z',
   updatedAt: '2026-11-10T00:00:00.000Z',
   archivedAt: null,
+  autoStart: true,
   entries: [],
 });
 const pending = (sessionId: string): InboxItemView => ({
@@ -502,6 +518,89 @@ async function search(container: HTMLElement, value: string) {
   await settle();
 }
 
+// docs/specs/features/presence.md "벗어날 때의 유예": the grace on the Sessions tab's groups.
+describe('the exit grace on the session groups', () => {
+  const later = (sessionId: string, status: RunSummary['status']): RunSummary => ({
+    ...ran(sessionId, status),
+    runId: `run_${sessionId}_next`,
+    startedAt: at(10),
+  });
+  const where = (container: HTMLElement, id: string) =>
+    groups(container).find((group) => group.rows.includes(id))?.name;
+  /** Every heading's count is the number of rows its group shows. */
+  const countsMatch = (container: HTMLElement) => {
+    for (const group of groups(container))
+      expect(group.details.querySelector('summary h3')?.textContent).toBe(
+        `${group.name}${group.rows.length}`,
+      );
+  };
+  /** The run list poll: new runs, drawn again. */
+  async function poll(runs: RunSummary[]) {
+    await act(async () => {
+      fixture.data = { ...fixture.data, runs };
+      for (const reader of fixture.readers) reader();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
+  const advance = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  const base = () =>
+    (fixture.data as { runs: RunSummary[] }).runs.filter((r) => r.sessionId !== 'C');
+
+  let container: HTMLElement;
+  beforeEach(async () => {
+    stateFixture(async () => []);
+    ({ container } = await render());
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: Date.now() });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps a row in progress when its next run starts within two seconds of the end', async () => {
+    expect(where(container, 'C')).toBe('In progress');
+    await poll([...base(), ran('C', 'succeeded')]);
+    expect(where(container, 'C')).toBe('In progress');
+    countsMatch(container);
+    await advance(1000);
+    await poll([...base(), ran('C', 'succeeded'), later('C', 'created')]);
+    await advance(3000);
+    expect(where(container, 'C')).toBe('In progress');
+    countsMatch(container);
+  });
+
+  it('moves a row to Completed two seconds after the end, without a next run', async () => {
+    await poll([...base(), ran('C', 'succeeded')]);
+    await advance(1500);
+    await poll([...base(), ran('C', 'succeeded')]);
+    expect(where(container, 'C')).toBe('In progress');
+    await advance(500);
+    expect(where(container, 'C')).toBe('Completed');
+    countsMatch(container);
+  });
+
+  it('moves a row that waits for the person or failed to Needs attention at once', async () => {
+    await poll([...base(), ran('C', 'awaiting_user')]);
+    expect(where(container, 'C')).toBe('Needs attention');
+    countsMatch(container);
+    await poll([...base(), later('C', 'running')]);
+    expect(where(container, 'C')).toBe('In progress');
+    await poll([...base(), later('C', 'failed')]);
+    expect(where(container, 'C')).toBe('Needs attention');
+    countsMatch(container);
+    // Needs attention does not name the state: the row does, once.
+    const row = container.querySelector(`[role="tabpanel"] [data-session-row="C"]`);
+    expect(
+      [...(row?.querySelectorAll('[data-presence-label]') ?? [])].map((el) => el.textContent),
+    ).toEqual([messages.Presence.state.failed]);
+    expect(row?.querySelector('[data-presence-label]')?.getAttribute('data-presence-label')).toBe(
+      'run:run_C_next',
+    );
+  });
+});
+
 it('groups the sessions by state, in order, each headed by its name and count', async () => {
   stateFixture(async () => reviewItems());
   const { container } = await render();
@@ -703,6 +802,21 @@ it('says on each row only what its group does not', async () => {
   expect(container.querySelector('[role="tabpanel"]')?.textContent).not.toContain(
     messages.Sessions.pinned,
   );
+});
+
+it('keys every state name a Needs attention row writes by the run it names', async () => {
+  // C runs, and a decision of its run waits: the reason is the decision's run.
+  stateFixture(async () => [{ ...inboxItem('decision', 'C'), runId: 'run_C' }]);
+  const { container } = await render();
+  const labels = (id: string) =>
+    [
+      ...(container
+        .querySelector(`[role="tabpanel"] [data-session-row="${id}"]`)
+        ?.querySelectorAll('[data-presence-label]') ?? []),
+    ].map((label) => [label.textContent, label.getAttribute('data-presence-label')]);
+  expect(labels('C')).toEqual([[messages.Presence.state.awaiting_user, 'run:run_C']]);
+  // A run that waits names itself.
+  expect(labels('A')).toEqual([[messages.Presence.state.awaiting_user, 'run:run_A']]);
 });
 
 it('gives a row the time as the sidebar does, without "Saved"', async () => {

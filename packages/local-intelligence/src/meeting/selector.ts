@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { DecisionCancellation, MeetingSelectionInput, Scheduler } from '@corral/contracts';
+import type {
+  DecisionCancellation,
+  MeetingSelectionInput,
+  MeetingSelectorResult,
+  Scheduler,
+} from '@corral/contracts';
 import type { EmbedRequest } from '../engine/engine.ts';
 
 export const MEETING_PREPROCESS_VERSION = 'meeting-text-v2';
@@ -30,16 +35,17 @@ export function meetingTexts(input: MeetingSelectionInput) {
 }
 
 /**
- * One participant by role and history similarity; a tie keeps the roster order. Someone without
- * turns has `history: null` and stands on their role, or whoever spoke first would keep every turn.
+ * Each participant's score from role and history similarity. Someone without turns has
+ * `history: null` and stands on their role, or whoever spoke first would keep every turn. Who
+ * answers is the meeting policy's call, not this one's.
  */
-export function closestParticipant(
+export function blendedScores(
   scores: { participantId: string; role: number; history: number | null }[],
-): string {
-  const blended = scores.map(({ role, history }) =>
-    history === null ? role : ROLE_WEIGHT * role + (1 - ROLE_WEIGHT) * history,
-  );
-  return scores[blended.indexOf(Math.max(...blended))]!.participantId;
+): MeetingSelectorResult['scores'] {
+  return scores.map(({ participantId, role, history }) => ({
+    participantId,
+    score: history === null ? role : ROLE_WEIGHT * role + (1 - ROLE_WEIGHT) * history,
+  }));
 }
 
 const dot = (a: ArrayLike<number>, b: ArrayLike<number>) => {
@@ -99,7 +105,8 @@ export class LocalMeetingSelector {
     return vector;
   }
 
-  async select(input: MeetingSelectionInput): Promise<string[] | null> {
+  /** Scores only; this selector reports no `needsReply`, so it never asks for silence. */
+  async select(input: MeetingSelectionInput): Promise<MeetingSelectorResult | null> {
     if (this.engine.available() !== true || input.participants.length < 2) return null;
     const { message, participants } = meetingTexts(input);
     const described = (person: { prompt: string; role?: string }) =>
@@ -137,7 +144,7 @@ export class LocalMeetingSelector {
           history: turnScores.length ? Math.max(...turnScores) : null,
         });
       }
-      return abort.signal.aborted ? null : [closestParticipant(scores)];
+      return abort.signal.aborted ? null : { scores: blendedScores(scores) };
     } catch {
       return null;
     } finally {

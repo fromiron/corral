@@ -25,6 +25,7 @@ const session: WorkSession = {
   createdAt: '2026-10-21T00:00:00Z',
   updatedAt: '2026-10-21T00:00:00Z',
   archivedAt: null,
+  autoStart: true,
   entries: [],
 };
 const running: RunSummary = {
@@ -236,6 +237,36 @@ describe('composer send paths', () => {
     });
     expect(h.startAuto).not.toHaveBeenCalled();
     expect(h.deps.clearDraft).toHaveBeenCalledWith(7, true, true);
+  });
+
+  it('sends a reply quote the way it sends any text attachment, to a new or a queued request', async () => {
+    const quote: TextAttachment = {
+      ...attachment,
+      name: 'quote.txt',
+      mime: 'text/plain',
+      provenance: {
+        kind: 'reply',
+        runId: 'run_old',
+        modelCallId: 'call_1',
+        start: 0,
+        end: 5,
+        prefix: '',
+        suffix: ' and more',
+      },
+    };
+    const fresh = harness();
+    await sendRequest(fresh.deps, input({ attachments: [quote] }));
+    expect(fresh.startAuto.mock.calls[0]?.[0]).toMatchObject({ references: [quote] });
+    expect(fresh.addSessionEntry).toHaveBeenCalledWith(
+      'session',
+      expect.objectContaining({ state: 'started', attachments: [quote] }),
+    );
+    const queued = harness();
+    await sendRequest(queued.deps, input({ intent: 'queue', attachments: [quote] }));
+    expect(queued.addSessionEntry).toHaveBeenCalledWith(
+      'session',
+      expect.objectContaining({ state: 'queued', attachments: [quote] }),
+    );
   });
 
   it('records a refused instruction and keeps the draft', async () => {

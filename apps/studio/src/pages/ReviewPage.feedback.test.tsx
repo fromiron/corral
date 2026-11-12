@@ -129,6 +129,7 @@ async function mount(
     createdAt: date,
     updatedAt: date,
     archivedAt: null,
+    autoStart: true,
     entries: [],
   };
   fixture.session = session;

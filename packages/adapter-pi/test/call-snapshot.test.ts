@@ -42,7 +42,7 @@ describe('the call snapshot a worker sends', () => {
       messages: [
         { role: 'system', content: 'system rules', timestamp: 1 } as unknown as AgentMessage,
         user(`${assignmentMetadata('{"criteriaVersionId":"crit_1"}')}## brief\n\nFix the parser.`),
-        user(directiveText([{ directiveId: 'dir_1', text: 'Keep the API.' }])),
+        user(directiveText({ directiveId: 'dir_1', text: 'Keep the API.' })),
         { role: 'user', content: '[Corral current state]\n{"questions":[]}', timestamp: 0 },
       ],
     });

@@ -7,7 +7,9 @@ import type { Page } from '@playwright/test';
 // - Tracked elements: conversation items (`[data-chat-item]`), sidebar rows
 //   (`[data-session-row]`) and parts inside items (`[data-chat-part]`) present at start(). They
 //   are followed by identifying value (a part by its item's value + its own), so a new node with
-//   the same value continues the track; values missing at the end are listed in `lost`.
+//   the same value continues the track; values missing at the end are listed in `lost`. Elements
+//   sharing a value are told apart by document-order ordinal (`…#2`) and counted in
+//   `samples.duplicateIds`.
 //   Per element, vertical (Y, top) and horizontal (X, left) shifts on two bases:
 //   container — rect - container rect + scroll offset (§9 "기존 항목 이동", pass ≤ 1px);
 //   viewport — rect on screen (§9 "따라가기" while scrolled up, pass ≤ 1px).
@@ -20,9 +22,11 @@ import type { Page } from '@playwright/test';
 //   Both are null with fewer than two samples. `samples` gives frame, tail, input and per-kind
 //   tracked counts.
 // measureChrome() reads the fixed areas once (§9 "고정 영역": top bar + idle composer, column
-// width). countVisibleLabels() counts the texts of `[data-presence-label]` elements actually
-// visible, clipped by scroll containers and the viewport (§9 "상태 이름": a text counted twice
-// fails). waitForStill() waits until layout stops changing, for intervals and screenshots.
+// width). countVisibleLabels() counts the `[data-presence-label]` elements actually visible,
+// clipped by scroll containers and the viewport, by attribute value (the target the text speaks
+// of; presence.md "한 화면에 한 번": a value seen twice fails), with their texts and the number
+// of labels without a value; duplicateLabels() keeps the values seen twice or more.
+// waitForStill() waits until layout stops changing, for intervals and screenshots.
 // The probe sets no pass marks itself.
 
 const DEFAULT_COMPOSER = '[data-testid="chat-composer"]';
@@ -51,7 +55,10 @@ export type TrackedKind = 'item' | 'row' | 'part';
 
 export interface ItemShift {
   kind: TrackedKind;
-  /** The identifying value (`attribute=value`), or `#index` when the element has none. */
+  /**
+   * The identifying value (`attribute=value`), or `#index` when the element has none. A later
+   * element with an already-seen value gets its document-order ordinal (`attribute=value#2`).
+   */
   id: string;
   maxContainerShiftYPx: number;
   maxContainerShiftXPx: number;
@@ -73,6 +80,8 @@ export interface ShiftResult {
     tail: number;
     input: number;
     tracked: Record<TrackedKind, number>;
+    /** Identifying values more than one element carried at start(); each is tracked as `…#n`. */
+    duplicateIds: number;
   };
   /** Tracked values no element carried at the end of the interval. */
   lost: string[];
@@ -135,16 +144,25 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
           const parent = item && itemAttribute ? item.getAttribute(itemAttribute) : null;
           return `${itemAttribute}=${parent ?? '?'}/${own}`;
         };
-        /** Elements of each kind by identifying value; the first element of a value wins. */
+        /**
+         * Elements of each kind by identifying value. When several elements carry the same
+         * value, the first keeps it and the later ones get their document-order ordinal
+         * (`…#2`, `…#3`), so each is tracked on its own.
+         */
         const find = () => {
           const found = new Map<string, Element>();
+          let duplicated = 0;
           for (const kind of ['item', 'row', 'part'] as const) {
+            const seen = new Map<string, number>();
             document.querySelectorAll(selectors[kind]).forEach((element, index) => {
               const key = `${kind} ${keyOf(kind, element, index)}`;
-              if (!found.has(key)) found.set(key, element);
+              const ordinal = (seen.get(key) ?? 0) + 1;
+              seen.set(key, ordinal);
+              if (ordinal === 2) duplicated += 1;
+              found.set(ordinal === 1 ? key : `${key}#${ordinal}`, element);
             });
           }
-          return found;
+          return { found, duplicated };
         };
         const scrolling = (element: Element): Element | null => {
           if (config.containerSelector) {
@@ -182,7 +200,8 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
           into.n += 1;
         };
         const tracks = new Map<string, Track>();
-        for (const [key, element] of find()) {
+        const initial = find();
+        for (const [key, element] of initial.found) {
           const at = place(element);
           tracks.set(key, {
             kind: key.slice(0, key.indexOf(' ')) as Kind,
@@ -196,6 +215,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
         const state = {
           tracks: [...tracks.values()],
           frames: 0,
+          duplicated: initial.duplicated,
           startedAt: performance.now(),
           raf: 0,
           tail: range(),
@@ -218,7 +238,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
         state.sample = () => {
           state.frames += 1;
           sampleEdges();
-          const found = find();
+          const { found } = find();
           for (const [key, track] of tracks) {
             const element = found.get(key);
             track.present = Boolean(element);
@@ -255,6 +275,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
                 present: boolean;
               }[];
               frames: number;
+              duplicated: number;
               startedAt: number;
               raf: number;
               tail: { min: number; max: number; n: number };
@@ -273,6 +294,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
         return {
           durationMs: performance.now() - state.startedAt,
           frames: state.frames,
+          duplicated: state.duplicated,
           tail: spread(state.tail),
           tailSamples: state.tail.n,
           input: spread(state.input),
@@ -308,6 +330,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
           tail: measured.tailSamples,
           input: measured.inputSamples,
           tracked: { item: count('item'), row: count('row'), part: count('part') },
+          duplicateIds: measured.duplicated,
         },
         lost: measured.tracks
           .filter((track) => !track.present)
@@ -319,7 +342,11 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
 }
 
 export interface StillOptions {
-  /** Elements whose boxes must hold still; scroll offsets of scrolling ones count too. */
+  /**
+   * Elements whose boxes must hold still; scroll offsets of scrolling ones count too. Given, only
+   * these are watched. The default covers the timeline, its items and their parts, the
+   * composer, the input box, the scroll viewports and the sidebar rows.
+   */
   selectors?: string[];
   /**
    * How long nothing may change. The default outlasts Studio's 1.5 s run-list poll, so a change
@@ -329,15 +356,21 @@ export interface StillOptions {
   timeoutMs?: number;
 }
 
-/** Waits until the given elements' boxes and scroll offsets stop changing. */
+/**
+ * Waits until the given elements' boxes and scroll offsets stop changing. Throws when no element
+ * matches once the layout has held still, so an empty screen does not pass as a still one.
+ */
 export async function waitForStill(page: Page, options: StillOptions = {}): Promise<void> {
   const settings = {
     selectors: options.selectors ?? [
       DEFAULT_TIMELINE,
       `${DEFAULT_TIMELINE} [data-chat-item]`,
+      '[data-chat-part]',
       DEFAULT_COMPOSER,
       DEFAULT_INPUT,
       '[data-slot="scroll-area-viewport"]',
+      '[data-session-row]',
+      '[data-sidebar-index]',
     ],
     stillMs: options.stillMs ?? 2_000,
     timeoutMs: options.timeoutMs ?? 10_000,
@@ -345,17 +378,21 @@ export async function waitForStill(page: Page, options: StillOptions = {}): Prom
   await page.evaluate(
     (settings) =>
       new Promise<void>((done, fail) => {
-        const signature = () =>
-          settings.selectors
-            .flatMap((selector) =>
-              [...document.querySelectorAll(selector)].map((element) => {
-                const r = element.getBoundingClientRect();
-                return [r.top, r.left, r.width, r.height, element.scrollTop, element.scrollHeight]
-                  .map((value) => Math.round(value * 10))
-                  .join(',');
-              }),
-            )
+        let matched = 0;
+        const signature = () => {
+          const elements = settings.selectors.flatMap((selector) => [
+            ...document.querySelectorAll(selector),
+          ]);
+          matched = elements.length;
+          return elements
+            .map((element) => {
+              const r = element.getBoundingClientRect();
+              return [r.top, r.left, r.width, r.height, element.scrollTop, element.scrollHeight]
+                .map((value) => Math.round(value * 10))
+                .join(',');
+            })
             .join(';');
+        };
         const until = performance.now() + settings.timeoutMs;
         let last = signature();
         let since = performance.now();
@@ -363,7 +400,13 @@ export async function waitForStill(page: Page, options: StillOptions = {}): Prom
           const now = signature();
           if (now !== last) since = performance.now();
           last = now;
-          if (performance.now() - since >= settings.stillMs) return done();
+          if (performance.now() - since >= settings.stillMs) {
+            if (matched === 0)
+              return fail(
+                new Error(`waitForStill: no element matches ${settings.selectors.join(', ')}`),
+              );
+            return done();
+          }
           if (performance.now() > until) return fail(new Error('layout did not settle'));
           requestAnimationFrame(frame);
         };
@@ -409,18 +452,33 @@ export function measureChrome(page: Page, options: ChromeOptions = {}): Promise<
   }, selectors);
 }
 
+export interface LabelCount {
+  /** Visible labels with this value. */
+  count: number;
+  /** Their texts, in document order. */
+  texts: string[];
+}
+
+export interface VisibleLabels {
+  /** Visible labels by their attribute value (`run:<runId>` or `execution:<executionId>`). */
+  labels: Record<string, LabelCount>;
+  /** Visible labels whose attribute is present but empty. */
+  unkeyed: number;
+}
+
 /**
- * Texts of the visible matching elements and how many times each appears. An element counts
- * when its box, cut by the viewport and by every ancestor that clips overflow, keeps an area,
- * and it is not hidden by display, visibility or opacity.
+ * Visible elements carrying the label attribute, counted by its value: the target the text
+ * speaks of (docs/specs/features/presence.md "한 화면에 한 번"). An element counts when its box,
+ * cut by the viewport and by every ancestor that clips overflow, keeps an area, and it is not
+ * hidden by display, visibility or opacity.
  */
 export function countVisibleLabels(
   page: Page,
-  selector = '[data-presence-label]',
-): Promise<Record<string, number>> {
-  return page.evaluate((selector) => {
-    const counts: Record<string, number> = {};
-    for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+  attribute = 'data-presence-label',
+): Promise<VisibleLabels> {
+  return page.evaluate((attribute) => {
+    const result: VisibleLabels = { labels: {}, unkeyed: 0 };
+    for (const element of document.querySelectorAll<HTMLElement>(`[${attribute}]`)) {
       if (!element.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
       const box = element.getBoundingClientRect();
       let top = Math.max(box.top, 0);
@@ -441,9 +499,25 @@ export function countVisibleLabels(
         }
       }
       if (bottom - top <= 0 || right - left <= 0) continue;
-      const text = element.textContent?.trim() ?? '';
-      counts[text] = (counts[text] ?? 0) + 1;
+      const value = element.getAttribute(attribute)?.trim() ?? '';
+      if (!value) {
+        result.unkeyed += 1;
+        continue;
+      }
+      const entry = result.labels[value] ?? { count: 0, texts: [] };
+      entry.count += 1;
+      entry.texts.push(element.textContent?.trim() ?? '');
+      result.labels[value] = entry;
     }
-    return counts;
-  }, selector);
+    return result;
+  }, attribute);
+}
+
+/** The visible label values seen more than once (presence.md: one value per screen). */
+export async function duplicateLabels(
+  page: Page,
+  attribute = 'data-presence-label',
+): Promise<Record<string, LabelCount>> {
+  const { labels } = await countVisibleLabels(page, attribute);
+  return Object.fromEntries(Object.entries(labels).filter(([, label]) => label.count > 1));
 }

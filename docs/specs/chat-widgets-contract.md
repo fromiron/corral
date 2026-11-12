@@ -302,7 +302,7 @@ SafeMarkdown에 role prompt 등 문자열 삭제 정규식을 넣지 않는다. 
 - WorkPlan은 run 문맥, scope, executionId, attemptNo, revision, criteriaVersionId, bodyRef/hash의 현재 참조와 일치해야 표시한다. 이전 revision의 늦은 응답·다른 Run 오류가 현재 화면을 덮지 않는다.
 - 컨텍스트 snapshot도 modelCallId/attempt와 측정 기준을 고정한다. 같은 모델을 썼다는 이유로 다른 execution 수치를 가져오지 않는다.
 - 화면 전환 시 이전 로딩의 성공·실패 모두 stale 결과로 배제한다. 재시도는 선택 대상에 묶는다.
-- 기존 ChatView의 session anchor/offset과 40개 초과 가상화를 유지한다. 새 scroll hook을 나란히 설치하지 않는다.
+- 기존 ChatView의 session anchor/offset과 가상화를 유지한다. 타임라인은 항목 수와 무관하게 가상화 한 방식으로 그린다([대화 입력 흐름](features/composer-flow.md#튐-없는-본문)). 새 scroll hook을 나란히 설치하지 않는다.
 - 타임라인 콘텐츠뿐 아니라 위젯·Todo·입력창의 높이와 실제 viewport 변화를 감지한다. 과거를 읽는 중에는 entryId+offset을 유지하고, 최신 추적 중에는 끝 위치를 유지한다.
 - Todo 갱신·팝오버 열기·세션 상태 갱신으로 입력 DOM을 재마운트하지 않는다. 초안·커서·선택·한국어/일본어 IME와 기존 Enter/Shift+Enter 규칙을 보존한다.
 - 원형 상태는 색 외에도 아이콘 형태·상태 이름을 가진다. 읽기 전용 Todo는 조작 가능한 체크박스로 위장하지 않는다.
@@ -352,7 +352,7 @@ ID는 계획용 임시 식별자이며 저장소 카탈로그 등록 시 충돌�
 | INPUT-01 | Todo 갱신 중 한국어/일본어 IME | 조합·커서·초안 유지, Enter 오전송 및 Escape 오취소 없음 |
 | SCROLL-01 | 최신 추적 중 Todo와 위젯 높이 변경 | 끝 위치와 새 결과 접근 유지 |
 | SCROLL-02 | 과거 읽기 중 같은 높이 변경 | entry anchor/offset 보존, 하단으로 끌어내리지 않음 |
-| SCROLL-03 | 40개 이하·초과 요청, 포커스 행 | 가상화·행 측정·포커스 보존 |
+| SCROLL-03 | 요청이 적을 때와 많을 때, 포커스 행 | 같은 가상화 방식·행 측정·포커스 보존 |
 | A11Y-01 | 키보드·스크린리더·reduced motion | 올바른 상태 이름, 단일 중요 알림, focus 복귀, 접힌 내용 제외 |
 | PERF-01 | 실제 활성 실행 구독/조회 수 비교 | 위젯별 추가 SSE·주기 polling 없음, bodyRef당 조회 재사용 |
 | REPLAY-01 | 과거 이벤트/snapshot과 새 context 필드 | optional/version 호환, 기존 hash/내용 불변 |
