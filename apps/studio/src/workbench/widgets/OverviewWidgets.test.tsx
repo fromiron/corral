@@ -364,7 +364,7 @@ it('after the occupancy pill closes Overview, the Overview button reopens the wi
   const trigger = container.querySelector<HTMLElement>('[data-testid="session-summary-trigger"]');
   const popup = () => document.querySelector<HTMLElement>('[data-testid="session-summary-popup"]');
   await act(async () => pill?.click());
-  expect(popup()?.querySelector('[data-testid="context-inspector"]')).not.toBeNull();
+  expect(popup()?.querySelector('[data-testid="context-inspector"]')).toBeTruthy();
   await act(async () => pill?.click());
   await vi.waitFor(() => expect(popup()).toBeNull());
   await act(async () => trigger?.click());
