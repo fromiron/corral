@@ -16,7 +16,16 @@ export {
   type VersionProbe,
   versionMatches,
 } from './install.ts';
-export { type D1Manifest, d1ManifestFor, LINUX_X64_CPU, manifestProblem } from './manifest.ts';
+export {
+  type D1Device,
+  type D1Manifest,
+  type D1RuntimePin,
+  d1Devices,
+  d1ManifestFor,
+  d1Runtime,
+  LINUX_X64_CPU,
+  manifestProblem,
+} from './manifest.ts';
 export {
   CONTROL_SPELLINGS,
   d1Break,
@@ -32,6 +41,8 @@ export {
   type D1Launcher,
   type D1Limits,
   D1Runtime,
+  type GpuLaunch,
+  gpuDeviceNames,
   serverArgs,
   spawnD1,
 } from './runtime.ts';

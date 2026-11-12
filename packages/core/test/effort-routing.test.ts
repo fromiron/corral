@@ -204,6 +204,24 @@ describe('effort routing through request preparation', () => {
     expect(next.reasoning).toMatchObject({ source: 'router', resolved: 'low' });
   });
 
+  it('records the saved device and the device the engine actually used', async () => {
+    const s = await setup({
+      settings: {
+        mode: 'manual',
+        engine: { kind: 'local', device: { kind: 'vulkan', threads: 4 }, callerTimeoutMs: 5000 },
+        fallback: { kind: 'provider-default' },
+      },
+      local: { answer: () => ({ choice: 'low' }), device: 'Vulkan0' },
+    });
+    const permit = await s.host().prepareModelRequest(record(), { snapshot: snapshot('fix it') });
+    expect(permit.reasoning?.route?.device).toEqual({
+      requested: 'vulkan',
+      actual: 'Vulkan0',
+      host: 'test-host',
+      threads: 4,
+    });
+  });
+
   it('C04: an explicit transport retry reuses the settled result with a new call', async () => {
     const s = await setup({ local: { answer: () => ({ choice: 'low' }) } });
     const first = await s.host().prepareModelRequest(record(), {

@@ -284,6 +284,7 @@ describe('file broker', () => {
     const root = s.service.copyOf('session_1')!.worktree;
     try {
       const reference = await s.service.captureRuntimeFiles('run_1', 'runtime_files');
+      if (!reference) throw new Error('a working copy run has runtime files');
       await s.service.captureRuntimeFiles('run_1', 'runtime_files_second');
       expect(await s.service.verifyRuntimeFiles('run_1', reference)).toBe(true);
       expect(await s.service.verifyRuntimeFiles('run_missing', reference)).toBe(false);

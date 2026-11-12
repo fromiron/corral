@@ -65,6 +65,7 @@ describe('local AI install from the settings panel', () => {
       downloadBytes: total,
       progress: null,
       error: null,
+      device: { requested: 'cpu', actual: null },
     });
 
     expect(li.install()).toMatchObject({ state: 'installing', progress: { received: 0, total } });

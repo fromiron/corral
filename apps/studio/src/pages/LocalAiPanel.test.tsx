@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { LocalAiView } from '@corral/client';
+import { ApiError, type LocalAiView } from '@corral/client';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -18,6 +18,7 @@ const view = (overrides: Partial<LocalAiView> = {}): LocalAiView => ({
   downloadBytes: 198 * MB,
   progress: null,
   error: null,
+  device: { requested: 'cpu', actual: null },
   ...overrides,
 });
 
@@ -28,6 +29,11 @@ afterEach(() => {
 
 async function render() {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -161,6 +167,65 @@ it('has no external judge choice', async () => {
     },
   };
   const container = await render();
-  expect(container.querySelector('[role="combobox"]')).toBeNull();
+  expect(container.querySelector('[role="combobox"]')?.getAttribute('aria-label')).toBe('Device');
   expect(container.textContent).not.toContain('local judge');
+  expect(container.textContent).toContain('Not running');
+});
+
+it('saves the meeting device and shows the device the helper is using', async () => {
+  const setLocalAiDevice = vi
+    .fn()
+    .mockResolvedValue(view({ state: 'ready', device: { requested: 'gpu', actual: 'gpu' } }));
+  fixture.services = {
+    models: {
+      localAi: vi
+        .fn()
+        .mockResolvedValue(view({ state: 'ready', device: { requested: 'cpu', actual: 'cpu' } })),
+      installLocalAi: vi.fn(),
+      cancelLocalAiInstall: vi.fn(),
+      setLocalAiDevice,
+    },
+  };
+  const container = await render();
+  expect(container.textContent).toContain('Running on CPU');
+  await act(async () =>
+    container.querySelector<HTMLElement>('button[role="combobox"][aria-label="Device"]')?.click(),
+  );
+  const gpu = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+    node.textContent?.startsWith('GPU'),
+  );
+  expect(gpu?.textContent).toContain('Not verified on this computer');
+  await act(async () => gpu?.click());
+  expect(setLocalAiDevice).toHaveBeenCalledWith('gpu');
+  expect(container.textContent).toContain('Running on GPU');
+});
+
+it('says a device change was refused while a computation runs and keeps the saved device', async () => {
+  const setLocalAiDevice = vi
+    .fn()
+    .mockRejectedValue(new ApiError(409, 'RESOURCE_CAPACITY', 'a computation is in progress'));
+  fixture.services = {
+    models: {
+      localAi: vi
+        .fn()
+        .mockResolvedValue(view({ state: 'ready', device: { requested: 'cpu', actual: 'cpu' } })),
+      installLocalAi: vi.fn(),
+      cancelLocalAiInstall: vi.fn(),
+      setLocalAiDevice,
+    },
+  };
+  const container = await render();
+  const select = () =>
+    container.querySelector<HTMLElement>('button[role="combobox"][aria-label="Device"]');
+  await act(async () => select()?.click());
+  const gpu = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+    node.textContent?.startsWith('GPU'),
+  );
+  await act(async () => gpu?.click());
+  expect(setLocalAiDevice).toHaveBeenCalledWith('gpu');
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    'Cannot change the device while a computation is running.',
+  );
+  expect(select()?.textContent).toContain('CPU');
+  expect(container.textContent).toContain('Running on CPU');
 });

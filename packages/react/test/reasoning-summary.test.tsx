@@ -2,7 +2,7 @@ import type { RouteRecord } from '@corral/contracts';
 import { act, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it } from 'vitest';
-import { ReasoningSummary } from '../src/components/ReasoningSummary.tsx';
+import { ReasoningLevelLabel, ReasoningSummary } from '../src/components/ReasoningSummary.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import ko from '../src/messages/ko.json' with { type: 'json' };
 
@@ -58,6 +58,22 @@ describe('ReasoningSummary', () => {
       reasoningWire: { kind: 'effort', value: 'low' },
     });
     expect(line.textContent).toBe('Local · CPU · Recommended low → applied low · 420ms');
+  });
+
+  it('shows the device the judge actually used', () => {
+    const line = summary({
+      reasoning: {
+        preparationId: 'prep_gpu',
+        requested: { mode: 'auto' },
+        resolved: 'low',
+        source: 'router',
+        route: route({
+          device: { requested: 'vulkan', actual: 'Vulkan0', host: 'build-host', threads: 4 },
+        }),
+      },
+      reasoningWire: { kind: 'effort', value: 'low' },
+    });
+    expect(line.textContent).toBe('Local · VULKAN0 · Recommended low → applied low · 420ms');
   });
 
   it('shows measured times as whole milliseconds', async () => {
@@ -245,5 +261,128 @@ describe('ReasoningSummary', () => {
     const detail = (await screen.findByRole('dialog')).textContent ?? '';
     expect(detail).toContain('요청 확인확인 안 됨');
     expect(detail).not.toContain('아직');
+  });
+
+  it('a recorded empty payload reads as the provider default, not as omitted', () => {
+    const call: Call = {
+      reasoning: {
+        preparationId: 'prep_empty',
+        requested: { mode: 'provider_default' },
+        resolved: null,
+        source: 'provider-default',
+      },
+      reasoningWire: { kind: 'omitted', value: null },
+    };
+    const english = summary(call, 'en', false).textContent ?? '';
+    expect(english).toContain('Payload verified: Provider default');
+    expect(english).not.toContain('omitted');
+    const korean = summary(call, 'ko', false).textContent ?? '';
+    expect(korean).toContain('요청 확인: 공급자 기본값');
+    expect(korean).not.toContain('생략');
+  });
+
+  it('a missing reasoning record stays unrecorded rather than the provider default', () => {
+    const { container } = render(
+      <IntlProvider locale="ko" messages={ko} timeZone="UTC">
+        <ReasoningSummary call={{}} open={false} />
+      </IntlProvider>,
+    );
+    expect(container.textContent).toBe('추론 설정 미기록');
+    expect(container.textContent).not.toContain('공급자 기본값');
+  });
+});
+
+const level = (call: Call, locale: 'en' | 'ko' = 'en', open = false) => {
+  const { container } = render(
+    <IntlProvider locale={locale} messages={locale === 'en' ? messages : ko} timeZone="UTC">
+      <ReasoningLevelLabel call={call} open={open} />
+    </IntlProvider>,
+  );
+  return within(container).getByTestId('reasoning-level');
+};
+
+describe('ReasoningLevelLabel', () => {
+  it('shows the applied level and the verified wire value without a longer summary', () => {
+    const call: Call = {
+      reasoning: {
+        preparationId: 'prep_high',
+        requested: { mode: 'fixed', level: 'high' },
+        resolved: 'high',
+        source: 'fixed',
+      },
+      reasoningWire: { kind: 'effort', value: 'high' },
+    };
+    expect(level(call).textContent).toBe('High · verified: high');
+    expect(level(call, 'ko').textContent).toBe('높음 · 확인됨: high');
+  });
+
+  it('reads a recorded empty send as the provider default, and an absent record as unrecorded', () => {
+    const providerDefault: Call = {
+      reasoning: {
+        preparationId: 'prep_default',
+        requested: { mode: 'provider_default' },
+        resolved: null,
+        source: 'provider-default',
+      },
+      reasoningWire: { kind: 'omitted', value: null },
+    };
+    expect(level(providerDefault).textContent).toBe('Provider default · verified');
+    expect(level(providerDefault, 'ko').textContent).toBe('공급자 기본값 · 확인됨');
+    expect(level(providerDefault, 'ko').textContent).not.toContain('생략');
+    expect(level(providerDefault, 'ko').textContent).not.toContain('미기록');
+
+    const off: Call = {
+      reasoning: {
+        preparationId: 'prep_off',
+        requested: { mode: 'auto' },
+        resolved: null,
+        source: 'off',
+      },
+      reasoningWire: { kind: 'omitted', value: null },
+    };
+    expect(level(off, 'ko').textContent).toBe('공급자 기본값 · 확인됨');
+
+    const missing = level({}, 'ko');
+    expect(missing.textContent).toBe('추론 설정 미기록');
+    expect(missing.textContent).not.toContain('공급자 기본값');
+  });
+
+  it('keeps an unverified request distinct from the provider default', () => {
+    const fixed: Call = {
+      reasoning: {
+        preparationId: 'prep_open',
+        requested: { mode: 'fixed', level: 'medium' },
+        resolved: 'medium',
+        source: 'fixed',
+      },
+    };
+    expect(level(fixed, 'en', true).textContent).toBe('Medium · not yet verified');
+    expect(level(fixed, 'ko', false).textContent).toBe('보통 · 확인 안 됨');
+    expect(level(fixed, 'ko', false).textContent).not.toContain('공급자 기본값');
+
+    const unset: Call = {
+      reasoning: {
+        preparationId: 'prep_unset',
+        requested: { mode: 'auto' },
+        resolved: null,
+        source: 'off',
+      },
+    };
+    expect(level(unset, 'ko', true).textContent).toBe('공급자 기본값 · 아직 확인 안 됨');
+    expect(level(unset, 'en', false).textContent).toBe('Provider default · not verified');
+  });
+
+  it('names a verified empty wire as the provider default when a level was applied', () => {
+    const call: Call = {
+      reasoning: {
+        preparationId: 'prep_mismatch',
+        requested: { mode: 'fixed', level: 'high' },
+        resolved: 'high',
+        source: 'fixed',
+      },
+      reasoningWire: { kind: 'omitted', value: null },
+    };
+    expect(level(call).textContent).toBe('High · verified: Provider default');
+    expect(level(call, 'ko').textContent).toBe('높음 · 확인됨: 공급자 기본값');
   });
 });

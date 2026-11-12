@@ -49,6 +49,7 @@ const localAi = (patch: Partial<LocalAiView> = {}): LocalAiView => ({
   downloadBytes: null,
   progress: null,
   error: null,
+  device: { requested: 'cpu', actual: null },
   ...patch,
 });
 

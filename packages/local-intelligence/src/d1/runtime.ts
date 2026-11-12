@@ -3,12 +3,12 @@
 // key in its environment and never on its command line. It is ready only after it answers its
 // health check, refuses a request without the key, and reports the pinned model. Corral ends only
 // the child it started; a child that ends on its own leaves an error and is not restarted.
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { type D1Endpoint, healthStatus, loadedModel, unauthenticatedStatus } from './client.ts';
-import type { D1Manifest } from './manifest.ts';
+import { type D1Device, type D1Manifest, d1Runtime } from './manifest.ts';
 
 export type RuntimeState = 'stopped' | 'starting' | 'ready' | 'error';
 
@@ -78,11 +78,29 @@ export interface D1Instance {
   id: string;
   endpoint: D1Endpoint;
   threads: number;
+  deviceKind: D1Device;
+  /** `cpu`, or the names `--list-devices` printed for this build. */
+  actualDevice: string;
   child: D1Child;
 }
 
-/** The CPU profile, with the host's port and thread count. */
-export function serverArgs(model: string, port: number, threads: number): string[] {
+/** GPU offload for one llama-server build, using the names that build listed. */
+export interface GpuLaunch {
+  kind: 'vulkan' | 'cuda';
+  devices: string[];
+}
+
+/**
+ * Server arguments from this build's `--help`. CPU passes `--n-gpu-layers 0 --device none
+ * --no-op-offload`. Vulkan and CUDA pass `--n-gpu-layers all`, the listed `--device` names,
+ * `--fit off`, and `--op-offload`.
+ */
+export function serverArgs(
+  model: string,
+  port: number,
+  threads: number,
+  gpu?: GpuLaunch,
+): string[] {
   return [
     '--model',
     model,
@@ -102,11 +120,9 @@ export function serverArgs(model: string, port: number, threads: number): string
     String(threads),
     '--threads-batch',
     String(threads),
-    '--n-gpu-layers',
-    '0',
-    '--device',
-    'none',
-    '--no-op-offload',
+    ...(gpu
+      ? ['--n-gpu-layers', 'all', '--device', gpu.devices.join(','), '--fit', 'off', '--op-offload']
+      : ['--n-gpu-layers', '0', '--device', 'none', '--no-op-offload']),
     '--no-warmup',
     '--offline',
     '--cache-ram',
@@ -114,6 +130,30 @@ export function serverArgs(model: string, port: number, threads: number): string
     '--no-ui',
   ];
 }
+
+/** Device names of one backend from `llama-server --list-devices`. */
+export function gpuDeviceNames(kind: 'vulkan' | 'cuda', output: string): string[] {
+  const prefix = kind === 'vulkan' ? 'Vulkan' : 'CUDA';
+  return output.split('\n').flatMap((line) => {
+    const match = /^\s+([A-Za-z][A-Za-z0-9_.-]*):/.exec(line);
+    return match?.[1]?.startsWith(prefix) ? [match[1]] : [];
+  });
+}
+
+/** Runs `--list-devices` and returns its text. A build that will not start rejects. */
+export const listServerDevices = (server: string, dir: string, signal?: AbortSignal) =>
+  new Promise<string>((resolve, reject) => {
+    execFile(
+      server,
+      ['--list-devices'],
+      { env: { LD_LIBRARY_PATH: dir }, timeout: 10_000, signal, maxBuffer: 64 * 1024 },
+      (error, stdout, stderr) => {
+        if (error && !stdout && !stderr)
+          reject(new Error('the Local runtime could not list devices'));
+        else resolve(`${stdout}\n${stderr}`);
+      },
+    );
+  });
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -145,6 +185,8 @@ export interface D1RuntimeOptions {
   manifest: D1Manifest;
   launch?: D1Launcher;
   limits?: Partial<D1Limits>;
+  /** Text of `llama-server --list-devices`. Tests inject it; the default runs the binary. */
+  listDevices?(server: string, dir: string, signal?: AbortSignal): Promise<string>;
 }
 
 export class D1Runtime {
@@ -152,7 +194,7 @@ export class D1Runtime {
   error: string | null = null;
   readonly limits: D1Limits;
   private current: D1Instance | null = null;
-  private starting: { threads: number; done: Promise<void> } | null = null;
+  private starting: { threads: number; device: D1Device; done: Promise<void> } | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private holds = 0;
   private serial = 0;
@@ -165,10 +207,12 @@ export class D1Runtime {
     this.limits = { ...D1_LIMITS, ...options.limits };
   }
 
-  /** The ready instance for these threads, or null. */
-  ready(threads: number): D1Instance | null {
+  /** The ready instance for these threads and this device, or null. */
+  ready(threads: number, device: D1Device = 'cpu'): D1Instance | null {
     const instance = this.current;
-    return this.state === 'ready' && instance?.threads === threads ? instance : null;
+    return this.state === 'ready' && instance?.threads === threads && instance.deviceKind === device
+      ? instance
+      : null;
   }
 
   get active(): D1Instance | null {
@@ -179,17 +223,18 @@ export class D1Runtime {
    * Starts an instance with these threads unless one is ready or starting with them. A
    * different thread count ends the old child first and starts after it has exited.
    */
-  prepare(threads: number): Promise<void> {
-    if (this.ready(threads)) return Promise.resolve();
-    if (this.starting?.threads === threads) return this.starting.done;
+  prepare(threads: number, device: D1Device = 'cpu'): Promise<void> {
+    if (this.ready(threads, device)) return Promise.resolve();
+    if (this.starting?.threads === threads && this.starting.device === device)
+      return this.starting.done;
     const epoch = this.epoch;
     const done = (async () => {
       await this.halt();
-      if (this.epoch === epoch) await this.launch(threads, epoch);
+      if (this.epoch === epoch) await this.launch(threads, device, epoch);
     })().finally(() => {
       if (this.starting?.done === done) this.starting = null;
     });
-    this.starting = { threads, done };
+    this.starting = { threads, device, done };
     // Starting covers the wait for an old child's exit, so a reply sent now already says so.
     this.state = 'starting';
     this.error = null;
@@ -265,11 +310,43 @@ export class D1Runtime {
     clearTimeout(kill);
   }
 
-  private async launch(threads: number, epoch: number): Promise<void> {
+  private async launch(threads: number, device: D1Device, epoch: number): Promise<void> {
     const { dir, manifest } = this.options;
+    const runtime = d1Runtime(manifest, device);
+    const label = device === 'vulkan' ? 'Vulkan' : device === 'cuda' ? 'CUDA' : 'Local';
+    const fail = (message: string) => {
+      this.state = 'error';
+      this.error = message;
+    };
+    if (!runtime) {
+      fail(`the ${label} runtime is not available on this computer`);
+      return;
+    }
+    const home = device === 'cpu' ? dir : join(dir, device);
     const launch = this.options.launch ?? spawnD1;
     this.state = 'starting';
     this.error = null;
+    let gpu: GpuLaunch | undefined;
+    if (device !== 'cpu') {
+      let listed = '';
+      try {
+        listed = await (this.options.listDevices ?? listServerDevices)(
+          join(home, runtime.server),
+          home,
+        );
+      } catch {
+        fail(`the ${label} runtime could not list devices`);
+        return;
+      }
+      // A stop while the device list was read means nothing is launched.
+      if (this.epoch !== epoch) return;
+      const names = gpuDeviceNames(device, listed);
+      if (names.length === 0) {
+        fail(`the ${label} runtime found no device`);
+        return;
+      }
+      gpu = { kind: device, devices: names };
+    }
     let instance: D1Instance;
     try {
       const port = await freePort();
@@ -280,17 +357,18 @@ export class D1Runtime {
         id: String(++this.serial),
         endpoint: { base: `http://127.0.0.1:${port}`, key },
         threads,
+        deviceKind: device,
+        actualDevice: gpu ? gpu.devices.join(',') : 'cpu',
         child: launch({
-          file: join(dir, manifest.runtime.server),
-          args: serverArgs(join(dir, manifest.model.file), port, threads),
+          file: join(home, runtime.server),
+          args: serverArgs(join(dir, manifest.model.file), port, threads, gpu),
           // Only what the server needs: its key and the libraries next to it.
-          env: { LLAMA_API_KEY: key, LD_LIBRARY_PATH: dir },
-          cwd: dir,
+          env: { LLAMA_API_KEY: key, LD_LIBRARY_PATH: home },
+          cwd: home,
         }),
       };
     } catch {
-      this.state = 'error';
-      this.error = 'the Local runtime could not start';
+      fail(`the ${label} runtime could not start`);
       return;
     }
     this.current = instance;
@@ -328,12 +406,15 @@ export class D1Runtime {
       )
         throw new Error('the Local runtime loaded a different model');
     } catch (error) {
-      const message =
+      const named = (message: string) =>
+        device === 'cpu' ? message : message.replaceAll('Local runtime', `${label} runtime`);
+      const message = named(
         signal.aborted && this.current === instance
           ? 'the Local runtime did not start in time'
           : error instanceof Error && error.message.startsWith('the Local runtime')
             ? error.message
-            : 'the Local runtime did not start';
+            : 'the Local runtime did not start',
+      );
       if (this.current === instance) await this.isolate(instance, message);
       else await this.terminate(instance);
       return;

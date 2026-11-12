@@ -30,6 +30,8 @@ export interface FakeRoutingOptions {
   /** Delays every count until the test calls `releaseCounts()`. */
   holdCounts?: boolean;
   now?: () => number;
+  /** What a Local lease reports as the device that actually ran. */
+  device?: string;
 }
 
 /** UTF-8 length without platform encoders (core tests have no DOM or Node types). */
@@ -122,7 +124,10 @@ export class FakeRoutingBackend implements RoutingBackend {
     const lease: RoutingLease = {
       identity,
       frame: this.kind === 'local' ? 'd1-exact' : 'api-bounded',
-      device: this.kind === 'local' ? { actual: 'cpu', host: 'test-host', threads: 4 } : null,
+      device:
+        this.kind === 'local'
+          ? { actual: this.options.device ?? 'cpu', host: 'test-host', threads: 4 }
+          : null,
       countState: (text, signal) => count(units(text), signal),
       countInput: (state: string, question: EffortQuestion, signal) =>
         count(

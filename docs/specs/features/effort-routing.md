@@ -1,7 +1,7 @@
 # 기능 명세: 추론 판정
 
 - 상태: accepted
-- 비목표: 메인 모델·공급자 자동 변경, 엔진 사이의 자동 전환(Local↔판정 API)이나 병렬 호출·평균, 판정 결과의 보정·임계값·리뷰 상향 같은 덧붙인 규칙, 무추론(`none`)을 자동 후보로 쓰기, 확률을 성공률로 표시, 별도 관제 화면, 검증되지 않은 GPU·OS 조합, Python·Docker 설치, 판정 횟수 상한.
+- 비목표: 메인 모델·공급자 자동 변경, 엔진 사이의 자동 전환(Local↔판정 API)이나 병렬 호출·평균, 판정 결과의 보정·임계값·리뷰 상향 같은 덧붙인 규칙, 무추론(`none`)을 자동 후보로 쓰기, 확률을 성공률로 표시, 별도 관제 화면, Linux x64 Vulkan과 CUDA 12.8 이외의 GPU 런타임, GPU 구성을 검증됨으로 표시, Python·Docker 설치, 판정 횟수 상한.
 
 ## 사용자 관측 동작
 
@@ -9,7 +9,7 @@
 
 - **Effort Mode**: Off(기본) / Manual. Off는 판정하지 않고 공급자 기본값을 쓴다. Manual은 판정 엔진 하나를 사용자가 직접 고르고, 추론 수준은 요청마다 그 엔진이 고른다.
 - Manual의 엔진
-  - **Local 판정 모델**: 모델 `d1-2B Q4_K_M`, 실제 실행 호스트(Corral 서버가 도는 컴퓨터), 장치, 설치 상태, 설치 버튼 옆의 내려받을 크기, 진행률·취소, 실행 상태, 다시 준비(이미 설치된 모델을 띄우며 내려받지 않음), 설치된 모델의 제거, 고급 설정(최대 대기 시간, CPU 스레드 수).
+  - **Local 판정 모델**: 모델 `d1-2B Q4_K_M`, 실제 실행 호스트(Corral 서버가 도는 컴퓨터), 장치(이 컴퓨터의 manifest에 있는 CPU·Vulkan·CUDA), 설치 상태, 고른 장치를 설치할 때 내려받을 크기, 진행률·취소, 실행 상태, 다시 준비(이미 설치된 그 장치의 모델을 띄우며 내려받지 않음), 설치된 모델의 제거, 고급 설정(최대 대기 시간, CPU 스레드 수). Vulkan과 CUDA는 고를 수 있고, 각 선택지에 이 컴퓨터에서 확인되지 않음이라고 보인다. Corral은 GPU 구성을 검증됨으로 바꾸지 않는다.
   - **판정 API**: 키가 있는 [판정 API](decision-apis.md) 하나, 보내는 범위와 데이터 보존 고지, 외부 전송 동의, 고급 설정(최대 대기 시간).
 - Manual의 fallback: 공급자 기본값(기본) 또는 지원되는 고정 수준 하나.
 - 원격 Corral 서버에 접속한 브라우저에서도 Local은 서버 컴퓨터를 뜻한다. 브라우저 기기의 CPU·GPU를 쓴다고 표시하지 않는다.
@@ -18,7 +18,8 @@
 | Corral 서버 환경 | Local 엔진 |
 |---|---|
 | Linux x64 · CPU | 미리보기로 제공 |
-| Linux x64 · GPU | 고를 수 없음. 검증된 조합이 없다는 이유를 표시 |
+| Linux x64 · Vulkan | 고를 수 있음. 이 컴퓨터에서 확인되지 않음. Vulkan 로더 `libvulkan.so.1`이 필요 |
+| Linux x64 · CUDA 12.8 | 고를 수 있음. 이 컴퓨터에서 확인되지 않음. CUDA 12.8을 지원하는 NVIDIA 드라이버(Linux x86_64 570.26 이상)와 `libcuda.so.1`, `libcudart.so.12`, `libcublas.so.12`가 필요 |
 | 그 밖의 OS·아키텍처 | 이 환경에서 사용할 수 없음으로 표시 |
 
 Effort Mode는 역할·노드의 추론 선택이 **자동**인 요청에만 쓰인다. 고정 수준이나 공급자 기본값을 고른 요청은 판정하지 않는다. 컴포저와 팀 편집기의 추론 선택지는 [모델·추론](../models-and-resources.md)의 ModelPicker 계약을 따른다.
@@ -27,12 +28,15 @@ Effort Mode는 역할·노드의 추론 선택이 **자동**인 요청에만 쓰
 
 ```text
 Local · CPU · 추천 low → 적용 low · 420ms
+Local · VULKAN0 · 추천 low → 적용 low · 420ms
 Local · CPU · 시간 초과 → 공급자 기본값
 판정 API · OpenAI Decisions · 입력 근거 부족 · 호출하지 않음 → 공급자 기본값
 Off · 판정 안 함
 ```
 
-상세에는 선택지 분포(성공률이 아님), 장치, 시간, fallback 이유, 늦게 도착한 결과, 요청 확인을 보인다. 요청 확인은 공급자에 실제로 실은 추론 값이며 싣지 않았으면 생략이다. 그 기록이 없으면 요청이 아직 열려 있는 동안은 "아직 확인 안 됨", 요청이 끝났거나 그 실행·Run이 끝난 뒤에는 "확인 안 됨"이다. 판정하지 않은 요청의 추론 기록도 요청 확인을 같은 규칙으로 보인다. 실행 기록은 그 실행의 fallback을 이유별로 센다. 설정 섹션은 설치됨·준비됨을 구분하고, 실행 기록은 실제 적용을 따로 보인다. 시간 초과나 Busy로 추천이 적용되지 않는 상태를 정상 적용으로 표시하지 않는다.
+요청 줄의 장치는 그 판정이 실제로 쓴 장치다. CPU는 `CPU`이고, Vulkan·CUDA는 그 llama-server가 `--list-devices`로 인쇄한 이름을 대문자로 보인다(`Vulkan0`은 `VULKAN0`).
+
+상세에는 선택지 분포(성공률이 아님), 장치, 시간, fallback 이유, 늦게 도착한 결과, 요청 확인을 보인다. 요청 확인은 공급자에 실제로 실은 추론 값이다. 그 기록의 값이 없으면 공급자 기본값이다. 그 기록이 없으면 요청이 아직 열려 있는 동안은 "아직 확인 안 됨", 요청이 끝났거나 그 실행·Run이 끝난 뒤에는 "확인 안 됨"이며, 이것을 공급자 기본값이라고 하지 않는다. 추론 기록 자체가 없으면 미기록이며, 이것도 공급자 기본값이 아니다. 판정하지 않은 요청의 추론 기록도 요청 확인을 같은 규칙으로 보인다. 대화의 모델 요청 행은 이 적용 수준과 요청 확인을 펼치지 않은 짧은 라벨로 보이며, 그 배치는 [채팅 위젯](../chat-widgets-contract.md#61a-대화-차례의-작업-과정)이 정한다. 실행 기록은 그 실행의 fallback을 이유별로 센다. 설정 섹션은 설치됨·준비됨을 구분하고, 실행 기록은 실제 적용을 따로 보인다. 시간 초과나 Busy로 추천이 적용되지 않는 상태를 정상 적용으로 표시하지 않는다.
 
 ## 계약
 
@@ -40,7 +44,7 @@ Off · 판정 안 함
 
 - 작업공간 설정 `decisions.effort_routing`에 저장한다. 타입의 정본은 `packages/contracts/src/effort-routing.ts`다. 쓰기는 작업공간 설정의 revision 보호 쓰기를 쓰고 revision이 다르면 저장하지 않는다. 설정이 없으면 Off다.
 - 필드: `mode`(`off` / `manual`). Manual은 `engine`과 `fallback`을 가진다.
-  - Local 엔진: 장치(`cpu`와 스레드 수), 최대 대기 시간.
+  - Local 엔진: 장치(`cpu`·`vulkan`·`cuda` 중 이 컴퓨터의 manifest에 있는 것, 그리고 스레드 수), 최대 대기 시간. manifest에 없는 장치는 저장되지 않는다.
   - 판정 API 엔진: 판정 API id, 최대 대기 시간, 동의 revision.
   - fallback: `provider-default` 또는 low / medium / high / xhigh 중 하나의 고정 수준.
   - 진단용 `application`: `active`(기본) / `shadow`. 일반 UI에는 없다.
@@ -158,7 +162,7 @@ fallback 이유: `unavailable`, `not-ready`, `busy`, `timeout`, `invalid-respons
 | 런타임 linux-x64 CPU | llama.cpp `b12189`(commit `80d2c0c2c56e4a1bbf74be98f64b99927bf230bc`) `llama-b12189-bin-ubuntu-x64.tar.gz`, 23,058,620 B, sha256 `c446a7ba4df3c3b1cc880a734fbff586d6d34b9cebc09e151754813b94ded8c9` |
 | endpoint | loopback `POST /v1/systemone`, 계수 `POST /tokenize` |
 
-- manifest의 정본은 `packages/local-intelligence/src/d1/manifest.ts`다. archive hash 외에 실행 파일과 함께 쓰는 shared library의 hash, 렌더링 template hash, 라이선스 식별자를 담는다. 값이 하나라도 빠진 manifest는 schema 검증에서 거절한다. 런타임 build가 다르면 별도 manifest다.
+- manifest의 정본은 `packages/local-intelligence/src/d1/manifest.ts`다. archive hash 외에 실행 파일과 함께 쓰는 shared library의 hash, 렌더링 template hash, 라이선스 식별자를 담는다. CPU 런타임과, 그 대상에 있는 장치별 런타임(Linux x64는 Vulkan, CUDA 12.8)을 담는다. 값이 하나라도 빠진 manifest는 schema 검증에서 거절한다. 런타임 build가 다르면 별도 manifest다.
 - 모델 alias 문자열이 같다는 것만으로 identity를 인정하지 않는다. 응답은 시작 때 확인한 manifest와 child instance에 묶는다.
 - 파일 크기를 필요한 RAM으로 표시하지 않는다. RSS·PSS는 읽을 수 있을 때만 기록하고 아니면 null이다.
 
@@ -170,7 +174,8 @@ fallback 이유: `unavailable`, `not-ready`, `busy`, `timeout`, `invalid-respons
 ```
 
 - 모델과 런타임은 앱과 따로 내려받는다. 설치 위치는 앱 데이터 영역의 `corral/local-ai/d1/<manifest id>/`이며 회의 분석 번들과 분리한다. 프로젝트 폴더에는 설치하지 않는다.
-- 설치 버튼 옆에는 내려받는다는 말과 전체 크기를 항상 보인다. 설치 안 됨일 때와 설치 실패 뒤가 같다. 바이트를 1,000,000으로 나눠 정수로 반올림한 MB가 1,000 미만이면 그 MB를, 1,000 이상이면 그 MB를 1,000으로 나눈 값을 소수 한 자리로 반올림한 GB를 쓴다. 이 manifest의 모델과 런타임 합 1,122,688,508바이트는 약 1.1 GB다. 설치 중 받은 크기와 전체 크기는 MB로 보인다. 한 서버에서 설치는 하나만 진행한다.
+- 설치 버튼 옆에는 지금 고른 장치를 설치할 때 내려받는다는 말과 그 크기를 항상 보인다. 그 장치가 설치되지 않았을 때와 그 장치의 설치가 실패한 뒤가 같다. 크기는 아직 없거나 다른 모델이면 모델 크기에 그 장치 런타임 archive 크기를 더한 것이고, 모델이 이미 이 manifest와 같으면 그 런타임 archive만이다. CPU 런타임과 다른 GPU 런타임을 함께 받지 않는다. 바이트를 1,000,000으로 나눠 정수로 반올림한 MB가 1,000 미만이면 그 MB를, 1,000 이상이면 그 MB를 1,000으로 나눈 값을 소수 한 자리로 반올림한 GB를 쓴다. 모델과 CPU 런타임의 합 1,122,688,508바이트는 약 1.1 GB다. Vulkan archive 35,871,731바이트는 약 36 MB이고, 모델이 없으면 약 1.1 GB다. CUDA 12.8 archive 188,173,082바이트는 약 188 MB이고, 모델이 없으면 약 1.3 GB다. 설치 중 받은 크기와 그 설치의 전체 크기는 MB로 보인다. 한 서버에서 설치는 하나만 진행한다.
+- 모델 파일은 manifest 디렉터리에 둔다. CPU 런타임 파일도 그 디렉터리에 둔다. Vulkan·CUDA 런타임 파일은 그 아래 `vulkan/`·`cuda/`에 둔다. 장치마다 llama-server와 같은 soname이 있어 한 디렉터리에 섞지 않는다. 완료 표시는 manifest id와 설치된 장치 목록이다.
 - **지금 준비**와 **다시 준비**는 이미 설치된 모델을 띄울 뿐이며, 그 옆에 아무것도 내려받지 않는다고 적는다. 준비는 다운로드를 시작하지 않는다.
 - 다운로드는 manifest의 HTTPS URL만 쓴다. 실행 중에 최신 버전을 조회해 모델이나 런타임을 바꾸지 않는다.
 - 압축 해제는 manifest가 고정한 파일만 꺼낸다. 절대 경로, 상위 경로 traversal, 링크 항목은 거절한다. 다운로드 메타데이터의 명령을 실행하지 않는다.
@@ -183,7 +188,7 @@ fallback 이유: `unavailable`, `not-ready`, `busy`, `timeout`, `invalid-respons
 
 설치된 manifest 디렉터리만 지운다. 주소는 [API 계약](../api-contract.md)의 추론 판정 표가 정한다.
 
-- **제거**는 설치가 끝난 뒤에만 보인다. 확인은 지워질 크기를 말하며, 크기는 설치 크기와 같은 형식이다. 확인 전에는 지우지 않는다.
+- **제거**는 장치 중 하나라도 설치가 끝난 뒤에만 보인다. 확인은 지워질 크기를 말하며, 크기는 설치된 모델과 설치된 장치 런타임 archive의 합을 설치 크기와 같은 형식으로 보인다. 확인 전에는 지우지 않는다. 지우면 그 manifest 디렉터리 전체(설치된 모든 장치)다.
 - 설치가 진행 중이거나 판정 슬롯이 잡혀 있으면(패킹·추론·draining) 거절한다. 파일, 진행 중인 설치, Corral이 시작한 프로세스는 그대로다. 응답은 409 `RESOURCE_CAPACITY`이고 문구는 `an install is in progress` 또는 `a judgment is running`이다. 문구에 로컬 경로를 넣지 않는다.
 - 거절되지 않으면 Corral이 시작한 그 엔진의 자식만 끝내고 종료를 확인한 뒤, 그 manifest 디렉터리만 지운다. 다른 manifest 디렉터리, 회의 분석 번들, 이름으로 찾은 다른 `llama-server`는 건드리지 않는다.
 - 끝나면 설치 상태는 `absent`(설치 안 됨)다. 저장된 설정이 Manual + Local이어도 설정을 바꾸지 않는다. 화면은 설치됨이나 준비됨으로 남지 않고 설치 안 됨으로 읽힌다. 그 엔진으로 판정할 요청은 설치되지 않은 엔진의 기존 규칙대로 `unavailable`로 fallback한다.
@@ -202,6 +207,8 @@ fallback 이유: `unavailable`, `not-ready`, `busy`, `timeout`, `invalid-respons
 
 - 서버 호스트마다 daemon 하나, 동시 판정 하나, 대기열 0이다. Busy는 tokenizer 호출 전에 판단하며 Busy면 tokenizer·System One을 부르지 않고 fallback한다. 다른 에이전트의 메인 요청은 그대로 진행한다.
 - 실행은 셸 문자열이 아닌 인자 배열로 한다. CPU profile: `--model <절대 경로> --host 127.0.0.1 --port <호스트가 고른 빈 포트> --ctx-size 1024 --batch-size 1024 --ubatch-size 1024 --parallel 1 --threads <n> --threads-batch <n> --n-gpu-layers 0 --device none --no-op-offload --no-warmup --offline --cache-ram 0`, Web UI 끄기. 1024는 런타임 용량이며 입력 상한은 그대로 512토큰이다.
+- Vulkan·CUDA profile은 같은 인자에 GPU 오프로드만 바꾼다. 이 빌드의 `llama-server --help`에서 `--n-gpu-layers`는 정확한 수, `auto`, `all`이고, `--device`의 `none`은 오프로드하지 않으며, `--fit off`는 장치 메모리에 맞추려 인자를 바꾸지 않고, `--op-offload`는 호스트 텐서 연산을 장치에 올린다. GPU profile은 `--n-gpu-layers all --device <그 빌드의 --list-devices가 인쇄한 이름> --fit off --op-offload`를 쓰고 `--n-gpu-layers 0`, `--device none`, `--no-op-offload`는 쓰지 않는다. Vulkan은 이름이 `Vulkan`으로 시작하는 장치, CUDA는 `CUDA`로 시작하는 장치만 쓴다. 그 이름이 없으면 프로세스를 띄우지 않고 실행 상태를 오류로 둔다. 오류는 그 런타임이 장치를 찾지 못했다고 말한다.
+- GPU로 띄우다가 실패하면 실행 상태는 오류이고, 그 오류를 상태에 보인다. 요청은 오류 상태의 기존 규칙대로 `unavailable`로 fallback한다. CPU 런타임으로 몰래 바꾸지 않는다. 요청 기록의 실제 장치는 준비된 instance가 `--list-devices`에서 고른 이름이고, 준비되지 않았으면 null이다.
 - instance마다 무작위 인증 키를 쓰고 명령줄 인자에 넣지 않는다. 인증을 지원하지 않는 build는 무인증으로 띄우지 않고 오류로 둔다. 키는 renderer로 보내지 않는다. 최소 환경 변수로 실행한다.
 - Manual + Local이 저장돼 있고 설치가 끝났으면 비동기로 준비한다. 첫 요청에서 다운로드나 cold load를 기다리지 않는다. 준비되지 않았거나(멈춤·시작 중·다른 스레드 수) 준비 중이면 `not-ready`로 fallback하고, 멈춰 있거나 스레드 수가 다르면 그 요청이 준비를 시작한다. 설치되지 않았거나 설치 중이거나 `error`이면 `unavailable`이다. 시작은 30초 안에 ready가 돼야 하며 아니면 오류다. ready는 health 응답, 키 없는 요청의 거절, 고정 모델의 크기·파라미터 수와 decisions 출력을 확인한 뒤다.
 - 활성 판정·패킹·draining 없이 5분이 지나면 내린다(`stopped`). 그 뒤 첫 요청은 `not-ready`로 fallback하고 준비를 다시 시작한다.
@@ -353,8 +360,17 @@ When 사용자가 Off로 바꾸거나 앱이 종료된다
 Then Corral이 시작한 프로세스만 끝나고 종료가 확인된다
 
 Given Local이 설치되지 않았거나 설치가 실패했다
-When 설치 버튼을 본다
+When CPU 설치 버튼을 본다
 Then 버튼 옆에 약 1.1 GB를 내려받는다고 보인다
+
+Given 모델은 이 manifest와 같고 Vulkan 런타임은 없다
+When Vulkan을 고르고 설치한다
+Then Vulkan archive만 받고 CPU·CUDA archive는 받지 않으며 버튼에는 약 36 MB가 보인다
+
+Given Vulkan을 골랐고 그 llama-server의 장치 목록에 Vulkan 장치가 없다
+When 준비를 시작한다
+Then 실행 상태는 오류이고 프로세스를 띄우지 않는다
+And 요청은 unavailable로 fallback하며 CPU 런타임으로 바꾸지 않는다
 
 Given 설치된 Local이 준비 안 됨이거나 오류로 멈췄다
 When 지금 준비 또는 다시 준비를 본다

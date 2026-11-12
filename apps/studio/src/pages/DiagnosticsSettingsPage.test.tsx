@@ -149,6 +149,7 @@ it('copies a summary without the folder path, a key or a login link', async () =
         downloadBytes: null,
         progress: null,
         error: 'cannot open /home/someone/.corral/local-ai/model.bin',
+        device: { requested: 'cpu', actual: null },
       }),
     } as unknown as ModelsApi,
     workspaces: {
@@ -238,6 +239,7 @@ it('gives an endpoint whose last model list fetch failed as the models row cause
         downloadBytes: null,
         progress: null,
         error: null,
+        device: { requested: 'cpu', actual: 'cpu' },
       }),
     } as unknown as ModelsApi,
   };

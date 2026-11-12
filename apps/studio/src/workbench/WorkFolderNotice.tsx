@@ -5,28 +5,39 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
-/**
- * Whether this server conversation has no usable working copy: none yet, or one that is missing
- * or removed. A lookup that fails is not read as "none"; it reports nothing until one succeeds.
- */
-export function useWorkingCopyMissing(sessionId: string, revision: string): boolean {
+/** What the composer can say about this session's files. A failed lookup stays unknown. */
+export type FolderAccess = 'unknown' | 'unlinked' | 'untrusted' | 'missing' | 'direct' | 'copy';
+
+export function useFolderAccess(
+  sessionId: string,
+  projectId: string,
+  revision: string,
+): FolderAccess {
   const { workspaces, mode, workspaceId } = useServices();
-  const [missing, setMissing] = useState(false);
+  const [access, setAccess] = useState<FolderAccess>('unknown');
   useEffect(() => {
     void revision;
     void workspaceId;
     let current = true;
     let request = 0;
-    setMissing(false);
+    setAccess('unknown');
     if (mode !== 'server' || !workspaces) return;
     const refresh = async () => {
       const version = ++request;
       try {
-        const copy = await workspaces.worktree(sessionId);
-        if (current && request === version)
-          setMissing(!copy || Boolean(copy.missing || copy.removedAt));
+        const [binding, copy] = await Promise.all([
+          workspaces.binding(projectId),
+          workspaces.worktree(sessionId),
+        ]);
+        if (!current || request !== version) return;
+        const usable = Boolean(copy && !copy.missing && !copy.removedAt);
+        if (usable) setAccess('copy');
+        else if (!binding) setAccess('unlinked');
+        else if (binding.missing) setAccess('missing');
+        else if (!binding.trusted) setAccess('untrusted');
+        else setAccess('direct');
       } catch {
-        if (current && request === version) setMissing(false);
+        if (current && request === version) setAccess('unknown');
       }
     };
     void refresh();
@@ -35,24 +46,36 @@ export function useWorkingCopyMissing(sessionId: string, revision: string): bool
       current = false;
       window.removeEventListener(WORKSPACE_CHANGED, refresh);
     };
-  }, [workspaces, mode, workspaceId, sessionId, revision]);
-  return missing;
+  }, [workspaces, mode, workspaceId, sessionId, projectId, revision]);
+  return access;
 }
 
-/** The composer row's one mark that files cannot change here; it opens file-work setup. */
-export function WorkingCopyChip({ onSetup }: { onSetup(): void }) {
+/** One composer mark: whether the agent can read and change files, and the one next step. */
+export function FolderAccessNotice({
+  access,
+  onAction,
+}: {
+  access: FolderAccess;
+  onAction?: () => void;
+}) {
   const t = useTranslations('Sessions');
+  if (access === 'unknown') return null;
+  if (access === 'copy') return <span data-testid="folder-access">{t('agentCopy')}</span>;
+  if (access === 'direct') return <span data-testid="folder-access">{t('agentDirect')}</span>;
+  const fact = access === 'missing' ? 'agentFolderMissing' : 'agentNoFiles';
+  const next =
+    access === 'untrusted' ? 'trustFolder' : access === 'missing' ? 'checkFolder' : 'linkFolder';
   return (
-    <Tooltip content={t('prepareWorkingCopy')}>
+    <Tooltip content={t(next)}>
       <Button
         data-testid="working-copy-chip"
         variant="ghost"
         size="compact"
-        aria-label={`${t('noWorkingCopy')} · ${t('prepareWorkingCopy')}`}
-        onClick={onSetup}
+        aria-label={`${t(fact)}. ${t(next)}`}
+        onClick={onAction}
       >
         <FolderOpen aria-hidden="true" />
-        {t('noWorkingCopy')}
+        {t(fact)}
       </Button>
     </Tooltip>
   );

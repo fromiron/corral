@@ -50,7 +50,7 @@ function installed(root: string) {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, manifest.model.file), 'model');
   writeFileSync(join(dir, 'llama-server'), 'server');
-  writeFileSync(join(dir, 'install.json'), JSON.stringify({ id: manifest.id }));
+  writeFileSync(join(dir, 'install.json'), JSON.stringify({ id: manifest.id, devices: ['cpu'] }));
 }
 
 /** A child that never becomes ready and exits when told to. */

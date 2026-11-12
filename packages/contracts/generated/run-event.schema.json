@@ -10016,7 +10016,11 @@
                           "properties": {
                             "requested": {
                               "type": "string",
-                              "const": "cpu"
+                              "enum": [
+                                "cpu",
+                                "vulkan",
+                                "cuda"
+                              ]
                             },
                             "actual": {
                               "anyOf": [

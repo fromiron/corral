@@ -242,6 +242,92 @@ it('shows a judged request on its row and keeps other reasoning in the request d
   expect(container.textContent).not.toContain('Request details');
 });
 
+it('shows each request’s applied level and wire check without opening the row', () => {
+  const projection = emptyProjection('run_level');
+  projection.status = 'succeeded';
+  projection.executionOrder = ['lead'];
+  projection.executions.lead = {
+    executionId: 'lead',
+    nodeId: 'lead',
+    status: 'succeeded',
+    modelCallIds: ['fixed', 'plain', 'missing'],
+  } as unknown as (typeof projection.executions)[string];
+  projection.modelCalls = {
+    fixed: {
+      modelCallId: 'fixed',
+      executionId: 'lead',
+      finished: true,
+      reasoningWire: { kind: 'effort', value: 'high' },
+    },
+    plain: {
+      modelCallId: 'plain',
+      executionId: 'lead',
+      finished: true,
+      reasoningWire: { kind: 'omitted', value: null },
+    },
+    missing: { modelCallId: 'missing', executionId: 'lead', finished: true },
+  } as unknown as typeof projection.modelCalls;
+  const prepared = (modelCallId: string, runSeq: number, reasoning?: Record<string, unknown>) => ({
+    type: 'model.request_prepared',
+    runSeq,
+    actor: { kind: 'agent', id: 'lead' },
+    payload: {
+      executionId: 'lead',
+      modelCallId,
+      directiveIds: [],
+      inputArtifactVersionIds: [],
+      profile: 'model-a',
+      ...(reasoning ? { reasoning } : {}),
+    },
+  });
+  const events = [
+    prepared('fixed', 1, {
+      preparationId: 'prep_fixed',
+      requested: { mode: 'fixed', level: 'high' },
+      resolved: 'high',
+      source: 'fixed',
+    }),
+    prepared('plain', 2, {
+      preparationId: 'prep_plain',
+      requested: { mode: 'auto' },
+      resolved: null,
+      source: 'off',
+    }),
+    prepared('missing', 3),
+  ] as unknown as RunEvent[];
+  const container = document.createElement('div');
+  container.innerHTML = renderToStaticMarkup(
+    <IntlProvider locale="ko" messages={ko}>
+      <TurnProcess
+        events={events}
+        projection={projection}
+        streams={{}}
+        label={(id) => id}
+        open
+        onOpenChange={() => {}}
+      />
+    </IntlProvider>,
+  );
+  const labels = [...container.querySelectorAll('[data-testid="reasoning-level"]')];
+  expect(labels.map((label) => label.textContent)).toEqual([
+    '높음 · 확인됨: high',
+    '공급자 기본값 · 확인됨',
+    '추론 설정 미기록',
+  ]);
+  for (const label of labels) expect(label.closest('[hidden]')).toBeNull();
+  expect(labels[2]?.textContent).not.toContain('공급자 기본값');
+  // The row already says the record is missing; the details do not say it again.
+  expect(container.textContent?.split('추론 설정 미기록')).toHaveLength(2);
+  // The longer record stays folded. An empty verified send is not called omitted.
+  const summaries = [...container.querySelectorAll('[data-testid="reasoning-summary"]')];
+  expect(summaries.map((summary) => summary.textContent)).toEqual([
+    '추론 노력: high → high · 수동 · 요청 확인: high',
+    '끄기 · 판정 안 함',
+  ]);
+  for (const summary of summaries) expect(summary.closest('[hidden]')).not.toBeNull();
+  expect(container.textContent).not.toContain('생략');
+});
+
 it('opens a step’s details from its row, by pointer or keyboard, with no details label', async () => {
   const { act } = await import('react');
   const { createRoot } = await import('react-dom/client');
