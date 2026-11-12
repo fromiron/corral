@@ -21,10 +21,9 @@ export interface D1RuntimePin extends PinnedDownload {
   server: string;
   /** Files taken from the archive, keyed by their installed name. */
   files: Record<string, { member: string; size: number; sha256: string }>;
-  /** Absent on the CPU runtime of a manifest written before device runtimes. */
-  device?: D1Device;
-  /** Libraries the computer must already have. Null or absent for CPU. */
-  requirement?: string | null;
+  device: D1Device;
+  /** Libraries the computer must already have. Null for CPU. */
+  requirement: string | null;
 }
 
 export interface D1Manifest {
@@ -70,9 +69,10 @@ function runtimeOk(
     text(runtime?.build) &&
     COMMIT.test(runtime?.commit ?? '') &&
     text(runtime?.license) &&
-    (runtime?.device === undefined || runtime.device === device) &&
-    (device === 'cpu' ||
-      (typeof runtime?.requirement === 'string' && runtime.requirement.length > 0)) &&
+    runtime?.device === device &&
+    (device === 'cpu'
+      ? runtime.requirement === null
+      : typeof runtime.requirement === 'string' && runtime.requirement.length > 0) &&
     files.length > 0 &&
     Object.hasOwn(runtime?.files ?? {}, runtime?.server ?? '') &&
     files.every(

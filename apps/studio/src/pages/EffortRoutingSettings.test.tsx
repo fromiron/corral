@@ -272,7 +272,7 @@ it('lets the person install Vulkan or CUDA and says they are not verified here',
             kind: 'cuda',
             installed: false,
             downloadBytes: 188 * MB,
-            requirement: 'libcudart.so.12',
+            requirement: 'libcudart.so.12; NVIDIA Linux driver >= 570.26',
           },
         ],
       }),
@@ -293,7 +293,20 @@ it('lets the person install Vulkan or CUDA and says they are not verified here',
   expect(option('Vulkan')?.textContent).not.toContain('verified GPU');
   await act(async () => option('Vulkan')?.click());
   expect(container.textContent).toContain('Downloads about 36 MB.');
-  expect(container.textContent).toContain('Needs the Vulkan loader (libvulkan.so.1).');
+  expect(container.textContent).toContain(
+    'Not verified on this computer. Needs libvulkan.so.1. Corral does not download these.',
+  );
+  const pick = async (name: string) => {
+    await act(async () =>
+      container.querySelector<HTMLElement>('button[role="combobox"][aria-label="Device"]')?.click(),
+    );
+    await act(async () => option(name)?.click());
+  };
+  await pick('CUDA');
+  expect(container.textContent).toContain(
+    'Needs libcudart.so.12; NVIDIA Linux driver >= 570.26. Corral does not download these.',
+  );
+  await pick('Vulkan');
   await act(async () => button(container, 'Install')?.click());
   expect(api.installLocalRouting).toHaveBeenCalledWith('vulkan');
 });

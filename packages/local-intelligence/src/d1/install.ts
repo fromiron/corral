@@ -62,11 +62,10 @@ function readStamp(dir: string): InstallStamp | null {
   }
 }
 
-/** Devices named by the stamp. A stamp without a list is the CPU install from before GPU runtimes. */
+/** Devices named by the stamp. A stamp without a device list names none. */
 function stampedDevices(stamp: InstallStamp | null, manifest: D1Manifest): D1Device[] {
-  if (!stamp || stamp.id !== manifest.id) return [];
-  const listed = Array.isArray(stamp.devices) ? stamp.devices : ['cpu'];
-  return listed.filter(
+  if (!stamp || stamp.id !== manifest.id || !Array.isArray(stamp.devices)) return [];
+  return stamp.devices.filter(
     (device): device is D1Device => device === 'cpu' || device === 'vulkan' || device === 'cuda',
   );
 }

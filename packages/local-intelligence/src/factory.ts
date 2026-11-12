@@ -72,7 +72,10 @@ export interface LocalIntelligence {
    * install or an embedding is in progress. The judge model under `d1` stays.
    */
   remove(): Promise<LocalAiStatus>;
-  /** Saves the device and stops the helper until the next computation. Waiting work is refused. */
+  /**
+   * Saves the device and stops the helper until the next computation. Changing it is refused
+   * while an embedding holds the slot or waits for it; the saved device and the helper stay.
+   */
   setDevice(device: Device): Promise<LocalAiStatus>;
   /** Cancels a running install and stops the engine. */
   close(): Promise<void>;
@@ -188,6 +191,8 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
       return status();
     },
     setDevice: async (next) => {
+      if (next !== engine.status().requestedDevice && engine.busy())
+        throw new BundleBusyError('computing');
       writeSavedDevice(root, next);
       await engine.setDevice(next);
       return status();

@@ -26,7 +26,7 @@ export function LocalAiPanel({ pollMs = 1000 }: { pollMs?: number }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [actionFailed, setActionFailed] = useState(false);
   const [refusal, setRefusal] = useState<
-    'removeInstalling' | 'removeComputing' | 'removeFailed' | null
+    'removeInstalling' | 'removeComputing' | 'removeFailed' | 'deviceComputing' | null
   >(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -101,6 +101,21 @@ export function LocalAiPanel({ pollMs = 1000 }: { pollMs?: number }) {
       setBusy(false);
     }
   };
+  const setDevice = async (device: LocalAiView['device']['requested']) => {
+    if (!models) return;
+    setBusy(true);
+    setActionFailed(false);
+    setRefusal(null);
+    try {
+      setView(await models.setLocalAiDevice(device));
+    } catch (error) {
+      if (error instanceof ApiError && error.message === 'a computation is in progress')
+        setRefusal('deviceComputing');
+      else setActionFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
   const mb = (bytes: number) => format.number(Math.round(bytes / MB));
   const download =
     view?.downloadBytes == null
@@ -128,9 +143,7 @@ export function LocalAiPanel({ pollMs = 1000 }: { pollMs?: number }) {
                 <Select<'cpu' | 'gpu' | 'auto'>
                   label={t('device')}
                   value={view.device.requested}
-                  onValueChange={(device) =>
-                    void run(() => models?.setLocalAiDevice(device) ?? Promise.reject())
-                  }
+                  onValueChange={(device) => void setDevice(device)}
                   options={[
                     { value: 'cpu', label: t('devices.cpu') },
                     { value: 'gpu', label: t('devices.gpu'), hint: t('notVerified') },

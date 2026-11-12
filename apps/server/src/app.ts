@@ -1229,6 +1229,10 @@ async function createCorralServer(
   app.delete('/api/v1/local-ai/install', async (_request, reply) =>
     local ? await local.cancelInstall() : noLocalAi(reply),
   );
+  const bundleRefusal = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof BundleBusyError) return fail(reply, 'RESOURCE_CAPACITY', error.message);
+    throw error;
+  };
   app.put('/api/v1/local-ai/device', async (request, reply) => {
     if (!local) return noLocalAi(reply);
     if (local.status().state === 'unsupported')
@@ -1237,12 +1241,12 @@ async function createCorralServer(
       .strictObject({ device: z.enum(['cpu', 'gpu', 'auto']) })
       .safeParse(request.body);
     if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'choose CPU, GPU, or automatic');
-    return local.setDevice(parsed.data.device);
+    try {
+      return await local.setDevice(parsed.data.device);
+    } catch (error) {
+      return bundleRefusal(reply, error);
+    }
   });
-  const bundleRefusal = (reply: FastifyReply, error: unknown) => {
-    if (error instanceof BundleBusyError) return fail(reply, 'RESOURCE_CAPACITY', error.message);
-    throw error;
-  };
   app.delete('/api/v1/local-ai', async (_request, reply) => {
     if (!local) return noLocalAi(reply);
     if (local.status().state === 'unsupported')

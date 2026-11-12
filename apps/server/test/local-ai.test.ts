@@ -429,3 +429,50 @@ it('saves the meeting device and restores it for the next engine', async () => {
   expect(again.status().device).toEqual({ requested: 'gpu', actual: null });
   await again.close();
 });
+
+it.skipIf(!target)(
+  'refuses a meeting device change while a computation is running and keeps the device',
+  async () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
+    dirs.push(dataRoot);
+    const options = {
+      root: dataRoot,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+      launch: neverReady,
+    };
+    mkdirSync(bundleDir(dataRoot, bundle), { recursive: true });
+    writeFileSync(
+      join(bundleDir(dataRoot, bundle), 'install.json'),
+      JSON.stringify({ release: bundle.release, target }),
+    );
+    const local = createLocalIntelligence(options);
+    expect(local.status().state).toBe('idle');
+    let settled = false;
+    const pending = local.engine
+      .embed({ texts: ['hi'], task: 'classification', overflow: 'truncate' })
+      .finally(() => {
+        settled = true;
+      });
+    pending.catch(() => {});
+    const { server, call } = await serve(local);
+    try {
+      const refused = await call('/local-ai/device', 'PUT', { device: 'gpu' });
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: 'RESOURCE_CAPACITY', message: 'a computation is in progress' },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(settled).toBe(false);
+      expect((await call('/local-ai')).body).toMatchObject({ device: { requested: 'cpu' } });
+      // Choosing the device already saved is not a change.
+      expect((await call('/local-ai/device', 'PUT', { device: 'cpu' })).status).toBe(200);
+      expect(settled).toBe(false);
+    } finally {
+      await server.close();
+      launches.length = 0;
+    }
+    const again = createLocalIntelligence(options);
+    expect(again.status().device.requested).toBe('cpu');
+    await again.close();
+  },
+);

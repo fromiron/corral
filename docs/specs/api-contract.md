@@ -201,7 +201,7 @@ P8 입력·기록 주소. 문서 도구에는 이 주소에서 받은 ID만 전�
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
 | GET /local-ai | — | release, models(`{meeting}`: 번들이 설치하는 회의 분석 모델의 표시 이름), state(`unsupported`·`missing`·`stale`·`installing`·`idle`·`starting`·`ready`·`error`), downloadBytes(이 환경에서 내려받을 전체 크기, 쓸 수 없으면 null), progress(설치 중 `{received,total}`, 아니면 null), error(마지막 설치 실패나 엔진 오류의 이유, 없으면 null), device(`{requested, actual}`: requested는 `cpu`·`gpu`·`auto`, actual은 준비된 엔진의 `cpu`·`gpu` 또는 null) |
-| PUT /local-ai/device | `{device}` `cpu`·`gpu`·`auto` | 회의 분석 엔진의 장치를 저장하고 실행 중인 헬퍼를 끝낸다. 대기 중인 계산은 거절되고, 다음 계산이 그 규칙으로 헬퍼를 시작한다. 응답은 GET /local-ai와 같다. 다른 값은 400 `SCHEMA_INVALID`. 쓸 수 없는 환경과 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED` |
+| PUT /local-ai/device | `{device}` `cpu`·`gpu`·`auto` | 회의 분석 엔진의 장치를 저장하고 실행 중인 헬퍼를 끝낸다. 다음 계산이 그 규칙으로 헬퍼를 시작한다. 계산 중에 다른 장치로 바꾸면 409 `RESOURCE_CAPACITY`이며 저장된 장치와 헬퍼는 그대로다([로컬 AI](features/local-intelligence.md)). 응답은 GET /local-ai와 같다. 다른 값은 400 `SCHEMA_INVALID`. 쓸 수 없는 환경과 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED` |
 | POST /local-ai/install | — | 202. 설치를 시작하고 상태를 돌려준다. 진행 중이면 같은 설치, 이미 설치됐으면 현재 상태. 쓸 수 없는 환경은 403 `CAPABILITY_DENIED` |
 | DELETE /local-ai/install | — | 진행 중인 설치를 취소하고, 부분 파일을 지운 뒤의 상태를 돌려준다. 설치된 번들은 지우지 않는다 |
 | DELETE /local-ai | — | 회의 분석 번들만 제거한다. 규칙은 [로컬 AI](features/local-intelligence.md). 이미 없으면 설치 안 됨. 설치 중·계산 중은 409 `RESOURCE_CAPACITY`이며 파일과 헬퍼는 그대로다. `local-ai/d1`은 지우지 않는다. 쓸 수 없는 환경과 로컬 AI가 없는 서버는 403 `CAPABILITY_DENIED`. 응답은 GET /local-ai와 같다 |
@@ -256,7 +256,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
 | REVISION_CONFLICT | 409 | Corral 저장의 기준 definition revision이 현재와 다름(다른 탭에서 저장). 저장하지 않음 (구현 중 추가) |
 | RUN_ALREADY_ACTIVE | 409 | workspace에 이미 활성 Run이 있음. 새 Run과 effect 없음 (구현 중 추가) |
-| RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음. 로컬 번들을 설치 중·판정 중·계산 중에 제거하려 할 때도 이 코드다([추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md)). 파일과 프로세스는 그대로다 |
+| RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음. 로컬 번들을 설치 중·판정 중·계산 중에 제거하려 할 때와 계산 중에 회의 분석 장치를 바꾸려 할 때도 이 코드다([추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md)). 파일과 프로세스는 그대로다 |
 | CRITERIA_CHANGE_REQUIRES_NEW_RUN | 409 | Loop가 이미 종료되어 완료 기준 변경은 새 Run 필요 |
 | RESTART_NOT_ALLOWED | 409 | 부모가 더 이상 대기하지 않거나 downstream 진행 |
 | APPROVAL_STALE | 409 | 대상/기준 버전 변경 또는 이미 해결 |

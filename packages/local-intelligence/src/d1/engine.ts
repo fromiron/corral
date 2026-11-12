@@ -236,7 +236,7 @@ export class D1Engine {
                 installed: deviceInstalled,
                 downloadBytes:
                   (modelReady ? 0 : manifest.model.size) + (deviceInstalled ? 0 : pinned.size),
-                requirement: pinned.requirement ?? null,
+                requirement: pinned.requirement,
               },
             ];
           })

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { LocalAiView } from '@corral/client';
+import { ApiError, type LocalAiView } from '@corral/client';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -198,4 +198,34 @@ it('saves the meeting device and shows the device the helper is using', async ()
   await act(async () => gpu?.click());
   expect(setLocalAiDevice).toHaveBeenCalledWith('gpu');
   expect(container.textContent).toContain('Running on GPU');
+});
+
+it('says a device change was refused while a computation runs and keeps the saved device', async () => {
+  const setLocalAiDevice = vi
+    .fn()
+    .mockRejectedValue(new ApiError(409, 'RESOURCE_CAPACITY', 'a computation is in progress'));
+  fixture.services = {
+    models: {
+      localAi: vi
+        .fn()
+        .mockResolvedValue(view({ state: 'ready', device: { requested: 'cpu', actual: 'cpu' } })),
+      installLocalAi: vi.fn(),
+      cancelLocalAiInstall: vi.fn(),
+      setLocalAiDevice,
+    },
+  };
+  const container = await render();
+  const select = () =>
+    container.querySelector<HTMLElement>('button[role="combobox"][aria-label="Device"]');
+  await act(async () => select()?.click());
+  const gpu = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+    node.textContent?.startsWith('GPU'),
+  );
+  await act(async () => gpu?.click());
+  expect(setLocalAiDevice).toHaveBeenCalledWith('gpu');
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    'Cannot change the device while a computation is running.',
+  );
+  expect(select()?.textContent).toContain('CPU');
+  expect(container.textContent).toContain('Running on CPU');
 });

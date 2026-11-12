@@ -559,12 +559,10 @@ function LocalEngine({
       </Labeled>
       {picked.kind !== 'cpu' ? (
         <p className="text-caption text-muted-foreground">
-          {t('notVerified')}.{' '}
-          {picked.kind === 'vulkan'
-            ? t('vulkanRequirement', { loader: 'libvulkan.so.1' })
-            : t('cudaRequirement', {
-                libraries: 'libcuda.so.1, libcudart.so.12, libcublas.so.12',
-              })}
+          {t('notVerified')}.
+          {picked.requirement
+            ? ` ${t('gpuRequirement', { requirement: picked.requirement })}`
+            : null}
         </p>
       ) : null}
       <details className="text-body">
