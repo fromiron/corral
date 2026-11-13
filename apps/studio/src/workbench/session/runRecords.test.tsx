@@ -87,14 +87,10 @@ async function mount(initial: Shown) {
   }
   function Probe({ shown }: { shown: Shown }) {
     seen.push(
-      useRunRecords(
-        [...shown.list.map((run) => run.runId), ...shown.drawn],
-        shown.list,
-        {
-          started: shown.started ?? (() => 0),
-          onWatchedExpiry: shown.onWatchedExpiry ?? (() => {}),
-        },
-      ),
+      useRunRecords([...shown.list.map((run) => run.runId), ...shown.drawn], shown.list, {
+        started: shown.started ?? (() => 0),
+        onWatchedExpiry: shown.onWatchedExpiry ?? (() => {}),
+      }),
     );
     return shown.drawn.map((runId) => <Row key={runId} runId={runId} shown={shown} />);
   }
@@ -273,9 +269,7 @@ for (const [ending, runStatus, last] of [
     server = projectionOf(runStatus, last, 9);
     await f.rerender({ list: [summary('run_live', runStatus)], drawn: ['run_live'] });
     expect(fixture.getSnapshot).toHaveBeenCalledTimes(1);
-    expect(f.last().records.get('run_live')?.projection.directives.directive_a?.status).toBe(
-      last,
-    );
+    expect(f.last().records.get('run_live')?.projection.directives.directive_a?.status).toBe(last);
   });
 }
 

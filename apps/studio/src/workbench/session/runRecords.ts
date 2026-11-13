@@ -190,18 +190,13 @@ forgetOnReset(forgetRunRecords);
  * gone from a list that was read), its record is read, once. A failed read is asked again while
  * the message stays drawn, later each time, a few times.
  */
-export function useRecordRead(
-  runId: string | null,
-  runs: readonly RunSummary[],
-  listed: boolean,
-) {
+export function useRecordRead(runId: string | null, runs: readonly RunSummary[], listed: boolean) {
   const { transport } = useServices();
   const cache = transport ? cacheFor(transport) : null;
   const run = runId ? runs.find((item) => item.runId === runId) : undefined;
   const ended = run ? TERMINAL_RUN_STATUSES.has(run.status) : listed;
-  const failures = useSyncExternalStore(
-    cache?.subscribe ?? noSubscribe,
-    () => (runId && cache ? cache.failures(runId) : 0),
+  const failures = useSyncExternalStore(cache?.subscribe ?? noSubscribe, () =>
+    runId && cache ? cache.failures(runId) : 0,
   );
   const retries = useRef(0);
   useEffect(() => {
@@ -292,7 +287,8 @@ export function useRunRecords(
     // one does not stand in front of a later live one.
     const read = running(runId) ? undefined : cache?.get(runId);
     const last = live.get(runId);
-    const record = read && (!last || read.projection.lastSeq >= last.projection.lastSeq) ? read : last;
+    const record =
+      read && (!last || read.projection.lastSeq >= last.projection.lastSeq) ? read : last;
     if (record) records.set(runId, record);
   }
   return { records, watched };

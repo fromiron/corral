@@ -425,6 +425,7 @@ test('a page opened again while the run goes follows the instruction to its end'
   await box.fill('Find why login is slow');
   await box.press('Enter');
   await first.reached;
+  await waitForStill(page);
   await box.fill('Run the tests too');
   await box.press('Enter');
   const status = page
