@@ -1,5 +1,5 @@
-import { InputMessage, Tooltip } from '@corral/react/design-kit';
-import type { KeyboardEvent, ReactNode, RefObject } from 'react';
+import { Elevated, InputMessage, Tooltip, useShape } from '@corral/react/design-kit';
+import { cloneElement, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { AppCommand } from '../../../commandRegistry.ts';
 import { sendKeyLabel } from '../../../shortcuts.ts';
 import { ComposerInput } from '../../ComposerInput.tsx';
@@ -8,10 +8,10 @@ import type { MentionItem } from '../../composerMenu.ts';
 import type { Preferences } from '../../preferences.ts';
 import { KeyHint, type KeyMeaning, type SendRow } from './SendControls.tsx';
 
-// The composer's card (features/composer-flow.md "화면 틀"): the input, then one tool line with
-// the add menu, where a send goes, the keys and what they send, and Send with its menu. A
-// conversation and a meeting draw the same card; what differs is the send target adapter, and
-// which of the tools the place supports.
+// The composer's card (features/composer-flow.md "화면 틀"): the activity bar, what waits above
+// the input, the input, then one tool line with the add menu, where a send goes, the keys and
+// what they send, and Send with its menu. A conversation and a meeting draw the same card; what
+// differs is the send target adapter, and which of the tools the place supports.
 
 /**
  * Where a send goes and what each key sends: the adapter between the one composer and what it
@@ -44,6 +44,13 @@ export interface ComposerMenus {
   onMention: (item: MentionItem) => MentionItem;
 }
 
+/** Stop in Send's place while nothing is written and the work goes (composer-flow.md "활동 바"). */
+export interface ComposerStop {
+  label: string;
+  disabled?: boolean;
+  onStop: () => void;
+}
+
 const noMentions = async () => [];
 const same = (item: MentionItem) => item;
 
@@ -66,6 +73,9 @@ export function ComposerCard({
   afterTarget,
   settings,
   end,
+  activity,
+  above,
+  stop,
 }: {
   /** The region's and the box's name. */
   label: string;
@@ -92,11 +102,25 @@ export function ComposerCard({
   settings?: ReactNode;
   /** Right before Send. */
   end?: ReactNode;
+  /**
+   * The activity bar, first in the card. A place that passes it, or `above`, draws the card as one
+   * raised surface the column's width, with the input inside it borderless.
+   */
+  activity?: ReactNode;
+  /** Between the activity bar and the input: what waits to start, the next request's notes. */
+  above?: ReactNode;
+  /** Send's place while nothing is written: Stop, for as long as this is set. */
+  stop?: ComposerStop | null;
 }) {
-  return (
+  const framed = activity !== undefined || above !== undefined;
+  const stopping = stop && !text.trim() ? stop : null;
+  const input = (
     <InputMessage
       toolbar="single"
       data-slot="composer-host"
+      {...(framed
+        ? { className: 'gap-0 bg-transparent pt-0 shadow-none', style: { boxShadow: 'none' } }
+        : {})}
       role="region"
       aria-label={label}
       inputRef={inputRef}
@@ -110,14 +134,29 @@ export function ComposerCard({
         ...(maxLength ? { maxLength } : {}),
       }}
       sendDisabled={target.sendDisabled}
+      // The kit's own Stop takes Send's place while nothing is written and the work goes.
+      status={stopping ? 'streaming' : 'idle'}
+      {...(stopping ? { onStop: stopping.onStop } : {})}
       sendLabel={sendLabel}
       // A description that only repeats the name is not read twice.
       sendDescription={target.meaning === sendLabel ? undefined : target.meaning}
       renderAction={(action) => (
+        // Stop takes Send's place alone: the menu beside it keeps its own, so the line holds still.
         <>
-          <Tooltip content={target.meaning} shortcut={sendKeyLabel(sendKey)}>
-            {action}
-          </Tooltip>
+          {stopping ? (
+            <Tooltip content={stopping.label}>
+              {cloneElement(action, {
+                'aria-label': stopping.label,
+                'aria-description': undefined,
+                'data-testid': 'composer-stop',
+                disabled: stopping.disabled,
+              } as Record<string, unknown>)}
+            </Tooltip>
+          ) : (
+            <Tooltip content={target.meaning} shortcut={sendKeyLabel(sendKey)}>
+              {action}
+            </Tooltip>
+          )}
           {target.menu}
         </>
       )}
@@ -158,5 +197,27 @@ export function ComposerCard({
       }
       rightSlot={end}
     />
+  );
+  if (!framed) return input;
+  return (
+    <ComposerFrame>
+      {activity}
+      {above}
+      {input}
+    </ComposerFrame>
+  );
+}
+
+/** The one raised surface the column's width around the activity bar, what waits and the input. */
+function ComposerFrame({ children }: { children: ReactNode }) {
+  const shape = useShape();
+  return (
+    <Elevated
+      offset={2}
+      data-slot="composer-card"
+      className={`${shape.container} flex min-w-0 flex-col transition-shadow has-[textarea:focus-visible]:ring-1 has-[textarea:focus-visible]:ring-focus-ring`}
+    >
+      {children}
+    </Elevated>
   );
 }

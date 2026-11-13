@@ -6234,5 +6234,26 @@
       "waiting_reply": "Waiting for a reply",
       "watching": "Watching"
     }
+  },
+  "Activity": {
+    "details": "Activity details",
+    "bar": "Activity",
+    "roles": "Roles",
+    "view": "View",
+    "viewRole": "View {name}",
+    "join": "Join here",
+    "joinRole": "Join {name}",
+    "joinTarget": "Join target",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "waiting": "{count} waiting",
+    "rolesWorking": "{count, plural, one {# role working} other {# roles working}}",
+    "roleActivity": "{name}: {activity}",
+    "connectionLost": "Connection lost",
+    "recordLost": "Run record unavailable",
+    "retry": "Retry",
+    "controls": "Run controls",
+    "commandUnconfirmed": "Not confirmed: press again to check"
   }
 }

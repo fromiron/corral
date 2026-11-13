@@ -63,6 +63,10 @@ export interface TurnProcess {
 
 const PUBLISHING = new Set(['write_artifact', 'submit_result']);
 const TARGETS = ['path', 'command', 'pattern', 'url', 'artifactVersionId', 'targetNodeId'];
+/** What a call works on, as its row in the work log names it: the path, command, pattern or URL. */
+export function toolTarget(args: Record<string, unknown>): string | null {
+  return targetOf(args);
+}
 function targetOf(args: Record<string, unknown>): string | null {
   for (const key of TARGETS) {
     const value = args[key];

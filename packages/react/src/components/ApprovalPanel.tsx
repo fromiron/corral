@@ -39,19 +39,108 @@ import {
 import { nextResponseTarget } from './responseFocus.ts';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
-/** One line of a call's main subject: the command it runs or the file it touches. */
-function callSubject(plan: ToolPermissionPlan): string | null {
+/**
+ * A waiting call's plan as its card reads it from the call's body: null when the body is not
+ * a valid plan for this very approval (another fingerprint, or a plan the core refuses).
+ */
+export function waitingToolPlan(text: string | undefined, fingerprint: string) {
+  const plan = ToolPermissionPlan.parse(JSON.parse(text ?? 'null'));
+  if (plan.fingerprint !== fingerprint || !validToolPermissionPlan(plan))
+    throw new Error('permission changed');
+  return plan;
+}
+
+/**
+ * A call in one line, as its card and the activity bar name it: its tool, then its main subject
+ * (the command it runs, the file it touches, or where a file moves from and to) when it has one.
+ * `whole` says the line holds every argument of the call, on one line and not cut: only then may
+ * the line decide it (features/composer-flow.md "활동 바").
+ */
+export function callLine(plan: ToolPermissionPlan, toolLabel: (name: string) => string) {
+  const found = callSubject(plan);
+  const subject = found?.text ?? null;
+  const tool = toolLabel(plan.descriptor.name);
+  return {
+    tool,
+    subject,
+    whole: Boolean(found?.whole),
+    text: subject ? `${tool} · ${subject}` : tool,
+  };
+}
+
+const SUBJECT_MAX = 80;
+/** Every character that ends a line, whatever its kind: a subject with one is several lines. */
+const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
+/**
+ * Characters a line draws as nothing or reorders (controls but a tab, format characters such as
+ * direction overrides and zero-width ones, the default-ignorable ones such as variation selectors
+ * and Hangul fillers, and those drawn blank: the empty braille pattern, the null notehead): with
+ * one, the line cannot say all of its subject. An emoji with a variation selector is one of them.
+ */
+const UNSEEN = /[^\P{Cc}\t]|\p{Cf}|\p{Default_Ignorable_Code_Point}|[\u2800\u{1D159}]/u;
+/**
+ * Right-to-left text, letters and digits alike (Hebrew, Arabic, Syriac, Thaana, NKo and the rest
+ * of their blocks): the line lays it out in another order than it is run.
+ */
+const RIGHT_TO_LEFT =
+  /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
+/** Line breaks, with the blanks between them, at a command's end: the shell runs the one line. */
+const TRAILING_BREAKS = /[\n\r\v\f\u0085\u2028\u2029][\n\r\v\f\u0085\u2028\u2029\t ]*$/;
+
+/**
+ * The call's main subject in one line, and whether the line holds all its arguments. Judged by
+ * the arguments, not by the tool's name: one the line does not write (a write's content, an
+ * edit's changes, a new argument of any tool) leaves the call to its card.
+ */
+function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean } | null {
   if (plan.descriptor.source !== 'corral') return null;
-  const args = plan.arguments as Record<string, unknown>;
-  const request = args.request as Record<string, unknown> | undefined;
-  const text =
-    plan.descriptor.name === 'run_command'
-      ? [args.command, request?.command].find((value) => typeof value === 'string')
-      : [args.path, args.from].find((value) => typeof value === 'string');
-  if (typeof text !== 'string' || !text.trim()) return null;
-  const lines = text.trim().split('\n');
-  const first = lines[0]?.trim() ?? '';
-  return first.length > 80 || lines.length > 1 ? `${first.slice(0, 79)}…` : first;
+  const command = plan.descriptor.name === 'run_command';
+  const args = command
+    ? commandArguments(plan.arguments)
+    : (plan.arguments as Record<string, unknown>);
+  const said = command
+    ? ['command']
+    : typeof args.from === 'string' && typeof args.to === 'string'
+      ? ['from', 'to']
+      : ['path'];
+  const given = said.map((key) => args[key]);
+  if (!given.every((part): part is string => typeof part === 'string' && Boolean(part.trim())))
+    return null;
+  const parts = command ? given.map((part) => part.replace(TRAILING_BREAKS, '')) : given;
+  const oneLine = parts.every((part) => !LINE_BREAK.test(part));
+  const text = parts.map((part) => part.trim().split(LINE_BREAK)[0]?.trim() ?? '').join(' → ');
+  if (text.length > SUBJECT_MAX || !oneLine)
+    return { text: `${text.slice(0, SUBJECT_MAX - 1)}…`, whole: false };
+  return {
+    text,
+    whole:
+      parts.every((part) => !UNSEEN.test(part) && !RIGHT_TO_LEFT.test(part)) &&
+      Object.keys(args).every((key) => said.includes(key)),
+  };
+}
+
+/**
+ * A command's own arguments. Its plan is the server's resolution (identity, hashes, argv, shell,
+ * timeout) of the agent's arguments, `request`, and the request is what the line must hold (the
+ * server writes the plan's `command` from `request.command`, so the line and the card, which reads
+ * the plan's, show the same command). Left
+ * out of it, the shell and the timeout are the session's defaults the server fills in; the working
+ * copy's root (`.`) and the foreground are the defaults the request may also name, so they count
+ * as not given. Any other folder or mode, asked for or resolved, is an argument the line lacks.
+ */
+function commandArguments(plan: Record<string, unknown>): Record<string, unknown> {
+  const request =
+    plan.request && typeof plan.request === 'object'
+      ? (plan.request as Record<string, unknown>)
+      : plan;
+  const own: Record<string, unknown> = { ...request };
+  if (own.cwd === '.') delete own.cwd;
+  if (own.mode === 'foreground') delete own.mode;
+  if (request !== plan) {
+    if (plan.cwd !== undefined && plan.cwd !== '.') own.cwd = plan.cwd;
+    if (plan.mode !== undefined && plan.mode !== 'foreground') own.mode = plan.mode;
+  }
+  return own;
 }
 
 /**
@@ -169,9 +258,7 @@ export function ApprovalPanel({
             await session.getState().loadArtifact(bodyRef);
           const text = session.getState().artifactTexts[bodyRef];
           if (approval.tool?.purpose === 'tool') {
-            const plan = ToolPermissionPlan.parse(JSON.parse(text ?? 'null'));
-            if (plan.fingerprint !== fingerprint || !validToolPermissionPlan(plan))
-              throw new Error('permission changed');
+            const plan = waitingToolPlan(text, fingerprint);
             if (active) setToolPlans((previous) => ({ ...previous, [bodyRef]: plan }));
             return;
           }
@@ -290,10 +377,12 @@ export function ApprovalPanel({
     if (approval.limit) return t('doneLimit', { limit: limitText(approval.limit) });
     if (approval.tool?.purpose === 'tool') {
       const plan = toolPlans[approval.tool.bodyRef];
-      const name = plan?.descriptor.name ?? toolCalls?.[approval.tool.toolCallId]?.name;
-      const subject = plan ? callSubject(plan) : null;
-      const tool = name ? toolLabel(name) : t('toolHeading');
-      const call = subject ? `${tool} · ${subject}` : tool;
+      const name = toolCalls?.[approval.tool.toolCallId]?.name;
+      const call = plan
+        ? callLine(plan, toolLabel).text
+        : name
+          ? toolLabel(name)
+          : t('toolHeading');
       return t(approval.scope === 'run' ? 'doneToolRun' : 'doneTool', { call });
     }
     if (approval.tool) {

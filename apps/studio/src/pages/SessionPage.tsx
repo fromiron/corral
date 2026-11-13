@@ -27,7 +27,6 @@ import { type AttachmentCapture, appendComposerAttachment } from '../workbench/c
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
 import { DockDocumentPanel } from '../workbench/DockDocumentPanel.tsx';
-import { DockRunControls } from '../workbench/DockRunControls.tsx';
 import { DockWorkbench, type DockWorkbenchHandle } from '../workbench/docking/DockWorkbench.tsx';
 import type { DockContextView } from '../workbench/docking/layout.ts';
 import { documentKey, documentStore } from '../workbench/documents/store.ts';
@@ -46,7 +45,6 @@ import { SessionActions } from '../workbench/session/SessionActions.tsx';
 import { SessionChat } from '../workbench/session/SessionChat.tsx';
 import { ArtifactsPanel, ChecksPanel, RunPanel } from '../workbench/session/SessionPanels.tsx';
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
-import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
@@ -273,6 +271,8 @@ function WorkSessionPage() {
           reference={reference}
           onReferenceUsed={() => setReference(null)}
           onPanel={(value, run) => showPanel({ panel: value, ...run })}
+          // The conversation's place only: no history entry, no other view.
+          onPlace={(message) => setSearch({ message }, { replace: true })}
         />
       );
     if (view === 'changes' || view === 'git') {
@@ -474,32 +474,6 @@ function WorkSessionPage() {
                       view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
                     if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
                   }}
-                  controls={
-                    active && panel !== 'run' ? (
-                      <TopbarActions>
-                        <DockRunControls
-                          key={active.runId}
-                          runId={active.runId}
-                          runs={runs}
-                          request={session.entries
-                            .find((entry) => entry.runId === active.runId)
-                            ?.text.slice(0, 80)}
-                          viewingOther={presentationRunId !== active.runId}
-                          onOpen={(run, respond) =>
-                            showPanel({
-                              panel: 'run',
-                              run,
-                              view: 'run',
-                              execution: undefined,
-                              artifact: undefined,
-                              result: undefined,
-                              respond: respond || undefined,
-                            })
-                          }
-                        />
-                      </TopbarActions>
-                    ) : null
-                  }
                 />
               </div>
               {fileViewerOpen || fileViewerVisited ? (

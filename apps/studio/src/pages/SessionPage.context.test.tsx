@@ -63,27 +63,13 @@ vi.mock('../workbench/useModels.ts', () => ({
   useTeamRoles: () => fixture.roles,
 }));
 vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
-vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
-  // The one-line status keeps the composer's own intent chips (lead) and held-items note;
-  // the plan it expands sits under it.
-  ComposerDock: ({
-    lead,
-    note,
-    plan,
-  }: {
-    lead?: ReactNode;
-    note?: ReactNode;
-    plan?: ReactNode;
-  }) => (
-    <>
-      <div data-testid="composer-status-pills">
-        {lead}
-        {note}
-      </div>
-      {plan}
-    </>
+// The activity bar has its own tests (ComposerActivity.test.tsx); here it only holds its place.
+vi.mock('../workbench/session/ComposerActivity.tsx', () => ({
+  ComposerActivity: () => (
+    <div data-testid="activity-bar">
+      <div data-testid="composer-plan-fixture">Work plan</div>
+    </div>
   ),
-  ComposerPlan: () => <div data-testid="composer-plan-fixture">Work plan</div>,
 }));
 vi.mock('../workbench/widgets/ComposerStats.tsx', () => ({ ComposerStats: () => null }));
 vi.mock('../workbench/ImageAttachments.tsx', () => ({
@@ -268,12 +254,16 @@ async function mount(
     projection.executions.execution = {
       executionId: 'execution',
       nodeId: 'writer',
+      taskId: 'task_execution',
+      attemptNo: 1,
       status: fixture.executionStatus,
       waitingOn: null,
     } as never;
     projection.executions.reviewer = {
       executionId: 'reviewer',
       nodeId: 'review',
+      taskId: 'task_reviewer',
+      attemptNo: 1,
       status: fixture.executionStatus,
       waitingOn: null,
     } as never;
@@ -487,7 +477,7 @@ it('an explain draft from an earlier version is sent as a next request with its 
   );
 });
 
-it('leaves whole-run stop to the top bar while composing a queued next request in the single input', async () => {
+it('leaves whole-run stop to the activity bar while composing a queued next request in the single input', async () => {
   const sessionId = 'stop_while_typing';
   writeComposerDraft(sessionId, {
     text: 'After this, summarize the result',
@@ -502,10 +492,12 @@ it('leaves whole-run stop to the top bar while composing a queued next request i
   expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
     'After this, summarize the result',
   );
-  // The live run's Cancel sits once in the top bar's run controls (DockRunControls), so the
-  // composer does not repeat it beside the draft.
-  const stops = [...f.container.querySelectorAll('button')].filter((button) =>
-    button.textContent?.includes(messages.Reins.cancelRun),
+  // The live run's Stop sits in the activity bar's panel, and in Send's place only while
+  // nothing is written: beside a draft, Send stays and no second Stop or Cancel appears.
+  const stops = [...f.container.querySelectorAll('button')].filter(
+    (button) =>
+      button.textContent?.includes(messages.Reins.cancelRun) ||
+      button.getAttribute('aria-label') === messages.Activity.stop,
   );
   expect(stops).toHaveLength(0);
   expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
@@ -1203,7 +1195,7 @@ it('shows the send keys on the tool line, never a send mode to choose first', as
   const sessionId = 'idle_intent';
   const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
   const f = await mount(sessionId, null, [], [finished]);
-  const line = f.container.querySelector('[data-testid="composer-status-pills"]');
+  const line = f.container.querySelector('[data-slot="composer-notes"]');
   // Idle, every key sends a new request: the status line names nothing and the keys say Send.
   expect(line?.textContent).not.toContain(messages.Sessions.intent.next);
   expect(keys(f.container)).toContain(messages.Composer.keyHint.new);
@@ -1306,9 +1298,9 @@ it('a next request that will wait is said by the input description only', async 
   expect(line?.textContent).toBe(messages.Composer.destination.queue);
   expect(line?.classList.contains('sr-only')).toBe(true);
   expect(describedBy(f.container)).toContain(line?.id);
-  expect(
-    f.container.querySelector('[data-testid="composer-status-pills"]')?.textContent,
-  ).not.toContain('Queue');
+  expect(f.container.querySelector('[data-slot="composer-notes"]')?.textContent).not.toContain(
+    'Queue',
+  );
 });
 
 it('an instruction whose target ended shows that it cannot be delivered', async () => {

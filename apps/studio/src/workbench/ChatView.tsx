@@ -14,7 +14,6 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 're
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { changePreferences, preferences } from './preferences.ts';
-import { ConnectionNotice } from './session/SessionConnection.tsx';
 
 /**
  * How much of each reply the conversation shows; a display preference kept in the page's menu
@@ -756,10 +755,14 @@ export function ChatView({
           {items.length ? (
             // The window: the mounted rows in flow, the rest held as the list's padding. A row's
             // size counts in the layout as soon as it changes, so the end and the composer's
-            // space move together in one frame; the browser keeps a reader's row in place.
+            // space move together in one frame; the browser keeps a reader's row in place. The
+            // padding and the rows' margins never transition: reduced motion gives every property
+            // a near-zero transition, which lands a changed window a frame late, and following the
+            // end then reads the old height and moves the window back, frame after frame.
             <ol
               aria-label={t('conversation')}
               data-chat-window
+              className="transition-none"
               style={{ paddingTop: windowed.before, paddingBottom: windowed.after }}
             >
               {windowed.rows.map(({ index, start }, at) => {
@@ -780,7 +783,7 @@ export function ChatView({
                     aria-current={item.id === messageId ? 'location' : undefined}
                     // Its own block, so the row's margins belong to its measured size.
                     className={cn(
-                      'flow-root',
+                      'flow-root transition-none',
                       item.id === messageId && 'rounded-lg ring-2 ring-focus-ring',
                     )}
                     ref={rows.measureElement}
@@ -806,7 +809,7 @@ export function ChatView({
         data-testid="chat-composer"
         data-composer-surface={floating ? 'floating' : 'inline'}
         className={cn(
-          'chat-composer flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-4 sm:px-6',
+          'chat-composer flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-3 sm:px-6',
           floating
             ? // The bottom edge of the conversation, over its scrolling area and inside the view,
               // on the page's own floor; the scrollbar beside it stays uncovered.
@@ -840,11 +843,7 @@ export function ChatView({
           </div>
         ) : null}
         <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">
-          <div className="mx-auto w-full max-w-(--chat-composer-width)">
-            {/* Where the activity bar will say it (U7); until then the same line, first. */}
-            <ConnectionNotice />
-            {composer}
-          </div>
+          <div className="mx-auto w-full max-w-(--chat-composer-width)">{composer}</div>
         </div>
       </div>
       {aside === undefined ? null : (

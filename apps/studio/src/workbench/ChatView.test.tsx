@@ -1657,36 +1657,24 @@ it('marks every timeline row with its item’s identity', async () => {
   expect(container.querySelector('[data-testid="chat-composer"] textarea')).not.toBeNull();
 });
 
-it('a lost connection is said at the top of the composer, never above or inside the timeline', async () => {
-  const retry = vi.fn();
-  const container = await mountPlain([{ id: 'entry', content: <p>reply</p> }], {
-    lost: true,
-    retry,
-  });
-  const alert = container.querySelector<HTMLElement>('[role="alert"]');
-  const timeline = container.querySelector('[data-testid="chat-timeline"]');
-  const composer = container.querySelector('[data-testid="chat-composer"]');
-  const input = container.querySelector('textarea');
-  if (!alert || !timeline || !composer || !input) throw new Error('Conversation fixture missing');
-  expect(alert.textContent).toContain(messages.Sessions.connectionLost);
-  expect(composer.contains(alert)).toBe(true);
-  expect(timeline.contains(alert)).toBe(false);
-  // After the timeline, first in the composer: where the activity bar will say it.
-  expect(timeline.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(alert.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  await act(async () => {
-    alert.querySelector('button')?.click();
-  });
-  expect(retry).toHaveBeenCalledOnce();
-});
-
-it('says nothing about the connection while it holds', async () => {
-  const container = await mountPlain([{ id: 'entry', content: <p>reply</p> }], {
-    lost: false,
-    retry: () => {},
-  });
-  expect(container.querySelector('[role="alert"]')).toBeNull();
-});
+// A lost connection is said by the composer's activity bar alone (ComposerActivity.test.tsx):
+// the conversation view adds nothing of its own, above, inside or below the timeline.
+it.each([true, false])(
+  'says nothing itself about the connection (lost=%s), leaving it to the composer',
+  async (lost) => {
+    const container = await mountPlain([{ id: 'entry', content: <p>reply</p> }], {
+      lost,
+      retry: () => {},
+    });
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).not.toContain(messages.Sessions.connectionLost);
+    expect(container.textContent).not.toContain(messages.Activity.connectionLost);
+    // The composer's slot holds only what the page put there.
+    const composer = container.querySelector('[data-testid="chat-composer"]');
+    expect(composer?.querySelectorAll('textarea')).toHaveLength(1);
+    expect(composer?.querySelector('button')).toBeNull();
+  },
+);
 
 it('a change inside the composer alone places the end again, without any resize', async () => {
   sessionStorage.clear();
