@@ -137,30 +137,31 @@ export function ComposerCard({
       sendDisabled={target.sendDisabled}
       sendLabel={sendLabel}
       sendDescription={target.meaning}
-      renderAction={(action) =>
-        stopping ? (
-          <Tooltip content={stopping.label}>
-            <KitButton
-              type="button"
-              variant="primary"
-              size="icon-sm"
-              data-testid="composer-stop"
-              aria-label={stopping.label}
-              disabled={stopping.disabled}
-              onClick={stopping.onStop}
-            >
-              <span aria-hidden className="h-3 w-3 rounded-sm bg-current" />
-            </KitButton>
-          </Tooltip>
-        ) : (
-          <>
+      renderAction={(action) => (
+        // Stop takes Send's place alone: the menu beside it keeps its own, so the line holds still.
+        <>
+          {stopping ? (
+            <Tooltip content={stopping.label}>
+              <KitButton
+                type="button"
+                variant="primary"
+                size="icon-sm"
+                data-testid="composer-stop"
+                aria-label={stopping.label}
+                disabled={stopping.disabled}
+                onClick={stopping.onStop}
+              >
+                <span aria-hidden className="h-3 w-3 rounded-sm bg-current" />
+              </KitButton>
+            </Tooltip>
+          ) : (
             <Tooltip content={target.meaning} shortcut={sendKeyLabel(sendKey)}>
               {action}
             </Tooltip>
-            {target.menu}
-          </>
-        )
-      }
+          )}
+          {target.menu}
+        </>
+      )}
       contentSlot={notices}
       renderInput={(inputProps) => (
         <ComposerInput

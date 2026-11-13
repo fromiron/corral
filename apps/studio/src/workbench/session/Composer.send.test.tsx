@@ -1070,3 +1070,38 @@ describe('the composer', () => {
     },
   );
 });
+
+// composer-flow.md "활동 바": with nothing written while the run goes, Send's place is Stop, which
+// asks first only while two or more executions work.
+describe('Stop in Send’s place', () => {
+  const stop = (container: HTMLElement) =>
+    container.querySelector<HTMLButtonElement>('[data-testid="composer-stop"]');
+  const cancels = (sendCommand: ReturnType<typeof vi.fn>) =>
+    sendCommand.mock.calls.filter(([command]) => (command as { type?: string }).type === 'cancel');
+
+  it('stops a run with one working execution at once', async () => {
+    const f = await mount();
+    expect(stop(f.container)?.getAttribute('aria-label')).toBe(messages.Activity.stop);
+    // Only Send's place: the send menu keeps its own beside it.
+    expect(f.container.querySelector('[data-slot="composer-send-menu"]')).not.toBeNull();
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    expect(cancels(f.sendCommand)[0]?.[0]).toMatchObject({ runId: 'run_live', type: 'cancel' });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('asks first while two executions work, and sends nothing until confirmed', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(0);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      messages.Reins.cancelRun,
+    );
+  });
+
+  it('is not there while nothing runs', async () => {
+    const f = await mount({ active: null });
+    expect(stop(f.container)).toBeNull();
+    expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+  });
+});
