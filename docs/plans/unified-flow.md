@@ -465,7 +465,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 리뷰 중(`flow/a4-advisor-delta`) |
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 대기 |
 | A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 대기 |
-| A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 대기 |
+| A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 구현 중(`flow/a7-advisor-editor`) |
 | A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 대기 |
 | A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 대기 |
 | V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
