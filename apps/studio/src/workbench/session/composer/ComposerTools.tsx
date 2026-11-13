@@ -269,7 +269,7 @@ export function RequestTools({
     <>
       {settings &&
       showModel &&
-      (intent === 'next' || intent === 'explain' || intent === 'queue') &&
+      (intent === 'next' || intent === 'queue') &&
       (profiles || browserMode) ? (
         profiles ? (
           <AutoModelMenu

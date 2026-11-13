@@ -242,7 +242,6 @@ async function mount({
     workspaces,
     voice: null,
     startAuto,
-    startExplain: vi.fn(),
   };
   const container = document.createElement('div');
   document.body.append(container);

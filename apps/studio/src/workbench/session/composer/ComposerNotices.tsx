@@ -152,7 +152,7 @@ export function ComposerNotices({
           title={t('autoNotReady', { model: autoBlockedModel })}
         />
       ) : null}
-      {missingTeam && (intent === 'next' || intent === 'explain') ? (
+      {missingTeam && intent === 'next' ? (
         <p role="alert" data-testid="selected-team-missing" className="text-caption text-warning">
           {t('selectedTeamMissing')}
         </p>

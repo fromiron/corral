@@ -8,8 +8,7 @@ import { createStore } from 'zustand/vanilla';
 import { useServices } from '../../../services.tsx';
 import { type SteerTarget, targetsOf } from '../../composerIntent.ts';
 
-// What the composer reads from the session's runs: the executions an instruction can reach,
-// and the newest final result a question can be about.
+// What the composer reads from the session's runs: the executions an instruction can reach.
 
 const NO_TARGETS: { targets: SteerTarget[]; lead: string | null } = { targets: [], lead: null };
 
@@ -71,38 +70,3 @@ const EMPTY_STORE = createStore(() => ({
   streamError: null,
   missingRunId: null,
 })) as unknown as RunSessionStore;
-
-function finalResultId(projection: RunProjection): string | null {
-  return projection.output?.artifactVersionIds[0] ?? null;
-}
-
-/** The newest final result among the session's ended runs. */
-export function useLatestResult(runs: RunSummary[]) {
-  const { transport } = useServices();
-  const [latest, setLatest] = useState<{ runId: string; id: string; label: string } | null>(null);
-  // Newest first; a joined key so the lookup reruns only when the ended runs change.
-  const key = runs
-    .filter((r) => TERMINAL_RUN_STATUSES.has(r.status))
-    .map((r) => r.runId)
-    .reverse()
-    .join(',');
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      for (const runId of key ? key.split(',') : []) {
-        const { projection } = await transport.getSnapshot(runId);
-        const id = finalResultId(projection);
-        const artifact = id ? projection.artifacts[id] : undefined;
-        if (id && artifact) {
-          if (live) setLatest({ runId, id, label: `${artifact.name} v${artifact.version}` });
-          return;
-        }
-      }
-      if (live) setLatest(null);
-    })().catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [transport, key]);
-  return latest;
-}

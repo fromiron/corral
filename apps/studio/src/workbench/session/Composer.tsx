@@ -63,7 +63,7 @@ import {
 } from './composer/send.ts';
 import { useComposerDraft, useFileReference } from './composer/useComposerDraft.ts';
 import { useComposerIntent } from './composer/useIntent.ts';
-import { useLatestResult, useSteerTargets } from './composer/useRunState.ts';
+import { useSteerTargets } from './composer/useRunState.ts';
 import { useSessionSettings } from './composer/useSessionSettings.ts';
 import { useVoiceTranscript } from './composer/voice.ts';
 import { useSettledAppearance } from './settle.ts';
@@ -216,7 +216,6 @@ function SessionComposer({
     ownActive?.runId ?? null,
     ownActive?.status === 'cancelling',
   );
-  const latest = useLatestResult(runs);
   // a follow-up carries the session's turns through the newest ended run.
   const lastEnded = runs.findLast((run) => TERMINAL_RUN_STATUSES.has(run.status)) ?? null;
   const searchMentions = useMentionSearch({
@@ -294,7 +293,6 @@ function SessionComposer({
       draft,
       // A fixed target that ended holds its instruction; a next request is another send.
       blocked: sendIntent === 'steer' ? blocked : null,
-      hasLatest: Boolean(latest),
       steerTarget,
       loading: loading && !explicitQueue,
     });
@@ -309,7 +307,7 @@ function SessionComposer({
     teamMode,
     throughRunId,
     missingTeam,
-    messages: { selectedTeamMissing: t('selectedTeamMissing'), noResult: t('noResult'), failed },
+    messages: { selectedTeamMissing: t('selectedTeamMissing'), failed },
     commands,
     autoRequest,
     onChoosingAuto: setChoosingAuto,
@@ -356,7 +354,6 @@ function SessionComposer({
         ...startDeps,
         team,
         ownActive,
-        latest,
         runMode,
         setRefusal,
         clearDraft: (sent, keepAttachments, keepImages) =>
@@ -694,12 +691,7 @@ function SessionComposer({
             data-slot="composer-notes"
             className="flex min-w-0 flex-nowrap items-center gap-1 px-1.5 empty:hidden"
           >
-            <ComposerHeader
-              choosingAuto={choosingAuto}
-              onCancelAuto={cancelAuto}
-              intent={intent}
-              about={latest?.label ?? null}
-            />
+            <ComposerHeader choosingAuto={choosingAuto} onCancelAuto={cancelAuto} />
             {heldForNew.length ? (
               <span role="status" className="min-w-0 truncate px-2 text-caption text-warning">
                 {tc('heldForNew', {
@@ -750,7 +742,6 @@ function SessionComposer({
         runs={runs}
         // The demo's model chip already reads Simulated; a server without live models says it here.
         simulated={runMode === 'mock' && services.mode !== 'browser'}
-        noResult={intent === 'explain' && !latest}
         liveUnavailable={liveUnavailable}
         reasoningBlocked={reasoningBlocked}
         error={error}

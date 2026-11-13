@@ -10,20 +10,15 @@ import { ComposerStats } from '../widgets/ComposerStats.tsx';
 // The rows around the input that say what the next request is and what it would start with.
 
 /**
- * The one-line status's lead: cancelling the pre-run auto choice, and the result a question is
- * about. Where a message goes and how it is sent are on the tool line (SendControls).
+ * The one-line status's lead: cancelling the pre-run auto choice. Where a message goes and how it
+ * is sent are on the tool line (SendControls).
  */
 export function ComposerHeader({
   choosingAuto,
   onCancelAuto,
-  intent,
-  about = null,
 }: {
   choosingAuto: boolean;
   onCancelAuto: () => void;
-  intent: SessionIntent;
-  /** The result a question starts from. */
-  about?: string | null;
 }) {
   const t = useTranslations('Sessions');
   return (
@@ -34,14 +29,6 @@ export function ComposerHeader({
           <Square className="size-3.5 fill-current" />
           {t('cancelAutoChoice')}
         </Button>
-      ) : null}
-      {intent === 'explain' && about ? (
-        <span
-          title={t('fromResult', { label: about })}
-          className="min-w-0 truncate px-2 text-ui text-muted-foreground"
-        >
-          {about}
-        </span>
       ) : null}
     </>
   );
@@ -54,7 +41,6 @@ export function ComposerHeader({
 export function ComposerStatus({
   runs,
   simulated,
-  noResult,
   liveUnavailable,
   reasoningBlocked,
   error,
@@ -62,8 +48,6 @@ export function ComposerStatus({
   runs: RunSummary[];
   /** Runs are simulated and the model chip does not already say so. */
   simulated: boolean;
-  /** A question has no result to be about yet. */
-  noResult: boolean;
   liveUnavailable: boolean;
   reasoningBlocked: boolean;
   error: string | null;
@@ -83,9 +67,8 @@ export function ComposerStatus({
           </Badge>
         ) : null}
       </div>
-      {noResult || liveUnavailable || reasoningBlocked ? (
+      {liveUnavailable || reasoningBlocked ? (
         <div className="flex flex-col gap-1 px-4 pt-1 text-caption text-warning">
-          {noResult ? <p role="status">{t('noResult')}</p> : null}
           {liveUnavailable ? <p role="alert">{tc('liveUnavailable')}</p> : null}
           {reasoningBlocked ? (
             <p role="status" data-testid="reasoning-not-supported">
@@ -120,11 +103,9 @@ export function PreRun({
   runMode: 'mock' | 'live';
   intent: SessionIntent;
 }) {
-  if (intent !== 'next' && intent !== 'explain') return null;
-  if (isAuto) return <AutoPreRunSummary session={session} mode={runMode} intent={intent} />;
-  return team ? (
-    <PreRunSummary session={session} team={team} mode={runMode} intent={intent} />
-  ) : null;
+  if (intent !== 'next') return null;
+  if (isAuto) return <AutoPreRunSummary session={session} mode={runMode} />;
+  return team ? <PreRunSummary session={session} team={team} mode={runMode} /> : null;
 }
 
 /**
@@ -135,12 +116,10 @@ function PreRunSummary({
   session,
   team,
   mode,
-  intent,
 }: {
   session: WorkSession;
   team: CorralSummary;
   mode: 'mock' | 'live';
-  intent: 'next' | 'explain';
 }) {
   const t = useTranslations('Sessions');
   const { repository, workspaces } = useServices();
@@ -163,10 +142,8 @@ function PreRunSummary({
       const copy = workspaces
         ? await workspaces.worktree(session.sessionId).catch(() => null)
         : null;
-      const roles =
-        intent === 'explain' ? record.definition.roles.slice(0, 1) : record.definition.roles;
-      const fileTools =
-        intent === 'next' && roles.some((r) => r.allowedWorkTools.includes('write_file'));
+      const roles = record.definition.roles;
+      const fileTools = roles.some((r) => r.allowedWorkTools.includes('write_file'));
       if (!live) return;
       setText(
         t('preRun', {
@@ -188,7 +165,6 @@ function PreRunSummary({
     revision,
     workspaceRevision,
     mode,
-    intent,
     t,
   ]);
   return text ? (
@@ -199,15 +175,7 @@ function PreRunSummary({
 }
 
 /** Mode and file work for the next auto request. The team control says Auto, and the model menu says the model when one can be chosen. */
-function AutoPreRunSummary({
-  session,
-  mode,
-  intent,
-}: {
-  session: WorkSession;
-  mode: 'mock' | 'live';
-  intent: 'next' | 'explain';
-}) {
+function AutoPreRunSummary({ session, mode }: { session: WorkSession; mode: 'mock' | 'live' }) {
   const t = useTranslations('Sessions');
   const { workspaces } = useServices();
   const [copy, setCopy] = useState(false);
@@ -229,7 +197,7 @@ function AutoPreRunSummary({
   }, [workspaces, session.sessionId, workspaceRevision]);
   const modeLabel = mode === 'live' ? t('modeLive') : t('modeMock');
   // Auto roles get file tools only with a working copy.
-  const files = intent === 'next' && copy ? t('filesCopy') : null;
+  const files = copy ? t('filesCopy') : null;
   return (
     <span data-testid="pre-run" className="sr-only">
       {[files, modeLabel].filter(Boolean).join(' · ')}
