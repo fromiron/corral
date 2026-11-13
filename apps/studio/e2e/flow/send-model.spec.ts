@@ -1,5 +1,4 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import type { Page } from '@playwright/test';
 import { expect, test } from '../server/harness.ts';
 import { newConversation, requestBox } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
@@ -29,20 +28,12 @@ function hold() {
   return { open, opened, reach, reached };
 }
 
-/** The ids of the conversation items, in order. */
-const itemIds = (page: Page) =>
-  page.$$eval('[data-chat-item]', (nodes) =>
-    nodes.map((node) => node.getAttribute('data-chat-item')),
-  );
-
-function expectStill(result: ShiftResult, except: (string | null)[] = []) {
+function expectStill(result: ShiftResult) {
   expect(result.samples.frames, `${result.name}: frames`).toBeGreaterThan(0);
-  expect(result.maxInputBottomChangePx ?? 0, `${result.name}: input`).toBeLessThanOrEqual(1);
+  expect(result.maxInputBottomChangePx ?? 0, `${result.name}: input`).toBe(0);
   const moved = result.items.filter(
     (item) =>
-      item.kind === 'item' &&
-      !except.some((id) => id && item.id.includes(id)) &&
-      Math.max(item.maxContainerShiftYPx, item.maxContainerShiftXPx) > 1,
+      item.kind === 'item' && Math.max(item.maxContainerShiftYPx, item.maxContainerShiftXPx) > 1,
   );
   expect(moved, `${result.name}: moved items`).toEqual([]);
 }
@@ -143,16 +134,12 @@ test.describe('sending while a run goes', () => {
     // Interrupt: the interrupt key cuts the streaming reply; the next request carries it.
     await expect(page.getByTestId('live-text')).toBeVisible({ timeout: 30_000 });
     await box.fill('Look at session.ts instead');
-    const before = await itemIds(page);
     probe = createProbe(page, probeOptions);
     await probe.start('interrupt-send');
     await box.press('Control+Enter');
     await third.reached;
     await waitForStill(page);
-    // The reply streams inside the first item (the run), and the conversation lists the earlier
-    // instruction under it, so both move with the text that streams until the cut lands. That
-    // growth is the stream's, not the send's; the composer and the new item stay still.
-    expectStill(await probe.stop(), before);
+    expectStill(await probe.stop());
     expect(requests[2]).toContain('Look at session.ts instead');
     expect(
       Object.values(projection(0)?.modelCalls ?? {}).some((call) => call.interrupted === true),
@@ -172,10 +159,7 @@ test.describe('sending while a run goes', () => {
     expectStill(await probe.stop());
     expect(runs()).toHaveLength(1);
 
-    // The run ends and the server starts the queued request: the composer stays still. The ended
-    // run folds its process into one line, which lifts the instructions listed under it; that
-    // fold belongs to the conversation's run rendering, not to sending.
-    const settling = (await itemIds(page)).slice(1);
+    // The run ends and the server starts the queued request: nothing on screen moves.
     probe = createProbe(page, probeOptions);
     await probe.start('run-end-next-start');
     third.open();
@@ -183,7 +167,7 @@ test.describe('sending while a run goes', () => {
     await expect.poll(() => projection(1)?.status, { timeout: 30_000 }).toBe('succeeded');
     await expect(page.getByRole('region', { name: 'Queued next tasks' })).toHaveCount(0);
     await waitForStill(page);
-    expectStill(await probe.stop(), settling);
+    expectStill(await probe.stop());
     expect(projection(0)?.status).toBe('succeeded');
     expect(requests[3]).toContain('Then write the summary');
     expect(corral.errors).toEqual([]);
