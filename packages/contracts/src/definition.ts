@@ -123,7 +123,8 @@ export type WorkAgentNode = z.infer<typeof WorkAgentNode>;
 /** How often an advisor reviews and how many model requests one review may make. */
 export const AdvisorReview = z.strictObject({
   interval: z.int().min(1),
-  maxRequestsPerReview: z.int().min(1),
+  /** At most 64: the advisor worker's review frame takes no more (features/advisor.md). */
+  maxRequestsPerReview: z.int().min(1).max(64),
 });
 export type AdvisorReview = z.infer<typeof AdvisorReview>;
 

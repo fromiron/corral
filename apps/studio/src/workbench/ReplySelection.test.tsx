@@ -439,6 +439,18 @@ it('a choice that ends or starts just past a reply’s body, with no other words
   expect(toolbar()).toBeNull();
 });
 
+it('a quote leaves out the line breaks a choice ends with, its place in the reply as chosen', async () => {
+  await mount(
+    <ReplyBody runId="run_a" modelCallId="call_a">
+      <p data-testid="first">{`${REPLY}\n\n`}</p>
+    </ReplyBody>,
+  );
+  await select(text('first'), 4, text('first'), REPLY.length + 2);
+  await act(async () => quoteButton()?.click());
+  expect(attached[0]?.attachment.text).toBe(REPLY.slice(4));
+  expect(attached[0]?.attachment.provenance).toMatchObject({ start: 4, end: REPLY.length + 2 });
+});
+
 it('a reply body without its call shows no toolbar', async () => {
   await mount(
     <div data-reply-body="" data-run-id="run_a">

@@ -10,6 +10,7 @@ import {
   type CommandError,
   type ConversationSource,
   type CorralDefinition,
+  DEFAULT_ADVISOR_REVIEW,
   FILE_TOOLS,
   type HarnessBindingRef,
   type ModelProfileSnapshot,
@@ -27,6 +28,11 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import {
+  ADVISOR_COLLABORATION_TOOLS,
+  ADVISOR_WORK_TOOLS,
+  advisorRoleIds,
+} from './advisor/tools.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import type { CorralRecord } from './repository/index.ts';
@@ -295,6 +301,104 @@ export function conversationDefinition(
   };
 }
 
+/** The session advisor's built-in review principles (features/advisor.md, 두는 곳 › 대화). */
+export const SESSION_ADVISOR_PROMPT = [
+  "You are the advisor in this conversation. You watch the assistant's work and advise it only when something would make the result wrong.",
+  'Look for: drifting from what the person asked; wrong assumptions; claims that were not checked; saying the work is done or works without verifying it.',
+  'Say only what would change the outcome. Do not comment on style, wording or taste.',
+  'When nothing would change the outcome, do not advise.',
+].join('\n');
+
+/**
+ * A refused model preparation names the session advisor's model when the profile that failed is
+ * the advisor's alone (a preparation's message starts with the profile that failed).
+ */
+function advisorModelError(
+  definition: CorralDefinition,
+  advisor: SessionAdvisorChoice | null | undefined,
+  error: CommandError,
+): CommandError {
+  const profile = advisor?.modelProfile;
+  if (!profile || !error.message.startsWith(`${profile}: `)) return error;
+  const advisors = advisorRoleIds(definition);
+  const shared = definition.roles.some(
+    (role) => !advisors.has(role.id) && role.modelProfile === profile,
+  );
+  return shared ? error : { ...error, message: `Advisor model ${error.message}` };
+}
+
+/** The advisor name its advice's heading carries. */
+export const SESSION_ADVISOR_NAME = 'Advisor';
+
+/** The session's advisor setting: on with a model, or off (null). */
+export interface SessionAdvisorChoice {
+  modelProfile: string;
+}
+
+/**
+ * The conversation with the session's advisor added: one observer Agent with the built-in
+ * principles, every advisor read tool and the default review, watching the role that answers
+ * the conversation. Its role is bound to that role's work style so the style's permission rules
+ * hold for its reads; it writes no answer. Advisors the definition already has stay.
+ */
+export function withSessionAdvisor(
+  definition: CorralDefinition,
+  advisor: SessionAdvisorChoice,
+): CorralDefinition {
+  const answering = definition.nodes.find(
+    (node) => node.type === 'agent' && node.id === definition.entryNodeId,
+  );
+  if (answering?.type !== 'agent') return definition;
+  const lead = definition.roles.find((role) => role.id === answering.roleId);
+  const taken = new Set([
+    ...definition.roles.map((role) => role.id),
+    ...definition.nodes.map((node) => node.id),
+    ...definition.capabilityLinks.map((link) => link.id),
+  ]);
+  // It reads no further than the conversation's own roles do (features/advisor.md, 두는 곳 › 대화).
+  const advisors = advisorRoleIds(definition);
+  const held = new Set(
+    definition.roles
+      .filter((role) => !advisors.has(role.id))
+      .flatMap((role) => role.allowedWorkTools),
+  );
+  const reads = ADVISOR_WORK_TOOLS.filter((tool) => held.has(tool));
+  let id = 'session_advisor';
+  for (let n = 2; taken.has(id) || taken.has(`${id}_watch`); n++) id = `session_advisor_${n}`;
+  return {
+    ...definition,
+    roles: [
+      ...definition.roles,
+      {
+        id,
+        name: SESSION_ADVISOR_NAME,
+        prompt: SESSION_ADVISOR_PROMPT,
+        modelProfile: advisor.modelProfile,
+        ...(lead?.harness ? { harness: { ...lead.harness } } : {}),
+        allowedWorkTools: reads,
+        allowedCollaborationTools: [...ADVISOR_COLLABORATION_TOOLS],
+        outputContract: 'notes',
+      },
+    ],
+    nodes: [
+      ...definition.nodes,
+      {
+        id,
+        type: 'agent',
+        label: SESSION_ADVISOR_NAME,
+        roleId: id,
+        invocation: 'observer',
+        outputName: 'notes',
+        review: { ...DEFAULT_ADVISOR_REVIEW },
+      },
+    ],
+    capabilityLinks: [
+      ...definition.capabilityLinks,
+      { id: `${id}_watch`, kind: 'advise', sourceNodeId: id, targetNodeId: answering.id },
+    ],
+  };
+}
+
 function leadTeamDuty(roster: ConversationRoster): string {
   const members = roster.roles.map((role) => `${role.name} (${role.id})`).join(', ');
   return [
@@ -338,11 +442,16 @@ export function autoRoster(input: Omit<AutoDefinitionInput, 'template'>): Conver
 /** Corral: a saved Corral's roles as delegates; its graph becomes guidance. */
 export function corralRoster(corral: CorralDefinition): ConversationRoster {
   const label = (id: string) => corral.nodes.find((node) => node.id === id)?.label ?? id;
+  const advisors = advisorRoleIds(corral);
   const flow = corral.controlEdges
     .map((edge) => `${label(edge.source)} → ${label(edge.target)}`)
     .join('; ');
   return {
-    roles: corral.roles.map((role) => delegateRole(role, `team_${role.id}`)),
+    // The conversation borrows roles, not the flow: the team's advisors have nothing of theirs to
+    // watch there, and their roles are no one's delegate.
+    roles: corral.roles
+      .filter((role) => !advisors.has(role.id))
+      .map((role) => delegateRole(role, `team_${role.id}`)),
     ...(flow ? { guidance: `${corral.name}: ${flow}.` } : {}),
   };
 }
@@ -459,6 +568,11 @@ export interface AutoStartContext<S extends AutoSignal = AutoSignal> {
    * adopted ones) win. A resend of the same command keeps what its first admission used.
    */
   sessionCriteria?: readonly string[];
+  /**
+   * the stored session's advisor, read when the request was admitted. A conversation started with
+   * it has the advisor in its definition; a resend keeps what its first admission used.
+   */
+  sessionAdvisor?: SessionAdvisorChoice | null;
 }
 
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
@@ -676,7 +790,10 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
             roles: roster.roles.map((role) => (role.harness ? role : { ...role, harness })),
           };
       }
-      const definition = conversationDefinition({ ...common, ...(roster ? { roster } : {}) });
+      const conversation = conversationDefinition({ ...common, ...(roster ? { roster } : {}) });
+      const definition = context.sessionAdvisor
+        ? withSessionAdvisor(conversation, context.sessionAdvisor)
+        : conversation;
       if (sourceTeam) definition.sourceTeam = sourceTeam;
       // A saved team's roles may use other models; each must be prepared before the start.
       const profiles = [...new Set(definition.roles.map((role) => role.modelProfile))];
@@ -687,7 +804,10 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
           return {
             runId: null,
             autoRoute: null,
-            receipt: { ...conflict(request).receipt, error: again.error },
+            receipt: {
+              ...conflict(request).receipt,
+              error: advisorModelError(definition, context.sessionAdvisor, again.error),
+            },
           };
         teamModels = again?.models;
       }

@@ -157,7 +157,9 @@ export function passageOf(selection: Selection | null): ReplyPassage | null {
   const drawn = bodyText(body);
   const start = offsetIn(body, inner.startContainer, inner.startOffset);
   const end = offsetIn(body, inner.endContainer, inner.endOffset);
-  const text = selection.toString();
+  // What a copy gives, without the line breaks a whole paragraph chosen ends with; its place in
+  // the reply stays as chosen, the return comparing words, not spaces.
+  const text = selection.toString().replace(/[\r\n]+$/, '');
   if (end <= start || !text.trim()) return null;
   if ((!first || !last) && squash(text) !== squash(drawn.slice(start, end))) return null;
   return {
