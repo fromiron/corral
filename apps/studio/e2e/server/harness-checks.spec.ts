@@ -103,7 +103,7 @@ test('selects a registered check, approves its SDK call and reads the owned veri
     await expect(needsYou).toBeFocused();
     await expect(needsYou.getByText('node check.mjs', { exact: true })).toBeVisible();
     await needsYou.getByRole('button', { name: 'Run this check once', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
     const reports = await page.evaluate(
       async (sessionId) => (await fetch(`/api/v1/sessions/${sessionId}/verifications`)).json(),
       ids.sessionId,

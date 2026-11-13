@@ -1,3 +1,4 @@
+import { type PresenceKind, statusPresence, usePresenceWord } from '@corral/react';
 import {
   AgentSteeringPlan,
   Button,
@@ -350,10 +351,13 @@ export function SegmentBar({
     </div>
   );
 }
+// A run that ended without its result: its plan stays, marked as left where it stopped.
+const STOPPED_SHORT = new Set<PresenceKind>(['failed', 'cancelled', 'interrupted']);
+
 /** Agent states and the plan each agent owns. */
 export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
-  const ts = useTranslations('Status');
+  const ts = usePresenceWord();
   if (!model.agents) return null;
   return (
     <>
@@ -619,7 +623,7 @@ export function ComposerPlan({
 } = {}) {
   const model = useChatWidget();
   const t = useTranslations('Widgets');
-  const ts = useTranslations('Status');
+  const ts = usePresenceWord();
   const panelId = useId();
   const [internalAllKey, setInternalAllKey] = useState<string | null>(null);
   const allKey = showAllKey !== undefined ? showAllKey : internalAllKey;
@@ -644,7 +648,7 @@ export function ComposerPlan({
         <p className="mb-2 text-caption text-muted-foreground">{t('teamLast')}</p>
       ) : null}
       {model.plan.runStatus &&
-      ['failed', 'cancelled', 'interrupted'].includes(model.plan.runStatus) ? (
+      STOPPED_SHORT.has(statusPresence(model.plan.runStatus)?.kind ?? 'working') ? (
         <p className="mb-2 text-caption text-warning">
           {ts(model.plan.runStatus)} · {t('planPreserved')}
         </p>

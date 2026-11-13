@@ -24,7 +24,7 @@ test('one run shows two delegated helpers and a question answered by a new respo
   await expect(page.getByTestId('run-output')).toContainText('answer:', { timeout: 15_000 });
 
   await page.getByRole('link', { name: 'Open execution page' }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   const monitor = page.getByTestId('run-monitor');
   // Two helper executions in the work flow, delegated by Research.
   await monitor.getByRole('tab', { name: 'Workflow', exact: true }).click();

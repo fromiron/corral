@@ -68,7 +68,11 @@ describe('ExecutionSteering', () => {
   it.each([
     { runStatus: 'paused', executionStatus: 'paused', label: 'Paused' },
     { runStatus: 'awaiting_user', executionStatus: 'waiting_approval', label: 'Waiting for you' },
-    { runStatus: 'running', executionStatus: 'waiting_children', label: 'Waiting for sub-agents' },
+    {
+      runStatus: 'running',
+      executionStatus: 'waiting_children',
+      label: 'Working · Waiting for agents',
+    },
   ] as const)(
     'keeps unfinished tools static while their owner is $executionStatus',
     ({ runStatus, executionStatus, label }) => {

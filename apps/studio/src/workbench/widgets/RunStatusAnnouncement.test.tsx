@@ -41,7 +41,7 @@ it('announces observed completion and failure without announcing opened history'
   expect((await render('old', 'succeeded')).textContent).toBe('');
   expect((await render('current', 'running')).textContent).toBe('');
   const region = await render('current', 'succeeded');
-  expect(region.textContent).toBe('Run status: Succeeded');
+  expect(region.textContent).toBe('Run status: Completed');
   const changes = vi.fn();
   const observer = new MutationObserver(changes);
   observer.observe(region, { childList: true, characterData: true, subtree: true });
@@ -59,4 +59,12 @@ it('keeps the last known state across a reconnect and ignores unavailable projec
   expect((await render('current', 'cancelled')).textContent).toBe('Run status: Cancelled');
   expect((await render('history', 'failed', false)).textContent).toBe('');
   expect((await render('history', 'failed')).textContent).toBe('');
+});
+
+it('says the state in its presence words and keeps quiet when only the status, not its state, moved', async () => {
+  const render = await mount();
+  await render('current', 'created');
+  // Created and validating are both "Starting" on every screen.
+  expect((await render('current', 'validating')).textContent).toBe('');
+  expect((await render('current', 'cancelling')).textContent).toBe('Run status: Stopping');
 });

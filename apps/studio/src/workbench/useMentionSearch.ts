@@ -1,7 +1,7 @@
 import type { FileBrowseScope } from '@corral/client';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { type CorralSummary, canReadArtifactBody, type RunSummary, rankFuzzy } from '@corral/core';
-import { runResults } from '@corral/react';
+import { runResults, usePresenceWord } from '@corral/react';
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
@@ -24,7 +24,7 @@ export function useMentionSearch({
   team: CorralSummary | null;
 }) {
   const { workspaces, transport, repository } = useServices();
-  const ts = useTranslations('Status');
+  const ts = usePresenceWord();
   const tw = useTranslations('Workbench');
   const tr = useTranslations('Results');
   const scope = useRef<Promise<FileBrowseScope | null> | null>(null);

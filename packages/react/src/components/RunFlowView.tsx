@@ -23,10 +23,11 @@ import {
   type RunFlowNode,
   runFlowExecutionIterationId,
 } from '../run/flow.ts';
+import { executionPresence } from '../run/presence.ts';
 import { nodeRunSummary } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import { PresenceBadge } from './PresenceBadge.tsx';
 import { LoopEscalationText } from './RunText.tsx';
-import { StatusBadge } from './StatusBadge.tsx';
 
 /** Only named verification facts cross the host boundary; output text stays in Checks. */
 export interface RunFlowCheck {
@@ -367,7 +368,9 @@ export function RunFlowView({
                     name: node.label,
                     attempt: projection.executions[id]?.attemptNo ?? 1,
                   })}
-                  <StatusBadge status={projection.executions[id]?.status ?? 'unknown'} />
+                  {projection.executions[id] ? (
+                    <PresenceBadge presence={executionPresence(projection.executions[id])} />
+                  ) : null}
                 </Button>
               )),
             )}

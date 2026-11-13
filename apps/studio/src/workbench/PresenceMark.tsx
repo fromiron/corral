@@ -1,8 +1,6 @@
-import type { Presence } from '@corral/react';
-import { AgentStatusIcon, cn, KitBadge } from '@corral/react/design-kit';
-import type { ReactNode } from 'react';
+import { type Presence, presenceTextClass } from '@corral/react';
+import { AgentStatusIcon, cn } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
-import { presenceBadgeColor, presenceToneText } from './presenceDot.ts';
 
 /**
  * A state as the kit's mark alone: its shape from the glyph, its colour from the tone, and its
@@ -22,37 +20,11 @@ export function PresenceMark({ presence }: { presence: Presence | null | undefin
           // The shape alone cannot tell a pause from a cancel: hovering names it, as a dot did.
           title={t(presence.labelKey)}
           data-presence={presence.kind}
-          className={cn('inline-flex', presenceToneText(presence.tone))}
+          className={cn('inline-flex', presenceTextClass(presence.tone))}
         >
           <AgentStatusIcon status={glyph} size={12} colored={false} />
         </span>
       ) : null}
     </span>
-  );
-}
-
-/**
- * A state as a badge with its name, the kit's AgentStatusBadge look tinted by the tone instead of
- * the glyph's own colour. `target` names what the words say: `run:<runId>`.
- */
-export function PresenceBadge({
-  presence,
-  target,
-}: {
-  presence: Presence;
-  target: `run:${string}` | `execution:${string}`;
-}): ReactNode {
-  const t = useTranslations('Presence');
-  return (
-    <KitBadge color={presenceBadgeColor(presence.tone)} data-presence={presence.kind}>
-      <span className="inline-flex items-center gap-1">
-        {presence.glyph ? (
-          <span className={cn('inline-flex', presenceToneText(presence.tone))}>
-            <AgentStatusIcon status={presence.glyph} size={11} colored={false} />
-          </span>
-        ) : null}
-        <span data-presence-label={target}>{t(presence.labelKey)}</span>
-      </span>
-    </KitBadge>
   );
 }

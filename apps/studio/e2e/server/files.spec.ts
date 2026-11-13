@@ -139,11 +139,11 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     // The turn's run card begins with its state, for screen readers: in a conversation the line
     // above the composer is where a finished run's status shows. Not an exact text match: the
-    // card's process rows (Writer · Succeeded) carry the same word, so it finds more than one.
+    // card's process rows (Writer · Completed) carry the same word, so it finds more than one.
     const card = page
       .getByTestId('chat-timeline')
       .getByRole('region', { name: 'Run #1', exact: true });
-    await expect(card).toContainText(/^Succeeded/, { timeout: 20_000 });
+    await expect(card).toContainText(/^Completed/, { timeout: 20_000 });
     await expect(card.getByTestId('run-change-summary')).toContainText(/1 changed file · \+\d+ −0/);
     await expect(card.getByRole('link', { name: /1 changed file/ })).toHaveAttribute(
       'href',

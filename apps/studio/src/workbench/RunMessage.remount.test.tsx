@@ -350,12 +350,14 @@ it('a row that left while its run worked is read again, never drawn as still wor
   const first = await mount({ live: true });
   await act(async () => fixture.live?.setState({ runId: 'run', projection: running }));
   expect(first.container.querySelector('[data-presence-label="run:run"]')?.textContent).toBe(
-    messages.Status.running,
+    messages.Presence.state.working,
   );
   await first.unmount();
   // The run ends while the row is away; the session now passes it as finished.
   const again = await mount({ version: 'v1' });
-  expect(again.frames.every((frame) => frame.status !== messages.Status.running)).toBe(true);
+  expect(again.frames.every((frame) => frame.status !== messages.Presence.state.working)).toBe(
+    true,
+  );
   expect(again.first()?.minHeight).toBe(`${ROW_HEIGHT}px`);
   await act(async () =>
     fixture.read?.resolve(view(finished(true), { artifactTexts: { result: BODY } })),
@@ -363,7 +365,9 @@ it('a row that left while its run worked is read again, never drawn as still wor
   expect(again.container.querySelector('[data-presence-label="run:run"]')?.textContent).toBe(
     messages.Status.failed,
   );
-  expect(again.frames.every((frame) => frame.status !== messages.Status.running)).toBe(true);
+  expect(again.frames.every((frame) => frame.status !== messages.Presence.state.working)).toBe(
+    true,
+  );
 });
 
 it('a failed read keeps the remembered view and shows the error beside it', async () => {

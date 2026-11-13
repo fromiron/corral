@@ -168,7 +168,7 @@ describe('RunView execution tree', () => {
 
   it('exposes the run status for people and tests', () => {
     renderView();
-    expect(screen.getByTestId('run-status')).toHaveTextContent('Running');
+    expect(screen.getByTestId('run-status')).toHaveTextContent('Working');
   });
 
   it('a run a rejection is stopping says the person rejected, not that they asked to cancel', () => {

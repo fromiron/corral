@@ -99,13 +99,13 @@ test('plain completion is announced once and opening history is silent', async (
     await expect(dock).toHaveAttribute('data-run', 'working');
     await expect(page.getByRole('banner')).not.toContainText('Working');
     await expect(activityLine(page).getByText('Working', { exact: true })).toHaveCount(0);
-    await expect(activityLine(page).getByText('Running', { exact: true })).toHaveCount(0);
+    await expect(activityLine(page).getByText('Working', { exact: true })).toHaveCount(0);
     await expect(
       page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
     ).toHaveCount(0);
     finish.release();
     await expect(
-      dock.locator('[aria-live="polite"]').filter({ hasText: 'Run status: Succeeded' }),
+      dock.locator('[aria-live="polite"]').filter({ hasText: 'Run status: Completed' }),
     ).toHaveCount(1);
     // The sidebar row says the run ended through its mark's name, not in words (presence.md).
     const sessionId = new URL(page.url()).pathname.split('/')[2];
@@ -120,7 +120,7 @@ test('plain completion is announced once and opening history is silent', async (
       'The requested review is complete.',
     );
     await expect(activityBar(page).locator('[aria-live="polite"]')).not.toContainText([
-      'Run status: Succeeded',
+      'Run status: Completed',
     ]);
     expect(corral.errors).toEqual([]);
   } finally {

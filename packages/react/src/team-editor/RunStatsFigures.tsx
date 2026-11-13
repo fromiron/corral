@@ -1,6 +1,7 @@
 import type { CorralNode } from '@corral/contracts';
 import type { RunStats } from '@corral/core';
 import { useFormatter, useTranslations } from 'use-intl';
+import { usePresenceWord } from '../components/PresenceBadge.tsx';
 import {
   Popover,
   PopoverPopup,
@@ -30,7 +31,7 @@ export function RunStatsFigures({
   onOpenRun?: ((runId: string) => void) | undefined;
 }) {
   const t = useTranslations('TeamEditor.stats');
-  const status = useTranslations('Status');
+  const status = usePresenceWord();
   const portName = useTranslations('Canvas.ports');
   const format = useFormatter();
   const size = useSize();

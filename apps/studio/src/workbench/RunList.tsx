@@ -1,10 +1,10 @@
 import type { RunSummary, WorkSession } from '@corral/core';
+import { PresenceBadge } from '@corral/react';
 import { CheckboxGroup, CheckboxItem } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
-import { PresenceBadge } from './PresenceMark.tsx';
 import {
   loadRunIdentities,
   type RunIdentity,

@@ -179,7 +179,7 @@ test('parallel branches meet at a Join, and a router that cannot choose asks the
   await expect(card).toBeVisible();
   await expect(card.getByRole('button', { name: 'Fix first', exact: true })).toBeVisible();
   await card.getByRole('button', { name: 'Ship it', exact: true }).click();
-  await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status').first()).toContainText('Completed');
 
   const projection = corral.server.coordinator.getSnapshot(runId).projection;
   const ran = Object.values(projection.executions).map((execution) => execution.nodeId);

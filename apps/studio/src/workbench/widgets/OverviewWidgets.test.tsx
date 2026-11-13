@@ -463,7 +463,7 @@ it('shows agent identity and accurate current status while work is active, then 
   );
   const agent = container.querySelector('[data-overview-widget="agents"]');
   expect(agent?.textContent).toContain('Reviewer');
-  expect(agent?.textContent).toContain('Waiting for an answer');
+  expect(agent?.textContent).toContain('Working · Waiting for a reply');
   expect(agent?.textContent).toContain('2 agents, 1 working');
   expect(agent?.textContent).not.toMatch(/Pause|Cancel|Approve/);
   const completed = await render(

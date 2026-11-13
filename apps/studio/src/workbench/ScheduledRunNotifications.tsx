@@ -1,3 +1,4 @@
+import { statusPresence, usePresenceWord } from '@corral/react';
 import { Banner, BannerActions, BannerTitle, Button } from '@corral/react/design-kit';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect } from 'react';
@@ -13,7 +14,7 @@ export function ScheduledRunNotifications({
   dismiss(runId: string): void;
 }) {
   const t = useTranslations('Schedules');
-  const status = useTranslations('Status');
+  const status = usePresenceWord();
   // Automation lists every schedule with its last result, and the chosen one's history: there a
   // banner would say it again. A result the page showed does not come back on the next screen;
   // one it did not show keeps its banner.
@@ -29,7 +30,7 @@ export function ScheduledRunNotifications({
       {results.map((run) => (
         <Banner
           key={run.runId}
-          status={run.status === 'succeeded' ? 'success' : 'warning'}
+          status={statusPresence(run.status)?.tone === 'success' ? 'success' : 'warning'}
           size="compact"
           role="note"
         >

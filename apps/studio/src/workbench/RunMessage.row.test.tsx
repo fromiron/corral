@@ -291,7 +291,7 @@ const logName = (...values: string[]) =>
 it('names the head button by its role, state, steps and log, never by its ticking time', async () => {
   const f = await show(running());
   expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
-    logName('writer', messages.Status.running, '1 step'),
+    logName('writer', messages.Presence.state.working, '1 step'),
   );
   expect(toggle(f.container)?.textContent).toMatch(/\d+s/);
   await f.set(failed(running()));
@@ -303,25 +303,28 @@ it('names the head button by its role, state, steps and log, never by its tickin
 // docs/specs/chat-widgets-contract.md §6.3: a failed step is told outside the fold, to assistive
 // tech as well, before the log is opened.
 it.each([
-  ['succeeded', (p: RunProjection) => answered(p)],
-  ['paused', (p: RunProjection) => ({ ...p, status: 'paused' as const })],
-  ['running', (p: RunProjection) => p],
-])('a %s turn with a failed step names the failure on its head button', async (status, as) => {
-  const projection = running();
-  projection.toolCalls.broken = {
-    toolCallId: 'broken',
-    executionId: 'lead',
-    name: 'run_command',
-    status: 'requested',
-    phase: 'failed',
-    reason: 'exit 1',
-  };
-  const f = await show(as(projection));
-  expect(part(f.container, 'head')?.textContent).toContain('1 failed');
-  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
-    logName('writer', messages.Status[status as 'running'], '2 steps', '1 failed'),
-  );
-});
+  ['succeeded', 'succeeded', (p: RunProjection) => answered(p)],
+  ['paused', 'paused', (p: RunProjection) => ({ ...p, status: 'paused' as const })],
+  ['running', 'working', (p: RunProjection) => p],
+] as const)(
+  'a %s turn with a failed step names the failure on its head button',
+  async (_status, kind, as) => {
+    const projection = running();
+    projection.toolCalls.broken = {
+      toolCallId: 'broken',
+      executionId: 'lead',
+      name: 'run_command',
+      status: 'requested',
+      phase: 'failed',
+      reason: 'exit 1',
+    };
+    const f = await show(as(projection));
+    expect(part(f.container, 'head')?.textContent).toContain('1 failed');
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+      logName('writer', messages.Presence.state[kind], '2 steps', '1 failed'),
+    );
+  },
+);
 
 it('a turn with no failed step has no failure in its head button’s name', async () => {
   const f = await show(answered(running()));
@@ -676,7 +679,7 @@ it('waits for the reply with the kit mark alone, and names the step in progress'
   );
   expect(pending()).not.toBeNull();
   expect(visibleWords()).toContain(messages.Turn.tool.read_file);
-  expect(pending()?.textContent).not.toContain(messages.Status.running);
+  expect(pending()?.textContent).not.toContain(messages.Presence.state.working);
   // The first words take its place.
   await act(async () =>
     fixture.store?.setState({
@@ -927,3 +930,41 @@ it('a process the person opened stays open when its row mounts again', async () 
   const third = await show(running());
   expect(toggle(third.container)?.getAttribute('aria-expanded')).toBe('false');
 });
+
+// A review loop that runs out of rounds goes on with its last candidate; the run then ends
+// completed, and its head says why in the state's place (presence.md, composer-flow.md rule 3).
+const round = (no: number, outcome: RunProjection['iterations'][string]['outcome']) => ({
+  iterationId: `round_${no}`,
+  loopNodeId: 'review',
+  parentIterationId: null,
+  no,
+  criteriaVersionId: 'criteria',
+  outcome,
+});
+const loopEnded = (projection: RunProjection, outcome: 'cap_reached' | 'stalled' | 'pass') => ({
+  ...answered(projection),
+  loopIterations: { review: ['round_1', 'round_2'] },
+  iterations: { round_1: round(1, 'revise'), round_2: round(2, outcome) },
+});
+const done = messages.Presence.state.succeeded;
+const loopOutcome = messages.Canvas.nodeStatus.loopOutcome;
+
+it.each([
+  ['cap_reached', `${done} · ${loopOutcome.cap_reached}`],
+  ['stalled', `${done} · ${loopOutcome.stalled}`],
+  ['pass', done],
+] as const)(
+  'a run whose review loop ended by %s says so in its head state',
+  async (outcome, said) => {
+    const first = running();
+    const f = await show(first);
+    const head = part(f.container, 'head');
+    await f.set(loopEnded(first, outcome));
+    expect(part(f.container, 'head')).toBe(head);
+    expect(parts(f.container)).toEqual(['head', 'body', 'tail']);
+    const labels = f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
+    expect(labels).toHaveLength(1);
+    expect(head?.contains(labels[0] ?? null)).toBe(true);
+    expect(labels[0]?.textContent).toBe(said);
+  },
+);

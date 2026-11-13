@@ -73,7 +73,7 @@ test('steps dropped on an empty canvas and connected run as drawn', async ({ pag
   const panel = await openTestRun(page);
   await panel.getByRole('button', { name: 'Run', exact: true }).click();
 
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByTestId('run-output')).toContainText(
     'Simulated Agent 1 reply, request 2 of 2. No model was called.',
   );
@@ -136,7 +136,7 @@ test('an imported team with a Loop validates and runs through its review and app
   const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.locator('[data-testid^="approval-"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 

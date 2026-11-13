@@ -87,7 +87,7 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
     'false',
   );
   await startTestRun(page);
-  await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status').first()).toContainText('Completed');
   await page.getByText('Prepare an execution', { exact: true }).click();
   await expect(select).toContainText('Keep role settings');
   const state = await page.evaluate(async () => {

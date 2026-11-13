@@ -1,4 +1,4 @@
-import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
+import { type ExecutionStatus, TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import {
   canReadArtifactBody,
   canReleaseArtifactBodies,
@@ -75,7 +75,7 @@ export interface ChatWidgetModel {
   changeDeletions: number | null;
   agents: { total: number; working: number; waiting: number; failed: number } | null;
   /** Current attempts only; the execution view retains retry history. */
-  agentRows: { id: string; name: string; status: string }[];
+  agentRows: { id: string; name: string; status: ExecutionStatus }[];
   tools: { id: string; name: string; tone: string }[];
   results: { id: string; label: string }[];
   environment: 'simulated' | 'restricted' | null;
@@ -516,7 +516,7 @@ function useChatWidgetState(
     .filter((execution) => currentIds.has(execution.executionId))
     .map((execution) =>
       execution.status === 'active' && awaitingApproval.has(execution.executionId)
-        ? { ...execution, status: 'waiting_approval' }
+        ? { ...execution, status: 'waiting_approval' as const }
         : execution,
     );
   const agents = agentActivity(currentAgents);

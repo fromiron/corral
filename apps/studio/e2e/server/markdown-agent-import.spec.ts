@@ -91,7 +91,7 @@ Read the supplied code and report the evidence.`);
   await openTestRun(page);
   await choose(page, 'Agents', 'Simulated (no model or extension calls)');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20000 });
   const run = corral.server.coordinator.listRuns()[0];
   expect(run).toBeDefined();
   if (!run) throw new Error('No run was started');
@@ -183,7 +183,7 @@ Read the supplied code and report the evidence.`);
     }),
   ]);
   expect(parentAnswerCount).toBe(1);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await page.screenshot({ path: testInfo.outputPath('markdown-parent-question-run.png') });
   expect(corral.errors).toEqual([]);
 });

@@ -206,7 +206,7 @@ it('lists each schedule with its timing, state and last result', async () => {
       'Every day at 09:00',
       'Enabled',
       expect.stringContaining('Nov 11'),
-      'Succeeded',
+      'Completed',
     ],
     ['Weekly digest', 'Mon, Wed at 18:30', 'Disabled', 'No upcoming run', 'Not run yet'],
   ]);
@@ -313,7 +313,7 @@ it('keeps a run status unknown when the run cannot be read, never completed', as
   await act(async () => window.dispatchEvent(new Event('focus')));
   await settle();
   expect(history()?.textContent).toContain('Status unknown');
-  expect(history()?.textContent).not.toContain('Succeeded');
+  expect(history()?.textContent).not.toContain('Completed');
 });
 
 it('a run waiting for the person is a link to respond; any other run is a link to open it', async () => {
@@ -362,7 +362,7 @@ it('disabling stops future runs without cancelling the one in progress', async (
   expect(fixture.api.run).not.toHaveBeenCalled();
   expect(fixture.services.transport.sendCommand).not.toHaveBeenCalled();
   expect(fixture.services.cancelAuto).not.toHaveBeenCalled();
-  expect(history()?.textContent).toContain('Running');
+  expect(history()?.textContent).toContain('Working');
 });
 
 it('Run now asks once for a double click and keeps its command ID for a retry', async () => {
@@ -407,14 +407,14 @@ it('a run that settles updates its history row with the shared run list, not a l
     await page();
     await click(button(/Daily project review/));
     await settle();
-    expect(history()?.textContent).toContain('Running');
+    expect(history()?.textContent).toContain('Working');
     // The run settles. The run list the sidebar and its notice read sees it at its next step,
     // before the schedule's own refresh tick comes round.
     fixture.services.transport.listRuns.mockResolvedValue([run('succeeded')]);
     await act(async () => vi.advanceTimersByTime(1500));
     await settle();
-    expect(history()?.textContent).toContain('Succeeded');
-    expect(history()?.textContent).not.toContain('Running');
+    expect(history()?.textContent).toContain('Completed');
+    expect(history()?.textContent).not.toContain('Working');
   } finally {
     vi.useRealTimers();
   }
@@ -491,7 +491,7 @@ it('reports a run as shown once its final status is on screen', async () => {
     { ...run('failed'), runId: 'run_orphan' },
   ]);
   await page();
-  expect(container.textContent).toContain('Succeeded');
+  expect(container.textContent).toContain('Completed');
   expect(shownRuns()).toEqual(['run_1']);
   // Leaving Automation shows nothing as seen there any more.
   await dispose();

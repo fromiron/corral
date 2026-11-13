@@ -151,7 +151,7 @@ test('the default demo team delegates, asks, revises once and finishes offline w
   await expect(step(page, 'revise')).toHaveAttribute('data-state', 'done');
 
   // Nothing waits for the person: the reviewed draft becomes the output by itself.
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
   await expect(page.locator('[data-testid^="approval-"]')).toHaveCount(0);
   const output = page.getByTestId('run-output');
   await expect(output).toContainText('Simulated');
@@ -171,10 +171,10 @@ test('a rejected approval does not finish the run or the guide', async ({ page }
   const card = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(card).toBeVisible({ timeout: 20_000 });
   await card.getByRole('button', { name: 'Do not confirm' }).click();
-  await expect(page.getByTestId('run-status')).not.toContainText(/Running|Waiting/, {
+  await expect(page.getByTestId('run-status')).not.toContainText(/Working|Waiting/, {
     timeout: 10_000,
   });
-  await expect(page.getByTestId('run-status')).not.toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).not.toContainText('Completed');
   await expect(step(page, 'finish')).toHaveAttribute('data-state', 'missed');
   await expect(step(page, 'finish')).toContainText("Didn't happen in this run");
 });

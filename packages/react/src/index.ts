@@ -33,6 +33,16 @@ export {
   providerMark,
 } from './components/ModelSelect.tsx';
 export { PathCrumb } from './components/PathCrumb.tsx';
+export {
+  PresenceBadge,
+  PresenceDot,
+  PresenceLabel,
+  type PresenceTarget,
+  presenceBadgeColor,
+  presenceDotClass,
+  presenceTextClass,
+  usePresenceWord,
+} from './components/PresenceBadge.tsx';
 export { QuestionsPanel } from './components/QuestionsPanel.tsx';
 export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningLevelLabel, ReasoningSummary } from './components/ReasoningSummary.tsx';
@@ -61,7 +71,7 @@ export {
 } from './components/RunView.tsx';
 export { SafeMarkdown } from './components/SafeMarkdown.tsx';
 export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
-export { AgentStatusText, StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
+export { StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
 export { Timeline } from './components/Timeline.tsx';
 export { UsageInspector } from './components/UsageInspector.tsx';
@@ -121,6 +131,7 @@ export {
   sessionPresence,
   settle,
 } from './run/presence.ts';
+export { projectionPresence, statusPresence } from './run/projectionPresence.ts';
 export { createRunRecovery, type RecoveryStorage, type RunRecovery } from './run/recovery.ts';
 export {
   type ResultGroup,

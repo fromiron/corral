@@ -125,7 +125,7 @@ test('registers and selects a language server, approves an SDK query and trusts 
     await expect(needsYou).toBeFocused();
     await expect(needsYou.getByText('node lsp.mjs', { exact: true })).toBeVisible();
     await needsYou.getByRole('button', { name: 'Run this query once', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
     await page.goto(`${corral.server.url}/settings?section=workspace&projectId=default`);
     await page
       .getByRole('button', { name: 'Review launch for Fixture server', exact: true })

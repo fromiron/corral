@@ -11,7 +11,7 @@ const graph = (page: import('@playwright/test').Page) =>
 async function finishedRun(page: import('@playwright/test').Page) {
   await page.goto('/demo?template=starter&delay=100');
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
   await expect(graph(page)).toBeVisible();

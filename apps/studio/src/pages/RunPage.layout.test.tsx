@@ -1546,7 +1546,7 @@ it('pending decisions stay reachable and replace the inspector rather than stack
 
 it('normalizes an old cursor URL and follows current state without replaying or disabling controls', async () => {
   const { container, run, navigations } = await mount('inline_team', null, { atSeq: 0 });
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Succeeded');
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Completed');
   expect(container.querySelector('fieldset[disabled]')).toBeNull();
   expect(container.querySelector('[data-testid="history-mode"]')).toBeNull();
   expect(navigations.at(-1)).toEqual({ patch: { atSeq: undefined }, options: { replace: true } });
@@ -1573,7 +1573,7 @@ it('normalizes an old cursor URL and follows current state without replaying or 
       });
   });
   expect(fixture.replays).toBe(replays);
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Running');
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Working');
   expect(run.getState().projection).toBe(live);
   expect(container.querySelector('fieldset[disabled]')).toBeNull();
   expect(container.querySelector('[aria-label="View time"]')).toBeNull();
@@ -1886,7 +1886,7 @@ it('turns the waiting status into the one way to respond', async () => {
   // With the response area on screen, the header's state names the wait and no longer responds.
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
   expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
-    messages.Status.awaiting_user,
+    messages.Presence.state.awaiting_user,
   );
   await waitFor(run, 0);
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
@@ -1942,7 +1942,7 @@ it('offers Respond once when the record opens with its response area beside the 
   // The header says the run waits, once, without a second Respond.
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
   expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
-    messages.Status.awaiting_user,
+    messages.Presence.state.awaiting_user,
   );
 });
 
@@ -2019,11 +2019,11 @@ it('opens the response area once when a new decision arrives and the side is fre
   // The header's status already says it: the panel's heading keeps the state's name for the
   // outline but shows no title of its own.
   const heading = side(container)?.querySelector('h2');
-  expect(heading?.textContent).toBe(messages.Status.awaiting_user);
+  expect(heading?.textContent).toBe(messages.Presence.state.awaiting_user);
   expect(heading?.classList.contains('sr-only')).toBe(true);
   expect(
     side(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
-  ).toBe(messages.Status.awaiting_user);
+  ).toBe(messages.Presence.state.awaiting_user);
   expect(document.activeElement).toBe(focused);
   // Closed by the person: the same decision does not bring it back.
   await act(async () =>

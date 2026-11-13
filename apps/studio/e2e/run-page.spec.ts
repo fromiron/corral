@@ -8,7 +8,7 @@ async function finishedTeamRun(page: Page) {
   await page.goto('/demo?delay=150');
   await startTestRun(page);
   // The demo team asks for no approval, so its run finishes by itself.
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
   await expect(graph(page)).toBeVisible();

@@ -38,7 +38,7 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
   await box(page).press('Control+Enter');
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page).first()).toContainText('Started');
-  await expect(status(cards(page).first(), 'Succeeded')).toBeVisible({
+  await expect(status(cards(page).first(), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
 
@@ -49,10 +49,10 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
   await box(page).fill('Now only for one writer');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(2);
-  await expect(status(cards(page).nth(1), 'Succeeded')).toBeVisible({
+  await expect(status(cards(page).nth(1), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
-  await expect(status(cards(page).first(), 'Succeeded')).toBeVisible();
+  await expect(status(cards(page).first(), 'Completed')).toBeVisible();
 
   // a question about an answer is an ordinary message; there is no separate mode.
   await box(page).fill('/');
@@ -61,7 +61,7 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(3);
   await expect(cards(page).nth(2)).not.toContainText('Question about the result');
-  await expect(status(cards(page).nth(2), 'Succeeded')).toBeVisible({
+  await expect(status(cards(page).nth(2), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
 });
@@ -84,7 +84,7 @@ test('while a run works, a request waits in the queue until a person starts it',
   // Auto start is the server's; the browser demo has none, so a person starts it.
   await expect(queue.getByRole('switch')).toHaveCount(0);
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();
-  await expect(status(cards(page).first(), 'Succeeded')).toBeVisible({
+  await expect(status(cards(page).first(), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeEnabled();

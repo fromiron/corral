@@ -223,11 +223,11 @@ it('says the run waits once (the run row) and shows the decision once (the card)
   const state = container.querySelectorAll('[data-presence-label="run:run_team"]');
   expect(state).toHaveLength(1);
   expect(state[0]?.closest('[data-chat-part="head"]')).not.toBeNull();
-  expect(state[0]?.textContent).toBe(messages.Status.awaiting_user);
+  expect(state[0]?.textContent).toBe(messages.Presence.state.awaiting_user);
   // The activity bar keeps its mark and repeats neither the state nor the decision while the
   // row and the card are on screen.
   const line = visibleText(bar(container) as HTMLElement);
-  expect(line).not.toContain(messages.Status.awaiting_user);
+  expect(line).not.toContain(messages.Presence.state.awaiting_user);
   expect(line).not.toContain(messages.Approvals.approveAs.user_action);
   expect(bar(container)?.dataset.line).toBe('summary');
   // The decision: its card's title and its two buttons, each once.

@@ -111,7 +111,7 @@ test.describe('runtime continuation', () => {
     ]);
     await recovery.getByRole('button', { name: 'Continue in a new Run' }).first().click();
     await expect.poll(() => new URL(page.url()).searchParams.get('run')).not.toBe(started.runId);
-    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Completed');
     const source = await page.evaluate(
       async (runId) => (await fetch(`/api/v1/runs/${runId}/runtime-checkpoints`)).json(),
       started.runId,
@@ -136,7 +136,7 @@ test.describe('runtime continuation', () => {
     await expect
       .poll(() => new URL(page.url()).pathname)
       .not.toBe(`/sessions/${started.sessionId}`);
-    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Completed');
     await page
       .getByTestId('run-monitor')
       .getByRole('button', { name: 'Run info', exact: true })
@@ -160,7 +160,7 @@ test.describe('runtime continuation', () => {
       .getByRole('button', { name: 'Start a new session from here' })
       .click();
     await expect.poll(() => new URL(page.url()).pathname).not.toBe(priorSession);
-    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Completed');
     expect(corral.errors).toEqual([]);
   });
 });

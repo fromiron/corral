@@ -65,7 +65,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
     .filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await openResult(page, /^draft v2/);
   const results = page.getByTestId('run-results');
   await expect(results.getByRole('article', { name: 'draft v2', exact: true })).toBeVisible();

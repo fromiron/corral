@@ -7,6 +7,7 @@ import { useRunDisplay } from '../run/display.tsx';
 import { type ResultItem, runResults } from '../run/results.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { GeneratedImage } from './ArtifactViewer.tsx';
+import { usePresenceWord } from './PresenceBadge.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
 /** A whole HTML document, as models sometimes write; only these get a preview. */
@@ -238,7 +239,7 @@ export function ResultReader({
 }) {
   const t = useTranslations('Results');
   const ta = useTranslations('Artifact');
-  const ts = useTranslations('Status');
+  const ts = usePresenceWord();
   const headingId = useId();
   const id = item.artifactVersionId;
   const runId = useStore(session, (s) => s.runId);

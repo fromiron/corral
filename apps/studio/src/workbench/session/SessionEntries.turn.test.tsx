@@ -343,7 +343,10 @@ it('a run no request names reads like any turn: its status is said once, by the 
       </IntlProvider>,
     ),
   );
-  const badges = [...container.querySelectorAll('[data-status="succeeded"]')];
+  // The row's head line says the run's state in words (its presence label); the badge is apart.
+  const badges = [
+    ...container.querySelectorAll('[data-presence="succeeded"]:not([data-presence-label])'),
+  ];
   // Assistive tech still hears the run's status with its turn; nothing shows it a second time.
   expect(badges).toHaveLength(1);
   expect(badges[0]?.closest('.sr-only')).not.toBeNull();

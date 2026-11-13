@@ -218,7 +218,7 @@ describe('RunResults view', () => {
   it('separates run, review and submission without inventing file-work evidence', async () => {
     wrap(<RunResults session={finalThree()} selectedId="v_a" onSelect={vi.fn()} />);
     const states = screen.getByRole('list', { name: 'Result state' });
-    expect(states).toHaveTextContent('Run: Succeeded');
+    expect(states).toHaveTextContent('Run: Completed');
     expect(states).toHaveTextContent('Review: none');
     expect(states).toHaveTextContent('Submitted');
     expect(states).not.toHaveTextContent('No file changes or checks in this run');
