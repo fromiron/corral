@@ -72,7 +72,8 @@ export type EditRejection =
   | 'roleNeedsAgent'
   | 'advisorOutsideBoxes'
   | 'watchNeedsAdvisor'
-  | 'watchNeedsAgent';
+  | 'watchNeedsAgent'
+  | 'advisorRole';
 
 export type EditResult =
   | { ok: true; draft: EditorDraft; nodeId?: string }
@@ -790,10 +791,12 @@ function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
   if (!incoming.length) return { ok: false, reason: 'noPredecessor' };
   const outgoing = edges.filter((e) => e.source === step.id && e.sourcePort === 'out');
   const copy = duplicateNode(draft, step.id);
-  // The copy keeps its role's tools, so it calls the same helpers the agent calls.
+  // The copy keeps its role's tools, so it calls the same helpers the agent calls, and the
+  // advisors watching the agent watch the copy too.
   let linked = copy.draft;
   for (const link of draft.definition.capabilityLinks) {
-    if (link.sourceNodeId !== step.id) continue;
+    const watch = link.kind === 'advise' && link.targetNodeId === step.id;
+    if (link.sourceNodeId !== step.id && !watch) continue;
     const { id, counters } = nextId(linked, 'link');
     linked = withDefinition(
       { ...linked, counters },
@@ -801,7 +804,9 @@ function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
         ...linked.definition,
         capabilityLinks: [
           ...linked.definition.capabilityLinks,
-          { ...link, id, sourceNodeId: copy.nodeId },
+          watch
+            ? { ...link, id, targetNodeId: copy.nodeId }
+            : { ...link, id, sourceNodeId: copy.nodeId },
         ],
       },
     );
@@ -837,6 +842,19 @@ function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
 
 // ── roles ────────────────────────────────────────────────────────────────────
 
+const isAdvisorRole = (role: AgentRole) => role.allowedCollaborationTools.includes('advise');
+
+/** The roles of a team another team may copy: not those its advisors run. */
+export function importableRoles(definition: {
+  nodes: readonly CorralNode[];
+  roles: readonly AgentRole[];
+}): AgentRole[] {
+  const advisors = new Set(
+    definition.nodes.flatMap((n) => (isAdvisor(n) && n.type === 'agent' ? [n.roleId] : [])),
+  );
+  return definition.roles.filter((role) => !advisors.has(role.id) && !isAdvisorRole(role));
+}
+
 export interface RoleImportOptions {
   /** Whether a work style reference resolves here; one that does not is left out. */
   resolvesHarness?: ((ref: HarnessBindingRef) => boolean) | undefined;
@@ -861,6 +879,8 @@ export function importRole(
   at: Placement = { kind: 'empty' },
   options: RoleImportOptions = {},
 ): RoleImportResult {
+  // An advisor's role carries `advise`, which no working agent may hold.
+  if (isAdvisorRole(source)) return { ok: false, reason: 'advisorRole' };
   let next = draft;
   let targetId = ids.length === 1 ? (ids[0] as string) : null;
   if (ids.length === 0) {

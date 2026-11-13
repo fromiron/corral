@@ -81,6 +81,15 @@ const ADVISOR_COLLABORATION_TOOLS: AgentRole['allowedCollaborationTools'] = [
 const ADVISOR_PROMPT =
   'Watch the work of the agents you advise. Advise only when something would make the result wrong; otherwise say nothing.';
 
+/** What an advisor's sheet edits; other changes to an advisor are left out. */
+const ADVISOR_CHANGES: ReadonlySet<keyof NodeChange> = new Set([
+  'label',
+  'prompt',
+  'modelProfile',
+  'reasoning',
+  'readTools',
+]);
+
 const isReadTool = (tool: string): tool is AdvisorReadTool =>
   (ADVISOR_READ_TOOLS as readonly string[]).includes(tool);
 const isAdvisor = (node: CorralNode | undefined): node is ObserverAgentNode =>
@@ -371,7 +380,20 @@ function changeInvocation(
   }
   let roles = definition.roles;
   if (role && tools) {
-    const changed: AgentRole = { ...role, id: roleId, ...tools };
+    let changed: AgentRole = { ...role, id: roleId, ...tools };
+    if (invocation === 'observer') {
+      // What an advisor's sheet does not show takes a new advisor's value, so a converted
+      // advisor's role has the shape of a new one: only its instructions, model, reasoning and
+      // read tools carry over.
+      const {
+        harness: _harness,
+        imageProfile: _image,
+        editingMode: _editing,
+        answer: _answer,
+        ...kept
+      } = changed;
+      changed = { ...kept, outputContract: 'notes' };
+    }
     roles = shared
       ? roles.flatMap((r) => (r.id === role.id ? [r, changed] : [r]))
       : roles.map((r) => (r.id === role.id ? changed : r));
@@ -434,6 +456,17 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   ) {
     const { invocation, ...others } = change;
     return updateNode(changeInvocation(draft, node, invocation), nodeId, others);
+  }
+  if (
+    node.type === 'agent' &&
+    node.invocation === 'observer' &&
+    Object.keys(change).some((key) => !ADVISOR_CHANGES.has(key as keyof NodeChange))
+  ) {
+    // An advisor keeps advisor tools only, and what its sheet does not show does not change.
+    const kept = Object.entries(change).filter(([key]) =>
+      ADVISOR_CHANGES.has(key as keyof NodeChange),
+    );
+    return updateNode(draft, nodeId, Object.fromEntries(kept) as NodeChange);
   }
   let { nodes, roles, controlEdges, capabilityLinks } = draft.definition;
   const setNode = (next: CorralNode) => {
@@ -896,7 +929,10 @@ function entryOf(definition: CorralDefinition): string {
     ...starts.filter((n) => n.type === 'loop' || n.type === 'team'),
   ];
   if (candidates.some((n) => n.id === definition.entryNodeId)) return definition.entryNodeId;
-  return candidates[0]?.id ?? definition.entryNodeId;
+  // An advisor is never the start: with nowhere else to start, the team has no start, as when
+  // the start is deleted.
+  const advisorStart = isAdvisor(definition.nodes.find((n) => n.id === definition.entryNodeId));
+  return candidates[0]?.id ?? (advisorStart ? '' : definition.entryNodeId);
 }
 
 function structuredCopy<T>(value: T): T {

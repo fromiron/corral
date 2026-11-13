@@ -8,7 +8,7 @@ import { createEditorStore } from '../editor/store.ts';
 import messages from '../messages/en.json' with { type: 'json' };
 import koMessages from '../messages/ko.json' with { type: 'json' };
 import { sessionStore } from '../stories/fixtures.tsx';
-import { type EditResult, placeStep, watchAgent } from './commands.ts';
+import { connectPorts, type EditResult, patchNode, placeStep, watchAgent } from './commands.ts';
 import type { ProfileOption } from './NodeSettings.tsx';
 import { TeamEditor } from './TeamEditor.tsx';
 
@@ -21,8 +21,11 @@ function ok(result: EditResult): { draft: EditorDraft; nodeId: string } {
   return { draft: result.draft, nodeId: result.nodeId ?? '' };
 }
 
-/** Draft → Review → Revise → Output, and an advisor watching Draft and Revise. */
-function team(watch: boolean) {
+/**
+ * Draft → Review → Revise → Output, and an advisor watching Draft and Revise. With `branch`,
+ * Draft also leads to Second opinion below Review, and the advisor watches only that.
+ */
+function team(watch: boolean, branch = false) {
   let { draft, nodeId } = ok(
     placeStep(emptyDraft('advised', 'Advised team'), 'agent', { kind: 'empty' }),
   );
@@ -39,6 +42,19 @@ function team(watch: boolean) {
       ),
     },
   };
+  if (branch) {
+    const second = ok(placeStep(draft, 'agent', { kind: 'empty' }));
+    const linked = ok(
+      connectPorts(second.draft, {
+        source: 'agent_1',
+        sourcePort: 'out',
+        target: second.nodeId,
+        targetPort: 'in',
+      }),
+    ).draft;
+    const named = patchNode(linked, second.nodeId, { label: 'Second opinion' });
+    return ok(placeStep(named, 'observer', { kind: 'after', nodeId: second.nodeId })).draft;
+  }
   const added = ok(
     placeStep(draft, 'observer', watch ? { kind: 'after', nodeId: 'agent_1' } : { kind: 'empty' }),
   );
@@ -49,8 +65,18 @@ const profiles: ProfileOption[] = [
   { profileId: 'model-a', label: 'Model A', modelId: 'model-a', available: true },
 ];
 
-function AdvisedTeam({ watch, select, dark }: { watch: boolean; select: boolean; dark: boolean }) {
-  const editor = useMemo(() => createEditorStore(team(watch)), [watch]);
+function AdvisedTeam({
+  watch,
+  select,
+  dark,
+  branch,
+}: {
+  watch: boolean;
+  select: boolean;
+  dark: boolean;
+  branch?: boolean;
+}) {
+  const editor = useMemo(() => createEditorStore(team(watch, branch)), [watch, branch]);
   const session = useMemo(() => sessionStore(), []);
   useEffect(() => {
     if (select) editor.getState().select('advisor_1');
@@ -100,8 +126,9 @@ export const WatchingTwo: Story = {
       .querySelector('[data-team-canvas] [data-node="agent_1"]')
       ?.getBoundingClientRect();
     await expect(advisor.bottom).toBeLessThan(draft?.top ?? 0);
-    await expect(within(canvasElement).getAllByText(messages.TeamEditor.links.advise)).toHaveLength(
-      2,
+    // The dash-dot lines carry no name.
+    await expect(within(canvasElement).queryAllByText(messages.TeamEditor.links.advise)).toEqual(
+      [],
     );
     await expect(canvasElement.querySelector('[data-port^="advisor_1:"]')).toBeNull();
   },
@@ -174,4 +201,22 @@ export const SettingsKorean: Story = {
     await expect(before.right).toBeLessThanOrEqual(box.left);
     await expect(after.left).toBeGreaterThanOrEqual(box.right);
   },
+};
+
+/** Watching the lower branch of a fan-out: the line passes behind the card above it. */
+export const WatchingLowerBranch: Story = {
+  args: { branch: true },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(advisorCard(canvasElement)).toBeTruthy());
+    const lines = canvasElement.querySelector('[data-team-canvas] svg') as Element;
+    const review = canvasElement.querySelector('[data-team-canvas] [data-node="agent_2"]');
+    await expect(
+      lines.compareDocumentPosition(review as Element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  },
+};
+
+export const WatchingLowerBranchDark: Story = {
+  ...WatchingLowerBranch,
+  args: { branch: true, dark: true },
 };

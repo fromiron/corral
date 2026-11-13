@@ -303,7 +303,10 @@ export function layoutTeam(
   // Callable agents: one row under the flow, each near the first agent that calls it.
   const callables = definition.nodes.filter(callable);
   const callerX = (id: string) => {
-    const link = definition.capabilityLinks.find((l) => l.targetNodeId === id);
+    // A caller, not an advisor watching it: advisors are placed after this row.
+    const link = definition.capabilityLinks.find(
+      (l) => l.targetNodeId === id && l.kind !== 'advise',
+    );
     const caller = link ? items.get(shownAs(link.sourceNodeId)) : undefined;
     return caller ? caller.rect.x : Number.POSITIVE_INFINITY;
   };
@@ -549,8 +552,9 @@ function routeControl(
 }
 
 /**
- * From the bottom of an advisor down to the top of an agent it watches, named beside the arrow
- * so the name stays off the line. One that does not lie below is drawn as a call link is.
+ * From the bottom of an advisor down to the top of an agent it watches. It has no name: it is
+ * the only link of its kind, and its dash-dot line tells it apart. One that does not lie below
+ * is drawn along a call link's path.
  */
 function routeAdvise(
   link: CapabilityLink,
@@ -563,7 +567,10 @@ function routeAdvise(
   const target = items.get(to);
   if (!source || !target || from === to) return [];
   if (target.rect.y < source.rect.y + source.rect.h)
-    return routeCall(link, items, shownAs).map((edge) => ({ ...edge, kind: 'advise' }));
+    return routeCall(link, items, shownAs).map(({ label: _name, ...edge }) => ({
+      ...edge,
+      kind: 'advise',
+    }));
   const a = { x: source.rect.x + source.rect.w / 2, y: source.rect.y + source.rect.h };
   const b = { x: target.rect.x + target.rect.w / 2, y: target.rect.y };
   const bend = Math.max(24, (b.y - a.y) / 2);
@@ -576,7 +583,6 @@ function routeAdvise(
       path: `M${a.x} ${a.y} C${a.x} ${a.y + bend} ${b.x} ${b.y - bend} ${b.x} ${b.y}`,
       arrow: true,
       insertAt: null,
-      label: { text: link.kind, at: { x: b.x + 8, y: b.y - 10 } },
     },
   ];
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type EditorDraft, emptyDraft } from '../src/editor/model.ts';
+import { connectCapability, type EditorDraft, emptyDraft } from '../src/editor/model.ts';
 import {
   connectPorts,
   type EditResult,
@@ -194,14 +194,45 @@ describe('team editor layout: advisors', () => {
     for (const [id, item] of before.items) expect(rect(after, id)).toEqual(item.rect);
   });
 
-  it('gives an advisor no ports and draws its watch as an advise connection', () => {
+  it('gives an advisor no ports and draws its watch as an unnamed advise connection', () => {
     const { draft, nodeId } = watching(chain(2), 'agent_2');
     const l = layout(draft);
     expect(l.ports.filter((p) => p.nodeId === nodeId)).toEqual([]);
     const drawn = l.edges.filter((e) => e.from === nodeId);
-    expect(drawn.map((e) => [e.kind, e.to, e.label?.text, e.insertAt])).toEqual([
-      ['advise', 'agent_2', 'advise', null],
+    expect(drawn.map((e) => [e.kind, e.to, e.label, e.insertAt])).toEqual([
+      ['advise', 'agent_2', undefined, null],
     ]);
+    // From the middle of the advisor's bottom to the middle of the agent's top.
+    const a = rect(l, nodeId);
+    const b = rect(l, 'agent_2');
+    const path = drawn[0]?.path ?? '';
+    expect(path.startsWith(`M${a.x + a.w / 2} ${a.y + a.h} `)).toBe(true);
+    expect(path.endsWith(` ${b.x + b.w / 2} ${b.y}`)).toBe(true);
+  });
+
+  it('sits each advisor over the agent it watches, without overlapping another', () => {
+    const one = watching(chain(3), 'agent_3');
+    const two = watching(one.draft, 'agent_3');
+    const l = layout(two.draft);
+    expect(rect(l, one.nodeId).x).toBe(rect(l, 'agent_3').x);
+    expect(rect(l, two.nodeId).y).toBe(rect(l, one.nodeId).y);
+    expect(overlap(rect(l, one.nodeId), rect(l, two.nodeId))).toBe(false);
+  });
+
+  it('keeps the callable row where its callers put it, whatever advisors watch it', () => {
+    let base = ok(placeStep(chain(3), 'agent', { kind: 'empty' })).draft;
+    base = patchNode(base, 'agent_4', { invocation: 'callable' });
+    // The advisor watches first, then agent_3 delegates: the watch comes first in the links.
+    const watched = watching(base, 'agent_4');
+    const call = (d: EditorDraft) => {
+      const linked = connectCapability(d, 'agent_3', 'agent_4', 'delegate');
+      if (!linked.ok) throw new Error(linked.reason);
+      return linked.draft;
+    };
+    const without = layout(call(base));
+    const withAdvisor = layout(call(watched.draft));
+    expect(rect(withAdvisor, 'agent_4')).toEqual(rect(without, 'agent_4'));
+    expect(rect(without, 'agent_4').x).toBe(rect(without, 'agent_3').x);
   });
 
   it('draws the watch of an agent inside a collapsed box to the box tile', () => {
@@ -211,5 +242,6 @@ describe('team editor layout: advisors', () => {
     expect(l.items.get(loop)?.kind).toBe('tile');
     expect(l.edges.find((e) => e.from === nodeId)?.to).toBe(loop);
     expect(rect(l, nodeId).y + rect(l, nodeId).h).toBeLessThan(rect(l, loop).y);
+    expect(rect(l, nodeId).x).toBe(rect(l, loop).x);
   });
 });

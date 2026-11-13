@@ -13,7 +13,7 @@ import {
   type ReasoningCapabilities,
   ReasoningLevel,
 } from '@corral/contracts';
-import { type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { ModelSelect, type ProfileChoice, profileChoices } from '../components/ModelSelect.tsx';
@@ -438,6 +438,18 @@ function AdvisorFields({
   );
   const candidates = draft.definition.nodes.filter((n) => watchAgent(draft, node.id, n.id).ok);
   const review = advisorReview(node);
+  // A removed chip's focus goes to the next chip, else to the add list, never to the page.
+  const chips = useRef<HTMLDivElement>(null);
+  const [refocus, setRefocus] = useState<{ next: string | null } | null>(null);
+  useEffect(() => {
+    if (!refocus) return;
+    const target =
+      (refocus.next
+        ? chips.current?.querySelector<HTMLElement>(`[data-watch="${refocus.next}"]`)
+        : null) ?? document.getElementById(`${id}-add-watch`);
+    target?.focus();
+    setRefocus(null);
+  }, [refocus, id]);
   return (
     <>
       <div className="flex flex-col gap-1">
@@ -469,15 +481,19 @@ function AdvisorFields({
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1.5 text-caption">{t('watches')}</legend>
         {watching.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {watching.map((link) => (
+          <div ref={chips} className="flex flex-wrap gap-1.5">
+            {watching.map((link, index) => (
               <Button
                 key={link.id}
+                data-watch={link.id}
                 variant="secondary"
                 size="compact"
                 trailingIcon={X}
                 aria-label={t('removeWatched', { target: labelOf(link.targetNodeId) })}
-                onClick={() => applyDraft(removeItems(editor.getState().draft, [link.id]))}
+                onClick={() => {
+                  applyDraft(removeItems(editor.getState().draft, [link.id]));
+                  setRefocus({ next: watching[index + 1]?.id ?? null });
+                }}
               >
                 {labelOf(link.targetNodeId)}
               </Button>
@@ -486,6 +502,7 @@ function AdvisorFields({
         ) : null}
         {candidates.length ? (
           <Select
+            id={`${id}-add-watch`}
             label={t('addWatched')}
             placeholder={t('addWatched')}
             value={null}

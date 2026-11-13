@@ -5812,7 +5812,8 @@
       "roleNeedsAgent": "역할을 복사할 에이전트 하나를 고르세요.",
       "advisorOutsideBoxes": "감독은 Loop나 팀 밖에 둡니다.",
       "watchNeedsAdvisor": "에이전트를 지켜보는 것은 감독뿐입니다.",
-      "watchNeedsAgent": "감독은 흐름 안의 에이전트나 호출 전용 에이전트를 지켜봅니다."
+      "watchNeedsAgent": "감독은 흐름 안의 에이전트나 호출 전용 에이전트를 지켜봅니다.",
+      "advisorRole": "감독의 역할은 에이전트로 가져오지 않습니다."
     },
     "outline": "팀 구조",
     "addStep": "단계 추가",
@@ -5829,9 +5830,6 @@
       "note": "메모",
       "prompt": "지시",
       "model": "모델",
-      "invocation": "실행 방식",
-      "scheduled": "흐름 안에서",
-      "callable": "호출될 때",
       "retry": "실패 후 재시도",
       "maxIterations": "최대 회차",
       "stallDetection": "회차가 나아지지 않으면 멈추기",
@@ -5881,6 +5879,7 @@
     "addInto": "{name} 안에",
     "addOnEdge": "이 연결 위에",
     "addWatching": "{name} 지켜보기",
+    "watchLink": "{advisor} → {agent} 지켜봄",
     "collapseAll": "모든 상자 접기",
     "expandAll": "모든 상자 펼치기",
     "undo": "실행 취소",

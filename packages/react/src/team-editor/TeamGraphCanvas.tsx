@@ -675,6 +675,15 @@ export function TeamGraphCanvas({
                     : 'n';
               return (
                 <g key={edge.id} data-edge={edge.id}>
+                  {edge.kind === 'advise' ? (
+                    // Named for whoever hovers it; the line itself carries no label.
+                    <title>
+                      {t('watchLink', {
+                        advisor: nodes.get(edge.from)?.label ?? edge.from,
+                        agent: nodes.get(edge.to)?.label ?? edge.to,
+                      })}
+                    </title>
+                  ) : null}
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: a pointer shortcut; the inspector lists each connection with its own controls. */}
                   <path
                     d={edge.path}
@@ -810,6 +819,8 @@ export function TeamGraphCanvas({
                     >
                       {node.label}
                     </span>
+                    {/* An advisor is told apart by more than its icon and its row. */}
+                    {kind === 'observer' ? <span className="sr-only">{kindName(node)}</span> : null}
                     {problemMark(item.id)}
                     <span className="grow" />
                     {item.kind === 'tile' ? <span aria-hidden className="size-5 shrink-0" /> : null}
@@ -825,7 +836,7 @@ export function TeamGraphCanvas({
                     >
                       {summary(node)}
                     </span>
-                    {definition.entryNodeId === node.id ? (
+                    {definition.entryNodeId === node.id && kind !== 'observer' ? (
                       <KitBadge size="compact" color={KIND_COLOR.output}>
                         {t('start')}
                       </KitBadge>

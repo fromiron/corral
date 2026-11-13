@@ -54,6 +54,7 @@ import {
   checkPorts,
   connectPorts,
   type EditResult,
+  importableRoles,
   importRole,
   type Pattern,
   type Placement,
@@ -453,7 +454,7 @@ export function TeamEditor({
       onSelect: () => copyRole(role, at),
     })),
     ...teams.flatMap((team) =>
-      (team.roles ?? []).map((role) => ({
+      importableRoles({ nodes: [], roles: team.roles ?? [] }).map((role) => ({
         value: `role:${team.corralId}:${role.id}`,
         label: role.name,
         icon: Copy,
