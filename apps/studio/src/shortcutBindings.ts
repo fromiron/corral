@@ -53,8 +53,10 @@ export function bindingError(
   effective: ShortcutBindings,
   desktop: boolean,
 ): 'reserved' | 'conflict' | null {
+  // A quote is taken while reading a reply, outside any text box, so Alt alone may lead its keys.
+  const altOnly = id === 'reply.quote' && candidate?.mod !== true && candidate?.alt === true;
   if (
-    candidate?.mod !== true ||
+    (candidate?.mod !== true && !altOnly) ||
     typeof candidate.key !== 'string' ||
     !/^(?:[a-z0-9,./[\]]|Digit)$/i.test(candidate.key) ||
     (candidate.alt !== undefined && typeof candidate.alt !== 'boolean') ||
@@ -64,7 +66,7 @@ export function bindingError(
   )
     return 'reserved';
   if (
-    /^[acvxzysfqwt]$/i.test(candidate.key) ||
+    (!altOnly && /^[acvxzysfqwt]$/i.test(candidate.key)) ||
     (!desktop && /^(?:[nlrpd1-9]|Digit)$/i.test(candidate.key))
   )
     return 'reserved';

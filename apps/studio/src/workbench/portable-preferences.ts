@@ -14,9 +14,26 @@ import {
   preferences,
 } from './preferences.ts';
 
+type PortableShortcuts = NonNullable<PortableApplication['shortcuts']>;
+/** Keys that stay on this device: the reply quote may take Alt alone, which a vault cannot hold. */
+const LOCAL_ONLY = new Set<string>(['reply.quote']);
+const portableShortcuts = (bindings: ShortcutBindings): PortableShortcuts =>
+  Object.fromEntries(
+    Object.entries(bindings).filter(([id]) => !LOCAL_ONLY.has(id)),
+  ) as PortableShortcuts;
+const localShortcuts = (bindings: ShortcutBindings): ShortcutBindings =>
+  Object.fromEntries(Object.entries(bindings).filter(([id]) => LOCAL_ONLY.has(id)));
+
 export function portablePreferences(locale: 'en' | 'ko'): PortableApplication {
   const { theme, sendKey, notify } = preferences.getState();
-  return { version: 1, theme, sendKey, notify, locale, shortcuts: readShortcutBindings() };
+  return {
+    version: 1,
+    theme,
+    sendKey,
+    notify,
+    locale,
+    shortcuts: portableShortcuts(readShortcutBindings()),
+  };
 }
 async function revision(value: PortableApplication) {
   const hash = await crypto.subtle.digest(
@@ -41,9 +58,14 @@ export async function applyPortablePreferences(
         return chord ? [[shortcut.id, chord]] : [];
       }),
     ) as ShortcutBindings;
-    const effective = { ...defaults, ...target.shortcuts };
+    const effective = {
+      ...defaults,
+      ...localShortcuts(readShortcutBindings()),
+      ...target.shortcuts,
+    };
     for (const shortcut of SHORTCUTS) {
-      const chord = target.shortcuts[shortcut.id];
+      if (LOCAL_ONLY.has(shortcut.id)) continue;
+      const chord = target.shortcuts[shortcut.id as keyof PortableShortcuts];
       if (chord && bindingError(shortcut.id, chord, effective, desktop))
         throw new Error(
           `The shortcut for ${shortcut.id} is reserved or conflicts on this device. Choose local keys before applying.`,
@@ -55,7 +77,11 @@ export async function applyPortablePreferences(
   const [actual, desired] = await Promise.all([revision(current), revision(target)]);
   if (actual !== expectedRevision && actual !== desired)
     throw new Error('Browser preferences changed since preview. Preview or recover again.');
-  if (target.shortcuts) writeShortcutBindings(target.shortcuts);
+  if (target.shortcuts)
+    writeShortcutBindings({
+      ...portableShortcuts(target.shortcuts),
+      ...localShortcuts(readShortcutBindings()),
+    });
   changePreferences({
     theme: target.theme,
     // A different brightness from the vault replaces a named theme; the same one keeps it.
@@ -71,7 +97,7 @@ export async function applyPortablePreferences(
     sendKey: saved.sendKey,
     notify: saved.notify,
     locale: localStorage.getItem('corral:locale') === 'ko' ? 'ko' : 'en',
-    ...(target.shortcuts ? { shortcuts: readShortcutBindings() } : {}),
+    ...(target.shortcuts ? { shortcuts: portableShortcuts(readShortcutBindings()) } : {}),
   };
   if ((await revision(readback)) !== desired)
     throw new Error(

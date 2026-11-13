@@ -131,6 +131,23 @@ it('a quote chip shows the quote mark and the first 40 characters, folding line 
   }
 });
 
+it.each([
+  // A family emoji joined by ZWJs, and Hangul built of conjoining jamo, each one character.
+  ['an emoji sequence', '👨‍👩‍👧'],
+  ['conjoining Hangul', '각'],
+])('a quote chip cuts its opening between characters, never inside %s', async (_name, unit) => {
+  // The 40th character is the multi-unit one, so a cut by code point would split it.
+  const text = `${'a'.repeat(39)}${unit}${'b'.repeat(10)}`;
+  const { chip, cleanup } = await renderChip(quoteOf(text));
+  try {
+    expect(chip?.querySelector('[aria-hidden=true][title]')?.textContent).toBe(
+      `${'a'.repeat(39)}${unit}…`,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 it('a short quote shows whole, with no ellipsis', async () => {
   const { chip, cleanup } = await renderChip(quoteOf('Short'));
   try {

@@ -52,6 +52,7 @@ import { agentSummary } from './agentSummary.ts';
 import { holdPointer } from './ChatView.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
 import { chooseProcess, keepRowHeight, processChoice, rowHeight } from './processChoices.ts';
+import { ReplyBody } from './ReplySelection.tsx';
 import { RunHead, RunRow, RunTail, TurnEnd } from './RunRow.tsx';
 import { TurnProcess, useStepName } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
@@ -682,11 +683,13 @@ export function RunMessage({
             aria-live="off"
             className="live-text flex min-w-0 flex-col gap-1 wrap-anywhere"
           >
-            {working || handoff ? (
-              <SafeMarkdown text={shownText[1].text} size="chat" />
-            ) : (
-              <MessageBody text={shownText[1].text} markdown size="chat" copy={false} />
-            )}
+            <ReplyBody runId={runId} modelCallId={shownText[0]}>
+              {working || handoff ? (
+                <SafeMarkdown text={shownText[1].text} size="chat" />
+              ) : (
+                <MessageBody text={shownText[1].text} markdown size="chat" copy={false} />
+              )}
+            </ReplyBody>
             {/* Under the words it stopped at, so they keep their place. */}
             {cutOff ? (
               <p className="text-caption text-muted-foreground" role="note">
@@ -1016,12 +1019,20 @@ function ChatResult({
       sessionId={sessionId}
     />
   );
+  // The model call that wrote the answer: a quote of it counts in its drawn text.
+  const replyCall = projection.artifacts[result.artifactVersionId]?.modelCallId;
   // in a conversation the answer is always visible, without a version header.
   if (sessionId && !partial && !result.media && !review)
     return (
       <div className="flex min-w-0 flex-col gap-1 wrap-anywhere" data-testid="chat-result">
         {text !== undefined ? (
-          <MessageBody text={text} markdown size="chat" copy={false} />
+          replyCall ? (
+            <ReplyBody runId={projection.runId} modelCallId={replyCall}>
+              <MessageBody text={text} markdown size="chat" copy={false} />
+            </ReplyBody>
+          ) : (
+            <MessageBody text={text} markdown size="chat" copy={false} />
+          )
         ) : unread ? null : (
           <p className="text-caption text-muted-foreground">
             {ta(!bodyMetadataCurrent || readable ? 'loading' : 'retired')}

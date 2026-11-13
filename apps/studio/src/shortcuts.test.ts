@@ -46,6 +46,13 @@ describe('shortcut table', () => {
     });
   });
 
+  it('quotes a reply passage with Alt+Q, by the key it is on a Mac keyboard too', () => {
+    expect(shortcutFor(press({ key: 'q', code: 'KeyQ', altKey: true }))?.id).toBe('reply.quote');
+    expect(shortcutFor(press({ key: 'œ', code: 'KeyQ', altKey: true }))?.id).toBe('reply.quote');
+    expect(shortcutFor(press({ key: 'q', code: 'KeyQ' }))).toBeNull();
+    expect(shortcutLabel('reply.quote')).toBe('Alt+Q');
+  });
+
   it('gives every shortcut a distinct chord', () => {
     const chords = SHORTCUTS.map((s) => JSON.stringify(s.chord));
     expect(new Set(chords).size).toBe(chords.length);

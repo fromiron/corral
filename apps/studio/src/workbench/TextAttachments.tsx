@@ -167,6 +167,25 @@ export function TextAttachmentList({ attachments }: { attachments: TextAttachmen
 
 const QUOTE_CHIP_LENGTH = 40;
 
+/**
+ * A quote's text on one line and its opening: the first 40 characters as a reader counts them
+ * (grapheme clusters, so a joined emoji or a syllable of conjoining jamo is never cut).
+ */
+export function quoteOpening(value: string) {
+  const text = value.replace(/\s*[\r\n]+\s*/g, ' ');
+  const characters =
+    typeof Intl.Segmenter === 'function'
+      ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map(
+          (part) => part.segment,
+        )
+      : [...text];
+  const opening =
+    characters.length > QUOTE_CHIP_LENGTH
+      ? `${characters.slice(0, QUOTE_CHIP_LENGTH).join('')}…`
+      : text;
+  return { text, opening };
+}
+
 /** A reply quote in the chip row: its mark and opening words; the whole passage is its name. */
 export function QuoteChip({
   item,
@@ -178,12 +197,7 @@ export function QuoteChip({
   onRemove(): void;
 }) {
   const t = useTranslations('Composer');
-  const text = item.text.replace(/\s*[\r\n]+\s*/g, ' ');
-  const characters = [...text];
-  const opening =
-    characters.length > QUOTE_CHIP_LENGTH
-      ? `${characters.slice(0, QUOTE_CHIP_LENGTH).join('')}…`
-      : text;
+  const { text, opening } = quoteOpening(item.text);
   return (
     <li className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-caption">
       <Quote className="size-3 shrink-0 text-muted-foreground" />

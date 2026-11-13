@@ -63,3 +63,17 @@ it('rejects conflicting, editing, OS/browser and corrupt saved shortcuts', () =>
   expect(shortcutFor(press({ getModifierState: () => true }))).toBeNull();
   expect(shortcutFor(press({ metaKey: true }))).toBeNull();
 });
+
+it('lets only the reply quote take Alt alone, and never a bare key', () => {
+  storage();
+  expect(bindingError('reply.quote', { alt: true, key: 'e' }, effectiveShortcuts(), false)).toBe(
+    null,
+  );
+  expect(bindingError('reply.quote', { key: 'e' }, effectiveShortcuts(), false)).toBe('reserved');
+  expect(bindingError('palette', { alt: true, key: 'e' }, effectiveShortcuts(), false)).toBe(
+    'reserved',
+  );
+  expect(bindingError('reply.quote', { mod: true, key: 'k' }, effectiveShortcuts(), false)).toBe(
+    'conflict',
+  );
+});

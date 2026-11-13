@@ -62,3 +62,22 @@ it('keeps the named theme when the imported theme is the same as now', async () 
   await importTheme('dark');
   expect(preferences.getState()).toMatchObject({ theme: 'dark', palette: 'builtin:monokai' });
 });
+
+it('keeps the reply quote key on this device: out of the export, and through an import', async () => {
+  values.set(
+    'corral:shortcuts:v1:web',
+    JSON.stringify({
+      palette: { mod: true, shift: true, key: 'k' },
+      'reply.quote': { alt: true, key: 'e' },
+    }),
+  );
+  const current = portablePreferences('en');
+  expect(current.shortcuts).toEqual({ palette: { mod: true, shift: true, key: 'k' } });
+  const target: PortableApplication = { ...current, shortcuts: { help: { mod: true, key: '/' } } };
+  const readback = await applyPortablePreferences(target, await revision(current), 'en', () => {});
+  expect(readback.shortcuts).toEqual({ help: { mod: true, key: '/' } });
+  expect(JSON.parse(values.get('corral:shortcuts:v1:web') ?? '{}')).toEqual({
+    help: { mod: true, key: '/' },
+    'reply.quote': { alt: true, key: 'e' },
+  });
+});

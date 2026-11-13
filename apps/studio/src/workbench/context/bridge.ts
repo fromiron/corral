@@ -65,14 +65,18 @@ export function mergeComposerAttachment(
     ? value.findIndex((item) => textAttachmentKey(item) === request.replaceKey)
     : -1;
   if (request.replaceKey && index < 0) return { ok: false, reason: 'changed' };
+  // The same passage again keeps its chip; with other words (a reply still streaming) the later
+  // capture takes its place.
+  const passage = value.findIndex((item) => samePassage(item.provenance, request.attachment));
   const next = request.replaceKey
     ? value.map((item, i) => (i === index ? request.attachment : item))
-    : value.some(
-          (item) =>
-            textAttachmentKey(item) === key || samePassage(item.provenance, request.attachment),
-        )
+    : value.some((item) => textAttachmentKey(item) === key)
       ? value
-      : [...value, request.attachment];
+      : passage >= 0
+        ? value[passage]?.text === request.attachment.text
+          ? value
+          : value.map((item, i) => (i === passage ? request.attachment : item))
+        : [...value, request.attachment];
   return validTextAttachments(next) ? next : { ok: false, reason: 'limit' };
 }
 export function mergeComposerCapture(
