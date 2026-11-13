@@ -12,7 +12,7 @@
 |---|---|
 | D&D 편집 | 빈 캔버스에서 노드를 드롭·연결하면 실제 실행 순서가 바뀐다 |
 | 협업 | 질문·답변·제출, 동적 자식 호출(기본 깊이 2) |
-| 제한된 Loop | 여러 Loop와 중첩, Loop마다 회차 상한·정체 감지, 다 쓰면 `exhausted` 경로나 사용자 확인 |
+| 제한된 Loop | 여러 Loop와 중첩, Loop마다 회차 상한·정체 감지·한도 정책, 다 쓰면 `exhausted` 경로나 Run 실패 |
 | Reins | 실행 중 지시 접수, pause/resume, 전체·개별 취소, 미래 설정 patch, 승인·반려 |
 | 단일 확정자 | 도메인 상태는 Coordinator만 확정한다. Pi·LangGraph·UI store는 확정하지 않는다 |
 | 불변 산출물 | `artifactId + version`은 바뀌지 않고, 제출 버전만 다음 단계로 간다 |

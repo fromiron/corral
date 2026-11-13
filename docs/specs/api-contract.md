@@ -306,6 +306,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `review.stale` | reviewVersion,newCriteriaVersion,cause |
 | `loop.iteration_started` | iterationId,no,pinnedCarryInputs,criteriaVersion |
 | `loop.iteration_finished` | outcome,submittedVersions |
+| `loop.escalated` | loopNodeId,iterationId(걸린 회차),reason(`cap_reached`·`stalled`),policy(`raise_reasoning`·`upper_model`),nodeIds(바뀐 Agent 노드). `raise_reasoning`은 노드별 `level`, `upper_model`은 `modelProfile`. 의미는 [루프 실행](features/team-graph.md#루프-실행) |
 | `workflow.joined` | nodeId,policy,iterationId,cancelledNodeIds. Join이 길을 이었다. `any`가 멈춘 분기의 단계를 남긴다([병렬 실행](features/team-graph.md#병렬-실행)) |
 | `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion. `breakpoint`는 nodeId |
 | `approval.resolved` | decision,actor,subjectVersions. 사람이 승인한 도구 승인은 `scope`(`once`\|`run`). 등록 검사 승인 종료는 선택 reason(cancelled/timeout/execution_ended)과 runtime actor로 기록한다. "이 실행 동안 허용"이 함께 닫은 도구 승인은 reason `allowed_for_run`과 runtime actor로 기록한다 |
@@ -343,12 +344,12 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 
 구현에서 정한 검토·승인 규칙:
 
-- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop가 멈출 때 한 라운드 더, 이유는 `loopStop`), `route`(router가 고르지 못한 route, 고를 수 있는 route는 `routes`), `check`(check Decision의 검사에 판정이 없음, 승인하면 다시 실행), `final_output`(Output의 `requireApproval`), `breakpoint`(중단점이 걸린 단계가 시작 전 멈춤, [중단점](features/fork-and-breakpoints.md#중단점)) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
+- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `route`(router가 고르지 못한 route, 고를 수 있는 route는 `routes`), `check`(check Decision의 검사에 판정이 없음, 승인하면 다시 실행), `final_output`(Output의 `requireApproval`), `breakpoint`(중단점이 걸린 단계가 시작 전 멈춤, [중단점](features/fork-and-breakpoints.md#중단점)) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
 - `route` 승인을 승인할 때 `resolve_approval.routeId`는 그 승인의 `routes` 중 하나여야 하고, 다른 승인과 거절에는 `routeId`를 보내지 않는다. 어기면 `SCHEMA_INVALID`다. 고른 route는 `approval.resolved.routeId`에 남는다. 의미는 [팀 그래프 모델](features/team-graph.md#router-실행)을 따른다.
 - 도구 승인(`tool.purpose: tool`)을 승인할 때 `resolve_approval.scope`는 `once`(기본) 또는 `run`이다. `run`은 [하네스 계약](harness-contract.md)의 "이 실행 동안 허용"이며, 도구 승인이 아닌 승인이나 거절에 `scope: run`을 보내면 `SCHEMA_INVALID`다. `approval.resolved`는 `scope`를 남기고, 그 허용으로 다시 묻지 않고 넘어간 호출은 `tool.authorized`(executionId, toolCallId, 근거가 된 `approvalId`, fingerprint)를 남긴다. 허용 목록은 따로 저장하지 않고 이 이벤트들에서 만든다. 명령 실행의 승인 요청(`approval.requested.tool`)은 호출별 지문 `fingerprint`와 함께 Run 범위 허용을 대조하는 `grantFingerprint`를 담는다. `grantFingerprint`는 명령 계획의 `launchFingerprint`(호출별 식별자와 트리 내용을 뺀 실행 지문)에 도구 등록 hash와 정책 revision을 더한 것이어서, 도구 등록이나 정책이 달라지면 다시 묻는다. 다른 도구는 `fingerprint`로 대조한다. 한 승인을 `run`으로 승인하면 같은 Run에서 같은 대조 값으로 기다리던 다른 도구 승인도 함께 닫힌다: 각각 `approval.resolved`(decision `approve`, runtime actor, reason `allowed_for_run`)와 사람의 승인을 가리키는 `tool.authorized`를 남긴다.
 - `resolve_approval`의 `subjectVersionId`는 `subjectVersions[0]`이어야 한다. 검사 순서: 없는 승인 `TARGET_NOT_FOUND` → 이미 해결 `APPROVAL_STALE` → `expectedControlRevision` 불일치 `STALE_CONTROL_REVISION` → 다른 버전 `APPROVAL_STALE`. 같은 commandId 재전송은 처음 receipt를 돌려준다.
 - 검토 본문이 `review.schema.json`이 아니거나, 대상이 검토자가 받은 입력이 아니거나, 기준이 Run의 `criteriaVersionId`가 아니면 `review.recorded.verdict`는 `inconclusive`이고 `user_action` 승인으로 넘어간다. 통과로 처리하지 않는다.
-- 거절한 `loop_cap`·`route`·`check`·`final_output`·`breakpoint`는 Run을 취소로 끝낸다.
+- 거절한 `route`·`check`·`final_output`·`breakpoint`는 Run을 취소로 끝낸다.
 - 같은 Agent가 다음 Loop 라운드에 쓴 버전은 같은 artifactId의 다음 version이다. 투영의 `parentVersionId`가 이전 버전을 가리킨다.
 
 ## 5. timeout·재연결·다중 탭
