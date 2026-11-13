@@ -741,6 +741,103 @@ it('an interrupted output is marked as cut off under its words', async () => {
   );
 });
 
+// An interrupt cuts a response and the run goes on (workbench.md, 대화 본문과 중단된 출력): the
+// cut words stay where they stood, as an interrupted response, above what the run says next and
+// above its final answer once it ends. The body only grows below them.
+it('keeps a response cut by an interrupt in its place through the next reply and the run end', async () => {
+  const first = running();
+  first.modelCalls.cut = {
+    modelCallId: 'cut',
+    executionId: 'lead',
+    finished: true,
+    responseRef: null,
+    interrupted: true,
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  const stopped = () => f.container.querySelector<HTMLElement>('[data-testid="stopped-text"]');
+  const live = () => f.container.querySelector<HTMLElement>('[data-testid="live-text"]');
+  const note = () => stopped()?.querySelector('[role="note"]') ?? null;
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        cut: { text: 'Words cut by the interrupt', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  // Cut, with the next request still on its way: the words stay, with nothing new under them.
+  const block = stopped();
+  expect(block?.textContent).toContain('Words cut by the interrupt');
+  expect(f.container.querySelector('[data-testid="reply-pending"]')).toBeNull();
+  expect(live()).toBeNull();
+  expect(note()).toBeNull();
+  // The next reply is written under them; they read as interrupted from then on.
+  first.modelCalls.next = {
+    modelCallId: 'next',
+    executionId: 'lead',
+    finished: false,
+    responseRef: null,
+  } as unknown as RunProjection['modelCalls'][string];
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        cut: { text: 'Words cut by the interrupt', next: 1, broken: false, completed: false },
+        next: { text: 'The answer body', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  expect(stopped()).toBe(block);
+  expect(note()?.textContent).toBe(messages.MessageBody.interrupted);
+  expect(live()?.textContent).toContain('The answer body');
+  expect(block?.compareDocumentPosition(live() as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  // The run ends with the answer: the cut words are still there, above it.
+  first.modelCalls.next = {
+    ...first.modelCalls.next,
+    finished: true,
+    responseRef: 'response_next',
+  } as RunProjection['modelCalls'][string];
+  await f.set(answered(first));
+  expect(stopped()).toBe(block);
+  expect(block?.textContent).toContain('Words cut by the interrupt');
+  expect(note()?.textContent).toBe(messages.MessageBody.interrupted);
+  const answer = f.container.querySelector('[data-testid="chat-result"]');
+  expect(answer?.textContent).toContain('The answer body');
+  expect(block?.compareDocumentPosition(answer as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(part(f.container, 'body')?.contains(block as Node)).toBe(true);
+});
+
+// A finishing run's reply can leave the store before its answer is read (its response body
+// follows the answer's, and the answer arrives with the turn's record): the words stay in their
+// place until the answer takes it, with no wait drawn in between.
+it('keeps the last words of a finishing run until its answer is read, even once the store lets them go', async () => {
+  const first = running();
+  first.modelCalls.next = {
+    modelCallId: 'next',
+    executionId: 'lead',
+    finished: false,
+    responseRef: null,
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  const live = () => f.container.querySelector<HTMLElement>('[data-testid="live-text"]');
+  const answer = () => f.container.querySelector<HTMLElement>('[data-testid="chat-result"]');
+  await act(async () =>
+    fixture.store?.setState({
+      // The answer's body is still being read.
+      loadArtifact: () => new Promise<void>(() => {}),
+      artifactTexts: {},
+      streams: { next: { text: 'The answer body', next: 1, broken: false, completed: false } },
+    }),
+  );
+  expect(live()?.textContent).toContain('The answer body');
+  // The run ends, and the store drops the reply's words before the answer is read.
+  await act(async () => fixture.store?.setState({ projection: answered(first), streams: {} }));
+  expect(live()?.textContent).toContain('The answer body');
+  expect(answer()).toBeNull();
+  // Read: the answer takes the words' place.
+  await act(async () => fixture.store?.setState({ artifactTexts: { answer: 'The answer body' } }));
+  expect(live()).toBeNull();
+  expect(answer()?.textContent).toContain('The answer body');
+});
+
 it.each([
   ['cancel_confirmed', null],
   ['internal_error', messages.RunReasons.internal_error],
