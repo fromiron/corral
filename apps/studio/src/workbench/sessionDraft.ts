@@ -21,6 +21,8 @@ const consumed = new Map<string, number>();
 
 export interface ComposerDraft {
   meetingMentions?: string[];
+  /** A meeting message for no one: posted, nobody asked to reply. */
+  meetingRecipients?: 'none';
   harness?: HarnessBindingRef;
   permissionMode?: PermissionMode;
   images?: ImageAttachment[];
@@ -80,6 +82,7 @@ export function parseComposerDraft(raw: string | null): ComposerDraft {
             ),
           }
         : {}),
+      ...(value.meetingRecipients === 'none' ? { meetingRecipients: 'none' as const } : {}),
       text: typeof value.text === 'string' ? value.text : '',
       ...(value.taskScope === 'review_only' ? { taskScope: 'review_only' as const } : {}),
       ...(value.verificationScope === 'release' ? { verificationScope: 'release' as const } : {}),
@@ -102,6 +105,7 @@ export function serializeComposerDraft(draft: ComposerDraft): string | null {
   if (
     !draft.text &&
     !draft.meetingMentions?.length &&
+    !draft.meetingRecipients &&
     !draft.references.length &&
     !draft.attachments?.length &&
     !draft.images?.length &&

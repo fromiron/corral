@@ -195,6 +195,19 @@
     "scheduled": "In the flow",
     "callable": "Only when called",
     "observer": "As an advisor",
+    "watches": "Watches",
+    "addWatched": "Add an agent to watch",
+    "removeWatched": "Stop watching {target}",
+    "readTools": "Reads",
+    "readTool": {
+      "search": "Search",
+      "read_document": "Read documents",
+      "list_files": "List files",
+      "read_file": "Read files"
+    },
+    "reviewEvery": "Reviews every",
+    "reviewField": "Model requests between reviews",
+    "reviewRequests": "{count, plural, one {model request} other {model requests}}",
     "prompt": "Role prompt",
     "contract": "Output",
     "contracts": {
@@ -2605,7 +2618,8 @@
       "new": "Send",
       "join": "Join",
       "interrupt": "Interrupt",
-      "queue": "Next"
+      "queue": "Next",
+      "meeting": "Send"
     },
     "sendMenu": "Send as",
     "targetLabel": "Send to {name}",
@@ -5210,7 +5224,6 @@
     "requestFailed": "The model provider returned HTTP {status}. Check the model connection or try again.",
     "answerFailedHint": "The model could not complete this reply. Try again or open diagnostics for the reported cause.",
     "participantDefault": "Participant {number}",
-    "clearDraft": "Clear draft",
     "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
     "retrySummary": "Request minutes again",
     "heading": "Meeting",
@@ -5270,8 +5283,6 @@
     "stopRound": "Stop answering",
     "message": "Meeting message",
     "placeholder": "Write a message",
-    "mentions": "To",
-    "everyone": "Without a mention, whoever the message calls answers. If it calls no one, one participant who fits the context answers.",
     "send": "Send",
     "summarise": "Ask secretary for a plan",
     "summaryRequest": "Please organise our conversation into meeting minutes and an implementation plan based on the conclusions we have reached. Keep unresolved questions separate from agreed work.",
@@ -5309,7 +5320,13 @@
     "expandRecords": "Expand records",
     "compactRecords": "Compact records",
     "closeRecords": "Close records",
-    "mentionParticipant": "Add @{name} to the message"
+    "mentionParticipant": "Add @{name} to the message",
+    "recipients": {
+      "auto": "Auto",
+      "none": "No one",
+      "count": "{count, plural, one {# person} other {# people}}",
+      "label": "Recipients: {name}"
+    }
   },
   "MeetingsDecisions": {
     "decisionLabel": "Decision v{number} · {goal}",
@@ -5770,7 +5787,8 @@
       "loop": "Repeats the steps inside it",
       "team": "Groups steps into a sub-team",
       "join": "Waits for parallel branches",
-      "output": "Receives the final version"
+      "output": "Receives the final version",
+      "observer": "Watches agents and advises them"
     },
     "rounds": "up to {count, plural, one {# round} other {# rounds}}",
     "roundsUnlimited": "no round limit",
@@ -5802,7 +5820,11 @@
       "notABox": "Only a Loop or a Team defined here can hold steps.",
       "noPredecessor": "Only a step that something leads to can be split.",
       "oneAgentOnly": "Split one agent in the flow at a time.",
-      "roleNeedsAgent": "Choose one agent to copy a role onto."
+      "roleNeedsAgent": "Choose one agent to copy a role onto.",
+      "advisorOutsideBoxes": "An advisor stays outside Loops and Teams.",
+      "watchNeedsAdvisor": "Only an advisor watches agents.",
+      "watchNeedsAgent": "An advisor watches an agent in the flow or a callable agent.",
+      "advisorRole": "An advisor’s role is not copied onto an agent."
     },
     "outline": "Team structure",
     "addStep": "Add a step",
@@ -5819,10 +5841,6 @@
       "note": "Note",
       "prompt": "Instructions",
       "model": "Model",
-      "invocation": "Runs",
-      "scheduled": "In the flow",
-      "callable": "When called",
-      "observer": "As an advisor",
       "retry": "Retries after a failure",
       "maxIterations": "Most rounds",
       "stallDetection": "Stop when rounds stop improving",
@@ -5871,6 +5889,8 @@
     "addAfter": "after {name}",
     "addInto": "into {name}",
     "addOnEdge": "on this connection",
+    "addWatching": "watching {name}",
+    "watchLink": "{advisor} watches {agent}",
     "collapseAll": "Collapse every box",
     "expandAll": "Expand every box",
     "undo": "Undo",

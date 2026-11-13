@@ -18,8 +18,8 @@ import type { StepKind } from './commands.ts';
 // What each kind of step looks like in the team editor: its icon and badge colour, shared by the
 // canvas, the structure outline and the command menu.
 
-/** An advisor is named and drawn here; the editor does not offer to add one yet. */
-export type NodeKind = StepKind | 'callable' | 'observer';
+/** What a node is on screen: a step kind, or an agent that runs only when called. */
+export type NodeKind = StepKind | 'callable';
 
 export function kindOf(node: CorralNode): NodeKind {
   switch (node.type) {
@@ -67,6 +67,7 @@ export const KIND_COLOR: Record<NodeKind, KindColor> = {
 /** The steps the editor offers to add, in the order the palette and the command menu list them. */
 export const ADDABLE: StepKind[] = [
   'agent',
+  'observer',
   'review',
   'approval',
   'check',

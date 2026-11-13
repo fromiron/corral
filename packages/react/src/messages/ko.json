@@ -195,6 +195,19 @@
     "scheduled": "흐름 안에서",
     "callable": "호출될 때만",
     "observer": "감독으로",
+    "watches": "지켜볼 에이전트",
+    "addWatched": "지켜볼 에이전트 추가",
+    "removeWatched": "{target} 지켜보지 않기",
+    "readTools": "읽기 도구",
+    "readTool": {
+      "search": "검색",
+      "read_document": "문서 읽기",
+      "list_files": "파일 목록",
+      "read_file": "파일 읽기"
+    },
+    "reviewEvery": "모델 요청",
+    "reviewField": "검토 간격",
+    "reviewRequests": "{count, plural, other {번마다 검토}}",
     "prompt": "역할 프롬프트",
     "contract": "출력",
     "contracts": {
@@ -2605,7 +2618,8 @@
       "new": "보내기",
       "join": "합류",
       "interrupt": "끼어들기",
-      "queue": "다음"
+      "queue": "다음",
+      "meeting": "보내기"
     },
     "sendMenu": "전송 방식",
     "targetLabel": "{name}에게 보내기",
@@ -5210,7 +5224,6 @@
     "requestFailed": "모델 제공자가 HTTP {status} 오류를 반환했습니다. 모델 연결을 확인하거나 다시 요청하세요.",
     "answerFailedHint": "모델이 답변을 완료하지 못했습니다. 다시 요청하거나 진단 정보에서 보고된 원인을 확인하세요.",
     "participantDefault": "참가자 {number}",
-    "clearDraft": "초안 지우기",
     "summaryFailed": "비서가 회의록을 정리하지 못했습니다. 다시 요청한 뒤 결정을 검토·채택하세요.",
     "retrySummary": "회의록 다시 요청",
     "heading": "회의",
@@ -5270,8 +5283,6 @@
     "stopRound": "응답 중지",
     "message": "회의 메시지",
     "placeholder": "메시지를 입력하세요",
-    "mentions": "받는 사람",
-    "everyone": "멘션이 없으면 메시지에서 부른 참가자가 답합니다. 부른 사람이 없으면 맥락에 맞는 참가자 한 명이 답합니다.",
     "send": "보내기",
     "summarise": "비서에게 플랜 정리 요청",
     "summaryRequest": "지금까지 대화하며 도출한 결론을 바탕으로 회의록과 구현 플랜을 정리해 주세요. 아직 결정하지 않은 질문은 합의한 작업과 구분해 주세요.",
@@ -5309,7 +5320,13 @@
     "expandRecords": "기록 넓게 보기",
     "compactRecords": "기록 좁게 보기",
     "closeRecords": "기록 닫기",
-    "mentionParticipant": "메시지에 @{name} 넣기"
+    "mentionParticipant": "메시지에 @{name} 넣기",
+    "recipients": {
+      "auto": "자동",
+      "none": "없음",
+      "count": "{count}명",
+      "label": "받는 사람: {name}"
+    }
   },
   "MeetingsDecisions": {
     "decisionLabel": "결정 v{number} · {goal}",
@@ -5770,7 +5787,8 @@
       "loop": "안의 단계를 반복합니다",
       "team": "단계를 하위 팀으로 묶습니다",
       "join": "병렬 갈래를 기다립니다",
-      "output": "최종 버전을 받습니다"
+      "output": "최종 버전을 받습니다",
+      "observer": "에이전트를 지켜보고 조언합니다"
     },
     "rounds": "최대 {count}회",
     "roundsUnlimited": "회차 제한 없음",
@@ -5802,7 +5820,11 @@
       "notABox": "이 팀 안에서 정의한 Loop나 팀만 단계를 담을 수 있습니다.",
       "noPredecessor": "앞 단계가 있는 단계만 나눌 수 있습니다.",
       "oneAgentOnly": "흐름 안의 에이전트 하나씩만 나눌 수 있습니다.",
-      "roleNeedsAgent": "역할을 복사할 에이전트 하나를 고르세요."
+      "roleNeedsAgent": "역할을 복사할 에이전트 하나를 고르세요.",
+      "advisorOutsideBoxes": "감독은 Loop나 팀 밖에 둡니다.",
+      "watchNeedsAdvisor": "에이전트를 지켜보는 것은 감독뿐입니다.",
+      "watchNeedsAgent": "감독은 흐름 안의 에이전트나 호출 전용 에이전트를 지켜봅니다.",
+      "advisorRole": "감독의 역할은 에이전트로 가져오지 않습니다."
     },
     "outline": "팀 구조",
     "addStep": "단계 추가",
@@ -5819,10 +5841,6 @@
       "note": "메모",
       "prompt": "지시",
       "model": "모델",
-      "invocation": "실행 방식",
-      "scheduled": "흐름 안에서",
-      "callable": "호출될 때",
-      "observer": "감독으로",
       "retry": "실패 후 재시도",
       "maxIterations": "최대 회차",
       "stallDetection": "회차가 나아지지 않으면 멈추기",
@@ -5871,6 +5889,8 @@
     "addAfter": "{name} 다음에",
     "addInto": "{name} 안에",
     "addOnEdge": "이 연결 위에",
+    "addWatching": "{name} 지켜보기",
+    "watchLink": "{advisor} → {agent} 지켜봄",
     "collapseAll": "모든 상자 접기",
     "expandAll": "모든 상자 펼치기",
     "undo": "실행 취소",

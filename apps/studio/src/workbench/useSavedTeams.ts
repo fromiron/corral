@@ -1,6 +1,6 @@
 import type { CorralDefinition, CorralNode } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
-import type { TeamReference } from '@corral/react';
+import { importableRoles, type TeamReference } from '@corral/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useServices } from '../services.tsx';
 
@@ -53,7 +53,8 @@ export function useSavedTeams(
             ? {
                 ...team,
                 definitionRevision: saved.definitionRevision,
-                roles: saved.definition.roles,
+                // Not the roles its advisors run: those only advise.
+                roles: importableRoles(saved.definition),
               }
             : team;
         }),

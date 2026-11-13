@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { CorralDefinition } from '@corral/contracts';
 import { type CorralRepository, createKeyValueCorralRepository } from '@corral/core';
-import { addNode, emptyDraft } from '@corral/react';
+import { addAdvisor, addNode, emptyDraft } from '@corral/react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -111,6 +111,21 @@ describe('useSavedTeams: roles to import', () => {
     });
     expect(references[0]?.roles?.map((r) => [r.name, r.prompt])).toEqual([
       ['Release check', 'Check the release.'],
+    ]);
+  });
+
+  it('leaves out the roles a team’s advisors run', async () => {
+    const repository = memoryRepository();
+    const two = addNode(emptyDraft('Watched', 'Watched'), 'agent').draft;
+    const draft = addAdvisor(addNode(two, 'agent').draft).draft;
+    const harbor = await save(repository, draft.definition, 'default');
+    const editing = await save(repository, oneRole('Editing', 'Lead'), 'default');
+    const result = renderHook(repository, editing.corralId, 'default');
+    await waitFor(() => expect(result.current?.references[0]?.roles).toBeDefined());
+    expect(harbor.definition.roles.map((r) => r.name)).toContain('Advisor');
+    expect(result.current?.references[0]?.roles?.map((r) => r.name)).toEqual([
+      'Agent 1',
+      'Agent 2',
     ]);
   });
 

@@ -101,6 +101,36 @@ describe('subagents domain owner adapter', () => {
       /identity/,
     );
   });
+  it('refuses an advisor as the parent of imported subagents', async () => {
+    const { adapter, repository, source, bindings, definition } = await setup();
+    const before = await repository.get('target');
+    if (!before) throw new Error('the target team is missing');
+    // Its role could run subagents; an advisor still stays out of delegation (team-graph.md 11).
+    const saved = await repository.save({
+      definition: {
+        ...definition,
+        nodes: [
+          ...definition.nodes,
+          {
+            id: 'advisor',
+            type: 'agent',
+            label: 'Advisor',
+            roleId: 'owner',
+            invocation: 'observer',
+            outputName: 'notes',
+          },
+        ],
+        capabilityLinks: [
+          { id: 'watch', kind: 'advise', sourceNodeId: 'advisor', targetNodeId: 'parent' },
+        ],
+      },
+      expectedDefinitionRevision: before.definitionRevision,
+    });
+    if (!saved.ok) throw new Error(saved.message);
+    await expect(adapter.preview(source, { ...bindings, parentNodeId: 'advisor' })).rejects.toThrow(
+      /agent in the flow/,
+    );
+  });
   it('rejects source tools beyond the target parent and allows only explicit exclusion', async () => {
     const { adapter, source, bindings } = await setup();
     source.definition.roles[0]?.allowedWorkTools?.push('write_file');
