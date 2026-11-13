@@ -20,6 +20,7 @@ import { useTranslations } from 'use-intl';
 export function ComposerQueue({
   queued,
   autoStart,
+  autoStartShown = true,
   onAutoStartChange,
   startDisabled,
   onStart,
@@ -29,6 +30,8 @@ export function ComposerQueue({
   queued: SessionEntry[];
   /** Start the next saved request when a run of this session ends. */
   autoStart: boolean;
+  /** A server starts saved requests, so the switch is there. */
+  autoStartShown?: boolean;
   onAutoStartChange: (value: boolean) => void;
   startDisabled: boolean;
   onStart: (entry: SessionEntry) => void;
@@ -74,14 +77,16 @@ export function ComposerQueue({
       aria-label={t('queueHeading')}
       className="mx-auto mb-2 flex w-full max-w-(--chat-content-max-width) flex-col gap-1"
     >
-      <div className="flex justify-end px-1">
-        <Switch
-          label={t('autoStart')}
-          title={t('autoStartHint')}
-          checked={autoStart}
-          onToggle={() => onAutoStartChange(!autoStart)}
-        />
-      </div>
+      {autoStartShown ? (
+        <div className="flex justify-end px-1">
+          <Switch
+            label={t('autoStart')}
+            title={t('autoStartHint')}
+            checked={autoStart}
+            onToggle={() => onAutoStartChange(!autoStart)}
+          />
+        </div>
+      ) : null}
       <div
         ref={stack}
         className="relative"

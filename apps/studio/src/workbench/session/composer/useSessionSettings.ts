@@ -74,5 +74,32 @@ export function useSessionSettings({
     else await router.invalidate();
   };
 
-  return { autoChoice, updateAuto, updateTeam };
+  // Whether the server starts the next queued request when the run ends: a session setting
+  // (features/composer-flow.md "대기 요청과 넘겨받기"), shown as saved once the save confirms.
+  const [confirmedAutoStart, setConfirmedAutoStart] = useState<{
+    revision: number;
+    value: boolean;
+  } | null>(null);
+  const autoStart =
+    confirmedAutoStart && confirmedAutoStart.revision > session.revision
+      ? confirmedAutoStart.value
+      : session.autoStart;
+  const updateAutoStart = async (value: boolean) => {
+    setError(null);
+    try {
+      const result = await repository.updateSession(session.sessionId, {
+        autoStart: value,
+        expectedRevision: Math.max(session.revision, confirmedAutoStart?.revision ?? 0),
+      });
+      if (!mounted.current) return;
+      if (!result.ok) throw new Error(result.message);
+      setConfirmedAutoStart({ revision: result.session.revision, value });
+      await router.invalidate();
+    } catch (failure) {
+      if (mounted.current)
+        setError(failed(failure instanceof Error ? failure.message : String(failure)));
+    }
+  };
+
+  return { autoChoice, updateAuto, updateTeam, autoStart, updateAutoStart };
 }

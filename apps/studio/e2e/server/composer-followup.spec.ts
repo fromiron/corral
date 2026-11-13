@@ -25,11 +25,13 @@ test.describe('saved requests with a stale instruction draft', () => {
         await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
         const first = corral.server.coordinator.listRuns()[0];
         if (!first) throw new Error('First run missing');
-        // A next request sent while the run works waits behind it (workbench.md).
+        // A next request (Alt+Enter) sent while the run works waits behind it. The server starts
+        // it when the run ends unless the session's auto start is off.
+        await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
         await box.fill('Saved queued request');
-        await page.getByRole('button', { name: 'Send', exact: true }).click();
+        await box.press('Alt+Enter');
         await expect(page.getByRole('button', { name: 'Start now', exact: true })).toBeVisible();
-        if (path === 'auto')
+        if (path !== 'auto')
           await page
             .getByRole('switch', {
               name: 'Start the next queued task when the run ends',
@@ -63,12 +65,14 @@ test.describe('saved requests with a stale instruction draft', () => {
         await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
         await expect(box).toHaveValue('Keep this  stale instruction');
         const sessionId = new URL(page.url()).pathname.split('/').at(-1);
+        // `/steer` chose the send once; no target was picked, so the kept draft is not fixed to
+        // the ended run's execution (composer-flow.md "합류 대상").
         expect(
           await page.evaluate(
             (id) => JSON.parse(localStorage.getItem(`corral:session-draft:${id}`) ?? '{}').intent,
             sessionId,
           ),
-        ).toBe('steer');
+        ).toBeNull();
         expect(corral.errors).toEqual([]);
       } finally {
         release();

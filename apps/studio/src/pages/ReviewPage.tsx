@@ -10,7 +10,7 @@ import type {
   ReviewDecisionView,
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
-import type { RunSummary, WorkSession } from '@corral/core';
+import type { RunSummary, SessionEntryStart, WorkSession } from '@corral/core';
 import { EmptyView } from '@corral/react';
 import {
   Badge,
@@ -78,6 +78,7 @@ import { rangeChanged, sideText } from '../workbench/reviewComments.ts';
 import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
 import { reveal, reviewMoveFor, stepIndex } from '../workbench/reviewNavigation.ts';
 import { reviewSelection } from '../workbench/reviewSelection.ts';
+import { entryStart } from '../workbench/session/composer/send.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import { useBinding } from './FilesViews.tsx';
@@ -1331,6 +1332,7 @@ export function CommentsPanel({
       let sent = false;
       let detail: string | null = null;
       let commandId: string | null = null;
+      let start: SessionEntryStart | null = null;
       const next = Boolean(pending) || !active;
       if (next) {
         const command = pending ?? { key: ids.join('\0'), commandId: newCommandId() };
@@ -1347,6 +1349,7 @@ export function CommentsPanel({
         pendingReviewCommands.set(session.sessionId, command);
         setPending(command);
         commandId = command.commandId;
+        start = entryStart(command.autoRequest);
         const result = await services.startAuto(command.autoRequest);
         runId = result.runId;
         detail = result.receipt.error?.message ?? null;
@@ -1375,6 +1378,8 @@ export function CommentsPanel({
         executionId,
         detail,
         commandId,
+        // As the composer's new requests do, the entry keeps the start it was sent with.
+        ...(start ? { start } : {}),
       });
       if (!recorded.ok) throw new Error(recorded.message);
       if (pendingReviewCommands.get(session.sessionId)?.commandId === commandId) {
