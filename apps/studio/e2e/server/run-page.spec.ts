@@ -154,8 +154,10 @@ test('live event counts keep event filters, selection and scroll in the primary 
   await page.setViewportSize({ width: 1600, height: 900 });
   const { runId } = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/runs/${runId}`);
-  // The run waits; its record reads the request (the conversation's tray answers it).
-  await expect(page.getByTestId('run-respond')).toBeVisible({ timeout: 30_000 });
+  // The run waits; its record reads the request beside the conversation, whose tray answers it.
+  await expect(page.getByTestId('run-side').getByTestId('respond-in-conversation')).toBeVisible({
+    timeout: 30_000,
+  });
   // The decision comes from elsewhere (another client), so events arrive while this view stays.
   const approve = () =>
     page.evaluate(

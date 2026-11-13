@@ -73,11 +73,22 @@ function branchesOf(coordinator: Pick<Coordinator, 'getSnapshot'>, runId: string
 }
 
 /**
- * What the run waits on: the run header's Respond takes the person to the conversation's
- * needed-now tray, where it is answered.
+ * The way to respond the run record offers: its response area's Respond where the area shows,
+ * else the header pill's.
+ */
+const respondOf = (page: Page) =>
+  page
+    .getByTestId('respond-in-conversation')
+    .or(page.getByTestId('run-respond'))
+    .filter({ visible: true })
+    .first();
+
+/**
+ * What the run waits on: the record's Respond takes the person to the conversation's needed-now
+ * tray, where it is answered.
  */
 async function needsYou(page: Page) {
-  const respond = page.getByTestId('run-respond');
+  const respond = respondOf(page);
   if (await respond.isVisible()) await respond.click();
   const tray = page.locator('[data-pending-tray]');
   await expect(tray).toBeVisible();
@@ -259,7 +270,8 @@ test('a check Decision runs a registered check in the working copy, and a Loop t
       .getByRole('button', { name: 'Run this check once', exact: true });
     for (let step = 0; step < 4; step++) {
       await expect(status).toContainText(/Waiting for you|Failed/, { timeout: 15_000 });
-      if (!(await page.getByTestId('run-respond').isVisible())) break;
+      // Answered once, the conversation stays in front with its tray: the next launch waits there.
+      if ((await status.textContent())?.includes('Failed')) break;
       await needsYou(page);
       await check.first().click();
       await expect(status).not.toContainText('Waiting for you');

@@ -337,8 +337,10 @@ test('a card arriving while the person reads above leaves their place; Respond g
 
     // The run record reads the request and sends the person to the tray to answer it.
     await panelTab(page, 'Runs');
-    const respond = page.getByTestId('run-monitor').getByTestId('run-respond');
+    // Its response area offers Respond; the header's pill beside it only says the run waits.
+    const respond = page.getByTestId('run-monitor').getByTestId('respond-in-conversation');
     await expect(respond).toBeVisible();
+    await expect(page.getByTestId('run-monitor').getByTestId('run-respond')).toHaveCount(0);
     // The record reads it; the hidden conversation keeps the one way to answer it.
     expect(await buttonsNamed(page, 'Allow once')).toBe(1);
     const record = page.getByTestId('run-monitor').locator('[data-approval]');
@@ -400,6 +402,95 @@ test('a question out of view is told above the composer, and Respond brings its 
   await expect(tray(page)).toBeInViewport();
   // In view, the card says it; the notice does not say it again.
   await expect(notice).toHaveCount(0);
+  await form.getByRole('textbox', { name: 'Your answer' }).fill('A table');
+  await form.getByRole('button', { name: 'Send answer' }).click();
+  await expect(page.getByTestId('chat-result')).toContainText('Done.', { timeout: 30_000 });
+  expect(corral.errors).toEqual([]);
+});
+
+type ComposerFrame = { notice: boolean; height: number | null; tray: boolean };
+
+/**
+ * Every frame from now on: whether the composer tells of a wait, the composer's height, and
+ * whether the tray is there.
+ */
+const sampleComposer = () => {
+  const frames: ComposerFrame[] = [];
+  (window as unknown as { composerFrames: ComposerFrame[] }).composerFrames = frames;
+  const sample = () => {
+    const composer = document.querySelector('[data-testid="chat-composer"]');
+    frames.push({
+      notice: Boolean(document.querySelector('[data-testid="action-required"]')),
+      height: composer ? composer.getBoundingClientRect().height : null,
+      tray: Boolean(document.querySelector('[data-pending-tray]')),
+    });
+    requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+};
+
+const composerFrames = (page: Page) =>
+  page.evaluate(() =>
+    (window as unknown as { composerFrames: ComposerFrame[] }).composerFrames.slice(),
+  );
+
+test('a question arriving at the followed end, or there on load, brings no notice and keeps the composer still', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(150_000);
+  const asked = hold();
+  corral.fake?.setResponses([
+    async () => {
+      asked.reach();
+      await asked.opened;
+      return question();
+    },
+    fauxAssistantMessage('Done.'),
+  ]);
+  await corral.open('/');
+  await newConversation(page);
+  const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
+  await earlier(page, sessionId, 24);
+  await page.reload();
+  await expect(page.locator('[data-chat-item]').first()).toBeVisible();
+  await requestBox(page).fill('Ask me how to report it.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await asked.reached;
+  await waitForStill(page);
+  // Following the end of a conversation taller than its view.
+  const timeline = page.getByTestId('chat-timeline');
+  expect(await timeline.evaluate((box) => box.scrollHeight > box.clientHeight * 2)).toBe(true);
+  const form = tray(page).getByRole('form', { name: 'Waiting for you' });
+
+  // The question arrives at the end being followed: sampled every frame from before it comes.
+  await page.evaluate(sampleComposer);
+  asked.open();
+  await expect(form).toBeVisible({ timeout: 30_000 });
+  await waitForStill(page);
+  await expect(tray(page)).toBeInViewport();
+  const arriving = await composerFrames(page);
+  expect(arriving.filter((frame) => frame.tray).length).toBeGreaterThan(10);
+  expect(arriving.filter((frame) => frame.notice)).toEqual([]);
+  expect(new Set(arriving.map((frame) => frame.height)).size).toBe(1);
+
+  // A fresh load with the question waiting, sampled from the first frame: the composer's own
+  // lines settle as the run loads, but from the tray's first frame on its height holds, and it
+  // never grows past where it settles (a notice shown and withdrawn would).
+  await page.addInitScript(sampleComposer);
+  await page.reload();
+  await expect(form).toBeVisible({ timeout: 30_000 });
+  await waitForStill(page);
+  await expect(tray(page)).toBeInViewport();
+  const loading = await composerFrames(page);
+  const withTray = loading.slice(loading.findIndex((frame) => frame.tray));
+  expect(withTray.filter((frame) => frame.tray).length).toBeGreaterThan(10);
+  expect(loading.filter((frame) => frame.notice)).toEqual([]);
+  expect(new Set(withTray.map((frame) => frame.height)).size).toBe(1);
+  const settled = withTray.at(-1)?.height ?? 0;
+  expect(Math.max(...loading.map((frame) => frame.height ?? 0))).toBe(settled);
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
+
   await form.getByRole('textbox', { name: 'Your answer' }).fill('A table');
   await form.getByRole('button', { name: 'Send answer' }).click();
   await expect(page.getByTestId('chat-result')).toContainText('Done.', { timeout: 30_000 });

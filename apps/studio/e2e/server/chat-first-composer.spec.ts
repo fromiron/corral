@@ -221,7 +221,12 @@ test('a request typed while the lead waits is queued, not started', async ({ pag
   await requestBox(page).fill('Ask me before continuing with this review.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('awaiting_user');
-  await expect(page.getByTestId('action-required')).toBeVisible();
+  // The question stands in the conversation's needed-now tray, in view: the composer adds no
+  // notice of its own.
+  await expect(
+    page.locator('[data-pending-tray]').getByText('What should I review next?', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
   // workbench.md: a next request sent while the session's run is going waits behind it; nothing
   // has to be chosen first, the state at send time decides.
   const draft = 'Keep this queued request while I decide the next step.';
@@ -235,5 +240,54 @@ test('a request typed while the lead waits is queued, not started', async ({ pag
     .poll(async () => (await session(page)).entries.at(-1))
     .toMatchObject({ text: draft, state: 'queued', intent: 'queue' });
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
+  expect(corral.errors).toEqual([]);
+});
+
+test('the composer tells of a waiting question only while its tray is out of view', async ({
+  page,
+  corral,
+}) => {
+  await startChat(page, corral);
+  const earlier = Array.from(
+    { length: 40 },
+    (_, i) => `Finding ${i + 1}: the review read this part and left it as it was.`,
+  ).join('\n\n');
+  corral.fake?.answerWith(earlier);
+  await requestBox(page).fill('Summarise what the review read.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+  corral.fake?.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall('ask_user', {
+          key: 'continue',
+          questions: [{ id: 'continue', kind: 'text', prompt: 'What should I review next?' }],
+        }),
+      ],
+      { stopReason: 'toolUse' },
+    ),
+  ]);
+  await requestBox(page).fill('Ask me before continuing with this review.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect
+    .poll(() => corral.server.coordinator.listRuns().find((r) => r.status === 'awaiting_user'))
+    .toBeTruthy();
+  const tray = page.locator('[data-pending-tray]');
+  await expect(tray.getByText('What should I review next?', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  // The person wheels up to the earlier answer, in the margin beside the column: the tray leaves
+  // the view, and only now does the composer tell of it.
+  const timeline = page.getByTestId('chat-timeline');
+  await timeline.hover({ position: { x: 16, y: 120 } });
+  for (let step = 0; step < 40; step += 1) {
+    if (await timeline.evaluate((box) => box.scrollTop === 0)) break;
+    await page.mouse.wheel(0, -3000);
+    await page.waitForTimeout(30);
+  }
+  await expect(tray).not.toBeInViewport();
+  await expect(page.getByTestId('action-required')).toBeVisible();
+  await page.getByRole('button', { name: 'Jump to latest' }).click();
+  await expect(tray).toBeInViewport();
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
   expect(corral.errors).toEqual([]);
 });

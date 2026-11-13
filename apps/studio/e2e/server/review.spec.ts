@@ -55,7 +55,11 @@ test('a review loop revises the draft, and two approvals of exact versions finis
     .locator('[data-testid^="approval-"]')
     .getByRole('button', { name: 'Continue with this version' })
     .click();
-  await expect(page.getByTestId('run-respond')).toBeVisible();
+  // Waiting again: the record's response area shows beside the conversation, so the header's pill
+  // only says so.
+  await expect(page.getByTestId('run-status')).toContainText('Waiting for you');
+  await expect(page.getByTestId('run-needs-you')).toBeVisible();
+  await expect(page.getByTestId('run-respond')).toHaveCount(0);
   const final = (await needsYou())
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: 'Final output' });
