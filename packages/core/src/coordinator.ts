@@ -515,6 +515,8 @@ interface LiveRun {
   stepApprovals: Map<string, Set<string>>;
   /** A pending run-level limit intervention; concurrent workers wait on this one. */
   limitApproval: Promise<'approve' | 'reject'> | null;
+  /** Why the person's rejection ended the run, while its live branches are still stopping. */
+  endReason?: string;
   /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
@@ -2919,7 +2921,7 @@ export class Coordinator {
         if (scope.kind === 'run')
           confirmed.push(
             ...this.closeRounds(run),
-            runState(run.projection.status, 'cancelled', 'cancel_confirmed'),
+            runState(run.projection.status, 'cancelled', run.endReason ?? 'cancel_confirmed'),
           );
         else if (
           target &&
@@ -6720,6 +6722,23 @@ export class Coordinator {
       return;
     const status = run.projection.status;
     if (TERMINAL_RUN_STATUSES.has(status)) return;
+    // Other branches still live stop first, as on the person's cancel of the run; the run ends
+    // once they have, with this reason (api-contract, "구현에서 정한 검토·승인 규칙").
+    if (
+      Object.values(run.projection.executions).some(
+        (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+      )
+    ) {
+      run.endReason = reason;
+      this.submit({
+        schemaVersion: '0.1',
+        runId: run.runId,
+        commandId: `run_end_${run.runId}`,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason },
+      });
+      return;
+    }
     if (this.serviceRuns.has(run) || this.previewRuns.has(run) || this.stoppingServices.has(run)) {
       void this.stopOwnedServices(run).then(
         () => this.endRun(run, to, reason),

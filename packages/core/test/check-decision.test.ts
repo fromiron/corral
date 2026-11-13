@@ -90,6 +90,8 @@ function runtime(
     definition?: CorralDefinition;
     /** An agent that fails once its gate opens. */
     failing?: { nodeId: string; gate: Gate };
+    /** An agent that waits at its gate before it goes on. */
+    held?: { nodeId: string; gate: Gate };
   } = {},
 ) {
   const clock = new FakeClock();
@@ -153,6 +155,7 @@ function runtime(
       collaborate: false,
       appendNotes: false,
       script: async (input) => {
+        if (input.nodeId === options.held?.nodeId) await options.held.gate.wait();
         if (input.nodeId !== options.failing?.nodeId) return null;
         await options.failing.gate.wait();
         return { outcome: 'failed', error: `${input.nodeId} broke` };
@@ -344,48 +347,10 @@ describe('check decision', () => {
   });
 
   it('closes a waiting check approval in the commit that fails the run', async () => {
-    // p → a (fails) and w → check → Join j → m → output.
-    const parallel = Definition.parse({
-      ...base,
-      entryNodeId: 'p',
-      capabilityLinks: [],
-      nodes: [
-        agent('p'),
-        agent('a', 'p'),
-        agent('w', 'p'),
-        {
-          id: 'check',
-          type: 'decision',
-          label: 'check',
-          mode: 'check',
-          checkIds: ['types'],
-          inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'w' }],
-        },
-        { id: 'j', type: 'join', label: 'j', policy: 'any' },
-        agent('m', 'p'),
-        {
-          id: 'output',
-          type: 'output',
-          label: 'output',
-          inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'm' }],
-          requireApproval: false,
-        },
-      ],
-      controlEdges: [
-        edge('f1', 'p', 'out', 'a'),
-        edge('f2', 'p', 'out', 'w'),
-        edge('f3', 'w', 'out', 'check'),
-        edge('f4', 'check', 'pass', 'j'),
-        edge('f5', 'check', 'fail', 'j'),
-        edge('f6', 'a', 'out', 'j'),
-        edge('f7', 'j', 'out', 'm'),
-        edge('f8', 'm', 'out', 'output'),
-      ],
-    });
     const gate = new Gate();
     const s = runtime(
       { types: ['stale'] },
-      { definition: parallel, failing: { nodeId: 'a', gate } },
+      { definition: parallel(), failing: { nodeId: 'a', gate } },
     );
     const runId = await started(s);
     const waiting = await waitForProjection(
@@ -412,4 +377,69 @@ describe('check decision', () => {
     );
     expect(events.indexOf(closed[0] as RunEvent)).toBe(failedAt - 1);
   });
+
+  it('a rejected check stops the other live branch before the run is cancelled', async () => {
+    const gate = new Gate();
+    const s = runtime(
+      { types: ['stale'] },
+      { definition: parallel(), held: { nodeId: 'a', gate } },
+    );
+    const runId = await started(s);
+    await answer(s, runId, 'reject', 'check');
+    await waitForProjection(s.transport, runId, (p) => p.status === 'cancelling');
+    const stopping = s.coordinator.getSnapshot(runId).projection;
+    expect((stopping.nodeExecutions.a ?? []).map((id) => stopping.executions[id]?.status)).toEqual([
+      'cancelling',
+    ]);
+    gate.open();
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect(final.status).toBe('cancelled');
+    expect(Object.values(final.executions).map((e) => e.status)).not.toContain('active');
+    const events = s.store.readEvents(runId, 0);
+    const end = events.findIndex(
+      (e) => e.type === 'run.state_changed' && e.payload.to === 'cancelled',
+    );
+    expect(events.slice(end + 1).filter((e) => e.type.startsWith('execution.'))).toEqual([]);
+  });
 });
+
+// p → a and w → check → Join j → m → output.
+function parallel() {
+  return Definition.parse({
+    ...base,
+    entryNodeId: 'p',
+    capabilityLinks: [],
+    nodes: [
+      agent('p'),
+      agent('a', 'p'),
+      agent('w', 'p'),
+      {
+        id: 'check',
+        type: 'decision',
+        label: 'check',
+        mode: 'check',
+        checkIds: ['types'],
+        inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'w' }],
+      },
+      { id: 'j', type: 'join', label: 'j', policy: 'any' },
+      agent('m', 'p'),
+      {
+        id: 'output',
+        type: 'output',
+        label: 'output',
+        inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'm' }],
+        requireApproval: false,
+      },
+    ],
+    controlEdges: [
+      edge('f1', 'p', 'out', 'a'),
+      edge('f2', 'p', 'out', 'w'),
+      edge('f3', 'w', 'out', 'check'),
+      edge('f4', 'check', 'pass', 'j'),
+      edge('f5', 'check', 'fail', 'j'),
+      edge('f6', 'a', 'out', 'j'),
+      edge('f7', 'j', 'out', 'm'),
+      edge('f8', 'm', 'out', 'output'),
+    ],
+  });
+}

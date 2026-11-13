@@ -10,6 +10,7 @@ import {
   type RunCommand,
   type RunEvent,
   type StartRunRequest,
+  TERMINAL_EXECUTION_STATUSES,
 } from '@corral/contracts';
 import {
   collaborationCorral,
@@ -700,5 +701,219 @@ describe('approvals a run ends with', () => {
     });
     closedInEndingCommit(s.store, 'cancelled', [required(second).approvalId]);
     replays(s.store, runId, final);
+  });
+});
+
+// ── a rejection that ends the run stops the other live branches first ───────
+
+/** Nothing of an execution is recorded after the run's end, and no execution is still live. */
+function endedClean(events: readonly RunEvent[], projection: RunProjection) {
+  const end = events.findIndex(
+    (e) => e.type === 'run.state_changed' && finished({ status: e.payload.to } as RunProjection),
+  );
+  expect(end).toBeGreaterThanOrEqual(0);
+  expect(events.slice(end + 1).filter((e) => e.type.startsWith('execution.'))).toEqual([]);
+  expect(
+    Object.values(projection.executions).filter((e) => !TERMINAL_EXECUTION_STATUSES.has(e.status)),
+  ).toEqual([]);
+  expect(
+    events.filter(
+      (e) => e.type === 'run.state_changed' && finished({ status: e.payload.to } as RunProjection),
+    ),
+  ).toHaveLength(1);
+}
+
+async function reject(
+  s: ReturnType<typeof scripted>,
+  runId: string,
+  approval: { approvalId: string; subjectVersionIds: string[] },
+  revision: number,
+) {
+  return s.transport.sendCommand({
+    schemaVersion: '0.1',
+    commandId: `reject_${approval.approvalId}`,
+    runId,
+    type: 'resolve_approval',
+    expectedControlRevision: revision,
+    payload: {
+      approvalId: approval.approvalId,
+      decision: 'reject',
+      subjectVersionId: approval.subjectVersionIds[0],
+    },
+  } as RunCommand);
+}
+
+describe('a rejection that ends the run', () => {
+  const router = (): { nodes: CorralNode[]; edges: ControlEdge[] } => ({
+    nodes: [
+      agent('w', 'p'),
+      {
+        id: 'router',
+        type: 'decision',
+        label: 'router',
+        mode: 'router',
+        routes: [
+          { id: 'fix', label: 'Fix it' },
+          { id: 'ship', label: 'Ship it' },
+        ],
+        inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'w' }],
+      } as CorralNode,
+      agent('fix', 'w'),
+      agent('ship', 'w'),
+    ],
+    edges: [
+      edge('p', 'out', 'w'),
+      edge('w', 'out', 'router'),
+      edge('router', 'fix', 'fix'),
+      edge('router', 'ship', 'ship'),
+      edge('fix', 'out', 'j'),
+      edge('ship', 'out', 'j'),
+    ],
+  });
+  const cases: [string, () => { nodes: CorralNode[]; edges: ControlEdge[] }, string[]][] = [
+    [
+      'user_action',
+      () => ({
+        nodes: [approvalStep('gate')],
+        edges: [edge('p', 'out', 'gate'), edge('gate', 'approve', 'j')],
+      }),
+      [],
+    ],
+    ['route', router, ['router']],
+  ];
+
+  it.each(cases)(
+    'a rejected %s stops the branch still asking its model before the run is cancelled',
+    async (kind, branch, failing) => {
+      const a = new Gate();
+      const s = scripted({ a }, failing);
+      const runId = await s.start(forked('all', branch()));
+      const asked = await waitForProjection(s.transport, runId, waitingOn(kind));
+      const approval = required(pendingOf(asked).find((x) => x.kind === kind));
+      const running = (p: RunProjection) =>
+        (p.nodeExecutions.a ?? []).some((id) => p.executions[id]?.status === 'active');
+      expect(running(asked)).toBe(true);
+      expect((await reject(s, runId, approval, asked.controlRevision)).status).toBe('applied');
+      // The branch is told to stop; the run is not over while it is still stopping.
+      const stopping = await waitForProjection(
+        s.transport,
+        runId,
+        (p) => p.status === 'cancelling',
+      );
+      expect(finished(stopping)).toBe(false);
+      a.open();
+      const final = await waitForProjection(s.transport, runId, finished);
+      expect(final.status).toBe('cancelled');
+      const events = s.store.readEvents(runId, 0);
+      endedClean(events, final);
+      expect((final.nodeExecutions.a ?? []).map((id) => final.executions[id]?.status)).toEqual([
+        'cancelled',
+      ]);
+      closedOnce(events, final);
+      replays(s.store, runId, final);
+    },
+  );
+
+  it('a rejected final output stops the branch an any Join left still ending', async () => {
+    const b = new Gate();
+    const s = scripted({ b }, []);
+    const runId = await s.start(
+      forked(
+        'any',
+        { nodes: [agent('b', 'p')], edges: [edge('p', 'out', 'b'), edge('b', 'out', 'j')] },
+        true,
+      ),
+    );
+    const asked = await waitForProjection(s.transport, runId, waitingOn('final_output'));
+    const approval = required(pendingOf(asked)[0]);
+    expect((await reject(s, runId, approval, asked.controlRevision)).status).toBe('applied');
+    await waitForProjection(s.transport, runId, (p) => p.status === 'cancelling');
+    b.open();
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect(final.status).toBe('cancelled');
+    endedClean(s.store.readEvents(runId, 0), final);
+    replays(s.store, runId, final);
+  });
+
+  it('a person cancelling right after the rejection ends the run once', async () => {
+    const a = new Gate();
+    const s = scripted({ a }, []);
+    const runId = await s.start(
+      forked('all', {
+        nodes: [approvalStep('gate')],
+        edges: [edge('p', 'out', 'gate'), edge('gate', 'approve', 'j')],
+      }),
+    );
+    const asked = await waitForProjection(s.transport, runId, waitingOn('user_action'));
+    const approval = required(pendingOf(asked)[0]);
+    await reject(s, runId, approval, asked.controlRevision);
+    const again = await s.transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cancel_too',
+      runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'stop' },
+    } as RunCommand);
+    // It arrives before the rejection has ended anything: an ordinary cancel, as it was.
+    expect(again.status).toBe('accepted');
+    a.open();
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect(final.status).toBe('cancelled');
+    const events = s.store.readEvents(runId, 0);
+    endedClean(events, final);
+    expect(events.filter((e) => e.type === 'cancel.confirmed').length).toBeLessThanOrEqual(1);
+    closedOnce(events, final);
+  });
+
+  it('a person cancelling while the rejection stops the branches is taken as during any cancel, and the run ends once', async () => {
+    const a = new Gate();
+    const s = scripted({ a }, []);
+    const runId = await s.start(
+      forked('all', {
+        nodes: [approvalStep('gate')],
+        edges: [edge('p', 'out', 'gate'), edge('gate', 'approve', 'j')],
+      }),
+    );
+    const asked = await waitForProjection(s.transport, runId, waitingOn('user_action'));
+    await reject(s, runId, required(pendingOf(asked)[0]), asked.controlRevision);
+    await waitForProjection(
+      s.transport,
+      runId,
+      (p) => p.status !== 'awaiting_user' && p.status !== 'running',
+    );
+    const again = await s.transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cancel_late',
+      runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'run' }, reason: 'stop' },
+    } as RunCommand);
+    // The same receipt as a second cancel while the person's own cancel is stopping the run.
+    expect(again.status).toBe('accepted');
+    a.open();
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect(final.status).toBe('cancelled');
+    endedClean(s.store.readEvents(runId, 0), final);
+  });
+
+  it('a rejection with no other live branch ends the run as before, in its commit', async () => {
+    const s = scripted({}, []);
+    const definition = linearCorral(['writer']);
+    const output = required(definition.nodes.find((x) => x.type === 'output'));
+    Object.assign(output, { requireApproval: true });
+    const runId = await s.start(definition);
+    const asked = await waitForProjection(s.transport, runId, waitingOn('final_output'));
+    const approval = required(pendingOf(asked)[0]);
+    await reject(s, runId, approval, asked.controlRevision);
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect(final.status).toBe('cancelled');
+    expect(final.statusReason).toBe('final_output_rejected');
+    const events = s.store.readEvents(runId, 0);
+    expect(events.some((e) => e.type === 'cancel.requested')).toBe(false);
+    expect(events.at(-1)).toMatchObject({
+      type: 'run.state_changed',
+      payload: { from: 'running', to: 'cancelled', reasonCode: 'final_output_rejected' },
+    });
+    endedClean(events, final);
   });
 });
