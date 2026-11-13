@@ -89,7 +89,7 @@
    │                        │  │ 지시       │ model.finished / tool.finished
    ├─ 합류(next_request) ───┤  │            ▼
    ├─ 끼어들기(interrupt) ──┤  └──── 감독 실행 단위 ── advise ─▶ 문지기 ─▶ 조언(지시)
-   ├─ 다음 요청(대기열) ──▶ 서버 대기열 ─ 실행 종료 때 시작      (중복·빈말·예산)
+   ├─ 다음 요청(대기열) ──▶ 서버 대기열 ─ 실행 종료 때 시작      (중복·빈말·개수)
    │                        │
    └─ 인용 칩(reply 첨부) ──┘ 어느 전송에도 실림
 
@@ -427,21 +427,22 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | S0 | 명세 변경 | — | `docs/specs` | 완료 |
 | V1 | 장면 하네스와 이동 측정기(기준선) | — | `apps/studio/e2e/flow` | 완료 |
 | B1 | 단일 상태 판정 모듈 | S0 | `packages/react/src/run/presence.ts` | 완료 |
-| B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 세 번째 리뷰 수정 중(`flow/b2-delivery-gaps-2`, 코어 16·어댑터 57 테스트) |
+| B2 | 검증 안 된 경로의 반례 테스트 | B6 | `packages/core/test`, `packages/adapter-pi/test` | 완료 |
 | B3 | 지시에 텍스트 첨부 싣기 | S0 | `contracts/commands.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B4 | 서버 대기열 시작 | S0 | `core/repository`, `apps/server/src/app.ts` | 완료 |
 | B5 | 읽히지 못한 합류 넘겨받기 | B4, B6 | `coordinator.ts`, `core/repository` | 완료 |
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
-| B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 예산을 걷어내는 중 |
-| B11 | Loop 한도 정책 | B9 | `contracts/definition.ts`, `core/compiler`, `coordinator.ts`, 팀 편집기 | 명세 작성 중 |
+| B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 리뷰 수정 중(`flow/b9-request-budget`, Run이 끝나면 승인을 모두 닫기) |
+| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 구현 중(`flow/b11-loop-limit`) |
+| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 중(`flow/u2-timeline-frame-2`) |
-| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 수정 중(`flow/u3-run-row-2`, 두 번째 revise 뒤 새 빌더) |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 수정 중(`flow/u2-timeline-frame-2`, 자라는 실행 행에서 끝으로 되돌아감) |
+| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 구현 중(`flow/u4-pending-tray`, U3 브랜치 위) |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
@@ -537,8 +538,14 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 빼는 것: `limits.requestBudget`, `run_limits` 패치의 예산, 실행 단위별 요청 셈, 마무리·제출 알림(`system` 출처), `request_budget` 게이트·`limit.reached` 종류·승인 종류, 예산 승인 카드와 문구, §9 표 테스트의 예산 행.
 
 ### B11 Loop 한도 정책
-- 명세: `features/team-graph.md` "루프 실행"의 소진 부분(작성 중). Loop가 회차 상한에 닿았을 때 사람에게 묻던 `loop_cap` 승인을 없애고, 팀을 만들 때 Loop마다 정하는 정책으로 바꾼다: 추론 수준 올리기, 지정한 상위 모델로 바꾸기, 소진으로 끝내 `exhausted` 출구로 넘기기, 제한 없음.
-- 브리프는 명세가 정해진 뒤 쓴다.
+- 명세: `features/team-graph.md` 규칙 3, 정의 스키마의 Loop 행, 구조 규칙 4, "루프 실행"(다시 돌기·한도 정책·소진)과 그 시나리오, `api-contract.md`의 `loop.escalated`와 승인 종류, `features/canvas.md` 설정 시트의 Loop 줄.
+- 정한 것(2026-11-13): 사람에게 묻던 `loop_cap` 승인은 없다. Loop마다 `limitPolicy` 하나를 고른다(끝내기 / 추론 수준 올리기 / 상위 모델로 바꾸기 / 제한 없음). 올리기와 바꾸기는 한 진입에서 한 번이고 상한만큼 더 돈다. 정체도 같은 정책을 탄다. 소진됐는데 `exhausted`에 연결이 없으면 Run은 실패로 끝난다(취소가 아니다). "부모 에이전트에게 알리기"는 따로 만들지 않고 `exhausted` 출구가 그 역할이다. 추론 수준은 "한 단계 위"가 아니라 정해 둔 수준이다(역할의 추론이 자동·공급자 기본값이면 기준 수준이 없다).
+- 둘로 나눈다. **B11a**(계약·컴파일러·runner·Coordinator·화면의 `loop_cap` 제거)와 **B11b**(팀 편집기 설정 시트의 한도 줄, 디자인 리뷰 대상).
+- B11a 대상: `packages/contracts/src/definition.ts`(`LoopNode`), `events.ts`(`loop.escalated`, 승인 종류), 생성 스키마, `packages/core/src/compiler/index.ts`(구조 규칙 4의 새 줄과 진단 code), `runner.ts`(다시 돌기), `coordinator.ts`(한도 정책 적용, 상위 모델 고정, 실패 이유), `projection.ts`, `team-draft.ts`·`team-templates.ts`, `maxIterations`를 읽는 화면(`R/components/RunFlowView.tsx`·`RunView.tsx`·`SettingsPatchPanel.tsx`·`ApprovalPanel.tsx`·`RunText.tsx`, `R/team-editor/NodeSettings.tsx`·`TeamGraphCanvas.tsx`, `W/LoopRecipeSettings.tsx`, `S/pages/RunPage.tsx`)과 문구.
+- B11a 구현: 올린 값은 사람의 `node_future` 패치와 다른 자리에 둔다(진입이 끝나면 사라지고, 사람이 정한 항목이 앞선다). 실행 단위의 모델·추론을 정하는 한 곳(`coordinator.ts`의 `nodePatches.get(spec.nodeId)` 자리)에서 사람의 패치 → Loop가 올린 값 → 역할 순서로 읽는다. 상위 모델의 snapshot은 역할의 모델처럼 Run 시작 때 고정한다. 재개·호스트 재시작 뒤에도 `loop.escalated`에서 같은 상태가 다시 만들어진다. 편집기에는 새 설정 UI를 만들지 않는다(타입과 기존 "최대 회차" 입력이 깨지지 않게만).
+- B11a 완료 체크: 명세 시나리오 각각, 그리고 반례: 한 진입에 한 번만 / 다시 들어오면 새로 / 사람의 패치가 앞섬(앞·뒤 순서 둘 다) / 진행 중인 실행은 안 바뀜 / 지원하지 않는 수준은 아래로 맞춤 / 바뀌는 Agent 없음 → 이벤트 없이 소진 / 안쪽 Loop의 정책은 바깥 Agent를 안 바꿈, 바깥 것은 안쪽을 바꿈 / `inline` Team 포함, `reference` Team 제외 / `unlimited`에 `loop_limit` 패치 / 연결 없는 소진은 실패이고 승인 요청이 없음 / 재시작 뒤 같은 상태.
+- B11b: 설정 시트 Loop의 "한도" 줄. 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 브리프는 B11a가 병합된 뒤 쓴다.
+- 나중에(감독이 들어온 뒤): 사람에게 묻는 나머지 승인(무진전, router가 고르지 못한 route, 판정 없는 check, 회의 연쇄 확인)을 같은 눈으로 한 번 본다. 이 계획의 범위 밖이면 따로 묻는다.
 
 ### B10 응답 중간 끊김의 재시도 분류
 - 명세: `llm-runtime.md` 15행(D13). B8 리뷰에서 나온 태스크다. 지금 분류로는 200 응답 뒤 중간에 끊긴 스트림이 대부분 `UNKNOWN`이 되어 B8의 판정이 실제로는 쓰이지 않는다.
@@ -628,7 +635,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 ### U12 확인 필요: 같은 응답 영역, 계속 여부 카드
 - 명세: `features/inbox.md`.
 - 대상: `S/pages/InboxPage.tsx`(638행 부근)와 테스트.
-- 구현: `decision` 항목은 U4의 지금 필요한 것과 같은 `RunResponseArea`를 쓴다(이미 그렇다면 그대로). 계속 여부 승인(`loop_cap`, 무진전, `request_budget`)이 같은 카드로 보이고 답할 수 있어야 한다. 답한 뒤의 동작은 지금 명세 그대로다: 포커스가 다음 항목으로 가고, 답한 항목의 상세는 "실행 열기"를 유지하며, 다른 항목을 자동으로 고르지 않는다.
+- 구현: `decision` 항목은 U4의 지금 필요한 것과 같은 `RunResponseArea`를 쓴다(이미 그렇다면 그대로). 계속 여부 승인(무진전)이 같은 카드로 보이고 답할 수 있어야 한다. 답한 뒤의 동작은 지금 명세 그대로다: 포커스가 다음 항목으로 가고, 답한 항목의 상세는 "실행 열기"를 유지하며, 다른 항목을 자동으로 고르지 않는다.
 - 완료 체크: 확인 필요와 대화가 같은 응답 컴포넌트를 쓰는 테스트(가져오기 경로 단언), 계속 여부 카드에 답하는 테스트, 기존 확인 필요 테스트 통과.
 
 ### U13 중복·사문 제거
@@ -768,11 +775,12 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B5 (정한 것).** 조건을 만족한 지시는 `expired`가 되는 순간 바로 넘겨받는다(앞 지시가 풀리기를 기다리지 않는다). 같은 순간에 만료된 여럿은 보낸 순서, 다른 때에 넘겨받은 것은 넘겨받은 순서로 시작한다. 넘겨받은 항목은 세션 기록의 끝에 붙고, 다음에 시작할 것을 고를 때 먼저다(`@corral/core`의 `queuedEntriesInStartOrder`, `nextQueuedEntry`). 지시 기록에 `origin`이 생길 때까지(A1) `origin ?? 'user'`로 읽는다.
 - **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 판정은 그 지시가 속한 Run이 취소됐는지로 한다(세션의 마지막 Run이 아니다). 그 지시를 가진 Run을 찾지 못하면 특권은 그대로다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
 - **A1 (B5·B9가 남긴 것).** 지시 기록의 출처(`directive.accepted.origin`, `DirectiveView.origin`)는 B9가 타입 있는 필수 필드로 넣었다(`user`·`advice`). A1은 `advice` 지시를 만드는 쪽만 더하고, 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다. 모델에 실리는 머리말(`ADVICE_DIRECTIVE_PREFIX`)은 `packages/adapter-pi/src/worker-tools.ts`에 있다.
-- **B9 (예산을 뺀 뒤 남는 한계).** `loop_cap`·`route`·`check`·`final_output`·검토 `user_action` 승인은 Run이 취소되거나 실패로 끝나도 투영에 `pending`으로 남는다(확인 필요에는 보이지 않지만 실행 기록의 승인 카드는 버튼과 함께 그려진다). `breakpoint`는 Run 취소에서는 닫히고 실패에서는 남는다. 감독 뒤의 정리(사람을 덜 찾기) 때 함께 닫는다.
+- **B9 (리뷰에서 정한 것).** 끝난 Run의 승인은 종류별로 따로 닫지 않고 한 규칙으로 닫는다: Run이 끝나면(성공·실패·취소) 기다리던 승인을 모두 런타임이 닫는다(`api-contract.md` "구현에서 정한 검토·승인 규칙"). 무진전 승인만 닫던 것, 기준 패치로 다시 물은 무진전 승인이 남던 것, 성공이나 승인 거절로 끝난 Run에 주인 없는 승인이 남던 것이 이 규칙에 든다. 남기는 한계: 실행 단위 하나만 취소돼 기다리는 쪽이 없어진 무진전 승인은 Run이 끝날 때까지 열려 있다(다음 시도가 같은 승인에 합류할 수 있어 닫지 않는다). `origin` 없는 옛 `directive.accepted`가 저장된 Run은 화면의 이벤트 스트림이 멈춘다(개발 중이라 옮기지 않는다. 옛 데이터를 지울지는 사용자가 정한다).
+- **A1·A6 (B9 리뷰가 남긴 것).** `advice` 지시를 만드는 태스크가 함께 고친다: `packages/adapter-pi/src/call-snapshot.ts`의 `isRequest`가 조언 머리말을 지시로 알아보게 하고(지금은 조언이 마지막 user 메시지면 판정 입력의 현재 요청이 조언 문장이 된다), `corral_state`의 `directives` 목록과 판정 입력의 적용 지시에 출처를 싣고, `packages/react/src/run/transcript.ts`와 `apps/server/src/session-search.ts`가 조언을 사람의 말로 보이지 않게 한다.
 - **U6 (B9가 남긴 것).** 대화 기록·지시 목록(`ExecutionSteering.tsx`)·기록 내보내기(`transcript.ts`)·세션 검색은 지시를 출처 표시 없이 사람의 지시처럼 보인다. 감독(A 작업)이 `advice` 지시를 만들기 시작하면 U6·A7이 `origin`이 `user`가 아닌 지시를 사람의 메시지로 그리지 않게 한다.
 - **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
 - **B2 (찾은 빈틈과 정한 것).** 반례 테스트가 둘을 찾았다. (1) worker가 아직 시작되지 않은 대상에 온 끼어들기는 끊을 응답이 없으니 `next_request`로 낮춘다(receipt와 지시 기록 모두). (2) 끼어들기로 끊겼거나 오류로 끝난 호출은 확정 응답(`responseRef`)으로 기록하지 않고 받은 글은 부분 출력(`partialOutputs`)으로만 읽는다. 명세를 그렇게 고쳤고 B2 브랜치에서 구현을 고친다.
-- **B2 (리뷰에서 정한 것).** 낮추는 조건은 "Coordinator가 worker를 아직 넘겨받지 못했을 때"로 좁힌다(어댑터가 끼어들 수 있는지 그때는 알 수 없다). worker가 뜨는 중(준비 신호 전)의 끼어들기는 요청 준비 중과 같이 끊지 않고 첫 요청에 실리며 기록은 `interrupt` 그대로다. 글이 보인 뒤 스트림이 깨졌을 때 대기 중인 지시가 있으면 SDK 런타임만 실행을 이어 가 성공으로 끝나던 차이(B2 이전부터)는 없앤다: 어느 런타임에서나 실행 단위는 실패하고 지시는 `expired`다. 실패·끊긴 호출의 글은 스트림 조각으로만 남고 Run이 끝난 뒤에도 중단된 응답으로 읽힌다(`workbench.md` "대화 본문과 중단된 출력"). 두 번째 리뷰: 자동 압축의 요약 응답이 오류로 끝난 경우와 수동 압축이 대기 중인 경우에도 SDK가 실행을 이어 가던 것을 같은 규칙으로 막는다. 남기는 차이: 도구 없는 온전한 마지막 응답이 흐르는 동안 온 지시는 SDK에서는 한 턴을 더 돌아 그 요청에 실리고(`delivered`), pi-core에서는 실행이 끝나 `expired`가 된 뒤 넘겨받는다. 어느 쪽도 지시를 잃지 않는다. 세 번째 리뷰: SDK는 압축 요약의 글을 스트림하지 않는다(실패한 요약의 글이 대화에 중단된 응답으로 보이던 것). 앞 공백은 첫 글과 함께 나가고, 글이 나오기 전에 끝난 호출은 부분 출력을 남기지 않는다(두 런타임 같게). 남기는 한계: pi-core에서 끼어들기로 끊긴 뒤 수동 압축이 돌면 지시 메시지가 요약 요청에 들어가고, 지시의 전달 기록은 압축 뒤 두 번째 요청에 붙는다(지시는 잃지 않는다).
+- **B2 (리뷰에서 정한 것).** 낮추는 조건은 "Coordinator가 worker를 아직 넘겨받지 못했을 때"로 좁힌다(어댑터가 끼어들 수 있는지 그때는 알 수 없다). worker가 뜨는 중(준비 신호 전)의 끼어들기는 요청 준비 중과 같이 끊지 않고 첫 요청에 실리며 기록은 `interrupt` 그대로다. 글이 보인 뒤 스트림이 깨졌을 때 대기 중인 지시가 있으면 SDK 런타임만 실행을 이어 가 성공으로 끝나던 차이(B2 이전부터)는 없앤다: 어느 런타임에서나 실행 단위는 실패하고 지시는 `expired`다. 실패·끊긴 호출의 글은 스트림 조각으로만 남고 Run이 끝난 뒤에도 중단된 응답으로 읽힌다(`workbench.md` "대화 본문과 중단된 출력"). 두 번째 리뷰: 자동 압축의 요약 응답이 오류로 끝난 경우와 수동 압축이 대기 중인 경우에도 SDK가 실행을 이어 가던 것을 같은 규칙으로 막는다. 남기는 차이: 도구 없는 온전한 마지막 응답이 흐르는 동안 온 지시는 SDK에서는 한 턴을 더 돌아 그 요청에 실리고(`delivered`), pi-core에서는 실행이 끝나 `expired`가 된 뒤 넘겨받는다. 어느 쪽도 지시를 잃지 않는다. 세 번째 리뷰: SDK는 압축 요약의 글을 스트림하지 않는다(실패한 요약의 글이 대화에 중단된 응답으로 보이던 것). 앞 공백은 첫 글자와 함께 나가고, 글자가 나오기 전에 끝나지 못한 호출은 부분 출력을 남기지 않는다(두 런타임 같게). 네 번째 리뷰: 도구 호출은 쥔 공백을 내보내지 않는다(공백 뒤 도구 호출이 시작된 다음 실패하면 공백뿐인 중단된 응답이 그려지던 것). 두 규칙은 `workbench.md` "대화 본문과 중단된 출력"에 적었다. 남기는 한계: 재시도될 응답의 종료 직전(0~1 microtask)에 온 끼어들기는 SDK에서 실행을 실패로 끝낸다(pi-core는 끊김으로 기록하고 이어 간다). SDK의 확장 목적 요청은 스트림되며 그 호출이 실패할 때 보이는 것은 확인하지 않았다. 남기는 한계: pi-core에서 끼어들기로 끊긴 뒤 수동 압축이 돌면 지시 메시지가 요약 요청에 들어가고, 지시의 전달 기록은 압축 뒤 두 번째 요청에 붙는다(지시는 잃지 않는다).
 - **U6 (끼어듦의 표시).** 메타 줄의 "끼어듦 · 응답을 끊고 전달됨"은 지시의 `delivery`가 `interrupt`이고, 그 지시를 실은 호출 바로 앞의 같은 실행 단위 호출이 `interrupted`일 때만 쓴다. 아니면(끊을 응답이 없어 그냥 실린 경우) "읽힘"이다.
 
 ### V2 최종 장면

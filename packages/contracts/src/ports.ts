@@ -181,6 +181,8 @@ export type AgentObservation = {
   rawUsage?: Record<string, unknown>;
   /** The response was cut by an interrupt; its text is interrupted output, not an answer. */
   interrupted?: true;
+  /** The response ended in an error or abort, uncut; its text is partial output, not an answer. */
+  failed?: true;
 };
 
 export interface ToolProposal {

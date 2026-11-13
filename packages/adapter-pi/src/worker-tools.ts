@@ -396,6 +396,11 @@ export function replyCompletesAssignment(
   return assignment.kind === 'question' && result.questionId === assignment.questionId;
 }
 
+/** A response that ended in an error or abort is not an answer, whatever text it showed. */
+export function unfinished(message: Pick<AssistantMessage, 'stopReason'>): boolean {
+  return message.stopReason === 'error' || message.stopReason === 'aborted';
+}
+
 export function textOf(message: AssistantMessage): string {
   return message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('');
 }

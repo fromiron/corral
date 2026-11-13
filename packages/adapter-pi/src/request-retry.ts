@@ -18,6 +18,52 @@ export function isReplaySafe(partial: Pick<AssistantMessage, 'content'>): boolea
   );
 }
 
+/**
+ * The text fragments one call streams to the host, shared by both workers. Whitespace before
+ * the response's first letter waits and goes out, fragment by fragment, just before that
+ * letter; a tool call does not send it. A response that ends whole sends what still waits; one
+ * that ends unfinished before its first letter sends nothing. Empty fragments are never sent.
+ */
+export function streamedText(send: (text: string) => void) {
+  let waiting: string[] | null = [];
+  const release = () => {
+    const pending = waiting ?? [];
+    waiting = null;
+    for (const text of pending) send(text);
+  };
+  return {
+    event(event: AssistantMessageEvent) {
+      if (event.type !== 'text_delta' || !event.delta) return;
+      if (waiting && event.delta.trim() !== '') release();
+      if (waiting) waiting.push(event.delta);
+      else send(event.delta);
+    },
+    /** The call ended; `whole` when its response is a confirmed one. */
+    end(whole: boolean) {
+      if (whole) release();
+      waiting = null;
+    },
+  };
+}
+
+/**
+ * The wait before a failed attempt is asked for again, or null when it is not (context-overflow
+ * recovery aside). `responseStarted` says whether the attempt sent any event before it ended.
+ */
+export function retryDelayAfter(
+  message: AssistantMessage,
+  attempt: number,
+  responseStarted: boolean,
+  random: () => number = Math.random,
+): number | null {
+  if (message.stopReason !== 'error' || !isReplaySafe(message)) return null;
+  return retryDelay(
+    providerFailure(message.errorMessage ?? '', undefined, { responseStarted }),
+    attempt,
+    random,
+  );
+}
+
 /** Each open obtains a new host permit; only the final attempt reaches the agent loop. */
 export function managedRetryStream(options: {
   model: Pick<Model<string>, 'id' | 'provider' | 'api'>;
@@ -69,8 +115,8 @@ export function managedRetryStream(options: {
         if (await options.onContextOverflow()) continue;
       }
       const delay =
-        message.stopReason === 'error' && replaySafe && !options.signal.aborted
-          ? retryDelay(failure(), attempt, options.random ?? Math.random)
+        held !== null && !options.signal.aborted
+          ? retryDelayAfter(message, attempt, responseStarted, options.random)
           : null;
       if (delay === null) {
         for (const heldEvent of held ?? []) out.push(heldEvent);
