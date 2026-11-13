@@ -90,6 +90,7 @@ import {
   StartRunRequest,
   type SteerCommand,
   type StreamFrame,
+  type SubmitAdviceCommand,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
   type ToolAuthorization,
@@ -896,6 +897,7 @@ export class Coordinator {
       definition.nodes.filter((node) => node.type === 'output').length === 1 &&
       !!agent &&
       agent.type === 'agent' &&
+      agent.invocation !== 'observer' &&
       agent.inputBindings.every((binding) => binding.kind === 'run_input') &&
       !definition.capabilityLinks.length &&
       definition.roles.length === 1 &&
@@ -2594,6 +2596,12 @@ export class Coordinator {
     }
     try {
       if (command.type === 'steer') return this.steer(command, payloadHash);
+      // Advice is in the contract; its handling (features/advisor.md) is not built yet.
+      if (command.type === 'submit_advice')
+        return this.refuseControl(command, payloadHash, {
+          code: 'COMMAND_NOT_SUPPORTED',
+          message: 'advice is not handled yet',
+        });
       if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
       if (command.type === 'compact_context') return this.compactContext(command, payloadHash);
       if (command.type === 'answer_user') return this.answerUser(command, payloadHash);
@@ -2727,6 +2735,7 @@ export class Coordinator {
     command: Exclude<
       RunCommand,
       | SteerCommand
+      | SubmitAdviceCommand
       | ResolveApprovalCommand
       | AnswerExtensionUiCommand
       | AnswerUserCommand
@@ -4940,7 +4949,8 @@ export class Coordinator {
     if (!(await this.passBreakpoint(run, nodeId, iterationId)))
       return { ok: false, reason: 'stopped at its breakpoint' };
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
-    const retries = node?.type === 'agent' ? (node.retry?.maxAttempts ?? 0) : 0;
+    const retries =
+      node?.type === 'agent' && node.invocation !== 'observer' ? (node.retry?.maxAttempts ?? 0) : 0;
     let prepared = this.prepareExecution(run, {
       nodeId,
       iterationId,

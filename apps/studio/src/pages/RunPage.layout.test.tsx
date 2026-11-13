@@ -1089,7 +1089,7 @@ it('a failed one-agent run does not restate its state as that agent failing', as
   const definition = {
     ...base,
     nodes: base.nodes.map((node) =>
-      node.id === 'helper' && node.type === 'agent'
+      node.id === 'helper' && node.type === 'agent' && node.invocation !== 'observer'
         ? { ...node, invocation: 'callable' as const }
         : node,
     ),

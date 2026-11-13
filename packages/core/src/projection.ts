@@ -940,6 +940,10 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'cancel.confirmed':
     case 'observation.late':
       return p;
+    // Advice is recorded but not projected yet (features/advisor.md).
+    case 'advice.admitted':
+    case 'advice.suppressed':
+      return p;
     default:
       // A stored log can hold event types this version no longer records (e.g. `budget.*`).
       return p;

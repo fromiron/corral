@@ -13,6 +13,7 @@ import {
   type LoopNode,
   type OutputContract,
   type TargetPort,
+  type WorkAgentNode,
 } from '@corral/contracts';
 import {
   boxBoundaryViolation,
@@ -68,7 +69,8 @@ export type CapabilityRejection =
 export interface NodeChange {
   label?: string;
   prompt?: string;
-  invocation?: AgentNode['invocation'];
+  /** The editor does not make advisors yet (features/advisor.md). */
+  invocation?: WorkAgentNode['invocation'];
   outputContract?: OutputContract;
   modelProfile?: string;
   reasoning?: AgentRole['reasoning'] | null;
@@ -332,6 +334,9 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
         return basic;
       });
     }
+  }
+  // An advisor takes no inputs and keeps its invocation until the editor can draw advisors.
+  if (next.type === 'agent' && next.invocation !== 'observer') {
     // A reviewer reviews against the criteria: give it their text when it becomes one (#20).
     const hasCriteria = next.inputBindings.some(
       (b) => b.kind === 'run_input' && b.name === 'criteria',
@@ -483,7 +488,10 @@ export function connect(
   return { ok: true, edgeId: id, draft: withDefinition({ ...draft, counters }, definition) };
 }
 
-const TOOLS_FOR: Record<CapabilityLink['kind'], AgentRole['allowedCollaborationTools']> = {
+/** Links the editor draws; it does not draw `advise` links yet (features/advisor.md). */
+export type CallLinkKind = Exclude<CapabilityLink['kind'], 'advise'>;
+
+const TOOLS_FOR: Record<CallLinkKind, AgentRole['allowedCollaborationTools']> = {
   delegate: ['spawn_subagents', 'await_tasks'],
   question: ['ask'],
 };
@@ -493,7 +501,7 @@ export function connectCapability(
   draft: EditorDraft,
   sourceId: string,
   targetId: string,
-  kind: CapabilityLink['kind'],
+  kind: CallLinkKind,
 ): { ok: true; draft: EditorDraft; linkId: string } | { ok: false; reason: CapabilityRejection } {
   const source = findNode(draft, sourceId);
   const target = findNode(draft, targetId);

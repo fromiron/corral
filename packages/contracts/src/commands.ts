@@ -40,6 +40,23 @@ export const SteerCommand = z.strictObject({
 });
 export type SteerCommand = z.infer<typeof SteerCommand>;
 
+export const AdviceSeverity = z.enum(['nit', 'concern', 'blocker']);
+export type AdviceSeverity = z.infer<typeof AdviceSeverity>;
+
+/** Sent only by an advisor execution's `advise` tool, never by a person's screen. */
+export const SubmitAdviceCommand = z.strictObject({
+  ...optionalRevision,
+  type: z.literal('submit_advice'),
+  payload: z.strictObject({
+    observerExecutionId: Identifier,
+    attemptNo: z.int().min(1),
+    targetExecutionId: Identifier,
+    severity: AdviceSeverity,
+    note: z.string().min(1).max(1000),
+  }),
+});
+export type SubmitAdviceCommand = z.infer<typeof SubmitAdviceCommand>;
+
 const RunScope = z.strictObject({ scope: z.literal('run') });
 
 export const PauseCommand = z.strictObject({
@@ -190,6 +207,7 @@ export const RunCommand = z.discriminatedUnion('type', [
   AnswerExtensionUiCommand,
   AnswerUserCommand,
   SteerCommand,
+  SubmitAdviceCommand,
   PauseCommand,
   ResumeCommand,
   CancelCommand,
