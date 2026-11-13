@@ -90,6 +90,11 @@ export interface ActivityInput {
   roles: ActivityRole[];
   /** The run's advisors still watching or reviewing, and those that failed. */
   advisors?: ActivityAdvisor[];
+  /**
+   * The run's flow has reached its end: no role, task, approval or question is open, so nothing
+   * but its advisors' last reviews keeps it going (features/composer-flow.md "활동 바").
+   */
+  flowEnded?: boolean;
   /** Requests waiting in the tray over the session's runs, and the running run's first. */
   waiting: { count: number; first: WaitingItem | null };
   tray: TrayPlacement;
@@ -104,7 +109,7 @@ export type ClosedLine =
   | { kind: 'waiting'; count: number; item: WaitingItem | null }
   | { kind: 'role'; role: ActivityRole; others: number }
   | { kind: 'target'; role: ActivityRole; stateShown: boolean }
-  /** Every role has ended and an advisor's last review keeps the run open. */
+  /** The flow has reached its end and an advisor's last review keeps the run open. */
   | { kind: 'advisor'; advisor: ActivityAdvisor }
   | { kind: 'summary'; stateShown: boolean }
   | { kind: 'none' };
@@ -122,8 +127,8 @@ export function roleSeen(input: Pick<ActivityInput, 'run' | 'visible'>, role: { 
 /**
  * The closed line: the first that holds of (1) a waiting request whose card is measured
  * off-screen, (2) a working role whose row is off-screen, (3) the join target's activity, (4) an
- * advisor's last review once no role is open (why the next request has not started) and (5) the
- * run's summary. A lost link comes before all of them: what follows may be stale.
+ * advisor's last review once the flow has reached its end (why the run has not ended) and (5) the
+ * run's summary. A pause between steps, or for a person, is no last review. A lost link comes before all of them: what follows may be stale.
  */
 export function closedLine(input: ActivityInput): ClosedLine {
   if (input.connection !== 'ok') return { kind: 'disconnected', reason: input.connection };
@@ -145,10 +150,11 @@ export function closedLine(input: ActivityInput): ClosedLine {
     const target = input.roles.find((role) => role.id === (input.target ?? run.lead));
     if (target && (target.activity || !roleSeen(input, target)))
       return { kind: 'target', role: target, stateShown: !roleSeen(input, target) };
-    // A failed advisor holds nothing up: the run goes on, and its row says it failed.
-    const reviewing = input.roles.length
-      ? undefined
-      : input.advisors?.find((advisor) => advisor.presence.kind !== 'failed');
+    // Only a review is a last review: a watching advisor waits for work that will not come, and a
+    // failed one holds nothing up (its row says it failed).
+    const reviewing = input.flowEnded
+      ? input.advisors?.find((advisor) => advisor.review === 'reviewing')
+      : undefined;
     if (reviewing) return { kind: 'advisor', advisor: reviewing };
   }
   return { kind: 'summary', stateShown: !input.visible.has(`run:${run.runId}`) };
@@ -357,30 +363,26 @@ function advisorsOf(
 }
 
 /**
- * Whether what failed is an advisor's alone: its execution or its requests. The run goes on
- * without it, so the line raises no warning for it; its row says it failed.
+ * Whether the run's flow has reached its end: it runs, nothing waits on a person, and no task but
+ * an advisor's is open (a task with no execution yet is the flow's next step). The projection
+ * records no end of the flow itself; this is what it says of one.
  */
-function advisorFailureOnly(projection: RunProjection | null): boolean {
-  if (!projection || projection.status === 'failed' || projection.status === 'interrupted')
-    return false;
-  const executions = Object.values(projection.executions);
+function flowEnded(projection: RunProjection, waiting: number): boolean {
+  if (projection.status !== 'running' || waiting > 0) return false;
   const advisors = new Set(
-    executions.flatMap((execution) => (execution.advisor ? [execution.executionId] : [])),
-  );
-  if (!advisors.size) return false;
-  const failedEffects = Object.values(projection.effects).filter(
-    (effect) => effect.outcome === 'failed',
-  );
-  const failedCalls = Object.values(projection.toolCalls).filter((call) => call.phase === 'failed');
-  const failed = [
-    ...executions.flatMap((execution) =>
-      execution.status === 'failed' ? [execution.executionId] : [],
+    Object.values(projection.executions).flatMap((execution) =>
+      execution.advisor ? [execution.taskId] : [],
     ),
-    ...failedEffects.map((effect) => effect.scope),
-    ...failedCalls.map((call) => call.executionId),
-  ];
-  return failed.length > 0 && failed.every((id) => advisors.has(id));
+  );
+  const openTask = Object.values(projection.tasks).some(
+    (task) => !advisors.has(task.taskId) && !ENDED_TASKS.has(task.status),
+  );
+  const openRole = Object.values(projection.executions).some(
+    (execution) => !execution.advisor && !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+  );
+  return !openTask && !openRole;
 }
+const ENDED_TASKS = new Set(['completed', 'failed', 'cancelled']);
 
 /**
  * How many of the running run's current executions are still open; null until its record is read.
@@ -417,8 +419,6 @@ export interface Activity {
   sending: boolean;
   /** The presented run's widgets: its plan, changes and context. */
   model: ChatWidgetModel | null;
-  /** What failed is an advisor's alone: the line raises no warning for it. */
-  advisorFailure: boolean;
   retry: (() => void) | null;
 }
 
@@ -597,6 +597,9 @@ export function useActivity({
     run,
     roles,
     advisors,
+    flowEnded: projection
+      ? flowEnded(projection, Math.max(tray.waiting, interactions.length))
+      : false,
     waiting: { count: Math.max(tray.waiting, interactions.length), first: firstItem },
     tray: tray.placement,
     visible,
@@ -630,7 +633,6 @@ export function useActivity({
     projection,
     sending: Boolean(runId && state.runId === runId && state.sending),
     model,
-    advisorFailure: advisorFailureOnly(projection),
     retry,
   };
 }

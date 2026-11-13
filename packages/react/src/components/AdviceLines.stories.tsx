@@ -244,17 +244,21 @@ export const RecordEnd: Story = {
     store.setState({ projection: kept });
     return (
       <div className="h-[36rem] w-[44rem] max-w-full">
-        <ExecutionTranscript session={store} executionId="impl_1" adviceOpen />
+        <ExecutionTranscript session={store} executionId="impl_1" />
       </div>
     );
   },
   play: async ({ canvasElement }) => {
-    // Open, the line leaves its first line to the words under it.
-    await waitFor(() =>
-      expect(
-        canvasElement.querySelector('[data-advice="unread"] [data-advice-line]')?.textContent,
-      ).toBe('Reviewer·Concern'),
-    );
+    // Opened by the person, the line leaves its first line to the words under it.
+    const line = await waitFor(() => {
+      const found = canvasElement.querySelector<HTMLButtonElement>(
+        '[data-advice="unread"] [data-advice-line]',
+      );
+      expect(found).not.toBeNull();
+      return found as HTMLButtonElement;
+    });
+    await userEvent.click(line);
+    await waitFor(() => expect(line.textContent).toBe('Reviewer·Concern'));
     await expect(
       canvasElement.querySelector('[data-advice="unread"] [data-advice-text]')?.textContent,
     ).toContain('The summary counts drafts as published.');

@@ -10,7 +10,7 @@ import { ExecutionTranscript } from '../src/components/ExecutionTranscript.tsx';
 import en from '../src/messages/en.json' with { type: 'json' };
 import ko from '../src/messages/ko.json' with { type: 'json' };
 import { AdviceSeenProvider, createAdviceSeen } from '../src/run/adviceSeen.tsx';
-import { deliveredAdvice, firstLine, unreadAdviceOf } from '../src/run/advisor.ts';
+import { agentName, deliveredAdvice, firstLine, unreadAdviceOf } from '../src/run/advisor.ts';
 import { buildTurnProcess, turnSummary } from '../src/run/turn-process.ts';
 import {
   ADVICE_TEXT,
@@ -144,6 +144,39 @@ describe('where an advice stands', () => {
     expect(state(calls(false))).toBe('read');
   });
 
+  it('leaves a line drawn in the work in its place when its target ends first, saying it was not delivered', () => {
+    const late = ['a_late', 'a_stop'];
+    const waiting = withAdvice(base, [
+      { adviceId: 'a_late', severity: 'concern', text: 'Late concern.', status: 'queued' },
+      { adviceId: 'a_stop', severity: 'blocker', text: 'Late blocker.', status: 'queued' },
+    ]);
+    const { events } = advisorRunSession().getState();
+    const rows = (projection: RunProjection) =>
+      buildTurnProcess(events, projection, {}, (id) => id).rows.map(
+        (row) => `${row.kind}:${row.id}`,
+      );
+    const before = rows(waiting);
+    expect(before.filter((row) => late.some((id) => row === `advice:${id}`))).toHaveLength(2);
+    const ended = endedRun(
+      withAdvice(base, [
+        { adviceId: 'a_late', severity: 'concern', text: 'Late concern.', status: 'expired' },
+        { adviceId: 'a_stop', severity: 'blocker', text: 'Late blocker.', status: 'not_delivered' },
+      ]),
+    );
+    // The row keeps its lines where they stood: none leaves the work when the target ends.
+    expect(rows(ended)).toEqual(before);
+    expect(
+      deliveredAdvice(ended, 'impl_1')
+        .filter((item) => late.includes(item.adviceId))
+        .map((item) => [item.adviceId, item.state]),
+    ).toEqual([
+      ['a_late', 'notDelivered'],
+      ['a_stop', 'notDelivered'],
+    ]);
+    // The tail says them as before.
+    expect(unreadAdviceOf(ended).map((item) => item.adviceId)).toEqual(late);
+  });
+
   it('keeps a concern or blocker its target ended before reading for the tail, and drops a note', () => {
     const projection = endedRun(
       withAdvice(base, [
@@ -158,11 +191,15 @@ describe('where an advice stands', () => {
         },
       ]),
     );
-    const delivered = deliveredAdvice(projection, 'impl_1').map((item) => item.adviceId);
-    expect(delivered).not.toContain('a_late');
-    expect(delivered).not.toContain('a_stop');
-    expect(delivered).not.toContain('a_note');
-    expect(delivered).not.toContain('a_kept');
+    // In the work the concern and the blocker stand as not delivered; the note is dropped, and
+    // the kept one never was in it.
+    const delivered = deliveredAdvice(projection, 'impl_1')
+      .filter((item) => item.adviceId !== 'advice_1')
+      .map((item) => [item.adviceId, item.state]);
+    expect(delivered).toEqual([
+      ['a_late', 'notDelivered'],
+      ['a_stop', 'notDelivered'],
+    ]);
     expect(unreadAdviceOf(projection).map((item) => [item.adviceId, item.text])).toEqual([
       ['a_late', 'Late concern.'],
       ['a_stop', 'Late blocker.'],
@@ -412,14 +449,23 @@ describe('seeing it', () => {
     store.setState({ projection });
     return store;
   };
-  const record = (send: (runId: string, executionId: string) => Promise<void>, open = false) =>
-    render(
+  /** The record ending with the unread advice; opened by the person when `open`. */
+  const record = (
+    send: (runId: string, executionId: string) => Promise<void>,
+    open = false,
+    store = session(unread),
+  ) => {
+    const shown = render(
       wrap(
         <AdviceSeenProvider send={send}>
-          <ExecutionTranscript session={session(unread)} executionId="impl_1" adviceOpen={open} />
+          <ExecutionTranscript session={store} executionId="impl_1" />
         </AdviceSeenProvider>,
       ),
     );
+    const line = shown.container.querySelector('[data-advice="unread"] [data-advice-line]');
+    if (open && line) act(() => fireEvent.click(line));
+    return shown;
+  };
 
   it('ends its target’s record with the advice it never read', () => {
     const { container } = record(async () => {});
@@ -452,13 +498,7 @@ describe('seeing it', () => {
   it('tells again when a new advice comes to the row whose words are shown (the server lists it again)', () => {
     const send = vi.fn(async () => {});
     const store = session(unread);
-    render(
-      wrap(
-        <AdviceSeenProvider send={send}>
-          <ExecutionTranscript session={store} executionId="impl_1" adviceOpen />
-        </AdviceSeenProvider>,
-      ),
-    );
+    record(send, true, store);
     intersect(true);
     expect(send).toHaveBeenCalledTimes(1);
     // The last review leaves another at the same row after it was opened.
@@ -546,4 +586,54 @@ it('the advisor a conversation adds is named once, by the one word, on its line'
   render(wrap(<ExecutionTranscript session={store} executionId="impl_1" />, 'ko'));
   const unread = document.querySelector('[data-advice="unread"] [data-advice-line]');
   expect(unread?.textContent).toBe('감독·중단 권고·Late blocker.');
+});
+
+it('calls only an observer the conversation added “Advisor”; a step that merely shares its id keeps its name', () => {
+  const definition = advisorDefinition({ session: true });
+  const advisor = definition.nodes.find((node) => node.id.startsWith('session_advisor'));
+  if (!advisor) throw new Error('no session advisor');
+  expect(agentName(definition, advisor.id, 'Advisor')).toBe('Advisor');
+  const step = {
+    ...definition,
+    nodes: definition.nodes.map((node) =>
+      node.id === advisor.id ? { ...node, label: 'Planner', invocation: 'call' } : node,
+    ),
+  } as typeof definition;
+  expect(agentName(step, advisor.id, 'Advisor')).toBe('Planner');
+});
+
+it('tells nothing when a delivered advice is opened: only advice no target read leaves Needs you', () => {
+  const send = vi.fn(async () => {});
+  const store = advisorRunSession();
+  store.setState({
+    projection: withAdvice(base, [
+      { adviceId: 'a_read', severity: 'concern', text: 'Read concern.', status: 'delivered' },
+    ]),
+  });
+  render(
+    wrap(
+      <AdviceSeenProvider send={send}>
+        <ExecutionTranscript session={store} executionId="impl_1" />
+      </AdviceSeenProvider>,
+    ),
+  );
+  for (const line of document.querySelectorAll('[data-advice="delivered"] [data-advice-line]'))
+    act(() => fireEvent.click(line));
+  intersect(true);
+  expect(send).not.toHaveBeenCalled();
+});
+
+it('tells each execution its advice was seen at, when one line holds several', async () => {
+  const send = vi.fn(async () => {});
+  const seen = createAdviceSeen(send);
+  seen.seen('run', [
+    { adviceId: 'a', targetExecutionId: 'impl_1' },
+    { adviceId: 'b', targetExecutionId: 'impl_2' },
+    { adviceId: 'c', targetExecutionId: 'impl_1' },
+  ]);
+  await act(async () => {});
+  expect(send.mock.calls.sort()).toEqual([
+    ['run', 'impl_1'],
+    ['run', 'impl_2'],
+  ]);
 });

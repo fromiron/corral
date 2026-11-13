@@ -55,7 +55,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
-import { AdviceArrival } from './adviceArrival.ts';
+import { AdviceArrival, type AdviceArrivalValue, bringAdviceIntoView } from './adviceArrival.ts';
 import { agentSummary } from './agentSummary.ts';
 import { holdPointer } from './ChatView.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
@@ -224,11 +224,43 @@ export function RunMessage({
     (nodeId: string) => agentName(state.definition, nodeId, advisorWord),
     [state.definition, advisorWord],
   );
-  // Advice no target read, on the row's tail: open when the person came here to read it.
+  // Advice no target read, on the row's tail: opened when the person comes here to read it,
+  // whether the row was drawn before or mounts for it (features/inbox.md `advice`).
   const arrival = useContext(AdviceArrival);
-  const [adviceOpen, setAdviceOpen] = useState(() => arrival === runId);
+  const [adviceOpen, setAdviceOpen] = useState(false);
   const adviceId = useId();
   const adviceSeen = useAdviceSeen();
+  const unreadCount = useMemo(
+    () => (state.projection ? unreadAdviceOf(state.projection).length : 0),
+    [state.projection],
+  );
+  const recordRead = Boolean(state.projection);
+  const taken = useRef<number | null>(null);
+  const [placing, setPlacing] = useState<AdviceArrivalValue | null>(null);
+  const settling = useRef<(() => void) | null>(null);
+  useEffect(() => () => settling.current?.(), []);
+  useEffect(() => {
+    if (!arrival || arrival.runId !== runId || !recordRead || taken.current === arrival.key) return;
+    taken.current = arrival.key;
+    if (unreadCount) {
+      setAdviceOpen(true);
+      setPlacing(arrival);
+    }
+    arrival.done();
+  }, [arrival, runId, recordRead, unreadCount]);
+  // Once open and laid out, the words are brought above the composer.
+  useEffect(() => {
+    if (!placing || !adviceOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const words = document
+        .getElementById(adviceId)
+        ?.querySelector<HTMLElement>('[data-advice-text]');
+      settling.current?.();
+      settling.current = words ? bringAdviceIntoView(words, sessionId ?? null) : null;
+      setPlacing(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [placing, adviceOpen, adviceId, sessionId]);
   const results = useMemo(
     () => (state.projection ? runResults(state.projection) : null),
     [state.projection],

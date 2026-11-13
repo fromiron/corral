@@ -6,9 +6,11 @@ import { expect, test } from '../server/harness.ts';
 import {
   activityBar,
   activityLine,
+  lastRunSucceeded,
   newConversation,
   openActivity,
   requestBox,
+  runControls,
 } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
@@ -307,18 +309,14 @@ test('advice lines change only their words, and late advice is written into the 
   await expect(advisorRow.locator('svg').first()).not.toHaveClass(/animate-spin/);
   await expect(advisorRow).toContainText('1 piece of advice delivered');
   await waitForStill(page);
-  // The work plan in the panel redraws its step as the role moves from its call to its next
-  // request, a few pixels for a moment, and the panel follows it (the plan's own, reported apart).
-  // The role rows with the advisor's new count do not move, the bar ends at the height it began
-  // at, and the request box never moves.
+  // The role rows with the advisor's new count do not move, nor does the work plan as the role
+  // moves from its call to its next request: the bar keeps its height and the request box its
+  // place.
   const counted = await delivered();
   expect(counted.frames).toBeGreaterThan(0);
   expect(counted.roles, 'advice-delivered: role rows').toBe(0);
   expect(counted.box, 'advice-delivered: request box').toBe(0);
-  expect(counted.barEnds[1], 'advice-delivered: bar height after').toBe(counted.barEnds[0]);
-  if (counted.bar > 0)
-    expect(counted.planMoved, 'advice-delivered: only the plan').toBeGreaterThan(0);
-  console.log(`advice-delivered: bar ${counted.bar}px, plan heights ${counted.plan.join(', ')}`);
+  expect(counted.bar, `advice-delivered: bar (plan ${counted.plan.join(', ')})`).toBe(0);
   await shots(page, 'advisor-watching');
   await fold();
   await shot(page, 'line-read-1280');
@@ -388,4 +386,253 @@ test('advice lines change only their words, and late advice is written into the 
     timeout: 30_000,
   });
   expect(corral.errors).toEqual([]);
+});
+
+/** The conversation's own advisor on the session, answering on model-b. */
+async function sessionAdvisor(page: Page, sessionId: string) {
+  await page.evaluate(async (id) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const session = await (await fetch(`/api/v1/sessions/${id}`)).json();
+    const response = await fetch(`/api/v1/sessions/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+      body: JSON.stringify({
+        advisor: { modelProfile: 'model-b' },
+        expectedRevision: session.session?.revision ?? session.revision,
+      }),
+    });
+    if (!response.ok) throw new Error(`advisor ${response.status}`);
+  }, sessionId);
+}
+
+/** An answer far longer than the screen. */
+const LONG_ANSWER = Array.from(
+  { length: 60 },
+  (_, index) =>
+    `Step ${index + 1}: the login request waits on the session cache before it reads the user row, so each sign-in pays for a cache round trip it does not need.`,
+).join('\n\n');
+
+test.describe('advice a role never read', () => {
+  test.use({ streamTokensPerSecond: 0 });
+
+  test('stays where it was drawn, and its button brings its words above the composer', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(300_000);
+    const reviewed = gate();
+    const final = gate();
+    const runs = () => [...corral.server.coordinator.listRuns()].reverse();
+    const projection = () => {
+      const run = runs()[0];
+      return run ? corral.server.coordinator.getSnapshot(run.runId).projection : null;
+    };
+    let lead = 0;
+    let reviews = 0;
+    const step = async (
+      context: { messages: { role: string }[] },
+      _options: unknown,
+      _state: unknown,
+      model: { id: string },
+    ) => {
+      if (model.id === 'gpt-test-b') {
+        if (context.messages.at(-1)?.role === 'toolResult')
+          return fauxAssistantMessage('Nothing more.');
+        reviews += 1;
+        // The first review gives a concern; any later one has nothing to add.
+        if (reviews > 1) return fauxAssistantMessage('Nothing to add.');
+        reviewed.reach();
+        await reviewed.opened;
+        return fauxAssistantMessage(
+          [
+            fauxToolCall('advise', {
+              severity: 'concern',
+              note: 'The answer never times the login.\nMeasure it before changing the cache.',
+            }),
+          ],
+          { stopReason: 'toolUse' },
+        );
+      }
+      lead += 1;
+      // Once the advisor reviews, the role's next request is its answer: prepared before the
+      // concern arrives, so the role ends without reading it.
+      if (reviews === 0)
+        return fauxAssistantMessage(
+          [
+            fauxToolCall('update_plan', {
+              scope: 'execution',
+              expectedRevision: lead - 1,
+              criteriaVersionId: projection()?.currentCriteriaVersionId ?? null,
+              items: [{ id: 'look', title: 'Look at the login path', status: 'in_progress' }],
+            }),
+          ],
+          { stopReason: 'toolUse' },
+        );
+      final.reach();
+      await final.opened;
+      return fauxAssistantMessage(LONG_ANSWER);
+    };
+    corral.fake?.setResponses(Array.from({ length: 24 }, () => step as never));
+    const opened: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && /\/executions\/[^/]+\/opened$/.test(request.url()))
+        opened.push(request.url());
+    });
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await corral.open('/projects/default');
+    await newConversation(page);
+    const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
+    await sessionAdvisor(page, sessionId);
+    const box = requestBox(page);
+    await box.fill('Find why login is slow');
+    await box.press('Enter');
+    const row = page.locator('[data-chat-item]').last();
+    const head = row.locator('[data-chat-part="head"]');
+    const adviceLine = row.locator('.turn-process-row [data-advice-line]');
+    await Promise.all([reviewed.reached, final.reached]);
+
+    // The work log open: the concern comes into the role's work, waiting for a request that will
+    // not come.
+    await head.locator('button[aria-expanded]').click();
+    reviewed.open();
+    await expect(adviceLine.locator('[data-advice-state]')).toHaveText(/^Waiting to join/, {
+      timeout: 30_000,
+    });
+    await waitForStill(page);
+    const place = async () => {
+      const [line, top] = [await adviceLine.boundingBox(), await head.boundingBox()];
+      return { y: (line?.y ?? 0) - (top?.y ?? 0), height: line?.height ?? 0 };
+    };
+    const before = await place();
+
+    // The role answers and ends: the line stays where it stood and says it was not delivered;
+    // the tail says it too.
+    final.open();
+    await expect.poll(() => projection()?.status, { timeout: 60_000 }).toBe('succeeded');
+    await expect(adviceLine).toHaveCount(1);
+    await expect(adviceLine.locator('[data-advice-state]')).toHaveText('Not delivered');
+    await waitForStill(page);
+    const after = await place();
+    expect(Math.abs(after.y - before.y), 'not-delivered: line place').toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(after.height - before.height),
+      'not-delivered: line height',
+    ).toBeLessThanOrEqual(1);
+    const tail = row.locator('[data-chat-part="tail"] [data-advice-line]');
+    await expect(tail).toHaveText(/^Advisor·Concern·The answer never times the login/);
+    const runId = projection()?.runId as string;
+
+    // From Needs you, its button: the advice opens on the row and its words come into view
+    // above the composer, though the answer is longer than the screen.
+    await page.getByRole('link', { name: 'Needs you', exact: true }).first().click();
+    const item = page.locator('[data-inbox-row]').filter({ hasText: 'Concern' });
+    await expect(item).toHaveCount(1, { timeout: 30_000 });
+    await item.click();
+    await page.getByRole('link', { name: 'Open advice' }).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
+    const arrived = page.locator('[data-chat-item]').last();
+    const arrivedLine = arrived.locator('[data-chat-part="tail"] [data-advice-line]');
+    const words = arrived.locator('[data-advice-text]').last();
+    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'true');
+    await waitForStill(page);
+    const inView = async () => {
+      const [shown, timeline, composer] = await Promise.all([
+        words.boundingBox(),
+        page.getByTestId('chat-timeline').boundingBox(),
+        page.getByTestId('chat-composer').boundingBox(),
+      ]);
+      return {
+        top: (shown?.y ?? 0) - (timeline?.y ?? 0),
+        bottom: (composer?.y ?? 0) - ((shown?.y ?? 0) + (shown?.height ?? 0)),
+      };
+    };
+    const shown = await inView();
+    expect(shown.top, 'arrival: words below the view top').toBeGreaterThanOrEqual(0);
+    expect(shown.bottom, 'arrival: words above the composer').toBeGreaterThanOrEqual(0);
+    // No mark of the arrival is left: not on the row, not in the address.
+    expect(new URL(page.url()).searchParams.get('advice')).toBeNull();
+    await expect(page.locator('[data-chat-item][aria-current="location"]')).toHaveCount(0);
+    await expect.poll(() => opened.length, { timeout: 10_000 }).toBe(1);
+    await shot(page, 'arrived-long-1280');
+    await page.getByRole('link', { name: 'Needs you', exact: true }).first().click();
+    await expect(page.locator('[data-inbox-row]').filter({ hasText: 'Concern' })).toHaveCount(0, {
+      timeout: 30_000,
+    });
+
+    // Back to the conversation: the address no longer asks, so the advice is not opened again.
+    await page.goBack();
+    await waitForStill(page);
+    expect(new URL(page.url()).searchParams.get('advice')).toBeNull();
+    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'false');
+    // Arrived at again in the same conversation, its row already drawn: it opens again.
+    await page.evaluate(
+      ({ id, run }) => {
+        window.history.pushState(window.history.state, '', `/sessions/${id}?advice=${run}`);
+        window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+      },
+      { id: sessionId, run: runId },
+    );
+    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => new URL(page.url()).searchParams.get('advice')).toBeNull();
+    // Folded again, Back does not arrive again.
+    await arrivedLine.click();
+    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'false');
+    await page.goBack();
+    await waitForStill(page);
+    expect(new URL(page.url()).searchParams.get('advice')).toBeNull();
+    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'false');
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('a stop during the last review ends the review, and the run is done', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(180_000);
+    const last = gate();
+    const step = async (
+      context: { messages: { role: string }[] },
+      _options: unknown,
+      _state: unknown,
+      model: { id: string },
+    ) => {
+      if (model.id !== 'gpt-test-b') return fauxAssistantMessage('The login waits on the cache.');
+      if (context.messages.at(-1)?.role === 'toolResult')
+        return fauxAssistantMessage('Nothing more.');
+      // The last review hangs until it is stopped.
+      last.reach();
+      await last.opened;
+      return fauxAssistantMessage('Nothing to add.');
+    };
+    corral.fake?.setResponses(Array.from({ length: 8 }, () => step as never));
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await corral.open('/projects/default');
+    await newConversation(page);
+    const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
+    await sessionAdvisor(page, sessionId);
+    const box = requestBox(page);
+    await box.fill('Find why login is slow');
+    await box.press('Enter');
+    await last.reached;
+    await expect(activityBar(page)).toHaveAttribute('data-line', 'advisor', { timeout: 30_000 });
+    await expect(activityLine(page)).toContainText('Advisor: final review');
+    await shot(page, 'final-review-line-1280');
+    // Stop asks nothing: only the review is left to stop.
+    await openActivity(page);
+    await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Cancel whole run', exact: true })).toHaveCount(
+      0,
+    );
+    last.open();
+    await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 30_000 });
+    const row = page.locator('[data-chat-item]').last();
+    await expect(row.locator('[data-chat-part="head"]')).not.toContainText(/Cancelled|Stopped/);
+    await expect(row).not.toContainText(/Partial result|Retry request/);
+    await expect(activityLine(page)).not.toContainText(
+      /unconfirmed outcome|usage was not reported/,
+    );
+    await shot(page, 'stopped-review-done-1280');
+    expect(corral.errors).toEqual([]);
+  });
 });

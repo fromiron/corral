@@ -1499,20 +1499,9 @@ it('says a failed advisor on its row and raises no warning on the line: the run 
     outcome: 'failed',
   };
   fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
-  // The widgets count the advisor's failed request as the run's failure.
-  const failure = { ...noAction, visible: true, hasFailure: true, count: 1, summary: 'failure' };
-  const view = await mount(
-    model(
-      {
-        live: true,
-        action: failure as ChatWidgetModel['action'],
-        failedExecutionId: 'exec_adv',
-        viewed: { latest: false, number: 1, total: 2 },
-      },
-      { runStatus: 'running' },
-    ),
-    { ownActive: ownRun, rowShown: true },
-  );
+  // The widgets leave the advisor's own failure out of the conversation's attention
+  // (advisor-attention.test.ts): the line has nothing to warn of.
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
   expect(visibleText(view.line())).not.toContain(messages.Widgets.actionFailure);
   expect(view.line()?.querySelector('.text-warning')).toBeNull();
   await act(async () => view.toggle()?.click());
@@ -1613,8 +1602,80 @@ it('keeps a watching advisor’s mark still, by its shape; only a review turns i
   );
   fixture.store = sessionStore({ runId: 'run_plan', ...watchingLast });
   const last = await mount(live(), { ownActive: ownRun, rowShown: true });
-  expect(last.bar()?.dataset.line).toBe('advisor');
-  expect(last.line()?.querySelector('svg')?.getAttribute('class')).not.toContain('animate-spin');
+  // A watching advisor makes no last review: the line does not say one.
+  expect(last.bar()?.dataset.line).not.toBe('advisor');
+  expect(visibleText(last.line())).not.toContain('final review');
+});
+
+it('says no last review while the flow waits for its next step, a person or a role', async () => {
+  // Writer done, a decision to approve before the editor: the advisor reviewing meanwhile.
+  const waiting = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  waiting.projection.status = 'awaiting_user';
+  waiting.projection.approvals.approval_route = {
+    approvalId: 'approval_route',
+    kind: 'route',
+    status: 'pending',
+  } as unknown as RunProjection['approvals'][string];
+  fixture.store = sessionStore({ runId: 'run_plan', ...waiting });
+  const decision = await mount(live(), { ownActive: ownRun, rowShown: true });
+  expect(decision.bar()?.dataset.line).not.toBe('advisor');
+  expect(visibleText(decision.line())).not.toContain('final review');
+  // The next step's task is open but has no execution yet.
+  const next = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  next.projection.tasks.task_editor = {
+    taskId: 'task_editor',
+    nodeId: 'editor',
+    status: 'queued',
+    activeExecutionId: null,
+  } as unknown as RunProjection['tasks'][string];
+  fixture.store = sessionStore({ runId: 'run_plan', ...next });
+  const queued = await mount(live(), { ownActive: ownRun, rowShown: true });
+  expect(queued.bar()?.dataset.line).not.toBe('advisor');
+  // Another role still open, waiting for a reply: the flow goes on after the review.
+  const open = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_editor: { node: 'editor', status: 'waiting_message' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', ...open });
+  // Its row on screen says it waits; the line has nothing of its own to say of it.
+  const role = await mount(live(), {
+    ownActive: ownRun,
+    rowShown: true,
+    timeline: <span data-presence-label="execution:exec_editor">editor row</span>,
+  });
+  expect(role.bar()?.dataset.line).not.toBe('advisor');
+});
+
+it('lists no advisor row for a run that has ended', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'reviewer', status: 'waiting_message', advisor: true },
+    },
+    reviewer,
+  );
+  projection.status = 'succeeded';
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  // The conversation presents the ended run; no run of the session goes on.
+  const view = await mount(model());
+  expect(view.bar()?.querySelector('[data-activity-role]')).toBeNull();
+  expect(visibleText(view.bar())).not.toContain('Reviewer');
 });
 
 /** How many executions Stop counts, read as the composer reads it. */

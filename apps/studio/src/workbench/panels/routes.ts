@@ -161,10 +161,17 @@ export function resolveSessionSearch(url: SessionSearch, remembered: unknown): S
   delete saved.compose;
   // A request to respond is answered once; a remembered one would answer a later visit.
   delete saved.respond;
+  delete saved.advice;
   return validateSessionSearch({
     ...(!explicitTarget ? saved : {}),
     ...selection,
   });
+}
+
+/** The view a session comes back to: none of the one-time requests an address can carry. */
+export function rememberedSessionView(search: SessionSearch): SessionSearch {
+  const { compose: _compose, respond: _respond, advice: _advice, ...view } = search;
+  return view;
 }
 
 export function patchSessionSearch(
@@ -173,8 +180,9 @@ export function patchSessionSearch(
 ): SessionSearch {
   return validateSessionSearch({
     ...current,
-    // Only the change that asks to respond carries the request.
+    // Only the change that asks to respond, or to read an advice, carries the request.
     respond: undefined,
+    advice: undefined,
     ...('run' in patch && patch.run !== current.run
       ? {
           execution: undefined,

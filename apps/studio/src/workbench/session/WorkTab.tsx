@@ -5,13 +5,13 @@ import {
   type WorkSession,
 } from '@corral/core';
 import { cn, fontWeights, useSize } from '@corral/react/design-kit';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
 import { sessionRoute } from '../../router.tsx';
 import { useServices } from '../../services.tsx';
 import { AdviceArrival } from '../adviceArrival.ts';
-import { ChatView } from '../ChatView.tsx';
+import { ChatView, placeChatRow } from '../ChatView.tsx';
 import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
@@ -122,14 +122,30 @@ export function WorkTab({
     const held = seen && sessionReads.read <= seen.at ? { heldAs: seen.before } : {};
     return { record, ...held };
   };
-  // A carried request drawn as nothing is reached through the message it came from. An advice
-  // is reached through its run's row, brought into the window like a linked message.
-  const adviceRun = currentSearch.advice;
-  const linked = linkedMessage ?? (adviceRun ? rowOf(adviceRun) : undefined);
-  const messageId = (linked && placement.emptyFor.get(linked)) ?? linked;
+  // A carried request drawn as nothing is reached through the message it came from.
+  const messageId = (linkedMessage && placement.emptyFor.get(linkedMessage)) ?? linkedMessage;
+  // A person who came to read an advice: its run's row is brought into the window, unmarked, and
+  // opens the advice itself (RunMessage). A run with no row here lets the arrival go once the
+  // session's runs are listed (one started elsewhere joins as its own row).
+  const arrival = useContext(AdviceArrival);
+  const arrivalRow = arrival ? rowOf(arrival.runId) : undefined;
+  const placedArrival = useRef<number | null>(null);
+  useEffect(() => {
+    if (!arrival || placedArrival.current === arrival.key) return;
+    if (!arrivalRow) {
+      if (runsListed) {
+        placedArrival.current = arrival.key;
+        arrival.done();
+      }
+      return;
+    }
+    placedArrival.current = arrival.key;
+    // A run whose row the conversation does not draw has nothing to open.
+    if (!placeChatRow(session.sessionId, arrivalRow, 0)) arrival.done();
+  }, [arrival, arrivalRow, runsListed, session.sessionId]);
   return (
     <RunChecks.Provider value={runChecks}>
-      <AdviceArrival.Provider value={adviceRun ?? null}>
+      <AdviceArrival.Provider value={arrival}>
         {/* The conversation's one selection listener; its toolbar floats over the rows. */}
         {workspaceId ? (
           <ReplySelection

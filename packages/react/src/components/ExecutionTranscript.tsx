@@ -41,12 +41,9 @@ export function ExecutionTranscript({
   onOpenArtifact,
   compact = false,
   failureShown = false,
-  adviceOpen = false,
 }: {
   session: RunSessionStore;
   executionId: string;
-  /** Advice its target never read starts open: the record was reached to read it. */
-  adviceOpen?: boolean;
   onOpenArtifact?: (artifactVersionId: string) => void;
   /** Fold each model reply until the reader opens it. The full run page stays expanded. */
   compact?: boolean;
@@ -157,7 +154,6 @@ export function ExecutionTranscript({
               : adviserOf(unread[0] as AdviceEntry)
           }
           nameOf={adviserOf}
-          initiallyOpen={adviceOpen}
           unread
         />
       ) : null}

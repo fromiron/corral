@@ -178,16 +178,34 @@ describe('closedLine and the advisor', () => {
     startedAt: '2026-11-13T00:00:00.000Z',
   });
 
-  it('says the advisor’s last review once every other execution has ended', () => {
-    const line = closedLine(input({ roles: [], advisors: [advisor()] }));
+  it('says the advisor’s last review once the run’s flow has reached its end and it reviews', () => {
+    const line = closedLine(input({ roles: [], advisors: [advisor()], flowEnded: true }));
     expect(line).toEqual({ kind: 'advisor', advisor: advisor() });
+  });
+
+  it('says no last review while the flow only pauses between steps, or while it watches', () => {
+    const between = closedLine(
+      input({ roles: [], advisors: [advisor()], visible: new Set(['run:run_a']) }),
+    );
+    expect(between).toEqual({ kind: 'summary', stateShown: false });
+    const watching = { ...advisor(), presence: executionPresence({ status: 'waiting_message' }) };
+    expect(
+      closedLine(
+        input({
+          roles: [],
+          advisors: [{ ...watching, review: 'watching' }],
+          flowEnded: true,
+          visible: new Set(['run:run_a']),
+        }),
+      ),
+    ).toEqual({ kind: 'summary', stateShown: false });
   });
 
   it('does not take the advisor for a role while a role is open', () => {
     const [lead] = team;
     if (!lead) throw new Error('no lead');
     // The lead works off screen with an advisor watching: one role, said alone.
-    expect(closedLine(input({ roles: [lead], advisors: [advisor()] }))).toEqual({
+    expect(closedLine(input({ roles: [lead], advisors: [advisor()], flowEnded: true }))).toEqual({
       kind: 'role',
       role: lead,
       others: 0,
@@ -196,7 +214,14 @@ describe('closedLine and the advisor', () => {
 
   it('leaves a failed advisor to its row: the run goes on, and the line says its summary', () => {
     expect(
-      closedLine(input({ roles: [], advisors: [advisor(true)], visible: new Set(['run:run_a']) })),
+      closedLine(
+        input({
+          roles: [],
+          advisors: [advisor(true)],
+          flowEnded: true,
+          visible: new Set(['run:run_a']),
+        }),
+      ),
     ).toEqual({ kind: 'summary', stateShown: false });
   });
 });

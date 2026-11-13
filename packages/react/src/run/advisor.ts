@@ -50,16 +50,21 @@ export interface AdviceEntry {
   seq: number;
 }
 
-/** An advice on its way to its target, or delivered: its line in the target's work. */
+/**
+ * An advice on its way to its target, delivered, or not delivered: its line in the target's work.
+ * `notDelivered` is a concern or a blocker its target ended before reading, whose line stays where
+ * it stood.
+ */
 export interface DeliveredAdvice extends AdviceEntry {
-  state: DeliveryState;
+  state: DeliveryState | 'notDelivered';
 }
 
 /**
- * The advice given to one execution that its work shows: on its way or delivered, in the order
- * it was accepted. Advice its target ended before reading is not here: a concern or a blocker
- * stays on the run row's tail (`unreadAdviceOf`), a note is dropped. Dropped advice is never
- * advice here (it has no line in the conversation).
+ * The advice given to one execution that its work shows, in the order it was accepted: on its
+ * way, delivered, or a concern or a blocker its target ended before reading, whose line stays in
+ * place saying it was not delivered (it is also on the run row's tail, `unreadAdviceOf`). A note
+ * its target never read is dropped; dropped advice is never advice here (it has no line in the
+ * conversation).
  */
 export function deliveredAdvice(
   projection: RunProjection,
@@ -71,8 +76,10 @@ export function deliveredAdvice(
     .flatMap((item) => {
       const directive = projection.directives[item.directiveId ?? ''];
       if (!directive) return [];
-      const state = deliveryState(projection, directive);
-      if (state === 'ended' || directive.status === 'rejected') return [];
+      if (directive.status === 'rejected') return [];
+      const delivery = deliveryState(projection, directive);
+      if (delivery === 'ended' && item.severity === 'nit') return [];
+      const state = delivery === 'ended' ? 'notDelivered' : delivery;
       return [
         {
           adviceId: item.adviceId,

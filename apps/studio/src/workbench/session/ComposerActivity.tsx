@@ -278,8 +278,8 @@ export function ComposerActivity({
         };
       case 'summary': {
         if (!run) return null;
-        // An advisor's failure is said on its row: the run goes on without it.
-        const attention = unansweredAttention(model) && !activity.advisorFailure;
+        // An advisor's own trouble is said on its row; the widgets leave it out of attention.
+        const attention = unansweredAttention(model);
         const state = line.stateShown ? stateOf(run.presence, `run:${run.runId}`) : undefined;
         return {
           glyph: run.presence.glyph,
