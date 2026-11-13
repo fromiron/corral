@@ -70,7 +70,10 @@ export function describeEvent(
     case 'approval.requested':
       return of('approvalRequested', { kind: str(p.kind) });
     case 'approval.resolved':
-      return of('approvalResolved', { decision: str(p.decision) });
+      // One the runtime closed (its run or step ended, its time ran out) is no one's rejection.
+      return event.actor?.kind !== 'user' && p.decision === 'reject'
+        ? of('approvalClosed')
+        : of('approvalResolved', { decision: str(p.decision) });
     case 'directive.accepted':
       return of('directiveAccepted', { node: labelOf(str(p.targetExecutionId)) });
     case 'directive.attached':

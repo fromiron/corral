@@ -6,7 +6,7 @@ import {
   type RunEvent,
   type VerificationReport,
 } from '@corral/contracts';
-import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
+import { FakeClock, Gate, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
@@ -87,6 +87,9 @@ function runtime(
     trusted?: boolean;
     files?: Partial<NonNullable<CoordinatorDeps['files']>>;
     projectChecks?: (sessionId: string, checkIds: string[]) => unknown;
+    definition?: CorralDefinition;
+    /** An agent that fails once its gate opens. */
+    failing?: { nodeId: string; gate: Gate };
   } = {},
 ) {
   const clock = new FakeClock();
@@ -145,7 +148,16 @@ function runtime(
     timers: clock,
     store,
     ids: new SequentialIdFactory(),
-    agents: new ScriptedAgentAdapter({ turns: 1, collaborate: false, appendNotes: false }),
+    agents: new ScriptedAgentAdapter({
+      turns: 1,
+      collaborate: false,
+      appendNotes: false,
+      script: async (input) => {
+        if (input.nodeId !== options.failing?.nodeId) return null;
+        await options.failing.gate.wait();
+        return { outcome: 'failed', error: `${input.nodeId} broke` };
+      },
+    }),
     harnesses: {
       resolve: () => {
         throw new Error('no role harness in these tests');
@@ -175,7 +187,7 @@ function runtime(
     coordinator.startRun({
       schemaVersion: '0.1',
       commandId: `start_${Math.random()}`,
-      definition: team(),
+      definition: options.definition ?? team(),
       mode: 'mock',
       ...(options.sessionId === null ? {} : { sessionId: options.sessionId ?? 'session' }),
     });
@@ -329,5 +341,75 @@ describe('check decision', () => {
       ),
     ).toBe('CAPABILITY_DENIED');
     expect(refused(runtime({}, { files: { runCheck: undefined } }))).toBe('CAPABILITY_DENIED');
+  });
+
+  it('closes a waiting check approval in the commit that fails the run', async () => {
+    // p → a (fails) and w → check → Join j → m → output.
+    const parallel = Definition.parse({
+      ...base,
+      entryNodeId: 'p',
+      capabilityLinks: [],
+      nodes: [
+        agent('p'),
+        agent('a', 'p'),
+        agent('w', 'p'),
+        {
+          id: 'check',
+          type: 'decision',
+          label: 'check',
+          mode: 'check',
+          checkIds: ['types'],
+          inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'w' }],
+        },
+        { id: 'j', type: 'join', label: 'j', policy: 'any' },
+        agent('m', 'p'),
+        {
+          id: 'output',
+          type: 'output',
+          label: 'output',
+          inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'm' }],
+          requireApproval: false,
+        },
+      ],
+      controlEdges: [
+        edge('f1', 'p', 'out', 'a'),
+        edge('f2', 'p', 'out', 'w'),
+        edge('f3', 'w', 'out', 'check'),
+        edge('f4', 'check', 'pass', 'j'),
+        edge('f5', 'check', 'fail', 'j'),
+        edge('f6', 'a', 'out', 'j'),
+        edge('f7', 'j', 'out', 'm'),
+        edge('f8', 'm', 'out', 'output'),
+      ],
+    });
+    const gate = new Gate();
+    const s = runtime(
+      { types: ['stale'] },
+      { definition: parallel, failing: { nodeId: 'a', gate } },
+    );
+    const runId = await started(s);
+    const waiting = await waitForProjection(
+      s.transport,
+      runId,
+      (p) => pending(p)?.kind === 'check',
+    );
+    const approval = pending(waiting);
+    gate.open();
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect(final.status).toBe('failed');
+    expect(Object.values(final.approvals).filter((x) => x.status === 'pending')).toEqual([]);
+    const events = s.store.readEvents(runId, 0);
+    const closed = events.filter(
+      (e) => e.type === 'approval.resolved' && e.payload.approvalId === approval?.approvalId,
+    );
+    expect(closed).toHaveLength(1);
+    expect(closed[0]?.type === 'approval.resolved' && closed[0].payload).toMatchObject({
+      decision: 'reject',
+      reason: 'execution_ended',
+    });
+    const failedAt = events.findIndex(
+      (e) => e.type === 'run.state_changed' && e.payload.to === 'failed',
+    );
+    expect(events.indexOf(closed[0] as RunEvent)).toBe(failedAt - 1);
   });
 });

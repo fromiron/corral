@@ -312,7 +312,7 @@ describe('Coordinator model requests', () => {
             },
             `late_${decision}`,
             s.projection().controlRevision,
-          ).status,
+          ).error?.code,
       );
 
     it('closes as rejected by the runtime when the run is cancelled', async () => {
@@ -336,7 +336,7 @@ describe('Coordinator model requests', () => {
       });
       // Closed before the cancellation is confirmed.
       expect(closed).toBeLessThan(s.events.findIndex((e) => e.type === 'cancel.confirmed'));
-      expect(lateAnswers(s, approval)).toEqual(['rejected', 'rejected']);
+      expect(lateAnswers(s, approval)).toEqual(['APPROVAL_STALE', 'APPROVAL_STALE']);
     });
 
     it('closes with the run when the run fails', async () => {
@@ -347,9 +347,9 @@ describe('Coordinator model requests', () => {
       expect(s.projection().status).toBe('failed');
       expect(s.projection().approvals[approval.approvalId]).toMatchObject({
         status: 'rejected',
-        reason: 'cancelled',
+        reason: 'execution_ended',
       });
-      expect(lateAnswers(s, approval)).toEqual(['rejected', 'rejected']);
+      expect(lateAnswers(s, approval)).toEqual(['APPROVAL_STALE', 'APPROVAL_STALE']);
     });
   });
 
