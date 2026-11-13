@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { closeSettings, openFolderSettings, requestBox } from '../workbench.ts';
+import { closeSettings, openFolderSettings, requestBox, slash } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('file and line references remain independent and Escape clears only an empty command trigger', async ({
@@ -160,17 +160,11 @@ test.describe('viewed and active execution', () => {
       await expect(page.getByTestId('viewed-run-warning')).toContainText(
         'Viewing Run #1 while Run #2 is active',
       );
-      await expect(page.getByTestId('composer-destination')).toHaveText(
-        'Send to: after the current run in this session · next request',
-      );
-      const intent = page.getByRole('combobox', { name: 'What this is', exact: true });
-      await intent.click();
-      await page.getByRole('option', { name: /^Instruction/ }).click();
-      await expect(intent).toHaveAttribute('aria-expanded', 'false');
+      // While Run #2 goes the send key joins it, never the run being viewed.
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
       await expect(page.getByTestId('composer-destination')).toContainText('instruction');
-      await intent.click();
-      await page.getByRole('option', { name: /^Next request/ }).click();
+      // `/next` picks a next request once; it waits behind the active run.
+      await slash(page, 'next');
       await box.fill('Keep this next request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
         'Send to: after the current run in this session · next request',

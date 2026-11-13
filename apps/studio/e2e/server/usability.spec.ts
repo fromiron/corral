@@ -175,11 +175,8 @@ test.describe('instruction delivery', () => {
     await expect(
       page.getByTestId('app-sidebar').getByRole('link', { name: /^Draft a release plan Paused/ }),
     ).toBeVisible();
-    // While a run is active a next request waits behind it by default; an instruction is chosen
-    // explicitly (workbench.md: "기본 입력은 다음 요청이며 지시는 사용자가 명시적으로 선택한다").
-    const intent = page.getByRole('combobox', { name: 'What this is', exact: true });
-    await intent.click();
-    await page.getByRole('option', { name: /^Instruction/ }).click();
+    // While a run is active Send joins it: the instruction is read at its next model request
+    // (composer-flow.md "전송").
     await request(page).fill('Separate verified facts from remaining checks.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     const runId = corral.server.coordinator.listRuns()[0]?.runId;

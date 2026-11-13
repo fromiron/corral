@@ -222,15 +222,15 @@ test('a request typed while the lead waits is queued, not started', async ({ pag
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('awaiting_user');
   await expect(page.getByTestId('action-required')).toBeVisible();
-  // workbench.md: a next request sent while the session's run is going waits behind it; nothing
-  // has to be chosen first, the state at send time decides.
+  // composer-flow.md "전송": while the run waits on the person, Send joins (read after the
+  // decision) and Alt+Enter sends a next request, which waits behind the run.
   const draft = 'Keep this queued request while I decide the next step.';
   await requestBox(page).fill(draft);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveAttribute(
     'aria-description',
-    'Send · Next request, after the current run',
+    'Join',
   );
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await requestBox(page).press('Alt+Enter');
   await expect
     .poll(async () => (await session(page)).entries.at(-1))
     .toMatchObject({ text: draft, state: 'queued', intent: 'queue' });

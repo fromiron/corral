@@ -47,7 +47,7 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
     'Send to: new run in this session · next request',
   );
   await box(page).fill('Now only for one writer');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(2);
   await expect(status(cards(page).nth(1), 'Succeeded')).toBeVisible({
     timeout: 20_000,
@@ -58,7 +58,7 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
   await box(page).fill('/');
   await expect(page.getByRole('option', { name: /\/ask/ })).toHaveCount(0);
   await box(page).fill('Which one is simpler to back up?');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(3);
   await expect(cards(page).nth(2)).not.toContainText('Question about the result');
   await expect(status(cards(page).nth(2), 'Succeeded')).toBeVisible({
@@ -71,14 +71,14 @@ test('while a run works, a request waits in the queue until a person starts it',
 }) => {
   await sessionWithTeam(page, 1500);
   await box(page).fill('First request');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(1);
-  // Busy: a next request is decided when it is sent, so it waits behind the run (workbench.md).
-  await expect(box(page)).toHaveAccessibleDescription(
-    'Send to: after the current run in this session · next request',
-  );
+  // Busy: Send joins the run (composer-flow.md "전송"); Alt+Enter sends a next request, which
+  // waits behind it.
+  await expect(box(page)).toHaveAccessibleDescription(/^Send to: Run #1 · .+ · instruction$/);
+  await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
   await box(page).fill('Then summarise it');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await box(page).press('Alt+Enter');
   const queue = page.getByRole('region', { name: 'Queued next tasks' });
   await expect(queue).toContainText('Then summarise it');
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();

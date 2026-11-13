@@ -53,7 +53,9 @@ test.describe('shared automatic queue', () => {
     codexLogin: false,
     agentReply: { reply: () => 'Queued response', beforeReply: () => reply },
   });
-  test('two tabs start the same saved item once and preserve both drafts', async ({
+  // composer-flow.md "대기 요청과 넘겨받기": the server starts a queued request when the run ends;
+  // no open tab does, so two tabs never start it twice, and both keep their drafts.
+  test('two tabs leave the saved item to the server, which starts it once, and keep both drafts', async ({
     page,
     context,
     corral,
@@ -61,11 +63,7 @@ test.describe('shared automatic queue', () => {
     reply = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let unblock = () => {};
-    const bothSubmitted = new Promise<void>((resolve) => {
-      unblock = resolve;
-    });
-    const commands: string[] = [];
+    const starts: string[] = [];
     const second = await context.newPage();
     try {
       await corral.open('/');
@@ -73,9 +71,10 @@ test.describe('shared automatic queue', () => {
       await requestBox(page).fill('Initial request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
-      // A next request sent while the run works waits behind it (workbench.md).
+      // Alt+Enter sends a next request, which waits behind the run.
+      await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
       await requestBox(page).fill('Run this queued item once');
-      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      await requestBox(page).press('Alt+Enter');
       await second.goto(page.url());
       for (const tab of [page, second]) {
         await expect(tab.getByRole('button', { name: 'Start now', exact: true })).toBeVisible();
@@ -83,22 +82,15 @@ test.describe('shared automatic queue', () => {
           name: 'Start the next queued task when the run ends',
           exact: true,
         });
-        if ((await auto.getAttribute('aria-checked')) !== 'true') await auto.click();
+        await expect(auto).toHaveAttribute('aria-checked', 'true');
         await tab.route('**/api/v1/runs/auto', async (route) => {
-          const body = route.request().postDataJSON();
-          if (body.brief === 'Run this queued item once') {
-            commands.push(body.commandId);
-            if (commands.length === 2) unblock();
-            await bothSubmitted;
-          }
+          starts.push(route.request().postDataJSON().brief);
           await route.continue();
         });
       }
       await requestBox(page).fill('Keep the first draft');
       await requestBox(second).fill('Keep the second draft');
       release();
-      await expect.poll(() => commands.length).toBe(2);
-      expect(new Set(commands).size).toBe(1);
       await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
       for (const tab of [page, second]) {
         await expect(tab.getByRole('button', { name: 'Start now', exact: true })).toHaveCount(0);
@@ -107,10 +99,10 @@ test.describe('shared automatic queue', () => {
       await expect(requestBox(page)).toHaveValue('Keep the first draft');
       await expect(requestBox(second)).toHaveValue('Keep the second draft');
       expect(corral.server.coordinator.listRuns()).toHaveLength(2);
+      expect(starts).toEqual([]);
       expect(corral.errors).toEqual([]);
     } finally {
       release();
-      unblock();
       await second.close();
     }
   });
