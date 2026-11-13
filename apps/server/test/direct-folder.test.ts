@@ -272,6 +272,8 @@ describe('direct folder file access', () => {
       mkdirSync(join(copy, 'from-copy'), { recursive: true });
       writeFileSync(join(copy, 'from-copy.txt'), 'copy\n');
       service.acquireRun('run_copy', 'session_copy', false);
+      // A review names the copy and its project's folder as [workspace].
+      expect(service.runWorkspaceRoots('run_copy')).toEqual([copy, root]);
       const copyList = await service.execute(
         {
           name: 'list_files',
@@ -340,6 +342,9 @@ describe('direct folder file access', () => {
       await s.service.prepareRun('run_1');
       await s.service.prepareRun('run_2');
       expect(folderWriters(s.db)).toEqual([]);
+      // A direct run's work folder is the linked folder; a run never admitted has none.
+      expect(s.service.runWorkspaceRoots('run_1')).toEqual([s.root]);
+      expect(s.service.runWorkspaceRoots('run_unknown')).toEqual([]);
     } finally {
       await s.service.dispose();
       s.db.close();

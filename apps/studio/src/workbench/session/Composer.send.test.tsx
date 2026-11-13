@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import type { TextAttachment } from '@corral/contracts';
+import type { ImageAttachment, RunReference, TextAttachment } from '@corral/contracts';
 import type { RunProjection, RunSummary, SessionEntry, WorkSession } from '@corral/core';
-import { createTextAttachment, emptyProjection } from '@corral/core';
+import { createTextAttachment, emptyProjection, queuedSessionCommandId } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -11,7 +11,8 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setCommands } from '../../commandRegistry.ts';
 import { changePreferences } from '../preferences.ts';
-import { writeComposerDraft } from '../sessionDraft.ts';
+import { editRequest } from '../RefusalHelp.tsx';
+import { readComposerDraft, writeComposerDraft } from '../sessionDraft.ts';
 import { Composer } from './Composer.tsx';
 import { menuSends } from './composer/SendControls.tsx';
 
@@ -135,6 +136,7 @@ async function mount({
   mode = 'server',
   runState = {},
   folderAccess,
+  workspaces = null,
 }: {
   active?: RunSummary | null;
   executions?: Record<string, string>;
@@ -145,6 +147,8 @@ async function mount({
   /** The run's record as the store holds it at first. */
   runState?: Partial<RunState>;
   folderAccess?: 'copy' | 'unlinked';
+  /** The server's files and images; none in a browser demo. */
+  workspaces?: Record<string, unknown> | null;
 } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -211,7 +215,7 @@ async function mount({
     mode,
     live: true,
     workspaceId: 'host',
-    workspaces: null,
+    workspaces,
     voice: null,
     startAuto,
     startExplain: vi.fn(),
@@ -472,9 +476,9 @@ describe('the target', () => {
   });
 
   it.each([
-    ['joins', running, {}, true],
-    // A saved next request carries no images: the server starts it without them.
-    ['saves a next request', running, { exec_writer: 'succeeded' }, true],
+    ['joins', running, { exec_writer: 'active' }, true],
+    // A saved next request carries its images: the server starts it with them.
+    ['saves a next request', running, { exec_writer: 'succeeded' }, false],
     ['starts a new request', null, {}, false],
   ] as const)(
     'says images apply to a new request only while the send key %s',
@@ -1030,8 +1034,9 @@ describe('the composer', () => {
   );
 
   it.each([
-    ['joins', running, {}, true],
-    ['saves a next request', running, { exec_writer: 'succeeded' }, true],
+    ['joins', running, { exec_writer: 'active' }, true],
+    // A saved next request carries its references: the server starts it with them.
+    ['saves a next request', running, { exec_writer: 'succeeded' }, false],
     ['starts a new request', null, {}, false],
   ] as const)(
     'says references apply to a new request only while the send key %s',
@@ -1060,6 +1065,166 @@ describe('the composer', () => {
   );
 });
 
+// features/composer-flow.md "합류 대상": images and references ride a new request and a next
+// request; a join or an interrupt leaves them in the box with one line.
+const IMAGE: ImageAttachment = {
+  kind: 'image_attachment',
+  imageId: 'img_0123456789abcdef',
+  name: 'screen.png',
+  mime: 'image/png',
+  bytes: 120,
+  sha256: 'a'.repeat(64),
+  width: 10,
+  height: 10,
+};
+const NOTE = createTextAttachment('notes.txt', 'text/plain', 'Keep it short.');
+const HELD = messages.Composer.heldForNew.split('{items}')[0] ?? '';
+const FILE_REF: RunReference = { kind: 'file', path: 'src/a.ts', lines: { start: 2, end: 4 } };
+const withReferences = () =>
+  writeComposerDraft('session', {
+    text: 'Look at @src/a.ts:L2-L4 here',
+    intent: null,
+    target: null,
+    targetLabel: null,
+    references: [
+      {
+        id: 'file:src/a.ts:2-4',
+        kind: 'file',
+        label: 'src/a.ts',
+        lines: { start: 2, end: 4 },
+        reference: FILE_REF,
+      },
+    ],
+    attachments: [NOTE],
+    images: [IMAGE],
+  });
+
+describe('what a next request carries', () => {
+  it('records its images and references with the request and clears them from the box', async () => {
+    withReferences();
+    const f = await mount({ executions: { exec_writer: 'succeeded' } });
+    expect(f.container.textContent).not.toContain(HELD);
+    await f.press();
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({
+      intent: 'queue',
+      state: 'queued',
+      text: 'Look at @src/a.ts:L2-L4 here',
+      references: [FILE_REF],
+      attachments: [NOTE],
+      images: [IMAGE],
+    });
+    const left = readComposerDraft('session');
+    expect(left.images ?? []).toEqual([]);
+    expect(left.references).toEqual([]);
+    expect(left.attachments ?? []).toEqual([]);
+  });
+
+  it('a new request starts with them in the order a saved request starts with', async () => {
+    withReferences();
+    const f = await mount({ active: null });
+    await f.press();
+    expect(
+      (f.startAuto.mock.calls[0]?.[0] as { references?: unknown } | undefined)?.references,
+    ).toEqual([FILE_REF, NOTE, IMAGE]);
+    expect(lastEntry(f.repository)).toMatchObject({
+      intent: 'next',
+      references: [FILE_REF],
+      images: [IMAGE],
+    });
+  });
+
+  it('Start now starts a saved request with the body the server would send', async () => {
+    const entry: SessionEntry = {
+      ...saved,
+      text: 'Look at @src/a.ts:L2-L4 here',
+      references: [FILE_REF],
+      attachments: [NOTE],
+      images: [IMAGE],
+    };
+    const f = await mount({ active: null, queued: [entry] });
+    const start = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === messages.Sessions.startNow,
+    );
+    await act(async () => start?.click());
+    await act(async () => {});
+    expect(f.startAuto).toHaveBeenCalledTimes(1);
+    expect(f.startAuto.mock.calls[0]?.[0]).toEqual({
+      ...saved.start,
+      commandId: queuedSessionCommandId('session', entry),
+      sessionId: 'session',
+      brief: entry.text,
+      references: [FILE_REF, NOTE, IMAGE],
+    });
+  });
+
+  it('a join leaves the images in the box, says so, and sends only the text attachment', async () => {
+    withReferences();
+    const f = await mount();
+    expect(f.container.textContent).toContain(
+      messages.Composer.heldForNew.replace(
+        '{items}',
+        `${messages.Composer.held.references} and ${messages.Composer.held.images}`,
+      ),
+    );
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ attachments: [NOTE] });
+    expect(steerPayload(f.sendCommand)).not.toHaveProperty('images');
+    const recorded = lastEntry(f.repository);
+    expect(recorded).toMatchObject({ intent: 'steer' });
+    expect(recorded).not.toHaveProperty('images');
+    expect(recorded).not.toHaveProperty('references');
+    expect(readComposerDraft('session').images).toEqual([IMAGE]);
+  });
+
+  it.each([
+    ['a file range', 'Compare @src/a.ts:L2-L4 now', [FILE_REF]],
+    ['a folder', 'Read @docs/ first', [{ kind: 'folder', path: 'docs' }]],
+    [
+      'a result and a run',
+      'Use @result:1 from @"Run #1" please',
+      [
+        { kind: 'result', runId: 'run_old', artifactVersionId: 'art_1' },
+        { kind: 'run', runId: 'run_live' },
+      ],
+    ],
+  ] as [string, string, RunReference[]][])(
+    'taken back to edit, comes back with its images and %s, and goes again the same',
+    async (_, text, references) => {
+      const entry: SessionEntry = {
+        ...saved,
+        text,
+        references,
+        attachments: [NOTE],
+        images: [IMAGE],
+      };
+      const f = await mount({ queued: [entry] });
+      const edit = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) =>
+          button.getAttribute('aria-label') ===
+          messages.Sessions.editQueuedMessage.replace('{text}', text),
+      );
+      expect(edit).toBeDefined();
+      await act(async () => edit?.click());
+      expect(f.box().value).toBe(text);
+      const draft = readComposerDraft('session');
+      expect(draft.images).toEqual([IMAGE]);
+      expect(draft.references.map((item) => item.reference)).toEqual(references);
+      // Taken back as a next request, nothing is held for a new one.
+      expect(f.container.textContent).not.toContain(HELD);
+      await f.press();
+      expect(lastEntry(f.repository)).toMatchObject({
+        intent: 'queue',
+        text,
+        permissionMode: 'accept_edits',
+        references,
+        attachments: [NOTE],
+        images: [IMAGE],
+      });
+    },
+  );
+});
+
 it('the tool line keeps the folder notice before where a send goes, and voice right before Send', async () => {
   const f = await mount({ folderAccess: 'copy' });
   const line = [
@@ -1077,4 +1242,225 @@ it('the tool line keeps the folder notice before where a send goes, and voice ri
   const send = line.findIndex((node) => node.getAttribute('aria-label') === 'Send');
   expect(voice).toBeGreaterThan(target);
   expect(voice).toBeLessThan(send);
+});
+
+it('a menu opened again before the focus comes back stays open, and the box does not take the focus', async () => {
+  const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+  // Closed by a pick, and opened again before the next frame.
+  // Frames are held from the close until the menu is open again: the frame the close planned
+  // comes after the reopening, as on a loaded machine.
+  await act(async () => f.targetButton()?.click());
+  await vi.waitFor(() => expect(f.menuItem('Review')).toBeDefined());
+  const held: FrameRequestCallback[] = [];
+  const realFrame = window.requestAnimationFrame;
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    held.push(callback);
+    return 0;
+  });
+  await act(async () => f.menuItem('Review')?.click());
+  expect(f.targetButton()?.textContent).toContain('Review');
+  await act(async () => f.targetButton()?.click());
+  await vi.waitFor(() => expect(f.targetButton()?.getAttribute('aria-expanded')).toBe('true'));
+  vi.stubGlobal('requestAnimationFrame', realFrame);
+  expect(held.length).toBeGreaterThan(0);
+  // The box never takes the focus from the open menu, not even for a moment.
+  let taken = false;
+  f.box().addEventListener('focus', () => {
+    taken = true;
+  });
+  await act(async () => {
+    for (const callback of held.splice(0)) callback(performance.now());
+  });
+  for (let frames = 0; frames < 5; frames++) await f.frame();
+  expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  expect(f.targetButton()?.getAttribute('aria-expanded')).toBe('true');
+  expect(taken).toBe(false);
+  expect(document.activeElement).not.toBe(f.box());
+});
+
+// features/composer-flow.md "합류 대상": images and references can be added while a run goes.
+describe('adding images while a run goes', () => {
+  const imageInput = (f: { container: HTMLElement }) =>
+    f.container.querySelector<HTMLInputElement>(
+      `input[type="file"][aria-label="${messages.Composer.attachImages}"]`,
+    );
+  // The picker turns a picked file into a PNG and saves it; jsdom has no canvas, so both are faked.
+  const uploads = () => {
+    vi.stubGlobal('createImageBitmap', async () => ({ width: 10, height: 10, close() {} }));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage() {},
+    } as never);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
+      callback(new Blob(['png'], { type: 'image/png' }));
+    });
+    return { uploadImage: vi.fn(async () => IMAGE), imageUrl: () => '' };
+  };
+  const attach = async (f: { container: HTMLElement }) => {
+    const input = imageInput(f);
+    if (!input) throw new Error('no image input');
+    const file = new File(['x'], 'screen.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await act(async () => {});
+  };
+  afterEach(() => vi.restoreAllMocks());
+  // The "+" menu's image item, which opens the picker.
+  const imageItemEnabled = async (f: { container: HTMLElement }) => {
+    const trigger = f.container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${messages.Composer.attachmentActions}"]`,
+    );
+    await act(async () => trigger?.click());
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((node) =>
+      node.textContent?.includes(messages.Composer.attachImages),
+    );
+    expect(item).toBeDefined();
+    const enabled =
+      item?.getAttribute('aria-disabled') !== 'true' && !item?.hasAttribute('data-disabled');
+    await act(async () =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      ),
+    );
+    return enabled;
+  };
+
+  it.each([
+    ['with a target to join', { exec_writer: 'active' }],
+    ['with nothing to join', { exec_writer: 'succeeded' }],
+  ] as const)('can be added %s', async (_, executions) => {
+    const f = await mount({ executions, workspaces: uploads() });
+    expect(imageInput(f)?.disabled).toBe(false);
+    expect(await imageItemEnabled(f)).toBe(true);
+    await attach(f);
+    expect(readComposerDraft('session').images).toEqual([IMAGE]);
+  });
+
+  it('can be added to a queued request taken back to edit', async () => {
+    const f = await mount({ queued: [saved], workspaces: uploads() });
+    const edit = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) =>
+        button.getAttribute('aria-label') ===
+        messages.Sessions.editQueuedMessage.replace('{text}', saved.text),
+    );
+    await act(async () => edit?.click());
+    expect(imageInput(f)?.disabled).toBe(false);
+    expect(await imageItemEnabled(f)).toBe(true);
+  });
+
+  it('a next request takes the added image and clears it from the box', async () => {
+    const f = await mount({ workspaces: uploads() });
+    await f.type('Look at this');
+    await attach(f);
+    await f.press({ altKey: true });
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({ intent: 'queue', images: [IMAGE] });
+    expect(readComposerDraft('session').images ?? []).toEqual([]);
+  });
+
+  it('a join leaves the added image in the box and says it waits for a new request', async () => {
+    const f = await mount({ workspaces: uploads() });
+    await f.type('Look at this');
+    await attach(f);
+    expect(f.container.textContent).toContain(
+      messages.Composer.heldForNew.replace('{items}', messages.Composer.held.images),
+    );
+    await f.press();
+    expect(steerPayload(f.sendCommand)).not.toHaveProperty('images');
+    expect(readComposerDraft('session').images).toEqual([IMAGE]);
+  });
+});
+
+// features/composer-flow.md "대기 요청과 넘겨받기": every way back into the box brings the same.
+describe('a request taken back into the box', () => {
+  const RUN_REF: RunReference = { kind: 'run', runId: 'run_live' };
+  const text = 'Compare @src/a.ts:L2-L4 with @"Run #1" please';
+  const sent: SessionEntry = {
+    entryId: 'entry_sent',
+    intent: 'next',
+    text,
+    createdAt: '2026-11-13T00:00:00Z',
+    state: 'refused',
+    runId: null,
+    executionId: null,
+    detail: 'No',
+    references: [FILE_REF, RUN_REF],
+    attachments: [NOTE],
+    images: [IMAGE],
+  };
+  const comesBack = () => {
+    const draft = readComposerDraft('session');
+    expect(draft.text).toBe(text);
+    expect(draft.references.map((item) => item.reference)).toEqual([FILE_REF, RUN_REF]);
+    expect(draft.attachments).toEqual([NOTE]);
+    expect(draft.images).toEqual([IMAGE]);
+  };
+
+  it('to be edited, its chips, images and text attachments come back and go again the same', async () => {
+    const f = await mount({ active: ended });
+    await act(async () => editRequest(sent.text, sent));
+    comesBack();
+    await f.press();
+    expect(
+      (f.startAuto.mock.calls[0]?.[0] as { references?: unknown } | undefined)?.references,
+    ).toEqual([FILE_REF, RUN_REF, NOTE, IMAGE]);
+  });
+
+  it('recalled with the up arrow, its chips, images and text attachments come back', async () => {
+    const f = await mount({
+      active: ended,
+      session: { ...baseSession, entries: [sent] },
+    });
+    await act(async () => {
+      f.box().focus();
+      f.box().dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }),
+      );
+    });
+    expect(f.box().value).toBe(text);
+    comesBack();
+  });
+});
+
+// features/composer-flow.md "합류 대상": a request carries 20 references and attachments in all.
+describe('a request with too many references', () => {
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, n) => ({
+      id: `file:f${n}`,
+      kind: 'file' as const,
+      label: `f${n}.ts`,
+      reference: { kind: 'file' as const, path: `f${n}.ts` },
+    }));
+  const draftOf = (count: number) =>
+    writeComposerDraft('session', {
+      text: many(count)
+        .map((item) => `@${item.label}`)
+        .join(' '),
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: many(count),
+      attachments: [NOTE],
+    });
+  const notice = messages.Composer.tooManyItems.replace('{max}', '20').replace('{over}', '1');
+
+  it.each([
+    ['a new request', null, {}],
+    ['a next request', running, { exec_writer: 'succeeded' }],
+  ] as const)('says so before %s is sent, and sends nothing', async (_, active, executions) => {
+    draftOf(20);
+    const f = await mount({ active, executions });
+    expect(f.container.textContent).toContain(notice);
+    await f.press();
+    expect(f.startAuto).not.toHaveBeenCalled();
+    expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+    expect(readComposerDraft('session').references).toHaveLength(20);
+  });
+
+  it('sends at the limit', async () => {
+    draftOf(19);
+    const f = await mount({ active: null });
+    expect(f.container.textContent).not.toContain(messages.Composer.tooManyItems.split('{')[0]);
+    await f.press();
+    expect(f.startAuto).toHaveBeenCalledTimes(1);
+  });
 });

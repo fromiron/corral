@@ -710,6 +710,16 @@ CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
   CHECK (auto_start IN (0,1))`);
     },
   },
+  {
+    // execution rows the person opened; an advice item for that execution leaves the inbox.
+    name: '0043_execution_views',
+    sql: `CREATE TABLE IF NOT EXISTS execution_views (
+  run_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
+  opened_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, execution_id)
+) STRICT;`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

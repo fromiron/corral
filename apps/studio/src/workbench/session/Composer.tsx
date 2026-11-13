@@ -30,11 +30,7 @@ import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 import { composerAvailability } from './composer/availability.ts';
-import {
-  backToInput as backToInputOf,
-  ComposerCard,
-  type SendTarget,
-} from './composer/ComposerCard.tsx';
+import { ComposerCard, type SendTarget } from './composer/ComposerCard.tsx';
 import { ComposerNotices } from './composer/ComposerNotices.tsx';
 import {
   AttachMenu,
@@ -46,6 +42,7 @@ import {
 } from './composer/ComposerTools.tsx';
 import { compactContext, composerCommands, runCommand } from './composer/commands.ts';
 import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs.tsx';
+import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
 import { type MeetingComposerProps, MeetingSend } from './composer/meeting.tsx';
 import { useQueuedRequests } from './composer/queue.ts';
@@ -229,6 +226,7 @@ function SessionComposer({
   const draft = useComposerDraft({
     session,
     team,
+    runs,
     restored,
     busy,
     input,
@@ -537,7 +535,7 @@ function SessionComposer({
         <AttachMenu
           onAddReference={() => insertMentionTrigger(input.current, text, write)}
           serverMode={mode === 'server'}
-          imagesDisabled={attachBusy || intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
+          imagesDisabled={attachBusy || images.length >= IMAGE_MAX_COUNT}
           textDisabled={attachBusy || !textAttachable}
           onAttachImages={() => imageFiles.current?.click()}
           onAttachText={() => textFiles.current?.click()}

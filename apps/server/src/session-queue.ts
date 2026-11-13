@@ -9,6 +9,7 @@ import {
   type CorralRepository,
   carriedDirectives,
   carriedEntry,
+  entryStartReferences,
   nextQueuedEntry,
   queuedSessionCommandId,
   type RunProjection,
@@ -93,13 +94,15 @@ export function createSessionQueue(deps: SessionQueueDeps) {
     if (!entry?.start || !(session.autoStart || carriedPast(sessionId, entry.carriedFrom))) return;
     const commandId = queuedSessionCommandId(sessionId, entry);
     const throughRunId = conversationRun(deps.runs(), sessionId);
+    // The same references, in the same order, as a person starting this entry sends.
+    const references = entryStartReferences(entry);
     const outcome = await deps.start({
       ...entry.start,
       commandId,
       sessionId,
       brief: entry.text,
       ...(throughRunId ? { conversation: { throughRunId } } : {}),
-      ...(entry.attachments?.length ? { references: entry.attachments } : {}),
+      ...(references.length ? { references } : {}),
     });
     if (!outcome.ok) {
       deps.log(sessionId, outcome.code);

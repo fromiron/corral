@@ -1,4 +1,4 @@
-import type { RunStatus } from '@corral/contracts';
+import { canonicalJson, type RunStatus } from '@corral/contracts';
 import {
   type CorralRepository,
   planSessionEntry,
@@ -47,6 +47,8 @@ function harness(
     autoStart?: boolean;
     /** The run each carried directive was sent in. */
     directiveRuns?: Record<string, string>;
+    /** A start a person already made: the same command with the same body is that run. */
+    owned?: { request: QueuedStartRequest; runId: string };
   } = {},
 ) {
   const runs: QueueRun[] = [
@@ -100,6 +102,15 @@ function harness(
     directiveRun: (_sessionId, directiveId) => options.directiveRuns?.[directiveId] ?? null,
     start: async (request) => {
       starts.push(request);
+      if (options.owned && options.owned.request.commandId === request.commandId)
+        return canonicalJson(options.owned.request) === canonicalJson(request)
+          ? { ok: true, runId: options.owned.runId, error: null, autoRoute: null }
+          : {
+              ok: true,
+              runId: null,
+              error: { code: 'IDEMPOTENCY_CONFLICT', message: 'another body' },
+              autoRoute: null,
+            };
       if (options.startDelayMs) await new Promise((r) => setTimeout(r, options.startDelayMs));
       if (fail) throw new Error('/home/someone/secret path and body text');
       if (options.refuseStart)
@@ -176,6 +187,101 @@ it('a queued entry with no open run starts; with an open run it waits', async ()
   expect(h.starts).toHaveLength(1);
   await h.queue.onEntryQueued('s1');
   expect(h.starts).toHaveLength(1);
+});
+
+// What a queued request carries for a new run (features/composer-flow.md "합류 대상").
+const IMAGE = {
+  kind: 'image_attachment' as const,
+  imageId: 'image_1',
+  name: 'shot.png',
+  mime: 'image/png' as const,
+  bytes: 1,
+  sha256: 'a'.repeat(64),
+  width: 1,
+  height: 1,
+};
+const NOTE = {
+  kind: 'text_attachment' as const,
+  name: 'notes.txt',
+  mime: 'text/plain' as const,
+  text: 'n',
+  bytes: 1,
+  sha256: 'b'.repeat(64),
+};
+const REFERENCES = [
+  { kind: 'folder' as const, path: 'docs' },
+  { kind: 'file' as const, path: 'src/a.ts', lines: { start: 2, end: 4 } },
+];
+
+it('starts a queued request with its references, text attachments and images, in that order', async () => {
+  const h = harness({
+    entries: [
+      entry('e1', {
+        start: { ...START, taskScope: 'review_only', verificationScope: 'release' },
+        references: REFERENCES,
+        attachments: [NOTE] as SessionEntry['attachments'],
+        images: [IMAGE, { ...IMAGE, imageId: 'image_2' }],
+      }),
+    ],
+  });
+  await h.queue.onEntryQueued('s1');
+  expect(h.starts).toHaveLength(1);
+  expect(h.starts[0]?.references).toEqual([
+    ...REFERENCES,
+    NOTE,
+    IMAGE,
+    { ...IMAGE, imageId: 'image_2' },
+  ]);
+  // The task and verification scopes ride in the start snapshot.
+  expect(h.starts[0]).toMatchObject({ taskScope: 'review_only', verificationScope: 'release' });
+});
+
+it('a person who started the queued request first owns its run; the server records it', async () => {
+  const queued = entry('e1', {
+    references: REFERENCES,
+    attachments: [NOTE] as SessionEntry['attachments'],
+    images: [IMAGE],
+  });
+  // The body a screen starts a saved request with (apps/studio composer/queue.ts).
+  const person: QueuedStartRequest = {
+    ...START,
+    commandId: queuedSessionCommandId('s1', queued),
+    sessionId: 's1',
+    brief: queued.text,
+    conversation: { throughRunId: 'run_b' },
+    references: [...REFERENCES, NOTE, IMAGE] as QueuedStartRequest['references'],
+  };
+  const h = harness({
+    entries: [structuredClone(queued)],
+    owned: { request: person, runId: 'run_person' },
+  });
+  await h.queue.onEntryQueued('s1');
+  expect(h.session.entries[0]).toMatchObject({ state: 'started', runId: 'run_person' });
+  // A body without the image is another request: its owner keeps the outcome.
+  const without = harness({
+    entries: [structuredClone(queued)],
+    owned: { request: { ...person, references: person.references?.slice(0, -1) }, runId: 'x' },
+  });
+  await without.queue.onEntryQueued('s1');
+  expect(without.session.entries[0]).toMatchObject({ state: 'queued', runId: null });
+});
+
+it('starts a queued request with nothing it does not have', async () => {
+  const h = harness({ entries: [entry('e1')] });
+  await h.queue.onEntryQueued('s1');
+  expect(h.starts[0]).not.toHaveProperty('references');
+});
+
+it('a carried directive keeps only its text attachments, whatever its source carried', async () => {
+  const h = harness({
+    entries: [source({ images: [IMAGE], references: REFERENCES })],
+  });
+  await h.queue.onDirectivesExpired('run_b', projectionOf([directiveView('dir_1')]));
+  const carried = h.session.entries.find((item) => item.carriedFrom === 'dir_1');
+  expect(carried).toBeDefined();
+  expect(carried).not.toHaveProperty('images');
+  expect(carried).not.toHaveProperty('references');
+  expect(h.starts[0]).not.toHaveProperty('references');
 });
 
 it('a start that throws is logged by code only and later passes still run', async () => {

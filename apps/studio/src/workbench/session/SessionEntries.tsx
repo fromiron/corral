@@ -170,16 +170,8 @@ export function EntryCard({
           code={entry.refusal?.code}
           owner={entry.refusal?.owner}
           message={entry.detail}
-          onEdit={() =>
-            editRequest(entry.text, {
-              permissionMode: entry.permissionMode,
-              harness: entry.harness,
-              attachments: entry.attachments,
-              images: entry.images,
-              taskScope: entry.taskScope,
-              verificationScope: entry.verificationScope,
-            })
-          }
+          // Edited as the pencil and "restore" edit it: with everything it was sent with.
+          onEdit={() => editRequest(entry.text, entry)}
         />
       ) : entry.detail ? (
         <p role="note" className="text-caption text-danger">

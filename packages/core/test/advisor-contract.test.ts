@@ -1,12 +1,11 @@
-import type { AgentAdapter, AgentSettlement, RunEvent } from '@corral/contracts';
+import { type AgentAdapter, type AgentSettlement, RunEvent } from '@corral/contracts';
 import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import { applyEvent, Coordinator, InMemoryRunStore } from '../src/index.ts';
 
-// The advice contract is in place before its handling (docs/specs/features/advisor.md): until
-// the command handling exists, advice is refused out loud.
+// The advice contract (docs/specs/features/advisor.md, 계약; api-contract.md, the event table).
 
-describe('advice before its handling', () => {
+describe('the advice contract', () => {
   function setup() {
     const exits: ((value: AgentSettlement) => void)[] = [];
     const agents: AgentAdapter = {
@@ -46,34 +45,51 @@ describe('advice before its handling', () => {
     },
   });
 
-  it('refuses submit_advice as not supported, records nothing, and repeats the refusal', () => {
+  it('refuses submit_advice from outside an advisor, records nothing and keeps no refusal', () => {
     const { coordinator, store, runId } = setup();
     const before = store.readEvents(runId, 0).length;
     const receipt = coordinator.submit(advice(runId));
-    expect(receipt).toMatchObject({
-      status: 'rejected',
-      error: { code: 'COMMAND_NOT_SUPPORTED' },
-    });
+    expect(receipt).toMatchObject({ status: 'rejected', error: { code: 'CAPABILITY_DENIED' } });
     expect(store.readEvents(runId, 0)).toHaveLength(before);
-    expect(coordinator.submit(advice(runId))).toEqual(receipt);
+    // Not stored: the command id stays free for an advisor's own advice.
+    expect(store.getCommand(runId, 'advice_1')).toBeNull();
     expect(coordinator.submit(advice(runId, 'Another note.')).error?.code).toBe(
-      'IDEMPOTENCY_CONFLICT',
+      'CAPABILITY_DENIED',
     );
   });
 
-  it('the projection passes over advice events', () => {
+  const base = (runId: string) => ({
+    schemaVersion: '0.1' as const,
+    runId,
+    recordedAt: '2026-11-13T00:00:00.000Z',
+    actor: { kind: 'runtime' as const, id: 'coordinator' },
+    causedByEventIds: [],
+  });
+
+  it('a preserved advice carries its note, and only a preserved one does', () => {
+    const at = { ...base('run_1'), eventId: 'evt_1', runSeq: 1, type: 'advice.admitted' as const };
+    const fields = {
+      adviceId: 'adv_1',
+      observerExecutionId: 'exec_advisor',
+      targetExecutionId: 'exec_writer',
+      severity: 'concern' as const,
+    };
+    const parse = (payload: Record<string, unknown>) =>
+      RunEvent.safeParse({ ...at, payload: { ...fields, ...payload } }).success;
+    expect(parse({ delivery: 'preserve', note: 'Check the 2019 figure.' })).toBe(true);
+    expect(parse({ delivery: 'preserve' })).toBe(false);
+    expect(parse({ delivery: 'preserve', note: 'x', directiveId: 'dir_1' })).toBe(false);
+    expect(parse({ delivery: 'next_request', directiveId: 'dir_1' })).toBe(true);
+    expect(parse({ delivery: 'interrupt' })).toBe(false);
+    expect(parse({ delivery: 'next_request', directiveId: 'dir_1', note: 'x' })).toBe(false);
+  });
+
+  it('the projection keeps admitted advice and the reason of dropped advice, not its text', () => {
     const { coordinator, runId } = setup();
     const projection = coordinator.getSnapshot(runId).projection;
-    const base = {
-      schemaVersion: '0.1' as const,
-      runId,
-      recordedAt: '2026-11-13T00:00:00.000Z',
-      actor: { kind: 'runtime' as const, id: 'coordinator' },
-      causedByEventIds: [],
-    };
     const events: RunEvent[] = [
       {
-        ...base,
+        ...base(runId),
         eventId: 'evt_advice_1',
         runSeq: projection.lastSeq + 1,
         type: 'advice.admitted',
@@ -83,10 +99,11 @@ describe('advice before its handling', () => {
           targetExecutionId: 'exec_writer',
           severity: 'concern',
           delivery: 'preserve',
+          note: 'Check the 2019 figure.',
         },
       },
       {
-        ...base,
+        ...base(runId),
         eventId: 'evt_advice_2',
         runSeq: projection.lastSeq + 2,
         type: 'advice.suppressed',
@@ -100,6 +117,19 @@ describe('advice before its handling', () => {
     ];
     let next = projection;
     for (const event of events) next = applyEvent(next, event);
-    expect({ ...next, lastSeq: projection.lastSeq }).toEqual(projection);
+    expect(next.advice?.adv_1).toMatchObject({
+      delivery: 'preserve',
+      directiveId: null,
+      note: 'Check the 2019 figure.',
+    });
+    expect(next.suppressedAdvice).toEqual([
+      {
+        observerExecutionId: 'exec_advisor',
+        targetExecutionId: 'exec_writer',
+        severity: 'nit',
+        reason: 'noise',
+        runSeq: projection.lastSeq + 2,
+      },
+    ]);
   });
 });

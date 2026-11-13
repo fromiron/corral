@@ -287,7 +287,6 @@
   },
   "Validation": {
     "codes": {
-      "ADVISOR_NOT_SUPPORTED": "감독은 아직 실행할 수 없습니다.",
       "ADVISOR_OUTSIDE_FLOW": "감독은 흐름 밖에 둡니다. 연결, 루프·팀 안, 위임·질문 연결을 가질 수 없습니다.",
       "ADVISOR_UNWATCHED": "{node}: 지켜보는 에이전트가 없습니다. 조언할 에이전트에 연결하세요.",
       "ADVISOR_ADVISE_SOURCE": "에이전트를 지켜보는 것은 감독뿐입니다. 이 조언 연결은 감독에서 시작해야 합니다.",
@@ -2504,6 +2503,7 @@
       "steer": "지시로 보내기"
     },
     "missingReferences": "더 이상 없는 참조가 {count}개 있습니다. 보내기 전에 빼세요.",
+    "tooManyItems": "한 요청에는 참조·텍스트 첨부·이미지를 합쳐 {max}개까지 실을 수 있습니다. 보내기 전에 {over}개를 빼세요.",
     "referenceGone": "(더 이상 없음)",
     "models": {
       "title": "이 팀의 모델",

@@ -8,5 +8,10 @@ export {
   type FakeRoutingOptions,
   utf8Length,
 } from './routing-backend.ts';
-export { defaultReply, ScriptedAgentAdapter, type ScriptedAgentOptions } from './scripted-agent.ts';
+export {
+  defaultReply,
+  type ScriptedAdvice,
+  ScriptedAgentAdapter,
+  type ScriptedAgentOptions,
+} from './scripted-agent.ts';
 export { simulatedReply } from './simulated-reply.ts';

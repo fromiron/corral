@@ -116,6 +116,7 @@ async function seed() {
     ).run(runId, `effect_media_${mark}`, `hash_${mark}`);
     db.prepare('INSERT INTO conversation_turns VALUES (?, ?)').run(runId, '{"answer":"x"}');
     db.prepare('INSERT INTO artifact_body_retention VALUES (?, ?)').run(runId, '[]');
+    db.prepare('INSERT INTO execution_views VALUES (?, ?, ?)').run(runId, `exec_${mark}`, now);
     db.prepare(
       `INSERT INTO commands
          (scope, command_id, run_id, payload_hash, receipt_json, directive_id, original_request_hash)
@@ -324,6 +325,7 @@ it('removes one session’s rows and leaves the other session, its runs and the 
     ['generated_media', 'run_id'],
     ['conversation_turns', 'run_id'],
     ['commands', 'run_id'],
+    ['execution_views', 'run_id'],
   ] as const) {
     expect(count(db, `SELECT COUNT(*) AS n FROM ${table} WHERE ${column}=?`, 'run_alpha')).toBe(0);
     expect(count(db, `SELECT COUNT(*) AS n FROM ${table} WHERE ${column}=?`, 'run_beta')).toBe(1);

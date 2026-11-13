@@ -4,13 +4,16 @@ import { join } from 'node:path';
 import { HttpSseTransport, RestCorralRepository } from '@corral/client';
 import {
   type AgentAdapter,
+  type ImageAttachment,
   type RunCommand,
   type RunEvent,
+  type RunReference,
   SCHEMA_VERSION,
   type TextAttachment,
 } from '@corral/contracts';
 import {
   createTextAttachment,
+  entryStartReferences,
   type NewSessionEntry,
   queuedSessionCommandId,
   type SessionEntryStart,
@@ -36,6 +39,8 @@ const START: SessionEntryStart = {
   team: 'none',
 };
 const TOKEN = 'test-session-queue-0123456789abcdef0';
+const PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==';
 
 async function boot(root: string) {
   let hold: Gate | null = null;
@@ -90,7 +95,7 @@ async function boot(root: string) {
   const call: typeof fetch = (input, init = {}) => {
     const merged = new Headers(init.headers);
     for (const [key, value] of Object.entries(headers)) merged.set(key, value);
-    if (init.body) merged.set('content-type', 'application/json');
+    if (init.body && !merged.has('content-type')) merged.set('content-type', 'application/json');
     return fetch(input, { ...init, headers: merged });
   };
   const send = async (method: string, path: string, body?: unknown) => {
@@ -102,11 +107,22 @@ async function boot(root: string) {
   };
   const repository = new RestCorralRepository({ baseUrl: server.url, fetch: call });
   const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
+  /** Saves a 1x1 PNG in the session, as the composer does before it sends an image. */
+  const upload = async (sessionId: string, name = 'pixel.png') => {
+    const response = await call(`${server.url}/api/v1/sessions/${sessionId}/images?name=${name}`, {
+      method: 'POST',
+      headers: { 'content-type': 'image/png' },
+      body: Buffer.from(PNG, 'base64'),
+    });
+    if (response.status !== 201) throw new Error(`upload ${response.status}`);
+    return (await response.json()) as ImageAttachment;
+  };
   return {
     server,
     interrupted,
     close,
     send,
+    upload,
     repository,
     transport,
     hold() {
@@ -274,6 +290,90 @@ it('leaves the entry alone when another start of its command owns the outcome', 
     runId: null,
   });
   expect(s.runsOf(session.sessionId)).toHaveLength(2);
+});
+
+// A queued request starts as the same request sent now as a new one would: its references,
+// text attachments and images, in that order (features/composer-flow.md "합류 대상").
+async function queuedWithReferences(withImage = false) {
+  const s = await setup();
+  const session = await s.session();
+  const gate = s.hold();
+  const first = await s.ask(session.sessionId, 'cmd_first');
+  const image = withImage ? await s.upload(session.sessionId) : null;
+  const attachment = createTextAttachment('notes.txt', 'text/plain', 'attached words');
+  const references: RunReference[] = [
+    { kind: 'folder', path: 'docs' },
+    { kind: 'file', path: 'src/a.ts', lines: { start: 2, end: 4 } },
+  ];
+  const entry = await s.queue(session.sessionId, 'Second request.', {
+    start: START,
+    references,
+    attachments: [attachment],
+    ...(image ? { images: [image] } : {}),
+  });
+  const commandId = queuedSessionCommandId(session.sessionId, entry);
+  // The body a screen starts this entry with (apps/studio composer/queue.ts).
+  const body = {
+    ...START,
+    commandId,
+    sessionId: session.sessionId,
+    brief: 'Second request.',
+    conversation: { throughRunId: first.runId ?? '' },
+    references: [...references, attachment, ...(image ? [image] : [])],
+  };
+  return { ...s, session, gate, first, image, entry, commandId, body };
+}
+
+it('starts a queued request with its references and text attachments in order, as a person would', async () => {
+  const s = await queuedWithReferences();
+  expect(entryStartReferences(s.entry)).toEqual(s.body.references);
+  s.gate.open();
+  await s.ended(s.first.runId);
+  const started = await s.settledEntry(s.session.sessionId, s.entry.entryId);
+  expect(started).toMatchObject({ state: 'started', detail: null });
+  const definition = await s.transport.getRunDefinition(started?.runId ?? '');
+  const brief = definition?.input.brief ?? '';
+  const at = ['- folder docs/', '- file src/a.ts (lines 2-4)', 'notes.txt'].map((line) =>
+    brief.indexOf(line),
+  );
+  expect(at.every((index) => index > 0)).toBe(true);
+  expect([...at].sort((a, b) => a - b)).toEqual(at);
+  // A person starting the same entry, or starting it again after a lost answer, reaches it.
+  for (let n = 0; n < 2; n++) {
+    const same = await s.transport.startAuto(s.body);
+    expect(same.receipt.error ?? null).toBeNull();
+    expect(same.runId).toBe(started?.runId);
+  }
+  // Without one of its references, or with them reordered, it is another request.
+  for (const references of [
+    s.body.references.slice(1),
+    [s.body.references[1], s.body.references[0], ...s.body.references.slice(2)],
+  ]) {
+    const other = await s.send('POST', '/runs/auto', {
+      schemaVersion: '0.1',
+      ...s.body,
+      references,
+    });
+    expect(other.body.receipt.error.code).toBe('IDEMPOTENCY_CONFLICT');
+  }
+  await s.ended(started?.runId ?? null);
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(2);
+});
+
+it('starts a queued request with its image: a model without image input refuses it', async () => {
+  // Mock models take no images, so the image reaching the start shows as this refusal; the
+  // order with images is fixed in session-queue-unit.test.ts.
+  const s = await queuedWithReferences(true);
+  expect(s.entry.images).toEqual([s.image]);
+  s.gate.open();
+  await s.ended(s.first.runId);
+  expect(await s.settledEntry(s.session.sessionId, s.entry.entryId)).toMatchObject({
+    state: 'refused',
+    runId: null,
+    detail: 'this model has no confirmed image input support',
+    images: [s.image],
+  });
+  expect(s.runsOf(s.session.sessionId)).toHaveLength(1);
 });
 
 it('does not start with autoStart off, unless the entry was carried over', async () => {
@@ -713,6 +813,9 @@ it('starts an unread message as a new request when its target succeeded, even wi
     start: START,
     carriedFrom: directiveId,
   });
+  // A carried directive keeps only what an instruction carries.
+  expect(carried).not.toHaveProperty('images');
+  expect(carried).not.toHaveProperty('references');
   expect(carried?.runId).toBeTruthy();
   const definition = await s.transport.getRunDefinition(carried?.runId ?? '');
   expect(definition?.input.brief).toContain('Also check the tests.');

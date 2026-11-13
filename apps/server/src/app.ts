@@ -87,6 +87,7 @@ import {
   SessionEntryStart,
   type SessionResult,
   ToolRefusal,
+  unreadAdvice,
 } from '@corral/core';
 import {
   BundleBusyError,
@@ -369,6 +370,8 @@ const NewEntry = z.strictObject({
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
   attachments: TextAttachments.optional(),
+  // What the person pointed at with `@`; the repository checks it against the attachments.
+  references: RunReferences.optional(),
   intent: z.enum(['next', 'queue', 'steer', 'explain']),
   text: z.string().max(20_000),
   state: EntryState,
@@ -716,6 +719,7 @@ async function createCorralServer(
     store,
     tools: inputs,
     files,
+    workspaceRoots: (runId) => files.runWorkspaceRoots(runId),
     harnesses,
     runner: new LangGraphRunner(),
     corrals,
@@ -3194,11 +3198,29 @@ async function createCorralServer(
   app.get('/api/v1/terminals/attention', async () => review.terminalAttention());
   app.get<ProjectParams>('/api/v1/projects/:projectId/inbox', async (request) => {
     const sessions = await corrals.listSessions(request.params.projectId);
+    // Approvals and questions come from each run's status; advice needs the projection, so only
+    // runs that recorded advice are read.
+    const advised = review.runsWithAdvice();
     return review.inbox(
       sessions.filter((x) => !x.archivedAt),
       coordinator.listRuns(),
+      (runId) => {
+        const projection = advised.has(runId) ? coordinator.findSnapshot(runId)?.projection : null;
+        return projection ? unreadAdvice(projection) : [];
+      },
     );
   });
+  // The person opened an execution row (features/inbox.md, `advice`).
+  app.post<{ Params: { runId: string; executionId: string } }>(
+    '/api/v1/runs/:runId/executions/:executionId/opened',
+    async (request, reply) => {
+      const { runId, executionId } = request.params;
+      if (!coordinator.findSnapshot(runId)?.projection.executions[executionId])
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such execution');
+      review.markExecutionOpened(runId, executionId);
+      return reply.code(204).send();
+    },
+  );
   app.get<ProjectParams>(
     '/api/v1/projects/:projectId/session-evidence',
     async (request, reply) =>
@@ -3626,10 +3648,13 @@ async function createCorralServer(
     return reply.header('Cache-Control', 'private, no-store').send(turn);
   });
   app.post<RunParams>('/api/v1/runs/:runId/commands', async (request, reply) => {
-    const body = request.body as { runId?: unknown; commandId?: unknown } | null;
+    const body = request.body as { runId?: unknown; commandId?: unknown; type?: unknown } | null;
     if (body?.runId !== request.params.runId) {
       return fail(reply, 'SCHEMA_INVALID', 'runId does not match the address');
     }
+    // Advice comes only from an advisor's advise tool, never from a screen (features/advisor.md).
+    if (body.type === 'submit_advice')
+      return fail(reply, 'CAPABILITY_DENIED', 'advice is not a command a person sends');
     const receipt = coordinator.submit(request.body as never);
     return reply.code(receiptStatus(receipt)).send(receipt);
   });

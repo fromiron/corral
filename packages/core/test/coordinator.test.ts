@@ -542,6 +542,7 @@ describe('Coordinator: steering with text attachments', () => {
       {
         directiveId: pending[0]?.directiveId,
         text: 'Primary sources only.',
+        origin: 'user',
         attachments: [notes, hunk].map((item) => ({
           kind: 'text_attachment',
           name: item.name,

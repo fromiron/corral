@@ -151,7 +151,7 @@ describe('advice events', () => {
   it.each([
     ['next_request', 'concern', { directiveId: 'dir_0001' }],
     ['interrupt', 'blocker', { directiveId: 'dir_0001' }],
-    ['preserve', 'concern', {}],
+    ['preserve', 'concern', { note: 'The second source is a blog.' }],
   ])('round-trips an admitted advice delivered as %s', (delivery, severity, directive) => {
     const doc = event('advice.admitted', {
       adviceId: 'adv_0001',
@@ -164,19 +164,28 @@ describe('advice events', () => {
     expect(eventJson(doc)).toBe(true);
   });
 
-  it('a delivered advice names its directive and a preserved one does not', () => {
-    const admitted = (delivery: string, directive: Record<string, unknown>) =>
-      RunEvent.safeParse(
-        event('advice.admitted', {
-          adviceId: 'adv_0001',
-          ...ends,
-          severity: 'concern',
-          delivery,
-          ...directive,
-        }),
-      ).success;
+  it('a delivered advice names its directive; a preserved one carries its note instead', () => {
+    // Both the zod contract and the published JSON Schema hold the rule.
+    const admitted = (delivery: string, fields: Record<string, unknown>) => {
+      const doc = event('advice.admitted', {
+        adviceId: 'adv_0001',
+        ...ends,
+        severity: 'concern',
+        delivery,
+        ...fields,
+      });
+      const parsed = RunEvent.safeParse(doc).success;
+      expect(eventJson(doc)).toBe(parsed);
+      return parsed;
+    };
+    const note = 'The second source is a blog.';
     expect(admitted('next_request', {})).toBe(false);
-    expect(admitted('preserve', { directiveId: 'dir_0001' })).toBe(false);
+    expect(admitted('next_request', { directiveId: 'dir_0001', note })).toBe(false);
+    expect(admitted('preserve', { directiveId: 'dir_0001', note })).toBe(false);
+    expect(admitted('preserve', {})).toBe(false);
+    expect(admitted('preserve', { note: '' })).toBe(false);
+    expect(admitted('preserve', { note: 'x'.repeat(1001) })).toBe(false);
+    expect(admitted('preserve', { note })).toBe(true);
   });
 
   it.each(['noise', 'duplicate', 'over_budget', 'target_terminal'])(

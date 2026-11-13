@@ -23,6 +23,7 @@ import type {
   SteerTarget,
 } from '../../composerIntent.ts';
 import type { Preferences } from '../../preferences.ts';
+import { menuOpenChange } from './focus.ts';
 
 // The tool line's send controls (features/composer-flow.md "전송", "합류 대상"): the target on the
 // left, the keys and what they send on the right, and the send menu beside Send. The layout says
@@ -133,7 +134,7 @@ export function SendMenu({
     ['queue', 'queue'],
   ];
   return (
-    <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
+    <Menu onOpenChange={menuOpenChange(onClose)}>
       <MenuTrigger
         disabled={situation === 'idle'}
         render={
@@ -221,7 +222,7 @@ export function TargetChip({
       </span>
     );
   return (
-    <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
+    <Menu onOpenChange={menuOpenChange(onClose)}>
       <MenuTrigger
         data-slot="composer-target"
         disabled={disabled}
@@ -336,7 +337,7 @@ export function RecipientChip({
     </MenuTrigger>
   );
   return (
-    <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
+    <Menu onOpenChange={menuOpenChange(onClose)}>
       {/* Narrow, the badge sits in a place of one width, whatever it says. */}
       {compact ? (
         <span data-slot="composer-target-place" className="inline-flex w-28 shrink-0">

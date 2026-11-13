@@ -205,8 +205,11 @@ export class SessionSearch {
             ref = event.payload.bodyRef;
           else if (event.type === 'user_input.answered' || event.type === 'extension.ui_answered')
             ref = event.payload.answerRef;
-          else if (event.type === 'directive.accepted') body = event.payload.text;
-          else continue;
+          else if (event.type === 'directive.accepted') {
+            body = event.payload.text;
+            // An advisor's advice is model text, not the person's message.
+            if (event.payload.origin === 'advice') kind = 'response';
+          } else continue;
           if (ref) {
             if (!canReadArtifactBody(projection, ref)) continue;
             body = (

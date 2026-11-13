@@ -42,12 +42,15 @@ export function ComposerQueue({
   const cardHeight = useQueueCardHeight();
   const stack = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | null>(null);
-  // Text attachments travel with the request; the card shows them as file tiles.
+  // Text attachments and images travel with the request; the card shows them as file tiles.
   const identity = queued
     .map((entry) =>
-      [entry.entryId, entry.text, ...(entry.attachments ?? []).map((item) => item.sha256)].join(
-        '\u0000',
-      ),
+      [
+        entry.entryId,
+        entry.text,
+        ...(entry.attachments ?? []).map((item) => item.sha256),
+        ...(entry.images ?? []).map((item) => item.imageId),
+      ].join('\u0000'),
     )
     .join('\u0001');
   // biome-ignore lint/correctness/useExhaustiveDependencies: rebuilt only when the saved requests change
@@ -56,9 +59,13 @@ export function ComposerQueue({
       queued.map((entry) => ({
         id: entry.entryId,
         text: entry.text,
-        files: (entry.attachments ?? []).map(
-          (item) => new File([item.text], item.name, { type: item.mime }),
-        ),
+        files: [
+          ...(entry.attachments ?? []).map(
+            (item) => new File([item.text], item.name, { type: item.mime }),
+          ),
+          // Only the name is here, not the bytes: a typeless file is the file glyph.
+          ...(entry.images ?? []).map((item) => new File([], item.name)),
+        ],
       })),
     [identity],
   );
