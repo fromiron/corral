@@ -57,6 +57,42 @@ describe('advice gatekeeper: noise', () => {
     }
   });
 
+  it('lists the 21 unsplittable filler phrases', () => {
+    expect(ADVICE_FILLER_PHRASES).toHaveLength(21);
+    expect(ADVICE_FILLER_PHRASES).not.toContain('no issue continue');
+    expect(ADVICE_FILLER_PHRASES).not.toContain('문제 없음 계속');
+  });
+
+  it('treats a note made only of filler phrases as noise', () => {
+    for (const note of [
+      'LGTM, continue.',
+      'ok. looks good',
+      '문제 없음, 계속',
+      '확인. 계속 진행',
+      '좋습니다 문제없음',
+      'No issues — keep going!',
+      'ok ok ok',
+      'no issue continue',
+    ]) {
+      expect(admit(emptyGuard(), { severity: 'concern', note }).outcome, note).toBe('noise');
+    }
+  });
+
+  it('does not call a note noise when any word is left over', () => {
+    for (const note of [
+      'stop using the cache here',
+      'ok, but the cache key ignores the locale',
+      '계속 진행하기 전에 캐시 키를 확인하세요',
+      'looks good except the retry count',
+      'no',
+      'looks',
+      'good',
+      'ok cache',
+    ]) {
+      expect(admit(emptyGuard(), { severity: 'concern', note }).outcome, note).toBe('admitted');
+    }
+  });
+
   it('lists the required filler phrases', () => {
     for (const phrase of [
       'stop',
@@ -69,7 +105,6 @@ describe('advice gatekeeper: noise', () => {
       'keep going',
       'no issue',
       'no issues',
-      'no issue continue',
       'no problem',
       'all good',
       '계속',
@@ -77,7 +112,6 @@ describe('advice gatekeeper: noise', () => {
       '계속 진행',
       '문제 없음',
       '문제없음',
-      '문제 없음 계속',
       '좋아요',
       '좋습니다',
       '확인',

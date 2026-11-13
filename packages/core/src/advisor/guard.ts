@@ -10,7 +10,10 @@ export const ADVICE_HISTORY_LIMIT = 512;
 /** More than this many admitted non-blocker advice in one review are `over_budget`. */
 export const ADVICE_REVIEW_BUDGET = 3;
 
-/** Filler phrases, already normalised (see `normalizeAdviceNote`). A note equal to one is noise. */
+/**
+ * Filler phrases, already normalised (see `normalizeAdviceNote`), none of them a run of others.
+ * A note whose words split completely into these phrases is noise.
+ */
 export const ADVICE_FILLER_PHRASES: readonly string[] = [
   'stop',
   'done',
@@ -22,7 +25,6 @@ export const ADVICE_FILLER_PHRASES: readonly string[] = [
   'keep going',
   'no issue',
   'no issues',
-  'no issue continue',
   'no problem',
   'all good',
   '계속',
@@ -30,7 +32,6 @@ export const ADVICE_FILLER_PHRASES: readonly string[] = [
   '계속 진행',
   '문제 없음',
   '문제없음',
-  '문제 없음 계속',
   '좋아요',
   '좋습니다',
   '확인',
@@ -53,6 +54,9 @@ export interface AdviceGuardState {
 }
 
 const FILLER = new Set(ADVICE_FILLER_PHRASES);
+const FILLER_MAX_WORDS = Math.max(
+  ...ADVICE_FILLER_PHRASES.map((phrase) => phrase.split(' ').length),
+);
 const SEVERITY_ORDER: Record<AdviceSeverity, number> = { nit: 0, concern: 1, blocker: 2 };
 
 /** NFKC, lower case, anything but a letter or a digit becomes a space, spaces collapse and trim. */
@@ -62,6 +66,22 @@ export function normalizeAdviceNote(note: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
+}
+
+/** The key is empty, or its words split completely into filler phrases. */
+function isFiller(key: string): boolean {
+  if (key === '') return true;
+  const words = key.split(' ');
+  // splittable[i]: the first i words split into filler phrases.
+  const splittable: boolean[] = [true];
+  for (let end = 1; end <= words.length; end++) {
+    let ok = false;
+    for (let len = 1; len <= Math.min(FILLER_MAX_WORDS, end) && !ok; len++) {
+      ok = splittable[end - len] === true && FILLER.has(words.slice(end - len, end).join(' '));
+    }
+    splittable.push(ok);
+  }
+  return splittable[words.length] === true;
 }
 
 export function emptyGuard(): AdviceGuardState {
@@ -78,7 +98,7 @@ export function admit(
   advice: { readonly severity: AdviceSeverity; readonly note: string },
 ): { outcome: AdviceGuardOutcome; state: AdviceGuardState } {
   const key = normalizeAdviceNote(advice.note);
-  if (key === '' || FILLER.has(key)) return { outcome: 'noise', state };
+  if (isFiller(key)) return { outcome: 'noise', state };
 
   const seen = state.history.find((entry) => entry.key === key);
   if (seen && SEVERITY_ORDER[advice.severity] <= SEVERITY_ORDER[seen.severity]) {
