@@ -106,6 +106,31 @@ it('stacks saved requests in the kit queue without drag reordering', async () =>
   ).not.toBeNull();
 });
 
+it('shows a saved request’s images as file tiles, as its text attachments', async () => {
+  const image = {
+    kind: 'image_attachment' as const,
+    imageId: 'img_0123456789abcdef',
+    name: 'screen.png',
+    mime: 'image/png' as const,
+    bytes: 120,
+    sha256: 'a'.repeat(64),
+    width: 10,
+    height: 10,
+  };
+  const view = await mount([
+    entry('first', 'Look at this', {
+      attachments: [createTextAttachment('notes.txt', 'text/plain', 'Keep it short.')],
+      images: [image],
+    }),
+  ]);
+  const tiles = [...view.container.querySelectorAll('.group\\/qm [role="img"]')].map((node) =>
+    node.getAttribute('aria-label'),
+  );
+  expect(tiles).toEqual(['notes.txt', 'screen.png']);
+  // The tile has no bytes to show, so it is the file glyph, never an empty picture.
+  expect(view.container.querySelector('.group\\/qm img')).toBeNull();
+});
+
 it('Start now, Edit and Remove call the existing handlers with the saved entry', async () => {
   const first = entry('first', 'Summarize the report');
   const view = await mount([first]);
