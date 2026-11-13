@@ -435,16 +435,16 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
-| B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 구현 중(`flow/b12-reject-stops-branches`) |
-| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 리뷰 중(`flow/b11-loop-limit`, B9 브랜치 위) |
+| B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 리뷰 중(`flow/b12-reject-stops-branches`) |
+| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 리뷰 수정 중(`flow/b11-loop-limit`) |
 | B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 수정 중(`flow/u2-timeline-frame-2`, 자라는 실행 행에서 끝으로 되돌아감) |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 네 번째 리뷰 중(`flow/u2-timeline-frame-2`) |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 구현 중(`flow/u4-pending-tray`, U3 브랜치 위) |
-| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 디자인 검수 수정 중(`flow/u4-pending-tray`, U3 브랜치 위) |
+| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 구현 중(`flow/u5-send-model`) |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
@@ -545,7 +545,9 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - B11a 대상: `packages/contracts/src/definition.ts`(`LoopNode`), `events.ts`(`loop.escalated`, 승인 종류), 생성 스키마, `packages/core/src/compiler/index.ts`(구조 규칙 4의 새 줄과 진단 code), `runner.ts`(다시 돌기), `coordinator.ts`(한도 정책 적용, 상위 모델 고정, 실패 이유), `projection.ts`, `team-draft.ts`·`team-templates.ts`, `maxIterations`를 읽는 화면(`R/components/RunFlowView.tsx`·`RunView.tsx`·`SettingsPatchPanel.tsx`·`ApprovalPanel.tsx`·`RunText.tsx`, `R/team-editor/NodeSettings.tsx`·`TeamGraphCanvas.tsx`, `W/LoopRecipeSettings.tsx`, `S/pages/RunPage.tsx`)과 문구.
 - B11a 구현: 올린 값은 사람의 `node_future` 패치와 다른 자리에 둔다(진입이 끝나면 사라지고, 사람이 정한 항목이 앞선다). 실행 단위의 모델·추론을 정하는 한 곳(`coordinator.ts`의 `nodePatches.get(spec.nodeId)` 자리)에서 사람의 패치 → Loop가 올린 값 → 역할 순서로 읽는다. 상위 모델의 snapshot은 역할의 모델처럼 Run 시작 때 고정한다. 재개·호스트 재시작 뒤에도 `loop.escalated`에서 같은 상태가 다시 만들어진다. 편집기에는 새 설정 UI를 만들지 않는다(타입과 기존 "최대 회차" 입력이 깨지지 않게만).
 - B11a 완료 체크: 명세 시나리오 각각, 그리고 반례: 한 진입에 한 번만 / 다시 들어오면 새로 / 사람의 패치가 앞섬(앞·뒤 순서 둘 다) / 진행 중인 실행은 안 바뀜 / 지원하지 않는 수준은 아래로 맞춤 / 바뀌는 Agent 없음 → 이벤트 없이 소진 / 안쪽 Loop의 정책은 바깥 Agent를 안 바꿈, 바깥 것은 안쪽을 바꿈 / `inline` Team 포함, `reference` Team 제외 / `unlimited`에 `loop_limit` 패치 / 연결 없는 소진은 실패이고 승인 요청이 없음 / 재시작 뒤 같은 상태.
-- B11b: 설정 시트 Loop의 "한도" 줄. B11a가 남긴 것도 함께: 실행 흐름의 "n / 최대"가 올린 뒤의 허용 회차를 반영하지 않는다(3/2처럼 보인다), `SettingsPatchPanel`이 상한 없는 Loop의 현재 값을 비워 보인다, `NodeSettings`는 `unlimited`일 때 최대 회차 입력만 숨긴다(정책을 고르는 UI가 없다). 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 브리프는 B11a가 병합된 뒤 쓴다.
+- B11a 리뷰에서 정한 것: 기본 제공 팀(템플릿·초안·자동 팀·데모·예시)의 검토 루프는 `exhausted`를 `next`와 같은 곳에 잇는다(전에는 상한에서 물었고, 잇지 않으면 이제 Run이 실패한다). 회차 사이에 한 번 양보해 기다리는 일이 없는 회차만 도는 Loop에도 취소·일시정지가 닿게 한다(상한 없는 Loop로 쉽게 닿는 꼴이 됐다). 레시피 Loop가 시도 수보다 낮은 상한에서 멈추면 `loop_exhausted`다. 남기는 한계: 올린 직후 회차 사이 창에서 온 추론 패치는 기준 모델로 검증된다. 상위 모델 기준으로 받은 사람의 추론 패치는 다시 들어온 진입에서 기준 모델에 그대로 쓰인다. 기다리는 일이 없는 회차만 도는 Loop는 취소할 수 있지만 이벤트를 빠르게 쌓는다.
+- U9에 넘기는 것: 검토 루프가 소진돼 마지막 후보로 끝난 Run임을 실행 행이 말한다(지금은 작업 기록과 검토 블록에서만 보인다).
+- B11b: 설정 시트 Loop의 "한도" 줄. 캔버스의 "검토 루프로 감싸기"·"검사 루프로 감싸기"도 `exhausted`를 `next`와 같은 곳에 잇는다(`features/canvas.md` 규칙 5에 적고 시작한다). B11a가 남긴 것도 함께: 실행 흐름의 "n / 최대"가 올린 뒤의 허용 회차를 반영하지 않는다(3/2처럼 보인다), `SettingsPatchPanel`이 상한 없는 Loop의 현재 값을 비워 보인다, `NodeSettings`는 `unlimited`일 때 최대 회차 입력만 숨긴다(정책을 고르는 UI가 없다). 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 브리프는 B11a가 병합된 뒤 쓴다.
 - 나중에(감독이 들어온 뒤): 사람에게 묻는 나머지 승인(무진전, router가 고르지 못한 route, 판정 없는 check, 회의 연쇄 확인)을 같은 눈으로 한 번 본다. 이 계획의 범위 밖이면 따로 묻는다.
 
 ### B10 응답 중간 끊김의 재시도 분류
