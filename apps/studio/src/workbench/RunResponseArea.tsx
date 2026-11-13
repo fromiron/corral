@@ -4,10 +4,12 @@ import {
   CommandReceipts,
   ContinueDecisions,
   isContinueDecision,
+  RequestAreaContext,
+  RequestRunContext,
   type RunSessionStore,
 } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
-import type { ReactNode, Ref } from 'react';
+import { type ReactNode, type Ref, useContext } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 
@@ -44,35 +46,42 @@ export function RunResponseArea({
   const status = useTranslations('Status');
   const m = useTranslations('RunMonitor');
   const runId = useStore(session, (s) => s.projection?.runId);
+  // Where several runs' areas stand together (the tray), each is named by its run.
+  const run = useContext(RequestRunContext);
   const waiting = useStore(session, (s) => pendingInteractions(s.events, s.projection).length);
   return (
-    <section data-testid="run-needs-you" aria-label={status('awaiting_user')}>
-      <div ref={focusRef} data-run-response={runId} tabIndex={-1} className="outline-none">
-        <ApprovalPanel
-          session={session}
-          showPlan={false}
-          headed={false}
-          onOpenArtifact={onOpenArtifact}
-          readOnly={Boolean(onRespond)}
-          {...(onRespond ? {} : { skip: isContinueDecision })}
-          {...(action ? { action } : {})}
-          {...(policySettingsAction && !onRespond ? { policySettingsAction } : {})}
-        />
-        {onRespond ? (
-          waiting > 0 ? (
-            <div className="mt-2 flex justify-end">
-              <Button variant="primary" data-testid="respond-in-conversation" onClick={onRespond}>
-                {m('respond', { count: waiting })}
-              </Button>
-            </div>
-          ) : null
-        ) : (
-          <ContinueDecisions session={session} />
-        )}
-        {receipts && runId ? (
-          <CommandReceipts session={session} target={`run:${runId}`} openOnly />
-        ) : null}
-      </div>
+    <section
+      data-testid="run-needs-you"
+      aria-label={run ? m('runWaiting', { run }) : status('awaiting_user')}
+    >
+      <RequestAreaContext.Provider value={true}>
+        <div ref={focusRef} data-run-response={runId} tabIndex={-1} className="outline-none">
+          <ApprovalPanel
+            session={session}
+            showPlan={false}
+            headed={false}
+            onOpenArtifact={onOpenArtifact}
+            readOnly={Boolean(onRespond)}
+            {...(onRespond ? {} : { skip: isContinueDecision })}
+            {...(action ? { action } : {})}
+            {...(policySettingsAction && !onRespond ? { policySettingsAction } : {})}
+          />
+          {onRespond ? (
+            waiting > 0 ? (
+              <div className="mt-2 flex justify-end">
+                <Button variant="primary" data-testid="respond-in-conversation" onClick={onRespond}>
+                  {m('respond', { count: waiting })}
+                </Button>
+              </div>
+            ) : null
+          ) : (
+            <ContinueDecisions session={session} />
+          )}
+          {receipts && runId ? (
+            <CommandReceipts session={session} target={`run:${runId}`} openOnly />
+          ) : null}
+        </div>
+      </RequestAreaContext.Provider>
     </section>
   );
 }

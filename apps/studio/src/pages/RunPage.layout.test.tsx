@@ -1883,6 +1883,11 @@ it('turns the waiting status into the one way to respond', async () => {
   await act(async () => respond?.click());
   expect(side(container)?.hidden).toBe(false);
   expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // With the response area on screen, the header's state names the wait and no longer responds.
+  expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
+    messages.Status.awaiting_user,
+  );
   await waitFor(run, 0);
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
 });
@@ -1914,6 +1919,31 @@ it('beside its session’s conversation, reads what waits and sends Respond to t
   const areas = vi.mocked(RunResponseArea).mock.calls.map(([props]) => props);
   expect(areas.length).toBeGreaterThan(0);
   expect(areas.every((props) => props.onRespond === respond)).toBe(true);
+});
+
+it('offers Respond once when the record opens with its response area beside the conversation', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const respond = vi.fn();
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    {},
+    undefined,
+    false,
+    ['worker'],
+    undefined,
+    { sessionId: 'session_layout', respond },
+  );
+  await waitFor(run, 2);
+  // Wide: the response area opens beside the run, with its own Respond to the conversation.
+  expect(side(container)?.hidden).toBe(false);
+  const areas = vi.mocked(RunResponseArea).mock.calls.map(([props]) => props);
+  expect(areas.at(-1)?.onRespond).toBe(respond);
+  // The header says the run waits, once, without a second Respond.
+  expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
+    messages.Status.awaiting_user,
+  );
 });
 
 it('keeps the response area for what an extension says after its prompt is answered', async () => {

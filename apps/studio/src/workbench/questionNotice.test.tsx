@@ -182,23 +182,28 @@ async function dock(tray: PendingTrayStore) {
   };
 }
 
-it('shows the question notice while the tray is out of view, and not while it is in view', async () => {
+it('shows the question notice only once the tray is measured out of view', async () => {
   const tray = createPendingTrayStore();
-  tray.setState({ waiting: 1, visible: false });
+  tray.setState({ waiting: 1 });
   const view = await dock(tray);
-  // Scrolled away or under the composer: the notice says what waits.
-  expect(view.notice()?.textContent).toContain('Question: Which layout should I keep?');
-  // In view: the tray's card says it, once.
-  await act(async () => tray.setState({ visible: true }));
+  // Not measured yet (the tray is still appearing): no notice, so none can flash.
+  expect(tray.getState().placement).toBe('unknown');
   expect(view.notice()).toBeNull();
-  await act(async () => tray.setState({ visible: false }));
+  // Measured in view: the tray's card says it, once.
+  await act(async () => tray.setState({ placement: 'in-view' }));
+  expect(view.notice()).toBeNull();
+  // Scrolled away or under the composer: the notice says what waits.
+  await act(async () => tray.setState({ placement: 'out-of-view' }));
   expect(view.notice()?.textContent).toContain('Question: Which layout should I keep?');
+  // Gone again (nothing waits there, or another conversation): not known, so no notice.
+  await act(async () => tray.setState({ placement: 'unknown' }));
+  expect(view.notice()).toBeNull();
 });
 
 // The screen's respond brings the tray into view and focuses it (PendingTray.test.tsx).
 it('sends Respond to the conversation’s tray, not to the run record', async () => {
   const tray = createPendingTrayStore();
-  tray.setState({ waiting: 1, visible: false });
+  tray.setState({ waiting: 1, placement: 'out-of-view' });
   const view = await dock(tray);
   const respond = [...(view.notice()?.querySelectorAll('button') ?? [])].find(
     (button) => button.textContent === messages.Widgets.actionOpen,

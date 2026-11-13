@@ -150,15 +150,16 @@ function WorkSessionPage() {
   // answered (workbench.md). A link marked to respond opens the conversation and brings the tray
   // into view with focus, once; the run record's Respond does the same.
   const [tray] = useState(createPendingTrayStore);
+  const traySession = session.sessionId;
   const trayContext = useMemo(
     () => ({
       store: tray,
       respond: () => {
         dock.current?.openContext('chat', true);
-        revealPendingTray(tray);
+        revealPendingTray(tray, traySession);
       },
     }),
-    [tray],
+    [tray, traySession],
   );
   const respondRequested = search.respond === true;
   // setSearch is rebuilt every render; the request is read once, when it arrives.
@@ -166,7 +167,7 @@ function WorkSessionPage() {
   useEffect(() => {
     if (!respondRequested) return;
     dock.current?.openContext('chat');
-    revealPendingTray(tray);
+    revealPendingTray(tray, session.sessionId);
     setSearch({ panel: undefined, respond: undefined }, { replace: true });
   }, [respondRequested, tray]);
   const currentTarget = useRef({

@@ -379,6 +379,9 @@ function RunWorkspace({
   const responding = pending > 0 || extensionSaid || extensionReplying;
   const sideShown =
     !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || responding);
+  // The response area beside the run is on screen: it is the one way to respond there, so the
+  // header's state names the wait without a second Respond.
+  const responseShown = sideShown && panel === 'approval' && responding;
   useEffect(() => {
     if (hasOutput) markRunReviewed();
   }, [hasOutput]);
@@ -564,7 +567,7 @@ function RunWorkspace({
         session={session}
         definition={definition}
         request={request}
-        waiting={pending}
+        waiting={responseShown ? 0 : pending}
         onRespond={() => {
           if (respondElsewhere) {
             respondElsewhere();

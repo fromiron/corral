@@ -23,7 +23,7 @@ import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
-import { usePendingTray, useRespondInConversation } from '../session/pendingTrayState.ts';
+import { useRespondInConversation, useWaitingNoticeAllowed } from '../session/pendingTrayState.ts';
 import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
 import { actionCopy, actionTone, composerShowsRunStatus } from './selectors.ts';
@@ -535,8 +535,9 @@ export function ComposerDock({
   const tt = useTranslations('Turn');
   const run = model?.runId ? model : null;
   // On a session screen the conversation's needed-now tray answers what waits; its card says it
-  // while the tray is in view, so the notice is only for a tray scrolled away or covered.
-  const tray = usePendingTray();
+  // while the tray is in view, so the notice is only for a tray measured out of view (scrolled
+  // away or covered), never while the tray is still appearing or being measured.
+  const noticeAllowed = useWaitingNoticeAllowed();
   const respondInTray = useRespondInConversation();
   if (!run && !lead && !note) return null;
   const status = run?.plan.status ?? { state: 'hidden' as const };
@@ -562,7 +563,7 @@ export function ComposerDock({
   const notice =
     run?.action.visible &&
     run.action.summary !== 'approval' &&
-    !(run.action.needsUser && tray.visible) &&
+    (!run.action.needsUser || noticeAllowed) &&
     !(run.action.summary === 'failure' && (run.action.completedWithFailures || run.viewed?.latest));
   // Waiting questions alone name the first one, as the conversation's notice does.
   const actionLabel = run

@@ -108,6 +108,7 @@ beforeEach(() => {
 afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const SESSION = 'session_chat';
@@ -234,12 +235,16 @@ function closeApproval(store: RunSessionStore, approvalId: string, choice: 'appr
   });
 }
 
-const summary = (runId: string, status: RunSummary['status'] = 'awaiting_user'): RunSummary => ({
+const summary = (
+  runId: string,
+  status: RunSummary['status'] = 'awaiting_user',
+  sessionId = SESSION,
+): RunSummary => ({
   runId,
   status,
+  sessionId,
   corralId: 'team',
   projectId: 'project',
-  sessionId: SESSION,
   startedAt: '2026-11-09T00:00:00.000Z',
 });
 
@@ -419,6 +424,111 @@ it('folds an answered approval into one line in its place', async () => {
   expect(trayOf(container)).toBeNull();
 });
 
+it('never brings back the lines of an earlier wait when the run waits again', async () => {
+  // Approved in an earlier wait, before this screen read the run.
+  const store = waitingRun('run_a', {
+    approvals: [
+      decision('approval_0', { status: 'approved' }),
+      decision('approval_1'),
+      decision('approval_2', { kind: 'final_output' }),
+    ],
+  });
+  // Its history: approval_0 asked and approved, then the two now waiting asked.
+  const recorded = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `event_history_${runSeq}`,
+      runId: 'run_a',
+      runSeq,
+      recordedAt: '2026-11-09T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const asked = (approvalId: string, kind: string) => ({
+    approvalId,
+    kind,
+    subjectVersionIds: [],
+    criteriaVersionId: null,
+  });
+  store.setState({
+    events: [
+      recorded(1, 'approval.requested', asked('approval_0', 'user_action')),
+      recorded(2, 'approval.resolved', {
+        approvalId: 'approval_0',
+        decision: 'approve',
+        actor: 'person',
+        subjectVersionIds: [],
+      }),
+      recorded(3, 'approval.requested', asked('approval_1', 'user_action')),
+      recorded(4, 'approval.requested', asked('approval_2', 'final_output')),
+    ],
+  });
+  const sent = decisions(store);
+  const { container } = await show(['run_a'], { record: true });
+  const lines = (root: Element | null | undefined) =>
+    [...(root?.querySelectorAll('[data-testid^="approved-"]') ?? [])].map((line) =>
+      line.getAttribute('data-testid'),
+    );
+  const record = () => container.querySelector('[data-testid="run-record"]');
+  expect(lines(trayOf(container))).toEqual([]);
+  expect(lines(record())).toEqual([]);
+  // Approved while the run still waits on another: its line stands in its place.
+  await act(async () => buttons(trayOf(container), approve)[0]?.click());
+  await sent[0]?.settle();
+  expect(lines(trayOf(container))).toEqual(['approved-approval_1']);
+  expect(lines(record())).toEqual(['approved-approval_1']);
+  // The run goes on: the lines leave.
+  await act(async () =>
+    buttons(trayOf(container), messages.Approvals.approveAs.final_output)[0]?.click(),
+  );
+  await sent[1]?.settle();
+  expect(trayOf(container)).toBeNull();
+  // It waits again: only the new card, here and in the record that stayed open.
+  const projection = store.getState().projection as RunProjection;
+  await act(async () =>
+    store.setState({
+      projection: {
+        ...projection,
+        status: 'awaiting_user',
+        approvals: { ...projection.approvals, approval_3: decision('approval_3') },
+      },
+    }),
+  );
+  expect(trayOf(container)?.querySelector('[data-approval="approval_3"]')).not.toBeNull();
+  expect(lines(trayOf(container))).toEqual([]);
+  expect(lines(record())).toEqual([]);
+});
+
+it('never brings back an answered question’s line when the run waits again', async () => {
+  const store = waitingRun('run_a', {
+    approvals: [decision('approval_1')],
+    questions: ['Which layout should I keep?'],
+  });
+  const sent = decisions(store);
+  const { container } = await show(['run_a'], { record: true });
+  await act(async () => recordAnswer(store, 'q_run_a_0', [{ questionId: 'layout', text: 'Wide' }]));
+  const answered = () => container.querySelectorAll('[data-testid="answered-q_run_a_0"]');
+  // Folded, in the tray and in the record, while the approval still waits.
+  expect(answered()).toHaveLength(2);
+  await act(async () => buttons(trayOf(container), approve)[0]?.click());
+  await sent[0]?.settle();
+  expect(answered()).toHaveLength(0);
+  const projection = store.getState().projection as RunProjection;
+  await act(async () =>
+    store.setState({
+      projection: {
+        ...projection,
+        status: 'awaiting_user',
+        approvals: { ...projection.approvals, approval_2: decision('approval_2') },
+      },
+    }),
+  );
+  expect(trayOf(container)?.querySelector('[data-approval="approval_2"]')).not.toBeNull();
+  expect(answered()).toHaveLength(0);
+});
+
 it('decides only by its buttons: Enter and Escape decide nothing', async () => {
   const store = waitingRun('run_a', { approvals: [decision('approval_1')] });
   const sent = decisions(store);
@@ -508,6 +618,59 @@ it('leaves focus the person moved elsewhere where it is', async () => {
   const elsewhere = container.querySelector<HTMLInputElement>('input[aria-label="Elsewhere"]');
   elsewhere?.focus();
   await sent[0]?.settle();
+  await settleFrames();
+  expect(document.activeElement).toBe(elsewhere);
+});
+
+it('leaves focus moved elsewhere after a continue decision, while more waits and once all is done', async () => {
+  const store = waitingRun('run_a', {
+    approvals: [
+      decision('approval_limit', { limit: roundLimit }),
+      decision('approval_more', { limit: { kind: 'spawns', used: 4, max: 4 } }),
+    ],
+  });
+  const sent = decisions(store);
+  const { container } = await show(['run_a']);
+  const elsewhere = container.querySelector<HTMLInputElement>('input[aria-label="Elsewhere"]');
+  const stack = () => trayOf(container)?.querySelector('[data-continue-decisions]');
+  const go = () => buttons(stack(), messages.Approvals.limit.approve);
+  // Another decision still waits: the stack stays, and focus stays where the person put it.
+  go()[0]?.focus();
+  await act(async () => go()[0]?.click());
+  elsewhere?.focus();
+  await sent[0]?.settle();
+  await settleFrames();
+  expect(stack()).not.toBeNull();
+  expect(document.activeElement).toBe(elsewhere);
+  // The last one: the stack leaves with the tray, and focus still stays.
+  const last = go().find((button) => !button.disabled);
+  last?.focus();
+  await act(async () => last?.click());
+  elsewhere?.focus();
+  await sent[1]?.settle();
+  await settleFrames();
+  expect(trayOf(container)).toBeNull();
+  expect(document.activeElement).toBe(elsewhere);
+});
+
+it('leaves focus moved elsewhere after an answer is sent', async () => {
+  const store = waitingRun('run_a', {
+    approvals: [decision('approval_1')],
+    questions: ['Which layout should I keep?'],
+  });
+  let receipt: (value: Receipt) => void = () => {};
+  store.setState({
+    sendCommand: vi.fn(() => new Promise<Receipt>((resolve) => (receipt = resolve))),
+  });
+  const { container } = await show(['run_a']);
+  const form = trayOf(container)?.querySelector('form') as HTMLFormElement;
+  await typeInto(form.querySelector('input') as HTMLInputElement, 'Wide');
+  const send = buttons(form, messages.Harness.sendAnswer)[0];
+  send?.focus();
+  await act(async () => send?.click());
+  const elsewhere = container.querySelector<HTMLInputElement>('input[aria-label="Elsewhere"]');
+  elsewhere?.focus();
+  await act(async () => receipt({ commandId: 'command' } as unknown as Receipt));
   await settleFrames();
   expect(document.activeElement).toBe(elsewhere);
 });
@@ -606,18 +769,127 @@ it('shows the receipt’s confirmation while the request is still open', async (
   );
 });
 
-it('comes into view and takes focus when asked to respond', async () => {
-  waitingRun('run_a', { approvals: [decision('approval_1')] });
+it('comes into view and takes focus when asked to respond, once', async () => {
+  const store = waitingRun('run_a', { approvals: [decision('approval_1')] });
   const { container, tray } = await show(['run_a']);
   expect(document.activeElement).not.toBe(trayOf(container));
-  await act(async () => revealPendingTray(tray));
+  await act(async () => revealPendingTray(tray, SESSION));
   await settleFrames();
   expect(document.activeElement).toBe(trayOf(container));
-  // Once: a later render does not take focus again.
+  // Used once: the request is gone, so the tray coming back soon after takes no focus.
+  expect(tray.getState().reveal).toBeNull();
   container.querySelector('textarea')?.focus();
-  await act(async () => tray.setState({ visible: false }));
+  await act(async () => closeApproval(store, 'approval_1', 'approve'));
+  expect(trayOf(container)).toBeNull();
+  const projection = store.getState().projection as RunProjection;
+  await act(async () =>
+    store.setState({
+      projection: {
+        ...projection,
+        status: 'awaiting_user',
+        approvals: { ...projection.approvals, approval_2: decision('approval_2') },
+      },
+    }),
+  );
   await settleFrames();
+  expect(trayOf(container)).not.toBeNull();
   expect(document.activeElement).toBe(container.querySelector('textarea'));
+});
+
+/**
+ * Two conversations shown in turn on one session screen: the same tray store, a ChatView and a
+ * PendingTray for whichever conversation is open, as the session page keys them.
+ */
+async function conversations(runsOf: Record<string, string[]>) {
+  const tray = createPendingTrayStore();
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const open = (sessionId: string) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <PendingTrayContext.Provider value={{ store: tray }}>
+            <ChatView
+              key={sessionId}
+              sessionId={sessionId}
+              items={[{ id: `entry_${sessionId}`, content: <p>{sessionId}</p> }]}
+              tray={
+                <PendingTray
+                  sessionId={sessionId}
+                  runs={(runsOf[sessionId] ?? []).map((runId) =>
+                    summary(runId, 'awaiting_user', sessionId),
+                  )}
+                  onOpenArtifact={vi.fn()}
+                />
+              }
+              composer={<textarea aria-label="Request" />}
+            />
+            <VisibleProbe />
+          </PendingTrayContext.Provider>
+        </IntlProvider>,
+      ),
+    );
+  return { tray, container, open };
+}
+
+it('counts what waits in the conversation now open, after switching from another', async () => {
+  waitingRun('run_one', { approvals: [decision('approval_1')] });
+  waitingRun('run_two', { approvals: [decision('approval_2')], questions: ['Which layout?'] });
+  const view = await conversations({ session_one: ['run_one'], session_two: ['run_two'] });
+  await view.open('session_one');
+  await settleFrames();
+  expect(view.tray.getState().waiting).toBe(1);
+  await view.open('session_two');
+  await settleFrames();
+  // The tray that left clears nothing the new one wrote.
+  expect(view.tray.getState().waiting).toBe(2);
+  expect(view.container.querySelector('[data-testid="tray-probe"]')?.textContent).toBe('false:2');
+});
+
+it('keeps a request to respond for its own conversation', async () => {
+  waitingRun('run_two', { approvals: [decision('approval_2')] });
+  const view = await conversations({ session_one: [], session_two: ['run_two'] });
+  await view.open('session_one');
+  // Respond in the first conversation, where nothing waits; then the person opens the second.
+  await act(async () => revealPendingTray(view.tray, 'session_one'));
+  await view.open('session_two');
+  await settleFrames();
+  const tray = trayOf(view.container);
+  expect(tray).not.toBeNull();
+  expect(document.activeElement).not.toBe(tray);
+});
+
+/** Lays out the timeline and the tray where a browser would, for measuring at mount. */
+function layOut(trayTop: number) {
+  const rect = (top: number, height: number) =>
+    ({ top, bottom: top + height, height, left: 0, right: 600, width: 600 }) as DOMRect;
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (this.matches('[data-testid="chat-timeline"]')) return rect(0, 400);
+    if (this.matches('[data-pending-tray]')) return rect(trayTop, 120);
+    return rect(0, 0);
+  });
+}
+
+it('is neither in nor out of view until its observer reports, wherever it stood when added', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_1')] });
+  // Added below the view, as a card arriving at the end is before the conversation follows it
+  // there: not yet out of view, so no notice comes and goes.
+  layOut(900);
+  const { container, tray } = await show(['run_a']);
+  expect(tray.getState().placement).toBe('unknown');
+  const observed = observers.find((entry) => entry.target === trayOf(container));
+  await act(async () =>
+    observed?.callback(
+      [{ isIntersecting: false } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    ),
+  );
+  expect(tray.getState().placement).toBe('out-of-view');
 });
 
 it('tells whether the tray is on screen and how much waits in it', async () => {
@@ -828,6 +1100,23 @@ it('cuts a long written answer to one line', async () => {
   expect(words?.textContent?.length).toBeLessThanOrEqual('Answered: '.length + 200);
 });
 
+it('never cuts a character outside the basic plane in half', async () => {
+  const store = waitingRun('run_a', {
+    approvals: [decision('approval_1')],
+    questions: ['Which layout should I keep?'],
+  });
+  const { container } = await show(['run_a']);
+  // The 200th character is an emoji, two UTF-16 units: kept whole, and nothing after it.
+  const long = `${'a'.repeat(199)}😀 and more after the cut`;
+  await act(async () => recordAnswer(store, 'q_run_a_0', [{ questionId: 'layout', text: long }]));
+  const words = trayOf(container)?.querySelector('[data-testid="answered-q_run_a_0"] span');
+  const text = words?.textContent ?? '';
+  expect(text.endsWith(`${'a'.repeat(199)}😀`)).toBe(true);
+  expect(text).not.toMatch(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+  );
+});
+
 it('names nobody on the cards of a lone run with one role', async () => {
   const lone = waitingRun('run_a', {
     approvals: [decision('approval_a', { nodeId: 'writer' })],
@@ -896,6 +1185,46 @@ it('names the run, and its role, on each card while several runs wait', async ()
   });
   expect(trayOf(container)?.querySelector('[data-question]')).not.toBeNull();
   expect(trayOf(container)?.querySelector('[data-request-owner]')).toBeNull();
+});
+
+it('names each run’s area by its run while several wait, and each card by its title', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_a')] });
+  waitingRun('run_b', {
+    approvals: [decision('approval_b', { kind: 'final_output' })],
+    questions: ['Which layout should I keep?'],
+  });
+  const { container } = await show(['run_a', 'run_b']);
+  const tray = trayOf(container) as HTMLElement;
+  const areas = [...tray.querySelectorAll('[data-testid="run-needs-you"]')];
+  expect(areas.map((area) => area.getAttribute('aria-label'))).toEqual([
+    'Run #1 · Waiting for you',
+    'Run #2 · Waiting for you',
+  ]);
+  // Inside, nothing says the area's name again.
+  for (const area of areas)
+    for (const named of area.querySelectorAll('[aria-label]'))
+      expect(named.getAttribute('aria-label')).not.toBe(messages.Status.awaiting_user);
+  // Each card is named by its own title; the screen's words stay as they were.
+  const name = (card: Element | null) =>
+    document.getElementById(card?.getAttribute('aria-labelledby') ?? '')?.textContent;
+  expect(name(tray.querySelector('[data-approval="approval_a"]'))).toBe(
+    messages.Approvals.kind.user_action,
+  );
+  expect(name(tray.querySelector('[data-approval="approval_b"]'))).toBe(
+    messages.Approvals.kind.final_output,
+  );
+  expect(tray.querySelector('form')?.getAttribute('aria-label')).toBe(
+    'Run #2 · Waiting for you: Which layout should I keep?',
+  );
+  expect(visibleText(tray)).not.toContain('Run #1 · Waiting for you');
+});
+
+it('names a lone run’s area by the wait alone', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_a')] });
+  const { container } = await show(['run_a']);
+  expect(
+    trayOf(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
+  ).toBe(messages.Status.awaiting_user);
 });
 
 it('measures again when the composer grows, so a covered tray reads as out of view', async () => {

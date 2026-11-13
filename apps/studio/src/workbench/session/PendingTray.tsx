@@ -9,21 +9,24 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../../services.tsx';
 import { RunResponseArea } from '../RunResponseArea.tsx';
-import { useTrayStore } from './pendingTrayState.ts';
+import { type TrayPlacement, useTrayStore } from './pendingTrayState.ts';
 
 export {
   createPendingTrayStore,
   PendingTrayContext,
   type PendingTrayStore,
   revealPendingTray,
+  type TrayPlacement,
   usePendingTray,
   useRespondInConversation,
+  useWaitingNoticeAllowed,
 } from './pendingTrayState.ts';
 
 /** A request to reveal the tray counts this long, so a late one does not move focus later. */
@@ -98,38 +101,49 @@ export function PendingTray({
       })
     : [];
   const total = waiting.reduce((sum, run) => sum + run.count, 0);
+  // This tray's mark on what it publishes: a tray leaving (another conversation's, replaced by
+  // this one) clears only what it wrote itself.
+  const [self] = useState(() => ({}));
   useLayoutEffect(() => {
-    tray.setState({ waiting: total });
-  }, [tray, total]);
-  useEffect(() => () => tray.setState({ waiting: 0, visible: false }), [tray]);
+    tray.setState({ waiting: total, owner: self });
+  }, [tray, total, self]);
+  useEffect(
+    () => () => {
+      if (tray.getState().owner === self)
+        tray.setState({ waiting: 0, placement: 'unknown', owner: null });
+    },
+    [tray, self],
+  );
 
   const root = useRef<HTMLElement>(null);
   const shown = total > 0;
-  // Whether the tray is in view: one observer, on the conversation's scrolling area, with the
+  // Whether the tray is in view: one observer on the conversation's scrolling area, with the
   // composer lying over its bottom edge left out. The composer grows and shrinks with its lines
-  // and notices, so a new height makes a new observer with the new margin.
+  // and notices, so a new height makes a new observer with the new margin. Until the observer
+  // first reports it is neither: a tray arriving at the followed end is measured only after the
+  // conversation has come to its new end, not where it stood the moment it was added.
   useLayoutEffect(() => {
     const element = root.current;
-    if (!shown || !element) {
-      tray.setState({ visible: false });
-      return;
-    }
-    if (typeof IntersectionObserver === 'undefined') return;
+    const place = (placement: TrayPlacement) => tray.setState({ placement, owner: self });
+    if (tray.getState().owner === self) tray.setState({ placement: 'unknown' });
+    if (!shown || !element || typeof IntersectionObserver === 'undefined') return;
     const timeline = element.closest<HTMLElement>('[data-testid="chat-timeline"]');
     const composer = element
       .closest('[data-chat-view]')
       ?.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+    const coveredBy = () =>
+      composer?.dataset.composerSurface === 'floating' ? composer.offsetHeight : 0;
     let observer: IntersectionObserver | null = null;
     let margin = -1;
     const observe = () => {
-      const covered = composer?.dataset.composerSurface === 'floating' ? composer.offsetHeight : 0;
+      const covered = coveredBy();
       if (covered === margin) return;
       margin = covered;
       observer?.disconnect();
       observer = new IntersectionObserver(
         (entries) => {
           const entry = entries.at(-1);
-          if (entry) tray.setState({ visible: entry.isIntersecting });
+          if (entry) place(entry.isIntersecting ? 'in-view' : 'out-of-view');
         },
         { root: timeline, rootMargin: `0px 0px -${covered}px 0px` },
       );
@@ -142,30 +156,30 @@ export function PendingTray({
     return () => {
       resized?.disconnect();
       observer?.disconnect();
-      tray.setState({ visible: false });
+      if (tray.getState().owner === self) tray.setState({ placement: 'unknown' });
     };
-  }, [shown, tray]);
-  // A request to respond (a link, the run record's Respond): into view and focused once it shows,
-  // and once the conversation's view is in front.
-  const revealAt = useStore(tray, (state) => state.revealAt);
+  }, [shown, tray, self]);
+  // A request to respond for this conversation (a link, the run record's Respond): into view and
+  // focused once it shows and the conversation's view is in front; used once, then cleared.
+  const reveal = useStore(tray, (state) => state.reveal);
   useEffect(() => {
-    if (!revealAt || !shown) return;
+    if (!reveal || reveal.sessionId !== sessionId || !shown) return;
     let frame = 0;
     let tries = 0;
     const attempt = () => {
       const element = root.current;
-      if (!element || performance.now() - revealAt > REVEAL_WINDOW_MS) return;
+      if (!element || performance.now() - reveal.at > REVEAL_WINDOW_MS) return;
       if (typeof element.checkVisibility === 'function' && !element.checkVisibility()) {
         if (tries++ < 20) frame = requestAnimationFrame(attempt);
         return;
       }
-      tray.setState({ revealAt: 0 });
+      if (tray.getState().reveal === reveal) tray.setState({ reveal: null });
       element.scrollIntoView?.({ block: 'nearest' });
       element.focus({ preventScroll: true });
     };
     attempt();
     return () => cancelAnimationFrame(frame);
-  }, [revealAt, shown, tray]);
+  }, [reveal, shown, tray, sessionId]);
 
   if (!shown) return null;
   return (
