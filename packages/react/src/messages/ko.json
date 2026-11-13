@@ -5703,22 +5703,10 @@
     "select": "{name} 비교"
   },
   "RunFlow": {
-    "relationships": "에이전트 간 관계",
-    "chooseRelationship": "관계 선택",
-    "relationship": "{from} → {to}: 확인된 관계",
-    "otherRelationships": "연결된 작업",
-    "noRelationships": "아직 에이전트 간 관계가 기록되지 않았습니다.",
-    "artifacts": "생성한 결과",
     "createdBy": "{name} 생성",
     "open": "{name} 열기",
-    "metadataOnly": "생성·관계 기록",
     "observed": "확인된 관계",
     "unrecorded": "기록 없음",
-    "upNext": "다음 작업",
-    "executionInProgress": "실행 중",
-    "executionCount": "실행 {count}회",
-    "attempt": "{name} · 시도 {attempt}",
-    "final": "최종 결과",
     "decisions": "결정과 근거",
     "branches": "결정 분기",
     "noRecordedBranch": "분기 기록 없음",
@@ -5729,17 +5717,6 @@
     "noEvidence": "이 결정에는 근거 참조가 기록되지 않았습니다.",
     "reviewVerdict": "검토 판단: {verdict}",
     "recordedAt": "기록 시각 {time}",
-    "relation": {
-      "author": "생성",
-      "read": "읽음",
-      "input": "모델 입력에 포함",
-      "question": "질문 보냄",
-      "answer": "답변 보냄",
-      "delegate": "작업 위임",
-      "review": "검토",
-      "branch": "분기 선택",
-      "output": "최종 결과 확정"
-    },
     "port": {
       "out": "출력",
       "body": "반복 작업",
@@ -5777,7 +5754,6 @@
       "human_route": "사용자가 고른 길",
       "check_verdict": "등록 검사 결과"
     },
-    "attached": "첨부: {name}",
     "round": "반복 {round}회차",
     "currentStatus": "현재 상태: {status}",
     "reviewedArtifact": "검토 대상: {name}",

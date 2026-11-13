@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
-import { RunFlowDecisions } from '../src/components/RunFlowView.tsx';
+import { RunFlowDecisions } from '../src/components/RunFlowDecisions.tsx';
 import { ExecutionTree, useRoundInspection } from '../src/components/RunView.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import type { RunSessionStore } from '../src/run/session.ts';

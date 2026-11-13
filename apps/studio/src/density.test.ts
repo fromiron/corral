@@ -68,7 +68,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/session/SessionPanels.tsx',
     'packages/react/src/components/RunView.tsx',
     'packages/react/src/components/RunResults.tsx',
-    'packages/react/src/components/RunFlowView.tsx',
+    'packages/react/src/components/RunFlowDecisions.tsx',
     'packages/react/src/components/Timeline.tsx',
     'packages/react/src/components/ReinsPanel.tsx',
     'packages/react/src/components/ExecutionSteering.tsx',

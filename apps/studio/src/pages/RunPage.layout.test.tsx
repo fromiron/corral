@@ -78,7 +78,6 @@ vi.mock('@corral/react', async (original) => {
         <textarea aria-label="Instruction" />
       </section>
     ),
-    RunFlowView: () => <output data-testid="run-flow">Workflow</output>,
     // Like the real panel, it sets the host's control on its first row.
     ApprovalPanel: ({
       onOpenArtifact,

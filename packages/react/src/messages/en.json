@@ -5703,22 +5703,10 @@
     "select": "Compare {name}"
   },
   "RunFlow": {
-    "relationships": "Agent relationships",
-    "chooseRelationship": "Choose a relationship",
-    "relationship": "{from} → {to}: observed relationships",
-    "otherRelationships": "Related work",
-    "noRelationships": "No inter-agent relationship has been recorded yet.",
-    "artifacts": "Created results",
     "createdBy": "Created by {name}",
     "open": "Open {name}",
-    "metadataOnly": "Creation and relationship record",
     "observed": "Recorded relationship",
     "unrecorded": "Not recorded",
-    "upNext": "Up next",
-    "executionInProgress": "Execution in progress",
-    "executionCount": "{count, plural, one {# execution} other {# executions}}",
-    "attempt": "{name} · attempt {attempt}",
-    "final": "Final result",
     "decisions": "Decisions and evidence",
     "branches": "Decision branches",
     "noRecordedBranch": "No recorded branch",
@@ -5729,17 +5717,6 @@
     "noEvidence": "No evidence reference was recorded for this decision.",
     "reviewVerdict": "Review verdict: {verdict}",
     "recordedAt": "Recorded {time}",
-    "relation": {
-      "author": "Created",
-      "read": "Read",
-      "input": "Included in model input",
-      "question": "Question sent",
-      "answer": "Answer returned",
-      "delegate": "Delegated task",
-      "review": "Reviewed",
-      "branch": "Selected branch",
-      "output": "Finalized"
-    },
     "port": {
       "out": "Output",
       "body": "Loop body",
@@ -5777,7 +5754,6 @@
       "human_route": "Route picked by you",
       "check_verdict": "Registered check results"
     },
-    "attached": "Attached: {name}",
     "round": "Round {round}",
     "currentStatus": "Current status: {status}",
     "reviewedArtifact": "Reviewed: {name}",

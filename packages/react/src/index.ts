@@ -58,8 +58,7 @@ export {
   DecisionDetail,
   type RunFlowCheck,
   RunFlowDecisions,
-  RunFlowView,
-} from './components/RunFlowView.tsx';
+} from './components/RunFlowDecisions.tsx';
 export { isHtmlDocument, ResultReader, RunResults } from './components/RunResults.tsx';
 export { describeEvent, EventText, RunReason } from './components/RunText.tsx';
 export {
@@ -95,14 +94,11 @@ export {
 } from './run/cost.ts';
 export { RunDisplayProvider, type RunDisplaySnapshot, useRunDisplay } from './run/display.tsx';
 export {
-  buildRunFlow,
   type FlowEvidenceRef,
-  type RunFlow,
   type RunFlowDecision,
-  type RunFlowEdge,
   type RunFlowIteration,
   type RunFlowLoop,
-  type RunFlowNode,
+  runFlowDecisions,
   runFlowExecutionIterationId,
   runFlowExecutionLoopId,
   selectRunFlowIterations,
