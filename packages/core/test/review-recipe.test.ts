@@ -417,6 +417,73 @@ describe('bounded review recipes (H6)', () => {
       expect(Object.values(final.approvals)).toHaveLength(0);
     },
   );
+  // docs/specs/features/team-graph.md, "루프 실행": a recipe Loop that stops at the recipe's
+  // attempts ends with the recipe's reason; one that stops at a lower cap is like any Loop.
+  describe('a recipe Loop at its limit', () => {
+    const recipeLoop = (definition: CorralDefinition, maxIterations: number) => {
+      const loop = definition.nodes.find((node) => node.type === 'loop');
+      if (loop?.type !== 'loop') throw new Error('missing loop');
+      loop.maxIterations = maxIterations;
+      return { definition, loopId: loop.id };
+    };
+    const revising = { review: () => 'revise' as const };
+
+    it('ends with the recipe reason at its attempts', async () => {
+      const { definition } = recipeLoop(fixture(), 10);
+      const s = runtime(definition, revising);
+      const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
+      expect(final.status).toBe('failed');
+      expect(final.statusReason).toBe('review_recipe:attempt_limit');
+      expect(final.nodeExecutions.write).toHaveLength(3);
+    });
+
+    it('is exhausted like any Loop at a cap below its attempts', async () => {
+      const { definition, loopId } = recipeLoop(fixture(), 2);
+      const s = runtime(definition, revising);
+      const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
+      expect(final.status).toBe('failed');
+      expect(final.statusReason).toBe(`loop_exhausted: ${loopId} cap_reached`);
+      expect(final.nodeExecutions.write).toHaveLength(2);
+      expect(s.events().some((event) => event.type === 'recipe.stopped')).toBe(false);
+    });
+
+    it('leaves through its exhausted path at its attempts, without stopping the recipe', async () => {
+      const { definition, loopId } = recipeLoop(fixture(), 10);
+      definition.nodes.push({
+        id: 'fallback',
+        type: 'agent',
+        label: 'fallback',
+        roleId: 'writer',
+        invocation: 'scheduled',
+        inputBindings: [{ kind: 'run_input', name: 'brief' }],
+        outputName: 'draft',
+      });
+      const output = definition.nodes.find((node) => node.type === 'output');
+      if (output?.type !== 'output') throw new Error('missing output');
+      definition.controlEdges.push(
+        {
+          id: 'to_fallback',
+          source: loopId,
+          sourcePort: 'exhausted',
+          target: 'fallback',
+          targetPort: 'in',
+        },
+        {
+          id: 'fallback_out',
+          source: 'fallback',
+          sourcePort: 'out',
+          target: output.id,
+          targetPort: 'in',
+        },
+      );
+      const s = runtime(definition, revising);
+      const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));
+      expect(final.status).toBe('succeeded');
+      expect(final.nodeExecutions.write).toHaveLength(3);
+      expect(final.nodeExecutions.fallback).toHaveLength(1);
+      expect(s.events().some((event) => event.type === 'recipe.stopped')).toBe(false);
+    });
+  });
   it('stops identical candidate repetition instead of trusting a changed verdict', async () => {
     const s = runtime(fixture(), { reply: () => 'Unchanged output' });
     const final = await waitForProjection(s.transport, s.runId, (p) => terminal(p.status));

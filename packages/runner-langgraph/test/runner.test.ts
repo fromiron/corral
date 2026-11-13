@@ -24,6 +24,12 @@ function planOf(definition: unknown): CompiledPlan {
   return result.plan;
 }
 
+/** The research team with its review Loop's exhausted path taken out. */
+const withoutExhausted = {
+  ...researchTeam,
+  controlEdges: researchTeam.controlEdges.filter((edge) => edge.sourcePort !== 'exhausted'),
+};
+
 /**
  * Records every callback; decisions and failures come from a generated script. The Loop check
  * stands in for the Coordinator's: it stops at `cap` rounds, except that the script lets the Loop
@@ -65,31 +71,50 @@ function scripted(decisions: string[], failing: Set<string>, cap = Number.POSITI
 }
 
 describe('LangGraph runner parity with the reference runner', () => {
-  it.each(['patch', 'limit policy'] as const)(
-    'a Loop whose %s gives it more rounds can use all ten',
-    async (extension) => {
+  it.each([
+    // A loop_limit patch to 10 rounds: the decision passes at round 10 before any stop.
+    {
+      extension: 'patch',
+      check: (round: number) => (round >= 10 ? 'cap_reached' : null),
+      rounds: 10,
+      result: { kind: 'finished', outputNodeId: 'output' },
+    },
+    // A cap of 4 whose limit policy raised at round 4, so the cap counts again from there:
+    // the Loop goes on past 4 and is exhausted at 8 (its exhausted path taken out).
+    {
+      extension: 'limit policy',
+      check: (round: number) =>
+        round !== 4 && round - (round > 4 ? 4 : 0) >= 4 ? 'cap_reached' : null,
+      rounds: 8,
+      result: { kind: 'exhausted', loopId: 'review_loop', reason: 'cap_reached' },
+    },
+  ] as const)(
+    'a Loop whose $extension gives it more rounds runs them the same way',
+    async ({ check, rounds: expectedRounds, result }) => {
       const run = async (runner: GraphRunner) => {
-        const plan = planOf(researchTeam);
+        const plan = planOf(withoutExhausted);
         const rounds: number[] = [];
+        const checks: string[] = [];
         const { callbacks } = scripted(['revise'], new Set());
         callbacks.loopEntered = async (_id, no) => {
           rounds.push(no);
         };
-        // A loop_limit patch to 10 rounds, or a policy that raised at round 5 and counts again.
-        callbacks.loopCheck = async (_id, round) =>
-          (extension === 'patch' ? round >= 10 : round !== 5 && round - 5 >= 5)
-            ? 'cap_reached'
-            : null;
+        callbacks.loopCheck = async (_id, round) => {
+          const stop = check(round);
+          checks.push(`${round} ${stop ?? 'repeat'}`);
+          return stop;
+        };
         callbacks.decide = async (nodeId, iteration) =>
           nodeId === 'review_decision'
             ? (iteration?.no ?? 0) < 10
               ? 'revise'
               : 'pass'
             : 'approve';
-        return { result: await runner.run(plan, callbacks), rounds };
+        return { result: await runner.run(plan, callbacks), rounds, checks };
       };
       const expected = await run(new SequentialPlanRunner());
-      expect(expected.rounds).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(expected.rounds).toEqual(Array.from({ length: expectedRounds }, (_, i) => i + 1));
+      expect(expected.result).toEqual(result);
       expect(await run(new LangGraphRunner())).toEqual(expected);
     },
   );

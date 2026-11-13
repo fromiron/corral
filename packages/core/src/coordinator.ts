@@ -445,6 +445,15 @@ export interface HarnessResolver {
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
+
+/** One macrotask of the host, for a Scheduler without `turn`; core names no host globals. */
+const hostTurn = (): Promise<void> => {
+  const host = globalThis as { setTimeout?: (fn: () => void, ms: number) => unknown };
+  return new Promise((resolve) => {
+    if (host.setTimeout) host.setTimeout(resolve, 0);
+    else resolve();
+  });
+};
 const TERMINAL_TASK = new Set(['failed', 'cancelled']);
 
 export type ModelResolution =
@@ -6452,6 +6461,9 @@ export class Coordinator {
    * change its Agents instead, once per entry; nobody is asked.
    */
   private async loopCheck(run: LiveRun, loopId: string, no: number): Promise<LoopStop | null> {
+    // Between rounds a cancel or pause must get in, even when a round waits on nothing: let the
+    // host run its queued work once (a macrotask, no real waiting), then check the boundary.
+    await (this.timers.turn ? this.timers.turn() : hostTurn());
     await this.boundary(run);
     const loop = run.plan.loops[loopId];
     if (!loop) throw new Error(`plan has no Loop ${loopId}`);

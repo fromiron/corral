@@ -66,6 +66,11 @@ export interface IdFactory {
 export interface Scheduler {
   /** Runs `fn` once after `ms`; the returned function cancels it. */
   after(ms: number, fn: () => void): () => void;
+  /**
+   * Lets other queued work (timers, I/O, commands) run once, without waiting real time: one
+   * macrotask. Without it the Coordinator yields with the host's own macrotask.
+   */
+  turn?(): Promise<void>;
 }
 
 // Agent adapter port. Workers never decide domain state;

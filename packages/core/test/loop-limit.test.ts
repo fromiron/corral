@@ -5,6 +5,7 @@ import {
   type CorralNode,
   DEFAULT_LIMITS,
   CorralDefinition as Definition,
+  type EffectiveHarnessSnapshot,
   type LoopLimitPolicy,
   type ReasoningLevel,
   type ReasoningPolicy,
@@ -33,7 +34,6 @@ import {
 
 // A Loop's limit policy at its cap or a stall (docs/specs/features/team-graph.md, "루프 실행").
 
-// biome-ignore lint/suspicious/noExplicitAny: documents are built loosely, then parsed.
 type Doc = any;
 
 const LEVELS: Record<string, ReasoningLevel[]> = {
@@ -199,6 +199,9 @@ function runtime(
     store?: InMemoryRunStore;
     ids?: string;
     corrals?: Record<string, CorralDefinition>;
+    /** Model profiles whose workers run in Linux isolation. */
+    isolated?: string[];
+    harness?: EffectiveHarnessSnapshot;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -238,10 +241,20 @@ function runtime(
                 modelId: `${profile}-id`,
                 auth: 'oauth',
                 reasoning: { levels: levels[profile], providerDefault: true },
+                ...(options.isolated?.includes(profile)
+                  ? { workerIsolation: 'linux-bwrap' as const }
+                  : {}),
               },
             }
           : { ok: false, code: 'CAPABILITY_DENIED', reason: 'not configured' },
     },
+    ...(options.harness
+      ? {
+          harnesses: {
+            resolve: () => JSON.parse(JSON.stringify(options.harness)) as EffectiveHarnessSnapshot,
+          },
+        }
+      : {}),
     ...(options.corrals
       ? {
           corrals: {
@@ -277,6 +290,9 @@ async function start(
   return { runId, events };
 }
 
+/** The host's own timer: real time, unlike the FakeClock the Coordinator runs on. */
+const hostTimeout = (globalThis as unknown as { setTimeout(fn: () => void, ms: number): unknown })
+  .setTimeout;
 const terminal = (p: RunProjection) =>
   ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(p.status);
 const rounds = (p: RunProjection, loopId: string) =>
@@ -494,6 +510,115 @@ describe('Loop limit policy', () => {
     expect(of(requests, 'write').map(([, r]) => r)).toEqual([fixed('high'), fixed('high')]);
   });
 
+  it('leaves an Agent already on the upper model, and exhausts when every Agent is', async () => {
+    const upper = policy({ kind: 'upper_model', modelProfile: 'model-u' }, { maxIterations: 1 });
+    const some = runtime();
+    const one = await start(
+      some.transport,
+      reviewed(upper, { roles: [role('writer', 'model-u'), role('reviewer', 'model-b')] }),
+    );
+    const first = await waitForProjection(some.transport, one.runId, terminal);
+    expect(first.status).toBe('succeeded');
+    expect(escalations(one.events)).toEqual([expect.objectContaining({ nodeIds: ['review'] })]);
+    expect(of(some.requests, 'write').map(([m]) => m)).toEqual(['model-u', 'model-u']);
+
+    const all = runtime();
+    const two = await start(
+      all.transport,
+      reviewed(upper, { roles: [role('writer', 'model-u'), role('reviewer', 'model-u')] }),
+    );
+    const second = await waitForProjection(all.transport, two.runId, terminal);
+    expect(second.status).toBe('succeeded');
+    expect(rounds(second, 'loop')).toEqual([[1, 'cap_reached']]);
+    expect(escalations(two.events)).toEqual([]);
+    expect(second.nodeExecutions.fallback).toHaveLength(1);
+  });
+
+  it('names the cap when a round reaches the cap and stalls at once', async () => {
+    const same = {
+      reply: (_turn: number, input: AgentStartInput) => (input.nodeId === 'write' ? 'Same.' : 'x'),
+    };
+    const plain = runtime({ agents: same });
+    const exhausting = await start(
+      plain.transport,
+      reviewed({ maxIterations: 2, stallDetection: true }),
+    );
+    const exhausted = await waitForProjection(plain.transport, exhausting.runId, terminal);
+    expect(rounds(exhausted, 'loop')).toEqual([
+      [1, 'revise'],
+      [2, 'cap_reached'],
+    ]);
+
+    const raised = runtime({ agents: same });
+    const escalating = await start(
+      raised.transport,
+      reviewed(
+        policy(
+          { kind: 'upper_model', modelProfile: 'model-u' },
+          { maxIterations: 2, stallDetection: true },
+        ),
+      ),
+    );
+    await waitForProjection(raised.transport, escalating.runId, terminal);
+    expect(escalations(escalating.events)).toEqual([
+      expect.objectContaining({ reason: 'cap_reached' }),
+    ]);
+  });
+
+  // Loop A [ Loop B [ b_write -> b_decide ] -> a_decide ]: both raise b_write, once per entry each.
+  it.each([
+    [
+      'model',
+      { kind: 'upper_model', modelProfile: 'model-u' },
+      { kind: 'upper_model', modelProfile: 'model-h' },
+    ],
+    [
+      'reasoning',
+      { kind: 'raise_reasoning', level: 'medium' },
+      { kind: 'raise_reasoning', level: 'high' },
+    ],
+  ] as const)(
+    'gives an Agent in nested Loops the %s the latest raise set',
+    async (item, outer, inner) => {
+      const { transport, requests } = runtime({
+        decisions: scripted({ b_decide: ['no', 'no', 'no', 'no'], a_decide: ['no', 'yes'] }),
+      });
+      const definition = team(
+        [
+          loop('loop', policy(outer, { maxIterations: 1 })),
+          loop('inner', policy(inner, { maxIterations: 1 }), 'loop'),
+          writer('b_write', 'inner'),
+          rule('b_decide', 'b_write', 'inner'),
+          rule('a_decide', 'b_write', 'loop'),
+          output('b_write'),
+        ],
+        [
+          edge('loop', 'body', 'inner', 'enter'),
+          edge('inner', 'body', 'b_write'),
+          edge('b_write', 'out', 'b_decide'),
+          edge('b_decide', 'yes', 'inner', 'exit'),
+          edge('b_decide', 'no', 'inner', 'repeat'),
+          edge('inner', 'next', 'a_decide'),
+          edge('inner', 'exhausted', 'a_decide'),
+          edge('a_decide', 'yes', 'loop', 'exit'),
+          edge('a_decide', 'no', 'loop', 'repeat'),
+          edge('loop', 'next', 'output'),
+        ],
+        [writerAt('low')],
+      );
+      const { runId, events } = await start(transport, definition);
+      const final = await waitForProjection(transport, runId, terminal);
+      expect(final.status).toBe('succeeded');
+      expect(escalations(events).map((e) => e.loopNodeId)).toEqual(['inner', 'loop', 'inner']);
+      // B's second entry: A raised before it and B again after, so B's raise wins in its round 2.
+      expect(of(requests, 'b_write').map(([m, r]) => (item === 'model' ? m : r))).toEqual(
+        item === 'model'
+          ? ['model-a', 'model-h', 'model-u', 'model-h']
+          : [fixed('low'), fixed('high'), fixed('medium'), fixed('high')],
+      );
+    },
+  );
+
   it.each([
     ['fixed at the fitted level', ['low', 'medium'], fixed('medium')],
     ['on a model with no level at or below the target', ['xhigh', 'max'], undefined],
@@ -579,6 +704,10 @@ describe('Loop limit policy', () => {
       fixed('high'),
     ]);
     expect(escalations(events).map((e) => e.loopNodeId)).toEqual(['inner', 'inner']);
+    expect(final.loopEscalations?.inner?.map((e) => e.iterationId)).toEqual([
+      final.loopIterations.inner?.[0],
+      final.loopIterations.inner?.[2],
+    ]);
     // The outer Loop's Agent is not in the inner Loop.
     expect(of(requests, 'a_review').map(([, r]) => r)).toEqual([fixed('low'), fixed('low')]);
   });
@@ -615,7 +744,8 @@ describe('Loop limit policy', () => {
       const definition = reviewed(
         policy({ kind: 'upper_model', modelProfile: 'model-u' }, { maxIterations: 1 }),
       );
-      ({ runId } = await start(s.transport, definition));
+      let events: RunEvent[] = [];
+      ({ runId, events } = await start(s.transport, definition));
       await waitForProjection(s.transport, runId, (p) => (p.nodeExecutions.write ?? []).length > 0);
       await patch(s.coordinator, s.transport, runId, { nodeId: 'write', modelProfile: 'model-h' });
       opened.open();
@@ -623,6 +753,76 @@ describe('Loop limit policy', () => {
       expect(final.status).toBe('succeeded');
       expect(of(s.requests, 'write').map(([m]) => m)).toEqual(['model-a', 'model-h']);
       expect(of(s.requests, 'review').map(([m]) => m)).toEqual(['model-b', 'model-u']);
+      // Only the Agents the policy changed are named.
+      expect(escalations(events)).toEqual([expect.objectContaining({ nodeIds: ['review'] })]);
+    });
+
+    it('leaves on its model an Agent whose patched reasoning the upper model cannot serve', async () => {
+      const opened = new Gate();
+      const s = runtime({
+        levels: { 'model-u': ['low', 'medium'] },
+        agents: {
+          beforeReply: async (_turn, input) => {
+            if (input.nodeId === 'write' && input.round === 1) await opened.wait();
+          },
+        },
+      });
+      const definition = reviewed(
+        policy({ kind: 'upper_model', modelProfile: 'model-u' }, { maxIterations: 1 }),
+      );
+      const { runId, events } = await start(s.transport, definition);
+      await waitForProjection(s.transport, runId, (p) => (p.nodeExecutions.write ?? []).length > 0);
+      await patch(s.coordinator, s.transport, runId, { nodeId: 'write', reasoning: fixed('high') });
+      opened.open();
+      const final = await waitForProjection(s.transport, runId, terminal);
+      expect(final.status).toBe('succeeded');
+      expect(of(s.requests, 'write')).toEqual([
+        ['model-a', undefined],
+        ['model-a', fixed('high')],
+      ]);
+      expect(of(s.requests, 'review')).toEqual([
+        ['model-b', undefined],
+        ['model-u', undefined],
+      ]);
+      expect(escalations(events)).toEqual([expect.objectContaining({ nodeIds: ['review'] })]);
+    });
+
+    it('checks a reasoning patch in a raised round against the upper model', async () => {
+      const receipts: unknown[] = [];
+      const s = runtime({
+        levels: { 'model-u': ['low', 'medium'] },
+        agents: {
+          beforeReply: async (_turn, input) => {
+            if (input.nodeId !== 'write' || input.round !== 2) return;
+            const { projection } = await s.transport.getSnapshot(input.runId);
+            receipts.push(
+              s.coordinator.submit({
+                schemaVersion: '0.1',
+                commandId: `patch_${++edgeNo}`,
+                runId: input.runId,
+                type: 'patch',
+                expectedControlRevision: projection.controlRevision,
+                payload: { kind: 'node_future', nodeId: 'write', reasoning: fixed('high') },
+              }),
+            );
+          },
+        },
+      });
+      // model-a serves high; the upper model the round runs on does not.
+      const definition = reviewed(
+        policy({ kind: 'upper_model', modelProfile: 'model-u' }, { maxIterations: 1 }),
+        { roles: [writerAt('low'), role('reviewer', 'model-b')] },
+      );
+      const { runId } = await start(s.transport, definition);
+      const final = await waitForProjection(s.transport, runId, terminal);
+      expect(final.status).toBe('succeeded');
+      expect(receipts).toEqual([
+        expect.objectContaining({ error: expect.objectContaining({ code: 'CAPABILITY_DENIED' }) }),
+      ]);
+      expect(of(s.requests, 'write')).toEqual([
+        ['model-a', fixed('low')],
+        ['model-u', fixed('low')],
+      ]);
     });
 
     it('raises the reasoning of an Agent whose model alone the person set', async () => {
@@ -1096,6 +1296,48 @@ describe('Loop limit policy', () => {
       expect(result.receipt.error?.message).toContain('model-u');
     });
 
+    it('refuses an upper model whose isolated workers cannot load the role harness', async () => {
+      // A trusted harness with a native extension, which Linux isolation cannot run.
+      const harness: EffectiveHarnessSnapshot = {
+        binding: { profileId: 'writing', revision: 1 },
+        snapshotHash: 'a'.repeat(64),
+        piVersion: '1.3.0',
+        policyRevision: 1,
+        policy: 'trusted-native',
+        resources: [
+          {
+            hash: 'c'.repeat(64),
+            name: 'fixture',
+            version: '1.0.0',
+            kind: 'extension',
+            required: true,
+          },
+        ],
+        allowedTools: ['echo'],
+        tools: [],
+        diagnostics: [],
+      };
+      const roles = [
+        role('writer', 'model-a', { harness: harness.binding }),
+        role('reviewer', 'model-b'),
+      ];
+      const startWith = (limit: Doc) =>
+        runtime({ isolated: ['model-u'], harness }).transport.startRun({
+          schemaVersion: '0.1',
+          commandId: `cmd_${++edgeNo}`,
+          definition: reviewed(limit, { roles }),
+          mode: 'live',
+        });
+      const refused = await startWith(
+        policy({ kind: 'upper_model', modelProfile: 'model-u' }, { maxIterations: 1 }),
+      );
+      expect(refused.runId).toBeFalsy();
+      expect(refused.receipt.error).toMatchObject({ code: 'CAPABILITY_DENIED' });
+      expect(refused.receipt.error?.message).toContain('Linux isolation');
+      const started = await startWith({ maxIterations: 1 });
+      expect(started.runId).toBeTruthy();
+    });
+
     it('refuses an upper model that is not configured', async () => {
       const { transport } = runtime();
       const result = await transport.startRun({
@@ -1109,6 +1351,128 @@ describe('Loop limit policy', () => {
       expect(result.runId).toBeFalsy();
       expect(result.receipt.error?.message).toContain('model-missing');
     });
+  });
+});
+
+describe('a Loop whose rounds wait on nothing', () => {
+  // pre → [ slow | Loop spin [ rule decision: yes → exit, no → repeat ] ] → Join (all) → output.
+  // Each round is one decision with no execution, so nothing in it waits on the host.
+  const definition = () =>
+    team(
+      [
+        writer('pre'),
+        writer('slow'),
+        loop('spin', { limitPolicy: { kind: 'unlimited' } }),
+        rule('decide', 'pre', 'spin'),
+        { id: 'join', type: 'join', label: 'join', policy: 'all' },
+        output('slow'),
+      ],
+      [
+        edge('pre', 'out', 'slow'),
+        edge('pre', 'out', 'spin', 'enter'),
+        edge('spin', 'body', 'decide'),
+        edge('decide', 'yes', 'spin', 'exit'),
+        edge('decide', 'no', 'spin', 'repeat'),
+        edge('slow', 'out', 'join'),
+        edge('spin', 'next', 'join'),
+        edge('join', 'out', 'output'),
+      ],
+      [writerAt('low')],
+      'pre',
+    );
+  /** Answers `no` until `done` says yes; past the safety cap it ends the Loop and says so. */
+  const spinning = (done: (p: RunProjection) => boolean) => {
+    const state = { rounds: 0, overflow: false };
+    const decisions: DecisionPolicy = {
+      decide: async ({ projection }) => {
+        state.rounds += 1;
+        if (state.rounds > 3000) {
+          state.overflow = true;
+          return 'yes';
+        }
+        return done(projection) ? 'yes' : 'no';
+      },
+    };
+    return { state, decisions };
+  };
+  const later = (ms: number) =>
+    new Promise<void>((resolve) => {
+      hostTimeout(resolve, ms);
+    });
+  const slowDone = (p: RunProjection) =>
+    (p.nodeExecutions.slow ?? []).some((id) => p.executions[id]?.status === 'succeeded');
+
+  it('lets a parallel branch finish while it spins, then leaves and ends the run', async () => {
+    const spin = spinning(slowDone);
+    const s = runtime({
+      decisions: spin.decisions,
+      agents: {
+        beforeReply: async (_turn, input) => {
+          if (input.nodeId === 'slow') await later(5);
+        },
+      },
+    });
+    const { runId } = await start(s.transport, definition());
+    const final = await waitForProjection(s.transport, runId, terminal);
+    expect(spin.state.overflow).toBe(false);
+    expect(final.status).toBe('succeeded');
+    expect(rounds(final, 'spin').at(-1)?.[1]).toBe('pass');
+  });
+
+  it('is stopped by a cancel sent while it spins', async () => {
+    const spin = spinning(() => false);
+    const held = new Gate();
+    const s = runtime({
+      decisions: spin.decisions,
+      agents: {
+        beforeReply: async (_turn, input) => {
+          if (input.nodeId === 'slow') await held.wait();
+        },
+      },
+    });
+    const { runId } = await start(s.transport, definition());
+    hostTimeout(() => {
+      cancelRun(s.coordinator, runId);
+      // The held worker then sees its cancel and stops.
+      held.open();
+    }, 1);
+    const final = await waitForProjection(s.transport, runId, terminal);
+    expect(spin.state.overflow).toBe(false);
+    expect(final.status).toBe('cancelled');
+    expect(rounds(final, 'spin').at(-1)?.[1]).toBe('cancelled');
+  });
+
+  it('holds at a pause sent while it spins, and goes on after resume', async () => {
+    let resumedAt: number | null = null;
+    const spin = spinning(
+      (p) => resumedAt !== null && slowDone(p) && spin.state.rounds >= resumedAt + 3,
+    );
+    const s = runtime({
+      decisions: spin.decisions,
+      agents: {
+        beforeReply: async (_turn, input) => {
+          if (input.nodeId === 'slow') await later(5);
+        },
+      },
+    });
+    const { runId } = await start(s.transport, definition());
+    hostTimeout(() => {
+      const p = s.store.getRun(runId)?.projection;
+      control(s.coordinator, runId, 'pause', p?.controlRevision ?? 0);
+    }, 1);
+    const waiting = await waitForProjection(s.transport, runId, (p) => p.status === 'paused');
+    const held = spin.state.rounds;
+    await later(10);
+    expect(spin.state.rounds).toBe(held);
+    expect(spin.state.overflow).toBe(false);
+    resumedAt = held;
+    expect(control(s.coordinator, runId, 'resume', waiting.controlRevision).status).not.toBe(
+      'rejected',
+    );
+    const final = await waitForProjection(s.transport, runId, terminal);
+    expect(spin.state.overflow).toBe(false);
+    expect(final.status).toBe('succeeded');
+    expect(spin.state.rounds).toBeGreaterThanOrEqual(held + 3);
   });
 });
 
