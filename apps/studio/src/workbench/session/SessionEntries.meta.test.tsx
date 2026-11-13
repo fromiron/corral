@@ -18,7 +18,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../../packages/react/src/stories/fixtures.tsx';
-import { placeEntries, type SteerRecord } from './entryMeta.ts';
+import { carries, placeEntries, type SteerRecord } from './entryMeta.ts';
 import { EntryCard } from './SessionEntries.tsx';
 
 // The one line under a sent message (features/composer-flow.md "보낸 메시지의 메타 줄"): its time
@@ -182,6 +182,7 @@ async function show(
     record?: SteerRecord | null;
     carried?: SessionEntry;
     runOnly?: boolean;
+    carriable?: boolean;
     runs?: RunSummary[];
   } = {},
 ) {
@@ -210,6 +211,7 @@ async function show(
           {...('record' in options ? { record: options.record } : {})}
           {...(options.carried ? { carried: options.carried } : {})}
           {...(options.runOnly ? { runOnly: true } : {})}
+          {...(options.carriable ? { carriable: true } : {})}
         />
       </IntlProvider>,
     ),
@@ -277,6 +279,16 @@ const rows: [string, () => SteerRecord, SessionEntry | undefined, string][] = [
     () =>
       record('delivered', { delivery: 'interrupt', modelCallId: 'call_2' }, (p) => {
         p.modelCalls.call_1 = call('call_1', { interrupted: true, executionId: 'exec_other' });
+        p.modelCalls.call_2 = call('call_2');
+      }),
+    undefined,
+    `${m.read} · Writer`,
+  ],
+  [
+    'delivered as a join right after a response another interrupt cut',
+    () =>
+      record('delivered', { modelCallId: 'call_2' }, (p) => {
+        p.modelCalls.call_1 = call('call_1', { interrupted: true });
         p.modelCalls.call_2 = call('call_2');
       }),
     undefined,
@@ -464,8 +476,10 @@ it('a refused request says why in one line; the reason opens the runtime’s wor
   expect(f.container.querySelector('[role="alert"]')).toBeNull();
   // The actions for its kind, on the same line.
   expect(status?.textContent).toContain(messages.Refusal.connect);
-  const edit = f.button(messages.Refusal.edit);
-  expect(status?.contains(edit ?? null)).toBe(true);
+  // Its edit is the message's own pencil on this line: the line does not offer it twice.
+  expect(f.button(messages.Refusal.edit)).toBeUndefined();
+  const edit = f.button(messages.MessageBody.editAsNew);
+  expect(f.meta()?.contains(edit ?? null)).toBe(true);
   await act(async () => edit?.click());
   expect(fixture.editRequest).toHaveBeenCalledWith(value.text, value);
   await act(async () => reason?.click());
@@ -492,6 +506,26 @@ it('a terminal refusal offers the terminal on the line; the owner is in the raw 
   expect(document.body.querySelector('[data-testid="refusal-raw"]')?.textContent).toContain(
     'term_1',
   );
+});
+
+it('a refused instruction, or a carried request that did not start, offers the edit on the line', async () => {
+  const steer = entry({ state: 'refused', detail: 'The run has ended', runId: 'run_live' });
+  const f = await show(steer, { record: null });
+  expect(f.button(messages.MessageBody.editAsNew)).toBeUndefined();
+  await act(async () => f.button(messages.Refusal.edit)?.click());
+  expect(fixture.editRequest).toHaveBeenCalledWith(steer.text, steer);
+  const carried = entry({
+    entryId: 'entry_carried',
+    intent: 'queue',
+    state: 'refused',
+    runId: null,
+    detail: 'no such model profile: writer-pro',
+    carriedFrom: 'directive_steer',
+  });
+  const source = await show(entry(), { record: record('expired'), carried });
+  expect(source.status()?.textContent).toContain(messages.Refusal.profile);
+  await act(async () => source.button(messages.Refusal.edit)?.click());
+  expect(fixture.editRequest).toHaveBeenLastCalledWith(carried.text, carried);
 });
 
 it('a detail without a refusal is said on the line too', async () => {
@@ -536,6 +570,27 @@ it('a carried request without its source draws its own message, saying it starte
   expect(f.status()?.textContent).toBe(m.carriedStarted);
   expect(f.container.textContent).toContain(carriedStarted.text);
   expect(f.container.querySelector('[data-testid="turn-run"]')).not.toBeNull();
+});
+
+it('expired before the session has its carried request, the line says it waits, not that it failed', async () => {
+  const value = record('expired', { origin: 'user' } as Partial<DirectiveView>, (p) => {
+    p.executions.exec_writer = execution({ status: 'succeeded' });
+  });
+  const started = request({ runId: 'run_live', start: {} as SessionEntry['start'] });
+  // The run's record is ahead of the session: the server carries it.
+  expect(carries(value, [started, entry()])).toBe(true);
+  const f = await show(entry(), { record: value, carriable: true });
+  expect(f.said()).toBe(m.carriedWaiting);
+  expect(f.button(m.resend)).toBeUndefined();
+  // Not carried: the target failed, the advice was not the person's, or no start to carry with.
+  const failed = record('expired', { origin: 'user' } as Partial<DirectiveView>, (p) => {
+    p.executions.exec_writer = execution({ status: 'failed' });
+  });
+  expect(carries(failed, [started])).toBe(false);
+  expect(
+    carries({ ...value, directive: { ...value.directive, origin: 'advice' } }, [started]),
+  ).toBe(false);
+  expect(carries(value, [{ ...started, start: undefined } as SessionEntry])).toBe(false);
 });
 
 it('a carried request is placed once: with its source, while the source is unread, and alone', () => {

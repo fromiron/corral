@@ -36,6 +36,7 @@ export function EntryCard({
   record,
   carried,
   runOnly = false,
+  carriable = false,
 }: {
   sessionId: string;
   entry: SessionEntry;
@@ -48,6 +49,8 @@ export function EntryCard({
   carried?: SessionEntry | undefined;
   /** A carried request whose source message is in the conversation: its run row alone. */
   runOnly?: boolean;
+  /** The server carries this instruction, though the session does not show the request yet. */
+  carriable?: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tm = useTranslations('MessageBody');
@@ -65,7 +68,7 @@ export function EntryCard({
       ? null
       : record === null
         ? ({ kind: 'unknown' } as const)
-        : steerMeta(record ?? null, carried);
+        : steerMeta(record ?? null, carried, carriable);
   // A started carried request belongs to the instruction it came from: that message edits
   // and branches it (features/composer-flow.md).
   const request = steer?.kind === 'carriedStarted' && carried ? carried : entry;
@@ -135,9 +138,13 @@ export function EntryCard({
   return (
     <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-2">
       <div className="flex flex-col items-end gap-1">
-        {/* The kit's sent message: a plain bubble, then its one meta line. */}
+        {/* The kit's sent message: a plain bubble, then its one meta line. It keeps the kit's
+            entrance but not its position animation: the conversation holds every row in place
+            itself (features/composer-flow.md "튐 없는 본문"), and a re-render while the view
+            follows its end or while the line's words change would slide the message. */}
         <KitChatMessage
           from="user"
+          layout={false}
           metaProps={{ 'data-chat-part': 'meta' }}
           time={
             <time dateTime={entry.createdAt} title={full}>

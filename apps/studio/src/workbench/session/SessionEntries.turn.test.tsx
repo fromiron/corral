@@ -240,8 +240,8 @@ it('a refused request is edited with everything it was sent with, as the pencil 
     permissionMode: 'ask',
   });
   const f = await show(value);
-  // The edit sits on the message's meta line, with the reason.
-  const edit = f.button(messages.Refusal.edit);
+  // The edit is the pencil on the message's meta line, with the reason.
+  const edit = f.button(messages.MessageBody.editAsNew);
   expect(edit?.closest('[data-chat-part="meta"]')).not.toBeNull();
   await act(async () => edit?.click());
   expect(fixture.editRequest).toHaveBeenCalledWith(value.text, value);

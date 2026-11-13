@@ -81,12 +81,15 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
         {(showTime || actions != null || status != null) && (
           // Meta row: always rendered so its height is reserved. The time and actions are
           // hidden until the message is hovered or an action is focused; the status after them
-          // is always shown, on the same one line, at its end.
+          // is always shown, on the same one line, at its end. With a status the hidden part
+          // also gives up its width, so the status has the row's room until it is revealed; the
+          // row keeps one control line's height either way.
           <div
             {...metaProps}
             className={cn(
               'flex max-w-full min-w-0 flex-nowrap items-center justify-end gap-2 px-1 text-muted-foreground',
               typeClass('caption', compact ? 'compact' : 'default'),
+              status != null && (compact ? 'min-h-7' : 'min-h-9'),
               metaProps?.className,
             )}
           >
@@ -99,6 +102,12 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
                     'group-hover:opacity-100 group-hover:pointer-events-auto',
                     'group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
                   ],
+                  !isTouch &&
+                    status != null && [
+                      'max-w-0 overflow-hidden',
+                      'group-hover:max-w-none group-hover:overflow-visible',
+                      'group-focus-within:max-w-none group-focus-within:overflow-visible',
+                    ],
                 )}
               >
                 {showTime && <span className="tabular-nums">{time}</span>}

@@ -17,6 +17,8 @@ const Text = ({ children, danger = false }: { children: string; danger?: boolean
     {children}
   </span>
 );
+/** A text button that gives way first: its label is cut, with its whole words in the title. */
+const SHRINKS = 'min-w-0 shrink justify-start px-1 [&_span]:min-w-0 [&_span]:truncate';
 const Dot = () => (
   <span aria-hidden className="shrink-0">
     ·
@@ -54,7 +56,16 @@ export function EntryStatus({
       </span>,
     );
   const refused = entry.state === 'refused' && entry.detail && !entry.meetingHandoff;
-  if (refused) parts.push(<RefusalLine key="refusal" sessionId={sessionId} entry={entry} />);
+  // A request's own pencil, on this line, edits it; an instruction has none.
+  if (refused)
+    parts.push(
+      <RefusalLine
+        key="refusal"
+        sessionId={sessionId}
+        entry={entry}
+        edit={entry.intent === 'steer'}
+      />,
+    );
   else if (entry.detail)
     parts.push(
       <Text key="detail" danger>
@@ -97,7 +108,7 @@ function steerLine(
           {/* The role, named as the send menu names it, opens that execution's record. */}
           <Button
             variant="ghost"
-            className="min-w-0 shrink"
+            className={SHRINKS}
             title={meta.target}
             onClick={() =>
               onPanel('run', {
@@ -107,12 +118,12 @@ function steerLine(
               })
             }
           >
-            <span className="truncate">{meta.target}</span>
+            <span className="block">{meta.target}</span>
           </Button>
         </span>
       );
     case 'carriedRefused':
-      return <RefusalLine key="steer" sessionId={sessionId} entry={meta.carried} />;
+      return <RefusalLine key="steer" sessionId={sessionId} entry={meta.carried} edit />;
     case 'notDelivered':
       return (
         <span key="steer" className="flex min-w-0 flex-nowrap items-center gap-1">
@@ -131,7 +142,16 @@ function steerLine(
  * Why a request did not start, as one line: the reason in the person's words (it opens the
  * runtime's own words, code and owner) and the actions that help with that kind.
  */
-function RefusalLine({ sessionId, entry }: { sessionId: string; entry: SessionEntry }) {
+function RefusalLine({
+  sessionId,
+  entry,
+  edit,
+}: {
+  sessionId: string;
+  entry: SessionEntry;
+  /** Whether the line offers the edit; a message whose pencil edits this request does not. */
+  edit: boolean;
+}) {
   const t = useTranslations('Refusal');
   const message = entry.detail ?? entry.refusal?.message ?? '';
   const code = entry.refusal?.code;
@@ -143,9 +163,9 @@ function RefusalLine({ sessionId, entry }: { sessionId: string; entry: SessionEn
       <Popover>
         <PopoverTrigger
           title={reason}
-          render={<Button variant="ghost" className="min-w-0 shrink text-danger" />}
+          render={<Button variant="ghost" className={`${SHRINKS} text-danger`} />}
         >
-          <span className="truncate">{reason}</span>
+          <span className="block">{reason}</span>
         </PopoverTrigger>
         <PopoverPopup align="end" width="md" aria-label={t('diagnostics')}>
           <div data-testid="refusal-raw" className="flex flex-col gap-1 text-caption">
@@ -165,7 +185,7 @@ function RefusalLine({ sessionId, entry }: { sessionId: string; entry: SessionEn
         owner={owner}
         sessionId={sessionId}
         // Edited as the pencil edits it: with everything it was sent with.
-        onEdit={() => editRequest(entry.text, entry)}
+        onEdit={edit ? () => editRequest(entry.text, entry) : undefined}
       />
     </span>
   );

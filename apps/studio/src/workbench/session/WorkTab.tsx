@@ -18,7 +18,7 @@ import type { SessionSearch } from '../panels/routes.ts';
 import { ReplySelection, runRow } from '../ReplySelection.tsx';
 import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
-import { placeEntries, type SteerRecord } from './entryMeta.ts';
+import { carries, placeEntries, type SteerRecord } from './entryMeta.ts';
 import { PendingTray } from './PendingTray.tsx';
 import { useRunRecords } from './runRecords.ts';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
@@ -94,6 +94,10 @@ export function WorkTab({
     );
     return directive ? { ...record, directive } : null;
   };
+  const steerProps = (entry: (typeof session.entries)[number]) => {
+    const record = steerRecord(entry);
+    return { record, carriable: record ? carries(record, session.entries) : false };
+  };
   const placement = placeEntries(session.entries, (entry) => {
     const record = steerRecord(entry);
     return record === undefined ? undefined : (record?.directive ?? null);
@@ -135,7 +139,7 @@ export function WorkTab({
                   runs={runs}
                   artifactMetadataVersion={artifactMetadataVersion}
                   onPanel={onPanel}
-                  {...(entry.intent === 'steer' ? { record: steerRecord(entry) } : {})}
+                  {...(entry.intent === 'steer' ? steerProps(entry) : {})}
                   carried={placement.carriedOf.get(entry.entryId)}
                   runOnly={placement.runOnly.has(entry.entryId)}
                 />

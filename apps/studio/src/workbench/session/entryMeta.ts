@@ -48,6 +48,8 @@ export function cutBefore(projection: RunProjection, directive: DirectiveView): 
 export function steerMeta(
   record: SteerRecord | null,
   carried: SessionEntry | undefined,
+  /** The server carries this directive (`carries`), though the session does not show it yet. */
+  carriable = false,
 ): SteerMeta {
   if (!record) return { kind: 'unread' };
   const { directive, projection, definition } = record;
@@ -75,10 +77,32 @@ export function steerMeta(
         if (carried.state === 'refused') return { kind: 'carriedRefused', carried };
         return { kind: 'carriedStarted' };
       }
-      return { kind: 'notDelivered' };
+      // The run's record says it expired before the session has the request it is carried to.
+      return !carried && carriable ? { kind: 'carriedWaiting' } : { kind: 'notDelivered' };
     default:
       return { kind: 'notDelivered' };
   }
+}
+
+/**
+ * Whether the server carries this expired directive into the session (features/reins.md
+ * "읽히지 못한 지시의 넘겨받기"): the person's own, expired on a target that succeeded, in a run
+ * that a request of this session started with its start snapshot. The run's record says so
+ * before the session has the request, so the line does not say "not delivered" meanwhile.
+ */
+export function carries(record: SteerRecord, entries: readonly SessionEntry[]): boolean {
+  const { directive, projection } = record;
+  return (
+    directive.origin === 'user' &&
+    directive.status === 'expired' &&
+    projection.executions[directive.targetExecutionId]?.status === 'succeeded' &&
+    entries.some(
+      (entry) =>
+        entry.runId === projection.runId &&
+        (entry.intent === 'next' || entry.intent === 'queue') &&
+        entry.start !== undefined,
+    )
+  );
 }
 
 /** What kind of message it was, when it was more than a plain request or an instruction. */
