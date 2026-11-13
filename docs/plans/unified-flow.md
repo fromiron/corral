@@ -89,7 +89,7 @@
    │                        │  │ 지시       │ model.finished / tool.finished
    ├─ 합류(next_request) ───┤  │            ▼
    ├─ 끼어들기(interrupt) ──┤  └──── 감독 실행 단위 ── advise ─▶ 문지기 ─▶ 조언(지시)
-   ├─ 다음 요청(대기열) ──▶ 서버 대기열 ─ 실행 종료 때 시작      (중복·빈말·개수) 
+   ├─ 다음 요청(대기열) ──▶ 서버 대기열 ─ 실행 종료 때 시작      (중복·빈말·개수)
    │                        │
    └─ 인용 칩(reply 첨부) ──┘ 어느 전송에도 실림
 
@@ -435,7 +435,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 예산을 걷어낸 diff 리뷰 중(`flow/b9-request-budget`) |
-| B11 | Loop 한도 정책 | B9 | `contracts/definition.ts`, `core/compiler`, `coordinator.ts`, 팀 편집기 | 명세 작성 중 |
+| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 구현 중(`flow/b11-loop-limit`) |
+| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
@@ -537,8 +538,14 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 빼는 것: `limits.requestBudget`, `run_limits` 패치의 예산, 실행 단위별 요청 셈, 마무리·제출 알림(`system` 출처), `request_budget` 게이트·`limit.reached` 종류·승인 종류, 예산 승인 카드와 문구, §9 표 테스트의 예산 행.
 
 ### B11 Loop 한도 정책
-- 명세: `features/team-graph.md` "루프 실행"의 소진 부분(작성 중). Loop가 회차 상한에 닿았을 때 사람에게 묻던 `loop_cap` 승인을 없애고, 팀을 만들 때 Loop마다 정하는 정책으로 바꾼다: 추론 수준 올리기, 지정한 상위 모델로 바꾸기, 소진으로 끝내 `exhausted` 출구로 넘기기, 제한 없음.
-- 브리프는 명세가 정해진 뒤 쓴다.
+- 명세: `features/team-graph.md` 규칙 3, 정의 스키마의 Loop 행, 구조 규칙 4, "루프 실행"(다시 돌기·한도 정책·소진)과 그 시나리오, `api-contract.md`의 `loop.escalated`와 승인 종류, `features/canvas.md` 설정 시트의 Loop 줄.
+- 정한 것(2026-11-13): 사람에게 묻던 `loop_cap` 승인은 없다. Loop마다 `limitPolicy` 하나를 고른다(끝내기 / 추론 수준 올리기 / 상위 모델로 바꾸기 / 제한 없음). 올리기와 바꾸기는 한 진입에서 한 번이고 상한만큼 더 돈다. 정체도 같은 정책을 탄다. 소진됐는데 `exhausted`에 연결이 없으면 Run은 실패로 끝난다(취소가 아니다). "부모 에이전트에게 알리기"는 따로 만들지 않고 `exhausted` 출구가 그 역할이다. 추론 수준은 "한 단계 위"가 아니라 정해 둔 수준이다(역할의 추론이 자동·공급자 기본값이면 기준 수준이 없다).
+- 둘로 나눈다. **B11a**(계약·컴파일러·runner·Coordinator·화면의 `loop_cap` 제거)와 **B11b**(팀 편집기 설정 시트의 한도 줄, 디자인 리뷰 대상).
+- B11a 대상: `packages/contracts/src/definition.ts`(`LoopNode`), `events.ts`(`loop.escalated`, 승인 종류), 생성 스키마, `packages/core/src/compiler/index.ts`(구조 규칙 4의 새 줄과 진단 code), `runner.ts`(다시 돌기), `coordinator.ts`(한도 정책 적용, 상위 모델 고정, 실패 이유), `projection.ts`, `team-draft.ts`·`team-templates.ts`, `maxIterations`를 읽는 화면(`R/components/RunFlowView.tsx`·`RunView.tsx`·`SettingsPatchPanel.tsx`·`ApprovalPanel.tsx`·`RunText.tsx`, `R/team-editor/NodeSettings.tsx`·`TeamGraphCanvas.tsx`, `W/LoopRecipeSettings.tsx`, `S/pages/RunPage.tsx`)과 문구.
+- B11a 구현: 올린 값은 사람의 `node_future` 패치와 다른 자리에 둔다(진입이 끝나면 사라지고, 사람이 정한 항목이 앞선다). 실행 단위의 모델·추론을 정하는 한 곳(`coordinator.ts`의 `nodePatches.get(spec.nodeId)` 자리)에서 사람의 패치 → Loop가 올린 값 → 역할 순서로 읽는다. 상위 모델의 snapshot은 역할의 모델처럼 Run 시작 때 고정한다. 재개·호스트 재시작 뒤에도 `loop.escalated`에서 같은 상태가 다시 만들어진다. 편집기에는 새 설정 UI를 만들지 않는다(타입과 기존 "최대 회차" 입력이 깨지지 않게만).
+- B11a 완료 체크: 명세 시나리오 각각, 그리고 반례: 한 진입에 한 번만 / 다시 들어오면 새로 / 사람의 패치가 앞섬(앞·뒤 순서 둘 다) / 진행 중인 실행은 안 바뀜 / 지원하지 않는 수준은 아래로 맞춤 / 바뀌는 Agent 없음 → 이벤트 없이 소진 / 안쪽 Loop의 정책은 바깥 Agent를 안 바꿈, 바깥 것은 안쪽을 바꿈 / `inline` Team 포함, `reference` Team 제외 / `unlimited`에 `loop_limit` 패치 / 연결 없는 소진은 실패이고 승인 요청이 없음 / 재시작 뒤 같은 상태.
+- B11b: 설정 시트 Loop의 "한도" 줄. 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 브리프는 B11a가 병합된 뒤 쓴다.
+- 나중에(감독이 들어온 뒤): 사람에게 묻는 나머지 승인(무진전, router가 고르지 못한 route, 판정 없는 check, 회의 연쇄 확인)을 같은 눈으로 한 번 본다. 이 계획의 범위 밖이면 따로 묻는다.
 
 ### B10 응답 중간 끊김의 재시도 분류
 - 명세: `llm-runtime.md` 15행(D13). B8 리뷰에서 나온 태스크다. 지금 분류로는 200 응답 뒤 중간에 끊긴 스트림이 대부분 `UNKNOWN`이 되어 B8의 판정이 실제로는 쓰이지 않는다.

@@ -8,7 +8,7 @@
 
 1. **여섯 종류의 노드.** 팀은 Agent, Decision, Loop, Team, Join, Output으로 만든다. Agent는 `scheduled`, `callable`, `observer` 중 하나다. `observer`는 실행 순서에 들지 않고 다른 Agent를 지켜보는 [감독](advisor.md)이다. Decision은 `review`, `approval`, `rule`, `check`, `router` 중 하나이며 모드마다 나가는 포트가 다르다.
 2. **상자.** Loop와 Team은 다른 노드를 담는 상자다. 상자 안에 상자를 담을 수 있다. 루프를 몇 개 두든, 팀을 루프로 감싸든, 루프 안에 팀을 두든 정의할 수 있다.
-3. **루프.** 몸체는 노드 하나 이상이다. 다시 도는 길(`repeat`)은 결정 노드에서만 들어오고, 끝나는 길(`exit`)이 있어야 한다. 반복 상한은 1 이상의 정수이며 시스템 상한은 없다. 상한이나 정체 감지에 걸리면 `exhausted`로 나가고, 연결이 없으면 사용자에게 묻는다.
+3. **루프.** 몸체는 노드 하나 이상이다. 다시 도는 길(`repeat`)은 결정 노드에서만 들어오고, 끝나는 길(`exit`)이 있어야 한다. 반복 상한은 1 이상의 정수이며 시스템 상한은 없다. 상한을 두지 않을 수도 있다. 상한이나 정체 감지에 걸렸을 때 할 일은 팀을 만들 때 Loop마다 정한다: 끝내기, 안쪽 에이전트의 추론 수준을 올려 더 돌기, 정해 둔 상위 모델로 바꿔 더 돌기. 끝낼 때는 `exhausted`로 나가고, 연결이 없으면 Run이 실패한다. 어느 경우에도 사용자에게 묻지 않는다.
 4. **병렬과 합류.** 한 출력 포트에 연결을 여러 개 두면 그 대상들이 동시에 실행되는 분기가 된다. 동시에 살아 있을 수 있는 분기가 다시 만나는 곳은 Join이어야 한다. Join은 모든 분기(`all`) 또는 첫 분기(`any`)를 기다린다. 결정의 서로 다른 분기처럼 동시에 살아 있을 수 없는 경로는 Join 없이 한 노드로 모일 수 있다.
 5. **실패 경로.** Agent는 실패하면 정한 횟수만큼 다시 시도한다. 그래도 실패하면 `error` 포트로 나가며, 연결이 없으면 Run이 실패한다.
 6. **팀 상자의 두 출처.** 같은 정의 안에서 노드를 묶은 팀(`inline`)과, 저장된 다른 팀의 정해진 revision을 가져다 쓰는 팀(`reference`)이 있다. 참조 팀은 원본이 바뀌어도 고정한 revision을 쓴다.
@@ -26,13 +26,14 @@
 | 공통 | `id`, `type`, `label`, `parentId?`(담고 있는 Loop 또는 Team), `note?`(실행에 쓰지 않음, 정의 revision에는 포함) |
 | Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0). `observer`는 `review?: { interval, maxRequestsPerReview }`(1 이상, 기본 3과 8)를 갖고 `inputBindings`·`retry`를 쓰지 않는다 |
 | Decision | `mode`, `inputBindings`(1개 이상). `review`·`approval`·`rule`은 모드별 `rule` 하나. `check`는 `checkIds`(등록 검사 1개 이상). `router`는 `routes: { id, label, description? }[]`(2개 이상, id 고유)와 선택적 `modelProfile` |
-| Loop | `maxIterations`(1 이상), `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
+| Loop | `maxIterations?`(1 이상), `limitPolicy?`(없으면 `exhaust`), `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
 | Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }`, `inputBindings?`(reference Team만) |
 | Join | `policy: 'all' \| 'any'` |
 | Output | `inputBindings`(1개 이상), `requireApproval` |
 
 - `controlEdges`는 `{ id, source, sourcePort, target, targetPort }`다. `sourcePort`는 아래 포트 표의 이름이거나 router의 route id다.
 - `capabilityLinks`(`delegate`, `question`, `advise`)는 허용 관계이며 순서가 아니다. `delegate`와 `question`의 의미는 [제품 계약](../product-contract.md) §7을, `advise`의 의미는 [감독](advisor.md)을 따른다.
+- `limitPolicy`는 `{ kind: 'exhaust' }`, `{ kind: 'raise_reasoning', level }`, `{ kind: 'upper_model', modelProfile }`, `{ kind: 'unlimited' }` 중 하나다. `level`은 추론 수준, `modelProfile`은 모델 profile id다. 의미는 [루프 실행](#루프-실행)을 따른다.
 - `limits.maxDelegationDepth`는 1 이상의 정수다(기본 2). `limits.maxSpawns`는 1 이상의 정수다.
 - `entryNodeId`는 최상위의 유일한 시작 노드다. 시작 노드는 scheduled Agent, Loop, Team 중 하나다.
 
@@ -74,6 +75,11 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
    - `exit`로 들어오는 연결이 하나 이상 있다.
    - `repeat`로 들어오는 연결이 하나 이상 있고, 모두 Decision 포트에서 나온다.
    - 몸체에서 시작한 모든 경로는 이 Loop나 조상 상자의 `exit`·`repeat`, Output, 또는 `error` 경로에서 끝난다.
+   - `limitPolicy`가 `unlimited`이면 `maxIterations`를 두지 않는다. 그 밖에는 `maxIterations`가 있어야 한다.
+   - `reviewRecipe`가 있는 Loop의 `limitPolicy`는 `exhaust`다. 레시피의 시도 수가 상한이다.
+   - `raise_reasoning`의 `level`은 `off`가 아니다.
+   - `upper_model`의 `modelProfile`은 허용 목록에 있고, Loop 안 Agent의 역할마다 그 모델로 모델 기능 호환 검사를 통과한다.
+   - Loop 안 Agent는 `parentId`를 따라 올라가면 이 Loop에 닿는 Agent 노드다. 안쪽 Loop와 `inline` Team의 구성원이 든다. `reference` Team 안의 Agent는 들지 않는다.
 5. **팀 완결성.** `inline` Team은 구성원이 하나 이상이고 `body`가 연결돼 있다. `next`가 연결돼 있으면 `exit`로 들어오는 연결이 하나 이상 있다. `inline` Team에는 `inputBindings`를 두지 않는다. 구성원이 앞 단계를 이름으로 읽는다.
 6. **참조 팀.**
    - 참조한 Corral과 revision은 compiler에 주입한 정의 출처에서 찾을 수 있고, 그 자체로 컴파일되어야 한다.
@@ -91,7 +97,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 9. **연결되지 않은 출구.**
    - Decision과 router의 출구, Loop의 `exhausted`, Agent의 `error`가 연결되지 않아도 정의는 유효하다.
    - 연결 안 된 Decision 출구는 경고한다.
-   - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 `needs_user`로 실패한다. 이유에 노드와 출구가 남는다. 연결 안 된 `reject`가 선택되면 Run은 취소된다.
+   - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 `needs_user`로 실패한다. 이유에 노드와 출구가 남는다. 연결 안 된 `reject`가 선택되면 Run은 취소된다. Loop의 `exhausted`는 [루프 실행](#루프-실행)의 소진을 따른다.
    - router는 route가 둘 미만이면 오류다.
 10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다. observer Agent는 `advise` 연결이 있으면 고립으로 보지 않는다.
 11. **감독.**
@@ -111,12 +117,20 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 - **진입.** Loop의 `enter`로 들어오거나 Loop가 시작 노드이면 1회차를 연다. 들어올 때마다 회차 번호와 정체 비교를 새로 시작한다.
 - **회차 기록.** 회차는 그때 열려 있는 바깥 Loop의 회차를 부모로 기록한다(`loop.iteration_started.parentIterationId`). 이전 회차 출력(`previous_iteration_output`)은 같은 진입의 바로 앞 회차에서만 오며, 1회차에는 없다.
 - **다시 돌기.** Decision이 `repeat`로 보내면 차례로 확인한다.
-  1. 끝난 회차 수가 회차 상한에 닿았다: `cap_reached`. 상한은 `maxIterations`이고, `loop_limit` 패치가 있으면 그 값이다. 리뷰 레시피가 있으면 레시피의 시도 수를 넘지 않는다. 설치 상한은 없다.
+  1. 이번 진입에서 끝난 회차 수가 회차 상한에 닿았다: `cap_reached`. 한도 정책을 적용한 뒤에는 그 뒤에 끝난 회차만 센다. 상한은 `maxIterations`이고, `loop_limit` 패치가 있으면 그 값이다. `unlimited`인 Loop는 패치가 없으면 상한이 없다. 리뷰 레시피가 있으면 레시피의 시도 수를 넘지 않는다. 설치 상한은 없다.
   2. 정체했다: `stalled`.
 
-  어느 것에도 걸리지 않으면 이 회차를 `revise`로 끝내고 다음 회차를 연다.
+  어느 것에도 걸리지 않으면 이 회차를 `revise`로 끝내고 다음 회차를 연다. 걸리면 한도 정책을 따른다.
 - **정체.** `stallDetection`이 켜져 있을 때, 이번 회차와 그 안쪽 Loop 회차에서 제출한 산출물의 내용 hash 집합이 같은 진입의 바로 앞 회차와 같으면 정체다. 검토 결과(`review` 출력 계약)는 비교하지 않는다. 비교할 산출물이 없는 회차는 정체로 보지 않는다.
-- **소진.** `exhausted`에 연결이 있으면 회차를 그 이유로 끝내고 Loop를 떠나 그리로 간다. 연결이 없으면 이유와 함께 한 회차 더 돌지 사용자에게 묻는다(`loop_cap` 승인, `loopStop`). 승인하면 회차를 `revise`로 끝내고 다음 회차를 열며, 다음 다시 돌기에서 같은 확인을 한다. 거절하면 회차를 그 이유로 끝내고 Run을 취소한다.
+- **한도 정책.** 걸렸을 때 할 일은 Loop의 `limitPolicy`가 정한다. 사용자에게 묻지 않는다.
+  - `exhaust`, `unlimited`: 소진이다.
+  - `raise_reasoning`: Loop 안 Agent의 추론 수준을 `level`로 고정한다. 모델이 `level`을 지원하지 않으면 그 모델이 지원하는 `level` 이하의 가장 높은 수준을 쓴다. 이미 그 수준 이상으로 고정된 Agent와 쓸 수준이 없는 모델의 Agent는 바꾸지 않는다.
+  - `upper_model`: Loop 안 Agent의 모델을 `modelProfile`로 바꾼다. 추론 설정은 그대로 둔다. 이미 그 모델을 쓰는 Agent는 바꾸지 않는다.
+  - 올리기와 바꾸기는 한 진입에서 한 번만 한다. 이미 했거나 바뀌는 Agent가 하나도 없으면 소진이다.
+  - 적용하면 `loop.escalated`를 남기고, 이 회차를 `revise`로 끝내고 다음 회차를 연다. 회차 번호는 이어지고 상한은 그 자리부터 다시 센다. 정체 비교는 이어진다.
+  - 바뀐 모델과 추론 수준은 그 진입이 끝날 때까지 Loop 안 Agent의 새 실행(execution)에 쓰인다. 진행 중인 실행은 바꾸지 않는다. 다시 들어오면 정의의 값으로 시작한다.
+  - 사람이 `node_future` 패치로 모델이나 추론을 정한 Agent는 그 항목을 바꾸지 않는다. 뒤에 온 사람의 패치가 앞선다.
+- **소진.** 회차를 걸린 이유(`cap_reached`·`stalled`)로 끝내고 Loop를 떠난다. `exhausted`에 연결이 있으면 그리로 간다. 연결이 없으면 Run이 실패로 끝난다. 이유(`loop_exhausted`)에 Loop와 걸린 이유가 남고, 그때까지 제출한 산출물은 실패한 Run의 부분 결과로 남는다.
 - **나가기.** Loop의 `exit`로 들어오면 회차를 `pass`로 끝내고 `next`로 간다. 여러 겹 바깥 상자의 `exit`나 `repeat`로 바로 가면, 그 사이 안쪽 Loop의 열린 회차는 모두 `pass`로 끝난다.
 
 ### 재시도와 실패 경로
@@ -228,14 +242,65 @@ Scenario: 회차 상한에서 exhausted로 나간다
   When 실행한다
   Then 2회차가 cap_reached로 끝나고 사용자에게 묻지 않고 F가 실행된다
 
-Scenario: exhausted가 없으면 이유와 함께 묻는다
+Scenario: exhausted가 없으면 Run이 실패로 끝난다
   Given maxIterations 1인 Loop의 검토가 revise를 고르고 exhausted에 연결이 없다
   When 첫 회차가 다시 돌기를 요청한다
-  Then cap_reached를 이유로 한 loop_cap 승인을 요청한다
-  When 사용자가 승인한다
-  Then 2회차가 열린다
-  When 사용자가 다음 질문을 거절한다
-  Then Run이 취소된다
+  Then 사용자에게 묻지 않고 첫 회차가 cap_reached로 끝난다
+  And Run이 실패로 끝나고 이유에 그 Loop와 cap_reached가 남는다
+  And 첫 회차가 제출한 산출물은 부분 결과로 읽을 수 있다
+
+Scenario: 상한에서 추론 수준을 올려 더 돈다
+  Given maxIterations 2이고 limitPolicy가 raise_reasoning(high)인 Loop 안에 추론 수준이 medium으로 고정된 Agent W가 있다
+  And 검토가 늘 revise를 고르고 exhausted가 Agent F로 이어진다
+  When 실행한다
+  Then 2회차가 revise로 끝나고 loop.escalated가 남는다
+  And 3회차와 4회차의 W는 high로 요청한다
+  And 4회차가 cap_reached로 끝나고 사용자에게 묻지 않고 F가 실행된다
+
+Scenario: 상한에서 상위 모델로 바꿔 더 돈다
+  Given maxIterations 1이고 limitPolicy가 upper_model(U)인 Loop 안에 Agent W가 있다
+  When 첫 회차가 다시 돌기를 요청한다
+  Then 2회차의 W는 U로 요청한다
+  When 2회차가 다시 돌기를 요청한다
+  Then 2회차가 cap_reached로 끝나고 소진된다
+
+Scenario: 정체해도 한도 정책을 따른다
+  Given 정체 감지를 켠, limitPolicy가 upper_model(U)인 Loop의 작성 단계가 두 회차 연속 같은 내용을 제출한다
+  When 둘째 회차가 다시 돌기를 요청한다
+  Then 둘째 회차가 revise로 끝나고 셋째 회차의 작성 단계는 U로 요청한다
+  When 셋째 회차도 같은 내용을 제출한다
+  Then 셋째 회차가 stalled로 끝나고 소진된다
+
+Scenario: 바뀌는 Agent가 없으면 바로 소진된다
+  Given limitPolicy가 raise_reasoning(high)인 Loop 안의 Agent가 모두 high 이상으로 고정돼 있다
+  When 상한에 닿는다
+  Then loop.escalated 없이 그 회차가 cap_reached로 끝난다
+
+Scenario: 다시 들어오면 정의의 값으로 시작한다
+  Given 바깥 Loop A 안의 Loop B가 추론 수준을 한 번 올린 뒤 끝났다
+  When A의 다음 회차에서 B에 다시 들어온다
+  Then B 안 Agent는 정의의 추론 수준으로 요청한다
+  And B는 상한에서 다시 한 번 올린다
+
+Scenario: 사람이 바꾼 Agent는 그대로 둔다
+  Given 사람이 node_future 패치로 Loop 안 Agent W의 모델을 M으로 바꿨다
+  When 그 Loop가 upper_model(U)을 적용한다
+  Then W는 계속 M으로 요청하고 Loop 안의 다른 Agent는 U로 요청한다
+
+Scenario: 상한 없는 Loop
+  Given limitPolicy가 unlimited이고 maxIterations가 없는 Loop의 검토가 30번 revise를 고른 뒤 pass를 고른다
+  When 실행한다
+  Then 사용자에게 묻지 않고 31회차가 pass로 끝난다
+
+Scenario: 한도 정책의 구조 오류
+  Given limitPolicy가 unlimited인데 maxIterations가 있는 Loop
+  Then 오류다
+  Given limitPolicy가 unlimited가 아닌데 maxIterations가 없는 Loop
+  Then 오류다
+  Given reviewRecipe가 있는 Loop의 limitPolicy가 raise_reasoning이다
+  Then 오류다
+  Given upper_model의 modelProfile이 허용 목록에 없다
+  Then 오류다
 
 Scenario: 같은 산출물을 다시 내면 정체로 본다
   Given 정체 감지를 켠 Loop의 작성 단계가 두 회차 연속 같은 내용을 제출하고 exhausted가 Agent F로 이어진다
