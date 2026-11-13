@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { type Channel, memoryChannelPair } from '../src/channel.ts';
 import { LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION, StartFrame } from '../src/protocol.ts';
-import { DIRECTIVE_PREFIX, SYSTEM_DIRECTIVE_PREFIX } from '../src/worker-tools.ts';
+import { ADVICE_DIRECTIVE_PREFIX, DIRECTIVE_PREFIX } from '../src/worker-tools.ts';
 import { ACCESS_TOKEN, liveRuntime, recordingHost } from './harness.ts';
 
 const settled = (p: RunProjection) => ['succeeded', 'failed', 'cancelled'].includes(p.status);
@@ -983,7 +983,7 @@ it('two plain directives waiting at start go in as two messages, each once', asy
   ]);
 });
 
-it("a system notice goes in under its own heading, apart from and in order with the person's", async () => {
+it("an advice goes in under its own heading, apart from and in order with the person's", async () => {
   const { createFauxCore } = await import('@earendil-works/pi-ai');
   const { runWorker } = await import('../src/worker.ts');
   const faux = createFauxCore({});
@@ -996,7 +996,7 @@ it("a system notice goes in under its own heading, apart from and in order with 
   ]);
   const directives = [
     { directiveId: 'dir_user', text: 'Keep the API.', origin: 'user' as const },
-    { directiveId: 'dir_sys', text: 'Wrap up.', origin: 'system' as const },
+    { directiveId: 'dir_adv', text: 'Check the dates.', origin: 'advice' as const },
     { directiveId: 'dir_user2', text: 'Cite pages.', origin: 'user' as const },
   ];
   const { host } = recordingHost({ pendingDirectives: () => directives });
@@ -1015,13 +1015,13 @@ it("a system notice goes in under its own heading, apart from and in order with 
     .map((message) =>
       typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
     )
-    .filter((text) => text.includes(DIRECTIVE_PREFIX) || text.includes(SYSTEM_DIRECTIVE_PREFIX));
+    .filter((text) => text.includes(DIRECTIVE_PREFIX) || text.includes(ADVICE_DIRECTIVE_PREFIX));
   expect(texts).toEqual([
     `${DIRECTIVE_PREFIX}dir_user): Keep the API.`,
-    `${SYSTEM_DIRECTIVE_PREFIX}dir_sys): Wrap up.`,
+    `${ADVICE_DIRECTIVE_PREFIX}dir_adv): Check the dates.`,
     `${DIRECTIVE_PREFIX}dir_user2): Cite pages.`,
   ]);
-  expect(SYSTEM_DIRECTIVE_PREFIX).not.toContain(DIRECTIVE_PREFIX);
+  expect(ADVICE_DIRECTIVE_PREFIX).not.toContain(DIRECTIVE_PREFIX);
 });
 
 it('directives an older host delivers with the permit go in as one message each', async () => {

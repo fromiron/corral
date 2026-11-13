@@ -96,7 +96,6 @@ export {
   reconstructRunHistory,
 } from './run/history.ts';
 export {
-  approvalNeed,
   executionPresence,
   PRESENCE_EXIT_GRACE_MS,
   type Presence,

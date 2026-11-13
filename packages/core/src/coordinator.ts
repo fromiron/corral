@@ -152,16 +152,7 @@ import {
 import { carriedSources, forkPlan, forkSteps } from './fork.ts';
 import { generatedImageInputs } from './generated-image-inputs.ts';
 import { SESSION_CONVERSATION } from './history.ts';
-import {
-  effectiveRequestBudget,
-  LogicalDeadline,
-  NO_PROGRESS_TURNS,
-  REQUEST_BUDGET_NOTICES,
-  ROUTER_CHOOSER_ROLE_ID,
-  requestBudgetKind,
-  requestBudgetOf,
-  requestBudgetStage,
-} from './limits.ts';
+import { LogicalDeadline, NO_PROGRESS_TURNS } from './limits.ts';
 import {
   PartialOutputWriter,
   partialOutputRefs,
@@ -524,8 +515,6 @@ interface LiveRun {
   stepApprovals: Map<string, Set<string>>;
   /** A pending run-level limit intervention; concurrent workers wait on this one. */
   limitApproval: Promise<'approve' | 'reject'> | null;
-  /** A pending request-budget intervention per execution; that execution's own limit. */
-  budgetApprovals: Map<string, Promise<'approve' | 'reject'>>;
   /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
@@ -674,7 +663,7 @@ export function runModelProfiles(definition: CorralDefinition): string[] {
 
 /** The built-in role a router's chooser runs with: no tools, its last reply is the answer. */
 const chooserRole = (modelProfile: string): import('@corral/contracts').AgentRole => ({
-  id: ROUTER_CHOOSER_ROLE_ID,
+  id: 'router_chooser',
   name: 'Router',
   prompt:
     'You choose which way the work goes next. Read the inputs and the routes, then reply with ' +
@@ -992,8 +981,8 @@ export class Coordinator {
     )
       blockers.push('checkpoint_capacity');
     if (
-      // Only the person's newer words are an instruction the checkpoint would lose; a system
-      // notice is not.
+      // Only the person's newer words are an instruction the checkpoint would lose; an advice
+      // is not.
       Object.values(source.projection.directives).some(
         (directive) => directive.origin === 'user' && directive.acceptedSeq > manifest.eventSeq,
       ) ||
@@ -2105,13 +2094,10 @@ export class Coordinator {
       stoppedSteps: new Set(),
       stepApprovals: new Map(),
       limitApproval: null,
-      budgetApprovals: new Map(),
-      // A spawn limit above the installation's cap runs with the cap; omitted request budgets
-      // run with the defaults, and run.started keeps the values used.
+      // A spawn limit above the installation's cap runs with the cap.
       limits: {
         ...definition.limits,
         maxSpawns: Math.min(definition.limits.maxSpawns, this.policy.maxSpawns),
-        requestBudget: effectiveRequestBudget(definition.limits),
       },
       criteriaVersionId: snapshot.criteriaVersionId,
       pendingCriteriaVersionId: null,
@@ -2859,15 +2845,11 @@ export class Coordinator {
         this.commit(run, this.askerResumes(run, q.askerExecutionId, questionId, 'cancelled'));
         q.wake({ questionId, outcome: 'cancelled' });
       }
-    // A limit's approval closes with what waits on it, before the cancellation is confirmed.
-    this.closeLimitApprovals(
-      run,
-      scope.kind === 'run'
-        ? this.openLimitApprovals(run)
-        : [...affected].flatMap((id) => this.openLimitApprovals(run, id)),
-      'cancelled',
-    );
     if (scope.kind === 'run') {
+      // The no-progress pause closes with the run, before the cancellation is confirmed.
+      const closings = this.storageError ? [] : this.noProgressClosings(run);
+      if (closings.length && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+        this.commit(run, closings);
       for (const resolve of run.approvals.values()) resolve('reject');
       run.approvals.clear();
     }
@@ -3019,21 +3001,10 @@ export class Coordinator {
       before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
       after = { maxIterations: change.maxIterations };
     } else if (change.kind === 'run_limits') {
-      const { changes } = change;
-      const maxSpawns = 'maxSpawns' in changes ? changes.maxSpawns : undefined;
-      const { requestBudget } = changes;
-      if (maxSpawns !== undefined && maxSpawns > this.policy.maxSpawns)
+      if (change.changes.maxSpawns > this.policy.maxSpawns)
         return refuse('LIMIT_REACHED', 'maxSpawns exceeds installation policy');
-      // A budget patch names some budgets; the record keeps all of them, before and after.
-      const budgets = effectiveRequestBudget(run.limits);
-      before = {
-        ...(maxSpawns !== undefined ? { maxSpawns: run.limits.maxSpawns } : {}),
-        ...(requestBudget ? { requestBudget: budgets } : {}),
-      };
-      after = {
-        ...(maxSpawns !== undefined ? { maxSpawns } : {}),
-        ...(requestBudget ? { requestBudget: { ...budgets, ...requestBudget } } : {}),
-      };
+      before = { maxSpawns: run.limits.maxSpawns };
+      after = { maxSpawns: change.changes.maxSpawns };
     } else {
       if (run.snapshot.definition.nodes.some((node) => node.type === 'loop' && node.reviewRecipe))
         return refuse(
@@ -3119,7 +3090,6 @@ export class Coordinator {
         this.commit(run, [
           {
             type: 'approval.requested',
-            ...(old.executionId ? { executionId: old.executionId } : {}),
             payload: {
               approvalId: nextId,
               kind: old.kind,
@@ -3434,103 +3404,37 @@ export class Coordinator {
     return this.currentReceipt(stored);
   }
 
-  /**
-   * The request budget's notice for an execution that just started a request, if one is due
-   * (product contract §9). It is a `system` directive: no command or receipt, no authority over
-   * approvals, patches or permissions, and the same delivery as a person's next-request one.
-   * Each stage is given once; the count it reads comes from the events.
-   */
-  private requestBudgetNotice(run: LiveRun, input: AgentStartInput): void {
-    const { executionId } = input;
-    const kind = requestBudgetKind(input);
-    if (!kind) return;
-    const budget = requestBudgetOf(kind, run.limits);
-    const stage = requestBudgetStage(run.projection.requestBudgets?.[executionId], budget);
-    if (stage !== 'wrap_up' && stage !== 'submit') return;
-    const text =
-      stage === 'wrap_up' ? REQUEST_BUDGET_NOTICES.wrapUp(budget) : REQUEST_BUDGET_NOTICES.submit;
-    const directiveId = this.ids.next('directive');
-    this.commit(run, [
-      {
-        type: 'directive.accepted',
-        actor: RUNTIME,
-        executionId,
-        payload: {
-          directiveId,
-          targetExecutionId: executionId,
-          text,
-          delivery: 'next_request',
-          origin: 'system',
-        },
-      },
-    ]);
-    run.handles.get(executionId)?.pushDirective?.({ directiveId, text, origin: 'system' });
-  }
-
-  /**
-   * Open approvals a limit asked for: one execution's request budget, or with no execution every
-   * request budget and the run's no-progress pause.
-   */
-  private openLimitApprovals(run: LiveRun, executionId?: string): ApprovalView[] {
+  /** Open no-progress approvals: the run's limit pause, a `user_action` with a limit. */
+  private openNoProgressApprovals(run: LiveRun): ApprovalView[] {
     return Object.values(run.projection.approvals).filter(
       (approval) =>
         approval.status === 'pending' &&
         !approval.tool &&
-        (executionId
-          ? approval.kind === 'request_budget' && approval.executionId === executionId
-          : approval.kind === 'request_budget' ||
-            (approval.kind === 'user_action' && approval.limit !== undefined)),
+        approval.kind === 'user_action' &&
+        approval.limit !== undefined,
     );
   }
 
-  /** The runtime's rejection of each approval, for a commit that closes them. */
-  private limitApprovalClosings(
-    run: LiveRun,
-    approvals: readonly ApprovalView[],
-    reason: 'cancelled' | 'execution_ended',
-  ): EventDraft[] {
-    return approvals.map((approval) => {
-      // Whoever waits on it is told no once the closing is committed.
+  /**
+   * The runtime's rejection of each no-progress approval of a run that ends, for the commit that
+   * ends it; whoever waits on one is told no.
+   */
+  private noProgressClosings(run: LiveRun): EventDraft[] {
+    return this.openNoProgressApprovals(run).map((approval) => {
       const resume = run.approvals.get(approval.approvalId);
       run.approvals.delete(approval.approvalId);
       resume?.('reject');
       return {
         type: 'approval.resolved',
-        ...(approval.executionId ? { executionId: approval.executionId } : {}),
         payload: {
           approvalId: approval.approvalId,
           decision: 'reject',
           actor: RUNTIME.id,
           subjectVersionIds: approval.subjectVersionIds,
-          reason,
+          reason: 'cancelled',
         },
       };
     });
-  }
-
-  /**
-   * Closes limit approvals whose execution or run ended: no request is left for a target that is
-   * gone. A run that waited only on them goes back to running.
-   */
-  private closeLimitApprovals(
-    run: LiveRun,
-    approvals: readonly ApprovalView[],
-    reason: 'cancelled' | 'execution_ended',
-  ): void {
-    if (!approvals.length || this.storageError || TERMINAL_RUN_STATUSES.has(run.projection.status))
-      return;
-    const drafts = this.limitApprovalClosings(run, approvals, reason);
-    const waiting =
-      run.approvals.size > 0 ||
-      run.userInputs.size > 0 ||
-      run.extensionUi.size > 0 ||
-      Object.values(run.projection.tasks).some((t) => t.status === 'blocked');
-    this.commit(run, [
-      ...drafts,
-      ...(run.projection.status === 'awaiting_user' && !waiting
-        ? [runState('awaiting_user', 'running', 'approval_resolved')]
-        : []),
-    ]);
   }
 
   /** A steer receipt follows its directive: queued until a request carries it. */
@@ -4228,8 +4132,8 @@ export class Coordinator {
       q.wake({ questionId, outcome: 'cancelled' });
     }
     run.questions.clear();
-    // A limit's approval closes with the run, in the same commit that ends it.
-    drafts.push(...this.limitApprovalClosings(run, this.openLimitApprovals(run), 'cancelled'));
+    // The no-progress pause closes with the run, in the same commit that ends it.
+    drafts.push(...this.noProgressClosings(run));
     for (const resolve of run.approvals.values()) resolve('reject');
     run.approvals.clear();
     this.wake(run);
@@ -5337,11 +5241,6 @@ export class Coordinator {
           if (batch.ownerExecutionId === input.executionId) batch.stopped = true;
         for (const pending of run.toolApprovals.values())
           if (pending.input.executionId === input.executionId) pending.expire('execution_ended');
-        this.closeLimitApprovals(
-          run,
-          this.openLimitApprovals(run, input.executionId),
-          run.cancelRequested.has(input.executionId) ? 'cancelled' : 'execution_ended',
-        );
         for (const pending of run.extensionUi.values())
           if (pending.input.executionId === input.executionId)
             this.closeExtensionUi(run, pending.requestId, 'execution_ended');
@@ -6190,8 +6089,6 @@ export class Coordinator {
     routes?: EventPayload<'approval.requested'>['routes'],
     /** The step that waits on it, so stopping that step's branch can withdraw it. */
     step?: string,
-    /** The execution that waits on it, for an execution's own limit (`request_budget`). */
-    executionId?: string,
   ): { approvalId: string; decision: Promise<'approve' | 'reject'> } {
     const approvalId = this.ids.next('approval');
     if (step) {
@@ -6207,7 +6104,6 @@ export class Coordinator {
       [
         {
           type: 'approval.requested',
-          ...(executionId ? { executionId } : {}),
           payload: {
             approvalId,
             kind,
@@ -8576,54 +8472,32 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (!WORKING.has(run.projection.status));
           requireActive();
-          // Each limit the request reaches is answered before it goes: after one approval the
-          // gates are asked again, so no progress and the request budget both wait for theirs.
-          for (;;) {
-            const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
-            const request = runGates(this.gates['model.request'], view);
-            if (request.kind === 'refuse') this.refuseModelRequest(run, request);
-            if (request.kind !== 'require_approval') break;
-            // A run limit belongs to the run, not to one branch: every worker that reaches it
-            // waits on the same intervention. A request budget is the execution's own.
-            const own = request.limit.executionId;
-            const pending = own ? run.budgetApprovals.get(own) : run.limitApproval;
-            let decision = pending ?? null;
-            if (!decision) {
+          const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
+          const request = runGates(this.gates['model.request'], view);
+          if (request.kind === 'refuse') this.refuseModelRequest(run, request);
+          if (request.kind === 'require_approval') {
+            // A limit belongs to the run, not to one branch: every worker that reaches it
+            // waits on the same intervention.
+            if (!run.limitApproval) {
               this.commit(run, [
                 {
                   type: 'limit.reached',
-                  ...(own ? { executionId: own } : {}),
                   payload: {
                     limitKind: request.limit.kind,
                     used: request.limit.used,
                     max: request.limit.max,
-                    ...(own ? { executionId: own } : {}),
                   },
                 },
               ]);
-              const shared = this.requestApproval(
-                run,
-                request.approval,
-                [run.criteriaVersionId],
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                own,
-              ).decision;
-              decision = shared;
-              if (own) {
-                run.budgetApprovals.set(own, shared);
-                void shared.then(() => {
-                  if (run.budgetApprovals.get(own) === shared) run.budgetApprovals.delete(own);
-                });
-              } else {
-                run.limitApproval = shared;
-                void shared.then(() => {
-                  if (run.limitApproval === shared) run.limitApproval = null;
-                });
-              }
+              const shared = this.requestApproval(run, 'user_action', [
+                run.criteriaVersionId,
+              ]).decision;
+              run.limitApproval = shared;
+              void shared.then(() => {
+                if (run.limitApproval === shared) run.limitApproval = null;
+              });
             }
+            const decision = run.limitApproval;
             run.boundaries.add(executionId);
             try {
               if ((await decision) !== 'approve') throw new Error(`${request.limit.kind} stopped`);
@@ -8855,9 +8729,6 @@ export class Coordinator {
               },
             },
           ]);
-          // Past its budget, the execution is told to wrap up, then to submit; the notice rides
-          // its next request.
-          this.requestBudgetNotice(run, input);
           lastCall = { modelCallId, contextSnapshotId, effectId };
           lastRoute = prepared.stored ? { modelCallId, stored: prepared.stored } : null;
           pendingShadow = prepared.shadow

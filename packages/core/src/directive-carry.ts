@@ -20,7 +20,7 @@ export function carriedDirectives(projection: RunProjection): CarriedDirective[]
   const carried: CarriedDirective[] = [];
   for (const directiveId of projection.directiveOrder) {
     const directive = projection.directives[directiveId];
-    // Only the person's own words are carried; advice and system notices are not requests.
+    // Only the person's own words are carried; an advice is not a request.
     if (directive?.origin !== 'user') continue;
     if (directive.status !== 'expired') continue;
     if (projection.executions[directive.targetExecutionId]?.status !== 'succeeded') continue;

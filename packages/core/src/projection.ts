@@ -19,13 +19,7 @@ import type {
   WaitingOn,
 } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import {
-  applyProgressEvent,
-  applyRequestBudgetEvent,
-  emptyProgress,
-  type ProgressState,
-  type RequestBudgetState,
-} from './limits.ts';
+import { applyProgressEvent, emptyProgress, type ProgressState } from './limits.ts';
 import { applyUsageRecord, type UsageRecordView } from './usage.ts';
 
 // Read model rebuilt only from committed events. The same reducer runs in the
@@ -67,7 +61,7 @@ export interface DirectiveView {
   directiveId: string;
   targetExecutionId: string;
   text: string;
-  /** Who made it: the person, an accepted advice, or the Coordinator. */
+  /** Who made it: the person or an accepted advice. */
   origin: DirectiveOrigin;
   /** Text attachments carried after the text when a request delivers it. */
   attachments?: TextAttachment[];
@@ -199,17 +193,9 @@ export interface ApprovalView {
   tool?: EventPayload<'approval.requested'>['tool'];
   /**
    * The run limit this decision pauses for: the `limit.reached` fact committed immediately before
-   * a plain `user_action` approval (the no-progress pause) or a `request_budget` approval.
-   * Absent for every other approval.
+   * a plain `user_action` approval (the no-progress pause). Absent for every other approval.
    */
-  limit?: {
-    kind: EventPayload<'limit.reached'>['limitKind'];
-    used: number;
-    max: number;
-    executionId?: string;
-  };
-  /** The execution a `request_budget` approval holds. */
-  executionId?: string;
+  limit?: { kind: EventPayload<'limit.reached'>['limitKind']; used: number; max: number };
   status: 'pending' | 'approved' | 'rejected' | 'stale';
 }
 
@@ -282,8 +268,6 @@ export interface RunProjection {
   /** Usage spent outside the model calls (chooser calls, images), by usage id. */
   usage: Record<string, UsageRecordView>;
   progress: ProgressState;
-  /** Model requests per execution against its request budget; absent in older snapshots. */
-  requestBudgets?: Record<string, RequestBudgetState>;
   /** The final approval behind the output, when the Output required one. */
   outputApprovalId: string | null;
   /** Versions each execution read through read_artifact, in order. */
@@ -340,7 +324,6 @@ export function emptyProjection(runId: string): RunProjection {
     limits: null,
     usage: {},
     progress: emptyProgress(),
-    requestBudgets: {},
     outputApprovalId: null,
     artifactReads: {},
     loopIterations: {},
@@ -369,11 +352,6 @@ export function applyEvent(projection: RunProjection, event: RunEvent): RunProje
   return {
     ...next,
     progress: applyProgressEvent(projection.progress, event, next),
-    requestBudgets: applyRequestBudgetEvent(
-      projection.requestBudgets ?? {},
-      event,
-      projection.approvals,
-    ),
     lastSeq: event.runSeq,
   };
 }
@@ -686,18 +664,12 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'approval.requested': {
       const { approvalId, kind, subjectVersionIds, criteriaVersionId } = event.payload;
       // The Coordinator commits the limit it reached, then the approval that pauses for it.
-      const budget = kind === 'request_budget' ? (event.executionId ?? null) : null;
       const limit =
-        (kind === 'user_action' || budget) &&
+        kind === 'user_action' &&
         !event.payload.tool &&
         !event.payload.nodeId &&
         p.lastLimit?.runSeq === event.runSeq - 1
-          ? {
-              kind: p.lastLimit.limitKind,
-              used: p.lastLimit.used,
-              max: p.lastLimit.max,
-              ...(p.lastLimit.executionId ? { executionId: p.lastLimit.executionId } : {}),
-            }
+          ? { kind: p.lastLimit.limitKind, used: p.lastLimit.used, max: p.lastLimit.max }
           : null;
       const approval: ApprovalView = {
         approvalId,
@@ -710,7 +682,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         ...(event.payload.routes ? { routes: event.payload.routes } : {}),
         ...(event.payload.nodeId ? { nodeId: event.payload.nodeId } : {}),
         ...(limit ? { limit } : {}),
-        ...(budget ? { executionId: budget } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }

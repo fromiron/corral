@@ -922,15 +922,6 @@
       "approve": "Continue",
       "reject": "Stop the run"
     },
-    "budget": {
-      "agent": "This agent",
-      "title": "{role} used {used} model requests (budget {max})",
-      "titleBare": "{role} used its model request budget",
-      "then": "Continuing gives it another budget of requests.",
-      "approve": "Continue",
-      "reject": "Stop {role}",
-      "done": "{role}: continued"
-    },
     "checkHeading": "Approve check launch",
     "checkScope": "{execution} · attempt {attempt} · config r{revision} · {fingerprint} · tree {tree}",
     "checkIdentity": "Check identity and fingerprint",

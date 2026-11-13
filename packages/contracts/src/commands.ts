@@ -6,7 +6,7 @@ import {
   TextAttachments,
 } from './attachments.ts';
 import { AutoRoute } from './auto-team.ts';
-import { CorralDefinition, RequestBudget, RunInput } from './definition.ts';
+import { CorralDefinition, RunInput } from './definition.ts';
 import { ContentHash, ExtensionUiValue, HarnessOverrides, PermissionMode } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { MeetingRunOrigin } from './meeting.ts';
@@ -77,14 +77,6 @@ const nodeFuture = {
   nodeId: Identifier,
   reasoning: ReasoningPolicy.optional(),
 };
-const maxSpawns = z.int().min(1).max(32);
-/** Only the budgets named change; the others keep their current values. One at least. */
-const RequestBudgetChange = z.union([
-  RequestBudget.partial().required({ role: true }),
-  RequestBudget.partial().required({ child: true }),
-  RequestBudget.partial().required({ advisor: true }),
-]);
-
 export const PatchPayload = z.union([
   z.strictObject({
     ...nodeFuture,
@@ -101,11 +93,9 @@ export const PatchPayload = z.union([
   }),
   z.strictObject({
     kind: z.literal('run_limits'),
-    // At least one limit changes: the spawn limit, some request budgets, or both.
-    changes: z.union([
-      z.strictObject({ maxSpawns, requestBudget: RequestBudgetChange.optional() }),
-      z.strictObject({ requestBudget: RequestBudgetChange }),
-    ]),
+    changes: z.strictObject({
+      maxSpawns: z.int().min(1).max(32),
+    }),
   }),
   z.strictObject({
     kind: z.literal('criteria'),

@@ -922,15 +922,6 @@
       "approve": "계속",
       "reject": "실행 중지"
     },
-    "budget": {
-      "agent": "이 에이전트",
-      "title": "{role}: 모델 요청 {used}회 사용 (예산 {max}회)",
-      "titleBare": "{role}: 모델 요청 예산 소진",
-      "then": "계속하면 예산만큼 더 요청합니다.",
-      "approve": "계속",
-      "reject": "{role} 중지",
-      "done": "{role}: 계속함"
-    },
     "checkHeading": "검사 실행 승인",
     "checkScope": "{execution} · 시도 {attempt} · 설정 r{revision} · 실행 해시 {fingerprint} · 파일 상태 {tree}",
     "checkIdentity": "검사 식별 정보와 지문",

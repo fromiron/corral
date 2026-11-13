@@ -365,23 +365,18 @@ export function userPrompt(start: PromptStart): string {
 /** How each worker opens a person's delivered directive; neither is the person's request. */
 export const DIRECTIVE_PREFIX = 'Instruction from the person supervising this run (';
 export const SDK_DIRECTIVE_PREFIX = 'Corral instruction (';
-/**
- * How both workers open a directive the person did not write: a Coordinator notice (the request
- * budget's wrap-up and submit) or an accepted advice. Neither carries the person's authority.
- */
-export const SYSTEM_DIRECTIVE_PREFIX = 'System notice from Corral, not from the person (';
+/** How both workers open an accepted advice; it does not carry the person's authority. */
 export const ADVICE_DIRECTIVE_PREFIX = "Advice from this run's advisor, not from the person (";
 
 type Delivered = Pick<DeliveredDirective, 'directiveId' | 'text' | 'origin'>;
-const OTHER_PREFIX = { system: SYSTEM_DIRECTIVE_PREFIX, advice: ADVICE_DIRECTIVE_PREFIX } as const;
 
 /** The core worker's form of one delivered directive; each directive is its own message. */
 export const directiveText = (d: Delivered) =>
-  `${d.origin === 'user' ? DIRECTIVE_PREFIX : OTHER_PREFIX[d.origin]}${d.directiveId}): ${d.text}`;
+  `${d.origin === 'user' ? DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`;
 
 /** The SDK worker's form of one delivered directive. */
 export const sdkDirectiveText = (d: Delivered) =>
-  `${d.origin === 'user' ? SDK_DIRECTIVE_PREFIX : OTHER_PREFIX[d.origin]}${d.directiveId}):\n${d.text}`;
+  `${d.origin === 'user' ? SDK_DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}):\n${d.text}`;
 
 export function parentQuestionsText(questions: readonly ParentQuestionMessage[]): string {
   return (

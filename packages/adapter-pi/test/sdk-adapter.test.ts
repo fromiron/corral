@@ -39,8 +39,8 @@ import {
 import { runSdkWorker } from '../src/sdk-worker.ts';
 import { runWorker } from '../src/worker.ts';
 import {
+  ADVICE_DIRECTIVE_PREFIX,
   SDK_DIRECTIVE_PREFIX,
-  SYSTEM_DIRECTIVE_PREFIX,
   sdkDirectiveText,
 } from '../src/worker-tools.ts';
 import { ACCESS_TOKEN, recordingHost } from './harness.ts';
@@ -1827,13 +1827,13 @@ it('two directives steered during one SDK response both lead the next turn, each
   );
 });
 
-it("a system notice steered beside a person's directive keeps its own heading and the order", async () => {
+it("an advice steered beside a person's directive keeps its own heading and the order", async () => {
   const entered = new Gate(),
     release = new Gate();
   let seen: string[] = [];
   const directives = [
     { directiveId: 'dir_user', text: 'Keep sources.', origin: 'user' as const },
-    { directiveId: 'dir_sys', text: 'Wrap up.', origin: 'system' as const },
+    { directiveId: 'dir_adv', text: 'Check the dates.', origin: 'advice' as const },
   ];
   const run = runtime([
     async () => {
@@ -1855,15 +1855,15 @@ it("a system notice steered beside a person's directive keeps its own heading an
   await handle.waitForSettlement();
   expect(run.requests).toMatchObject([
     { directiveIds: [] },
-    { directiveIds: ['dir_user', 'dir_sys'] },
+    { directiveIds: ['dir_user', 'dir_adv'] },
   ]);
   expect(
     seen.filter(
-      (text) => text.startsWith(SDK_DIRECTIVE_PREFIX) || text.startsWith(SYSTEM_DIRECTIVE_PREFIX),
+      (text) => text.startsWith(SDK_DIRECTIVE_PREFIX) || text.startsWith(ADVICE_DIRECTIVE_PREFIX),
     ),
   ).toEqual([
     `${SDK_DIRECTIVE_PREFIX}dir_user):\nKeep sources.`,
-    `${SYSTEM_DIRECTIVE_PREFIX}dir_sys):\nWrap up.`,
+    `${ADVICE_DIRECTIVE_PREFIX}dir_adv):\nCheck the dates.`,
   ]);
 });
 

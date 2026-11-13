@@ -262,31 +262,12 @@ export const CapabilityLink = z.strictObject({
 });
 export type CapabilityLink = z.infer<typeof CapabilityLink>;
 
-/** One unattended request budget: 0 turns it off, otherwise 50–2,000 model requests. */
-export const RequestBudgetValue = z.union([z.literal(0), z.int().min(50).max(2000)]);
-/**
- * Model requests an execution may start before it is told to wrap up (product contract §9): a
- * team role, a dynamically created child, and an advisor. An execution that answers the
- * conversation directly has none.
- */
-export const RequestBudget = z.strictObject({
-  role: RequestBudgetValue,
-  child: RequestBudgetValue,
-  advisor: RequestBudgetValue,
-});
-export type RequestBudget = z.infer<typeof RequestBudget>;
-export type RequestBudgetKind = keyof RequestBudget;
-/** The §9 defaults; a definition may leave any of them out. */
-export const DEFAULT_REQUEST_BUDGET: RequestBudget = { role: 400, child: 200, advisor: 60 };
-
 export const RunLimits = z.strictObject({
   maxDelegationDepth: z.int().min(1),
   maxModelConcurrency: z.int().min(1),
   maxSpawns: z.int().min(1),
   maxQuestions: z.int().min(0).max(6),
   questionTimeoutMs: z.int().min(1000).max(300000),
-  /** Omitted values take the defaults when a run starts; `run.started` keeps the values used. */
-  requestBudget: RequestBudget.partial().optional(),
 });
 export type RunLimits = z.infer<typeof RunLimits>;
 

@@ -354,15 +354,7 @@ export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum([
-      'final_output',
-      'loop_cap',
-      'user_action',
-      'route',
-      'check',
-      'breakpoint',
-      'request_budget',
-    ]),
+    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check', 'breakpoint']),
     /** The step a `breakpoint` approval holds before it starts. */
     nodeId: Identifier.optional(),
     /** Why a Loop asks for another round: its round cap or a stall. */
@@ -487,7 +479,7 @@ export const OutputFinalized = event(
 );
 
 // ── Reins ────────────────────────────────────────────────────────────────────
-export const DirectiveOrigin = z.enum(['user', 'advice', 'system']);
+export const DirectiveOrigin = z.enum(['user', 'advice']);
 export type DirectiveOrigin = z.infer<typeof DirectiveOrigin>;
 export const DirectiveAccepted = event(
   'directive.accepted',
@@ -497,7 +489,7 @@ export const DirectiveAccepted = event(
     text: z.string().min(1).max(12000),
     /** The delivery actually used: an interrupt the target cannot take is next_request. */
     delivery: z.enum(['next_request', 'interrupt']),
-    /** Who made it: the person, an accepted advice, or the Coordinator (features/reins.md). */
+    /** Who made it: the person or an accepted advice (features/reins.md). */
     origin: DirectiveOrigin,
     attachments: TextAttachments.optional(),
   }),
@@ -691,18 +683,9 @@ export const UsageRecorded = event(
 export const LimitReached = event(
   'limit.reached',
   z.strictObject({
-    limitKind: z.enum([
-      'spawns',
-      'questions',
-      'depth',
-      'loop_iterations',
-      'no_progress',
-      'request_budget',
-    ]),
+    limitKind: z.enum(['spawns', 'questions', 'depth', 'loop_iterations', 'no_progress']),
     used: Count,
     max: Count,
-    /** The execution whose request budget this is; only `request_budget` names one. */
-    executionId: Identifier.optional(),
   }),
 );
 export const ObservationLate = event(

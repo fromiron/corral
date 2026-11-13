@@ -114,7 +114,7 @@ describe('admission gates', () => {
       (list as Gate<never>[]).map((g) => `${g.id}@${g.version}`),
     ]);
     expect(Object.fromEntries(named)).toEqual({
-      'model.request': ['no_progress@1', 'request_budget@1'],
+      'model.request': ['no_progress@1'],
       'tool.pre_boundary': ['question_open@1'],
       'tool.authorize': ['role_allowlist@1', 'limits@1'],
       'tool.execute': ['role_allowlist@1', 'limits@1'],
