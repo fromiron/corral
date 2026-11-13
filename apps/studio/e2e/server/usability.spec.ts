@@ -1,4 +1,4 @@
-import { linearCorral } from '@corral/testkit';
+import { defaultReply, linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
 import { type DemoTemplate, templateForWorkspace } from '../../src/demo/templates.ts';
 import { approvalResearchTeam } from '../../src/demo/testing/approval-team.ts';
@@ -162,8 +162,27 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
 });
 
+// The writer's first reply waits until Pause is pressed, so the run pauses at the boundary after
+// it with its next request still to come, however long the steps to Pause take.
+const firstReply = { open: () => {}, opened: Promise.resolve(), used: false };
+
 test.describe('instruction delivery', () => {
-  test.use({ replyDelayMs: 900 });
+  test.use({
+    agentReply: {
+      reply: defaultReply,
+      beforeReply: async () => {
+        if (firstReply.used) return;
+        firstReply.used = true;
+        await firstReply.opened;
+      },
+    },
+  });
+  test.beforeEach(() => {
+    firstReply.used = false;
+    firstReply.opened = new Promise<void>((resolve) => {
+      firstReply.open = resolve;
+    });
+  });
   test('UX-015-02 a queued instruction updates to delivered without leaving the conversation', async ({
     page,
     corral,
@@ -174,6 +193,7 @@ test.describe('instruction delivery', () => {
     // The run's controls are in the activity bar's panel.
     await openActivity(page);
     await runControls(page).getByRole('button', { name: 'Pause', exact: true }).click();
+    firstReply.open();
     await expect(
       runControls(page).getByRole('button', { name: 'Resume', exact: true }),
     ).toBeVisible();
