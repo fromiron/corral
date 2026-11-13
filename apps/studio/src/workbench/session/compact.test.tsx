@@ -6,6 +6,7 @@ import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
+import { createStore } from 'zustand/vanilla';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setCommands } from '../../commandRegistry.ts';
 import { Composer } from './Composer.tsx';
@@ -109,6 +110,14 @@ async function mount(running: RunSummary | null, snapshot = projection()) {
     },
   );
   const sendCommand = vi.fn(async () => ({ error: null, status: 'accepted' }));
+  const runStore = createStore(() => ({
+    runId: 'run_live',
+    projection: snapshot,
+    definition: linearCorral(['writer']),
+    streamError: null,
+    missingRunId: null,
+    open: async () => {},
+  }));
   fixture.services = {
     repository: {
       getSession: vi.fn(async () => session),
@@ -121,6 +130,9 @@ async function mount(running: RunSummary | null, snapshot = projection()) {
       getRunDefinition: vi.fn(async () => linearCorral(['writer'])),
       startRun: vi.fn(async () => ({ runId: 'started', receipt: { error: null } })),
     },
+    // The live run the composer reads its instruction targets from.
+    runFor: () => runStore,
+    retainRun: () => () => {},
     mode: 'server',
     live: true,
     workspaceId: 'host',

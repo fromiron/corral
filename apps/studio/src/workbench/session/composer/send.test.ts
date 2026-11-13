@@ -1,4 +1,4 @@
-import type { TextAttachment } from '@corral/contracts';
+import type { ImageAttachment, TextAttachment } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { describe, expect, it, vi } from 'vitest';
 import { createPendingSessionCommands } from '../../../pendingCommands.ts';
@@ -36,6 +36,16 @@ const running: RunSummary = {
   sessionId: 'session',
   startedAt: '2026-10-21T00:00:00Z',
 };
+const image: ImageAttachment = {
+  kind: 'image_attachment',
+  imageId: 'image',
+  name: 'next.png',
+  mime: 'image/png',
+  bytes: 1,
+  sha256: 'c'.repeat(64),
+  width: 1,
+  height: 1,
+};
 const attachment: TextAttachment = {
   kind: 'text_attachment',
   name: 'notes.md',
@@ -43,6 +53,21 @@ const attachment: TextAttachment = {
   bytes: 5,
   sha256: `sha256:${'a'.repeat(64)}`,
   text: 'notes',
+};
+
+const quote: TextAttachment = {
+  ...attachment,
+  name: 'quote.txt',
+  mime: 'text/plain',
+  provenance: {
+    kind: 'reply',
+    runId: 'run_old',
+    modelCallId: 'call_1',
+    start: 0,
+    end: 5,
+    prefix: '',
+    suffix: ' and more',
+  },
 };
 
 function harness(overrides: Partial<SendDeps> = {}) {
@@ -79,7 +104,13 @@ function harness(overrides: Partial<SendDeps> = {}) {
       noResult: 'no result',
       failed: (message: string) => `failed: ${message}`,
     },
-    commands: { sessionId: 'session', pending, store, newId: () => ids.shift() ?? 'cmd_more' },
+    commands: {
+      sessionId: 'session',
+      pending,
+      store,
+      newId: () => ids.shift() ?? 'cmd_more',
+      sending: { current: false },
+    },
     autoRequest: { current: null as AutoRequest | null },
     onChoosingAuto: vi.fn(),
     onTitleChange: vi.fn(),
@@ -107,6 +138,7 @@ const input = (overrides: Partial<SendInput> = {}): SendInput => ({
   images: [],
   permissionMode: undefined,
   revision: 7,
+  delivery: null,
   ...overrides,
 });
 
@@ -134,6 +166,7 @@ describe('composer send paths', () => {
       detail: null,
       refusal: null,
       commandId: 'cmd_fixed',
+      start: { choice: { modelProfile: 'model-a' }, team: 'none', mode: 'live' },
     });
     expect(h.sendCommand).not.toHaveBeenCalled();
     expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, false);
@@ -170,6 +203,12 @@ describe('composer send paths', () => {
       refusal: null,
       commandId: 'cmd_fixed',
       attachments: [attachment],
+      start: {
+        permissionMode: 'accept_edits',
+        choice: { modelProfile: 'model-a' },
+        team: { corralId: 'team' },
+        mode: 'live',
+      },
     });
   });
 
@@ -207,6 +246,13 @@ describe('composer send paths', () => {
       state: 'queued',
       attachments: [attachment],
       permissionMode: 'ask',
+      // The server starts it with this snapshot when the run ends (features/composer-flow.md).
+      start: {
+        permissionMode: 'ask',
+        choice: { modelProfile: 'model-a' },
+        team: 'none',
+        mode: 'live',
+      },
     });
     expect(h.startAuto).not.toHaveBeenCalled();
     expect(h.sendCommand).not.toHaveBeenCalled();
@@ -215,7 +261,10 @@ describe('composer send paths', () => {
 
   it('sends an instruction to the chosen execution for its next request boundary', async () => {
     const h = harness({ ownActive: running });
-    await sendRequest(h.deps, input({ intent: 'steer', steerTarget: 'exec_1', body: 'Shorter' }));
+    await sendRequest(
+      h.deps,
+      input({ intent: 'steer', delivery: 'next_request', steerTarget: 'exec_1', body: 'Shorter' }),
+    );
 
     expect(h.sendCommand).toHaveBeenCalledTimes(1);
     expect(h.sendCommand).toHaveBeenCalledWith({
@@ -236,24 +285,11 @@ describe('composer send paths', () => {
       commandId: 'cmd_fixed',
     });
     expect(h.startAuto).not.toHaveBeenCalled();
-    expect(h.deps.clearDraft).toHaveBeenCalledWith(7, true, true);
+    // Text attachments ride an instruction; images only a new or next request.
+    expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, true);
   });
 
   it('sends a reply quote the way it sends any text attachment, to a new or a queued request', async () => {
-    const quote: TextAttachment = {
-      ...attachment,
-      name: 'quote.txt',
-      mime: 'text/plain',
-      provenance: {
-        kind: 'reply',
-        runId: 'run_old',
-        modelCallId: 'call_1',
-        start: 0,
-        end: 5,
-        prefix: '',
-        suffix: ' and more',
-      },
-    };
     const fresh = harness();
     await sendRequest(fresh.deps, input({ attachments: [quote] }));
     expect(fresh.startAuto.mock.calls[0]?.[0]).toMatchObject({ references: [quote] });
@@ -273,7 +309,16 @@ describe('composer send paths', () => {
     const h = harness({ ownActive: running });
     const error = { code: 'TARGET_ENDED', message: 'The execution ended', owner: 'runtime' };
     h.sendCommand.mockResolvedValueOnce({ commandId: 'cmd_fixed', error } as never);
-    await sendRequest(h.deps, input({ intent: 'steer', steerTarget: 'exec_1', body: 'Shorter' }));
+    await sendRequest(
+      h.deps,
+      input({
+        intent: 'steer',
+        delivery: 'interrupt',
+        steerTarget: 'exec_1',
+        body: 'Shorter',
+        attachments: [attachment],
+      }),
+    );
 
     expect(h.addSessionEntry).toHaveBeenCalledWith(
       'session',
@@ -285,5 +330,141 @@ describe('composer send paths', () => {
       owner: 'runtime',
     });
     expect(h.deps.clearDraft).not.toHaveBeenCalled();
+  });
+
+  it('interrupts with the interrupt delivery and the same attachments, never the images', async () => {
+    const h = harness({ ownActive: running });
+    h.sendCommand.mockResolvedValueOnce({
+      commandId: 'cmd_fixed',
+      status: 'queued',
+      requestedBoundary: 'immediate',
+    } as never);
+    const outcome = await sendRequest(
+      h.deps,
+      input({
+        intent: 'steer',
+        delivery: 'interrupt',
+        steerTarget: 'exec_1',
+        body: 'Look at session.ts',
+        attachments: [attachment],
+        images: [image],
+      }),
+    );
+    expect(h.sendCommand).toHaveBeenCalledWith({
+      schemaVersion: '0.1',
+      commandId: 'cmd_fixed',
+      runId: 'run_live',
+      type: 'steer',
+      payload: {
+        targetExecutionId: 'exec_1',
+        text: 'Look at session.ts',
+        delivery: 'interrupt',
+        attachments: [attachment],
+      },
+    });
+    // The instruction's record keeps the attachments; a session entry of an instruction does not.
+    expect(h.addSessionEntry).toHaveBeenCalledWith('session', {
+      intent: 'steer',
+      text: 'Look at session.ts',
+      state: 'sent',
+      runId: 'run_live',
+      executionId: 'exec_1',
+      detail: null,
+      refusal: null,
+      commandId: 'cmd_fixed',
+    });
+    expect(outcome).toEqual({ sent: true, lowered: false });
+    expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, true);
+  });
+
+  it('carries a reply quote on a join', async () => {
+    const h = harness({ ownActive: running });
+    await sendRequest(
+      h.deps,
+      input({
+        intent: 'steer',
+        delivery: 'next_request',
+        steerTarget: 'exec_1',
+        attachments: [quote],
+      }),
+    );
+    expect(h.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ delivery: 'next_request', attachments: [quote] }),
+      }),
+    );
+  });
+
+  it('takes an interrupt the runtime lowered to the next request as sent, and says it was lowered', async () => {
+    const h = harness({ ownActive: running });
+    h.sendCommand.mockResolvedValueOnce({
+      commandId: 'cmd_fixed',
+      status: 'queued',
+      requestedBoundary: 'next_request',
+    } as never);
+    const outcome = await sendRequest(
+      h.deps,
+      input({ intent: 'steer', delivery: 'interrupt', steerTarget: 'exec_1' }),
+    );
+    expect(outcome).toEqual({ sent: true, lowered: true });
+    expect(h.deps.setRefusal).toHaveBeenLastCalledWith(null);
+    expect(h.addSessionEntry).toHaveBeenCalledWith(
+      'session',
+      expect.objectContaining({ intent: 'steer', state: 'sent' }),
+    );
+    expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, true);
+  });
+
+  it('keeps the draft and its attachments when an instruction is lost, and resends it under one command', async () => {
+    const h = harness({ ownActive: running });
+    h.sendCommand.mockRejectedValueOnce(new Error('connection reset'));
+    const join = input({
+      intent: 'steer',
+      delivery: 'next_request',
+      steerTarget: 'exec_1',
+      attachments: [attachment],
+    });
+    const outcome = await sendRequest(h.deps, join);
+    expect(outcome).toEqual({ sent: false, lowered: false });
+    expect(h.deps.clearDraft).not.toHaveBeenCalled();
+    expect(h.addSessionEntry).not.toHaveBeenCalled();
+    expect(h.deps.setRefusal).toHaveBeenLastCalledWith({
+      message: 'connection reset',
+      network: true,
+    });
+    await sendRequest(h.deps, join);
+    expect(h.sendCommand).toHaveBeenCalledTimes(2);
+    expect(h.sendCommand.mock.calls[1]?.[0]).toEqual(h.sendCommand.mock.calls[0]?.[0]);
+  });
+
+  it('a join and an interrupt of the same text are two commands', async () => {
+    const h = harness({ ownActive: running });
+    h.sendCommand.mockRejectedValueOnce(new Error('connection reset'));
+    await sendRequest(
+      h.deps,
+      input({ intent: 'steer', delivery: 'next_request', steerTarget: 'exec_1' }),
+    );
+    await sendRequest(
+      h.deps,
+      input({ intent: 'steer', delivery: 'interrupt', steerTarget: 'exec_1' }),
+    );
+    const ids = h.sendCommand.mock.calls.map(
+      (call) => (call[0] as { commandId: string }).commandId,
+    );
+    expect(ids).toEqual(['cmd_fixed', 'cmd_second']);
+  });
+
+  it('sends one command when the same send is pressed twice', async () => {
+    const h = harness({ ownActive: running });
+    const join = input({ intent: 'steer', delivery: 'next_request', steerTarget: 'exec_1' });
+    await Promise.all([sendRequest(h.deps, join), sendRequest(h.deps, join)]);
+    expect(h.sendCommand).toHaveBeenCalledTimes(1);
+    expect(h.addSessionEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it('never sends an instruction without its delivery', async () => {
+    const h = harness({ ownActive: running });
+    await sendRequest(h.deps, input({ intent: 'steer', steerTarget: 'exec_1' }));
+    expect(h.sendCommand).not.toHaveBeenCalled();
   });
 });

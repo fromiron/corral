@@ -1383,7 +1383,9 @@
       "session": "Sessions and runs",
       "composer": "Request input",
       "editor": "Team editor"
-    }
+    },
+    "interrupt": "Interrupt the running response with a request",
+    "queueNext": "Send a request for after the run"
   },
   "TeamDraft": {
     "title": "Draft a team from a goal",
@@ -1863,7 +1865,7 @@
     "targetChip": "To {label} · at its next model request",
     "editQueued": "Edit",
     "autoStart": "Start the next queued task when the run ends",
-    "autoStartHint": "Only while this page is open and after it sees the run end; never after a restart.",
+    "autoStartHint": "The server starts it when the run ends, even with this page closed; never after a restart.",
     "preRun": "{team} · models {profiles} · files: {files} · {mode}",
     "filesCopy": "can change the working copy",
     "filesNoCopy": "tools on, but no working copy",
@@ -2451,8 +2453,8 @@
     "focus": "Focus the request box",
     "ended": "{name} (ended)",
     "blocked": {
-      "target": "The {name} execution has ended and no longer takes instructions. Choose another execution, or send this another way.",
-      "run": "This run has ended, so the instruction cannot be delivered. Send it another way."
+      "target": "This role has ended and takes no more instructions. Pick another role, or send this as a next request.",
+      "run": "This run has ended, so the instruction cannot be delivered. Send it as a next request."
     },
     "switchTo": {
       "next": "Send as a next request",
@@ -2556,7 +2558,25 @@
     "teamAutoHint": "Assistant leading planner, researcher, writer and reviewer",
     "teamCorralHint": "Assistant leading its roles, flow as a guide",
     "teamCorralGroup": "Corral",
-    "attachmentHash": "Content hash (SHA-256)"
+    "attachmentHash": "Content hash (SHA-256)",
+    "sendAs": {
+      "new": "Send",
+      "join": "Join",
+      "interrupt": "Interrupt",
+      "queue": "Next request"
+    },
+    "keyHint": {
+      "new": "Send",
+      "join": "Join",
+      "interrupt": "Interrupt",
+      "queue": "Next"
+    },
+    "sendMenu": "Send as",
+    "targetLabel": "Send to {name}",
+    "targetAwaiting": "{name} · read after the decision",
+    "targetNone": "No role takes instructions now",
+    "targetMenu": "Send to",
+    "lowered": "This role cannot be interrupted now; the message is read at its next request."
   },
   "Commands": {
     "newSession": "New session",

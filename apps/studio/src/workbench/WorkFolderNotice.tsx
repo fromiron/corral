@@ -60,8 +60,13 @@ export function FolderAccessNotice({
 }) {
   const t = useTranslations('Sessions');
   if (access === 'unknown') return null;
-  if (access === 'copy') return <span data-testid="folder-access">{t('agentCopy')}</span>;
-  if (access === 'direct') return <span data-testid="folder-access">{t('agentDirect')}</span>;
+  // The composer's tool line stays one line: where it runs short, the notice gives way first.
+  if (access === 'copy' || access === 'direct')
+    return (
+      <span data-testid="folder-access" className="min-w-0 truncate">
+        {t(access === 'copy' ? 'agentCopy' : 'agentDirect')}
+      </span>
+    );
   const fact = access === 'missing' ? 'agentFolderMissing' : 'agentNoFiles';
   const next =
     access === 'untrusted' ? 'trustFolder' : access === 'missing' ? 'checkFolder' : 'linkFolder';
@@ -73,9 +78,10 @@ export function FolderAccessNotice({
         size="compact"
         aria-label={`${t(fact)}. ${t(next)}`}
         onClick={onAction}
+        className="min-w-0"
       >
         <FolderOpen aria-hidden="true" />
-        {t(fact)}
+        <span className="min-w-0 truncate">{t(fact)}</span>
       </Button>
     </Tooltip>
   );

@@ -57,6 +57,12 @@ export const LOCAL_KEYS = [
       sendWithEnter ? 'Enter' : formatChord({ mod: true, key: 'Enter' }),
   },
   {
+    id: 'interrupt',
+    keys: (sendWithEnter: boolean) =>
+      formatChord({ mod: true, shift: !sendWithEnter, key: 'Enter' }),
+  },
+  { id: 'queueNext', keys: () => formatChord({ alt: true, key: 'Enter' }) },
+  {
     id: 'newline',
     keys: (sendWithEnter: boolean) =>
       sendWithEnter ? formatChord({ shift: true, key: 'Enter' }) : 'Enter',
@@ -136,4 +142,14 @@ export function shortcutFor(event: KeyboardEvent): { id: ShortcutId; digit?: num
 /** The key that sends a request, as the person chose it (Settings › General). */
 export function sendKeyLabel(sendKey: 'enter' | 'mod-enter'): string {
   return sendKey === 'enter' ? 'Enter' : formatChord({ mod: true, key: 'Enter' });
+}
+
+/** The composer's three send keys, short, for its key line (features/composer-flow.md "전송"). */
+export function sendKeyLabels(sendKey: 'enter' | 'mod-enter') {
+  const enter = sendKey === 'enter';
+  return {
+    send: enter ? '↵' : formatChord({ mod: true, key: '↵' }),
+    interrupt: formatChord({ mod: true, shift: !enter, key: '↵' }),
+    queue: formatChord({ alt: true, key: '↵' }),
+  };
 }

@@ -4,7 +4,7 @@ import type { CorralSummary, SessionEntry, WorkSession } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useServices } from '../../../services.tsx';
-import type { IntentChoice, IntentLock } from '../../composerIntent.ts';
+import type { IntentLock, SendChoice } from '../../composerIntent.ts';
 import { type MentionItem, mentionToken, pickedReferences } from '../../composerMenu.ts';
 import {
   type AttachmentRequest,
@@ -48,8 +48,9 @@ export function useComposerDraft({
   const [images, setImages] = useState<ImageAttachment[]>(restored.images ?? []);
   const [imagesBusy, setImagesBusy] = useState(false);
   const [attachmentEpoch, setAttachmentEpoch] = useState(0);
-  const [chosen, setChosen] = useState<IntentChoice | null>(null);
-  // UX-01: an instruction (and for whom) is fixed once typing starts; a next request is not.
+  // A send picked for the next send only.
+  const [chosen, setChosen] = useState<SendChoice | null>(null);
+  // UX-01: a picked target is fixed once typing starts; a next request is not.
   const [lock, setLock] = useState<IntentLock | null>(
     restored.text && restored.intent === 'steer'
       ? { intent: 'steer', target: restored.target }

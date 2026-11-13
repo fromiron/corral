@@ -5,10 +5,17 @@ import { useEffect, useRef } from 'react';
 import type { StudioServices } from '../../../services.tsx';
 import { autoCommandSeed } from '../../autoChoice.ts';
 import { RESEND_REQUEST } from '../../RefusalHelp.tsx';
-import { clearPending, commandFor, type Ref, type StartDeps, startNext } from './send.ts';
+import {
+  clearPending,
+  commandFor,
+  entryStart,
+  type Ref,
+  type StartDeps,
+  startNext,
+} from './send.ts';
 
-// Starting a waiting request: by the person, by auto-start when a run ends, or again after a
-// run that did not finish.
+// Starting a waiting request by the person, now or again after a run that did not finish. The
+// server starts queued requests when the session's run ends; this page does not.
 
 /** The same queued item under the same model and team keeps one command. */
 export const entryCommandKey = (
@@ -75,7 +82,17 @@ export async function startQueued(deps: QueueDeps, entry: SessionEntry, resend =
       error: commandError,
       auto,
       cancelError,
-    } = await startNext(deps, entry.text, commandId, queuedReferences, entry.permissionMode);
+      request,
+    } = await startNext(
+      deps,
+      entry.text,
+      commandId,
+      queuedReferences,
+      entry.permissionMode,
+      // Started now, a saved request goes with its own snapshot, as the server would start it;
+      // sent again after a failed run, it is a new request with today's choices.
+      resend ? undefined : entry.start,
+    );
     if (!resend && commandError?.code === 'IDEMPOTENCY_CONFLICT') {
       // Another tab can have a different model/history snapshot of the same queue item.
       // Its original receipt owns the outcome, including while that start is pending.
@@ -100,6 +117,7 @@ export async function startQueued(deps: QueueDeps, entry: SessionEntry, resend =
           ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
           ...(entry.attachments ? { attachments: entry.attachments } : {}),
           ...(entry.images ? { images: entry.images } : {}),
+          ...(request ? { start: entryStart(request) } : {}),
         })
       : await services.repository.updateSessionEntry(session.sessionId, entry.entryId, outcome);
     if (!saved.ok) throw new Error(deps.messages.failed(saved.message));
@@ -185,44 +203,16 @@ export async function resendQueued(deps: ResendDeps, entryId: string) {
   }
 }
 
-/** Auto-start, when switched on: only on a run's end seen by this page, never on load. */
-export function autoStartEntry(
-  ended: boolean,
-  autoStart: boolean,
-  queued: SessionEntry[],
-): SessionEntry | null {
-  const next = queued[0];
-  return ended && autoStart && next ? next : null;
-}
-
-/** Starts the first queued request when this page sees the session's run end. */
-export function useAutoStart(
-  active: RunSummary | null,
-  ownActive: RunSummary | null,
-  autoStart: boolean,
-  queued: SessionEntry[],
-  start: (entry: SessionEntry) => void,
-) {
-  const wasActive = useRef(Boolean(active));
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reacts to the run ending only
-  useEffect(() => {
-    const ended = wasActive.current && !active;
-    wasActive.current = Boolean(active);
-    const next = autoStartEntry(ended, autoStart, queued);
-    if (next) start(next);
-  }, [active, ownActive]);
-}
-
-/** The queue's actions: start, resend, auto-start, edit and remove. */
+/**
+ * The queue's actions: start now, resend, edit and remove. The server starts queued requests
+ * when the session's run ends (features/composer-flow.md "대기 요청과 넘겨받기"); this page
+ * never starts one by itself.
+ */
 export function useQueuedRequests({
   deps,
   runs,
   pending,
   resolvePendingMessage,
-  active,
-  ownActive,
-  autoStart,
-  queued,
   onEdit,
 }: {
   deps: QueueDeps & {
@@ -231,11 +221,6 @@ export function useQueuedRequests({
   runs: RunSummary[];
   pending: Ref<{ key: string } | null>;
   resolvePendingMessage: string;
-  /** The run going in the workspace, which a queued request waits behind. */
-  active: RunSummary | null;
-  ownActive: RunSummary | null;
-  autoStart: boolean;
-  queued: SessionEntry[];
   /** Takes a queued request back into the box. */
   onEdit: (entry: SessionEntry) => void;
 }) {
@@ -261,7 +246,6 @@ export function useQueuedRequests({
       },
       entryId,
     );
-  useAutoStart(active, ownActive, autoStart, queued, (entry) => void start(entry));
   const remove = async (entry: SessionEntry) => {
     await services.repository.updateSessionEntry(session.sessionId, entry.entryId, {
       state: 'dismissed',
