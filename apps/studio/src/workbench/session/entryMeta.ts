@@ -48,8 +48,11 @@ export function cutBefore(projection: RunProjection, directive: DirectiveView): 
 export function steerMeta(
   record: SteerRecord | null,
   carried: SessionEntry | undefined,
-  /** The server carries this directive (`carries`), though the session does not show it yet. */
-  carriable = false,
+  /**
+   * What the directive was before this view watched it expire, while the session has not been
+   * read since (features/composer-flow.md): the line keeps saying that until it has.
+   */
+  heldAs?: DirectiveView['status'],
 ): SteerMeta {
   if (!record) return { kind: 'unread' };
   const { directive, projection, definition } = record;
@@ -72,37 +75,20 @@ export function steerMeta(
     case 'delivery_unknown':
       return { kind: 'unknown' };
     case 'expired':
-      if (carried && carried.state !== 'dismissed') {
+      // Whether it was carried is the session's word alone.
+      if (carried) {
         if (carried.state === 'queued') return { kind: 'carriedWaiting' };
         if (carried.state === 'refused') return { kind: 'carriedRefused', carried };
+        // Taken out of the queue, or back into the box to edit: it went nowhere.
+        if (carried.state === 'dismissed') return { kind: 'notDelivered' };
         return { kind: 'carriedStarted' };
       }
-      // The run's record says it expired before the session has the request it is carried to.
-      return !carried && carriable ? { kind: 'carriedWaiting' } : { kind: 'notDelivered' };
+      if (heldAs && heldAs !== 'expired')
+        return steerMeta({ ...record, directive: { ...directive, status: heldAs } }, undefined);
+      return { kind: 'notDelivered' };
     default:
       return { kind: 'notDelivered' };
   }
-}
-
-/**
- * Whether the server carries this expired directive into the session (features/reins.md
- * "읽히지 못한 지시의 넘겨받기"): the person's own, expired on a target that succeeded, in a run
- * that a request of this session started with its start snapshot. The run's record says so
- * before the session has the request, so the line does not say "not delivered" meanwhile.
- */
-export function carries(record: SteerRecord, entries: readonly SessionEntry[]): boolean {
-  const { directive, projection } = record;
-  return (
-    directive.origin === 'user' &&
-    directive.status === 'expired' &&
-    projection.executions[directive.targetExecutionId]?.status === 'succeeded' &&
-    entries.some(
-      (entry) =>
-        entry.runId === projection.runId &&
-        (entry.intent === 'next' || entry.intent === 'queue') &&
-        entry.start !== undefined,
-    )
-  );
 }
 
 /** What kind of message it was, when it was more than a plain request or an instruction. */
@@ -114,37 +100,58 @@ export function entryKind(
   return entry.intent === 'explain' ? 'explain' : null;
 }
 
+/** Whether an entry is an item of the conversation (the queue and removed ones are not). */
+export const inConversation = (entry: Pick<SessionEntry, 'state'>) =>
+  entry.state !== 'queued' && entry.state !== 'dismissed';
+
 /** How each entry is drawn in the conversation. */
 export interface EntryPlacement {
-  /** A carried request whose source instruction is in the conversation: its run row alone. */
+  /** A carried request right under its source instruction: its run row alone. */
   runOnly: Set<string>;
-  /** A source instruction's carried request, by the instruction's entry id. */
+  /** A source instruction's carried request, by the instruction's entry id, in any state. */
   carriedOf: Map<string, SessionEntry>;
+  /** Source instructions whose carried request is right under them: they take its actions. */
+  carriesActions: Set<string>;
+  /** An item drawn as nothing (a carried request that did not start, under its source). */
+  emptyFor: Map<string, string>;
 }
 
 /**
  * A carried request is drawn once (features/composer-flow.md): when the instruction it was
- * carried from is in the conversation, that message stays and the request adds only its run
- * row. `directiveOf` gives an instruction's directive, `undefined` while its record is unread.
- * While any instruction is unread a carried request is taken to have its source here, which is
+ * carried from is the item right above it, that message stays and the request adds only its
+ * run row. With its source elsewhere (another item between, or none in the conversation) it
+ * draws its own message. `directiveOf` gives an instruction's directive, `undefined` while its
+ * record is unread; a carried request right under an unread instruction is taken to be its,
  * the usual case, so its message does not appear and then go.
  */
 export function placeEntries(
   entries: readonly SessionEntry[],
   directiveOf: (entry: SessionEntry) => DirectiveView | null | undefined,
 ): EntryPlacement {
-  const runOnly = new Set<string>();
-  const carriedOf = new Map<string, SessionEntry>();
-  const shown = entries.filter((entry) => entry.state !== 'dismissed');
-  const steers = shown.filter((entry) => entry.intent === 'steer');
-  const unread = steers.some((entry) => entry.runId && directiveOf(entry) === undefined);
+  const placement: EntryPlacement = {
+    runOnly: new Set(),
+    carriedOf: new Map(),
+    carriesActions: new Set(),
+    emptyFor: new Map(),
+  };
+  const steers = entries.filter((entry) => entry.intent === 'steer' && entry.state !== 'dismissed');
+  const shown = entries.filter(inConversation);
   for (const entry of entries) {
-    if (!entry.carriedFrom || entry.state === 'dismissed') continue;
+    if (!entry.carriedFrom) continue;
     const source = steers.find((steer) => directiveOf(steer)?.directiveId === entry.carriedFrom);
-    if (source) {
-      carriedOf.set(source.entryId, entry);
-      runOnly.add(entry.entryId);
-    } else if (unread) runOnly.add(entry.entryId);
+    if (source) placement.carriedOf.set(source.entryId, entry);
+    const at = shown.indexOf(entry);
+    if (at < 0) continue;
+    const above = shown[at - 1];
+    const under =
+      above !== undefined &&
+      (source
+        ? above === source
+        : above.intent === 'steer' && above.runId != null && directiveOf(above) === undefined);
+    if (!under) continue;
+    placement.runOnly.add(entry.entryId);
+    placement.carriesActions.add(above.entryId);
+    if (!entry.runId) placement.emptyFor.set(entry.entryId, above.entryId);
   }
-  return { runOnly, carriedOf };
+  return placement;
 }

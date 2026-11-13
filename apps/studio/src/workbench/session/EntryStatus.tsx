@@ -122,6 +122,7 @@ function steerLine(
             variant="ghost"
             className={SHRINKS}
             title={meta.target}
+            aria-label={t('meta.openTarget', { name: meta.target })}
             onClick={() =>
               onPanel('run', {
                 run: entry.runId ?? undefined,

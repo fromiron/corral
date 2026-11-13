@@ -1,5 +1,5 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunSummary, SessionEntry } from '@corral/core';
+import type { DirectiveView, RunSummary, SessionEntry } from '@corral/core';
 import { CopyTextButton, MessageBody, StatusBadge } from '@corral/react';
 import {
   Button,
@@ -24,6 +24,7 @@ import { RunMessage } from '../RunMessage.tsx';
 import { TextAttachmentList } from '../TextAttachments.tsx';
 import { EntryStatus } from './EntryStatus.tsx';
 import { type SteerRecord, steerMeta } from './entryMeta.ts';
+import { useRecordRead } from './runRecords.ts';
 
 // The conversation rows: each request, the run it started, and what became of an instruction.
 
@@ -35,8 +36,9 @@ export function EntryCard({
   onPanel,
   record,
   carried,
+  carriedHere = false,
   runOnly = false,
-  carriable = false,
+  heldAs,
 }: {
   sessionId: string;
   entry: SessionEntry;
@@ -45,12 +47,14 @@ export function EntryCard({
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
   /** An instruction's directive in its run's record: undefined while unread, null if absent. */
   record?: SteerRecord | null | undefined;
-  /** The request an instruction was carried over to. */
+  /** The request an instruction was carried over to, in whatever state the session has it. */
   carried?: SessionEntry | undefined;
-  /** A carried request whose source message is in the conversation: its run row alone. */
+  /** That request is right under this message: this message takes its actions. */
+  carriedHere?: boolean;
+  /** A carried request right under its source message: its run row alone. */
   runOnly?: boolean;
-  /** The server carries this instruction, though the session does not show the request yet. */
-  carriable?: boolean;
+  /** What the instruction was before this view saw it expire, until the session is read. */
+  heldAs?: DirectiveView['status'] | undefined;
 }) {
   const t = useTranslations('Sessions');
   const tm = useTranslations('MessageBody');
@@ -63,15 +67,20 @@ export function EntryCard({
       new CustomEvent(RESEND_REQUEST, { detail: { sessionId, entryId: entry.entryId } }),
     );
   const canResend = !runs.some((item) => !TERMINAL_RUN_STATUSES.has(item.status));
+  // Drawn, an instruction to an ended run has its run's record read (once while the app runs).
+  useRecordRead(
+    entry.intent === 'steer' ? entry.runId : null,
+    !run || TERMINAL_RUN_STATUSES.has(run.status),
+  );
   const steer =
     entry.intent !== 'steer'
       ? null
       : record === null
         ? ({ kind: 'unknown' } as const)
-        : steerMeta(record ?? null, carried, carriable);
-  // A started carried request belongs to the instruction it came from: that message edits
-  // and branches it (features/composer-flow.md).
-  const request = steer?.kind === 'carriedStarted' && carried ? carried : entry;
+        : steerMeta(record ?? null, carried, heldAs);
+  // A started carried request right under the instruction it came from belongs to it: that
+  // message edits and branches it (features/composer-flow.md).
+  const request = steer?.kind === 'carriedStarted' && carried && carriedHere ? carried : entry;
   const requestRun = request.runId ? runs.find((r) => r.runId === request.runId) : undefined;
   // The time alone on the day it was sent; the date joins it afterwards and in the tooltip.
   const created = new Date(entry.createdAt);

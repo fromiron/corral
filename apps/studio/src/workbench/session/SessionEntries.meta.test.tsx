@@ -18,7 +18,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../../packages/react/src/stories/fixtures.tsx';
-import { carries, placeEntries, type SteerRecord } from './entryMeta.ts';
+import { placeEntries, type SteerRecord } from './entryMeta.ts';
 import { EntryCard } from './SessionEntries.tsx';
 
 // The one line under a sent message (features/composer-flow.md "보낸 메시지의 메타 줄"): its time
@@ -186,7 +186,8 @@ async function show(
     record?: SteerRecord | null;
     carried?: SessionEntry;
     runOnly?: boolean;
-    carriable?: boolean;
+    carriedHere?: boolean;
+    heldAs?: DirectiveView['status'];
     runs?: RunSummary[];
   } = {},
 ) {
@@ -215,7 +216,8 @@ async function show(
           {...('record' in options ? { record: options.record } : {})}
           {...(options.carried ? { carried: options.carried } : {})}
           {...(options.runOnly ? { runOnly: true } : {})}
-          {...(options.carriable ? { carriable: true } : {})}
+          {...(options.carriedHere ? { carriedHere: true } : {})}
+          {...(options.heldAs ? { heldAs: options.heldAs } : {})}
         />
       </IntlProvider>,
     ),
@@ -284,6 +286,17 @@ const rows: [string, () => SteerRecord, SessionEntry | undefined, string][] = [
       record('delivered', { delivery: 'interrupt', modelCallId: 'call_2' }, (p) => {
         p.modelCalls.call_1 = call('call_1', { interrupted: true, executionId: 'exec_other' });
         p.modelCalls.call_2 = call('call_2');
+      }),
+    undefined,
+    `${m.read} · Writer`,
+  ],
+  [
+    'delivered as an interrupt after an earlier cut, with an uncut response between',
+    () =>
+      record('delivered', { delivery: 'interrupt', modelCallId: 'call_3' }, (p) => {
+        p.modelCalls.call_1 = call('call_1', { interrupted: true });
+        p.modelCalls.call_2 = call('call_2');
+        p.modelCalls.call_3 = call('call_3');
       }),
     undefined,
     `${m.read} · Writer`,
@@ -575,8 +588,12 @@ it('a carried request with its source here draws its run row alone', async () =>
   expect(f.container.querySelector('[data-testid="turn-run"]')).not.toBeNull();
 });
 
-it('the source message takes the carried request’s edit and branch', async () => {
-  const f = await show(entry(), { record: record('expired'), carried: carriedStarted });
+it('the source message takes the carried request’s edit and branch when the request is right under it', async () => {
+  const f = await show(entry(), {
+    record: record('expired'),
+    carried: carriedStarted,
+    carriedHere: true,
+  });
   expect(f.status()?.textContent).toBe(m.carriedStarted);
   const edit = f.button(messages.MessageBody.editAsNew);
   expect(edit).toBeDefined();
@@ -587,42 +604,77 @@ it('the source message takes the carried request’s edit and branch', async () 
   expect(f.container.querySelector('[data-testid="turn-run"]')).toBeNull();
 });
 
-it('a carried request without its source draws its own message, saying it started', async () => {
+it('with another item between, the source says the same words but has no request actions', async () => {
+  const f = await show(entry(), { record: record('expired'), carried: carriedStarted });
+  expect(f.status()?.textContent).toBe(m.carriedStarted);
+  expect(f.button(messages.MessageBody.editAsNew)).toBeUndefined();
+  expect(f.button('Branch before this request')).toBeUndefined();
+});
+
+it('a carried request without its source here draws its own message, saying it started', async () => {
   const f = await show(carriedStarted);
   expect(f.status()?.textContent).toBe(m.carriedStarted);
   expect(f.container.textContent).toContain(carriedStarted.text);
   expect(f.container.querySelector('[data-testid="turn-run"]')).not.toBeNull();
+  // Its own actions.
+  expect(f.button(messages.MessageBody.editAsNew)).toBeDefined();
 });
 
-it('expired before the session has its carried request, the line says it waits, not that it failed', async () => {
-  const value = record('expired', { origin: 'user' } as Partial<DirectiveView>, (p) => {
-    p.executions.exec_writer = execution({ status: 'succeeded' });
+it('a carried request taken out of the queue, or back to edit, leaves the message not delivered', async () => {
+  const removed = entry({
+    entryId: 'entry_carried',
+    intent: 'queue',
+    state: 'dismissed',
+    runId: null,
+    carriedFrom: 'directive_steer',
   });
-  const started = request({ runId: 'run_live', start: {} as SessionEntry['start'] });
-  // The run's record is ahead of the session: the server carries it.
-  expect(carries(value, [started, entry()])).toBe(true);
-  const f = await show(entry(), { record: value, carriable: true });
-  expect(f.said()).toBe(m.carriedWaiting);
-  expect(f.button(m.resend)).toBeUndefined();
-  // Not carried: the target failed, the advice was not the person's, or no start to carry with.
-  const failed = record('expired', { origin: 'user' } as Partial<DirectiveView>, (p) => {
-    p.executions.exec_writer = execution({ status: 'failed' });
-  });
-  expect(carries(failed, [started])).toBe(false);
-  expect(
-    carries({ ...value, directive: { ...value.directive, origin: 'advice' } }, [started]),
-  ).toBe(false);
-  expect(carries(value, [{ ...started, start: undefined } as SessionEntry])).toBe(false);
+  const f = await show(entry(), { record: record('expired'), carried: removed });
+  expect(f.said().replace(m.resend, '').trim()).toBe(m.notDelivered);
+  expect(f.button(m.resend)).toBeDefined();
 });
 
-it('a carried request is placed once: with its source, while the source is unread, and alone', () => {
+it('expired while watched and before the session is read again, the line says what it said', async () => {
+  // Held: what it was before the expiry this view saw.
+  const held = await show(entry(), { record: record('expired'), heldAs: 'queued' });
+  expect(held.said()).toBe(m.waiting);
+  expect(held.button(m.resend)).toBeUndefined();
+  // Read again with no carried request: not delivered. Opened already expired: the same.
+  const settled = await show(entry(), { record: record('expired') });
+  expect(settled.said().replace(m.resend, '').trim()).toBe(m.notDelivered);
+  // A carried request in the session is followed, held or not.
+  const carried = entry({
+    entryId: 'entry_carried',
+    intent: 'queue',
+    state: 'queued',
+    runId: null,
+    carriedFrom: 'directive_steer',
+  });
+  const late = await show(entry(), { record: record('expired'), carried, heldAs: 'queued' });
+  expect(late.said()).toBe(m.carriedWaiting);
+});
+
+it('the role button says what it opens; the visible words stay the role', async () => {
+  const f = await show(entry(), { record: record('delivered') });
+  const role = f.button('Writer');
+  expect(role?.getAttribute('aria-label')).toBe(
+    messages.Sessions.meta.openTarget.replace('{name}', 'Writer'),
+  );
+  // The sentence for assistive tech still says it was an instruction.
+  expect(f.container.querySelector('.sr-only')?.textContent).toContain(
+    messages.Sessions.intent.steer,
+  );
+});
+
+it('a carried request is placed once: right under its source, under an unread one, and alone', () => {
   const steer = entry();
   const carried = carriedStarted;
   const directive = record('expired').directive;
   const read = placeEntries([steer, carried], () => directive);
   expect([...read.runOnly]).toEqual([carried.entryId]);
+  expect([...read.carriesActions]).toEqual([steer.entryId]);
   expect(read.carriedOf.get(steer.entryId)).toBe(carried);
-  // Unread, it is taken to be here, so its message does not appear and then go.
+  // Unread, the instruction right above is taken to be its source, so its message does not
+  // appear and then go.
   expect([...placeEntries([steer, carried], () => undefined).runOnly]).toEqual([carried.entryId]);
   // Sent from the run record: no instruction of the conversation is its source.
   const other = placeEntries([steer, carried], () => ({
@@ -631,4 +683,19 @@ it('a carried request is placed once: with its source, while the source is unrea
   }));
   expect(other.runOnly.size).toBe(0);
   expect(placeEntries([carried], () => undefined).runOnly.size).toBe(0);
+  // Another item between: drawn whole, though its source is known.
+  const between = request({ entryId: 'entry_between' });
+  const apart = placeEntries([steer, between, carried], () => directive);
+  expect(apart.runOnly.size).toBe(0);
+  expect(apart.carriedOf.get(steer.entryId)).toBe(carried);
+  // Did not start, under its source: an item drawn as nothing, reached through its source.
+  const refused = { ...carried, state: 'refused' as const, runId: null };
+  expect(placeEntries([steer, refused], () => directive).emptyFor.get(refused.entryId)).toBe(
+    steer.entryId,
+  );
+});
+
+it('an instruction whose run was read but has no directive for it is not known to be delivered', async () => {
+  const f = await show(entry(), { record: null });
+  expect(f.said()).toBe(m.unknown);
 });

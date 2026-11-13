@@ -2024,7 +2024,8 @@
       "carriedStarted": "Ended first · started as a new request",
       "notDelivered": "Not delivered",
       "resend": "Send again",
-      "unknown": "Delivery not confirmed"
+      "unknown": "Delivery not confirmed",
+      "openTarget": "Open {name}'s run record"
     }
   },
   "Files": {

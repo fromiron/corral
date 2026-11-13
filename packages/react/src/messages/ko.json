@@ -2024,7 +2024,8 @@
       "carriedStarted": "먼저 끝나 새 요청으로 시작",
       "notDelivered": "전달되지 않음",
       "resend": "다시 보내기",
-      "unknown": "전달 여부를 확인하지 못함"
+      "unknown": "전달 여부를 확인하지 못함",
+      "openTarget": "{name}의 실행 기록 열기"
     }
   },
   "Files": {
