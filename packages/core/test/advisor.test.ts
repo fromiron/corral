@@ -23,9 +23,12 @@ import {
   type ScriptedAgentOptions,
   SequentialIdFactory,
 } from '@corral/testkit';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { describe, expect, it } from 'vitest';
 import {
   Coordinator,
+  canonicalJson,
   DEFAULT_GATES,
   type DefinitionSource,
   emptyProjection,
@@ -1941,5 +1944,245 @@ describe('a blocker to a target that is not answering', () => {
       payload: { scope: { kind: 'run' }, reason: 'done' },
     });
     await s.ended();
+  });
+});
+
+describe('the work style’s permission rules hold for an advisor', () => {
+  // The work style's own Corral `read_file`, which a rule may name by its hash.
+  const readFile = {
+    name: 'read_file',
+    source: 'corral',
+    schemaHash: 'd'.repeat(64),
+    exposure: 'direct',
+    sideEffect: 'none',
+    annotations: { readOnlyHint: true },
+  };
+  const readFileHash = bytesToHex(sha256(utf8ToBytes(canonicalJson(readFile))));
+  const style = (permissionPolicies: unknown) =>
+    ({
+      binding: { profileId: 'writing', revision: 1 },
+      snapshotHash: 'a'.repeat(64),
+      piVersion: '1.3.0',
+      policyRevision: 1,
+      policy: 'trusted-native',
+      resources: [],
+      allowedTools: ['read_file'],
+      tools: [readFile],
+      diagnostics: [],
+      permissionPolicies,
+    }) as unknown as EffectiveHarnessSnapshot;
+
+  /** An advisor that reads the given paths in its first review, its role bound to `bound`. */
+  async function reads(paths: string[], bound?: EffectiveHarnessSnapshot) {
+    const definition = advised({ interval: 1, maxRequestsPerReview: 8 });
+    const role = definition.roles.find((r) => r.id === 'advisor_role');
+    if (!role) throw new Error('no advisor role');
+    if (bound) role.harness = bound.binding;
+    const executed: unknown[] = [];
+    const results: ToolOutcome[] = [];
+    const s = setup({
+      definition,
+      ...(bound
+        ? {
+            harnesses: {
+              resolve: () => JSON.parse(JSON.stringify(bound)) as EffectiveHarnessSnapshot,
+              readSkill: () => ({ text: 'x', sha256: 'e'.repeat(64) }),
+            } as unknown as HarnessResolver,
+          }
+        : {}),
+      files: {
+        available: () => true,
+        execute: async (call) => {
+          executed.push(call.args.path);
+          return { text: 'one line' };
+        },
+      },
+      advisor: {
+        script: async (_input, host) => {
+          for (;;) {
+            const review = await host.nextReview?.();
+            if (!review) return { outcome: 'succeeded' };
+            if (results.length > 0) continue;
+            await call(host, 'reviewing');
+            for (const path of paths)
+              results.push(await host.invokeTool({ name: 'read_file', args: { path } }));
+          }
+        },
+      },
+    });
+    await s.ended();
+    return {
+      s,
+      executed,
+      outcomes: results.map((o) => (o.ok ? 'ok' : o.error.code)),
+    };
+  }
+
+  it('a path the rules deny is refused and never reaches the files; an allowed one is read', async () => {
+    const { s, executed, outcomes } = await reads(
+      ['secrets/key.txt', 'notes/a.txt'],
+      style([
+        {
+          default: 'ask',
+          rules: [
+            { tool: 'read_file', action: 'deny', path: { argument: 'path', prefix: 'secrets' } },
+            { tool: 'read_file', action: 'allow', descriptorHash: readFileHash },
+          ],
+        },
+      ]),
+    );
+    expect(s.projection().status).toBe('succeeded');
+    expect(outcomes).toEqual(['CAPABILITY_DENIED', 'ok']);
+    expect(executed).toEqual(['notes/a.txt']);
+  });
+
+  it('a read the rules would ask a person about is refused, and nobody is asked', async () => {
+    const { s, executed, outcomes } = await reads(
+      ['notes/a.txt'],
+      style([{ default: 'ask', rules: [] }]),
+    );
+    expect(outcomes).toEqual(['CAPABILITY_DENIED']);
+    expect(executed).toEqual([]);
+    expect(s.events().some((e) => e.type === 'approval.requested')).toBe(false);
+    expect(
+      s.events().some((e) => e.type === 'run.state_changed' && e.payload.to === 'awaiting_user'),
+    ).toBe(false);
+    expect(s.projection().status).toBe('succeeded');
+  });
+
+  it('an advisor without a work style reads as before', async () => {
+    const { executed, outcomes } = await reads(['secrets/key.txt']);
+    expect(outcomes).toEqual(['ok']);
+    expect(executed).toEqual(['secrets/key.txt']);
+  });
+});
+
+describe('an advisor writes no answer', () => {
+  it('a role that answers with its final reply, run as an advisor, leaves no write_artifact call', async () => {
+    const definition = advised({ interval: 1, maxRequestsPerReview: 4 });
+    const role = definition.roles.find((r) => r.id === 'advisor_role');
+    if (!role) throw new Error('no advisor role');
+    role.answer = 'final_reply';
+    const s = setup({
+      definition,
+      advisor: {
+        script: async (_input, host) => {
+          let last: string | undefined;
+          for (;;) {
+            const review = await host.nextReview?.();
+            if (!review)
+              return { outcome: 'succeeded', ...(last ? { finalTextModelCallId: last } : {}) };
+            const permit = await host.prepareModelRequest();
+            await host.modelRequestDispatched?.(permit.modelCallId);
+            await host.observe({
+              kind: 'model_completed',
+              modelCallId: permit.modelCallId,
+              text: 'Looks fine.',
+              usage: { inputTokens: 10, outputTokens: 5 },
+            });
+            last = permit.modelCallId;
+          }
+        },
+      },
+    });
+    await s.ended();
+    const advisorExecutions = new Set(
+      Object.values(s.projection().executions)
+        .filter((e) => e.nodeId === 'advisor')
+        .map((e) => e.executionId),
+    );
+    expect(advisorExecutions.size).toBe(1);
+    const toolEvents = s
+      .events()
+      .filter(
+        (e) =>
+          (e.type === 'tool.requested' || e.type === 'tool.blocked') &&
+          advisorExecutions.has(e.executionId ?? ''),
+      );
+    expect(toolEvents).toEqual([]);
+    expect(s.projection().status).toBe('succeeded');
+  });
+});
+
+describe('a branch an any Join stops', () => {
+  it('the watched branch’s last review runs, its concern is kept, then the output is final', async () => {
+    // p → a, b → Join(any) → m → Output; b makes one request, then stops slowly when a wins.
+    const definition = linearCorral(['p', 'a', 'b', 'm']);
+    const nodeOf = (id: string) => {
+      const node = definition.nodes.find((n) => n.id === id);
+      if (!node) throw new Error(`no node ${id}`);
+      return node as { inputBindings?: unknown };
+    };
+    nodeOf('b').inputBindings = [{ kind: 'task_output', name: 'previous', sourceNodeId: 'p' }];
+    nodeOf('m').inputBindings = [{ kind: 'task_output', name: 'previous', sourceNodeId: 'p' }];
+    definition.nodes.push({
+      id: 'j',
+      type: 'join',
+      label: 'j',
+      policy: 'any',
+    } as CorralDefinition['nodes'][number]);
+    const edge = (id: string, source: string, target: string) => ({
+      id,
+      source,
+      sourcePort: 'out',
+      target,
+      targetPort: 'in',
+    });
+    definition.controlEdges = [
+      edge('e1', 'p', 'a'),
+      edge('e2', 'p', 'b'),
+      edge('e3', 'a', 'j'),
+      edge('e4', 'b', 'j'),
+      edge('e5', 'j', 'm'),
+      edge('e6', 'm', 'output'),
+    ] as CorralDefinition['controlEdges'];
+    const watched = advised({ interval: 3, maxRequestsPerReview: 8 }, ['b']);
+    definition.roles.push(...watched.roles.filter((r) => r.id === 'advisor_role'));
+    definition.nodes.push(...watched.nodes.filter((n) => n.id === 'advisor'));
+    definition.capabilityLinks.push(...watched.capabilityLinks);
+    const stopping = new Gate();
+    const s = setup({
+      definition,
+      scripts: {
+        b: async (_input, host) => {
+          await call(host, 'b answer 1');
+          await stopping.wait();
+          await call(host, 'b answer 2');
+          return submit(host, 'b done');
+        },
+      },
+      handle: (handle, input) =>
+        input.nodeId === 'b'
+          ? {
+              ...handle,
+              cancel: async (reason) => {
+                await handle.cancel(reason);
+                void idle(30).then(() => stopping.open());
+              },
+            }
+          : handle,
+      advisor: {
+        advise: (review) => [
+          { severity: 'concern', note: `About ${review.targetExecutionId}: no source.` },
+        ],
+      },
+    });
+    await s.ended();
+    expect(s.projection().status).toBe('succeeded');
+    const b = s.executionOf('b');
+    expect(b?.status).toBe('cancelled');
+    expect(s.reviews.map((r) => r.targetExecutionId)).toEqual([b?.executionId]);
+    expect(advice(s)).toEqual([
+      { outcome: 'admitted', adviceId: expect.any(String), delivery: 'preserve' },
+    ]);
+    const at = (match: (e: RunEvent) => boolean) => s.events().findIndex(match);
+    const bSettled = at(
+      (e) => e.type === 'execution.settled' && e.payload.executionId === b?.executionId,
+    );
+    const admitted = at((e) => e.type === 'advice.admitted');
+    const finalized = at((e) => e.type === 'output.finalized');
+    expect(bSettled).toBeGreaterThan(-1);
+    expect(admitted).toBeGreaterThan(-1);
+    expect(finalized).toBeGreaterThan(Math.max(bSettled, admitted));
   });
 });

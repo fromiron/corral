@@ -16,10 +16,10 @@ export const ADVISOR_COLLABORATION_TOOLS: readonly CollaborationTool[] = [
 
 /**
  * The role an advisor's execution runs with: whatever else the role lists is not offered, and
- * its work style is not bound.
+ * its work style is not bound. It answers no one, so it writes no answer.
  */
 export function advisorRole(role: AgentRole): AgentRole {
-  const { harness: _workStyle, ...rest } = role;
+  const { harness: _workStyle, answer: _answer, ...rest } = role;
   return {
     ...rest,
     allowedWorkTools: role.allowedWorkTools.filter((tool) => ADVISOR_WORK_TOOLS.includes(tool)),

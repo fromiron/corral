@@ -3758,10 +3758,8 @@ export class Coordinator {
   private submitAdvice(command: SubmitAdviceCommand): Receipt {
     const payloadHash = hashOf(command);
     const previous = this.store.getCommand(command.runId, command.commandId);
-    if (previous)
-      return previous.payloadHash === payloadHash
-        ? this.currentReceipt(previous)
-        : conflict(command.commandId, command.runId);
+    // Only the `advise` tool sends this, under its call's id, so a known id is that same call.
+    if (previous) return this.currentReceipt(previous);
     if (this.storageError) return unavailable(command.commandId, command.runId, this.storageError);
     const { runId, commandId, payload } = command;
     const target = `execution:${payload.targetExecutionId}`;
@@ -3786,14 +3784,6 @@ export class Coordinator {
         run.projection.status === 'cancelling'
       )
         return refuse('TARGET_TERMINAL', 'the run has ended or is cancelling');
-      if (
-        command.expectedControlRevision !== undefined &&
-        command.expectedControlRevision !== run.projection.controlRevision
-      )
-        return refuse(
-          'STALE_CONTROL_REVISION',
-          `control revision is ${run.projection.controlRevision}`,
-        );
       const nodeId = run.advisors.byExecution.get(payload.observerExecutionId);
       const state = nodeId ? run.advisors.advisors.get(nodeId) : undefined;
       const observer = run.projection.executions[payload.observerExecutionId];
@@ -8357,14 +8347,29 @@ export class Coordinator {
       { proposal: ToolProposal; ran: boolean; claimed: boolean; descriptorHash?: string }
     >();
 
-    const permissionDecision = (proposal: ToolProposal) =>
-      toolPermission(
-        harness?.permissionPolicies,
+    // An advisor starts without its role's work style, but that work style's permission rules
+    // and the run's permission mode still hold for its calls; it never asks a person, so a call
+    // that would ask is refused (features/advisor.md, 계약).
+    // Its Corral tools are the pinned work style's, so a rule written for them still matches.
+    const advisor = input.assignment.kind === 'advisor';
+    const advisorStyle = advisor ? run.snapshot.harnesses?.[input.role.id] : undefined;
+    const permissionPolicies = advisor
+      ? advisorStyle?.permissionPolicies
+      : harness?.permissionPolicies;
+    const permissionDescriptor = (name: string) =>
+      descriptors.get(name) ??
+      advisorStyle?.tools.find((tool) => tool.name === name && tool.source === 'corral');
+    const permissionDecision = (proposal: ToolProposal) => {
+      const descriptor = permissionDescriptor(proposal.name);
+      const decision = toolPermission(
+        permissionPolicies,
         proposal,
-        descriptors.has(proposal.name) ? hashOf(descriptors.get(proposal.name)) : undefined,
+        descriptor ? hashOf(descriptor) : undefined,
         run.snapshot.permissionMode,
-        descriptors.get(proposal.name),
+        descriptor,
       );
+      return advisor && decision === 'ask' ? 'deny' : decision;
+    };
     const authorizeTool = async (
       proposal: ToolProposal,
       automatic = false,

@@ -45,7 +45,7 @@ export type AdviceSeverity = z.infer<typeof AdviceSeverity>;
 
 /** Sent only by an advisor execution's `advise` tool, never by a person's screen. */
 export const SubmitAdviceCommand = z.strictObject({
-  ...optionalRevision,
+  ...base,
   type: z.literal('submit_advice'),
   payload: z.strictObject({
     observerExecutionId: Identifier,
