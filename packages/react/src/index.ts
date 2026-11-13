@@ -29,6 +29,7 @@ export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningLevelLabel, ReasoningSummary } from './components/ReasoningSummary.tsx';
 export { RecipeStatusPanel } from './components/RecipeStatusPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
+export { RequestRunContext } from './components/RequestCard.tsx';
 export { RoutingTally } from './components/RoutingTally.tsx';
 export { RunActions } from './components/RunActions.tsx';
 export { RunCanvas } from './components/RunCanvas.tsx';

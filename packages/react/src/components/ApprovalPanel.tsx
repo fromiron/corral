@@ -29,6 +29,7 @@ import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow, RowAction } from './FirstRow.tsx';
 import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
 import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
+import { RequestCardHead, requestCard, useRequestOwner } from './RequestCard.tsx';
 import { nextResponseTarget } from './responseFocus.ts';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
@@ -117,7 +118,7 @@ export function ApprovalPanel({
   );
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
-  const executions = useStore(session, (s) => s.projection?.executions);
+  const owner = useRequestOwner(session);
   const toolCalls = useStore(session, (s) => s.projection?.toolCalls);
   const nodes = useStore(session, (s) => s.definition?.nodes);
   const tTurn = useTranslations('Turn');
@@ -294,12 +295,17 @@ export function ApprovalPanel({
       ? t('done', { step: kindText(approval), subject })
       : t('doneBare', { step: kindText(approval) });
   };
-  /** The agent that asks, named only where the run has more than one. */
-  const askedBy = (executionId: string) => {
-    if (Object.keys(executions ?? {}).length < 2) return null;
-    const nodeId = executions?.[executionId]?.nodeId;
-    return nodes?.find((node) => node.id === nodeId)?.label ?? null;
-  };
+  /** The card's title: the kind of call, or what waits. */
+  const headingText = (approval: ApprovalView) =>
+    approval.tool
+      ? t(
+          approval.tool.purpose === 'tool'
+            ? 'toolHeading'
+            : approval.tool.purpose === 'lsp'
+              ? 'lspHeading'
+              : 'checkHeading',
+        )
+      : kindText(approval);
   const decide = async (
     approvalId: string,
     decision: 'approve' | 'reject',
@@ -490,54 +496,33 @@ export function ApprovalPanel({
             aria-label={t('heading')}
             className="text-caption"
           >
-            <div
-              className={
-                compact
-                  ? 'flex flex-wrap items-center gap-2.5 px-3 py-2'
-                  : 'flex items-start gap-2.5 px-4 pt-3.5 pr-3.5'
-              }
-            >
-              {index === 0 && !compact ? <RowAction action={cardAction} /> : null}
-              <AgentStatusIcon
-                status="waiting"
-                size={14}
-                className={compact ? undefined : 'mt-0.5 self-start'}
-              />
-              <div className="grid min-w-0 flex-1">
-                <p
-                  className="text-body text-foreground [overflow-wrap:anywhere]"
-                  style={{ fontVariationSettings: fontWeights.semibold }}
-                >
-                  {approval.tool
-                    ? t(
-                        approval.tool.purpose === 'tool'
-                          ? 'toolHeading'
-                          : approval.tool.purpose === 'lsp'
-                            ? 'lspHeading'
-                            : 'checkHeading',
-                      )
-                    : kindText(approval)}
-                </p>
-                {approval.tool && !compact && askedBy(approval.tool.executionId) ? (
-                  <span className="truncate text-muted-foreground">
-                    {askedBy(approval.tool.executionId)}
-                  </span>
-                ) : null}
-              </div>
-              {compact ? (
+            {compact ? (
+              <div className="flex flex-wrap items-center gap-2.5 px-3 py-2">
+                <AgentStatusIcon status="waiting" size={14} />
+                <div className="grid min-w-0 flex-1">
+                  <p
+                    className="text-body text-foreground [overflow-wrap:anywhere]"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {headingText(approval)}
+                  </p>
+                </div>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   {index === 0 ? <RowAction action={cardAction} /> : null}
                   {decisionButtons(approval)}
                 </div>
-              ) : null}
-            </div>
-            <div
-              className={
-                compact
-                  ? 'flex min-w-0 flex-col gap-2 px-3 pb-2'
-                  : 'flex min-w-0 flex-col gap-2 py-3 pr-4 pl-10'
-              }
-            >
+              </div>
+            ) : (
+              <RequestCardHead
+                title={headingText(approval)}
+                owner={owner({
+                  executionId: approval.tool?.executionId ?? null,
+                  nodeId: approval.tool ? null : (approval.nodeId ?? null),
+                })}
+                action={index === 0 ? cardAction : undefined}
+              />
+            )}
+            <div className={compact ? 'flex min-w-0 flex-col gap-2 px-3 pb-2' : requestCard.body}>
               {approval.tool?.purpose === 'tool' ? (
                 <PermissionDetails plan={toolPlans[approval.tool.bodyRef]} />
               ) : approval.tool ? (
@@ -626,7 +611,7 @@ export function ApprovalPanel({
               ) : null}
             </div>
             {compact || readOnly ? null : (
-              <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 pt-3 pb-4">
+              <div data-request-foot className={requestCard.foot}>
                 {decisionButtons(approval)}
               </div>
             )}

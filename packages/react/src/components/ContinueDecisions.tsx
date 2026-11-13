@@ -1,18 +1,18 @@
 import type { ApprovalView } from '@corral/core';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Banner, BannerTitle, type Decision, DecisionInbox } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { approvalCopyKey } from './ApprovalPanel.tsx';
+import { RequestRunContext } from './RequestCard.tsx';
 import { nextResponseTarget } from './responseFocus.ts';
 
 /**
- * A pause that only asks whether the run goes on: a Loop at its round cap or stalled, or a run
- * limit (no progress). Approvals about a version, a route, a check or a tool call are not.
+ * A pause that only asks whether the run goes on: a run limit (no progress, a count reached).
+ * Approvals about a version, a route, a check or a tool call are not.
  */
 export const isContinueDecision = (approval: ApprovalView) =>
-  !approval.tool && (approval.kind === 'loop_cap' || Boolean(approval.limit));
+  !approval.tool && Boolean(approval.limit);
 
 /**
  * A run's waiting continue-or-stop decisions in the kit's decision stack (DESIGN.md
@@ -23,7 +23,8 @@ export const isContinueDecision = (approval: ApprovalView) =>
 export function ContinueDecisions({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Approvals');
   const all = useStore(session, (s) => s.projection?.approvals);
-  const artifacts = useStore(session, (s) => s.projection?.artifacts);
+  // A run limit is the run's, not a role's: with several runs' requests in one place, the run.
+  const run = useContext(RequestRunContext);
   const open = useMemo(
     () => Object.values(all ?? {}).filter((a) => a.status === 'pending' && isContinueDecision(a)),
     [all],
@@ -76,35 +77,16 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
           used: approval.limit.used,
           max: approval.limit.max,
         })
-      : t(`kind.${approvalCopyKey(approval)}`, { step: '' });
-  const detail = (approval: ApprovalView) => {
-    const explain = approval.limit ? t('limit.explain') : t(`explain.${approvalCopyKey(approval)}`);
-    const subjects = approval.limit
-      ? []
-      : approval.subjectVersionIds.flatMap((id) => {
-          const artifact = artifacts?.[id];
-          return artifact ? [`${artifact.name} v${artifact.version}`] : [];
-        });
-    return subjects.length ? `${explain}\n${t('subject')} ${subjects.join(', ')}` : explain;
-  };
-  const answers = (approval: ApprovalView) => {
-    const key = approvalCopyKey(approval);
-    return approval.limit
-      ? {
-          primary: {
-            label: t('limit.approve'),
-            doneLabel: t('doneLimit', { limit: title(approval) }),
-          },
-          secondary: { label: t('limit.reject'), doneLabel: t('continueStopped') },
-        }
-      : {
-          primary: {
-            label: t(`approveAs.${key}`),
-            doneLabel: t('doneBare', { step: title(approval) }),
-          },
-          secondary: { label: t(`rejectAs.${key}`), doneLabel: t('continueStopped') },
-        };
-  };
+      : '';
+  // Who waits comes first, where the place names it, as under a request card's title.
+  const detail = run ? `${run}\n${t('limit.explain')}` : t('limit.explain');
+  const answers = (approval: ApprovalView) => ({
+    primary: {
+      label: t('limit.approve'),
+      doneLabel: t('doneLimit', { limit: title(approval) }),
+    },
+    secondary: { label: t('limit.reject'), doneLabel: t('continueStopped') },
+  });
   const decide = async (approvalId: string, choice: 'primary' | 'secondary') => {
     const approval = open.find((item) => item.approvalId === approvalId);
     if (!approval || inFlight.current.has(approvalId) || answered[approvalId] !== undefined) return;
@@ -147,7 +129,7 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
   const decisions: Decision[] = open.map((approval) => ({
     id: approval.approvalId,
     title: title(approval),
-    detail: detail(approval),
+    detail,
     ...answers(approval),
     pending: sent.has(approval.approvalId),
     ...(answered[approval.approvalId] === undefined

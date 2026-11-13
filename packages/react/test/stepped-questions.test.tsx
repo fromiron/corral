@@ -95,14 +95,19 @@ function setup(
   return { session, sendCommand };
 }
 
-const form = () => screen.getByRole('form', { name: 'Waiting for you' });
-const heading = () => within(form()).getByRole('heading', { level: 3 });
+// Each question's form is named by its first question, so two waiting forms are told apart.
+const form = () => screen.getByRole('form', { name: /^Waiting for you/ });
+/** The card's title: the step's question, or the review. It takes focus when the step changes. */
+const title = () => form().querySelector<HTMLElement>('[data-request-head] p') as HTMLElement;
+/** The line under the title: who asks, and which step this is. */
+const step = () => form().querySelector<HTMLElement>('[data-request-owner]');
 const next = () => within(form()).getByRole('button', { name: 'Next' });
 const send = () => within(form()).getByRole('button', { name: 'Send answer' });
 
 it('steps through the questions and sends every answer once, from the review step', async () => {
   const { session, sendCommand } = setup();
-  expect(heading()).toHaveTextContent('Question 1/3');
+  expect(title()).toHaveTextContent('Choose format');
+  expect(step()).toHaveTextContent('Question 1/3');
   // One question at a time; the others stay out of sight.
   expect(screen.getByRole('group', { name: 'Choose format' })).toBeVisible();
   expect(screen.queryByRole('group', { name: 'Which parts?' })).not.toBeInTheDocument();
@@ -110,20 +115,21 @@ it('steps through the questions and sends every answer once, from the review ste
   expect(within(form()).queryByRole('button', { name: 'Send answer' })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('radio', { name: 'Short' }));
   await userEvent.click(next());
-  expect(heading()).toHaveTextContent('Question 2/3');
-  expect(heading()).toHaveFocus();
+  expect(step()).toHaveTextContent('Question 2/3');
+  expect(title()).toHaveTextContent('Which parts?');
+  expect(title()).toHaveFocus();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Intro' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Outro' }));
   await userEvent.click(within(form()).getByRole('button', { name: 'Previous' }));
-  expect(heading()).toHaveTextContent('Question 1/3');
+  expect(step()).toHaveTextContent('Question 1/3');
   expect(screen.getByRole('radio', { name: 'Short' })).toBeChecked();
   await userEvent.click(next());
   expect(screen.getByRole('checkbox', { name: 'Outro' })).toBeChecked();
   await userEvent.click(next());
   await userEvent.type(screen.getByRole('textbox', { name: 'Your answer' }), 'Plain');
   await userEvent.click(next());
-  expect(heading()).toHaveTextContent('Review answers');
-  expect(heading()).toHaveFocus();
+  expect(title()).toHaveTextContent('Review answers');
+  expect(title()).toHaveFocus();
   const review = within(form()).getByRole('list', { name: 'Review answers' });
   expect(
     within(review)
@@ -138,7 +144,7 @@ it('steps through the questions and sends every answer once, from the review ste
   await userEvent.click(
     within(review).getByRole('button', { name: 'Edit the answer to Choose format' }),
   );
-  expect(heading()).toHaveTextContent('Question 1/3');
+  expect(step()).toHaveTextContent('Question 1/3');
   await userEvent.click(screen.getByRole('radio', { name: 'Long' }));
   await userEvent.click(next());
   await userEvent.click(next());
@@ -183,7 +189,7 @@ it('steps through the questions and sends every answer once, from the review ste
       ],
     }),
   );
-  expect(screen.queryByRole('form', { name: 'Waiting for you' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('form', { name: /^Waiting for you/ })).not.toBeInTheDocument();
 });
 
 it('lets a person skip ahead but marks missing answers and holds Send until they are given', async () => {
@@ -191,7 +197,7 @@ it('lets a person skip ahead but marks missing answers and holds Send until they
   await userEvent.click(next());
   await userEvent.click(next());
   await userEvent.click(next());
-  expect(heading()).toHaveTextContent('Review answers');
+  expect(title()).toHaveTextContent('Review answers');
   const review = within(form()).getByRole('list', { name: 'Review answers' });
   expect(within(review).getAllByText('Answer required')).toHaveLength(3);
   expect(send()).toBeDisabled();
@@ -255,7 +261,7 @@ it('never answers or moves on from number keys', async () => {
   await userEvent.keyboard('12');
   expect(short).not.toBeChecked();
   expect(screen.getByRole('radio', { name: 'Long' })).not.toBeChecked();
-  expect(heading()).toHaveTextContent('Question 1/3');
+  expect(step()).toHaveTextContent('Question 1/3');
   expect(sendCommand).not.toHaveBeenCalled();
 });
 
@@ -271,19 +277,41 @@ it('a composing Enter neither advances nor sends; a plain Enter in a text answer
   await userEvent.type(answer, '한');
   expect(fireEvent.keyDown(answer, { key: 'Enter', isComposing: true })).toBe(false);
   expect(fireEvent.keyDown(answer, { key: 'Enter', keyCode: 229 })).toBe(false);
-  expect(heading()).toHaveTextContent('Question 1/2');
+  expect(step()).toHaveTextContent('Question 1/2');
   await userEvent.type(answer, '{Enter}');
-  expect(heading()).toHaveTextContent('Question 2/2');
+  expect(step()).toHaveTextContent('Question 2/2');
   const second = screen.getByRole('textbox', { name: 'Your answer' });
   await userEvent.type(second, 'b{Enter}');
-  expect(heading()).toHaveTextContent('Review answers');
+  expect(title()).toHaveTextContent('Review answers');
   expect(sendCommand).not.toHaveBeenCalled();
 });
 
-it('names who asks by agent and attempt, and keeps the execution id one copy away', async () => {
-  setup();
-  expect(form()).toHaveTextContent('writer · Attempt 1');
+it('names who asks only where it tells something, and keeps the execution id one copy away', async () => {
+  const { session } = setup();
+  // A lone run's one role on its first attempt: its row already says whose question it is.
+  expect(form()).not.toHaveTextContent('writer');
+  expect(form()).not.toHaveTextContent('Attempt');
   expect(form()).not.toHaveTextContent('exec_1');
+  // With several roles the agent is named, and a later attempt says which.
+  const projection = session.getState().projection;
+  const execution = projection?.executions.exec_1;
+  if (!projection || !execution) throw new Error('missing execution');
+  act(() =>
+    session.setState({
+      definition: {
+        nodes: [
+          { id: 'writer', label: 'Writer', type: 'agent' },
+          { id: 'reviewer', label: 'Reviewer', type: 'agent' },
+        ],
+      } as never,
+      events: [RunEvent.parse({ ...requested, payload: { ...requested.payload, attemptNo: 2 } })],
+      projection: {
+        ...projection,
+        executions: { exec_1: { ...execution, attemptNo: 2 } },
+      },
+    }),
+  );
+  expect(step()).toHaveTextContent('Writer · Attempt 2 · Question 1/3');
   const writeText = vi.fn(async (_text: string) => {});
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
   await act(async () =>

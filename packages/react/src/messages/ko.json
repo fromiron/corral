@@ -2806,6 +2806,9 @@
       "unknown": "부작용 미분류"
     },
     "userQuestions": "응답 대기",
+    "userQuestionsNamed": "응답 대기: {question}",
+    "answered": "답함",
+    "answeredLine": "답함: {answer}",
     "questionUnavailable": "질문을 불러오지 못했습니다. 다시 시도하거나 실행을 취소하세요.",
     "recommended": "추천",
     "yourAnswer": "직접 입력",
