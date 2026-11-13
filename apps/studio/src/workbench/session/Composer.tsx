@@ -1,4 +1,5 @@
 import {
+  type AutoModelChoice,
   IMAGE_MAX_COUNT,
   TERMINAL_RUN_STATUSES,
   TEXT_ATTACHMENT_MAX_COUNT,
@@ -387,6 +388,29 @@ export function Composer({
     }),
   );
   const slashCommands = useRegisteredCommands();
+  // The request's settings sit before the key hint on the left; voice stays by Send.
+  const requestTools = {
+    intent,
+    showModel: Boolean(isAuto || team),
+    browserMode: services.mode === 'browser',
+    autoChoice,
+    profiles,
+    busy,
+    modelOpen: autoModelOpen,
+    onModelOpenChange: setAutoModelOpen,
+    onAutoChange: (value: AutoModelChoice) => void updateAuto(value),
+    permissionMode,
+    onPermissionMode: setPermissionMode,
+    voice: services.voice ?? null,
+    voiceTarget: {
+      hostId: window.location.origin,
+      sessionId: session.sessionId,
+      ...(ownActive ? { runId: ownActive.runId } : {}),
+      ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
+    },
+    voiceLabel: session.title,
+    onTranscript,
+  };
   const compose = (
     <InputMessage
       toolbar="single"
@@ -511,33 +535,14 @@ export function Composer({
               onTeam={(corralId) => void updateTeam(corralId)}
             />
           ) : null}
-          <KeyHint keys={sendKeys} sendKey={prefs.sendKey} />
+          {/* The request's settings, then the keys, right before voice and Send. */}
+          <span className="ml-auto flex min-w-0 items-center gap-1.5">
+            <RequestTools only="settings" {...requestTools} />
+            <KeyHint keys={sendKeys} situation={situation} sendKey={prefs.sendKey} />
+          </span>
         </>
       }
-      rightSlot={
-        <RequestTools
-          intent={intent}
-          showModel={Boolean(isAuto || team)}
-          browserMode={services.mode === 'browser'}
-          autoChoice={autoChoice}
-          profiles={profiles}
-          busy={busy}
-          modelOpen={autoModelOpen}
-          onModelOpenChange={setAutoModelOpen}
-          onAutoChange={(value) => void updateAuto(value)}
-          permissionMode={permissionMode}
-          onPermissionMode={setPermissionMode}
-          voice={services.voice ?? null}
-          voiceTarget={{
-            hostId: window.location.origin,
-            sessionId: session.sessionId,
-            ...(ownActive ? { runId: ownActive.runId } : {}),
-            ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
-          }}
-          voiceLabel={session.title}
-          onTranscript={onTranscript}
-        />
-      }
+      rightSlot={<RequestTools only="voice" {...requestTools} />}
     />
   );
   return (

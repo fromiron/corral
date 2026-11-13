@@ -38,16 +38,16 @@ const ROLES: readonly SendKeyRole[] = ['send', 'interrupt', 'queue'];
  */
 export function KeyHint({
   keys,
+  situation,
   sendKey,
 }: {
   keys: Record<SendKeyRole, SendKind>;
+  situation: Situation;
   sendKey: Preferences['sendKey'];
 }) {
   const tc = useTranslations('Composer');
   const labels = sendKeyLabels(sendKey);
-  const shown = ROLES.filter(
-    (role, index) => !ROLES.slice(0, index).some((before) => keys[before] === keys[role]),
-  );
+  const shown = usableRoles(keys, situation);
   return (
     <p
       data-slot="composer-keys"
@@ -69,6 +69,19 @@ export function KeyHint({
         ))}
       </span>
     </p>
+  );
+}
+
+/**
+ * The keys usable now, each once: a key that sends the same as one before it is left out, and
+ * while a fixed instruction is blocked its join and interrupt keys are, as the send menu's are.
+ */
+export function usableRoles(keys: Record<SendKeyRole, SendKind>, situation: Situation) {
+  const blocked = situation === 'blocked';
+  return ROLES.filter(
+    (role, index) =>
+      !(blocked && (keys[role] === 'join' || keys[role] === 'interrupt')) &&
+      !ROLES.slice(0, index).some((before) => keys[before] === keys[role]),
   );
 }
 

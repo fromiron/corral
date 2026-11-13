@@ -223,8 +223,18 @@ test.describe('sending while a run goes', () => {
           await waitForStill(page);
           const line = await page.evaluate(() => {
             const keys = document.querySelector('[data-slot="composer-keys"]');
-            const row = keys?.parentElement?.parentElement;
+            // The tool line: the nearest box holding both the keys and the send menu.
+            let row = keys?.parentElement ?? null;
+            while (row && !row.querySelector('[data-slot="composer-send-menu"]'))
+              row = row.parentElement;
             if (!keys || !row) return null;
+            // The keys sit right before voice and Send: nothing on the line follows them but those.
+            const after = [...row.querySelectorAll('button')].filter(
+              (node) =>
+                keys.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING &&
+                node.getBoundingClientRect().width > 0,
+            );
+            if (after.length > 3) return { after: after.map((node) => node.ariaLabel) };
             const box = keys.getBoundingClientRect();
             const items = [...keys.querySelectorAll('[data-slot="composer-key"]')].map((node) =>
               node.getBoundingClientRect(),

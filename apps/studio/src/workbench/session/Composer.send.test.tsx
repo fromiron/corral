@@ -426,7 +426,43 @@ describe('the target', () => {
     expect(f.sendCommand).not.toHaveBeenCalled();
     expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
     expect(f.container.querySelector('[data-testid="intent-blocked"]')).not.toBeNull();
+    // Only the keys usable now: the blocked join and interrupt are not offered, a next request is.
+    const keys = f.keysLine()?.textContent ?? '';
+    expect(keys).toContain(messages.Composer.keyHint.queue);
+    expect(keys).not.toContain(messages.Composer.keyHint.join);
+    expect(keys).not.toContain(messages.Composer.keyHint.interrupt);
   });
+
+  it.each([
+    ['joins', running, true],
+    ['starts a new request', null, false],
+  ] as const)(
+    'says images apply to a new request only while the send key %s: %s',
+    async (_, active, shown) => {
+      const image = {
+        kind: 'image_attachment' as const,
+        imageId: 'img_0123456789abcdef',
+        name: 'screen.png',
+        mime: 'image/png' as const,
+        bytes: 120,
+        sha256: 'a'.repeat(64),
+        width: 10,
+        height: 10,
+      };
+      const draft = {
+        text: 'Look at this screen',
+        intent: null,
+        target: null,
+        targetLabel: null,
+        references: [],
+        images: [image],
+      };
+      const held = messages.Composer.heldForNew.replace('{items}', messages.Composer.held.images);
+      writeComposerDraft('session', draft);
+      const f = await mount({ active });
+      expect(f.container.textContent?.includes(held)).toBe(shown);
+    },
+  );
 
   it('a draft without a chosen target joins the lead when a run starts', async () => {
     const f = await mount({ active: null });

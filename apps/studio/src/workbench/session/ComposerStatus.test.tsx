@@ -57,7 +57,7 @@ it.each(['en', 'ko'] as const)(
     const states = ['running', 'pausing', 'paused', 'awaiting_user'] as const;
     const stateWords = new Set(states.flatMap((state) => words(messages.Status[state])));
     for (const targets of [[writer], [{ ...writer, interruptible: false }], []]) {
-      const { keys } = resolveIntent({
+      const { keys, situation } = resolveIntent({
         running: true,
         waiting: true,
         targets,
@@ -66,7 +66,10 @@ it.each(['en', 'ko'] as const)(
         lock: null,
         chosen: null,
       });
-      const line = await render(locale, <KeyHint keys={keys} sendKey="enter" />);
+      const line = await render(
+        locale,
+        <KeyHint keys={keys} situation={situation} sendKey="enter" />,
+      );
       expect(line).toContain(messages.Composer.keyHint[keys.send]);
       expect(words(line).filter((word) => stateWords.has(word))).toEqual([]);
     }

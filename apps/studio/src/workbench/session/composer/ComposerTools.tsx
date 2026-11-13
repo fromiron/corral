@@ -222,8 +222,12 @@ export function TeamChoice({
   );
 }
 
-/** The model chip, the permission mode and live voice, right of the input. */
+/**
+ * The model chip, the permission mode and live voice. `only` renders the request's settings
+ * (model and permission) or the voice alone, so the key hint can sit between them.
+ */
 export function RequestTools({
+  only,
   intent,
   showModel,
   browserMode,
@@ -240,6 +244,7 @@ export function RequestTools({
   voiceLabel,
   onTranscript,
 }: {
+  only?: 'settings' | 'voice';
   intent: SessionIntent;
   /** The session runs auto or with a saved team. */
   showModel: boolean;
@@ -259,9 +264,11 @@ export function RequestTools({
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const settings = only !== 'voice';
   return (
     <>
-      {showModel &&
+      {settings &&
+      showModel &&
       (intent === 'next' || intent === 'explain' || intent === 'queue') &&
       (profiles || browserMode) ? (
         profiles ? (
@@ -294,15 +301,17 @@ export function RequestTools({
           />
         )
       ) : null}
-      {intent === 'next' || intent === 'queue' ? (
+      {settings && (intent === 'next' || intent === 'queue') ? (
         <PermissionModePicker value={permissionMode} onChange={onPermissionMode} disabled={busy} />
       ) : null}
-      <LiveVoice
-        api={voice}
-        target={voiceTarget}
-        targetLabel={voiceLabel}
-        onTranscript={onTranscript}
-      />
+      {only !== 'settings' ? (
+        <LiveVoice
+          api={voice}
+          target={voiceTarget}
+          targetLabel={voiceLabel}
+          onTranscript={onTranscript}
+        />
+      ) : null}
     </>
   );
 }
