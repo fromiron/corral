@@ -285,7 +285,11 @@ async function mount(
       item = recipientItem(label);
       expect(item).toBeDefined();
     });
+    const closes = item?.getAttribute('role') === 'menuitemradio';
     await act(async () => item?.click());
+    // Auto and No one close the menu: it has left before the next pick opens it again.
+    if (closes)
+      await vi.waitFor(() => expect(document.body.querySelector('[role="menu"]')).toBeNull());
   };
   const closeMenu = async () => {
     const menu = document.body.querySelector('[role="menu"]');
@@ -1657,4 +1661,40 @@ it('on a narrow tool line the tools keep one width whatever the meeting is doing
   expect(answering.container.querySelector('[data-slot="meeting-stop-place"]')).toBeNull();
   await act(async () => stop.click());
   expect(answering.meetings.stop).toHaveBeenCalledWith('session_1', 'round_1');
+});
+
+it('a recipients menu opened again before the focus comes back stays open, and the box does not take the focus', async () => {
+  const f = await mount(view());
+  // Closed by a pick, and opened again before the next frame.
+  // Frames are held from the close until the menu is open again: the frame the close planned
+  // comes after the reopening, as on a loaded machine.
+  await act(async () => f.recipients()?.click());
+  await vi.waitFor(() => expect(f.recipientItem('recipients.none')).toBeDefined());
+  const held: FrameRequestCallback[] = [];
+  const realFrame = window.requestAnimationFrame;
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    held.push(callback);
+    return 0;
+  });
+  await act(async () => f.recipientItem('recipients.none')?.click());
+  expect(f.recipients()?.textContent).toContain('recipients.none');
+  await act(async () => f.recipients()?.click());
+  await vi.waitFor(() => expect(f.recipients()?.getAttribute('aria-expanded')).toBe('true'));
+  vi.stubGlobal('requestAnimationFrame', realFrame);
+  expect(held.length).toBeGreaterThan(0);
+  // The box never takes the focus from the open menu, not even for a moment.
+  let taken = false;
+  f.box.addEventListener('focus', () => {
+    taken = true;
+  });
+  await act(async () => {
+    for (const callback of held.splice(0)) callback(performance.now());
+  });
+  for (let frames = 0; frames < 5; frames++)
+    await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  expect(document.body.querySelector('[role="menu"]')).not.toBeNull();
+  expect(f.recipients()?.getAttribute('aria-expanded')).toBe('true');
+  expect(taken).toBe(false);
+  expect(document.activeElement).not.toBe(f.box);
+  await f.closeMenu();
 });

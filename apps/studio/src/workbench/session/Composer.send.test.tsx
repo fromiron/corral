@@ -1078,3 +1078,37 @@ it('the tool line keeps the folder notice before where a send goes, and voice ri
   expect(voice).toBeGreaterThan(target);
   expect(voice).toBeLessThan(send);
 });
+
+it('a menu opened again before the focus comes back stays open, and the box does not take the focus', async () => {
+  const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+  // Closed by a pick, and opened again before the next frame.
+  // Frames are held from the close until the menu is open again: the frame the close planned
+  // comes after the reopening, as on a loaded machine.
+  await act(async () => f.targetButton()?.click());
+  await vi.waitFor(() => expect(f.menuItem('Review')).toBeDefined());
+  const held: FrameRequestCallback[] = [];
+  const realFrame = window.requestAnimationFrame;
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    held.push(callback);
+    return 0;
+  });
+  await act(async () => f.menuItem('Review')?.click());
+  expect(f.targetButton()?.textContent).toContain('Review');
+  await act(async () => f.targetButton()?.click());
+  await vi.waitFor(() => expect(f.targetButton()?.getAttribute('aria-expanded')).toBe('true'));
+  vi.stubGlobal('requestAnimationFrame', realFrame);
+  expect(held.length).toBeGreaterThan(0);
+  // The box never takes the focus from the open menu, not even for a moment.
+  let taken = false;
+  f.box().addEventListener('focus', () => {
+    taken = true;
+  });
+  await act(async () => {
+    for (const callback of held.splice(0)) callback(performance.now());
+  });
+  for (let frames = 0; frames < 5; frames++) await f.frame();
+  expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  expect(f.targetButton()?.getAttribute('aria-expanded')).toBe('true');
+  expect(taken).toBe(false);
+  expect(document.activeElement).not.toBe(f.box());
+});
