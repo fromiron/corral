@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TextAttachments } from './attachments.ts';
 import { AutoRoute } from './auto-team.ts';
-import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
+import { AdviceSeverity, CancelScope, ForkFrom, StartFrom } from './commands.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
 import {
   ReasoningObservedPayload,
@@ -541,6 +541,34 @@ export const DirectiveUndelivered = event(
     reason: z.string().min(1),
   }),
 );
+export const AdviceAdmitted = event(
+  'advice.admitted',
+  z
+    .strictObject({
+      adviceId: Identifier,
+      observerExecutionId: Identifier,
+      targetExecutionId: Identifier,
+      severity: AdviceSeverity,
+      /** `preserve`: the target had ended, so the advice is kept for the person, not delivered. */
+      delivery: z.enum(['next_request', 'interrupt', 'preserve']),
+      /** The `advice` directive that carries it; absent only when preserved. */
+      directiveId: Identifier.optional(),
+    })
+    .refine(
+      (value) => (value.delivery === 'preserve') === (value.directiveId === undefined),
+      'a delivered advice names its directive and a preserved one does not',
+    ),
+);
+/** A gatekept advice. It never carries the advice's text. */
+export const AdviceSuppressed = event(
+  'advice.suppressed',
+  z.strictObject({
+    observerExecutionId: Identifier,
+    targetExecutionId: Identifier,
+    severity: AdviceSeverity,
+    reason: z.enum(['noise', 'duplicate', 'over_budget', 'target_terminal']),
+  }),
+);
 export const PatchCommitted = event(
   'patch.committed',
   z.strictObject({
@@ -886,6 +914,8 @@ export const RunEvent = z.discriminatedUnion('type', [
   DirectiveAttached,
   DirectiveDispatched,
   DirectiveUndelivered,
+  AdviceAdmitted,
+  AdviceSuppressed,
   PatchCommitted,
   PatchActivated,
   EffectAdmitted,

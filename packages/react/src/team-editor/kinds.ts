@@ -1,6 +1,7 @@
 import type { CorralDefinition, CorralNode } from '@corral/contracts';
 import {
   Bot,
+  Eye,
   Flag,
   GitBranch,
   GitMerge,
@@ -17,12 +18,13 @@ import type { StepKind } from './commands.ts';
 // What each kind of step looks like in the team editor: its icon and badge colour, shared by the
 // canvas, the structure outline and the command menu.
 
-export type NodeKind = StepKind | 'callable';
+/** An advisor is named and drawn here; the editor does not offer to add one yet. */
+export type NodeKind = StepKind | 'callable' | 'observer';
 
 export function kindOf(node: CorralNode): NodeKind {
   switch (node.type) {
     case 'agent':
-      return node.invocation === 'callable' ? 'callable' : 'agent';
+      return node.invocation === 'scheduled' ? 'agent' : node.invocation;
     case 'decision':
       return node.mode;
     default:
@@ -33,6 +35,7 @@ export function kindOf(node: CorralNode): NodeKind {
 export const KIND_ICON: Record<NodeKind, LucideIcon> = {
   agent: Bot,
   callable: Bot,
+  observer: Eye,
   review: ShieldCheck,
   approval: UserCheck,
   rule: GitBranch,
@@ -49,6 +52,7 @@ export type KindColor = 'gray' | 'violet' | 'amber' | 'blue' | 'green' | 'teal';
 export const KIND_COLOR: Record<NodeKind, KindColor> = {
   agent: 'violet',
   callable: 'violet',
+  observer: 'violet',
   review: 'amber',
   approval: 'amber',
   rule: 'amber',

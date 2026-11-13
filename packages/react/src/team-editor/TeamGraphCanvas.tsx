@@ -819,7 +819,9 @@ export function TeamGraphCanvas({
                         {t('start')}
                       </KitBadge>
                     ) : null}
-                    {node.type === 'agent' && node.retry?.maxAttempts ? (
+                    {node.type === 'agent' &&
+                    node.invocation !== 'observer' &&
+                    node.retry?.maxAttempts ? (
                       <KitBadge size="compact" color="gray">
                         {t('retry', { count: node.retry.maxAttempts })}
                       </KitBadge>

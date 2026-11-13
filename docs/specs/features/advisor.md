@@ -67,7 +67,7 @@
 - 검토의 시작은 지켜보는 실행 단위의 `model.finished`와 종료를 Coordinator의 관찰자가 받아 정한다. 관찰자는 읽기만 하며 실패해도 실행에 영향을 주지 않는다.
 - 검토 입력은 Run의 기록에서 만든다. 마지막으로 읽은 모델 호출 뒤의 호출마다 답변 글(호출당 6,000자까지)과 도구 행(이름·대상·상태·요약)을 넣고, 전체 24,000자를 넘으면 오래된 도구 요약부터 줄이고 줄인 수를 적는다. 자격 증명과 내부 경로는 넣지 않는다.
 - `advise`는 Coordinator 명령 `submit_advice { observerExecutionId, attemptNo, targetExecutionId, severity, note }`가 된다. `note`는 1–1,000자다. 감독의 현재 시도가 아니거나 `targetExecutionId`가 그 감독이 `advise` 연결로 지켜보는 노드의 실행 단위가 아니면 거절한다.
-- 접수된 조언은 `advice.admitted { adviceId, severity, delivery, directiveId? }`를, 버려진 조언은 `advice.suppressed { severity, reason }`를 남긴다. `delivery`는 `next_request`, `interrupt`, `preserve` 중 하나다. 전달되는 조언은 출처가 `advice`인 지시가 되고 그 뒤는 [Reins의 전달 상태](reins.md#2-지시-전달-상태)를 따른다. 조언에서 온 지시는 대기 요청으로 넘겨받지 않는다.
+- 접수된 조언은 `advice.admitted`를, 버려진 조언은 `advice.suppressed`를 남긴다(필드는 [API 계약](../api-contract.md)의 이벤트 표). 둘 다 감독과 대상의 실행 단위, 심각도를 담고 조언의 글은 담지 않는다. `delivery`는 `next_request`, `interrupt`, `preserve` 중 하나다. 전달되는 조언은 출처가 `advice`인 지시가 되고 그 뒤는 [Reins의 전달 상태](reins.md#2-지시-전달-상태)를 따른다. 조언에서 온 지시는 대기 요청으로 넘겨받지 않는다.
 - 문지기의 이력은 감독 실행 단위마다 최근 512개다. 문지기와 전달 방식의 판정은 순수 함수다.
 - 세션은 `advisor: { modelProfile } | null`을 저장한다. 켜져 있으면 대화 실행의 정의에 감독 노드와 대화에 답하는 역할로 가는 `advise` 연결을 더한다. Run의 snapshot에 고정되므로 진행 중인 실행에는 적용되지 않는다.
 - 같은 `submit_advice`의 재전송은 처음 결과를 돌려준다.

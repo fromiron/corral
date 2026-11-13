@@ -241,7 +241,7 @@ it('an automatic compaction is recorded from started without a command and keeps
   });
   const definition = linearCorral(['writer']);
   const node = definition.nodes.find((n) => n.type === 'agent')!;
-  if (node.type === 'agent') node.retry = { maxAttempts: 1 };
+  if (node.type === 'agent' && node.invocation !== 'observer') node.retry = { maxAttempts: 1 };
   const result = coordinator.startRun({
     schemaVersion: '0.1',
     commandId: 'start_auto_compact',

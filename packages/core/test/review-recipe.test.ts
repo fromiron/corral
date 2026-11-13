@@ -48,7 +48,8 @@ function fixture(overrides: Partial<ReviewRecipeRevision> = {}) {
     targetPort: 'in',
   });
   const writer = definition.nodes.find((node) => node.id === 'write');
-  if (writer?.type !== 'agent') throw new Error('missing writer');
+  if (writer?.type !== 'agent' || writer.invocation === 'observer')
+    throw new Error('missing writer');
   writer.inputBindings = writer.inputBindings.filter((input) => input.sourceNodeId !== 'research');
   writer.inputBindings.push(
     { kind: 'run_input', name: 'brief' },

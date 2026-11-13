@@ -65,7 +65,7 @@ function definitions() {
       );
       definition.capabilityLinks = [];
       const writer = definition.nodes.find((node) => node.id === 'write');
-      assert(writer?.type === 'agent');
+      assert(writer?.type === 'agent' && writer.invocation !== 'observer');
       writer.inputBindings = [
         { kind: 'run_input', name: 'brief' },
         { kind: 'run_input', name: 'criteria' },

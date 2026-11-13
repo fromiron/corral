@@ -75,7 +75,11 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
   function forked(policy: 'all' | 'any') {
     const definition = linearCorral(['p', 'a', 'b', 'm']);
     for (const node of definition.nodes)
-      if (node.type === 'agent' && (node.id === 'a' || node.id === 'b'))
+      if (
+        node.type === 'agent' &&
+        node.invocation !== 'observer' &&
+        (node.id === 'a' || node.id === 'b')
+      )
         node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
     definition.nodes.push({ id: 'j', type: 'join', label: 'j', policy });
     const edge = (id: string, source: string, target: string) => ({
