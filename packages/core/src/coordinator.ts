@@ -515,6 +515,8 @@ interface LiveRun {
   stepApprovals: Map<string, Set<string>>;
   /** A pending run-level limit intervention; concurrent workers wait on this one. */
   limitApproval: Promise<'approve' | 'reject'> | null;
+  /** Why the person's rejection ended the run, while its live branches are still stopping. */
+  endReason?: string;
   /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
@@ -2793,8 +2795,11 @@ export class Coordinator {
         payload: { scope, fenceSeq: run.projection.lastSeq + 1, reason: command.payload.reason },
       },
     ];
+    // A cancel a rejection asked for gives the rejection as the reason; the person did not cancel.
     if (scope.kind === 'run')
-      drafts.push(runState(run.projection.status, 'cancelling', 'cancel_requested'));
+      drafts.push(
+        runState(run.projection.status, 'cancelling', run.endReason ?? 'cancel_requested'),
+      );
     else if (
       target &&
       run.projection.tasks[target.taskId]?.status !== 'completed' &&
@@ -2919,7 +2924,7 @@ export class Coordinator {
         if (scope.kind === 'run')
           confirmed.push(
             ...this.closeRounds(run),
-            runState(run.projection.status, 'cancelled', 'cancel_confirmed'),
+            runState(run.projection.status, 'cancelled', run.endReason ?? 'cancel_confirmed'),
           );
         else if (
           target &&
@@ -3407,14 +3412,14 @@ export class Coordinator {
   /**
    * The runtime's closing of every approval still waiting when the run ends, whatever its kind:
    * drafts for the commit that ends it (api-contract, "구현에서 정한 검토·승인 규칙"). An approval
-   * already closed is not pending and is left alone. The caller wakes the waiters once, after it.
+   * already closed is not pending and is left alone; a tool or check approval has closed on its
+   * own path by then, as every caller stops the live executions first or has none.
    */
   private runEndClosings(run: LiveRun, reason: 'cancelled' | 'execution_ended'): EventDraft[] {
     return Object.values(run.projection.approvals)
       .filter((approval) => approval.status === 'pending')
       .map((approval) => ({
         type: 'approval.resolved',
-        ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
         payload: {
           approvalId: approval.approvalId,
           decision: 'reject',
@@ -6720,6 +6725,23 @@ export class Coordinator {
       return;
     const status = run.projection.status;
     if (TERMINAL_RUN_STATUSES.has(status)) return;
+    // Other branches still live stop first, as on the person's cancel of the run; the run ends
+    // once they have, with this reason (api-contract, "구현에서 정한 검토·승인 규칙").
+    if (
+      Object.values(run.projection.executions).some(
+        (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+      )
+    ) {
+      run.endReason = reason;
+      this.submit({
+        schemaVersion: '0.1',
+        runId: run.runId,
+        commandId: `run_end_${run.runId}`,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason },
+      });
+      return;
+    }
     if (this.serviceRuns.has(run) || this.previewRuns.has(run) || this.stoppingServices.has(run)) {
       void this.stopOwnedServices(run).then(
         () => this.endRun(run, to, reason),
@@ -6732,7 +6754,6 @@ export class Coordinator {
       ...this.closeRounds(run),
       runState(status, to, reason),
     ]);
-    this.wakeApprovalWaiters(run);
   }
 
   /** Run-owned services outlive a tool call, but never a pause or confirmed Run ending. */
