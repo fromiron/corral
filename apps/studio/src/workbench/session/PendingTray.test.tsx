@@ -52,7 +52,12 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <a href="#link">{children}</a>,
 }));
 
-const observers: { callback: IntersectionObserverCallback; target: Element | null }[] = [];
+const observers: {
+  callback: IntersectionObserverCallback;
+  target: Element | null;
+  options: IntersectionObserverInit | undefined;
+}[] = [];
+const resizers: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
 const cleanup: (() => Promise<void>)[] = [];
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -65,17 +70,26 @@ beforeEach(() => {
   vi.stubGlobal(
     'ResizeObserver',
     class {
-      observe() {}
+      entry: { callback: ResizeObserverCallback; targets: Element[] };
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [] };
+        resizers.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
       unobserve() {}
-      disconnect() {}
+      disconnect() {
+        this.entry.targets = [];
+      }
     },
   );
   vi.stubGlobal(
     'IntersectionObserver',
     class {
-      entry: { callback: IntersectionObserverCallback; target: Element | null };
-      constructor(callback: IntersectionObserverCallback) {
-        this.entry = { callback, target: null };
+      entry: (typeof observers)[number];
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.entry = { callback, target: null, options };
         observers.push(this.entry);
       }
       observe(target: Element) {
@@ -89,6 +103,7 @@ beforeEach(() => {
   );
   Element.prototype.getAnimations ??= () => [];
   fixture.stores = {};
+  resizers.splice(0);
 });
 afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose();
@@ -309,6 +324,9 @@ function visibleText(element: Element | null) {
   return copy?.textContent ?? '';
 }
 
+/** A run limit: the pause that only asks whether the run goes on. */
+const roundLimit = { kind: 'loop_iterations', used: 3, max: 3 } as const;
+
 const approve = messages.Approvals.approveAs.user_action;
 const reject = messages.Approvals.rejectAs.user_action;
 
@@ -323,7 +341,7 @@ it('shows a waiting approval and a waiting question in one tray, after the last 
   const tray = trays[0] as HTMLElement;
   // Both requests, each answerable here.
   expect(tray.querySelector('[data-testid="approval-approval_1"]')).not.toBeNull();
-  const form = tray.querySelector(`form[aria-label="${messages.Harness.userQuestions}"]`);
+  const form = tray.querySelector(`form[aria-label^="${messages.Harness.userQuestions}"]`);
   expect(form?.textContent).toContain('Which layout should I keep?');
   expect(form?.querySelector('input')).not.toBeNull();
   expect(buttons(tray, approve)).toHaveLength(1);
@@ -535,7 +553,7 @@ it('lists several runs in the conversation’s order, each run’s questions bef
 
 it('asks continue or stop in the kit’s decision stack, confirming only from the receipt', async () => {
   const store = waitingRun('run_a', {
-    approvals: [decision('approval_loop', { kind: 'loop_cap', loopStop: 'stalled' })],
+    approvals: [decision('approval_limit', { limit: roundLimit })],
   });
   const sent = decisions(store);
   const { container } = await show(['run_a']);
@@ -544,11 +562,11 @@ it('asks continue or stop in the kit’s decision stack, confirming only from th
   expect(
     stack?.querySelector(`[aria-label="${messages.Approvals.continueRegion}"]`),
   ).not.toBeNull();
-  expect(stack?.textContent).toContain(messages.Approvals.kind.loop_stalled);
+  expect(stack?.textContent).toContain('Round limit reached (3 of 3)');
   // Not drawn a second time as an approval card.
   expect(tray?.querySelector('[data-approval]')).toBeNull();
-  const go = () => buttons(stack, messages.Approvals.approveAs.loop_stalled)[0];
-  const stop = () => buttons(stack, messages.Approvals.rejectAs.loop_stalled)[0];
+  const go = () => buttons(stack, messages.Approvals.limit.approve)[0];
+  const stop = () => buttons(stack, messages.Approvals.limit.reject)[0];
   go()?.focus();
   await act(async () => go()?.click());
   // Sent, no receipt yet: no confirmation, and neither answer can be sent again.
@@ -574,17 +592,17 @@ it('asks continue or stop in the kit’s decision stack, confirming only from th
 
 it('shows the receipt’s confirmation while the request is still open', async () => {
   const store = waitingRun('run_a', {
-    approvals: [decision('approval_loop', { kind: 'loop_cap', loopStop: 'stalled' })],
+    approvals: [decision('approval_limit', { limit: roundLimit })],
   });
   store.setState({
     resolveApproval: vi.fn(async () => ({ commandId: 'command' }) as unknown as Receipt),
   });
   const { container } = await show(['run_a']);
   const stack = trayOf(container)?.querySelector('[data-continue-decisions]');
-  await act(async () => buttons(stack, messages.Approvals.approveAs.loop_stalled)[0]?.click());
+  await act(async () => buttons(stack, messages.Approvals.limit.approve)[0]?.click());
   await settleFrames();
   expect(stack?.querySelector('[role="status"]')?.textContent).toContain(
-    `${messages.Approvals.kind.loop_stalled} approved`,
+    'Round limit reached (3 of 3)',
   );
 });
 
@@ -628,4 +646,289 @@ it('tells whether the tray is on screen and how much waits in it', async () => {
     ),
   );
   expect(probe()).toBe('false:2');
+});
+
+/** Types into a controlled field as a person does. */
+async function typeInto(input: HTMLInputElement, value: string) {
+  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  await act(async () => {
+    set?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+/** The run's record of an answer: its event, and the answer body it points to. */
+function recordAnswer(
+  store: RunSessionStore,
+  requestId: string,
+  answers: { questionId: string; optionIds?: string[]; text?: string }[],
+) {
+  const { events, artifactTexts } = store.getState();
+  const asked = events.find(
+    (event) => event.type === 'user_input.requested' && event.payload.requestId === requestId,
+  );
+  if (asked?.type !== 'user_input.requested') throw new Error(`missing ${requestId}`);
+  const answered = RunEvent.parse({
+    ...asked,
+    eventId: `event_answer_${requestId}`,
+    runSeq: events.length + 1,
+    type: 'user_input.answered',
+    payload: {
+      requestId,
+      executionId: asked.payload.executionId,
+      attemptNo: asked.payload.attemptNo,
+      answerRef: `answer_${requestId}`,
+      answerHash: 'c'.repeat(64),
+    },
+  });
+  store.setState({
+    events: [...events, answered],
+    artifactTexts: {
+      ...artifactTexts,
+      [`answer_${requestId}`]: JSON.stringify({ status: 'answered', answers }),
+    },
+  });
+}
+
+/** A run whose definition has the given agent roles (`id:Label`, `id:Label:callable`). */
+function withRoles(store: RunSessionStore, ...roles: string[]) {
+  store.setState({
+    definition: {
+      nodes: roles.map((role) => {
+        const [id, label, invocation = 'scheduled'] = role.split(':');
+        return { id, label, type: 'agent', invocation };
+      }),
+    } as unknown as ReturnType<RunSessionStore['getState']>['definition'],
+  });
+}
+
+it('draws a question in the same card as an approval: head, body, answers at the end', async () => {
+  waitingRun('run_a', {
+    approvals: [decision('approval_1')],
+    questions: ['Which layout should I keep?'],
+  });
+  const { container } = await show(['run_a']);
+  const tray = trayOf(container);
+  const approval = tray?.querySelector<HTMLElement>('[data-approval="approval_1"]');
+  const question = tray?.querySelector<HTMLElement>('[data-question]');
+  if (!approval || !question) throw new Error('missing cards');
+  // One frame: the kit card, with the same surface, edge, corners and padding; no tinted fill or
+  // coloured edge that reads as a warning.
+  expect(question.className).toBe(approval.className);
+  for (const element of [question, ...question.querySelectorAll<HTMLElement>('*')])
+    expect(String(element.className)).not.toMatch(/\b(?:bg|border)-(?:warning|danger|info)\b/);
+  // The same head row: the waiting icon and the title. The question's own words are its title.
+  const head = (card: Element) => card.querySelector<HTMLElement>('[data-request-head]');
+  expect(head(question)?.className).toBe(head(approval)?.className);
+  expect(head(question)?.querySelector('p')?.textContent).toBe('Which layout should I keep?');
+  expect(head(question)?.querySelectorAll('svg').length).toBeGreaterThanOrEqual(1);
+  // The first attempt goes unsaid; a lone conversation run names nobody.
+  expect(visibleText(question)).not.toContain('Attempt');
+  expect(question.querySelector('[data-request-owner]')).toBeNull();
+  // The copy control is the head's secondary control, not a row of its own.
+  expect(
+    head(question)?.querySelector(`[aria-label="${messages.Harness.copyExecutionId}"]`),
+  ).not.toBeNull();
+  // The same foot row, with the answer as the main action at its end, never full width.
+  const foot = (card: Element) => card.querySelector<HTMLElement>('[data-request-foot]');
+  expect(foot(question)?.className).toBe(foot(approval)?.className);
+  const send = buttons(foot(question), messages.Harness.sendAnswer)[0];
+  expect(send?.disabled).toBe(true);
+  await typeInto(question.querySelector('input') as HTMLInputElement, 'A table');
+  expect(send?.disabled).toBe(false);
+  expect(send?.className).toBe(buttons(foot(approval), approve)[0]?.className);
+  expect(send?.className).not.toMatch(/\bw-full\b/);
+});
+
+it('names the attempt under the title only after the first', async () => {
+  const store = waitingRun('run_a', { questions: ['Which layout should I keep?'] });
+  const { events, projection } = store.getState();
+  const asked = events[0];
+  if (!projection || asked?.type !== 'user_input.requested') throw new Error('missing question');
+  const executionId = asked.payload.executionId;
+  store.setState({
+    events: [{ ...asked, payload: { ...asked.payload, attemptNo: 2 } }],
+    projection: {
+      ...projection,
+      executions: {
+        ...projection.executions,
+        [executionId]: { ...(projection.executions[executionId] as ExecutionView), attemptNo: 2 },
+      },
+    },
+  });
+  const { container } = await show(['run_a']);
+  const owner = trayOf(container)?.querySelector('[data-question] [data-request-owner]');
+  expect(owner?.textContent).toBe('Attempt 2');
+});
+
+it('folds an answered question into one line in its place while its run still waits', async () => {
+  const log = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
+    vi.spyOn(console, level),
+  );
+  const store = waitingRun('run_a', {
+    approvals: [decision('approval_1')],
+    questions: ['Which format should the report use?'],
+  });
+  store.setState({
+    artifactTexts: {
+      body_q_run_a_0: JSON.stringify({
+        key: 'format',
+        questions: [
+          {
+            id: 'format',
+            kind: 'single',
+            prompt: 'Which format should the report use?',
+            options: [
+              { id: 'table', label: 'A table' },
+              { id: 'list', label: 'A list' },
+            ],
+          },
+        ],
+      }),
+    },
+  });
+  const { container } = await show(['run_a']);
+  const tray = trayOf(container);
+  expect(tray?.querySelector('[data-question]')).not.toBeNull();
+  await act(async () =>
+    recordAnswer(store, 'q_run_a_0', [{ questionId: 'format', optionIds: ['table'] }]),
+  );
+  // The card's place holds one line: an icon and what was answered.
+  expect(tray?.querySelector('[data-question]')).toBeNull();
+  const line = tray?.querySelector('[data-testid="answered-q_run_a_0"]');
+  expect(line?.textContent).toBe('Answered: A table');
+  expect(line?.querySelectorAll('svg')).toHaveLength(1);
+  expect(line?.querySelector('button, input')).toBeNull();
+  // As a decided approval's line: in the card's place, before what still waits.
+  const waiting = tray?.querySelector('[data-approval="approval_1"]');
+  expect(line && waiting && line.compareDocumentPosition(waiting)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  // Nothing of the answer went to the console.
+  for (const spy of log)
+    for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toContain('A table');
+  // Once nothing waits, the line leaves with the area.
+  await act(async () => closeApproval(store, 'approval_1', 'approve'));
+  expect(trayOf(container)).toBeNull();
+});
+
+it('cuts a long written answer to one line', async () => {
+  const store = waitingRun('run_a', {
+    approvals: [decision('approval_1')],
+    questions: ['Which layout should I keep?'],
+  });
+  const { container } = await show(['run_a']);
+  const long = `${'Keep the compact layout '.repeat(30)}\nand the second line`;
+  await act(async () => recordAnswer(store, 'q_run_a_0', [{ questionId: 'layout', text: long }]));
+  const line = trayOf(container)?.querySelector('[data-testid="answered-q_run_a_0"]');
+  const words = line?.querySelector('span');
+  expect(words?.className).toContain('truncate');
+  expect(words?.textContent?.startsWith('Answered: Keep the compact layout')).toBe(true);
+  expect(words?.textContent).not.toContain('second line');
+  expect(words?.textContent?.length).toBeLessThanOrEqual('Answered: '.length + 200);
+});
+
+it('names nobody on the cards of a lone run with one role', async () => {
+  const lone = waitingRun('run_a', {
+    approvals: [decision('approval_a', { nodeId: 'writer' })],
+    questions: ['Which layout should I keep?'],
+  });
+  // A conversation: its assistant, and a helper it may call that has not run.
+  withRoles(lone, 'writer:Assistant', 'helper:Helper:callable');
+  const { container } = await show(['run_a']);
+  // The run's row already says whose it is.
+  expect(trayOf(container)?.querySelector('[data-approval]')).not.toBeNull();
+  expect(trayOf(container)?.querySelector('[data-request-owner]')).toBeNull();
+  // Once the helper has run too, a card says which of them asks.
+  const projection = lone.getState().projection as RunProjection;
+  await act(async () =>
+    lone.setState({
+      projection: {
+        ...projection,
+        executions: {
+          ...projection.executions,
+          exec_helper: { ...execution('exec_helper'), nodeId: 'helper', status: 'succeeded' },
+        },
+      },
+    }),
+  );
+  expect(
+    trayOf(container)?.querySelector('[data-question] [data-request-owner]')?.textContent,
+  ).toBe('Assistant');
+});
+
+it('names the role on each card of a run with several roles', async () => {
+  const team = waitingRun('run_a', {
+    approvals: [decision('approval_a', { nodeId: 'reviewer', kind: 'breakpoint' })],
+    questions: ['Which layout should I keep?'],
+  });
+  withRoles(team, 'writer:Writer', 'reviewer:Reviewer');
+  const { container } = await show(['run_a']);
+  const owners = [...(trayOf(container)?.querySelectorAll('[data-request-owner]') ?? [])];
+  // The question's role from its execution, the approval's from its node; in the same place.
+  expect(owners.map((owner) => owner.textContent)).toEqual(['Writer', 'Reviewer']);
+  for (const owner of owners)
+    expect(owner.closest('[data-request-head]')?.contains(owner)).toBe(true);
+});
+
+it('names the run, and its role, on each card while several runs wait', async () => {
+  const a = waitingRun('run_a', { questions: ['Which layout should I keep?'] });
+  withRoles(a, 'writer:Assistant');
+  const b = waitingRun('run_b', {
+    approvals: [decision('approval_b'), decision('approval_limit', { limit: roundLimit })],
+  });
+  const { container } = await show(['run_a', 'run_b']);
+  const tray = trayOf(container);
+  expect(tray?.querySelector('[data-run-response="run_a"] [data-request-owner]')?.textContent).toBe(
+    'Run #1 · Assistant',
+  );
+  expect(
+    tray?.querySelector('[data-approval="approval_b"] [data-request-owner]')?.textContent,
+  ).toBe('Run #2');
+  // A continue-or-stop decision is the run's: its run leads its facts.
+  expect(
+    tray?.querySelector('[data-run-response="run_b"] [data-continue-decisions]')?.textContent,
+  ).toContain('Run #2');
+  // Once one run is left, it names nobody again.
+  await act(async () => {
+    closeApproval(b, 'approval_b', 'approve');
+    closeApproval(b, 'approval_limit', 'approve');
+  });
+  expect(trayOf(container)?.querySelector('[data-question]')).not.toBeNull();
+  expect(trayOf(container)?.querySelector('[data-request-owner]')).toBeNull();
+});
+
+it('measures again when the composer grows, so a covered tray reads as out of view', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_1')] });
+  const { container } = await show(['run_a']);
+  const probe = () => container.querySelector('[data-testid="tray-probe"]')?.textContent;
+  const watching = () => observers.filter((entry) => entry.target === trayOf(container));
+  const first = watching()[0];
+  await act(async () =>
+    first?.callback(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    ),
+  );
+  expect(probe()).toBe('true:1');
+  // The composer takes more lines and now lies over the tray.
+  const composer = container.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+  if (!composer) throw new Error('missing composer');
+  composer.dataset.composerSurface = 'floating';
+  Object.defineProperty(composer, 'offsetHeight', { configurable: true, value: 240 });
+  await act(async () => {
+    for (const resizer of resizers)
+      if (resizer.targets.includes(composer)) resizer.callback([], {} as ResizeObserver);
+  });
+  // Still one observer, a new one, leaving the new height out.
+  expect(watching()).toHaveLength(1);
+  expect(watching()[0]).not.toBe(first);
+  expect(watching()[0]?.options?.rootMargin).toBe('0px 0px -240px 0px');
+  await act(async () =>
+    watching()[0]?.callback(
+      [{ isIntersecting: false } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    ),
+  );
+  expect(probe()).toBe('false:1');
 });

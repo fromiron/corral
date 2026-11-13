@@ -80,6 +80,7 @@ const panels: Record<string, string[]> = {
     'packages/react/src/components/CommandReceipts.tsx',
     'packages/react/src/components/ApprovalPanel.tsx',
     'packages/react/src/components/InteractionPanel.tsx',
+    'packages/react/src/components/RequestCard.tsx',
     'packages/react/src/components/QuestionsPanel.tsx',
     'packages/react/src/components/SettingsPatchPanel.tsx',
     'packages/react/src/components/UsageInspector.tsx',
@@ -145,6 +146,8 @@ const keptSmall: { file: string; near: RegExp }[] = [
   // An approval's decision row: the kit permission card and the kit AgentRun side panel's
   // approval card keep Reject and Approve compact.
   { file: 'packages/react/src/components/ApprovalPanel.tsx', near: /<SizeScope size="compact">/ },
+  // A question's and an extension prompt's answer row: the same request card, so the same row.
+  { file: 'packages/react/src/components/RequestCard.tsx', near: /<SizeScope size="compact">/ },
   // The approval card's subject chips sit in a line of caption text above that row; a chip
   // larger than the decision it leads to reads as the main action.
   { file: 'packages/react/src/components/ApprovalPanel.tsx', near: /onOpenArtifact\(id\)/ },

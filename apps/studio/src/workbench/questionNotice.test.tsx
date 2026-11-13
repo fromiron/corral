@@ -1,15 +1,33 @@
 // @vitest-environment jsdom
 import { RunEvent } from '@corral/contracts';
-import { act, useState } from 'react';
+import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { useQuestionNotice, type WaitingQuestion } from './questionNotice.ts';
+import {
+  createPendingTrayStore,
+  PendingTrayContext,
+  type PendingTrayStore,
+} from './session/pendingTrayState.ts';
+import { ComposerDock } from './widgets/ChatWidgets.tsx';
+import type { ChatWidgetModel } from './widgets/useChatWidgets.tsx';
 
-// The notice above the composer is the one place that names a waiting question
-// (ComposerStatusLine). Its words come from here: the first question's own line, the count
-// beside it from two, and the body read when the run's texts do not hold it yet.
+// The notice above the composer names a waiting question while the conversation's needed-now
+// tray, where it is answered, is out of view (ComposerStatusLine). Its words come from here: the
+// first question's own line, the count beside it from two, and the body read when the run's texts
+// do not hold it yet.
+
+const fixture = vi.hoisted(() => ({ model: null as ChatWidgetModel | null }));
+vi.mock('./widgets/useChatWidgets.tsx', () => ({ useChatWidget: () => fixture.model }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children, className }: { children: ReactNode; className?: string }) => (
+    <a href="#run" className={className}>
+      {children}
+    </a>
+  ),
+}));
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -97,4 +115,97 @@ it('adds the count beside the first question and reads a body it does not have y
   expect(text).toContain('2 waiting');
   // A long question is shortened in the notice; the response area keeps it whole.
   expect(text).not.toContain('x'.repeat(300));
+});
+
+/** A live conversation run waiting on one question, as the chat widgets describe it. */
+const waitingOnQuestion = {
+  sessionId: 'session_chat',
+  runId: 'run_chat',
+  runNumber: 1,
+  live: true,
+  viewed: null,
+  readState: 'ready',
+  chips: [],
+  tools: [],
+  action: {
+    visible: true,
+    needsUser: true,
+    hasFailure: false,
+    completedWithFailures: false,
+    count: 1,
+    summary: 'question',
+    unclearCauses: [],
+  },
+  questionNotice: 'Question: Which layout should I keep?',
+  failedExecutionId: null,
+  activity: null,
+  plan: {
+    open: false,
+    setOpen: vi.fn(),
+    status: { state: 'hidden' },
+    selectedKey: null,
+    selectedChoice: null,
+    choices: [],
+    multiple: false,
+    auto: true,
+    runStatus: 'awaiting_user',
+    retry: vi.fn(),
+    follow: vi.fn(),
+    choose: vi.fn(),
+  },
+} as unknown as ChatWidgetModel;
+
+/** The composer's notice on a session screen whose conversation holds the needed-now tray. */
+async function dock(tray: PendingTrayStore) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.model = waitingOnQuestion;
+  const respond = vi.fn();
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <PendingTrayContext.Provider value={{ store: tray, respond }}>
+          <ComposerDock />
+        </PendingTrayContext.Provider>
+      </IntlProvider>,
+    ),
+  );
+  return {
+    notice: () => container.querySelector<HTMLElement>('[data-testid="action-required"]'),
+    respond,
+  };
+}
+
+it('shows the question notice while the tray is out of view, and not while it is in view', async () => {
+  const tray = createPendingTrayStore();
+  tray.setState({ waiting: 1, visible: false });
+  const view = await dock(tray);
+  // Scrolled away or under the composer: the notice says what waits.
+  expect(view.notice()?.textContent).toContain('Question: Which layout should I keep?');
+  // In view: the tray's card says it, once.
+  await act(async () => tray.setState({ visible: true }));
+  expect(view.notice()).toBeNull();
+  await act(async () => tray.setState({ visible: false }));
+  expect(view.notice()?.textContent).toContain('Question: Which layout should I keep?');
+});
+
+// The screen's respond brings the tray into view and focuses it (PendingTray.test.tsx).
+it('sends Respond to the conversation’s tray, not to the run record', async () => {
+  const tray = createPendingTrayStore();
+  tray.setState({ waiting: 1, visible: false });
+  const view = await dock(tray);
+  const respond = [...(view.notice()?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent === messages.Widgets.actionOpen,
+  );
+  expect(respond).toBeDefined();
+  // Not a way to the run record: the conversation's tray answers it.
+  expect(view.notice()?.querySelector('a')).toBeNull();
+  await act(async () => respond?.click());
+  expect(view.respond).toHaveBeenCalledTimes(1);
 });

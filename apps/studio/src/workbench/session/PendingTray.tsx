@@ -1,79 +1,33 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { pendingInteractions, type RunSummary } from '@corral/core';
-import type { RunSessionStore } from '@corral/react';
+import { RequestRunContext, type RunSessionStore } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore,
 } from 'react';
 import { useTranslations } from 'use-intl';
-import { createStore, type StoreApi, useStore } from 'zustand';
+import { useStore } from 'zustand';
 import { useServices } from '../../services.tsx';
 import { RunResponseArea } from '../RunResponseArea.tsx';
+import { useTrayStore } from './pendingTrayState.ts';
 
-interface TrayState {
-  /** The tray is in the conversation's view: not scrolled away, not behind the composer. */
-  visible: boolean;
-  /** Requests waiting in the tray, over all of the session's runs. */
-  waiting: number;
-  /** When a request to bring the tray into view and focus it was made (`respond`); 0 for none. */
-  revealAt: number;
-}
-
-/** The needed-now tray's state on one session screen. */
-export type PendingTrayStore = StoreApi<TrayState>;
-
-export const createPendingTrayStore = (): PendingTrayStore =>
-  createStore<TrayState>(() => ({ visible: false, waiting: 0, revealAt: 0 }));
+export {
+  createPendingTrayStore,
+  PendingTrayContext,
+  type PendingTrayStore,
+  revealPendingTray,
+  usePendingTray,
+  useRespondInConversation,
+} from './pendingTrayState.ts';
 
 /** A request to reveal the tray counts this long, so a late one does not move focus later. */
 const REVEAL_WINDOW_MS = 5_000;
-
-/** Asks the tray to come into view and take focus, once, as soon as it shows what waits. */
-export function revealPendingTray(store: PendingTrayStore) {
-  store.setState({ revealAt: performance.now() });
-}
-
-interface PendingTrayContextValue {
-  store: PendingTrayStore;
-  /**
-   * Takes the person from elsewhere on the session screen (the run record) to the tray: the one
-   * place the session's waiting requests are answered.
-   */
-  respond?: () => void;
-}
-
-export const PendingTrayContext = createContext<PendingTrayContextValue | null>(null);
-
-function useTrayStore() {
-  const context = useContext(PendingTrayContext);
-  const [own] = useState(createPendingTrayStore);
-  return context?.store ?? own;
-}
-
-/**
- * Whether the conversation's needed-now tray is on screen, and how many requests wait in it: what
- * the activity bar needs to tell a waiting request only while its card is out of view.
- */
-export function usePendingTray(): { visible: boolean; waiting: number } {
-  const store = useTrayStore();
-  const visible = useStore(store, (state) => state.visible);
-  const waiting = useStore(store, (state) => state.waiting);
-  return { visible, waiting };
-}
-
-/** The way to the conversation's tray, on a session screen whose conversation answers requests. */
-export function useRespondInConversation(): (() => void) | null {
-  return useContext(PendingTrayContext)?.respond ?? null;
-}
 
 /** Each run's waiting count, `runId:count` joined; empty while nothing waits. */
 function waitingOf(stores: readonly (readonly [string, RunSessionStore])[]) {
@@ -152,7 +106,8 @@ export function PendingTray({
   const root = useRef<HTMLElement>(null);
   const shown = total > 0;
   // Whether the tray is in view: one observer, on the conversation's scrolling area, with the
-  // composer lying over its bottom edge left out.
+  // composer lying over its bottom edge left out. The composer grows and shrinks with its lines
+  // and notices, so a new height makes a new observer with the new margin.
   useLayoutEffect(() => {
     const element = root.current;
     if (!shown || !element) {
@@ -164,17 +119,29 @@ export function PendingTray({
     const composer = element
       .closest('[data-chat-view]')
       ?.querySelector<HTMLElement>('[data-testid="chat-composer"]');
-    const covered = composer?.dataset.composerSurface === 'floating' ? composer.offsetHeight : 0;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries.at(-1);
-        if (entry) tray.setState({ visible: entry.isIntersecting });
-      },
-      { root: timeline, rootMargin: `0px 0px -${covered}px 0px` },
-    );
-    observer.observe(element);
+    let observer: IntersectionObserver | null = null;
+    let margin = -1;
+    const observe = () => {
+      const covered = composer?.dataset.composerSurface === 'floating' ? composer.offsetHeight : 0;
+      if (covered === margin) return;
+      margin = covered;
+      observer?.disconnect();
+      observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries.at(-1);
+          if (entry) tray.setState({ visible: entry.isIntersecting });
+        },
+        { root: timeline, rootMargin: `0px 0px -${covered}px 0px` },
+      );
+      observer.observe(element);
+    };
+    observe();
+    const resized =
+      composer && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(observe) : null;
+    if (composer) resized?.observe(composer);
     return () => {
-      observer.disconnect();
+      resized?.disconnect();
+      observer?.disconnect();
       tray.setState({ visible: false });
     };
   }, [shown, tray]);
@@ -211,22 +178,31 @@ export function PendingTray({
       className="flex flex-col gap-3 pb-4 outline-none"
     >
       {waiting.map(({ runId }) => (
-        <RunResponseArea
+        // With several runs waiting, each card names its run (as the run's row does).
+        <RequestRunContext.Provider
           key={runId}
-          session={runFor(runId)}
-          onOpenArtifact={(artifactVersionId) => onOpenArtifact(runId, artifactVersionId)}
-          policySettingsAction={
-            // A way out of a tool card, quieter than its decisions.
-            <Button
-              variant="ghost"
-              render={
-                <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
-              }
-            >
-              {trun('permissionSettings')}
-            </Button>
+          value={
+            waiting.length > 1
+              ? t('runNumber', { number: runs.findIndex((run) => run.runId === runId) + 1 })
+              : null
           }
-        />
+        >
+          <RunResponseArea
+            session={runFor(runId)}
+            onOpenArtifact={(artifactVersionId) => onOpenArtifact(runId, artifactVersionId)}
+            policySettingsAction={
+              // A way out of a tool card, quieter than its decisions.
+              <Button
+                variant="ghost"
+                render={
+                  <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
+                }
+              >
+                {trun('permissionSettings')}
+              </Button>
+            }
+          />
+        </RequestRunContext.Provider>
       ))}
     </section>
   );

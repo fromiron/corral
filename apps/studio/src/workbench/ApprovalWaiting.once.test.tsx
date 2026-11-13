@@ -226,6 +226,7 @@ it.each([
   ['final output', { kind: 'final_output' }],
   ['another round', { kind: 'loop_cap', loopStop: 'cap_reached' }],
   ['stalled loop', { kind: 'loop_cap', loopStop: 'stalled' }],
+  ['run limit', { kind: 'user_action', limit: { kind: 'loop_iterations', used: 3, max: 3 } }],
   ['decision', { kind: 'user_action' }],
   [
     'route',
@@ -250,7 +251,7 @@ it.each([
   } as RunProjection['approvals'][string];
   const container = await mainArea(projection);
   const card =
-    approval.kind === 'loop_cap'
+    'limit' in approval
       ? container.querySelector('[data-continue-decisions]')
       : container.querySelector('[data-testid="approval-approval_1"]');
   expect(card).not.toBeNull();

@@ -23,6 +23,7 @@ import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
+import { usePendingTray, useRespondInConversation } from '../session/pendingTrayState.ts';
 import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
 import { actionCopy, actionTone, composerShowsRunStatus } from './selectors.ts';
@@ -533,6 +534,10 @@ export function ComposerDock({
   const ts = useTranslations('Status');
   const tt = useTranslations('Turn');
   const run = model?.runId ? model : null;
+  // On a session screen the conversation's needed-now tray answers what waits; its card says it
+  // while the tray is in view, so the notice is only for a tray scrolled away or covered.
+  const tray = usePendingTray();
+  const respondInTray = useRespondInConversation();
   if (!run && !lead && !note) return null;
   const status = run?.plan.status ?? { state: 'hidden' as const };
   const open = Boolean(run?.plan.open);
@@ -557,6 +562,7 @@ export function ComposerDock({
   const notice =
     run?.action.visible &&
     run.action.summary !== 'approval' &&
+    !(run.action.needsUser && tray.visible) &&
     !(run.action.summary === 'failure' && (run.action.completedWithFailures || run.viewed?.latest));
   // Waiting questions alone name the first one, as the conversation's notice does.
   const actionLabel = run
@@ -684,15 +690,20 @@ export function ComposerDock({
           <BannerActions>
             <Button
               variant="secondary"
-              render={
-                <RunLink
-                  model={run}
-                  respond={run.action.needsUser}
-                  executionId={
-                    run.action.needsUser ? undefined : (run.failedExecutionId ?? undefined)
-                  }
-                />
-              }
+              {...(run.action.needsUser && respondInTray
+                ? // To the tray: scrolled into view and focused.
+                  { onClick: respondInTray }
+                : {
+                    render: (
+                      <RunLink
+                        model={run}
+                        respond={run.action.needsUser}
+                        executionId={
+                          run.action.needsUser ? undefined : (run.failedExecutionId ?? undefined)
+                        }
+                      />
+                    ),
+                  })}
             >
               {t(
                 run.action.needsUser
