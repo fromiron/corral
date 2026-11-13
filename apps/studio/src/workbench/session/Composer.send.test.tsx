@@ -134,6 +134,7 @@ async function mount({
   sendKey,
   mode = 'server',
   runState = {},
+  folderAccess,
 }: {
   active?: RunSummary | null;
   executions?: Record<string, string>;
@@ -143,6 +144,7 @@ async function mount({
   mode?: 'server' | 'browser';
   /** The run's record as the store holds it at first. */
   runState?: Partial<RunState>;
+  folderAccess?: 'copy' | 'unlinked';
 } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -237,6 +239,7 @@ async function mount({
             onChange={() => {}}
             reference={null}
             onReferenceUsed={() => {}}
+            {...(folderAccess ? { folderAccess } : {})}
           />
         </IntlProvider>,
       ),
@@ -1055,4 +1058,57 @@ describe('the composer', () => {
       expect(f.container.textContent?.includes(held)).toBe(shown);
     },
   );
+});
+
+it('the tool line keeps the folder notice before where a send goes, and voice right before Send', async () => {
+  const f = await mount({ folderAccess: 'copy' });
+  const line = [
+    ...f.container.querySelectorAll<HTMLElement>(
+      '[data-testid="folder-access"], [data-slot="composer-target"], button',
+    ),
+  ];
+  const notice = line.findIndex((node) => node.dataset.testid === 'folder-access');
+  const target = line.findIndex((node) => node.dataset.slot === 'composer-target');
+  expect(notice).toBeGreaterThanOrEqual(0);
+  expect(notice).toBeLessThan(target);
+  const voice = line.findIndex(
+    (node) => node.getAttribute('aria-label') === messages.LiveVoice.title,
+  );
+  const send = line.findIndex((node) => node.getAttribute('aria-label') === 'Send');
+  expect(voice).toBeGreaterThan(target);
+  expect(voice).toBeLessThan(send);
+});
+
+it('a menu opened again before the focus comes back stays open, and the box does not take the focus', async () => {
+  const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+  // Closed by a pick, and opened again before the next frame.
+  // Frames are held from the close until the menu is open again: the frame the close planned
+  // comes after the reopening, as on a loaded machine.
+  await act(async () => f.targetButton()?.click());
+  await vi.waitFor(() => expect(f.menuItem('Review')).toBeDefined());
+  const held: FrameRequestCallback[] = [];
+  const realFrame = window.requestAnimationFrame;
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    held.push(callback);
+    return 0;
+  });
+  await act(async () => f.menuItem('Review')?.click());
+  expect(f.targetButton()?.textContent).toContain('Review');
+  await act(async () => f.targetButton()?.click());
+  await vi.waitFor(() => expect(f.targetButton()?.getAttribute('aria-expanded')).toBe('true'));
+  vi.stubGlobal('requestAnimationFrame', realFrame);
+  expect(held.length).toBeGreaterThan(0);
+  // The box never takes the focus from the open menu, not even for a moment.
+  let taken = false;
+  f.box().addEventListener('focus', () => {
+    taken = true;
+  });
+  await act(async () => {
+    for (const callback of held.splice(0)) callback(performance.now());
+  });
+  for (let frames = 0; frames < 5; frames++) await f.frame();
+  expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  expect(f.targetButton()?.getAttribute('aria-expanded')).toBe('true');
+  expect(taken).toBe(false);
+  expect(document.activeElement).not.toBe(f.box());
 });

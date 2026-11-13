@@ -6,7 +6,6 @@ import {
 } from '@corral/contracts';
 import type { CorralSummary, RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { useCancelConfirmation } from '@corral/react';
-import { InputMessage, Tooltip } from '@corral/react/design-kit';
 import { useRouter } from '@tanstack/react-router';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -15,9 +14,7 @@ import { useRemembered } from '../../pages/Workbench.tsx';
 import { projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
-import { sendKeyLabel } from '../../shortcuts.ts';
 import { sessionRunMode } from '../autoChoice.ts';
-import { ComposerInput } from '../ComposerInput.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
 import type { SendChoice, SendKeyRole } from '../composerIntent.ts';
 
@@ -33,6 +30,7 @@ import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 import { composerAvailability } from './composer/availability.ts';
+import { ComposerCard, type SendTarget } from './composer/ComposerCard.tsx';
 import { ComposerNotices } from './composer/ComposerNotices.tsx';
 import {
   AttachMenu,
@@ -44,9 +42,11 @@ import {
 } from './composer/ComposerTools.tsx';
 import { compactContext, composerCommands, runCommand } from './composer/commands.ts';
 import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs.tsx';
+import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
+import { type MeetingComposerProps, MeetingSend } from './composer/meeting.tsx';
 import { useQueuedRequests } from './composer/queue.ts';
-import { KeyHint, menuSends, SendMenu, TargetChip } from './composer/SendControls.tsx';
+import { menuSends, SendMenu, TargetChip } from './composer/SendControls.tsx';
 import {
   type AutoRequest,
   type CommandSlot,
@@ -62,7 +62,19 @@ import { useLatestResult, useSteerTargets } from './composer/useRunState.ts';
 import { useSessionSettings } from './composer/useSessionSettings.ts';
 import { useVoiceTranscript } from './composer/voice.ts';
 
-export function Composer({
+/**
+ * The composer (features/composer-flow.md "화면 틀"): one component for a conversation and a
+ * meeting. Both draw the same card; the send target adapter decides where a send goes — the join
+ * target in a conversation, the recipients in a meeting — and which tools the place supports.
+ */
+export function Composer(props: ComposerProps) {
+  return 'meeting' in props ? <MeetingSend {...props.meeting} /> : <SessionComposer {...props} />;
+}
+
+export type ComposerProps = SessionComposerProps | { meeting: MeetingComposerProps };
+type SessionComposerProps = Parameters<typeof SessionComposer>[0];
+
+function SessionComposer({
   session,
   team,
   corrals,
@@ -339,18 +351,7 @@ export function Composer({
     if (mounted.current) setLowered(outcome.lowered);
   };
 
-  // A menu or notice of the composer, once used, gives the focus back to the box; a click that
-  // moved it elsewhere keeps it there.
-  const backToInput = () =>
-    requestAnimationFrame(() => {
-      const focused = document.activeElement;
-      if (
-        !focused ||
-        focused === document.body ||
-        focused.closest('[role="menu"], [data-slot="composer-host"]')
-      )
-        input.current?.focus();
-    });
+  const backToInput = () => backToInputOf(input);
 
   const requestStop = () => {
     setConfirmStop(ownActive !== null);
@@ -437,36 +438,60 @@ export function Composer({
     voiceLabel: session.title,
     onTranscript,
   };
+  // The send target adapter: the join target, and what each key sends to it.
+  const joinTarget: SendTarget = {
+    badge: (
+      <TargetChip
+        situation={situation}
+        target={steerTarget || null}
+        targets={targets}
+        name={targetName(steerTarget)}
+        loading={loading}
+        disabled={busy}
+        onChoose={chooseTarget}
+        onClose={backToInput}
+      />
+    ),
+    row: situation,
+    keys: sendKeys,
+    loading,
+    meaning: sendMeaning,
+    menu: (
+      <SendMenu
+        situation={situation}
+        sendKey={prefs.sendKey}
+        disabled={busy || !text.trim()}
+        onSend={(choice) => void send({ choice })}
+        onClose={backToInput}
+      />
+    ),
+    sendDisabled: busy || !text.trim() || unavailable,
+    send: (role) => void send({ role }),
+  };
   const compose = (
-    <InputMessage
-      toolbar="single"
-      data-slot="composer-host"
-      role="region"
-      aria-label={t('requestLabel')}
-      inputRef={input}
-      value={text}
-      onValueChange={onText}
-      onSend={() => void send({ role: 'send' })}
+    <ComposerCard
+      label={t('requestLabel')}
       placeholder={tc('placeholder')}
-      textareaProps={{ 'aria-label': t('requestLabel'), 'aria-describedby': destinationId }}
-      sendDisabled={busy || !text.trim() || unavailable}
+      describedBy={destinationId}
+      inputRef={input}
+      text={text}
+      onText={onText}
+      onKeyDown={keys.onKeyDown}
+      sendKey={prefs.sendKey}
       sendLabel={t('send')}
-      sendDescription={sendMeaning}
-      renderAction={(action) => (
-        <>
-          <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
-            {action}
-          </Tooltip>
-          <SendMenu
-            situation={situation}
-            sendKey={prefs.sendKey}
-            disabled={busy || !text.trim()}
-            onSend={(choice) => void send({ choice })}
-            onClose={backToInput}
-          />
-        </>
-      )}
-      contentSlot={
+      target={joinTarget}
+      menus={{
+        commands: slashCommands,
+        searchMentions,
+        onMention: (item) => {
+          const selected = selectMention(item, picked);
+          setPicked((list) =>
+            list.some((existing) => existing.id === selected.id) ? list : [...list, selected],
+          );
+          return selected;
+        },
+      }}
+      notices={
         <ComposerNotices
           sessionId={session.sessionId}
           intent={intent}
@@ -505,82 +530,43 @@ export function Composer({
           destination={destination}
         />
       }
-      renderInput={(inputProps) => (
-        <ComposerInput
-          inputRef={inputProps.ref}
-          textareaProps={inputProps}
-          label={t('requestLabel')}
-          placeholder={tc('placeholder')}
-          value={text}
-          onChange={onText}
-          onKeyDown={keys.onKeyDown}
-          sendKey={prefs.sendKey}
-          onSend={(role) => void send({ role })}
-          commands={slashCommands}
-          searchMentions={searchMentions}
-          onMention={(item) => {
-            const selected = selectMention(item, picked);
-            setPicked((list) =>
-              list.some((existing) => existing.id === selected.id) ? list : [...list, selected],
-            );
-            return selected;
-          }}
+      attach={
+        <AttachMenu
+          onAddReference={() => insertMentionTrigger(input.current, text, write)}
+          serverMode={mode === 'server'}
+          imagesDisabled={attachBusy || intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
+          textDisabled={attachBusy || !textAttachable}
+          onAttachImages={() => imageFiles.current?.click()}
+          onAttachText={() => textFiles.current?.click()}
+          onAttachMaterials={() => setMaterialsOpen(true)}
         />
-      )}
-      leftSlot={
-        <>
-          <AttachMenu
-            onAddReference={() => insertMentionTrigger(input.current, text, write)}
-            serverMode={mode === 'server'}
-            imagesDisabled={attachBusy || intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
-            textDisabled={attachBusy || !textAttachable}
-            onAttachImages={() => imageFiles.current?.click()}
-            onAttachText={() => textFiles.current?.click()}
-            onAttachMaterials={() => setMaterialsOpen(true)}
-          />{' '}
-          <WorkFolderEntry
-            access={folderAccess}
-            onAction={onFolderAction}
-            onWorkFolder={onWorkFolder}
-          />
-          <TargetChip
-            situation={situation}
-            target={steerTarget || null}
-            targets={targets}
-            name={targetName(steerTarget)}
-            loading={loading}
-            disabled={busy}
-            onChoose={chooseTarget}
-            onClose={backToInput}
-          />
-          {/* While the run's record is read, what a send is is not known: no request settings. */}
-          {(intent === 'next' || intent === 'queue') && !blocked && !loading ? (
-            <TeamChoice
-              projectId={session.projectId}
-              team={team}
-              teamMode={teamMode}
-              corrals={corrals}
-              isAuto={isAuto}
-              disabled={busy}
-              open={teamOpen}
-              onOpenChange={setTeamOpen}
-              onTeamMode={setTeamMode}
-              onTeam={(corralId) => void updateTeam(corralId)}
-            />
-          ) : null}
-          {/* The request's settings, then the keys, right before voice and Send. */}
-          <span className="ml-auto flex min-w-0 items-center gap-1.5">
-            {loading ? null : <RequestTools only="settings" {...requestTools} />}
-            <KeyHint
-              keys={sendKeys}
-              situation={situation}
-              loading={loading}
-              sendKey={prefs.sendKey}
-            />
-          </span>
-        </>
       }
-      rightSlot={<RequestTools only="voice" {...requestTools} />}
+      beforeTarget={
+        <WorkFolderEntry
+          access={folderAccess}
+          onAction={onFolderAction}
+          onWorkFolder={onWorkFolder}
+        />
+      }
+      afterTarget={
+        // While the run's record is read, what a send is is not known: no request settings.
+        (intent === 'next' || intent === 'queue') && !blocked && !loading ? (
+          <TeamChoice
+            projectId={session.projectId}
+            team={team}
+            teamMode={teamMode}
+            corrals={corrals}
+            isAuto={isAuto}
+            disabled={busy}
+            open={teamOpen}
+            onOpenChange={setTeamOpen}
+            onTeamMode={setTeamMode}
+            onTeam={(corralId) => void updateTeam(corralId)}
+          />
+        ) : null
+      }
+      settings={loading ? null : <RequestTools only="settings" {...requestTools} />}
+      end={<RequestTools only="voice" {...requestTools} />}
     />
   );
   return (
