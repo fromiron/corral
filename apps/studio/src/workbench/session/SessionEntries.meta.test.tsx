@@ -24,7 +24,15 @@ import { EntryCard } from './SessionEntries.tsx';
 // The one line under a sent message (features/composer-flow.md "보낸 메시지의 메타 줄"): its time
 // and actions on hover or focus, and what became of it, always.
 
-const fixture = vi.hoisted(() => ({ store: null as unknown, editRequest: vi.fn() }));
+const fixture = vi.hoisted(() => ({
+  store: null as unknown,
+  editRequest: vi.fn(),
+  recordRead: vi.fn(),
+}));
+vi.mock('./runRecords.ts', async (original) => ({
+  ...(await original<typeof import('./runRecords.ts')>()),
+  useRecordRead: fixture.recordRead,
+}));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({ workspaces: null, mode: 'browser' }),
 }));
@@ -189,6 +197,7 @@ async function show(
     carriedHere?: boolean;
     heldAs?: DirectiveView['status'];
     sourceShown?: boolean;
+    runsListed?: boolean;
     runs?: RunSummary[];
   } = {},
 ) {
@@ -220,6 +229,7 @@ async function show(
           {...(options.carriedHere ? { carriedHere: true } : {})}
           {...(options.heldAs ? { heldAs: options.heldAs } : {})}
           {...(options.sourceShown ? { sourceShown: true } : {})}
+          {...(options.runsListed === false ? { runsListed: false } : {})}
         />
       </IntlProvider>,
     ),
@@ -720,6 +730,16 @@ it('a carried request is placed once: right under its source, under an unread on
   expect(placeEntries([steer, refused], () => directive).emptyFor.get(refused.entryId)).toBe(
     steer.entryId,
   );
+});
+
+it('a drawn instruction asks for its run’s record with what is known of the run list', async () => {
+  await show(entry(), { runs: [], runsListed: false });
+  expect(fixture.recordRead).toHaveBeenLastCalledWith('run_live', [], false);
+  await show(entry(), { runs: ended });
+  expect(fixture.recordRead).toHaveBeenLastCalledWith('run_live', ended, true);
+  // A request has no instruction's record to read.
+  await show(request());
+  expect(fixture.recordRead).toHaveBeenLastCalledWith(null, ended, true);
 });
 
 it('an instruction whose run was read but has no directive for it is not known to be delivered', async () => {
