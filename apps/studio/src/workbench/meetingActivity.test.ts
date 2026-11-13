@@ -71,6 +71,7 @@ describe('the closed line', () => {
       participantId: 'p2',
       runId: 'run_p2',
       waiting: 1,
+      stopping: false,
     });
   });
 
@@ -169,15 +170,35 @@ describe('the rows', () => {
       round('r4', [answer('p3', 'waiting')]),
     ]);
     expect(meetingRows(going)).toEqual([
-      { participantId: 'p2', runId: 'run_p2', waiting: 1 },
-      { participantId: 'p3', runId: null, waiting: 3 },
-      { participantId: 'p1', runId: null, waiting: 1 },
+      { participantId: 'p2', runId: 'run_p2', waiting: 1, stopping: false },
+      { participantId: 'p3', runId: null, waiting: 3, stopping: false },
+      { participantId: 'p1', runId: null, waiting: 1, stopping: false },
     ]);
+  });
+
+  it('stopped, an answer still running is stopping, on its row and on the line', () => {
+    const stopping = view([
+      round('r1', [answer('p2', 'running'), answer('p3', 'stopped', '')], { stoppedAt: 'y' }),
+    ]);
+    expect(meetingRows(stopping)).toEqual([
+      { participantId: 'p2', runId: 'run_p2', waiting: 0, stopping: true },
+    ]);
+    expect(meetingLine(stopping, nothing)).toMatchObject({
+      kind: 'answering',
+      participantId: 'p2',
+      stopping: true,
+    });
+    // Not stopped: answering.
+    const going = view([round('r1', [answer('p2', 'running')])]);
+    expect(meetingRows(going)).toEqual([
+      { participantId: 'p2', runId: 'run_p2', waiting: 0, stopping: false },
+    ]);
+    expect(meetingLine(going, nothing)).toMatchObject({ kind: 'answering', stopping: false });
   });
 
   it('the secretary has its row like anyone', () => {
     expect(meetingRows(view([round('r1', [answer(SECRETARY_ID, 'running')])]))).toEqual([
-      { participantId: SECRETARY_ID, runId: `run_${SECRETARY_ID}`, waiting: 0 },
+      { participantId: SECRETARY_ID, runId: `run_${SECRETARY_ID}`, waiting: 0, stopping: false },
     ]);
   });
 

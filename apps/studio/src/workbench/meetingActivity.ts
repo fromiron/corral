@@ -20,7 +20,14 @@ export type MeetingLine =
   /** The continue card waits out of view. */
   | { kind: 'hold'; waiting: number }
   /** An answer runs out of view: who answers. */
-  | { kind: 'answering'; participantId: string; runId: string; waiting: number }
+  | {
+      kind: 'answering';
+      participantId: string;
+      runId: string;
+      waiting: number;
+      /** Its message was stopped and the answer has not ended yet. */
+      stopping: boolean;
+    }
   /** Answers run, and their rows say who: the line says only that something runs. */
   | { kind: 'busy'; waiting: number }
   /** Nothing runs: the last replies, and how many failed. */
@@ -32,18 +39,24 @@ export interface MeetingRow {
   runId: string | null;
   /** Its turns still to come. */
   waiting: number;
+  /** Answering, but its message was stopped: it has not ended yet. */
+  stopping: boolean;
 }
 
 /** The answers running, then those waiting their turn, in the order they were given. */
 function answersOf(view: MeetingView) {
   const running: Answer[] = [];
   const waiting: Answer[] = [];
+  // Running still, though its message was stopped: on its way to stopping.
+  const stopping = new Set<Answer>();
   for (const round of view.rounds)
     for (const answer of round.answers) {
-      if (answer.status === 'running') running.push(answer);
-      else if (answer.status === 'waiting') waiting.push(answer);
+      if (answer.status === 'running') {
+        running.push(answer);
+        if (round.stoppedAt) stopping.add(answer);
+      } else if (answer.status === 'waiting') waiting.push(answer);
     }
-  return { running, waiting };
+  return { running, waiting, stopping };
 }
 
 /**
@@ -54,7 +67,7 @@ export function meetingLine(
   view: MeetingView,
   { visible, open }: { visible: ReadonlySet<string>; open: boolean },
 ): MeetingLine | null {
-  const { running, waiting } = answersOf(view);
+  const { running, waiting, stopping } = answersOf(view);
   // People waiting to speak: each once, however many turns, and not one already answering.
   const answering = new Set(running.map((answer) => answer.participantId));
   const people = new Set(
@@ -73,6 +86,7 @@ export function meetingLine(
       participantId: unseen.participantId,
       runId: unseen.runId,
       waiting: count,
+      stopping: stopping.has(unseen),
     };
   if (running.length || waiting.length) return { kind: 'busy', waiting: count };
   // At rest: the last message anyone was asked to answer. One for no one says so on its own
@@ -91,7 +105,7 @@ export function meetingLine(
 
 /** One row per participant answering or waiting: the one answering first, then by first turn. */
 export function meetingRows(view: MeetingView): MeetingRow[] {
-  const { running, waiting } = answersOf(view);
+  const { running, waiting, stopping } = answersOf(view);
   const rows = new Map<string, MeetingRow>();
   for (const answer of running)
     if (!rows.has(answer.participantId))
@@ -99,12 +113,14 @@ export function meetingRows(view: MeetingView): MeetingRow[] {
         participantId: answer.participantId,
         runId: answer.runId,
         waiting: 0,
+        stopping: stopping.has(answer),
       });
   for (const answer of waiting) {
     const row = rows.get(answer.participantId) ?? {
       participantId: answer.participantId,
       runId: null,
       waiting: 0,
+      stopping: false,
     };
     row.waiting += 1;
     rows.set(answer.participantId, row);

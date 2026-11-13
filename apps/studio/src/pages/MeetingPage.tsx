@@ -38,7 +38,7 @@ import {
   useNarrowScreen,
 } from '../workbench/MeetingRecords.tsx';
 import { MeetingRoundStatus } from '../workbench/MeetingRoundStatus.tsx';
-import { answerLabel, HOLD_LABEL } from '../workbench/meetingActivity.ts';
+import { answerLabel } from '../workbench/meetingActivity.ts';
 import {
   answerOrder,
   continuedOrder,
@@ -248,6 +248,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                           content: (
                             <AnswerCard
                               answer={answer}
+                              stopped={round.stoppedAt !== null}
                               name={nameOf(view.config, answer.participantId, t('secretary'))}
                               onOpenMinutes={
                                 answer.participantId === SECRETARY_ID &&
@@ -585,13 +586,17 @@ const ANSWER_GLYPH: Record<string, AgentStatus> = {
 function AnswerCard({
   answer,
   name,
+  stopped,
   onOpenMinutes,
 }: {
   answer: AnswerView;
   name: string;
+  /** Its message was stopped: while it still runs, it is stopping. */
+  stopped: boolean;
   onOpenMinutes?: (() => void) | undefined;
 }) {
   const t = useTranslations('Meetings');
+  const tp = useTranslations('Presence');
   const detailed = useStore(preferences, (state) => state.chatDensity === 'detailed');
   const failed = FAILED_ANSWER.has(answer.status);
   const httpStatus = /\b(?:HTTP|status)\s*:?\s*(\d{3})\b/i.exec(answer.detail ?? '')?.[1];
@@ -618,7 +623,12 @@ function AnswerCard({
                   }
                   role={answer.status === 'running' ? 'status' : undefined}
                   status={failed ? 'failed' : (ANSWER_GLYPH[answer.status] ?? 'stopped')}
-                  label={t(`status.${answer.status}`)}
+                  label={
+                    // Stopped, and not ended yet: stopping (features/presence.md).
+                    answer.status === 'running' && stopped
+                      ? tp('state.stopping')
+                      : t(`status.${answer.status}`)
+                  }
                   className={failed ? 'text-danger' : undefined}
                 />
               ) : null}

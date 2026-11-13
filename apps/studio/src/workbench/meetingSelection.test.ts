@@ -6,18 +6,34 @@ import { rankedScores, roundMeta } from './meetingSelection.ts';
 
 const names: Record<string, string> = { p1: 'Architect', p2: 'Builder', p3: 'Critic' };
 const nameOf = (id: string) => names[id];
-const answer = (participantId: string) => ({ participantId });
+type Answer = {
+  participantId: string;
+  status: 'waiting' | 'running' | 'answered' | 'stopped' | 'not_started';
+  runId: string | null;
+  order?: number;
+};
+const answer = (participantId: string): Answer => ({
+  participantId,
+  status: 'answered',
+  runId: `run_${participantId}`,
+});
+/** An answer that never started: no run, no place. */
+const never = (participantId: string, status: Answer['status']): Answer => ({
+  participantId,
+  status,
+  runId: null,
+});
 const round = (
   change: {
     kind?: 'all' | 'mention' | 'rebuttal' | 'secretary';
     participantIds?: string[];
-    answers?: { participantId: string }[];
+    answers?: Answer[];
     selection?: MeetingSelection;
   } = {},
 ) => ({
   kind: 'all' as const,
   participantIds: [] as string[],
-  answers: [] as { participantId: string }[],
+  answers: [] as Answer[],
   ...change,
 });
 
@@ -95,6 +111,31 @@ describe('what a person’s message says about who receives it', () => {
           nameOf,
         ),
       ).toEqual({ kind: 'skipped' });
+    },
+  );
+
+  it.each([
+    ['selector', 'top_score'],
+    ['explicit', 'composer_recipients'],
+  ] as const)(
+    '%s (%s): stopped before any answer started: Skipped; one started: as before; one still waiting: as before',
+    (strategy, reason) => {
+      const selection = { strategy, reason } as MeetingSelection;
+      const asked = (answers: Answer[]) =>
+        roundMeta(round({ participantIds: ['p1', 'p2'], answers, selection }), nameOf);
+      expect(asked([never('p1', 'stopped'), never('p2', 'not_started')])).toEqual({
+        kind: 'skipped',
+      });
+      const before =
+        strategy === 'selector'
+          ? { kind: 'auto' }
+          : { kind: 'names', names: ['Architect', 'Builder'] };
+      // One started, then was stopped: it has its row, and the line is as it was.
+      expect(
+        asked([{ ...answer('p1'), status: 'stopped', order: 3 }, never('p2', 'stopped')]),
+      ).toEqual(before);
+      // One still waits its turn: not decided yet.
+      expect(asked([never('p1', 'waiting'), never('p2', 'waiting')])).toEqual(before);
     },
   );
 

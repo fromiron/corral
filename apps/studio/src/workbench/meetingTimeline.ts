@@ -7,6 +7,9 @@ import type { MeetingView } from '@corral/contracts';
 type Round = MeetingView['rounds'][number];
 type Answer = Round['answers'][number];
 
+/** What tells whether an answer started. */
+export type StartLike = Pick<Answer, 'status' | 'runId'> & { order?: number | undefined };
+
 /** A round's message's place (kept before rounds had a place of their own: by its index). */
 export const roundOrder = (round: Round, index: number) => round.order ?? index * 7;
 
@@ -14,7 +17,7 @@ export const roundOrder = (round: Round, index: number) => round.order ?? index 
  * Whether an answer ever started: it has its place in the transcript, which it takes when it
  * starts (or is refused as it starts), or a run (records kept before answers had a place).
  */
-export const startedAnswer = (answer: Answer) =>
+export const startedAnswer = (answer: StartLike) =>
   answer.status !== 'waiting' && (answer.order !== undefined || answer.runId !== null);
 
 /** A started answer's place: when it started, or (kept before that) after its round's message. */

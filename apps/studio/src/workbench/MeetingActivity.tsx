@@ -44,6 +44,10 @@ export function MeetingActivity({
 }) {
   const t = useTranslations('Meetings');
   const ta = useTranslations('Activity');
+  const tp = useTranslations('Presence');
+  // Answering, or, once its message was stopped and until it ends, stopping (features/presence.md).
+  const answeringWord = (stopping: boolean) =>
+    stopping ? tp('state.stopping') : t('status.running');
   const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const visible = useVisibleLabels(anchor);
@@ -82,7 +86,7 @@ export function MeetingActivity({
         return {
           glyph: 'running',
           tone: 'active',
-          state: { text: t('status.running'), target: answerLabel(line.runId) },
+          state: { text: answeringWord(line.stopping), target: answerLabel(line.runId) },
           text: name(line.participantId),
           parts: waiting(line.waiting),
           startedAt: seen.current.get(line.runId),
@@ -117,7 +121,7 @@ export function MeetingActivity({
         ...base,
         glyph: 'running',
         tone: 'active',
-        state: { text: t('status.running'), target: answerLabel(runId) },
+        state: { text: answeringWord(row.stopping), target: answerLabel(runId) },
         working: true,
         ...(row.waiting ? { activity: t('activity.moreTurns', { count: row.waiting }) } : {}),
         startedAt: seen.current.get(runId),

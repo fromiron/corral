@@ -1054,6 +1054,29 @@ describe('the meeting’s activity bar', () => {
     expect(activity(f.container)?.getAttribute('data-line')).toBe('hold');
   });
 
+  it('stopped while an answer still runs: its row, and the bar, say Stopping, not Answering', async () => {
+    const stopping = messages.Presence.state.stopping;
+    const f = await mount(
+      view([
+        round('r1', {
+          participantIds: ['p2'],
+          active: true,
+          stoppedAt: '2026-11-14T00:00:01.000Z',
+          answers: [running('p2')],
+        }),
+      ]),
+    );
+    const row = f.container.querySelector('article[aria-label="Builder"] header');
+    expect(row?.textContent).toContain(stopping);
+    expect(row?.textContent).not.toContain(m.status.running);
+    expect(line(f.container)?.textContent).toContain(stopping);
+    expect(line(f.container)?.textContent).not.toContain(m.status.running);
+    await open(f);
+    const roleRow = activity(f.container)?.querySelector('[data-activity-role="p2"]');
+    expect(roleRow?.textContent).toContain(stopping);
+    expect(roleRow?.textContent).not.toContain(m.status.running);
+  });
+
   it('a hold out of view comes first; View goes to the card', async () => {
     const f = await mount(
       view([round('r1', { answers: [answered('p2')] })], {

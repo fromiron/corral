@@ -755,15 +755,48 @@ test.describe('a meeting stopped', () => {
         if (!spot) throw new Error('Send is missing');
         const x = spot.x + spot.width / 2;
         const y = spot.y + spot.height / 2;
+        // In the page: when Stop came to Send's place, and when each press landed.
+        await page.evaluate(() => {
+          const seen = { stopAt: null as number | null, presses: [] as number[] };
+          (window as unknown as { __stopPlace: typeof seen }).__stopPlace = seen;
+          const look = () => {
+            if (seen.stopAt === null && document.querySelector('[data-testid="composer-stop"]'))
+              seen.stopAt = performance.now();
+            if (seen.stopAt === null) requestAnimationFrame(look);
+          };
+          look();
+          document.addEventListener(
+            'pointerdown',
+            () => {
+              seen.presses.push(performance.now());
+            },
+            { capture: true },
+          );
+        });
         await page.mouse.click(x, y);
+        const sentAt = Date.now();
         const stop = page.getByTestId('composer-stop');
-        await expect(stop).toBeVisible();
         // Pressed again on the same place, 300, 450 and 550 ms after sending.
-        for (const wait of [300, 150, 100]) {
-          await page.waitForTimeout(wait);
+        for (const at of [300, 450, 550]) {
+          await page.waitForTimeout(Math.max(0, at - (Date.now() - sentAt)));
           await page.mouse.click(x, y);
         }
+        await expect(stop).toBeVisible();
         await page.waitForTimeout(200);
+        // The presses after Send landed on Stop within its 0.6 s; else this run proves nothing.
+        const timing = await page.evaluate(() => {
+          const seen = (
+            window as unknown as { __stopPlace: { stopAt: number | null; presses: number[] } }
+          ).__stopPlace;
+          const at = seen.stopAt ?? Number.NaN;
+          return seen.presses.slice(1).map((press) => Math.round(press - at));
+        });
+        console.log(`MEASURE stop-place presses after Stop came (ms): ${JSON.stringify(timing)}`);
+        expect(timing.filter((offset) => offset >= 0 && offset < 600).length).toBeGreaterThan(0);
+        expect(
+          timing.every((offset) => offset < 600),
+          `${timing}`,
+        ).toBe(true);
         expect(stops).toEqual([]);
         // Then it is Stop, and stops.
         await expect(stop).toBeEnabled({ timeout: 2_000 });
@@ -894,6 +927,25 @@ test.describe('a meeting stopped', () => {
       expect(last).toContain('You stopped the replies.');
       // The follow-up's answer, waiting its turn, never started: it has no row.
       await expectRowsOfStartedOnly(page, id);
+      const [asked, followUp] = (await meeting(page, id)).rounds;
+      if (!asked || !followUp) throw new Error('two messages');
+      // None of its answers started: its meta line says Skipped, in words only.
+      const meta = page.locator(`[data-chat-item="${followUp.roundId}:message"]`);
+      await expect(meta).toContainText('Skipped');
+      await expect(meta).not.toContainText('Auto');
+      await expect(meta.getByRole('button', { name: /Auto/ })).toHaveCount(0);
+      // The answers that started have not ended yet (their model has not returned): stopping.
+      const rows = asked.answers.map((item) =>
+        page.locator(`[data-chat-item="${asked.roundId}:${item.participantId}"] header`),
+      );
+      for (const row of rows) {
+        await expect(row).toContainText('Stopping');
+        await expect(row).not.toContainText('Answering');
+      }
+      await expect(page.getByTestId('activity-bar')).not.toContainText('Answering');
+      // Once they end: stopped.
+      open();
+      for (const row of rows) await expect(row).toContainText('Stopped', { timeout: 30_000 });
       expect(corral.errors).toEqual([]);
     } finally {
       open();

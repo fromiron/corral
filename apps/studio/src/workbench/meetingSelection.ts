@@ -1,4 +1,5 @@
 import type { MeetingSelection } from '@corral/contracts';
+import { type StartLike, startedAnswer } from './meetingTimeline.ts';
 
 // What a person's message says about who receives it (workbench.md, the meeting's timeline):
 // read from how the round chose its recipients (features/local-intelligence.md, the selection
@@ -14,13 +15,16 @@ export type RoundMeta =
   | { kind: 'auto' }
   /** Nobody was to answer; `explained` when the meeting, not the person, picked nobody. */
   | { kind: 'noReply'; explained: boolean }
-  /** It had receivers, but a later message was taken first and every answer was skipped. */
+  /**
+   * It had receivers, but no answer ever started: a later message was taken first, or the replies
+   * were stopped before.
+   */
   | { kind: 'skipped' };
 
 interface RoundLike {
   kind: 'all' | 'mention' | 'rebuttal' | 'secretary';
   participantIds: readonly string[];
-  answers: readonly unknown[];
+  answers: readonly StartLike[];
   selection?: MeetingSelection | undefined;
 }
 
@@ -43,6 +47,12 @@ export function roundMeta(
     return round.participantIds.length
       ? { kind: 'skipped' }
       : { kind: 'noReply', explained: AUTOMATIC.has(selection.strategy) };
+  // Nothing started and nothing waits any more: however they were chosen, none will answer.
+  if (
+    round.participantIds.length &&
+    !round.answers.some((answer) => startedAnswer(answer) || answer.status === 'waiting')
+  )
+    return { kind: 'skipped' };
   if (AUTOMATIC.has(selection.strategy)) return { kind: 'auto' };
   return { kind: 'names', names: names() };
 }
