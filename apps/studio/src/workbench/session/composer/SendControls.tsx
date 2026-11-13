@@ -3,10 +3,12 @@ import {
   Kbd,
   KitBadge,
   Menu,
+  MenuCheckboxItem,
   MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSeparator,
   MenuShortcut,
   MenuTrigger,
 } from '@corral/react/design-kit';
@@ -28,6 +30,15 @@ import type { Preferences } from '../../preferences.ts';
 
 const ROLES: readonly SendKeyRole[] = ['send', 'interrupt', 'queue'];
 
+/** What a key sends: one of the conversation's four sends, or a meeting's one. */
+export type KeyMeaning = SendKind | 'meeting';
+
+/**
+ * The send table's row. A meeting is a row of its own: every key sends to the meeting, so there
+ * is one meaning and nothing to choose.
+ */
+export type SendRow = Situation | 'meeting';
+
 /**
  * The keys usable now and what each sends, on one line whose height never changes: Send alone
  * while nothing runs, the three keys while a run goes. A key that sends the same as one before
@@ -43,8 +54,8 @@ export function KeyHint({
   loading = false,
   sendKey,
 }: {
-  keys: Record<SendKeyRole, SendKind>;
-  situation: Situation;
+  keys: Record<SendKeyRole, KeyMeaning>;
+  situation: SendRow;
   loading?: boolean;
   sendKey: Preferences['sendKey'];
 }) {
@@ -79,7 +90,7 @@ export function KeyHint({
  * The keys usable now, each once: a key that sends the same as one before it is left out, and
  * while a fixed instruction is blocked its join and interrupt keys are, as the send menu's are.
  */
-export function usableRoles(keys: Record<SendKeyRole, SendKind>, situation: Situation) {
+export function usableRoles(keys: Record<SendKeyRole, KeyMeaning>, situation: SendRow) {
   const blocked = situation === 'blocked';
   return ROLES.filter(
     (role, index) =>
@@ -89,7 +100,8 @@ export function usableRoles(keys: Record<SendKeyRole, SendKind>, situation: Situ
 }
 
 /** Which sends the send menu offers now; the others stay listed, disabled. */
-export function menuSends(situation: Situation): Record<SendChoice, boolean> {
+export function menuSends(situation: SendRow): Record<SendChoice, boolean> {
+  if (situation === 'meeting') return { join: false, interrupt: false, queue: false };
   return {
     join: situation === 'join' || situation === 'joinOnly' || situation === 'awaiting',
     interrupt: situation === 'join',
@@ -97,7 +109,10 @@ export function menuSends(situation: Situation): Record<SendChoice, boolean> {
   };
 }
 
-/** The menu beside Send: the same three sends as the keys, by pointer. */
+/**
+ * The menu beside Send: the same three sends as the keys, by pointer. Where every key sends the
+ * same (nothing runs, or a meeting) there is nothing to choose and the menu does not open.
+ */
 export function SendMenu({
   situation,
   sendKey,
@@ -105,7 +120,7 @@ export function SendMenu({
   onSend,
   onClose,
 }: {
-  situation: Situation;
+  situation: SendRow;
   sendKey: Preferences['sendKey'];
   /** Nothing to send, or sending is held. */
   disabled: boolean;
@@ -124,7 +139,7 @@ export function SendMenu({
   return (
     <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
       <MenuTrigger
-        disabled={situation === 'idle'}
+        disabled={situation === 'idle' || situation === 'meeting'}
         render={
           <Button
             variant="ghost"
@@ -199,15 +214,9 @@ export function TargetChip({
   const shown = situation === 'awaiting' ? tc('targetAwaiting', { name }) : name;
   // A target with nothing else to choose is a fixed badge; with a choice it opens the list.
   const choosable = targets.some((item) => item.id !== target);
+  // A fixed target that can no longer take its instruction reads as a warning.
   const badge = (
-    // A fixed target that can no longer take its instruction reads as a warning.
-    <KitBadge color={situation === 'blocked' ? 'amber' : 'gray'}>
-      <span className="inline-flex max-w-56 items-center gap-1.5">
-        <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
-        <span className="min-w-0 truncate">{shown}</span>
-        {choosable ? <ChevronDown aria-hidden="true" className="size-3 shrink-0" /> : null}
-      </span>
-    </KitBadge>
+    <TargetBadge label={shown} choosable={choosable} warning={situation === 'blocked'} />
   );
   if (!choosable)
     return (
@@ -221,7 +230,7 @@ export function TargetChip({
         data-slot="composer-target"
         disabled={disabled}
         aria-label={tc('targetLabel', { name })}
-        className="flex shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={BADGE_TRIGGER}
       >
         {badge}
       </MenuTrigger>
@@ -233,6 +242,113 @@ export function TargetChip({
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/** The badge's trigger, where the badge opens a menu. */
+const BADGE_TRIGGER =
+  'flex shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+/** Where a send goes, as a badge: an arrow, the name, and the menu's mark when there is a choice. */
+function TargetBadge({
+  label,
+  choosable,
+  warning = false,
+}: {
+  label: string;
+  choosable: boolean;
+  warning?: boolean;
+}) {
+  return (
+    <KitBadge color={warning ? 'amber' : 'gray'}>
+      <span className="inline-flex max-w-56 items-center gap-1.5">
+        <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
+        <span className="min-w-0 truncate">{label}</span>
+        {choosable ? <ChevronDown aria-hidden="true" className="size-3 shrink-0" /> : null}
+      </span>
+    </KitBadge>
+  );
+}
+
+/** Who a meeting message is for: whoever the meeting picks, the chosen participants, or no one. */
+export type Recipients = 'auto' | 'none' | readonly string[];
+
+/** More names than this read as a count. */
+const NAMES_SHOWN = 2;
+
+/**
+ * A meeting's recipients, in the target's place on the tool line (features/composer-flow.md, the
+ * send table's meeting row). Auto and No one are picked at once and close the menu; participants
+ * are ticked one by one, and the badge reads their names, or their count once there are more
+ * than two. `alone` (the secretary) is only ever chosen on its own.
+ */
+export function RecipientChip({
+  value,
+  people,
+  alone,
+  disabled,
+  onChange,
+  onClose,
+}: {
+  value: Recipients;
+  people: readonly { id: string; name: string }[];
+  alone?: string;
+  disabled: boolean;
+  onChange: (next: Recipients) => void;
+  /** The menu closed, by a pick or Escape. */
+  onClose?: () => void;
+}) {
+  const t = useTranslations('Meetings');
+  const chosen = typeof value === 'string' ? [] : value;
+  const name = (id: string) => people.find((person) => person.id === id)?.name ?? id;
+  const shown =
+    typeof value === 'string'
+      ? t(`recipients.${value}`)
+      : chosen.length > NAMES_SHOWN
+        ? t('recipients.count', { count: chosen.length })
+        : chosen.map(name).join(', ');
+  const tick = (id: string) => {
+    const next = chosen.includes(id)
+      ? chosen.filter((item) => item !== id)
+      : id === alone
+        ? [id]
+        : [...chosen.filter((item) => item !== alone), id];
+    onChange(next.length ? next : 'auto');
+  };
+  return (
+    <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
+      <MenuTrigger
+        data-slot="composer-target"
+        disabled={disabled}
+        aria-label={t('recipients.label', { name: shown })}
+        className={BADGE_TRIGGER}
+      >
+        <TargetBadge label={shown} choosable />
+      </MenuTrigger>
+      <MenuPopup align="start" side="top">
+        <MenuRadioGroup
+          value={typeof value === 'string' ? value : 'chosen'}
+          onValueChange={(next) => onChange(next === 'none' ? 'none' : 'auto')}
+        >
+          <MenuRadioItem value="auto" closeOnClick>
+            {t('recipients.auto')}
+          </MenuRadioItem>
+          <MenuRadioItem value="none" closeOnClick>
+            {t('recipients.none')}
+          </MenuRadioItem>
+        </MenuRadioGroup>
+        <MenuSeparator />
+        {people.map((person) => (
+          <MenuCheckboxItem
+            key={person.id}
+            checked={chosen.includes(person.id)}
+            onCheckedChange={() => tick(person.id)}
+          >
+            {person.name}
+          </MenuCheckboxItem>
+        ))}
       </MenuPopup>
     </Menu>
   );

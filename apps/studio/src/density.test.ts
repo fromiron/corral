@@ -89,6 +89,7 @@ const panels: Record<string, string[]> = {
   ],
   meeting: [
     'apps/studio/src/pages/MeetingPage.tsx',
+    'apps/studio/src/workbench/session/composer/meeting.tsx',
     'apps/studio/src/workbench/MeetingRecords.tsx',
     'apps/studio/src/workbench/MeetingEvidence.tsx',
     'apps/studio/src/workbench/MeetingDecisions.tsx',
@@ -100,6 +101,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/session/Composer.tsx',
     'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
     'apps/studio/src/workbench/session/composer/ComposerTools.tsx',
+    'apps/studio/src/workbench/session/composer/ComposerCard.tsx',
     'apps/studio/src/workbench/session/composer/dialogs.tsx',
     'apps/studio/src/workbench/session/ComposerQueue.tsx',
     'apps/studio/src/workbench/session/ComposerStatus.tsx',
@@ -162,12 +164,15 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /ref=\{recordsToggle\}/ },
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'sessionActions'/ },
   // The meeting composer's action row: the kit composer's slot controls are compact.
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'attachmentActions'/ },
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /setMentions\(\[\]\)/ },
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /onClick=\{onStop\}/ },
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /view\.rounds\.length === 0/ },
+  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'attachmentActions'/ },
+  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /onClick=\{clear\}/ },
+  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /onClick=\{onStop\}/ },
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /view\.rounds\.length === 0/,
+  },
   // An icon button inside a chip.
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'removeEvidence'/ },
+  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'removeEvidence'/ },
   {
     file: 'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
     near: /'removeReference'/,
@@ -180,7 +185,7 @@ const keptSmall: { file: string; near: RegExp }[] = [
   },
   { file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx', near: /'workFolder'/ },
   // Stop in Send's place: the kit composer's own Stop is its icon-sm send button.
-  { file: 'apps/studio/src/workbench/session/Composer.tsx', near: /composer-stop/ },
+  { file: 'apps/studio/src/workbench/session/composer/ComposerCard.tsx', near: /composer-stop/ },
   { file: 'apps/studio/src/workbench/WorkFolderNotice.tsx', near: /working-copy-chip/ },
   { file: 'apps/studio/src/workbench/LiveVoice.tsx', near: /ref=\{trigger\}/ },
   // The copy button over a code block: an icon button inside a field.

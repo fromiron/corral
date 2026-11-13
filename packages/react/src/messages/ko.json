@@ -2592,13 +2592,15 @@
       "new": "보내기",
       "join": "합류",
       "interrupt": "끼어들기",
-      "queue": "다음 요청"
+      "queue": "다음 요청",
+      "meeting": "보내기"
     },
     "keyHint": {
       "new": "보내기",
       "join": "합류",
       "interrupt": "끼어들기",
-      "queue": "다음"
+      "queue": "다음",
+      "meeting": "보내기"
     },
     "sendMenu": "전송 방식",
     "targetLabel": "{name}에게 보내기",
@@ -5263,8 +5265,6 @@
     "stopRound": "응답 중지",
     "message": "회의 메시지",
     "placeholder": "메시지를 입력하세요",
-    "mentions": "받는 사람",
-    "everyone": "멘션이 없으면 메시지에서 부른 참가자가 답합니다. 부른 사람이 없으면 맥락에 맞는 참가자 한 명이 답합니다.",
     "send": "보내기",
     "summarise": "비서에게 플랜 정리 요청",
     "summaryRequest": "지금까지 대화하며 도출한 결론을 바탕으로 회의록과 구현 플랜을 정리해 주세요. 아직 결정하지 않은 질문은 합의한 작업과 구분해 주세요.",
@@ -5302,7 +5302,13 @@
     "expandRecords": "기록 넓게 보기",
     "compactRecords": "기록 좁게 보기",
     "closeRecords": "기록 닫기",
-    "mentionParticipant": "메시지에 @{name} 넣기"
+    "mentionParticipant": "메시지에 @{name} 넣기",
+    "recipients": {
+      "auto": "자동",
+      "none": "없음",
+      "count": "{count}명",
+      "label": "받는 사람: {name}"
+    }
   },
   "MeetingsDecisions": {
     "decisionLabel": "결정 v{number} · {goal}",
