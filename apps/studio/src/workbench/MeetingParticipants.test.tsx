@@ -45,7 +45,7 @@ const view = {
   rounds: [],
 } as unknown as MeetingView;
 
-it('shows a short role beside the name while answering and while idle', () => {
+it('names each participant with a short role, and says nothing of answering, waiting or failing', () => {
   const host = document.body.appendChild(document.createElement('div'));
   root = createRoot(host);
   const withRole = {
@@ -59,19 +59,28 @@ it('shows a short role beside the name while answering and while idle', () => {
     },
     rounds: [
       {
-        participantIds: ['p1'],
-        answers: [{ participantId: 'p1', status: 'running', order: 1 }],
+        participantIds: ['p1', 'p2'],
+        answers: [
+          { participantId: 'p1', status: 'running', order: 1 },
+          { participantId: 'p2', status: 'waiting' },
+        ],
+      },
+      {
+        participantIds: ['secretary'],
+        answers: [{ participantId: 'secretary', status: 'failed' }],
       },
     ],
   } as unknown as MeetingView;
   act(() => root?.render(<MeetingParticipants view={withRole} onMention={() => {}} />));
   const [first, second] = [...host.querySelectorAll('li')].map((item) => item.textContent);
   expect(first).toContain('설계');
-  expect(first).toContain('status.running');
   expect(first?.match(/OpenAI · Test A/g)).toHaveLength(1);
   expect(second).toContain('Reviewer');
   expect(second).toContain('검토');
   expect(second).toContain('OpenAI · Test B');
+  // The answer rows and the activity bar say who answers, waits or failed.
+  expect(host.textContent).not.toMatch(/status\./);
+  expect(host.querySelector('[data-state]')).toBeNull();
   const secretary = host.querySelector('[data-participant="secretary"]')?.textContent ?? '';
   expect(secretary).not.toContain('설계');
   expect(secretary).not.toContain('검토');

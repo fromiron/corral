@@ -5298,14 +5298,10 @@
     "summarise": "비서에게 플랜 정리 요청",
     "summaryRequest": "지금까지 대화하며 도출한 결론을 바탕으로 회의록과 구현 플랜을 정리해 주세요. 아직 결정하지 않은 질문은 합의한 작업과 구분해 주세요.",
     "queued": "대기 중인 메시지",
-    "queuedHint": "진행 중인 응답이 끝나면 보냅니다.",
-    "queuedIdle": "이 메시지를 보내 대화를 이어갑니다.",
     "sendQueued": "지금 보내기",
-    "dropQueued": "대기 취소",
     "empty": "안건을 꺼내 보세요",
     "loadFailed": "회의를 불러오지 못했습니다.",
     "retry": "다시 불러오기",
-    "editQueued": "대기 메시지 수정",
     "saveQueued": "수정 저장",
     "roundStopped": "응답을 중지했습니다. 이미 도착한 답변은 대화에 남습니다.",
     "modelUnavailable": "연결되지 않음",
@@ -5336,7 +5332,60 @@
       "auto": "자동",
       "none": "없음",
       "count": "{count}명",
-      "label": "받는 사람: {name}"
+      "label": "받는 사람: {name}",
+      "labelNamed": "받는 사람({shown}): {names}"
+    },
+    "meta": {
+      "auto": "자동",
+      "noReply": "답변 없음",
+      "skipped": "생략됨"
+    },
+    "selection": {
+      "open": "{label}: 받는 사람을 고른 방법",
+      "title": "받는 사람을 고른 방법",
+      "ranking": "이 메시지에 맞는 정도",
+      "picked": "답함",
+      "method": {
+        "explicit": "받는 사람을 직접 골랐습니다.",
+        "mention": "@멘션으로 불렀습니다.",
+        "address": "메시지가 이름을 불러 그들에게 향했습니다.",
+        "selector": "회의 선택기가 답할 참가자를 골랐습니다.",
+        "fallback": "이 메시지에 점수를 매기지 못해 다른 방법으로 골랐습니다.",
+        "none": "아무에게도 답을 청하지 않았습니다."
+      },
+      "reason": {
+        "composer_recipients": "입력란에서 받는 사람을 골랐습니다.",
+        "rebuttal": "앞 응답 묶음의 참가자에게 반론을 요청했습니다.",
+        "saved_recipients": "메시지와 함께 저장된 받는 사람에게 보냈습니다.",
+        "mention": "@멘션으로 부른 참가자입니다.",
+        "participant_mention": "다른 참가자가 @멘션으로 불렀습니다.",
+        "addressed": "메시지가 이름으로 부른 참가자입니다.",
+        "top_score": "회의 선택기가 이 메시지에 가장 잘 맞는 참가자를 골랐습니다.",
+        "continuity": "바로 앞에서 답하던 참가자가 이어서 답합니다.",
+        "no_reply_needed": "회의 선택기가 이 메시지에는 답이 필요 없다고 봤습니다.",
+        "reply_target": "회의가 이 메시지의 점수를 내지 못해, 이 메시지가 답하는 참가자가 답합니다.",
+        "recent_speaker": "회의가 이 메시지의 점수를 내지 못해, 가장 최근에 말한 참가자가 답합니다.",
+        "rotation": "회의가 이 메시지의 점수를 내지 못해, 차례가 된 참가자가 답합니다.",
+        "nobody_available": "회의가 이 메시지의 점수를 내지 못했고, 답할 수 있는 참가자가 없었습니다.",
+        "analysis_off": "회의 분석이 꺼져 있어 허용된 참가자 모두가 답합니다.",
+        "no_recipients": "받는 사람을 없음으로 골랐습니다."
+      }
+    },
+    "hold": {
+      "heading": "답변이 멈춤",
+      "title": "참가자들이 답변마다 서로를 멘션해 왔습니다.",
+      "region": "답변 계속",
+      "continue": "계속",
+      "continued": "계속함",
+      "refused": "계속하지 못함: {message}"
+    },
+    "continued": "여기서 답변을 계속했습니다.",
+    "activity": {
+      "waiting": "{count}명 발언 대기",
+      "replies": "답변 {count}개",
+      "failed": "실패 {count}개",
+      "waitingTurns": "발언 대기 · {count}번",
+      "moreTurns": "이어서 {count}번 더"
     }
   },
   "MeetingsDecisions": {

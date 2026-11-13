@@ -5298,14 +5298,10 @@
     "summarise": "Ask secretary for a plan",
     "summaryRequest": "Please organise our conversation into meeting minutes and an implementation plan based on the conclusions we have reached. Keep unresolved questions separate from agreed work.",
     "queued": "Waiting message",
-    "queuedHint": "Sent when the current answers finish.",
-    "queuedIdle": "Send this message to continue the conversation.",
     "sendQueued": "Send now",
-    "dropQueued": "Remove",
     "empty": "Bring up a topic",
     "loadFailed": "Could not load the meeting.",
     "retry": "Reload",
-    "editQueued": "Edit queued message",
     "saveQueued": "Save changes",
     "roundStopped": "You stopped the replies. Answers already received remain in the conversation.",
     "modelUnavailable": "Not connected",
@@ -5336,7 +5332,60 @@
       "auto": "Auto",
       "none": "No one",
       "count": "{count, plural, one {# person} other {# people}}",
-      "label": "Recipients: {name}"
+      "label": "Recipients: {name}",
+      "labelNamed": "Recipients ({shown}): {names}"
+    },
+    "meta": {
+      "auto": "Auto",
+      "noReply": "No reply",
+      "skipped": "Skipped"
+    },
+    "selection": {
+      "open": "{label}: how the recipients were chosen",
+      "title": "How the recipients were chosen",
+      "ranking": "Fit for this message",
+      "picked": "Answers",
+      "method": {
+        "explicit": "You chose the recipients.",
+        "mention": "They were called with an @mention.",
+        "address": "The message addressed them by name.",
+        "selector": "The meeting’s selector picked who answers.",
+        "fallback": "The meeting could not score this message, so it picked another way.",
+        "none": "Nobody was asked to reply."
+      },
+      "reason": {
+        "composer_recipients": "You chose the recipients in the composer.",
+        "rebuttal": "You asked the previous round’s participants for a rebuttal.",
+        "saved_recipients": "It went to the recipients saved with the message.",
+        "mention": "You called them with an @mention.",
+        "participant_mention": "Another participant called them with an @mention.",
+        "addressed": "The message addressed them by name.",
+        "top_score": "The meeting’s selector found them the best fit for this message.",
+        "continuity": "They were answering just before, so they carry on.",
+        "no_reply_needed": "The meeting’s selector judged that this message needs no reply.",
+        "reply_target": "The meeting could not score this message, so the participant it replies to answers.",
+        "recent_speaker": "The meeting could not score this message, so the most recent speaker answers.",
+        "rotation": "The meeting could not score this message, so the next participant in turn answers.",
+        "nobody_available": "The meeting could not score this message, and no participant was free to answer.",
+        "analysis_off": "Meeting analysis is off, so every participant allowed to answer does.",
+        "no_recipients": "You sent it to no one."
+      }
+    },
+    "hold": {
+      "heading": "Replies paused",
+      "title": "The participants have been mentioning each other, one reply after another.",
+      "region": "Continue the replies",
+      "continue": "Continue",
+      "continued": "Continued",
+      "refused": "Not continued: {message}"
+    },
+    "continued": "You continued the replies here.",
+    "activity": {
+      "waiting": "{count} waiting to speak",
+      "replies": "{count, plural, one {# reply} other {# replies}}",
+      "failed": "{count} failed",
+      "waitingTurns": "Waiting to speak · {count} turns",
+      "moreTurns": "then {count, plural, one {# more turn} other {# more turns}}"
     }
   },
   "MeetingsDecisions": {

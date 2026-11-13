@@ -1,5 +1,5 @@
 import type { ApprovalView } from '@corral/core';
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Banner, BannerTitle, type Decision, DecisionInbox } from '../design-kit/index.ts';
@@ -38,6 +38,20 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
   const handoff = useRef<{ approvalId: string; chat: Element | null; tray: Element | null } | null>(
     null,
   );
+  // Pressable again (refused, or not confirmed) with the focus lost on the way: back to the
+  // answer it was on. Focus the person moved elsewhere stays.
+  const [refocus, setRefocus] = useState<{ approvalId: string; choice: string } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once when asked, not again as the waiting decisions change.
+  useLayoutEffect(() => {
+    if (!refocus) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    // The stack's rows are the open decisions, in order.
+    const index = open.findIndex((approval) => approval.approvalId === refocus.approvalId);
+    const row = box.current?.querySelectorAll('ul > li')[index];
+    [...(row?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [])]
+      .find((button) => button.textContent?.trim() === refocus.choice)
+      ?.focus({ preventScroll: true });
+  }, [refocus]);
   const openIds = open.map((approval) => approval.approvalId).join(',');
   // Answered with focus on its buttons: the confirmation took their place, so focus moves on to
   // the next waiting card's first answer, else to the request box. Focus moved elsewhere stays.
@@ -104,6 +118,13 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
       : null;
     setSent((current) => new Set(current).add(approvalId));
     setRefused(null);
+    // Answered from its buttons and pressable again: the focus goes back to the answer pressed.
+    const giveBack = () => {
+      if (handoff.current?.approvalId !== approvalId) return;
+      handoff.current = null;
+      const action = answers(approval)[choice];
+      setRefocus({ approvalId, choice: action.label });
+    };
     const settle = () => {
       inFlight.current.delete(approvalId);
       setSent((current) => {
@@ -118,7 +139,7 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
         .resolveApproval(approvalId, choice === 'primary' ? 'approve' : 'reject');
       settle();
       if (receipt.error) {
-        if (handoff.current?.approvalId === approvalId) handoff.current = null;
+        giveBack();
         setRefused(t('refused', { message: receipt.error.message }));
         return;
       }
@@ -126,7 +147,7 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
       setAnswered((current) => ({ ...current, [approvalId]: action.doneLabel }));
     } catch {
       // The session keeps the unconfirmed command; the decision still waits and may be sent again.
-      if (handoff.current?.approvalId === approvalId) handoff.current = null;
+      giveBack();
       settle();
     }
   };

@@ -59,6 +59,7 @@ import type {
   LanguageStart,
   LanguageState,
   MeetingAdoptDecisionRequest,
+  MeetingContinueRequest,
   MeetingDecisionVersion,
   MeetingDecisionWithdrawal,
   MeetingHandoffReceipt,
@@ -439,6 +440,8 @@ export interface MeetingsClient {
   sendQueued(sessionId: string): Promise<MeetingResult>;
   dropQueued(sessionId: string): Promise<MeetingResult>;
   editQueued(sessionId: string, message: QueuedMeetingMessage): Promise<MeetingResult>;
+  /** Continues a held mention chain; a lost receipt is sent again with the same command. */
+  continueChain(sessionId: string, request: MeetingContinueRequest): Promise<MeetingResult>;
   adopt(
     sessionId: string,
     request: MeetingAdoptDecisionRequest,
@@ -483,6 +486,9 @@ export class MeetingsApi implements MeetingsClient {
   }
   editQueued(sessionId: string, message: QueuedMeetingMessage) {
     return this.write(`${this.path(sessionId)}/queued`, 'PATCH', message);
+  }
+  continueChain(sessionId: string, request: MeetingContinueRequest) {
+    return this.write(`${this.path(sessionId)}/continue`, 'POST', request);
   }
   adopt(sessionId: string, request: MeetingAdoptDecisionRequest) {
     return this.write<{ decision: MeetingDecisionVersion }>(

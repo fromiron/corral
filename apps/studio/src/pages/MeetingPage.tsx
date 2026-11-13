@@ -27,6 +27,7 @@ import { useServices } from '../services.tsx';
 import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
 import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
+import { MeetingContinue } from '../workbench/MeetingContinue.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
 import { MeetingDiagnostics } from '../workbench/MeetingDiagnostics.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
@@ -36,6 +37,15 @@ import {
   MeetingRecordsPanel,
   useNarrowScreen,
 } from '../workbench/MeetingRecords.tsx';
+import { MeetingRoundStatus } from '../workbench/MeetingRoundStatus.tsx';
+import { answerLabel } from '../workbench/meetingActivity.ts';
+import {
+  answerOrder,
+  continuedOrder,
+  roundOrder,
+  startedAnswer,
+  stopLines,
+} from '../workbench/meetingTimeline.ts';
 import { preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { TurnActions } from '../workbench/RunMessage.tsx';
@@ -53,6 +63,10 @@ import { useRemembered } from './Workbench.tsx';
 
 type RoundView = MeetingView['rounds'][number];
 type AnswerView = RoundView['answers'][number];
+
+/** The command of the last continue of a held chain, if the meeting was ever continued. */
+const lastContinue = (view: MeetingView) =>
+  view.rounds.findLast((round) => round.continued)?.commandId;
 
 /**
  * The meeting room: participants on top, the conversation, then the composer. The minutes,
@@ -197,58 +211,87 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                 <ArchivedSessionNotice session={session} />
               </>
             }
-            items={view.rounds
-              .flatMap((round, index) => [
-                ...(round.message === null
-                  ? []
-                  : [
-                      {
-                        id: `${round.roundId}:message`,
-                        order: round.order ?? index * 7,
-                        content: <MeetingMessage round={round} config={view.config} />,
-                      },
-                    ]),
-                ...round.answers.map((answer, n) => ({
-                  id: `${round.roundId}:${answer.participantId}`,
-                  order:
-                    answer.order ??
-                    (answer.status === 'waiting'
-                      ? Number.MAX_SAFE_INTEGER
-                      : (round.order ?? index * 7) + n + 1),
-                  content: (
-                    <AnswerCard
-                      answer={answer}
-                      name={nameOf(view.config, answer.participantId, t('secretary'))}
-                      onOpenMinutes={
-                        answer.participantId === SECRETARY_ID &&
-                        view.minutes?.some(
-                          (minutes) => minutes.roundId === round.roundId && minutes.document,
-                        )
-                          ? openRecords
-                          : undefined
-                      }
-                    />
-                  ),
-                })),
-                ...(round.stoppedAt
+            items={[
+              ...view.rounds.flatMap((round, index) => [
+                ...(round.continued
                   ? [
                       {
-                        id: `${round.roundId}:stopped`,
-                        order:
-                          Math.max(
-                            round.order ?? index * 7,
-                            ...round.answers.map((answer) => answer.order ?? 0),
-                          ) + 0.5,
+                        // A person chose to go on with the mention chain here.
+                        id: `${round.roundId}:continued`,
+                        order: continuedOrder(round, index),
                         content: (
                           <p role="status" className="mb-5 text-caption text-muted-foreground">
-                            {t('roundStopped')}
+                            {t('continued')}
                           </p>
                         ),
                       },
                     ]
                   : []),
-              ])
-              .sort((a, b) => a.order - b.order)}
+                ...(round.message === null
+                  ? []
+                  : [
+                      {
+                        id: `${round.roundId}:message`,
+                        order: roundOrder(round, index),
+                        content: <MeetingMessage round={round} config={view.config} />,
+                      },
+                    ]),
+                // One not started has no row, whatever became of it: the activity bar says who
+                // waits, and the row comes at the end once the answer starts.
+                ...round.answers.flatMap((answer, n) =>
+                  !startedAnswer(answer)
+                    ? []
+                    : [
+                        {
+                          id: `${round.roundId}:${answer.participantId}`,
+                          order: answerOrder(round, index, answer, n),
+                          content: (
+                            <AnswerCard
+                              answer={answer}
+                              stopped={round.stoppedAt !== null}
+                              name={nameOf(view.config, answer.participantId, t('secretary'))}
+                              onOpenMinutes={
+                                answer.participantId === SECRETARY_ID &&
+                                view.minutes?.some(
+                                  (minutes) =>
+                                    minutes.roundId === round.roundId && minutes.document,
+                                )
+                                  ? openRecords
+                                  : undefined
+                              }
+                            />
+                          ),
+                        },
+                      ],
+                ),
+              ]),
+              // One stop, one line, at the end of what there was when it came.
+              ...stopLines(view).map((stop) => ({
+                id: `${stop.roundId}:stopped`,
+                order: stop.order,
+                content: (
+                  <p role="status" className="mb-5 text-caption text-muted-foreground">
+                    {t('roundStopped')}
+                  </p>
+                ),
+              })),
+            ].sort((a, b) => a.order - b.order)}
+            tray={
+              view.hold ? (
+                // What the meeting needs from the person now: a held chain's continue card. The
+                // card names itself; this place adds no second name.
+                <div data-pending-tray className="pb-4">
+                  <MeetingContinue
+                    // A hold is where the chain stopped and the continue before it: held again
+                    // at the same place after a continue, it is a new card with a new command.
+                    key={`${view.hold.after}/${lastContinue(view) ?? ''}`}
+                    hold={view.hold}
+                    continueChain={(commandId) => meetings.continueChain(sessionId, { commandId })}
+                    onSettled={refresh}
+                  />
+                </div>
+              ) : null
+            }
             composer={
               // The conversation's composer, with the recipients as its send target.
               <Composer
@@ -260,7 +303,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                   mode,
                   error: error || loadError,
                   onStop: active
-                    ? () => void act(() => meetings.stop(sessionId, active.roundId))
+                    ? () => act(() => meetings.stop(sessionId, active.roundId))
                     : undefined,
                   onSent: () => setSent((count) => count + 1),
                   send: (request) => act(() => meetings.send(sessionId, request)),
@@ -486,17 +529,12 @@ function MeetingActions({
 }
 
 /**
- * The person's message: the kit's sent bubble on the right, whom it was for above it, and its
- * time and copy action in the row the bubble reveals, as in a session.
+ * The person's message: the kit's sent bubble on the right, and its meta line with who receives
+ * it, and the time and copy action the bubble reveals, as in a session.
  */
 function MeetingMessage({ round, config }: { round: RoundView; config: MeetingConfig }) {
   const t = useTranslations('Meetings');
   const format = useFormatter();
-  const secretary = t('secretary');
-  const addressed =
-    round.kind === 'mention' || round.kind === 'secretary'
-      ? round.participantIds.map((id) => nameOf(config, id, secretary)).join(', ')
-      : null;
   // The time alone on the day it was sent; the date joins it afterwards and in the tooltip.
   const created = new Date(round.createdAt);
   const dated = !Number.isNaN(created.getTime());
@@ -509,11 +547,14 @@ function MeetingMessage({ round, config }: { round: RoundView; config: MeetingCo
       : full;
   return (
     <div className="chat-turn flex flex-col items-end gap-1">
-      {addressed ? (
-        <p className="px-1 text-caption text-muted-foreground">{t('to', { names: addressed })}</p>
-      ) : null}
+      {/* As a conversation's sent message: the kit's entrance, not its position animation (the
+          timeline holds every row in place itself), and one meta line that says who receives
+          it, at its end. */}
       <KitChatMessage
         from="user"
+        layout={false}
+        metaProps={{ 'data-chat-part': 'meta', className: 'w-max max-w-[125%]' }}
+        status={<MeetingRoundStatus round={round} config={config} />}
         time={
           when ? (
             <time dateTime={round.createdAt} title={full}>
@@ -545,13 +586,17 @@ const ANSWER_GLYPH: Record<string, AgentStatus> = {
 function AnswerCard({
   answer,
   name,
+  stopped,
   onOpenMinutes,
 }: {
   answer: AnswerView;
   name: string;
+  /** Its message was stopped: while it still runs, it is stopping. */
+  stopped: boolean;
   onOpenMinutes?: (() => void) | undefined;
 }) {
   const t = useTranslations('Meetings');
+  const tp = useTranslations('Presence');
   const detailed = useStore(preferences, (state) => state.chatDensity === 'detailed');
   const failed = FAILED_ANSWER.has(answer.status);
   const httpStatus = /\b(?:HTTP|status)\s*:?\s*(\d{3})\b/i.exec(answer.detail ?? '')?.[1];
@@ -569,9 +614,21 @@ function AnswerCard({
             <>
               {answer.status !== 'answered' ? (
                 <AgentStatusLabel
+                  // A running answer's head says who answers, as a conversation's state word: the
+                  // activity bar says it while this word is out of view.
+                  data-presence-label={
+                    answer.status === 'running' && answer.runId
+                      ? answerLabel(answer.runId)
+                      : undefined
+                  }
                   role={answer.status === 'running' ? 'status' : undefined}
                   status={failed ? 'failed' : (ANSWER_GLYPH[answer.status] ?? 'stopped')}
-                  label={t(`status.${answer.status}`)}
+                  label={
+                    // Stopped, and not ended yet: stopping (features/presence.md).
+                    answer.status === 'running' && stopped
+                      ? tp('state.stopping')
+                      : t(`status.${answer.status}`)
+                  }
                   className={failed ? 'text-danger' : undefined}
                 />
               ) : null}
