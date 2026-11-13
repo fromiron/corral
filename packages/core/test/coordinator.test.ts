@@ -470,7 +470,9 @@ describe('Coordinator: steering with text attachments', () => {
     await Promise.resolve();
     unsubscribe();
     const directiveId = final.directiveOrder[0] ?? '';
-    expect(permits[1]?.directives).toEqual([{ directiveId, text: 'Primary sources only.' }]);
+    expect(permits[1]?.directives).toEqual([
+      { directiveId, text: 'Primary sources only.', origin: 'user' },
+    ]);
     expect('attachments' in (final.directives[directiveId] ?? {})).toBe(false);
     const accepted = events.find((event) => event.type === 'directive.accepted');
     expect(accepted && 'attachments' in accepted.payload).toBe(false);
@@ -563,7 +565,9 @@ describe('Coordinator: steering with text attachments', () => {
     gates[1]?.open();
     const final = await waitForProjection(transport, runId, settled);
     const directiveId = final.directiveOrder[0] ?? '';
-    expect(permits[1]?.directives).toEqual([{ directiveId, text: 'Primary sources only.' }]);
+    expect(permits[1]?.directives).toEqual([
+      { directiveId, text: 'Primary sources only.', origin: 'user' },
+    ]);
     expect('attachments' in (final.directives[directiveId] ?? {})).toBe(false);
   });
 

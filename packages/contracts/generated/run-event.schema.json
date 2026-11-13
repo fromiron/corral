@@ -7742,6 +7742,13 @@
                 "interrupt"
               ]
             },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "user",
+                "advice"
+              ]
+            },
             "attachments": {
               "maxItems": 5,
               "type": "array",
@@ -8321,7 +8328,8 @@
             "directiveId",
             "targetExecutionId",
             "text",
-            "delivery"
+            "delivery",
+            "origin"
           ],
           "additionalProperties": false
         }

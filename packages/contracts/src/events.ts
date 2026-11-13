@@ -479,6 +479,8 @@ export const OutputFinalized = event(
 );
 
 // ── Reins ────────────────────────────────────────────────────────────────────
+export const DirectiveOrigin = z.enum(['user', 'advice']);
+export type DirectiveOrigin = z.infer<typeof DirectiveOrigin>;
 export const DirectiveAccepted = event(
   'directive.accepted',
   z.strictObject({
@@ -487,6 +489,8 @@ export const DirectiveAccepted = event(
     text: z.string().min(1).max(12000),
     /** The delivery actually used: an interrupt the target cannot take is next_request. */
     delivery: z.enum(['next_request', 'interrupt']),
+    /** Who made it: the person or an accepted advice (features/reins.md). */
+    origin: DirectiveOrigin,
     attachments: TextAttachments.optional(),
   }),
 );

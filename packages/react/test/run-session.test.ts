@@ -910,6 +910,7 @@ describe('receipt refresh boundaries', () => {
         targetExecutionId: 'exec_writer',
         text: 'First',
         delivery: 'next_request',
+        origin: 'user',
       },
     });
     expect(getReceipt).not.toHaveBeenCalled();
@@ -978,6 +979,7 @@ describe('receipt refresh boundaries', () => {
         targetExecutionId: 'exec_writer',
         text: 'First',
         delivery: 'next_request',
+        origin: 'user',
       },
     });
     const refresh = store.getState().refreshReceipt('cmd_0');
@@ -1021,6 +1023,7 @@ describe('receipt refresh boundaries', () => {
         targetExecutionId: 'exec_writer',
         text: 'Already delivered',
         delivery: 'next_request',
+        origin: 'user',
       },
     });
     await emit({

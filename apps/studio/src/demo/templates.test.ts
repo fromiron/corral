@@ -326,7 +326,11 @@ describe('demo replies', () => {
 
   it('shows a directive from the request it was delivered in, and only for that execution', () => {
     const input = startInput('write', { round: 2, executionId: 'exec_0007' });
-    const directive = { directiveId: 'dir_0001', text: 'Lead with the cost difference.' };
+    const directive = {
+      directiveId: 'dir_0001',
+      text: 'Lead with the cost difference.',
+      origin: 'user' as const,
+    };
     expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
     expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);
     // Delivered once, it stays in that execution's context for later requests ...
@@ -582,6 +586,7 @@ describe('demo replies', () => {
     const directive = {
       directiveId: 'dir_0009',
       text: 'Keyboard instructions reach the next request.',
+      origin: 'user' as const,
     };
     expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
     expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);

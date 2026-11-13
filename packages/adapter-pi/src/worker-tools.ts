@@ -1,4 +1,5 @@
 import {
+  type DeliveredDirective,
   GenerateImageArgs,
   HashlineEditInput,
   type ParentQuestionMessage,
@@ -361,17 +362,21 @@ export function userPrompt(start: PromptStart): string {
   );
 }
 
-/** How each worker opens a delivered directive; neither is the person's request. */
+/** How each worker opens a person's delivered directive; neither is the person's request. */
 export const DIRECTIVE_PREFIX = 'Instruction from the person supervising this run (';
 export const SDK_DIRECTIVE_PREFIX = 'Corral instruction (';
+/** How both workers open an accepted advice; it does not carry the person's authority. */
+export const ADVICE_DIRECTIVE_PREFIX = "Advice from this run's advisor, not from the person (";
+
+type Delivered = Pick<DeliveredDirective, 'directiveId' | 'text' | 'origin'>;
 
 /** The core worker's form of one delivered directive; each directive is its own message. */
-export const directiveText = (d: { directiveId: string; text: string }) =>
-  `${DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`;
+export const directiveText = (d: Delivered) =>
+  `${d.origin === 'user' ? DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`;
 
 /** The SDK worker's form of one delivered directive. */
-export const sdkDirectiveText = (d: { directiveId: string; text: string }) =>
-  `${SDK_DIRECTIVE_PREFIX}${d.directiveId}):\n${d.text}`;
+export const sdkDirectiveText = (d: Delivered) =>
+  `${d.origin === 'user' ? SDK_DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}):\n${d.text}`;
 
 export function parentQuestionsText(questions: readonly ParentQuestionMessage[]): string {
   return (

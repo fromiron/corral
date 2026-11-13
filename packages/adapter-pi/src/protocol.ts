@@ -2,6 +2,7 @@ import {
   CallSnapshotInput,
   CompactionReport,
   ContentHash,
+  DirectiveOrigin,
   EffectiveHarnessSnapshot,
   ExtensionUiNotice,
   ExtensionUiRequest,
@@ -221,6 +222,9 @@ export const StartFrame = z.strictObject({
   replyToChildren: z.boolean().optional(),
 });
 
+/** A delivered directive; its origin decides how the worker heads it (features/reins.md). */
+const directive = { directiveId: Identifier, text: Text, origin: DirectiveOrigin };
+
 export const HostFrame = z.discriminatedUnion('type', [
   StartFrame,
   z.strictObject({ type: z.literal('compact'), ...head, commandId: Identifier }),
@@ -236,14 +240,14 @@ export const HostFrame = z.discriminatedUnion('type', [
     requestId: RequestId,
     value: ProtectedContext.nullable(),
   }),
-  z.strictObject({ type: z.literal('directive'), ...head, directiveId: Identifier, text: Text }),
+  z.strictObject({ type: z.literal('directive'), ...head, ...directive }),
   /** A directive that cuts the model response in flight; a running tool is never cut. */
-  z.strictObject({ type: z.literal('interrupt'), ...head, directiveId: Identifier, text: Text }),
+  z.strictObject({ type: z.literal('interrupt'), ...head, ...directive }),
   z.strictObject({
     type: z.literal('reprepare'),
     ...head,
     requestId: RequestId,
-    directives: z.array(z.strictObject({ directiveId: Identifier, text: Text })),
+    directives: z.array(z.strictObject(directive)),
   }),
   z.strictObject({ type: z.literal('ack'), ...head, requestId: RequestId }),
   z.strictObject({
@@ -258,7 +262,7 @@ export const HostFrame = z.discriminatedUnion('type', [
     sessionId: z.string().min(1).max(256).optional(),
     cacheRetention: z.enum(['none', 'short', 'long']).optional(),
     purpose: z.enum(['turn', 'retry', 'compaction', 'extension']).optional(),
-    directives: z.array(z.strictObject({ directiveId: Identifier, text: Text })),
+    directives: z.array(z.strictObject(directive)),
     parentQuestions: z
       .array(
         z.strictObject({

@@ -7,7 +7,7 @@ import type {
   SettledBasis,
 } from './effort-routing.ts';
 import type { CommandError } from './errors.ts';
-import type { ModelProfileSnapshot } from './events.ts';
+import type { DirectiveOrigin, ModelProfileSnapshot } from './events.ts';
 import type {
   CompactionReport,
   EffectiveHarnessSnapshot,
@@ -136,6 +136,8 @@ export interface AgentStartInput {
 export interface DeliveredDirective {
   directiveId: string;
   text: string;
+  /** Who made it; a worker wraps each origin in its own heading (features/reins.md). */
+  origin: DirectiveOrigin;
 }
 
 /** Agent-originated questions; they never carry human directive or approval authority. */

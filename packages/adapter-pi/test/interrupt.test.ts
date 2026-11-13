@@ -275,7 +275,7 @@ describe('interrupt on the core worker', () => {
     );
     const handle = await adapter.start(startInput(), host);
     await running.wait();
-    handle.interrupt?.({ directiveId: 'dir_tool', text: TEXT });
+    handle.interrupt?.({ directiveId: 'dir_tool', text: TEXT, origin: 'user' as const });
     await tick();
     finish.open();
     expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
@@ -313,7 +313,7 @@ describe('interrupt on the core worker', () => {
     );
     const handle = await adapter.start(startInput(), host);
     await authorizing.wait();
-    handle.interrupt?.({ directiveId: 'dir_between', text: TEXT });
+    handle.interrupt?.({ directiveId: 'dir_between', text: TEXT, origin: 'user' as const });
     await tick();
     authorize.open();
     expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
@@ -342,7 +342,7 @@ describe('interrupt on the core worker', () => {
     );
     const handle = await adapter.start(startInput(), host);
     await entered.wait();
-    handle.interrupt?.({ directiveId: 'dir_cancel', text: TEXT });
+    handle.interrupt?.({ directiveId: 'dir_cancel', text: TEXT, origin: 'user' as const });
     const cancelled = handle.cancel('stopped');
     await tick();
     release.open();
@@ -586,11 +586,15 @@ describe('interrupt on the core worker', () => {
     );
     const handle = await adapter.start(startInput(), host);
     await waiting.wait();
-    handle.pushDirective?.({ directiveId: 'dir_wait', text: 'Keep the API.' });
+    handle.pushDirective?.({
+      directiveId: 'dir_wait',
+      text: 'Keep the API.',
+      origin: 'user' as const,
+    });
     await tick();
     grant.open();
     await entered.wait();
-    handle.interrupt?.({ directiveId: 'dir_cut', text: TEXT });
+    handle.interrupt?.({ directiveId: 'dir_cut', text: TEXT, origin: 'user' as const });
     await tick();
     release.open();
     expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
@@ -634,7 +638,7 @@ describe('interrupt on the core worker', () => {
     );
     const handle = await adapter.start(startInput(), host);
     await retrying.wait();
-    handle.interrupt?.({ directiveId: 'dir_retry', text: TEXT });
+    handle.interrupt?.({ directiveId: 'dir_retry', text: TEXT, origin: 'user' as const });
     await tick();
     permit.open();
     expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
@@ -718,7 +722,8 @@ describe('interrupt on the core worker', () => {
       {
         // The retry's preparation starts with its own protected-context read.
         protectedContext: () => {
-          if (++protectedReads === 2) handle?.interrupt?.({ directiveId: 'dir_prep', text: TEXT });
+          if (++protectedReads === 2)
+            handle?.interrupt?.({ directiveId: 'dir_prep', text: TEXT, origin: 'user' as const });
           return undefined as never;
         },
       },
@@ -807,7 +812,7 @@ describe('interrupt on the core worker', () => {
     });
     const handle = await adapter.start(startInput(), host);
     await entered.wait();
-    handle.interrupt?.({ directiveId: 'dir_late', text: TEXT });
+    handle.interrupt?.({ directiveId: 'dir_late', text: TEXT, origin: 'user' as const });
     await tick();
     release.open();
     expect((await handle.waitForSettlement()).outcome).toBe('succeeded');

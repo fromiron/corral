@@ -1235,6 +1235,7 @@
     "roundFinished": "{loop}: round finished ({outcome})",
     "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} check {decision on the checks} route {decision on which way to go} loop_cap {decision on another round} other {decision}}",
     "approvalResolved": "You {decision, select, approve {approved} reject {rejected} other {decided}}",
+    "approvalClosed": "Closed without a decision",
     "directiveAccepted": "Your instruction for {node} was accepted",
     "directiveAttached": "Your instruction was attached to a request",
     "directiveDispatched": "Your instruction was sent",

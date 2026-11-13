@@ -50,6 +50,7 @@ describe('RunEvent envelope', () => {
       targetExecutionId: 'exec_0001',
       text: 'Primary sources only.',
       delivery: 'next_request',
+      origin: 'user',
     },
   };
 

@@ -26,6 +26,7 @@ import {
   CreateRunRequest,
   type DecisionCancellation,
   type DecisionNode,
+  type DeliveredDirective,
   EffectiveHarnessSnapshot,
   EffortRoutingSettings,
   type EventPayload,
@@ -623,6 +624,13 @@ const WORKING: ReadonlySet<RunProjection['status']> = new Set(['running', 'await
 const deliveredText = (directive: DirectiveView) =>
   directiveWithAttachments(directive.text, directive.attachments);
 
+/** A directive as a worker receives it: its id, delivered text and origin. */
+const delivered = (directive: DirectiveView): DeliveredDirective => ({
+  directiveId: directive.directiveId,
+  text: deliveredText(directive),
+  origin: directive.origin,
+});
+
 /** Error text handed to a model: a retry's last error, or what an error path is told. */
 const clip = (text: string) => text.slice(0, 2000);
 
@@ -973,8 +981,10 @@ export class Coordinator {
     )
       blockers.push('checkpoint_capacity');
     if (
+      // Only the person's newer words are an instruction the checkpoint would lose; an advice
+      // is not.
       Object.values(source.projection.directives).some(
-        (directive) => directive.acceptedSeq > manifest.eventSeq,
+        (directive) => directive.origin === 'user' && directive.acceptedSeq > manifest.eventSeq,
       ) ||
       events.some(
         (event) =>
@@ -2836,8 +2846,11 @@ export class Coordinator {
         q.wake({ questionId, outcome: 'cancelled' });
       }
     if (scope.kind === 'run') {
-      for (const resolve of run.approvals.values()) resolve('reject');
-      run.approvals.clear();
+      // Every approval still waiting closes with the run, before the cancellation is confirmed.
+      const closings = this.storageError ? [] : this.runEndClosings(run, 'cancelled');
+      if (closings.length && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+        this.commit(run, closings);
+      this.wakeApprovalWaiters(run);
     }
     this.wake(run);
     const ids = [...affected];
@@ -3352,6 +3365,7 @@ export class Coordinator {
             targetExecutionId: executionId,
             text: command.payload.text,
             delivery,
+            origin: 'user',
             ...(attachments ? { attachments } : {}),
           },
         },
@@ -3375,18 +3389,46 @@ export class Coordinator {
         );
       },
     );
-    const delivered = {
+    const directive: DeliveredDirective = {
       directiveId,
       text: directiveWithAttachments(command.payload.text, attachments),
+      origin: 'user',
     };
     // Only a working target has a response to cut; one waiting on the person, or not started
     // yet, takes the directive with its first request after, as any directive.
     if (delivery === 'interrupt' && handle?.interrupt && execution.status === 'active')
-      handle.interrupt(delivered);
-    else handle?.pushDirective?.(delivered);
+      handle.interrupt(directive);
+    else handle?.pushDirective?.(directive);
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return this.currentReceipt(stored);
+  }
+
+  /**
+   * The runtime's closing of every approval still waiting when the run ends, whatever its kind:
+   * drafts for the commit that ends it (api-contract, "구현에서 정한 검토·승인 규칙"). An approval
+   * already closed is not pending and is left alone. The caller wakes the waiters once, after it.
+   */
+  private runEndClosings(run: LiveRun, reason: 'cancelled' | 'execution_ended'): EventDraft[] {
+    return Object.values(run.projection.approvals)
+      .filter((approval) => approval.status === 'pending')
+      .map((approval) => ({
+        type: 'approval.resolved',
+        ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
+        payload: {
+          approvalId: approval.approvalId,
+          decision: 'reject',
+          actor: RUNTIME.id,
+          subjectVersionIds: approval.subjectVersionIds,
+          reason,
+        },
+      }));
+  }
+
+  /** Tells every waiter on an approval no, once; each reads it after the closing commits. */
+  private wakeApprovalWaiters(run: LiveRun) {
+    for (const resolve of run.approvals.values()) resolve('reject');
+    run.approvals.clear();
   }
 
   /** A steer receipt follows its directive: queued until a request carries it. */
@@ -4084,8 +4126,10 @@ export class Coordinator {
       q.wake({ questionId, outcome: 'cancelled' });
     }
     run.questions.clear();
-    for (const resolve of run.approvals.values()) resolve('reject');
-    run.approvals.clear();
+    // Every approval still waiting closes in the commit that ends the run, before its end. A run
+    // failing as its cancellation goes unconfirmed closed its approvals at the cancel request.
+    drafts.push(...this.runEndClosings(run, 'execution_ended'));
+    this.wakeApprovalWaiters(run);
     this.wake(run);
     try {
       this.commit(run, [...drafts, ...this.closeRounds(run), runState(status, 'failed', reason)]);
@@ -5763,13 +5807,16 @@ export class Coordinator {
       return;
     }
     // The output and the run's success are one fact: readers never see one without the other.
+    // An approval still waiting (a stopped child's, say) closes in the same commit.
     this.commit(run, [
+      ...this.runEndClosings(run, 'execution_ended'),
       {
         type: 'output.finalized',
         payload: { nodeId: output.id, artifactVersionIds: versions, approvalId },
       },
       runState('running', 'succeeded', 'output_finalized'),
     ]);
+    this.wakeApprovalWaiters(run);
   }
 
   // ── reviews and approvals ───────────────────────────────────
@@ -6680,7 +6727,12 @@ export class Coordinator {
       );
       return;
     }
-    this.commit(run, [...this.closeRounds(run), runState(status, to, reason)]);
+    this.commit(run, [
+      ...this.runEndClosings(run, 'cancelled'),
+      ...this.closeRounds(run),
+      runState(status, to, reason),
+    ]);
+    this.wakeApprovalWaiters(run);
   }
 
   /** Run-owned services outlive a tool call, but never a pause or confirmed Run ending. */
@@ -8159,7 +8211,7 @@ export class Coordinator {
         run.projection.directiveOrder.flatMap((id) => {
           const d = run.projection.directives[id];
           return d?.targetExecutionId === executionId && d.status === 'queued'
-            ? [{ directiveId: id, text: deliveredText(d) }]
+            ? [delivered(d)]
             : [];
         }),
       checkpointContext: async (raw) => {
@@ -8621,10 +8673,7 @@ export class Coordinator {
                 d.status === 'queued' &&
                 (!record || record.directiveIds.includes(d.directiveId)),
             )
-            .map((d) => ({
-              directiveId: d?.directiveId ?? '',
-              text: d ? deliveredText(d) : '',
-            }));
+            .flatMap((d) => (d ? [delivered(d)] : []));
           const directiveIds = queued.map((d) => d.directiveId);
           this.commit(run, [
             ...(record

@@ -2,6 +2,7 @@ import type {
   AgentHost,
   AgentObservation,
   AgentStartInput,
+  DeliveredDirective,
   RequestPermit,
   TextDelta,
   ToolAuthorization,
@@ -41,7 +42,7 @@ class RecordingHost implements AgentHost {
   calls: string[] = [];
   permits: RequestPermit[] = [];
   observations: AgentObservation[] = [];
-  directivesPerRequest: { directiveId: string; text: string }[][] = [];
+  directivesPerRequest: DeliveredDirective[][] = [];
   denyTool: string | null = null;
   private n = 0;
 
@@ -119,7 +120,10 @@ describe('ScriptedAgentAdapter', () => {
 
   it('reflects the delivered directives and input versions in its reply', async () => {
     const host = new RecordingHost();
-    host.directivesPerRequest = [[], [{ directiveId: 'dir_0001', text: 'Primary sources only.' }]];
+    host.directivesPerRequest = [
+      [],
+      [{ directiveId: 'dir_0001', text: 'Primary sources only.', origin: 'user' }],
+    ];
     const handle = await new ScriptedAgentAdapter({ turns: 2 }).start(input, host);
     await handle.waitForSettlement();
     const [first, second] = host.observations;

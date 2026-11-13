@@ -5,6 +5,7 @@ import {
   type AgentHost,
   type AgentSettlement,
   type AgentStartInput,
+  type DeliveredDirective,
   FILE_TOOLS,
   type ModelProfileSnapshot,
   ModelRequestRecord,
@@ -186,11 +187,11 @@ class WorkerExecution {
         : {}),
       cancel: (reason) => this.cancel(reason),
       waitForSettlement: () => this.settlement,
-      pushDirective: (directive: { directiveId: string; text: string }) => {
+      pushDirective: (directive: DeliveredDirective) => {
         if (this.state === 'running' && !this.pendingSettlement)
           this.send({ type: 'directive', ...directive });
       },
-      interrupt: (directive: { directiveId: string; text: string }) => {
+      interrupt: (directive: DeliveredDirective) => {
         if (this.state === 'running' && !this.pendingSettlement)
           this.send({ type: 'interrupt', ...directive });
       },
