@@ -1963,14 +1963,15 @@ async function createCorralServer(
     id: () => `schedule_${crypto.randomUUID().replaceAll('-', '')}`,
     repository: corrals,
     // a scheduled request is admitted like a typed one: with the session's current criteria.
+    // It runs without the session's advisor (features/advisor.md, 두는 곳 › 대화).
     start: async (request, signal) => {
-      const session = request.sessionId ? await corrals.getSession(request.sessionId) : null;
-      const sessionCriteria = session?.criteria;
+      const sessionCriteria = request.sessionId
+        ? (await corrals.getSession(request.sessionId))?.criteria
+        : undefined;
       return autoStarter.start(request, {
         fileTools: false,
         signal,
         ...(sessionCriteria?.length ? { sessionCriteria } : {}),
-        ...(session?.advisor ? { sessionAdvisor: session.advisor } : {}),
       });
     },
     previous: recordedAuto,

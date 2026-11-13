@@ -252,3 +252,33 @@ it('a person’s start racing the server’s start of the same entry is one run 
     s.server.coordinator.listRuns().filter((run) => run.sessionId === s.sessionId),
   ).toHaveLength(2);
 });
+
+it('a scheduled run of the session starts without its advisor', async () => {
+  const s = await setup();
+  await s.advisor({ modelProfile: 'model-b' });
+  const created = await s.send('POST', '/schedules', {
+    title: 'Review',
+    hostId: 'local',
+    projectId: 'default',
+    sessionId: s.sessionId,
+    timezone: 'Asia/Tokyo',
+    rule: { kind: 'daily', time: '09:00' },
+    enabled: false,
+    request: {
+      brief: 'Summarize the available information.',
+      choice: { modelProfile: 'model-a' },
+      mode: 'mock',
+      permissionMode: 'ask',
+      configRevision: 1,
+    },
+  });
+  expect(created.status).toBeLessThan(300);
+  const run = await s.send('POST', `/schedules/${created.body.id}/run`, {
+    commandId: 'manual_review',
+    expectedRevision: 1,
+  });
+  const runId = run.body.occurrences?.[0]?.runId ?? null;
+  expect(runId).toBeTruthy();
+  await s.ended(runId);
+  expect(await s.observers(runId)).toEqual([]);
+});

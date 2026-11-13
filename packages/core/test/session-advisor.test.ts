@@ -115,7 +115,8 @@ describe('the conversation definition with the session advisor', () => {
       name: SESSION_ADVISOR_NAME,
       prompt: SESSION_ADVISOR_PROMPT,
       modelProfile: 'model-b',
-      allowedWorkTools: ['search', 'read_document', 'list_files', 'read_file'],
+      // The conversation's roles read nothing here, so neither does its advisor.
+      allowedWorkTools: [],
       allowedCollaborationTools: ['read_artifact', 'advise'],
       outputContract: 'notes',
     });
@@ -131,6 +132,25 @@ describe('the conversation definition with the session advisor', () => {
     const compiled = compileDefinition(definition);
     expect(compiled.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
     expect(compiled.ok).toBe(true);
+  });
+
+  it('gives the advisor only the read tools the conversation’s roles have', async () => {
+    const files = await started({}, { sessionAdvisor: ON, fileTools: true });
+    expect(lead(files)?.allowedWorkTools).toEqual(expect.arrayContaining(['read_file']));
+    expect(advisorOf(files).role?.allowedWorkTools).toEqual(['list_files', 'read_file']);
+    // A saved team whose roles read documents and search lends the advisor those reads, no more.
+    const corral = linearCorral(['writer', 'editor']);
+    const [writer, editor] = corral.roles;
+    if (!writer || !editor) throw new Error('no roles');
+    writer.allowedWorkTools = ['write_artifact', 'search'];
+    editor.allowedWorkTools = ['write_artifact', 'read_document'];
+    const team = await started(
+      { team: { corralId: 'corral_saved' } },
+      { sessionAdvisor: ON },
+      corral,
+    );
+    expect(advisorOf(team).role?.allowedWorkTools).toEqual(['search', 'read_document']);
+    expect(compileDefinition(team).ok).toBe(true);
   });
 
   it('adds nothing when the advisor is off', async () => {
@@ -168,7 +188,12 @@ describe('the conversation definition with the session advisor', () => {
       allowedCollaborationTools: collaboration,
       outputContract: 'notes' as const,
     });
-    corral.roles.push(reader('checker', ['read_artifact', 'advise']), reader('shared', []));
+    corral.roles.push(
+      reader('checker', ['read_artifact', 'advise']),
+      reader('shared', []),
+      // An advisor role no node runs yet.
+      reader('spare', ['advise']),
+    );
     for (const [id, roleId] of [
       ['checker', 'checker'],
       ['second_look', 'shared'],
@@ -217,6 +242,7 @@ describe('the conversation definition with the session advisor', () => {
     expect(ids).toContain('team_editor_role');
     expect(ids).not.toContain('team_checker');
     expect(ids).not.toContain('team_shared');
+    expect(ids).not.toContain('team_spare');
     expect(definition.roles.flatMap((role) => role.allowedCollaborationTools)).not.toContain(
       'advise',
     );
@@ -263,6 +289,126 @@ describe('the conversation definition with the session advisor', () => {
     ]);
     expect(compileDefinition(both).ok).toBe(true);
   });
+
+  it('does not take its reads from an advisor the definition already has', () => {
+    const base = { ...linearCorral(['writer']), entryNodeId: 'writer' };
+    for (const role of base.roles) role.allowedWorkTools = ['write_artifact'];
+    base.roles.push({
+      id: 'reader',
+      name: 'Reader',
+      prompt: 'Watch.',
+      modelProfile: 'model-c',
+      allowedWorkTools: ['read_file'],
+      allowedCollaborationTools: ['read_artifact', 'advise'],
+      outputContract: 'notes',
+    });
+    base.nodes.push({
+      id: 'reader',
+      type: 'agent',
+      label: 'Reader',
+      roleId: 'reader',
+      invocation: 'observer',
+      outputName: 'notes',
+    });
+    base.capabilityLinks.push({
+      id: 'reader_watch',
+      kind: 'advise',
+      sourceNodeId: 'reader',
+      targetNodeId: 'writer',
+    });
+    const added = withSessionAdvisor(base, ON);
+    expect(added.roles.find((role) => role.id === 'session_advisor')?.allowedWorkTools).toEqual([]);
+  });
+
+  it('does not reuse an advise link id that is already taken', () => {
+    const base = { ...linearCorral(['writer', 'editor']), entryNodeId: 'writer' };
+    base.capabilityLinks.push({
+      id: 'session_advisor_watch',
+      kind: 'delegate',
+      sourceNodeId: 'writer',
+      targetNodeId: 'editor',
+    });
+    const added = withSessionAdvisor(base, ON);
+    expect(advisorOf(added).node?.id).toBe('session_advisor_2');
+    expect(advisorOf(added).link?.id).toBe('session_advisor_2_watch');
+    expect(new Set(added.capabilityLinks.map((l) => l.id)).size).toBe(added.capabilityLinks.length);
+  });
+
+  it('says when the start is refused because the advisor’s model cannot be prepared', async () => {
+    const refusal = async (advisor: { modelProfile: string }) => {
+      const starter = createAutoStarter({
+        prepareModels: (_request, profiles = ['model-a']) => {
+          const missing = profiles.find((profile) => profile !== 'model-a');
+          if (missing)
+            return {
+              ok: false,
+              error: { code: 'MODEL_UNAVAILABLE', message: `${missing}: no credentials` },
+            };
+          return {
+            ok: true,
+            models: Object.fromEntries(
+              profiles.map((profile) => [
+                profile,
+                { profile, provider: 'fixture', modelId: 'fixture', auth: 'api_key' as const },
+              ]),
+            ),
+          };
+        },
+        startRun: (start) => accepted(start.commandId),
+      });
+      const result = await starter.start(
+        {
+          commandId: 'cmd_chat',
+          sessionId: 'session_chat',
+          brief: 'Fix the bug',
+          mode: 'live',
+          choice,
+          team: 'none',
+        },
+        { fileTools: false, sessionAdvisor: advisor },
+      );
+      return result.receipt.error;
+    };
+    expect(await refusal({ modelProfile: 'model-b' })).toEqual({
+      code: 'MODEL_UNAVAILABLE',
+      message: 'Advisor model model-b: no credentials',
+    });
+  });
+
+  it('says nothing of the advisor when a role it shares a model with cannot get it', async () => {
+    const corral = linearCorral(['writer']);
+    const writer = corral.roles[0];
+    if (!writer) throw new Error('no role');
+    writer.modelProfile = 'model-b';
+    const starter = createAutoStarter({
+      corral: () => ({ definition: corral, definitionRevision: 1 }),
+      prepareModels: (_request, profiles = ['model-a']) =>
+        profiles.includes('model-b')
+          ? { ok: false, error: { code: 'MODEL_UNAVAILABLE', message: 'model-b: no credentials' } }
+          : {
+              ok: true,
+              models: {
+                'model-a': { profile: 'model-a', provider: 'f', modelId: 'f', auth: 'api_key' },
+              },
+            },
+      startRun: (start) => accepted(start.commandId),
+    });
+    const result = await starter.start(
+      {
+        commandId: 'cmd_chat',
+        sessionId: 'session_chat',
+        brief: 'Fix the bug',
+        mode: 'live',
+        choice,
+        team: { corralId: 'corral_saved' },
+      },
+      { fileTools: false, sessionAdvisor: ON },
+    );
+    expect(result.receipt.error).toEqual({
+      code: 'MODEL_UNAVAILABLE',
+      message: 'model-b: no credentials',
+    });
+  });
 });
 
 // ── on a Coordinator ────────────────────────────────────────────────────────────────────────
@@ -283,6 +429,9 @@ interface Run {
   files?: ConstructorParameters<typeof Coordinator>[0]['files'];
   harness?: AutoStart['harness'];
   advisorOn?: boolean;
+  tools?: ConstructorParameters<typeof Coordinator>[0]['tools'];
+  /** The conversation's roles read and write files. */
+  fileTools?: boolean;
 }
 
 /** A conversation started through the auto starter on a Coordinator, scripted agents only. */
@@ -324,6 +473,7 @@ async function conversation(options: Run = {}) {
     agents,
     ...(options.harnesses ? { harnesses: options.harnesses } : {}),
     ...(options.files ? { files: options.files } : {}),
+    ...(options.tools ? { tools: options.tools } : {}),
   });
   const starter = createAutoStarter({ startRun: (request) => coordinator.startRun(request) });
   const result = await starter.start(
@@ -336,7 +486,10 @@ async function conversation(options: Run = {}) {
       team: 'none',
       ...(options.harness ? { harness: options.harness } : {}),
     },
-    { fileTools: false, ...(options.advisorOn === false ? {} : { sessionAdvisor: ON }) },
+    {
+      fileTools: options.fileTools ?? false,
+      ...(options.advisorOn === false ? {} : { sessionAdvisor: ON }),
+    },
   );
   const runId = result.runId;
   if (!runId) throw new Error(JSON.stringify(result.receipt));
@@ -425,6 +578,50 @@ describe('a conversation with the session advisor on a Coordinator', () => {
     expect(answer(c)).toBe('answer 4');
   });
 
+  it('a search the conversation’s roles do not have is refused and reaches no provider', async () => {
+    const reached: unknown[] = [];
+    const results: string[] = [];
+    const c = await conversation({
+      tools: {
+        execute: async (call) => {
+          reached.push(call);
+          return { results: [] };
+        },
+      },
+      lead: { turns: 3 },
+      advisor: {
+        script: async (_input, host) => {
+          for (;;) {
+            const review = await host.nextReview?.();
+            if (!review) return { outcome: 'succeeded' };
+            if (results.length > 0) continue;
+            const permit = await host.prepareModelRequest();
+            await host.modelRequestDispatched?.(permit.modelCallId);
+            await host.observe({
+              kind: 'model_completed',
+              modelCallId: permit.modelCallId,
+              text: 'reviewing',
+              usage: { inputTokens: 1, outputTokens: 1 },
+            });
+            for (const args of [{ query: 'x' }, { query: 'x', provider: 'brave' }]) {
+              const outcome = await host.invokeTool({ name: 'search', args });
+              results.push(outcome.ok ? 'ok' : outcome.error.code);
+            }
+            const document = await host.invokeTool({
+              name: 'read_document',
+              args: { documentId: 'doc_1' },
+            });
+            results.push(document.ok ? 'ok' : document.error.code);
+          }
+        },
+      },
+    });
+    await c.ended();
+    expect(results).toEqual(['CAPABILITY_DENIED', 'CAPABILITY_DENIED', 'CAPABILITY_DENIED']);
+    expect(reached).toEqual([]);
+    expect(c.projection().status).toBe('succeeded');
+  });
+
   it('the answering role’s work style denies the advisor’s reads', async () => {
     const readFile = {
       name: 'read_file',
@@ -458,6 +655,7 @@ describe('a conversation with the session advisor on a Coordinator', () => {
     const executed: unknown[] = [];
     const results: string[] = [];
     const c = await conversation({
+      fileTools: true,
       harness: style.binding,
       harnesses: {
         resolve: () => JSON.parse(JSON.stringify(style)) as EffectiveHarnessSnapshot,

@@ -309,6 +309,24 @@ export const SESSION_ADVISOR_PROMPT = [
   'When nothing would change the outcome, do not advise.',
 ].join('\n');
 
+/**
+ * A refused model preparation names the session advisor's model when the profile that failed is
+ * the advisor's alone (a preparation's message starts with the profile that failed).
+ */
+function advisorModelError(
+  definition: CorralDefinition,
+  advisor: SessionAdvisorChoice | null | undefined,
+  error: CommandError,
+): CommandError {
+  const profile = advisor?.modelProfile;
+  if (!profile || !error.message.startsWith(`${profile}: `)) return error;
+  const advisors = advisorRoleIds(definition);
+  const shared = definition.roles.some(
+    (role) => !advisors.has(role.id) && role.modelProfile === profile,
+  );
+  return shared ? error : { ...error, message: `Advisor model ${error.message}` };
+}
+
 /** The advisor name its advice's heading carries. */
 export const SESSION_ADVISOR_NAME = 'Advisor';
 
@@ -337,6 +355,14 @@ export function withSessionAdvisor(
     ...definition.nodes.map((node) => node.id),
     ...definition.capabilityLinks.map((link) => link.id),
   ]);
+  // It reads no further than the conversation's own roles do (features/advisor.md, 두는 곳 › 대화).
+  const advisors = advisorRoleIds(definition);
+  const held = new Set(
+    definition.roles
+      .filter((role) => !advisors.has(role.id))
+      .flatMap((role) => role.allowedWorkTools),
+  );
+  const reads = ADVISOR_WORK_TOOLS.filter((tool) => held.has(tool));
   let id = 'session_advisor';
   for (let n = 2; taken.has(id) || taken.has(`${id}_watch`); n++) id = `session_advisor_${n}`;
   return {
@@ -349,7 +375,7 @@ export function withSessionAdvisor(
         prompt: SESSION_ADVISOR_PROMPT,
         modelProfile: advisor.modelProfile,
         ...(lead?.harness ? { harness: { ...lead.harness } } : {}),
-        allowedWorkTools: [...ADVISOR_WORK_TOOLS],
+        allowedWorkTools: reads,
         allowedCollaborationTools: [...ADVISOR_COLLABORATION_TOOLS],
         outputContract: 'notes',
       },
@@ -778,7 +804,10 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
           return {
             runId: null,
             autoRoute: null,
-            receipt: { ...conflict(request).receipt, error: again.error },
+            receipt: {
+              ...conflict(request).receipt,
+              error: advisorModelError(definition, context.sessionAdvisor, again.error),
+            },
           };
         teamModels = again?.models;
       }
