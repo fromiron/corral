@@ -2605,8 +2605,7 @@
       "new": "Send",
       "join": "Join",
       "interrupt": "Interrupt",
-      "queue": "Next request",
-      "meeting": "Send"
+      "queue": "Next request"
     },
     "keyHint": {
       "new": "Send",
@@ -5318,7 +5317,7 @@
     "recipients": {
       "auto": "Auto",
       "none": "No one",
-      "count": "{count} people",
+      "count": "{count, plural, one {# person} other {# people}}",
       "label": "Recipients: {name}"
     }
   },

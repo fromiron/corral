@@ -159,9 +159,12 @@ test('role and secretary selection survive reopening without more calls', async 
   await page.keyboard.press('Space');
   await expect(secretary).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('Escape');
+  // Narrow, the chosen read as a count, so the badge keeps its width.
   await expect(
-    page.getByRole('button', { name: 'Recipients: Secretary', exact: true }),
+    page.getByRole('button', { name: 'Recipients: 1 person', exact: true }),
   ).toBeVisible();
+  // Escape gave the focus back to the box.
+  await expect(page.getByRole('textbox', { name: 'Meeting message', exact: true })).toBeFocused();
   await send(page, 'Record the remaining disagreement');
   await finishReplies(page, id, 2);
   await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Secretary');

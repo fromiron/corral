@@ -2605,8 +2605,7 @@
       "new": "보내기",
       "join": "합류",
       "interrupt": "끼어들기",
-      "queue": "다음 요청",
-      "meeting": "보내기"
+      "queue": "다음 요청"
     },
     "keyHint": {
       "new": "보내기",

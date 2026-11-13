@@ -19,7 +19,8 @@ const probeOptions = {
 
 function expectStill(result: ShiftResult) {
   expect(result.samples.frames, `${result.name}: frames`).toBeGreaterThan(0);
-  expect(result.maxInputBottomChangePx ?? 0, `${result.name}: input`).toBe(0);
+  // Null, when the input was never found, fails too.
+  expect(result.maxInputBottomChangePx, `${result.name}: input`).toBe(0);
   const moved = result.items.filter(
     (item) =>
       item.kind === 'item' && Math.max(item.maxContainerShiftYPx, item.maxContainerShiftXPx) > 1,
@@ -38,6 +39,39 @@ async function meeting(page: Page, id: string): Promise<MeetingView> {
   );
   expect(response.ok()).toBeTruthy();
   return response.json();
+}
+
+/**
+ * Follows the input box's top and bottom edges on screen every frame, from now until the
+ * returned stop, which gives how far each moved (max − min); null when the box was not found.
+ */
+async function trackInputEdges(page: Page) {
+  await page.evaluate(() => {
+    const edges = { top: [] as number[], bottom: [] as number[], running: true };
+    (window as unknown as { __inputEdges: typeof edges }).__inputEdges = edges;
+    const sample = () => {
+      const box = document.querySelector('[data-testid="chat-composer"] textarea');
+      if (box) {
+        const rect = box.getBoundingClientRect();
+        edges.top.push(rect.top);
+        edges.bottom.push(rect.bottom);
+      }
+      if (edges.running) requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  return () =>
+    page.evaluate(() => {
+      const edges = (
+        window as unknown as { __inputEdges: { top: number[]; bottom: number[]; running: boolean } }
+      ).__inputEdges;
+      edges.running = false;
+      const spread = (values: number[]) =>
+        values.length < 2
+          ? null
+          : Math.round((Math.max(...values) - Math.min(...values)) * 10) / 10;
+      return { top: spread(edges.top), bottom: spread(edges.bottom), frames: edges.top.length };
+    });
 }
 
 const ANSWER = `${'Launch on Tuesday: the rollout checklist is done and support is staffed. '.repeat(14)}That is my pick.`;
@@ -136,4 +170,90 @@ test.describe('a meeting in the conversation frame', () => {
     expect(requests).toBe(1);
     expect(corral.errors).toEqual([]);
   });
+
+  // Under 640px the kit's tool line wraps; what the meeting puts on it keeps one width whatever
+  // the recipients are and whether someone answers, so the line, and the input above it, stay.
+  for (const width of [480, 390]) {
+    test(`at ${width}px the input holds still while the recipients change and an answer runs`, async ({
+      page,
+      corral,
+    }) => {
+      test.setTimeout(180_000);
+      corral.fake?.setResponses([() => fauxAssistantMessage(ANSWER)]);
+      await page.setViewportSize({ width, height: 800 });
+      await corral.open('/projects/default');
+      await page.getByRole('button', { name: 'New meeting', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Create a meeting' });
+      await dialog.getByLabel('Meeting name', { exact: true }).fill('Launch day');
+      await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
+      await expect(page).toHaveURL(/\/sessions\/session_/);
+      const id = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+      const { config } = await meeting(page, id);
+      const [first, second] = config.participants;
+      const composer = page.getByTestId('chat-composer');
+      const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+      const recipients = composer.locator('[data-slot="composer-target"]');
+      const timeline = page.getByTestId('chat-timeline');
+      const choose = (role: 'menuitemradio' | 'menuitemcheckbox', name: string) =>
+        page.getByRole(role, { name, exact: true }).click();
+
+      // The first message takes the empty room's centred composer to the bottom; not measured.
+      await recipients.click();
+      await choose('menuitemradio', 'No one');
+      await box.fill('The launch is next week');
+      await box.press('Enter');
+      await expect(timeline.getByText('The launch is next week', { exact: true })).toBeVisible();
+      await waitForStill(page);
+
+      // Auto → one name → two names → no one, and back to Auto.
+      let stop = await trackInputEdges(page);
+      await recipients.click();
+      await choose('menuitemcheckbox', must(first, 'the first participant').name);
+      // Narrow, the chosen read as a count: the badge keeps its width.
+      await expect(recipients).toHaveAccessibleName('Recipients: 1 person');
+      await choose('menuitemcheckbox', must(second, 'the second participant').name);
+      await expect(recipients).toHaveAccessibleName('Recipients: 2 people');
+      await choose('menuitemradio', 'No one');
+      await expect(recipients).toHaveAccessibleName('Recipients: No one');
+      // A menu used gives the focus back to the box.
+      await expect(box).toBeFocused();
+      await recipients.click();
+      await choose('menuitemradio', 'Auto');
+      await expect(recipients).toHaveAccessibleName('Recipients: Auto');
+      await expect(box).toBeFocused();
+      await waitForStill(page);
+      const changed = await stop();
+      expect(changed.frames, `${width}: recipient frames`).toBeGreaterThan(1);
+      expect(changed.top, `${width}: input top while the recipients change`).toBeLessThanOrEqual(1);
+      expect(
+        changed.bottom,
+        `${width}: input bottom while the recipients change`,
+      ).toBeLessThanOrEqual(1);
+
+      // An answer starts (Stop appears) and ends (Stop goes).
+      await box.fill('Which day?');
+      await waitForStill(page);
+      stop = await trackInputEdges(page);
+      await box.press('Enter');
+      await expect(box).toHaveValue('');
+      await expect(
+        composer.getByRole('button', { name: 'Stop answering', exact: true }),
+      ).toBeVisible();
+      await expect
+        .poll(async () => (await meeting(page, id)).rounds[1]?.answers[0]?.status, {
+          timeout: 60_000,
+        })
+        .toBe('answered');
+      await expect(
+        composer.getByRole('button', { name: 'Stop answering', exact: true }),
+      ).toHaveCount(0);
+      await waitForStill(page);
+      const answered = await stop();
+      expect(answered.frames, `${width}: answer frames`).toBeGreaterThan(1);
+      expect(answered.top, `${width}: input top while an answer runs`).toBeLessThanOrEqual(1);
+      expect(answered.bottom, `${width}: input bottom while an answer runs`).toBeLessThanOrEqual(1);
+      console.log(`MEASURE ${width} ${JSON.stringify({ recipients: changed, answer: answered })}`);
+      expect(corral.errors).toEqual([]);
+    });
+  }
 });
