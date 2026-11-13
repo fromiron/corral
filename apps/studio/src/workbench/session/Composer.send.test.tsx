@@ -1304,6 +1304,25 @@ describe('adding images while a run goes', () => {
     await act(async () => {});
   };
   afterEach(() => vi.restoreAllMocks());
+  // The "+" menu's image item, which opens the picker.
+  const imageItemEnabled = async (f: { container: HTMLElement }) => {
+    const trigger = f.container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${messages.Composer.attachmentActions}"]`,
+    );
+    await act(async () => trigger?.click());
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((node) =>
+      node.textContent?.includes(messages.Composer.attachImages),
+    );
+    expect(item).toBeDefined();
+    const enabled =
+      item?.getAttribute('aria-disabled') !== 'true' && !item?.hasAttribute('data-disabled');
+    await act(async () =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      ),
+    );
+    return enabled;
+  };
 
   it.each([
     ['with a target to join', { exec_writer: 'active' }],
@@ -1311,6 +1330,7 @@ describe('adding images while a run goes', () => {
   ] as const)('can be added %s', async (_, executions) => {
     const f = await mount({ executions, workspaces: uploads() });
     expect(imageInput(f)?.disabled).toBe(false);
+    expect(await imageItemEnabled(f)).toBe(true);
     await attach(f);
     expect(readComposerDraft('session').images).toEqual([IMAGE]);
   });
@@ -1324,6 +1344,7 @@ describe('adding images while a run goes', () => {
     );
     await act(async () => edit?.click());
     expect(imageInput(f)?.disabled).toBe(false);
+    expect(await imageItemEnabled(f)).toBe(true);
   });
 
   it('a next request takes the added image and clears it from the box', async () => {
