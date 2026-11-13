@@ -435,6 +435,13 @@ export async function openResult(page: Page, name?: RegExp) {
  */
 export const activityBar = (page: Page) => page.getByTestId('activity-bar');
 
+/**
+ * The activity bar's closed line: what it says on screen, without its folded panel or its
+ * screen-reader announcements.
+ */
+export const activityLine = (page: Page) =>
+  activityBar(page).locator('[data-activity-bar] > div').first();
+
 /** The session's run is going: the activity bar speaks of a live run. */
 export const runGoing = (page: Page) => page.locator('[data-testid="activity-bar"][data-live]');
 
@@ -465,6 +472,30 @@ export async function stopRun(page: Page) {
     await dialog
       .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
       .click();
+}
+
+/**
+ * Records `count` refused requests in the session, long enough to wrap, so the conversation
+ * scrolls and a card in it can leave the screen.
+ */
+export async function earlierRequests(page: Page, sessionId: string, count: number) {
+  await page.evaluate(
+    async ({ id, count }) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      for (let index = 0; index < count; index += 1) {
+        await fetch(`/api/v1/sessions/${id}/entries`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify({
+            intent: 'next',
+            text: `Earlier request ${index + 1}. ${'Long enough to wrap over lines. '.repeat(3)}`,
+            state: 'refused',
+          }),
+        });
+      }
+    },
+    { id: sessionId, count },
+  );
 }
 
 /** The newest turn's run has succeeded and nothing runs: the activity bar's idle summary. */

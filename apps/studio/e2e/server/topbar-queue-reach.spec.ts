@@ -71,9 +71,16 @@ test.describe('a held run', () => {
     expect(overflow).toEqual({ page: 0, bar: 0, outside: 0 });
     // The controls say what they do in words at this width too.
     await expect(pause).toHaveText('Pause');
-    // One execution works, so Stop stops at once.
+    // The scripted assistant works with its two helpers, so Stop asks first; keeping the run
+    // leaves it running.
     await stop.click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const ask = page.getByRole('dialog', { name: 'Cancel whole run' });
+    await expect(ask).toBeVisible();
+    await ask.getByRole('button', { name: 'Keep running' }).click();
+    await expect(ask).toHaveCount(0);
+    expect(corral.server.coordinator.listRuns()[0]?.status).toBe('running');
+    await stop.click();
+    await ask.getByRole('button', { name: 'Confirm whole run cancellation' }).click();
     await expect
       .poll(() => corral.server.coordinator.listRuns()[0]?.status)
       .toMatch(/^(cancelling|cancelled)$/);
@@ -134,8 +141,17 @@ test.describe('a held run', () => {
     // A narrower bar never brings back what a wider one had already given up.
     const byWidth = [...seen].sort((a, b) => b.bar - a.bar).map((entry) => entry.tier);
     expect(byWidth).toEqual([...byWidth].sort((a, b) => a - b));
-    expect(new Set(byWidth).size).toBeGreaterThan(3);
+    // With the run's pill and controls in the composer, the tiers that only shortened them
+    // (icons, no clock, short pill) give the bar no room of their own, so fewer are seen.
+    expect(new Set(byWidth).size).toBeGreaterThanOrEqual(3);
     await expect(bar).toHaveAttribute('data-topbar-rows', '2');
+    // The second row no longer holds the run, so the view tabs fit there again.
+    await expect(
+      bar.getByRole('tablist', { name: 'Session views', exact: true }).getByRole('tab'),
+    ).toHaveCount(2);
+    // A little wider, on one row, the views fold into one menu.
+    await page.setViewportSize({ width: 520, height: 800 });
+    await expect(bar).toHaveAttribute('data-topbar-rows', '1');
     // Folded into one menu, the views still switch, and each panel keeps its name.
     const views = bar.getByRole('combobox', { name: 'Session views', exact: true });
     await expect(views).toContainText('Conversation');
@@ -143,7 +159,17 @@ test.describe('a held run', () => {
     await expect(page.getByRole('tabpanel', { name: 'Runs', exact: true })).toBeVisible();
     await panelTab(page, 'Conversation');
     await expect(page.getByRole('tabpanel', { name: 'Conversation', exact: true })).toBeVisible();
-    await expect(views).toContainText('Conversation');
+    // The chosen view changes what the bar holds, so the bar fits itself again: folded or as
+    // tabs, it names the current view.
+    await expect(
+      views
+        .or(
+          bar
+            .getByRole('tablist', { name: 'Session views', exact: true })
+            .getByRole('tab', { selected: true }),
+        )
+        .first(),
+    ).toContainText('Conversation');
     // Room given back returns what was folded.
     await page.setViewportSize({ width: 1600, height: 800 });
     await expect(bar).toHaveAttribute('data-topbar-tier', 'full');

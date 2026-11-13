@@ -1,7 +1,7 @@
 import type { RunEvent } from '@corral/contracts';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { activityBar, panelTab, requestBox } from '../workbench.ts';
+import { activityBar, activityLine, panelTab, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Deterministic provider responses exercise the production adapter, Coordinator,
@@ -98,8 +98,8 @@ test('plain completion is announced once and opening history is silent', async (
     // The run row says the state in words; the activity bar, with the row on screen, does not.
     await expect(dock).toHaveAttribute('data-run', 'working');
     await expect(page.getByRole('banner')).not.toContainText('Working');
-    await expect(dock.getByText('Working', { exact: true })).toHaveCount(0);
-    await expect(dock.getByText('Running', { exact: true })).toHaveCount(0);
+    await expect(activityLine(page).getByText('Working', { exact: true })).toHaveCount(0);
+    await expect(activityLine(page).getByText('Running', { exact: true })).toHaveCount(0);
     await expect(
       page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
     ).toHaveCount(0);

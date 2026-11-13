@@ -9,7 +9,9 @@ import { templateForWorkspace } from '../../src/demo/templates.ts';
 import { expect, type Harness, test } from '../server/harness.ts';
 import {
   activityBar,
+  activityLine,
   closeSettings,
+  earlierRequests,
   newConversation,
   openActivity,
   openFolderSettings,
@@ -59,17 +61,23 @@ function hold() {
   return { open, opened, reach, reached };
 }
 
-/** The activity bar's closed line: one row, whatever it says. */
-const line = (page: Page) => activityBar(page).locator('[data-activity-bar] > div').first();
-
 async function barHeights(page: Page) {
   const heights: Record<string, number> = {};
   for (const scheme of ['light', 'dark'] as const) {
+    // The app's dark theme is a class on the root (Settings > Appearance).
     await page.emulateMedia({ colorScheme: scheme });
+    await page.evaluate(
+      (dark) => document.documentElement.classList.toggle('dark', dark),
+      scheme === 'dark',
+    );
     await waitForStill(page, { stillMs: 600 });
-    heights[scheme] = (await line(page).boundingBox())?.height ?? 0;
+    expect(await page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(
+      scheme === 'dark',
+    );
+    heights[scheme] = (await activityLine(page).boundingBox())?.height ?? 0;
   }
   await page.emulateMedia({ colorScheme: 'light' });
+  await page.evaluate(() => document.documentElement.classList.remove('dark'));
   return heights;
 }
 
@@ -264,7 +272,7 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
     await waitForStill(page);
     await noDuplicates(page, 'team');
     const visible = Object.keys((await countVisibleLabels(page)).labels);
-    const closed = (await line(page).innerText()).trim();
+    const closed = (await activityLine(page).innerText()).trim();
 
     // The panel lists every role, by name.
     await openActivity(page);
@@ -306,26 +314,6 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
   }
 });
 
-async function earlier(page: Page, sessionId: string, count: number) {
-  await page.evaluate(
-    async ({ id, count }) => {
-      const { csrfToken } = await (await fetch('/api/v1/session')).json();
-      for (let index = 0; index < count; index += 1) {
-        await fetch(`/api/v1/sessions/${id}/entries`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
-          body: JSON.stringify({
-            intent: 'next',
-            text: `Earlier request ${index + 1}. ${'Long enough to wrap over lines. '.repeat(3)}`,
-            state: 'refused',
-          }),
-        });
-      }
-    },
-    { id: sessionId, count },
-  );
-}
-
 test('④ an approval scrolled off screen is said and decided once, from the bar, never by Enter', async ({
   page,
   corral,
@@ -363,7 +351,7 @@ test('④ an approval scrolled off screen is said and decided once, from the bar
       .click();
     await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
     await panelTab(page, 'Conversation');
-    await earlier(page, sessionId, 20);
+    await earlierRequests(page, sessionId, 20);
     await page.reload();
     await requestBox(page).fill('Check the folder.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -383,11 +371,11 @@ test('④ an approval scrolled off screen is said and decided once, from the bar
     await waitForStill(page);
     await expect(tray).not.toBeInViewport();
     await expect(bar).toHaveAttribute('data-line', 'waiting');
-    await expect(line(page)).toContainText('Run');
+    await expect(activityLine(page)).toContainText('Run');
     // Once on screen: the bar's two buttons, the card's out of view.
-    const approve = line(page).getByRole('button', { name: /^Allow once/ });
+    const approve = activityLine(page).getByRole('button', { name: /^Allow once/ });
     await expect(approve).toBeInViewport();
-    await expect(line(page).getByRole('button', { name: /^Deny/ })).toBeInViewport();
+    await expect(activityLine(page).getByRole('button', { name: /^Deny/ })).toBeInViewport();
     await expect(card.getByRole('button', { name: /^Allow once/ })).not.toBeInViewport();
     await noDuplicates(page, 'card off screen');
     const pending = () => {
@@ -415,6 +403,6 @@ test('④ an approval scrolled off screen is said and decided once, from the bar
     await noDuplicates(page, 'after the decision');
     expect(corral.errors).toEqual([]);
   } finally {
-    await rm(original, { recursive: true, force: true });
+    await rm(original, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

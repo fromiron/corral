@@ -18,10 +18,10 @@ import { expect, test } from './harness.ts';
 async function startRun(
   page: import('@playwright/test').Page,
   corral: { open(path?: string): Promise<void> },
-  fixture: { definition: unknown } = { definition },
+  fixture: { definition: unknown; earlier?: number } = { definition },
 ) {
   await corral.open('/');
-  return page.evaluate(async ({ definition }) => {
+  return page.evaluate(async ({ definition, earlier = 0 }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const call = async (path: string, body: unknown) => {
       const response = await fetch(`/api/v1${path}`, {
@@ -40,6 +40,13 @@ async function startRun(
         corralId: saved.record.corralId,
       })
     ).session;
+    // Refused requests before the run, long enough to wrap, so the conversation scrolls.
+    for (let index = 0; index < earlier; index += 1)
+      await call(`/sessions/${session.sessionId}/entries`, {
+        intent: 'next',
+        text: `Earlier request ${index + 1}. ${'Long enough to wrap over lines. '.repeat(3)}`,
+        state: 'refused',
+      });
     const started = await call('/runs', {
       schemaVersion: '0.1',
       commandId: 'run-page-fixture',
@@ -541,7 +548,7 @@ test('the activity bar names an approval only once its card is off screen, and d
   corral,
 }) => {
   await page.setViewportSize({ width: 390, height: 600 });
-  const started = await startRun(page, corral, { definition: approvalDefinition });
+  const started = await startRun(page, corral, { definition: approvalDefinition, earlier: 12 });
   await corral.open(`/sessions/${started.sessionId}`);
   const tray = page.locator('[data-pending-tray]');
   const card = tray.locator('[data-testid^="approval-"]');
@@ -554,9 +561,9 @@ test('the activity bar names an approval only once its card is off screen, and d
   await expect(bar).not.toHaveAttribute('data-line', 'waiting');
   await expect(bar.getByRole('button', { name: 'Continue with this version' })).toHaveCount(0);
   // Scrolled away, the bar says what waits and decides it with the same two buttons.
-  await page.getByTestId('chat-timeline').evaluate((timeline) => {
-    timeline.scrollTop = 0;
-  });
+  // The person scrolls up, as with the wheel: the conversation stops following its end.
+  await page.getByTestId('chat-timeline').hover({ position: { x: 16, y: 120 } });
+  for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
   await expect(tray).not.toBeInViewport();
   await expect(bar).toHaveAttribute('data-line', 'waiting');
   await expect(bar).toContainText('Your decision');
@@ -572,15 +579,21 @@ test('the activity bar names an approval only once its card is off screen, and d
     ),
   ).toEqual(['pending']);
   await page.keyboard.press('Escape');
+  const [decided] = Object.values(
+    corral.server.coordinator.getSnapshot(started.runId).projection.approvals,
+  );
+  if (!decided) throw new Error('The approval is missing');
   await approve.click();
   await expect
     .poll(
       () =>
-        Object.values(corral.server.coordinator.getSnapshot(started.runId).projection.approvals)[0]
-          ?.status,
+        corral.server.coordinator.getSnapshot(started.runId).projection.approvals[
+          decided.approvalId
+        ]?.status,
     )
     .not.toBe('pending');
-  await expect(card).toHaveCount(0);
+  // Its card leaves the tray; the run may ask for its next decision there.
+  await expect(tray.getByTestId(`approval-${decided.approvalId}`)).toHaveCount(0);
   expect(corral.errors).toEqual([]);
 });
 
