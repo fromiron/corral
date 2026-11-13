@@ -3,7 +3,15 @@ import type { PermissionMode } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
 import { useRef } from 'react';
 import type { StudioServices } from '../../../services.tsx';
-import { type RecordDeps, type Ref, recordEntry, type StartDeps, startNext } from './send.ts';
+import {
+  entryStart,
+  queuedStart,
+  type RecordDeps,
+  type Ref,
+  recordEntry,
+  type StartDeps,
+  startNext,
+} from './send.ts';
 
 // A finished voice utterance goes the same three ways as typed text: queued, as an
 // instruction to the pinned execution, or as a next request.
@@ -74,6 +82,8 @@ export async function performVoice(
         state: 'queued',
         commandId: utterance.commandId,
         ...(permissionMode ? { permissionMode } : {}),
+        // The server starts it with this once the session's run ends.
+        start: queuedStart(deps, utterance.text, permissionMode),
       });
       deps.onChange();
       return { status: 'queued' };
@@ -119,6 +129,7 @@ export async function performVoice(
       refusal: result.error ?? null,
       commandId: utterance.commandId,
       ...(result.auto ? { auto: result.auto } : {}),
+      ...(result.request ? { start: entryStart(result.request) } : {}),
     });
     await deps.invalidate();
     deps.onChange();

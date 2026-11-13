@@ -275,6 +275,14 @@
   "Validation": {
     "codes": {
       "ADVISOR_NOT_SUPPORTED": "Advisors cannot run yet.",
+      "ADVISOR_OUTSIDE_FLOW": "An advisor stays outside the flow: no connections, no Loop or Team, and no delegating or asking.",
+      "ADVISOR_UNWATCHED": "{node} watches no one. Connect it to an agent it advises.",
+      "ADVISOR_ADVISE_SOURCE": "Only an advisor can watch an agent. Start this advise connection at an advisor.",
+      "ADVISOR_ADVISE_TARGET": "An advisor watches a scheduled or callable agent, not another advisor, a decision, a box, a Join or an Output.",
+      "ADVISOR_ADVISE_QUESTIONS": "An advise connection carries no parent questions.",
+      "ADVISOR_TOOLS": "An advisor only reads: search, documents, file lists and files, plus reading versions and giving advice.",
+      "ADVISE_TOOL_ADVISOR_ONLY": "Only an advisor can give advice. Remove advise from this agent’s role.",
+      "ADVISOR_NOT_A_STEP": "An advisor is not a step: the flow cannot start at one, and no input can read one.",
       "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
       "BOX_BOUNDARY": "This connection crosses a box boundary outside its ports.",
       "BOX_PARENT": "This node cannot sit in that box.",
@@ -1404,7 +1412,9 @@
       "session": "Sessions and runs",
       "composer": "Request input",
       "editor": "Team editor"
-    }
+    },
+    "interrupt": "Interrupt the running response with a request",
+    "queueNext": "Send a request for after the run"
   },
   "TeamDraft": {
     "title": "Draft a team from a goal",
@@ -1884,7 +1894,7 @@
     "targetChip": "To {label} · at its next model request",
     "editQueued": "Edit",
     "autoStart": "Start the next queued task when the run ends",
-    "autoStartHint": "Only while this page is open and after it sees the run end; never after a restart.",
+    "autoStartHint": "The server starts it when the run ends, even with this page closed; never after a restart.",
     "preRun": "{team} · models {profiles} · files: {files} · {mode}",
     "filesCopy": "can change the working copy",
     "filesNoCopy": "tools on, but no working copy",
@@ -2473,8 +2483,8 @@
     "focus": "Focus the request box",
     "ended": "{name} (ended)",
     "blocked": {
-      "target": "The {name} execution has ended and no longer takes instructions. Choose another execution, or send this another way.",
-      "run": "This run has ended, so the instruction cannot be delivered. Send it another way."
+      "target": "This role has ended and takes no more instructions. Pick another role, or send this as a next request.",
+      "run": "This run has ended, so the instruction cannot be delivered. Send it as a next request."
     },
     "switchTo": {
       "next": "Send as a next request",
@@ -2584,7 +2594,24 @@
     "teamAutoHint": "Assistant leading planner, researcher, writer and reviewer",
     "teamCorralHint": "Assistant leading its roles, flow as a guide",
     "teamCorralGroup": "Corral",
-    "attachmentHash": "Content hash (SHA-256)"
+    "attachmentHash": "Content hash (SHA-256)",
+    "sendAs": {
+      "new": "Send",
+      "join": "Join",
+      "interrupt": "Interrupt",
+      "queue": "Next request"
+    },
+    "keyHint": {
+      "new": "Send",
+      "join": "Join",
+      "interrupt": "Interrupt",
+      "queue": "Next"
+    },
+    "sendMenu": "Send as",
+    "targetLabel": "Send to {name}",
+    "targetAwaiting": "{name} · read after the decision",
+    "targetNone": "No role takes instructions now",
+    "lowered": "This role cannot be interrupted now; the message is read at its next request."
   },
   "Commands": {
     "newSession": "New session",

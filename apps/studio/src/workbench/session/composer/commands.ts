@@ -3,10 +3,10 @@ import type { AppCommand } from '../../../commandRegistry.ts';
 import type { StudioServices } from '../../../services.tsx';
 import { shortcutLabel } from '../../../shortcuts.ts';
 import { compactTarget } from '../../compactTarget.ts';
-import type { IntentChoice } from '../../composerIntent.ts';
+import type { SendChoice } from '../../composerIntent.ts';
 
-// The composer's slash commands (`/next`, `/steer`, `/pause`, `/resume`, `/compact`, `/stop`,
-// `/team`, `/model`) and the run commands they send.
+// The composer's slash commands (`/next`, `/steer`, `/interrupt`, `/pause`, `/resume`,
+// `/compact`, `/stop`, `/team`, `/model`) and the run commands they send.
 
 type Say = (key: string, values?: Record<string, string | number>) => string;
 
@@ -99,7 +99,7 @@ export function composerCommands({
   tc,
   tr,
   tStatus,
-  allowed,
+  available,
   ownActive,
   corrals,
   chooseIntent,
@@ -114,10 +114,11 @@ export function composerCommands({
   tc: Say;
   tr: Say;
   tStatus: Say;
-  allowed: IntentChoice[];
+  /** The sends that can be picked now. */
+  available: Record<SendChoice, boolean>;
   ownActive: RunSummary | null;
   corrals: CorralSummary[];
-  chooseIntent: (value: IntentChoice) => void;
+  chooseIntent: (value: SendChoice) => void;
   focus: () => void;
   run: (type: 'pause' | 'resume') => void;
   compact: () => void;
@@ -127,15 +128,22 @@ export function composerCommands({
 }): AppCommand[] {
   const why = (allowedHere: boolean) => (allowedHere ? undefined : tc('notNow'));
   return [
-    ...(['next', 'steer'] as const).map(
-      (value): AppCommand => ({
-        id: `intent:${value}`,
-        title: t(`intent.${value}`),
+    // Each picks its send for the next send only (features/composer-flow.md "전송").
+    ...(
+      [
+        ['next', 'queue'],
+        ['steer', 'join'],
+        ['interrupt', 'interrupt'],
+      ] as const
+    ).map(
+      ([slash, value]): AppCommand => ({
+        id: `intent:${slash}`,
+        title: tc(`sendAs.${value}`),
         group: tc('groupRequest'),
-        slash: value,
-        keywords: [t(`intentShort.${value}`)],
-        disabled: !allowed.includes(value),
-        ...(allowed.includes(value) ? {} : { hint: tc('notNow') }),
+        slash,
+        keywords: [tc(`keyHint.${value}`)],
+        disabled: !available[value],
+        ...(available[value] ? {} : { hint: tc('notNow') }),
         run: () => {
           chooseIntent(value);
           focus();

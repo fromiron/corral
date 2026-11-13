@@ -903,7 +903,10 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
   const groups = [
     { id: 'app', rows: [...commands(false), [t('helpKey'), '?'], ...local(['close'])] },
     { id: 'session', rows: commands(true) },
-    { id: 'composer', rows: local(['send', 'newline', 'recall', 'mention', 'slash']) },
+    {
+      id: 'composer',
+      rows: local(['send', 'interrupt', 'queueNext', 'newline', 'recall', 'mention', 'slash']),
+    },
     { id: 'editor', rows: local(['save', 'undo', 'redo']) },
   ] as const;
   return (

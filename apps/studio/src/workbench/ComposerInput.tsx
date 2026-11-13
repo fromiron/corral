@@ -25,6 +25,7 @@ import {
   type Trigger,
   triggerAt,
 } from './composerMenu.ts';
+import { type Preferences, sendKeyRole } from './preferences.ts';
 
 const ICON: Record<MentionKind, LucideIcon> = {
   file: File,
@@ -42,6 +43,8 @@ export function ComposerInput({
   value,
   onChange,
   onKeyDown,
+  sendKey,
+  onSend,
   commands,
   searchMentions,
   onMention,
@@ -52,8 +55,12 @@ export function ComposerInput({
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** Keys the menu does not take (sending, history). */
+  /** Keys the menu and the send keys do not take (history). */
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  /** The send key the person chose (Settings › General). */
+  sendKey: Preferences['sendKey'];
+  /** One of the three send keys was pressed (features/composer-flow.md "전송"). */
+  onSend: (role: 'send' | 'interrupt' | 'queue') => void;
   commands: AppCommand[];
   searchMentions: (query: string) => Promise<MentionItem[]>;
   onMention: (item: MentionItem) => MentionItem;
@@ -70,6 +77,8 @@ export function ComposerInput({
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [mentions, setMentions] = useState<{ query: string; items: MentionItem[] } | null>(null);
+  // An IME composition owns every key until it ends, whether or not a key says so itself.
+  const composing = useRef(false);
   const trigger: Trigger | null = !focused || dismissed === value ? null : triggerAt(value, caret);
   const query = trigger?.query ?? null;
   const kind = trigger?.kind ?? null;
@@ -284,8 +293,16 @@ export function ComposerInput({
           setIndex(0);
           onChange(e.target.value);
         }}
+        onCompositionStart={(e) => {
+          composing.current = true;
+          textareaProps?.onCompositionStart?.(e);
+        }}
+        onCompositionEnd={(e) => {
+          composing.current = false;
+          textareaProps?.onCompositionEnd?.(e);
+        }}
         onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
           if (open && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && rows.length) {
               e.preventDefault();
@@ -303,6 +320,13 @@ export function ComposerInput({
               choose(ordered[selected]);
               return;
             }
+          }
+          const role = sendKeyRole(e, sendKey);
+          if (role) {
+            e.preventDefault();
+            // A command being chosen is not a message: no send key sends it.
+            if (!(open && kind === 'slash')) onSend(role);
+            return;
           }
           onKeyDown(e);
         }}

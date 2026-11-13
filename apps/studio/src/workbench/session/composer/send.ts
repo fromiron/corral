@@ -1,4 +1,4 @@
-import { ApiError, type AutoCancelResult } from '@corral/client';
+import { ApiError, type AutoCancelResult, type AutoRunStart } from '@corral/client';
 import type {
   AutoModelChoice,
   CommandError,
@@ -12,6 +12,7 @@ import type {
   CorralSummary,
   RunSummary,
   SessionEntryAuto,
+  SessionEntryStart,
   SessionIntent,
   WorkSession,
 } from '@corral/core';
@@ -19,10 +20,11 @@ import { createPendingSessionCommands } from '../../../pendingCommands.ts';
 import type { StudioServices } from '../../../services.tsx';
 import { conversationRequest } from '../../../sessionActions.ts';
 import { autoCommandSeed } from '../../autoChoice.ts';
+import type { Delivery } from '../../composerIntent.ts';
 
 // The composer's send paths as plain functions: a new request, a queued one, an instruction to
-// a running execution, and a question about the latest result. The component owns the state;
-// these get it, and the services, as arguments.
+// a running execution (a join or an interrupt), and a question about the latest result. The
+// component owns the state; these get it, and the services, as arguments.
 
 export const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
 
@@ -42,6 +44,8 @@ export interface CommandSlot {
   pending: Ref<PendingCommand | null>;
   store: Pick<PendingSessionCommands, 'get' | 'set' | 'delete'>;
   newId: () => string;
+  /** A send is in flight: pressing it again sends nothing more. */
+  sending: Ref<boolean>;
 }
 
 // One command ID per request: a retry after a lost answer reuses it, so the runtime returns
@@ -120,6 +124,41 @@ export interface StartOutcome {
   auto?: SessionEntryAuto | null;
   cancelled?: boolean;
   cancelError?: string;
+  /** The start body that was sent; a new request records its snapshot from it. */
+  request?: AutoRunStart;
+}
+
+/**
+ * What a session entry keeps of a start body for the server to start it with: the body without
+ * the command, request text, session, conversation and references (features/composer-flow.md).
+ */
+export function entryStart(request: AutoRunStart): SessionEntryStart {
+  const {
+    commandId: _commandId,
+    brief: _brief,
+    sessionId: _sessionId,
+    conversation: _conversation,
+    references: _references,
+    ...start
+  } = request;
+  return start;
+}
+
+/** The start a next request is saved with: the server starts it with this once the run ends. */
+export function queuedStart(
+  deps: Pick<StartDeps, 'services' | 'session' | 'choice' | 'teamMode'>,
+  brief: string,
+  permissionMode?: PermissionMode,
+): SessionEntryStart {
+  return entryStart(
+    conversationRequest(deps.services, deps.session, {
+      ...(permissionMode ? { permissionMode } : {}),
+      commandId: '',
+      brief,
+      choice: deps.choice,
+      team: deps.teamMode,
+    }),
+  );
 }
 
 /** Starts a follow-up with the team; returns the run or why not. */
@@ -129,11 +168,13 @@ export async function startNext(
   commandId: string = deps.commands.newId(),
   refs: RunReference[] = [],
   requestPermissionMode?: PermissionMode,
+  /** A saved request's own start snapshot, so a person's start equals the server's. */
+  start?: SessionEntryStart,
 ): Promise<StartOutcome> {
   // every chat turn is the conversation lead; a saved Corral lends it its roles.
   // A deleted Corral is never replaced by another way of working.
   if (deps.missingTeam) return { runId: null, detail: deps.messages.selectedTeamMissing };
-  return startAuto(deps, brief, commandId, refs, requestPermissionMode);
+  return startAuto(deps, brief, commandId, refs, requestPermissionMode, start);
 }
 
 /** with no team chosen, the runtime picks a template for this request. */
@@ -143,18 +184,29 @@ async function startAuto(
   commandId: string,
   refs: RunReference[],
   requestPermissionMode?: PermissionMode,
+  start?: SessionEntryStart,
 ): Promise<StartOutcome> {
   const { services, session, commands } = deps;
   const controller = new AbortController();
-  const proposed = conversationRequest(services, session, {
-    ...(requestPermissionMode ? { permissionMode: requestPermissionMode } : {}),
-    commandId,
-    brief,
-    choice: deps.choice,
-    team: deps.teamMode,
-    ...(deps.throughRunId ? { throughRunId: deps.throughRunId } : {}),
-    ...(refs.length ? { references: refs } : {}),
-  });
+  // The server starts a saved request with this body (apps/server/src/session-queue.ts).
+  const proposed: AutoRunStart = start
+    ? {
+        ...start,
+        commandId,
+        sessionId: session.sessionId,
+        brief,
+        ...(deps.throughRunId ? { conversation: { throughRunId: deps.throughRunId } } : {}),
+        ...(refs.length ? { references: refs } : {}),
+      }
+    : conversationRequest(services, session, {
+        ...(requestPermissionMode ? { permissionMode: requestPermissionMode } : {}),
+        commandId,
+        brief,
+        choice: deps.choice,
+        team: deps.teamMode,
+        ...(deps.throughRunId ? { throughRunId: deps.throughRunId } : {}),
+        ...(refs.length ? { references: refs } : {}),
+      });
   const command = commands.pending.current;
   // A completed run may change `lastEnded` before its lost start receipt is recovered.
   let body = proposed;
@@ -184,6 +236,7 @@ async function startAuto(
     // A dropped HTTP response can hide a committed run; keep its original receipt.
     if (cancellation?.start) result = cancellation.start;
     return {
+      request: body,
       runId: result.runId,
       detail: result.receipt.error?.message ?? null,
       code: result.receipt.error?.code,
@@ -271,6 +324,8 @@ export interface SendDeps extends StartDeps, RecordDeps {
 export interface SendInput {
   body: string;
   intent: SessionIntent;
+  /** An instruction's delivery, a join or an interrupt; null for any other intent. */
+  delivery: Delivery | null;
   steerTarget: string;
   references: RunReference[];
   attachments: TextAttachment[];
@@ -278,6 +333,12 @@ export interface SendInput {
   permissionMode: PermissionMode | undefined;
   /** The draft revision written when this send began. */
   revision: number;
+}
+
+/** Whether a send went through, and whether the runtime lowered its interrupt to a join. */
+export interface SendOutcome {
+  sent: boolean;
+  lowered: boolean;
 }
 
 /** A refused request keeps its text, intent and references so it can be fixed and resent. */
@@ -295,9 +356,13 @@ async function refused(
 }
 
 /** Sends the composer's text as its intent says. */
-export async function sendRequest(deps: SendDeps, input: SendInput) {
+export async function sendRequest(deps: SendDeps, input: SendInput): Promise<SendOutcome> {
   const { services, session, team, ownActive } = deps;
-  const { body, intent, steerTarget, attachments, images, permissionMode } = input;
+  const { body, intent, delivery, steerTarget, attachments, images, permissionMode } = input;
+  const outcome: SendOutcome = { sent: false, lowered: false };
+  // Pressing the same send again while it is in flight sends nothing more.
+  if (deps.commands.sending.current) return outcome;
+  deps.commands.sending.current = true;
   deps.setBusy(true);
   deps.setError(null);
   deps.setRefusal(null);
@@ -318,6 +383,7 @@ export async function sendRequest(deps: SendDeps, input: SendInput) {
         auto,
         cancelled,
         cancelError,
+        request,
       } = await startNext(deps, body, commandId, refs, permissionMode);
       await recordEntry(deps, {
         ...(permissionMode ? { permissionMode } : {}),
@@ -331,16 +397,19 @@ export async function sendRequest(deps: SendDeps, input: SendInput) {
         ...(auto ? { auto } : {}),
         ...(attachments.length ? { attachments } : {}),
         ...(images.length ? { images } : {}),
+        ...(request ? { start: entryStart(request) } : {}),
       });
       if (cancelled) {
         clearPending(deps.commands);
         if (cancelError) deps.setError(cancelError);
         await deps.invalidate();
         deps.onChange();
-        return;
+        return outcome;
       }
-      if (!runId)
-        return await refused(deps, detail ?? deps.messages.failed(''), code, commandError?.owner);
+      if (!runId) {
+        await refused(deps, detail ?? deps.messages.failed(''), code, commandError?.owner);
+        return outcome;
+      }
     } else if (intent === 'queue') {
       await recordEntry(deps, {
         intent,
@@ -348,16 +417,34 @@ export async function sendRequest(deps: SendDeps, input: SendInput) {
         state: 'queued',
         ...(attachments.length ? { attachments } : {}),
         ...(permissionMode ? { permissionMode } : {}),
+        start: queuedStart(deps, body, permissionMode),
       });
-    } else if (intent === 'steer' && ownActive && steerTarget) {
-      const commandId = commandFor(deps.commands, `steer\u0000${steerTarget}\u0000${body}`);
+    } else if (intent === 'steer' && delivery && ownActive && steerTarget) {
+      // The delivery and the attachments are part of the instruction: changing either after a
+      // lost answer is a new command.
+      const commandId = commandFor(
+        deps.commands,
+        [
+          'steer',
+          steerTarget,
+          delivery,
+          body,
+          attachments.map((item) => item.sha256).join(','),
+        ].join('\u0000'),
+      );
       const receipt = await services.transport.sendCommand({
         schemaVersion: '0.1',
         commandId,
         runId: ownActive.runId,
         type: 'steer',
-        payload: { targetExecutionId: steerTarget, text: body, delivery: 'next_request' },
+        payload: {
+          targetExecutionId: steerTarget,
+          text: body,
+          delivery,
+          ...(attachments.length ? { attachments } : {}),
+        },
       });
+      // The instruction's own record (the run's directive) keeps its attachments.
       await recordEntry(deps, {
         intent,
         text: body,
@@ -368,8 +455,13 @@ export async function sendRequest(deps: SendDeps, input: SendInput) {
         refusal: receipt.error ?? null,
         commandId,
       });
-      if (receipt.error)
-        return await refused(deps, receipt.error.message, receipt.error.code, receipt.error.owner);
+      if (receipt.error) {
+        await refused(deps, receipt.error.message, receipt.error.code, receipt.error.owner);
+        return outcome;
+      }
+      // An interrupt the target cannot take is lowered to the next request by the runtime
+      // (features/reins.md "전달 방식"); the receipt's boundary says so.
+      outcome.lowered = delivery === 'interrupt' && receipt.requestedBoundary === 'next_request';
     } else if (intent === 'explain') {
       const corral = team ? await services.repository.get(team.corralId) : null;
       // An auto session asks with its own model.
@@ -379,7 +471,7 @@ export async function sendRequest(deps: SendDeps, input: SendInput) {
       const latest = deps.latest;
       if (!latest) {
         deps.setError(deps.messages.noResult);
-        return;
+        return outcome;
       }
       const result = await services.startExplain({
         commandId: commandFor(deps.commands, `explain\u0000${body}`),
@@ -397,38 +489,47 @@ export async function sendRequest(deps: SendDeps, input: SendInput) {
         detail: result.receipt.error?.message ?? null,
         refusal: result.receipt.error ?? null,
       });
-      if (!result.runId)
-        return await refused(
+      if (!result.runId) {
+        await refused(
           deps,
           result.receipt.error?.message ?? deps.messages.noResult,
           result.receipt.error?.code,
           result.receipt.error?.owner,
         );
+        return outcome;
+      }
     } else {
-      return;
+      return outcome;
     }
     clearPending(deps.commands);
-    deps.clearDraft(input.revision, intent !== 'next' && intent !== 'queue', intent !== 'next');
+    // Text attachments ride every send; images only a new request (features/composer-flow.md).
+    deps.clearDraft(input.revision, intent === 'explain', intent !== 'next');
     await deps.invalidate();
     deps.onChange();
+    outcome.sent = true;
+    return outcome;
   } catch (failure) {
     if (failure instanceof DOMException && failure.name === 'AbortError') {
       clearPending(deps.commands);
-      return;
+      return outcome;
     }
     if (
       failure instanceof ApiError &&
       failure.owner &&
       ['RUN_ALREADY_ACTIVE', 'RESOURCE_CAPACITY'].includes(failure.code)
-    )
-      return await refused(deps, failure.message, failure.code, failure.owner);
+    ) {
+      await refused(deps, failure.message, failure.code, failure.owner);
+      return outcome;
+    }
     // The answer was lost: the request may or may not have arrived. The text stays, and a
     // retry reuses the same command ID, so the runtime returns the first receipt.
     deps.setRefusal({
       message: failure instanceof Error ? failure.message : String(failure),
       network: true,
     });
+    return outcome;
   } finally {
+    deps.commands.sending.current = false;
     deps.setBusy(false);
   }
 }

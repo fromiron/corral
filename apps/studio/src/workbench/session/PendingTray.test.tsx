@@ -1387,6 +1387,60 @@ it('names each run’s continue-or-stop stack by its run when several stand at t
   expect(new Set(named).size).toBe(named.length);
 });
 
+it('hands focus from a decided approval to an extension’s request waiting beside it', async () => {
+  const store = waitingRun('run_a', { approvals: [decision('approval_1')] });
+  const projection = store.getState().projection as RunProjection;
+  const executionId = 'exec_extension';
+  projection.executions[executionId] = execution(executionId);
+  projection.executionOrder.push(executionId);
+  store.setState({
+    projection: { ...projection },
+    events: [
+      RunEvent.parse({
+        schemaVersion: '0.1',
+        eventId: 'event_extension',
+        runId: 'run_a',
+        runSeq: 1,
+        recordedAt: '2026-11-09T00:00:00.000Z',
+        actor: { kind: 'runtime', id: 'runtime' },
+        causedByEventIds: [],
+        type: 'extension.ui_requested',
+        payload: {
+          requestId: 'extension_1',
+          executionId,
+          attemptNo: 1,
+          kind: 'input',
+          bodyRef: 'body_extension_1',
+          bodyHash: 'b'.repeat(64),
+          deadline: '2099-11-09T00:01:00.000Z',
+        },
+      }),
+    ],
+    artifactTexts: {
+      body_extension_1: JSON.stringify({
+        kind: 'input',
+        title: 'Name the build',
+        placeholder: 'nightly',
+        timeoutMs: 60_000,
+      }),
+    },
+  });
+  const sent = decisions(store);
+  const { container } = await show(['run_a']);
+  const tray = trayOf(container);
+  const field = tray?.querySelector<HTMLInputElement>('[data-extension="extension_1"] input');
+  expect(field).toBeTruthy();
+  const allow = tray?.querySelector<HTMLButtonElement>(
+    '[data-approval="approval_1"] [data-approval-action="primary"]',
+  );
+  allow?.focus();
+  await act(async () => allow?.click());
+  await sent[0]?.settle();
+  await settleFrames();
+  // Not the request box: the request still waiting in the tray is next.
+  expect(document.activeElement).toBe(field);
+});
+
 it('names a lone run’s area by the wait alone', async () => {
   waitingRun('run_a', { approvals: [decision('approval_a')] });
   const { container } = await show(['run_a']);

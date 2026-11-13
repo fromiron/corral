@@ -1,4 +1,9 @@
-import type { CorralSummary, RunSummary, WorkSession } from '@corral/core';
+import {
+  type CorralSummary,
+  queuedEntriesInStartOrder,
+  type RunSummary,
+  type WorkSession,
+} from '@corral/core';
 import { cn, fontWeights, useSize } from '@corral/react/design-kit';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -59,7 +64,8 @@ export function WorkTab({
   // Entries in order; runs that no entry names (started elsewhere) are shown after them.
   const named = new Set(session.entries.flatMap((e) => (e.runId ? [e.runId] : [])));
   const loose = runs.filter((r) => !named.has(r.runId));
-  const queued = session.entries.filter((e) => e.state === 'queued');
+  // In the order they start: carried requests first (features/composer-flow.md).
+  const queued = queuedEntriesInStartOrder(session);
   const runChecks = useRunChecks(session.sessionId, runs);
   const artifactMetadataVersion = runs.findLast((run) => run.status === 'succeeded')?.runId ?? '';
   const td = useTranslations('Desktop');
