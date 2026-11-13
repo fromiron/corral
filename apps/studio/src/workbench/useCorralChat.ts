@@ -134,10 +134,12 @@ export function useCorralRun(
               canReadArtifactBody(projection, id),
             ),
           ),
+          // A response's words are its body once the response is recorded, and go when it is
+          // released. Words never recorded (a response an interrupt cut) are no body: they stay.
           streams: Object.fromEntries(
             Object.entries(before.streams).filter(([id]) => {
               const ref = projection.modelCalls[id]?.responseRef;
-              return !!ref && canReadArtifactBody(projection, ref);
+              return !ref || canReadArtifactBody(projection, ref);
             }),
           ),
           ...(recordFailed ? {} : { streamError: null }),
