@@ -467,6 +467,7 @@ export function wrapIn(
   const unique = <T extends { target: string; targetPort: TargetPort }>(list: T[]) => [
     ...new Map(list.map((e) => [`${e.target}\u0000${e.targetPort}`, e])).values(),
   ];
+  const nextSteps = unique(leaving);
 
   let next = withDefinition(created.draft, {
     ...created.draft.definition,
@@ -497,14 +498,15 @@ export function wrapIn(
         target: boxId,
         targetPort: 'exit' as const,
       })),
-      ...unique(leaving).map((e) => ({
+      ...nextSteps.map((e) => ({
         source: boxId,
         sourcePort: 'next',
         target: e.target,
         targetPort: e.targetPort,
       })),
-      // A Loop at its limit goes on with its last result to where `next` goes.
-      ...(kind === 'loop' ? unique(leaving) : []).map((e) => ({
+      // A Loop at its limit goes on with its last result to where `next` goes, when that is one
+      // place: a Join gathers the branches of one port only, so a `next` that fans out gets none.
+      ...(kind === 'loop' && nextSteps.length === 1 ? nextSteps : []).map((e) => ({
         source: boxId,
         sourcePort: 'exhausted',
         target: e.target,

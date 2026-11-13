@@ -1,6 +1,7 @@
 import {
   type AgentRole,
   type CorralNode,
+  Identifier,
   type InputBinding,
   type InputBindingKind,
   type LoopLimitPolicy,
@@ -9,7 +10,7 @@ import {
   type ReasoningCapabilities,
   ReasoningLevel,
 } from '@corral/contracts';
-import { type ReactNode, useId, useRef, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { ModelSelect, type ProfileChoice, profileChoices } from '../components/ModelSelect.tsx';
@@ -362,18 +363,11 @@ const LIMIT_CHOICES: LimitChoice[] = ['exhaust', 'raise_reasoning', 'upper_model
 const RAISE_LEVELS = ReasoningLevel.options.filter((level) => level !== 'off');
 const DEFAULT_ROUNDS = 3;
 
-/** What a Loop had before the person switched away from it, so switching back restores it. */
-interface LimitMemory {
-  maxIterations?: number;
-  policy?: LoopLimitPolicy | undefined;
-  level?: ReasoningLevel;
-  modelProfile?: string;
-}
-
 /**
  * A Loop's limit, read as a sentence: up to N rounds or no limit, and at the limit end, raise
- * reasoning to a level or switch to an upper model. Each choice is one write, so the Loop never
- * passes through a state that team-graph.md structure rule 4 rejects.
+ * reasoning to a level or switch to another model. Each choice is one write, so the Loop never
+ * passes through a state that team-graph.md structure rule 4 rejects. Turning the cap back on
+ * starts from three rounds that end; undo brings back what was there.
  */
 function LoopLimit({
   editor,
@@ -392,9 +386,6 @@ function LoopLimit({
   const ti = useTranslations('Inspector');
   const id = useId();
   const session = useEditSession(editor);
-  const memories = useRef(new Map<string, LimitMemory>());
-  const memory = memories.current.get(node.id) ?? {};
-  const remember = (change: LimitMemory) => memories.current.set(node.id, { ...memory, ...change });
   const write = (change: Record<string, unknown>) =>
     editor.getState().applyDraft(patchNode(editor.getState().draft, node.id, change));
 
@@ -404,29 +395,27 @@ function LoopLimit({
   // A review recipe ends the Loop at its attempts, so the Loop can only end.
   const recipe = node.reviewRecipe !== undefined;
   const reason = recipe ? `${id}-recipe` : undefined;
-  const upperProfile =
-    memory.modelProfile ??
-    profiles?.find((profile) => profile.available)?.profileId ??
-    profiles?.[0]?.profileId ??
-    draft.definition.roles[0]?.modelProfile ??
-    '';
+  // A runnable profile first; with no list, the model a role already uses.
+  const upperProfile = [
+    profiles?.find((profile) => profile.available)?.profileId,
+    profiles?.[0]?.profileId,
+    draft.definition.roles[0]?.modelProfile,
+  ].find((profile) => profile !== undefined && Identifier.safeParse(profile).success);
+  const unavailable = (value: LimitChoice) =>
+    (recipe && value !== 'exhaust') || (value === 'upper_model' && !upperProfile);
 
-  const toggleUnlimited = () => {
-    if (unlimited) {
-      write({ maxIterations: memory.maxIterations ?? DEFAULT_ROUNDS, limitPolicy: memory.policy });
-      return;
-    }
-    remember({ maxIterations: node.maxIterations ?? DEFAULT_ROUNDS, policy });
-    write({ maxIterations: undefined, limitPolicy: { kind: 'unlimited' } });
-  };
+  const toggleUnlimited = () =>
+    write(
+      unlimited
+        ? { maxIterations: DEFAULT_ROUNDS, limitPolicy: undefined }
+        : { maxIterations: undefined, limitPolicy: { kind: 'unlimited' } },
+    );
   const choose = (next: string) => {
-    if (next === choice || (recipe && next !== 'exhaust')) return;
-    if (policy?.kind === 'raise_reasoning') remember({ level: policy.level });
-    if (policy?.kind === 'upper_model') remember({ modelProfile: policy.modelProfile });
+    if (next === choice || unavailable(next as LimitChoice)) return;
     write({
       limitPolicy:
         next === 'raise_reasoning'
-          ? { kind: 'raise_reasoning', level: memory.level ?? 'high' }
+          ? { kind: 'raise_reasoning', level: 'high' }
           : next === 'upper_model'
             ? { kind: 'upper_model', modelProfile: upperProfile }
             : undefined,
@@ -477,7 +466,7 @@ function LoopLimit({
               value={String(node.maxIterations ?? '')}
               onChange={(input) => {
                 const value = Number(input);
-                if (Number.isInteger(value) && value >= 1)
+                if (Number.isSafeInteger(value) && value >= 1)
                   editor.getState().updateNode(node.id, { maxIterations: value });
               }}
             />
@@ -493,18 +482,16 @@ function LoopLimit({
                   key={value}
                   value={value}
                   label={t(`policy.${value}`)}
-                  disabled={recipe && value !== 'exhaust'}
+                  disabled={unavailable(value)}
                   // The kit's tabs draw no disabled state; this one matches its Switch.
-                  className={
-                    recipe && value !== 'exhaust' ? 'pointer-events-none opacity-50' : undefined
-                  }
+                  className={unavailable(value) ? 'pointer-events-none opacity-50' : undefined}
                 />
               ))}
             </TabsList>
           </Tabs>
         </div>
       </Collapse>
-      {policy?.kind === 'raise_reasoning' ? (
+      {!recipe && policy?.kind === 'raise_reasoning' ? (
         <Select
           label={t('level')}
           value={policy.level}
@@ -514,7 +501,7 @@ function LoopLimit({
           options={RAISE_LEVELS.map((value) => ({ value, label: level(value) }))}
         />
       ) : null}
-      {policy?.kind === 'upper_model' ? (
+      {!recipe && policy?.kind === 'upper_model' ? (
         profiles?.length ? (
           <ModelSelect
             label={t('model')}
@@ -533,9 +520,11 @@ function LoopLimit({
               index={0}
               label={t('model')}
               value={policy.modelProfile}
-              onChange={(modelProfile) =>
-                write({ limitPolicy: { kind: 'upper_model', modelProfile } })
-              }
+              onChange={(modelProfile) => {
+                // As the role's model field: a blank or malformed id keeps the one before.
+                if (Identifier.safeParse(modelProfile).success)
+                  write({ limitPolicy: { kind: 'upper_model', modelProfile } });
+              }}
             />
           </KitInputGroup>
         )

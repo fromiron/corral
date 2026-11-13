@@ -11,7 +11,7 @@ import { type EditResult, patchNode, placeStep, wrapIn } from './commands.ts';
 import { NodeSettings, type ProfileOption } from './NodeSettings.tsx';
 
 // The limit of a Loop in the team editor's settings sheet, one state per story, at the sheet's
-// width (docs/specs/features/canvas.md, rule 14).
+// width (docs/specs/features/canvas.md, rule 11).
 
 function ok(result: EditResult): { draft: EditorDraft; nodeId: string } {
   if (!result.ok) throw new Error(`refused: ${result.reason}`);

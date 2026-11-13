@@ -270,6 +270,50 @@ describe('team editor commands: boxes', () => {
     },
   );
 
+  /** agent_1 → agent_2 → [agent_3 | agent_5] → join_1 → agent_4 → output_1. */
+  const beforeFanOut = () => {
+    const chained = ok(placeStep(chain(4), 'output', { kind: 'after', nodeId: 'agent_4' })).draft;
+    return ok(applyPattern(chained, 'parallel', ['agent_3'])).draft;
+  };
+  const errors = (draft: EditorDraft) =>
+    compileDefinition(draft.definition)
+      .diagnostics.filter((d) => d.severity === 'error')
+      .map((d) => d.code);
+
+  it.each([
+    ['a Loop', (d: EditorDraft) => wrapIn(d, ['agent_2'], 'loop'), ['LOOP_NO_REPEAT']],
+    ['a review loop', (d: EditorDraft) => applyPattern(d, 'reviewLoop', ['agent_2']), []],
+    ['a check loop', (d: EditorDraft) => applyPattern(d, 'checkLoop', ['agent_2']), []],
+  ] as const)(
+    'wrapping in %s before a fan-out leaves exhausted unconnected, so the Join still gathers',
+    (_name, wrap, left) => {
+      const base = beforeFanOut();
+      expect(errors(base)).toEqual([]);
+      const { draft, nodeId: loop } = ok(wrap(base));
+      expect(
+        wiring(draft).filter((w) => w.startsWith(`${loop}.`) && !w.includes('.body>')),
+      ).toEqual([`${loop}.next>agent_3.in`, `${loop}.next>agent_5.in`]);
+      expect(errors(draft)).toEqual(left);
+    },
+  );
+
+  it('connects exhausted once when two connections led to the same step', () => {
+    // agent_1 → agent_2 → agent_3, and agent_1 → agent_3 too: both leave the box for agent_3.
+    const both = ok(
+      connectPorts(chain(3), {
+        source: 'agent_1',
+        sourcePort: 'out',
+        target: 'agent_3',
+        targetPort: 'in',
+      }),
+    ).draft;
+    const { draft, nodeId: loop } = ok(wrapIn(both, ['agent_1', 'agent_2'], 'loop'));
+    expect(wiring(draft).filter((w) => /\.(next|exhausted)>/.test(w))).toEqual([
+      `${loop}.exhausted>agent_3.in`,
+      `${loop}.next>agent_3.in`,
+    ]);
+  });
+
   it('refuses to wrap steps from different boxes together', () => {
     const { draft } = ok(wrapIn(chain(3), ['agent_2'], 'loop'));
     expect(refused(wrapIn(draft, ['agent_1', 'agent_2'], 'team'))).toBe('mixedBoxes');

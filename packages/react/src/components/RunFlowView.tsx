@@ -234,9 +234,9 @@ export function RunFlowView({
                     </h3>
                     <p className="text-caption text-muted-foreground">
                       {loop.maxIterations === null
-                        ? loopText('summaryUnlimited', { count: loop.iterations.length })
+                        ? loopText('summaryUnlimited', { count: loop.rounds })
                         : loopText('summary', {
-                            count: loop.iterations.length,
+                            count: loop.rounds,
                             max: loop.maxIterations,
                           })}
                     </p>

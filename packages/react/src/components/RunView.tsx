@@ -438,8 +438,8 @@ export function ExecutionTree({
         statusLabel: outcome,
         task:
           loop.maxIterations === null
-            ? loopText('summaryUnlimited', { count: loop.iterations.length })
-            : loopText('summary', { count: loop.iterations.length, max: loop.maxIterations }),
+            ? loopText('summaryUnlimited', { count: loop.rounds })
+            : loopText('summary', { count: loop.rounds, max: loop.maxIterations }),
         selectable: false,
         summaryExcluded: true,
         cardProps: { 'data-testid': id, 'data-loop-id': loop.nodeId },

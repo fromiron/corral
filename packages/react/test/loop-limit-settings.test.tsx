@@ -10,7 +10,7 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import { type EditResult, patchNode, placeStep, wrapIn } from '../src/team-editor/commands.ts';
 import { NodeSettings, type ProfileOption } from '../src/team-editor/NodeSettings.tsx';
 
-// The limit of a Loop in the settings sheet (docs/specs/features/canvas.md, rule 14; the
+// The limit of a Loop in the settings sheet (docs/specs/features/canvas.md, rule 11; the
 // structure rule it keeps is team-graph.md rule 4).
 
 function ok(result: EditResult): { draft: EditorDraft; nodeId: string } {
@@ -63,9 +63,10 @@ function Sheet({
 function renderLimit(
   change: Record<string, unknown> = {},
   profiles: ProfileOption[] | null = PROFILES,
+  team: (draft: EditorDraft) => EditorDraft = (draft) => draft,
 ) {
   const { draft, loopId } = loopDraft(change);
-  const editor = createEditorStore(draft);
+  const editor = createEditorStore(team(draft));
   const problems: string[] = [];
   editor.subscribe((state) => {
     for (const d of compileDraft(state.draft).diagnostics)
@@ -130,7 +131,7 @@ describe('the limit of a Loop', () => {
     expect(problems).toEqual([]);
   });
 
-  it('turns the cap off and back on to the earlier count and policy', async () => {
+  it('turns the cap off, and back on to three rounds that end; undo brings back the rest', async () => {
     const { editor, loop, problems } = renderLimit({
       maxIterations: 5,
       limitPolicy: { kind: 'raise_reasoning', level: 'max' },
@@ -142,15 +143,20 @@ describe('the limit of a Loop', () => {
     expect(screen.getByRole('spinbutton').closest('[inert]')).not.toBeNull();
     expect(screen.getByRole('tablist').closest('[inert]')).not.toBeNull();
     await act(async () => fireEvent.click(limitSwitch()));
-    expect(loop().maxIterations).toBe(5);
-    expect(loop().limitPolicy).toEqual({ kind: 'raise_reasoning', level: 'max' });
+    expect(loop().maxIterations).toBe(3);
+    expect(loop()).not.toHaveProperty('limitPolicy');
     // One undo step each way.
     await act(async () => editor.getState().undo());
     expect(loop().limitPolicy).toEqual({ kind: 'unlimited' });
+    await act(async () => editor.getState().undo());
+    expect(loop()).toMatchObject({
+      maxIterations: 5,
+      limitPolicy: { kind: 'raise_reasoning', level: 'max' },
+    });
     expect(problems).toEqual([]);
   });
 
-  it('gives an unlimited Loop three rounds when it had no earlier count', async () => {
+  it('gives an unlimited Loop three rounds that end', async () => {
     const { loop, problems } = renderLimit({
       maxIterations: undefined,
       limitPolicy: { kind: 'unlimited' },
@@ -162,29 +168,84 @@ describe('the limit of a Loop', () => {
     expect(problems).toEqual([]);
   });
 
+  it.each([
+    ['nothing', ''],
+    ['zero', '0'],
+    ['a fraction', '1.5'],
+    ['a negative count', '-2'],
+    ['a number past the safe range', '99999999999999999999'],
+  ])('keeps the count when %s is typed', async (_name, typed) => {
+    const { loop } = renderLimit({ maxIterations: 4 });
+    const field = screen.getByRole('spinbutton', { name: text.roundsField });
+    await act(async () => fireEvent.change(field, { target: { value: typed } }));
+    expect(loop().maxIterations).toBe(4);
+    await act(async () => fireEvent.change(field, { target: { value: '7' } }));
+    expect(loop().maxIterations).toBe(7);
+  });
+
   it('lets a Loop with a review recipe only end, and says why', async () => {
-    const { loop } = renderLimit({ reviewRecipe: { recipeId: 'quality' } });
+    const { loop, problems } = renderLimit({ reviewRecipe: { recipeId: 'quality' } });
     const reason = text.recipeOnly;
     expect(screen.getByRole('group', { name: text.group })).toHaveAccessibleDescription(reason);
     expect(screen.getByRole('tablist', { name: text.atLimit })).toHaveAccessibleDescription(reason);
     expect(tab(text.policy.raise_reasoning)).toHaveAttribute('aria-disabled', 'true');
     expect(tab(text.policy.upper_model)).toHaveAttribute('aria-disabled', 'true');
     expect(limitSwitch()).toHaveAttribute('aria-disabled', 'true');
+    await act(async () => fireEvent.click(tab(text.policy.raise_reasoning)));
     await act(async () => fireEvent.click(tab(text.policy.upper_model)));
     await act(async () => fireEvent.click(limitSwitch()));
     expect(loop().limitPolicy).toBeUndefined();
     expect(loop().maxIterations).toBe(3);
+    expect(problems).toEqual([]);
     // The reason is not shown as a caption on the sheet.
     expect(screen.getByText(reason)).toHaveClass('sr-only');
   });
 
-  it('types the upper model when no model list is known', async () => {
+  it.each([
+    ['a raised level', { kind: 'raise_reasoning', level: 'high' }],
+    ['a model switch', { kind: 'upper_model', modelProfile: 'upper' }],
+  ])(
+    'shows no choice of its own for %s on a recipe Loop, and ending clears the problem',
+    async (_name, limitPolicy) => {
+      const { loop, problems } = renderLimit({
+        reviewRecipe: { recipeId: 'quality' },
+        limitPolicy,
+      });
+      expect(screen.queryByRole('combobox', { name: text.level })).toBeNull();
+      expect(document.querySelector('[data-slot="model-picker-trigger"]')).toBeNull();
+      expect(screen.queryByRole('textbox', { name: text.model })).toBeNull();
+      await act(async () => fireEvent.click(tab(text.policy.exhaust)));
+      expect(loop()).not.toHaveProperty('limitPolicy');
+      expect(problems).toEqual([]);
+    },
+  );
+
+  it('picks a model that can run before one that cannot', async () => {
+    const { loop } = renderLimit({}, [
+      { profileId: 'signed_out', label: 'Signed out', available: false },
+      { profileId: 'ready', label: 'Ready', available: true },
+    ]);
+    await act(async () => fireEvent.click(tab(text.policy.upper_model)));
+    expect(loop().limitPolicy).toEqual({ kind: 'upper_model', modelProfile: 'ready' });
+  });
+
+  it('types the model when no model list is known, keeping it when the id is blank or malformed', async () => {
     const { loop } = renderLimit({ limitPolicy: { kind: 'upper_model', modelProfile: 'x' } }, null);
-    await act(async () =>
-      fireEvent.change(screen.getByRole('textbox', { name: text.model }), {
-        target: { value: 'bigger' },
-      }),
-    );
+    const field = screen.getByRole('textbox', { name: text.model });
+    for (const typed of ['', 'two words', '9lives'])
+      await act(async () => fireEvent.change(field, { target: { value: typed } }));
+    expect(loop().limitPolicy).toEqual({ kind: 'upper_model', modelProfile: 'x' });
+    await act(async () => fireEvent.change(field, { target: { value: 'bigger' } }));
     expect(loop().limitPolicy).toEqual({ kind: 'upper_model', modelProfile: 'bigger' });
+  });
+
+  it('cannot switch models when there is no model to switch to', async () => {
+    const { loop } = renderLimit({}, null, (draft) => ({
+      ...draft,
+      definition: { ...draft.definition, roles: [] },
+    }));
+    expect(tab(text.policy.upper_model)).toHaveAttribute('aria-disabled', 'true');
+    await act(async () => fireEvent.click(tab(text.policy.upper_model)));
+    expect(loop()).not.toHaveProperty('limitPolicy');
   });
 });

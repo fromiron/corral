@@ -249,3 +249,33 @@ export const RaisedLimit: Story = {
     );
   },
 };
+
+/** An inner Loop on its second entry: three rounds before, the second round of this one runs. */
+function enteredAgainFixture() {
+  const data = loopFlowFixture(3);
+  const { projection } = data;
+  projection.status = 'running';
+  for (const no of [1, 2]) {
+    const iterationId = `again_${no}`;
+    projection.loopIterations.review_loop?.push(iterationId);
+    projection.iterations[iterationId] = {
+      iterationId,
+      loopNodeId: 'review_loop',
+      no,
+      criteriaVersionId: 'criteria',
+      parentIterationId: null,
+      outcome: no === 2 ? null : 'revise',
+    };
+  }
+  data.session.setState({ projection });
+  return data;
+}
+const enteredAgain = enteredAgainFixture();
+export const EnteredAgain: Story = {
+  args: { session: enteredAgain.session, definition: enteredAgain.definition },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByTestId('run-flow-loop')).toHaveTextContent(
+      '2 observed rounds · max 3',
+    );
+  },
+};

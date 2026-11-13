@@ -75,10 +75,14 @@ export interface RunFlowLoop {
     | { policy: 'raise_reasoning'; level: ReasoningLevel }
     | { policy: 'upper_model'; modelProfile: string }
     | null;
+  /** Every observed round of every entry, for the round picker. */
   iterations: RunFlowIteration[];
+  /** The rounds observed in the latest entry; the count, cap and status are that entry's. */
+  rounds: number;
   selectedIterationId: string | null;
+  /** The last round of the latest entry. */
   latestIterationId: string | null;
-  /** Always the latest observed round, independent of the inspected round. */
+  /** Always the latest entry's last round, independent of the inspected round. */
   status: NonNullable<RunFlowIteration['outcome']> | 'active' | 'unrecorded';
 }
 export interface RunFlow {
@@ -157,7 +161,13 @@ export function selectRunFlowIterations(
           finishedAt: finished.get(iteration.iterationId) ?? null,
         }),
       );
-    const latest = iterations.at(-1);
+    // The latest entry: its rounds from the last first round on, in the order they opened.
+    const order = projection?.loopIterations[node.id] ?? [];
+    const first = order.findLastIndex((id) => projection?.iterations[id]?.no === 1);
+    const entry = first < 0 ? [] : order.slice(first);
+    const latest = entry.length
+      ? iterations.find((iteration) => iteration.iterationId === entry.at(-1))
+      : iterations.at(-1);
     const selected = Object.hasOwn(selectedIterations, node.id)
       ? iterations.find((iteration) => iteration.iterationId === selectedIterations[node.id])
       : latest;
@@ -174,12 +184,8 @@ export function selectRunFlowIterations(
         maxIterations = patch.after.maxIterations;
       }
     }
-    // The current entry: its rounds from the last first round on, in the order they opened.
-    const order = projection?.loopIterations[node.id] ?? [];
-    const first = order.findLastIndex((id) => projection?.iterations[id]?.no === 1);
-    const entry = new Set(first < 0 ? [] : order.slice(first));
     const applied = (projection?.loopEscalations?.[node.id] ?? []).findLast((e) =>
-      entry.has(e.iterationId),
+      entry.includes(e.iterationId),
     );
     const before = applied ? (projection?.iterations[applied.iterationId]?.no ?? 0) : 0;
     const levels = applied?.policy === 'raise_reasoning' ? Object.values(applied.levels) : [];
@@ -202,6 +208,7 @@ export function selectRunFlowIterations(
               ? { policy: 'raise_reasoning', level: raised }
               : null,
         iterations,
+        rounds: entry.length || iterations.length,
         selectedIterationId: selected?.iterationId ?? null,
         latestIterationId: latest?.iterationId ?? null,
         status: latest ? (latest.outcome ?? 'active') : 'unrecorded',

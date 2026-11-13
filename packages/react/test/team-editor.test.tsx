@@ -139,6 +139,13 @@ describe('team editor', () => {
     expect(named.length).toBeGreaterThan(0);
   });
 
+  it('has no problems after a check loop wraps the step before a parallel split', () => {
+    const chained = ok(placeStep(chain(4), 'output', { kind: 'after', nodeId: 'agent_4' })).draft;
+    const split = ok(applyPattern(chained, 'parallel', ['agent_3'])).draft;
+    renderEditor(ok(applyPattern(split, 'checkLoop', ['agent_2'])).draft);
+    expect(screen.getByRole('button', { name: /problems?$/ }).textContent).toBe('No problems');
+  });
+
   it('offers only agents in the flow as input sources', async () => {
     const draft = patchNode(chain(3), 'agent_2', { invocation: 'callable' });
     renderEditor(draft);
