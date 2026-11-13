@@ -1915,21 +1915,17 @@
     "agentSummary": "Agent's result (its own words)",
     "nextActions": "Next",
     "reviewChanges": "Review changes",
-    "delivery": "Delivery: {status}",
     "connectionLost": "The server cannot be reached, so run states are unknown. They are not assumed finished or cancelled.",
     "retry": "Try again",
     "reviewLoadFailed": "Couldn't load items to review.",
     "checked": "Checked: {name} {state}",
     "notChecked": "Not checked",
     "intentShort": {
-      "next": "Next request",
       "queue": "Queue",
-      "steer": "Instruction",
       "explain": "Question"
     },
     "editTeam": "Open team design",
     "objectivePlaceholder": "A note that is not sent to agents",
-    "appliesAt": "at its next model request",
     "autoTeam": "Default chat",
     "runSettings": "Run settings",
     "autoModel": "Model",
@@ -1972,7 +1968,6 @@
     "agentCopy": "The agent can read and change this session's working copy.",
     "retryRequest": "Retry request",
     "restoreRequest": "Restore message",
-    "resendNext": "Send as next request",
     "resolvePendingBeforeRetry": "Resolve the previous request before retrying another one. Its receipt is still unconfirmed.",
     "archivedSending": "Sending a message keeps this session archived.",
     "restoreSession": "Restore session",
@@ -2019,7 +2014,19 @@
       "tooLong": "Line {line} is longer than {max} characters.",
       "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
     },
-    "neededNow": "Needed now"
+    "neededNow": "Needed now",
+    "meta": {
+      "waiting": "Waiting to join · read at the next step",
+      "afterDecision": "Read after the decision",
+      "delivering": "Delivering",
+      "read": "Read",
+      "interrupted": "Interrupted · delivered by cutting the reply",
+      "carriedWaiting": "Ended first · waiting as the next request",
+      "carriedStarted": "Ended first · started as a new request",
+      "notDelivered": "Not delivered",
+      "resend": "Send again",
+      "unknown": "Delivery not confirmed"
+    }
   },
   "Files": {
     "folderHeading": "Project source folder",

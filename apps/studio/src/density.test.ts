@@ -105,6 +105,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/session/ComposerQueue.tsx',
     'apps/studio/src/workbench/session/ComposerStatus.tsx',
     'apps/studio/src/workbench/session/SessionEntries.tsx',
+    'apps/studio/src/workbench/session/EntryStatus.tsx',
     'apps/studio/src/workbench/ChatView.tsx',
     'apps/studio/src/workbench/RunMessage.tsx',
     'apps/studio/src/workbench/TurnProcess.tsx',

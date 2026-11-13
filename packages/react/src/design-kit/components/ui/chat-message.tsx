@@ -1,7 +1,7 @@
 'use client';
 
 import { type HTMLMotionProps, motion } from 'motion/react';
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import { useTouchPrimary } from '../../hooks/use-touch-primary.tsx';
 import { useShape } from '../../lib/shape-context.tsx';
 import { type SizeVariant, typeClass, useSize } from '../../lib/size-context.tsx';
@@ -19,6 +19,11 @@ interface ChatMessageProps extends Omit<HTMLMotionProps<'div'>, 'children'> {
   /** Icon-only action buttons shown in the hover-revealed meta row (e.g. copy,
    *  edit, regenerate). Rendered next to the timestamp. */
   actions?: ReactNode;
+  /** Corral adaptation: what became of the message, at the meta row's end and always shown.
+   *  It keeps its place while the time and actions are revealed beside it. */
+  status?: ReactNode;
+  /** Corral adaptation: attributes for the meta row itself (a test or measuring hook). */
+  metaProps?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string>;
   /** Message body. When omitted the text bubble is dropped (attachment-only message). */
   children?: ReactNode;
   /** Size step; compact tightens bubble type and padding. Omitted, follows
@@ -30,7 +35,7 @@ interface ChatMessageProps extends Omit<HTMLMotionProps<'div'>, 'children'> {
 // A single transcript entry. `layout="position"` lets earlier messages slide
 // up when a new one is appended.
 const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
-  ({ from, time, actions, children, size, className, ...props }, ref) => {
+  ({ from, time, actions, status, metaProps, children, size, className, ...props }, ref) => {
     const shape = useShape();
     const compact = useSize(size).variant === 'compact';
     const isUser = from === 'user';
@@ -73,22 +78,36 @@ const ChatMessage = forwardRef<HTMLDivElement, ChatMessageProps>(
             {children}
           </div>
         )}
-        {(showTime || actions != null) && (
-          // Meta row: always rendered so its height is reserved, but hidden
-          // until the message is hovered or an action is focused.
+        {(showTime || actions != null || status != null) && (
+          // Meta row: always rendered so its height is reserved. The time and actions are
+          // hidden until the message is hovered or an action is focused; the status after them
+          // is always shown, on the same one line, at its end.
           <div
+            {...metaProps}
             className={cn(
-              'flex items-center gap-2 px-1 text-muted-foreground select-none',
+              'flex max-w-full min-w-0 flex-nowrap items-center justify-end gap-2 px-1 text-muted-foreground',
               typeClass('caption', compact ? 'compact' : 'default'),
-              !isTouch && [
-                'opacity-0 pointer-events-none transition-opacity duration-160',
-                'group-hover:opacity-100 group-hover:pointer-events-auto',
-                'group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
-              ],
+              metaProps?.className,
             )}
           >
-            {showTime && <span className="tabular-nums">{time}</span>}
-            {actions != null && <span className="flex items-center gap-0.5">{actions}</span>}
+            {(showTime || actions != null) && (
+              <span
+                className={cn(
+                  'flex shrink-0 items-center gap-2 select-none',
+                  !isTouch && [
+                    'opacity-0 pointer-events-none transition-opacity duration-160',
+                    'group-hover:opacity-100 group-hover:pointer-events-auto',
+                    'group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
+                  ],
+                )}
+              >
+                {showTime && <span className="tabular-nums">{time}</span>}
+                {actions != null && <span className="flex items-center gap-0.5">{actions}</span>}
+              </span>
+            )}
+            {status != null && (
+              <span className="flex min-w-0 flex-nowrap items-center gap-1">{status}</span>
+            )}
           </div>
         )}
       </motion.div>

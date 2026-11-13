@@ -18,7 +18,9 @@ import type { SessionSearch } from '../panels/routes.ts';
 import { ReplySelection, runRow } from '../ReplySelection.tsx';
 import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
+import { placeEntries, type SteerRecord } from './entryMeta.ts';
 import { PendingTray } from './PendingTray.tsx';
+import { useRunRecords } from './runRecords.ts';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
 
 /** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
@@ -79,6 +81,23 @@ export function WorkTab({
   const folderAction =
     folderAccess === 'unlinked' || folderAccess === 'untrusted' || folderAccess === 'missing';
   const rowOf = (runId: string) => runRow(session.entries, loose, runId);
+  // What became of each instruction, from its run's record (features/composer-flow.md).
+  const records = useRunRecords(
+    session.entries.flatMap((e) => (e.intent === 'steer' && e.runId ? [e.runId] : [])),
+    runs,
+  );
+  const steerRecord = (entry: (typeof session.entries)[number]): SteerRecord | null | undefined => {
+    const record = entry.runId ? records.get(entry.runId) : undefined;
+    if (!record) return undefined;
+    const directive = Object.values(record.projection.directives).find(
+      (item) => entry.commandId != null && item.commandId === entry.commandId,
+    );
+    return directive ? { ...record, directive } : null;
+  };
+  const placement = placeEntries(session.entries, (entry) => {
+    const record = steerRecord(entry);
+    return record === undefined ? undefined : (record?.directive ?? null);
+  });
   return (
     <RunChecks.Provider value={runChecks}>
       {/* The conversation's one selection listener; its toolbar floats over the rows. */}
@@ -116,6 +135,9 @@ export function WorkTab({
                   runs={runs}
                   artifactMetadataVersion={artifactMetadataVersion}
                   onPanel={onPanel}
+                  {...(entry.intent === 'steer' ? { record: steerRecord(entry) } : {})}
+                  carried={placement.carriedOf.get(entry.entryId)}
+                  runOnly={placement.runOnly.has(entry.entryId)}
                 />
               ),
             })),
