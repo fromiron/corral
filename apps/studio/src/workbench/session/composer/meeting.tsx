@@ -49,7 +49,7 @@ import {
 } from '../../sessionDraft.ts';
 import { TextAttachmentList } from '../../TextAttachments.tsx';
 import { ComposerCard, type SendTarget } from './ComposerCard.tsx';
-import { RecipientChip, type Recipients, SendMenu } from './SendControls.tsx';
+import { RecipientChip, type Recipients } from './SendControls.tsx';
 
 // A meeting's send target (features/composer-flow.md, the send table's meeting row): every key
 // sends to the meeting, and the badge in the target's place chooses the recipients — whoever
@@ -126,11 +126,6 @@ export function MeetingSend({
   const [text, setText] = useState(restored.text);
   const [recipients, setRecipients] = useState<Recipients>(() => restoredRecipients(restored));
   const [attachments, setAttachments] = useState(restored.attachments ?? []);
-  const clear = () => {
-    setText('');
-    setRecipients('auto');
-    setAttachments([]);
-  };
   const draft = useMemo(
     () => ({
       text,
@@ -257,7 +252,11 @@ export function MeetingSend({
     row: 'meeting',
     keys: { send: 'meeting', interrupt: 'meeting', queue: 'meeting' },
     meaning: tc('sendAs.meeting'),
-    menu: <SendMenu situation="meeting" sendKey={sendKey} disabled onSend={() => {}} />,
+    // Every key sends the same, so there is no send menu; its place is kept, and Send stands
+    // where a conversation's does.
+    menu: (
+      <span aria-hidden="true" data-slot="composer-send-menu-place" className="size-7 shrink-0" />
+    ),
     sendDisabled: held || !text.trim(),
     send: () => void submit(),
   };
@@ -334,13 +333,6 @@ export function MeetingSend({
               </MenuItem>
             </MenuPopup>
           </Menu>
-        }
-        afterTarget={
-          text || recipients !== 'auto' || attachments.length ? (
-            <Button size="compact" variant="ghost" disabled={sending} onClick={clear}>
-              {t('clearDraft')}
-            </Button>
-          ) : null
         }
         // Stop and the secretary's plan come before the keys, as a conversation's request
         // settings do: the key hint stays right beside Send.

@@ -100,8 +100,7 @@ export function usableRoles(keys: Record<SendKeyRole, KeyMeaning>, situation: Se
 }
 
 /** Which sends the send menu offers now; the others stay listed, disabled. */
-export function menuSends(situation: SendRow): Record<SendChoice, boolean> {
-  if (situation === 'meeting') return { join: false, interrupt: false, queue: false };
+export function menuSends(situation: Situation): Record<SendChoice, boolean> {
   return {
     join: situation === 'join' || situation === 'joinOnly' || situation === 'awaiting',
     interrupt: situation === 'join',
@@ -109,10 +108,7 @@ export function menuSends(situation: SendRow): Record<SendChoice, boolean> {
   };
 }
 
-/**
- * The menu beside Send: the same three sends as the keys, by pointer. Where every key sends the
- * same (nothing runs, or a meeting) there is nothing to choose and the menu does not open.
- */
+/** The menu beside Send: the same three sends as the keys, by pointer. */
 export function SendMenu({
   situation,
   sendKey,
@@ -120,7 +116,7 @@ export function SendMenu({
   onSend,
   onClose,
 }: {
-  situation: SendRow;
+  situation: Situation;
   sendKey: Preferences['sendKey'];
   /** Nothing to send, or sending is held. */
   disabled: boolean;
@@ -139,7 +135,7 @@ export function SendMenu({
   return (
     <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
       <MenuTrigger
-        disabled={situation === 'idle' || situation === 'meeting'}
+        disabled={situation === 'idle'}
         render={
           <Button
             variant="ghost"

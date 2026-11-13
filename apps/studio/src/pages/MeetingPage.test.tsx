@@ -866,12 +866,20 @@ it('keeps the meeting draft across navigation and remounts, isolated from other 
   expect(f.container.querySelector('[aria-label="evidenceSelected"]')?.textContent).toContain(
     'brief.txt',
   );
-  await act(async () => f.button('clearDraft')?.click());
+  // Each part of the draft is cleared where it is: the text in the box, the recipients by
+  // Auto, the evidence by its chip's ×. There is no separate Clear draft.
+  expect(f.button('clearDraft')).toBeUndefined();
+  await fill(must(f.container.querySelector('textarea'), 'the box'), '');
+  await f.chooseRecipient('recipients.auto');
+  await act(async () => f.button('removeEvidence')?.click());
   expect(f.container.querySelector('textarea')?.value).toBe('');
   expect(f.recipients()?.textContent).toBe('recipients.auto');
+  expect(f.container.querySelector('[aria-label="evidenceSelected"]')).toBeNull();
   await f.hide();
   await f.show();
   expect(f.container.querySelector('textarea')?.value).toBe('');
+  expect(f.recipients()?.textContent).toBe('recipients.auto');
+  expect(f.container.querySelector('[aria-label="evidenceSelected"]')).toBeNull();
   // No one is a choice kept with the draft, like the names.
   await f.chooseRecipient('recipients.none');
   await f.hide();
@@ -1021,14 +1029,14 @@ it('every send key sends to the meeting, Alt+Enter too, and an IME composition n
   });
   expect(f.meetings.send).toHaveBeenCalledTimes(3);
   expect(f.box.value).toBe('한글');
-  // One meaning, said once: the key hint names the send key alone, and the send menu has no
-  // other send to offer.
+  // One meaning, said once: the key hint names the send key alone, and there is no send menu
+  // (it would never open); its place beside Send is kept, so Send sits where a conversation's does.
   const keys = [...f.container.querySelectorAll('[data-slot="composer-key"]')];
   expect(keys).toHaveLength(1);
   expect(keys[0]?.textContent).toContain('keyHint.meeting');
-  expect(
-    f.container.querySelector('[data-slot="composer-send-menu"]')?.hasAttribute('disabled'),
-  ).toBe(true);
+  expect(f.container.querySelector('[data-slot="composer-send-menu"]')).toBeNull();
+  expect(f.button('sendMenu')).toBeUndefined();
+  expect(f.container.querySelector('[data-slot="composer-send-menu-place"]')).not.toBeNull();
   expect(f.button('send')?.getAttribute('aria-description')).toBe('sendAs.meeting');
   // A meeting has no `/` command or `@` reference menu: its box is a plain text box, and
   // `/반론` or `@name` is text the meeting reads.

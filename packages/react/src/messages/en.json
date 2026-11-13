@@ -5205,7 +5205,6 @@
     "requestFailed": "The model provider returned HTTP {status}. Check the model connection or try again.",
     "answerFailedHint": "The model could not complete this reply. Try again or open diagnostics for the reported cause.",
     "participantDefault": "Participant {number}",
-    "clearDraft": "Clear draft",
     "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
     "retrySummary": "Request minutes again",
     "heading": "Meeting",

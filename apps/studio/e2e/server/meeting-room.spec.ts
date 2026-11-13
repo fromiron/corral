@@ -527,9 +527,14 @@ test('unsent meeting drafts survive navigation, reload and closing their tab', a
   await second.close();
   await page.reload();
   await expect(box).toHaveValue('Saved before closing this tab');
-  await page.getByRole('button', { name: 'Clear draft', exact: true }).click();
+  // The draft is cleared where each part is: the text in the box, the recipients by Auto.
+  await expect(page.getByRole('button', { name: 'Clear draft', exact: true })).toHaveCount(0);
+  await box.fill('');
+  await page.getByRole('button', { name: 'Recipients: Participant 2', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Auto', exact: true }).click();
   await page.reload();
   await expect(box).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Recipients: Auto', exact: true })).toBeVisible();
   expect((await meeting(page, id)).rounds).toHaveLength(0);
   expect(corral.errors).toEqual([]);
 });

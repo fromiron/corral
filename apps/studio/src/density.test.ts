@@ -164,7 +164,6 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'sessionActions'/ },
   // The meeting composer's action row: the kit composer's slot controls are compact.
   { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'attachmentActions'/ },
-  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /onClick=\{clear\}/ },
   { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /onClick=\{onStop\}/ },
   {
     file: 'apps/studio/src/workbench/session/composer/meeting.tsx',

@@ -5205,7 +5205,6 @@
     "requestFailed": "모델 제공자가 HTTP {status} 오류를 반환했습니다. 모델 연결을 확인하거나 다시 요청하세요.",
     "answerFailedHint": "모델이 답변을 완료하지 못했습니다. 다시 요청하거나 진단 정보에서 보고된 원인을 확인하세요.",
     "participantDefault": "참가자 {number}",
-    "clearDraft": "초안 지우기",
     "summaryFailed": "비서가 회의록을 정리하지 못했습니다. 다시 요청한 뒤 결정을 검토·채택하세요.",
     "retrySummary": "회의록 다시 요청",
     "heading": "회의",
