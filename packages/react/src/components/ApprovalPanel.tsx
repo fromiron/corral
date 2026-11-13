@@ -141,7 +141,6 @@ export function ApprovalPanel({
     .filter((approval) => fresh(approval.approvalId))
     .map((approval) => approval.approvalId)
     .join(',');
-  // biome-ignore lint/correctness/useExhaustiveDependencies: freshKey names the kept decisions
   const done = useMemo(
     () => decided.filter((approval) => freshKey.split(',').includes(approval.approvalId)),
     [decided, freshKey],

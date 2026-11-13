@@ -504,7 +504,11 @@ function UserQuestionPrompt({
     )
       return;
     const container = form.current?.closest('[data-chat-view]');
-    const tray = form.current?.closest('[data-pending-tray]');
+    // The response place: a conversation's needed-now tray, else the run's whole response area
+    // (Needs you, the Run page), so the card beside this one is next.
+    const place =
+      form.current?.closest('[data-pending-tray]') ?? form.current?.closest('[data-run-response]');
+    const card = form.current?.closest('[data-question]');
     const ownedFocus = form.current?.contains(document.activeElement);
     setBusy(true);
     setError('');
@@ -524,8 +528,11 @@ function UserQuestionPrompt({
       else if (ownedFocus)
         // As a decided approval does: the next waiting card's main action, else the request box.
         requestAnimationFrame(() => {
-          if (container?.isConnected && document.activeElement === document.body)
-            nextResponseTarget(tray?.isConnected ? tray : null, container)?.focus({
+          if (
+            (container?.isConnected || place?.isConnected) &&
+            document.activeElement === document.body
+          )
+            nextResponseTarget(place?.isConnected ? place : null, container, card)?.focus({
               preventScroll: true,
             });
         });

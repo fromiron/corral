@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import type { InboxItemView } from '@corral/client';
-import type { Receipt } from '@corral/contracts';
+import { type Receipt, RunEvent } from '@corral/contracts';
 import {
   emptyProjection,
   type ProjectSummary,
@@ -1043,4 +1043,144 @@ it('frees a refused continue-or-stop decision and says why in its place', async 
   const reason = detail()?.querySelector('[data-continue-decisions] [role="alert"]');
   expect(reason?.textContent).toContain('The run moved on.');
   expect(rowButton('Fix login')).toBeDefined();
+});
+
+/** A run waiting on one written question and one approval. */
+function questionBeside(store: RunSessionStore, runId: string, round = 1) {
+  const executionId = `exec_${runId}`;
+  const requestId = `question_${runId}_${round}`;
+  const projection = waitingOn(runId, 'approval');
+  projection.executions[executionId] = {
+    executionId,
+    nodeId: 'writer',
+    taskId: `task_${executionId}`,
+    attemptNo: 1,
+    parentExecutionId: null,
+    previousExecutionId: null,
+    depth: 0,
+    iterationId: null,
+    modelProfile: 'model-a',
+    configRevision: 0,
+    criteriaVersionId: null,
+    status: 'waiting_approval',
+    activity: null,
+    waitingOn: null,
+    modelCallIds: [],
+    error: null,
+  } as RunProjection['executions'][string];
+  projection.executionOrder.push(executionId);
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `event_${requestId}_${runSeq}`,
+      runId,
+      runSeq,
+      recordedAt: '2026-11-13T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const asked = event(round * 2 - 1, 'user_input.requested', {
+    requestId,
+    executionId,
+    attemptNo: 1,
+    bodyRef: `body_${requestId}`,
+    schemaHash: 'b'.repeat(64),
+    deadline: '2099-11-13T00:01:00.000Z',
+  });
+  store.setState({
+    projection,
+    events: [asked],
+    artifactTexts: {
+      [`body_${requestId}`]: JSON.stringify({
+        key: 'layout',
+        questions: [{ id: 'layout', kind: 'text', prompt: 'Which layout should I keep?' }],
+      }),
+    },
+  });
+  const answer = () =>
+    store.setState({
+      events: [
+        asked,
+        event(round * 2, 'user_input.answered', {
+          requestId,
+          executionId,
+          attemptNo: 1,
+          answerRef: `answer_${requestId}`,
+          answerHash: 'c'.repeat(64),
+        }),
+      ],
+    });
+  return { requestId, answer };
+}
+
+/** Types into a controlled field as a person does. */
+async function typeInto(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    set?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+/** Sends from a focused control; a browser drops focus from it once it is disabled. */
+const sendFrom = async (button: HTMLElement | null | undefined) => {
+  await press(button);
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body && active.matches(':disabled'))
+    // jsdom keeps focus on a disabled control and will not blur it: pass it through a stand-in.
+    await act(async () => {
+      const standIn = document.createElement('input');
+      document.body.append(standIn);
+      standIn.focus();
+      standIn.remove();
+    });
+};
+
+it('moves focus between a question and an approval waiting on the same run', async () => {
+  const { stores, rowButton, detail, click, buttonIn } = await mount({
+    inbox: async () => [decisionA],
+  });
+  await click(rowButton('Fix login'));
+  const run = stores.get('run_a') as RunFixture;
+  const first = questionBeside(run.store, 'run_a');
+  await flush();
+  const primary = () =>
+    detail()?.querySelector<HTMLButtonElement>(
+      '[data-approval="approval_run_a_0"] [data-approval-action="primary"]',
+    );
+  const inputOf = (requestId: string) =>
+    detail()?.querySelector<HTMLInputElement>(`[data-question="${requestId}"] form input`);
+  expect(inputOf(first.requestId)).toBeTruthy();
+  expect(primary()).toBeTruthy();
+
+  // The question answered: focus goes to the approval's main action.
+  await typeInto(inputOf(first.requestId) as HTMLInputElement, 'Wide');
+  await sendFrom(buttonIn(detail(), en.Harness.sendAnswer));
+  expect(run.sendCommand).toHaveBeenCalledTimes(1);
+  expect(document.activeElement).toBe(document.body);
+  await act(async () =>
+    run.sent[0]?.resolve({
+      ...receiptFor('run_a', first.requestId),
+      target: `user_input:${first.requestId}`,
+    }),
+  );
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(primary());
+  await act(async () => first.answer());
+  await flush();
+
+  // Asked again beside the approval: the approval answered, focus goes to the question.
+  const second = questionBeside(run.store, 'run_a', 2);
+  await flush();
+  await sendFrom(primary());
+  await act(async () => {
+    decided(run.store, 'approval_run_a_0', 'approved');
+    run.sent[1]?.resolve(receiptFor('run_a', 'approval_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(inputOf(second.requestId));
 });
