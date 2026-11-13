@@ -158,8 +158,10 @@ function openExecutions(
   const node = (id: string) => definition?.nodes.find((item) => item.id === id);
   return projection.executionOrder.flatMap((id, index) => {
     const execution = projection.executions[id];
+    // An advisor watches the roles and takes no instruction (features/advisor.md).
     if (
       !execution ||
+      execution.advisor ||
       TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
       execution.status === 'cancelling'
     )

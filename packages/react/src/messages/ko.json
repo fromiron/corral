@@ -6234,6 +6234,9 @@
     "recordLost": "실행 기록을 읽지 못함",
     "retry": "다시 시도",
     "controls": "실행 조작",
-    "commandUnconfirmed": "확인되지 않음: 다시 눌러 확인"
+    "commandUnconfirmed": "확인되지 않음: 다시 눌러 확인",
+    "reviewing": "검토 중",
+    "adviceDelivered": "{count, plural, other {조언 #건 전달}}",
+    "finalReview": "{name}: 마지막 검토"
   }
 }

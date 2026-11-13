@@ -334,6 +334,71 @@ describe('the line', () => {
       'Reviewer·중단 권고·조언 2건',
     );
   });
+
+  it('does not say again, open, the first line its words begin with', () => {
+    const one = [item('First line.\nThe rest.')];
+    const view = (open: boolean) => (
+      <>
+        <AdviceSummary
+          name="Reviewer"
+          items={one}
+          status="Read"
+          open={open}
+          controls="words"
+          onToggle={() => {}}
+        />
+        <AdviceText id="words" open={open} items={one} nameOf={() => 'Reviewer'} />
+      </>
+    );
+    const { rerender } = render(wrap(view(false)));
+    const line = document.querySelector('[data-advice-line]') as HTMLElement;
+    expect(line.textContent).toBe('Reviewer·Concern·First line.·Read');
+    rerender(wrap(view(true)));
+    // The name, the severity and the state stay; the first line is the words' own.
+    expect(line.textContent).toBe('Reviewer·Concern·Read');
+    const words = document.querySelector('[data-advice-text]') as HTMLElement;
+    expect(words.textContent).toBe('First line.\nThe rest.');
+  });
+
+  it('opens several of one advisor as their severities and words, the name said once by the line', () => {
+    const several = [item('One.', 'concern'), item('Two words.', 'blocker')];
+    render(
+      wrap(
+        <>
+          <AdviceSummary
+            name="Reviewer"
+            items={several}
+            open
+            controls="words"
+            onToggle={() => {}}
+          />
+          <AdviceText id="words" open items={several} nameOf={() => 'Reviewer'} />
+        </>,
+      ),
+    );
+    expect(document.body.textContent?.split('Reviewer').length).toBe(2);
+    const words = document.querySelector('[data-advice-text]') as HTMLElement;
+    expect(words.textContent).toBe('ConcernOne.BlockerTwo words.');
+  });
+
+  it('names each advisor over its words only when several advisors gave them', () => {
+    const several = [
+      item('One.', 'concern'),
+      { ...item('Two words.', 'blocker'), observerExecutionId: 'advisor_2' },
+    ];
+    render(
+      wrap(
+        <AdviceText
+          id="words"
+          open
+          items={several}
+          nameOf={(advice) => (advice.observerExecutionId === 'advisor_2' ? 'Tester' : 'Reviewer')}
+        />,
+      ),
+    );
+    const words = document.querySelector('[data-advice-text]') as HTMLElement;
+    expect(words.textContent).toBe('Reviewer·ConcernOne.Tester·BlockerTwo words.');
+  });
 });
 
 describe('seeing it', () => {

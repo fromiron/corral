@@ -1,6 +1,11 @@
 import { executionPresence, runPresence } from '@corral/react';
 import { describe, expect, it } from 'vitest';
-import { type ActivityInput, type ActivityRole, closedLine } from './useActivity.ts';
+import {
+  type ActivityAdvisor,
+  type ActivityInput,
+  type ActivityRole,
+  closedLine,
+} from './useActivity.ts';
 
 // The activity bar's closed line (features/composer-flow.md "활동 바"): the first that holds of
 // an off-screen waiting request, an off-screen working role, the join target's activity and the
@@ -160,5 +165,38 @@ describe('closedLine', () => {
       kind: 'disconnected',
       reason: 'record',
     });
+  });
+});
+
+describe('closedLine and the advisor', () => {
+  const advisor = (failed = false): ActivityAdvisor => ({
+    id: 'exec_advisor',
+    name: 'Advisor',
+    presence: executionPresence({ status: failed ? 'failed' : 'active' }),
+    review: failed ? null : 'reviewing',
+    delivered: 0,
+    startedAt: '2026-11-13T00:00:00.000Z',
+  });
+
+  it('says the advisor’s last review once every other execution has ended', () => {
+    const line = closedLine(input({ roles: [], advisors: [advisor()] }));
+    expect(line).toEqual({ kind: 'advisor', advisor: advisor() });
+  });
+
+  it('does not take the advisor for a role while a role is open', () => {
+    const [lead] = team;
+    if (!lead) throw new Error('no lead');
+    // The lead works off screen with an advisor watching: one role, said alone.
+    expect(closedLine(input({ roles: [lead], advisors: [advisor()] }))).toEqual({
+      kind: 'role',
+      role: lead,
+      others: 0,
+    });
+  });
+
+  it('leaves a failed advisor to its row: the run goes on, and the line says its summary', () => {
+    expect(
+      closedLine(input({ roles: [], advisors: [advisor(true)], visible: new Set(['run:run_a']) })),
+    ).toEqual({ kind: 'summary', stateShown: false });
   });
 });

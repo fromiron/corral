@@ -249,10 +249,16 @@ export const RecordEnd: Story = {
     );
   },
   play: async ({ canvasElement }) => {
+    // Open, the line leaves its first line to the words under it.
     await waitFor(() =>
       expect(
         canvasElement.querySelector('[data-advice="unread"] [data-advice-line]')?.textContent,
-      ).toBe('Reviewer·Concern·The summary counts drafts as published.'),
+      ).toBe('Reviewer·Concern'),
     );
+    await expect(
+      canvasElement.querySelector('[data-advice="unread"] [data-advice-text]')?.textContent,
+    ).toContain('The summary counts drafts as published.');
+    // The record's rows fade in; the a11y check reads their colours once they are in.
+    await settled(canvasElement);
   },
 };

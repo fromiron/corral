@@ -1,5 +1,4 @@
 export { type DiffLine, diffLines } from './artifacts/diff.ts';
-export { AdviceSummary, AdviceText } from './components/AdviceLine.tsx';
 export {
   ActivityBar,
   type ActivityBarControls,
@@ -9,6 +8,7 @@ export {
   type ActivityState,
   type ActivityTarget,
 } from './components/ActivityBar.tsx';
+export { AdviceSummary, AdviceText } from './components/AdviceLine.tsx';
 export { ApprovalPanel, callLine, waitingToolPlan } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
@@ -132,6 +132,7 @@ export {
 } from './run/history.ts';
 export {
   executionPresence,
+  executionWatching,
   PRESENCE_EXIT_GRACE_MS,
   type Presence,
   type PresenceDetail,

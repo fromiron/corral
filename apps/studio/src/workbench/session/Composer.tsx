@@ -106,7 +106,8 @@ function SessionComposer({
   runs: RunSummary[];
   active: RunSummary | null;
   selectedRunId: string | null;
-  onViewRun?: (runId: string) => void;
+  /** Opens a run's record, at one of its executions when given. */
+  onViewRun?: (runId: string, executionId?: string) => void;
   /** Brings a run's item into the conversation's window (`null` lets it go); false without one. */
   revealRun?: (runId: string | null) => boolean;
   queued: SessionEntry[];

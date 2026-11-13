@@ -81,6 +81,36 @@ it('an item leaves once its execution row was opened, and opening again changes 
   expect(inbox().filter((item) => item.kind === 'advice')).toHaveLength(1);
 });
 
+// Known gap, left to the server (reported from A8b): opening is recorded per execution row, so an
+// advice that reaches that row after it was opened never enters Needs you. `it.fails` keeps it
+// visible without stopping the suite; once the server records opening per advice it starts to
+// pass, and `.fails` must go.
+it.fails('an advice that reaches a row after it was opened is still listed', () => {
+  const db = openDatabase(':memory:');
+  databases.push(db);
+  const review = new ReviewService({
+    db,
+    clock: new FakeClock(),
+    files: { copyOf: () => null } as unknown as WorkspaceService,
+  });
+  const sessions = [{ sessionId: 'session', title: 'Parser fix', entries: [] }];
+  const runs = [{ runId: 'run_1', status: 'running', sessionId: 'session' }];
+  const unread: { targetExecutionId: string; severity: 'concern' | 'blocker'; text: string }[] = [
+    { targetExecutionId: 'exec_writer', severity: 'concern', text: 'First concern.' },
+  ];
+  const inbox = () =>
+    review
+      .inbox(sessions, runs, () => unread)
+      .flatMap((item) => (item.kind === 'advice' ? [item.detail] : []));
+  expect(inbox()).toEqual(['First concern.']);
+  // The person reads it in full: it leaves.
+  review.markExecutionOpened('run_1', 'exec_writer');
+  expect(inbox()).toEqual([]);
+  // A later review's blocker reaches the same row after its target ended.
+  unread.push({ targetExecutionId: 'exec_writer', severity: 'blocker', text: 'Stop.' });
+  expect(inbox()).toEqual(['Stop.']);
+});
+
 it('names an advice by its first line that has text, trimmed and at most 120 characters', () => {
   const long = `${'word '.repeat(40)}end`;
   const { inbox } = fixture([

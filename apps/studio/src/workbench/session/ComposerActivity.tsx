@@ -59,8 +59,11 @@ export function ComposerActivity({
   onStop: () => void;
   onPause: () => void;
   onResume: () => void;
-  /** Opens a run's record, for a role the conversation has no row for. */
-  onViewRun?: (runId: string) => void;
+  /**
+   * Opens a run's record, for a role the conversation has no row for; at an execution, for an
+   * advisor (it has no row in the conversation).
+   */
+  onViewRun?: (runId: string, executionId?: string) => void;
   /**
    * Brings the run's item into the conversation's window when it is outside it; false when the
    * conversation has no item for that run. `null` lets the place go once the row is reached.
@@ -263,9 +266,18 @@ export function ComposerActivity({
         return roleLine(line.role, line.others, true);
       case 'target':
         return roleLine(line.role, 0, line.stateShown);
+      case 'advisor':
+        // Why the next request has not started: the roles are done, the advisor reviews last.
+        return {
+          glyph: line.advisor.presence.glyph,
+          tone: line.advisor.presence.tone,
+          text: t('finalReview', { name: line.advisor.name }),
+          parts,
+        };
       case 'summary': {
         if (!run) return null;
-        const attention = unansweredAttention(model);
+        // An advisor's failure is said on its row: the run goes on without it.
+        const attention = unansweredAttention(model) && !activity.advisorFailure;
         const state = line.stateShown ? stateOf(run.presence, `run:${run.runId}`) : undefined;
         return {
           glyph: run.presence.glyph,
@@ -311,6 +323,33 @@ export function ComposerActivity({
           };
         })
       : [];
+  // After the roles, each advisor: watching or reviewing, and how many advice reached their
+  // targets. It takes no instruction, and its View opens its execution in the run's record.
+  if (run?.live)
+    for (const advisor of input.advisors ?? []) {
+      const words =
+        advisor.review === 'watching'
+          ? tp('detail.watching')
+          : advisor.review === 'reviewing'
+            ? t('reviewing')
+            : tp.has(advisor.presence.labelKey)
+              ? tp(advisor.presence.labelKey)
+              : null;
+      roles.push({
+        id: advisor.id,
+        name: advisor.name,
+        glyph: advisor.presence.glyph,
+        tone: advisor.presence.tone,
+        ...(words ? { state: { text: words, target: `execution:${advisor.id}` } } : {}),
+        stateShown: true,
+        ...(advisor.delivered
+          ? { activity: t('adviceDelivered', { count: advisor.delivered }) }
+          : {}),
+        startedAt: toMs(advisor.startedAt),
+        target: false,
+        ...(onViewRun ? { onShow: () => onViewRun(run.runId, advisor.id) } : {}),
+      });
+    }
   // Open, a role row that writes its state says it: the line does not write the same words again.
   const written = open
     ? new Set(

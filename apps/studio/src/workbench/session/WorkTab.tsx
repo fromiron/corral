@@ -207,7 +207,9 @@ export function WorkTab({
               runs={runs}
               active={active}
               selectedRunId={selectedRunId}
-              onViewRun={(run) => onPanel('run', { run })}
+              onViewRun={(run, execution) =>
+                onPanel('run', { run, ...(execution ? { execution } : {}) })
+              }
               revealRun={(run) => {
                 if (!onPlace) return false;
                 // The conversation's own place for it: the request that started it, else the run.

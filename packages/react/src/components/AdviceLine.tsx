@@ -53,7 +53,8 @@ export function AdviceSummary({
   const severityName = useSeverityName();
   const severity = gravest(items);
   const sole = items.length === 1 ? items[0] : undefined;
-  const line = sole ? firstLine(sole.text) : null;
+  // Open, the words under the line begin with it: the line does not say it twice.
+  const line = sole && !open ? firstLine(sole.text) : null;
   return (
     <button
       type="button"
@@ -151,6 +152,8 @@ export function AdviceText({
     if (open && inView) heard.current?.(latest.current);
   }, [open, inView, shownKey]);
   const several = items.length > 1;
+  // The line names one advisor already; each advice is named by its own only among several.
+  const advisors = new Set(items.map((item) => nameOf(item))).size > 1;
   return (
     <Collapse id={id} open={open} hideWhenClosed className={cn('relative', className)}>
       <div ref={body} data-advice-text className="flex flex-col gap-2 pt-1">
@@ -158,8 +161,12 @@ export function AdviceText({
           <div key={item.adviceId} className="flex min-w-0 flex-col gap-0.5">
             {several ? (
               <p className="m-0 flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground">
-                <bdi className="text-foreground">{nameOf(item)}</bdi>
-                <MetaDot />
+                {advisors ? (
+                  <>
+                    <bdi className="text-foreground">{nameOf(item)}</bdi>
+                    <MetaDot />
+                  </>
+                ) : null}
                 <span className={TONE[item.severity]}>{severityName(item.severity)}</span>
               </p>
             ) : null}

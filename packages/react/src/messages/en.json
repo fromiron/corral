@@ -6234,6 +6234,9 @@
     "recordLost": "Run record unavailable",
     "retry": "Retry",
     "controls": "Run controls",
-    "commandUnconfirmed": "Not confirmed: press again to check"
+    "commandUnconfirmed": "Not confirmed: press again to check",
+    "reviewing": "Reviewing",
+    "adviceDelivered": "{count, plural, one {# piece of advice delivered} other {# pieces of advice delivered}}",
+    "finalReview": "{name}: final review"
   }
 }
