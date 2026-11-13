@@ -428,11 +428,79 @@ export async function openResult(page: Page, name?: RegExp) {
 }
 
 /**
- * The newest turn's run has succeeded: the composer names it as the last run. (The timeline
- * itself repeats the status in hidden kit copies, so its text is not a single target.)
+ * The composer's activity bar (features/composer-flow.md "활동 바"). It says the run's state in
+ * words only while no run row on screen does, so tests read its state from its attributes:
+ * `data-run` (the presence kind), `data-live` (the session's run is going), `data-line` (what
+ * the closed line says: none, summary, role, target, waiting, disconnected).
  */
+export const activityBar = (page: Page) => page.getByTestId('activity-bar');
+
+/**
+ * The activity bar's closed line: what it says on screen, without its folded panel or its
+ * screen-reader announcements.
+ */
+export const activityLine = (page: Page) =>
+  activityBar(page).locator('[data-activity-bar] > div').first();
+
+/** The session's run is going: the activity bar speaks of a live run. */
+export const runGoing = (page: Page) => page.locator('[data-testid="activity-bar"][data-live]');
+
+/** Opens the activity bar's panel, where the roles, the Todo and the run controls are. */
+export async function openActivity(page: Page) {
+  const toggle = activityBar(page).locator('[data-activity-toggle]');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** The run controls in the open activity panel. */
+export const runControls = (page: Page) =>
+  activityBar(page).getByRole('region', { name: 'Run controls', exact: true });
+
+/**
+ * Stops the session's run from the activity panel. Stop asks first only while two or more
+ * executions work (composer-flow.md "활동 바"); when it asks, this confirms.
+ */
+export async function stopRun(page: Page) {
+  await openActivity(page);
+  await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
+  const asked = await dialog
+    .waitFor({ state: 'visible', timeout: 2_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (asked)
+    await dialog
+      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
+      .click();
+}
+
+/**
+ * Records `count` refused requests in the session, long enough to wrap, so the conversation
+ * scrolls and a card in it can leave the screen.
+ */
+export async function earlierRequests(page: Page, sessionId: string, count: number) {
+  await page.evaluate(
+    async ({ id, count }) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      for (let index = 0; index < count; index += 1) {
+        await fetch(`/api/v1/sessions/${id}/entries`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify({
+            intent: 'next',
+            text: `Earlier request ${index + 1}. ${'Long enough to wrap over lines. '.repeat(3)}`,
+            state: 'refused',
+          }),
+        });
+      }
+    },
+    { id: sessionId, count },
+  );
+}
+
+/** The newest turn's run has succeeded and nothing runs: the activity bar's idle summary. */
 export function lastRunSucceeded(page: Page) {
-  return page.getByRole('link', { name: /^Succeeded Last run/ });
+  return page.locator('[data-testid="activity-bar"][data-run="succeeded"]:not([data-live])');
 }
 
 /** The team editor's canvas and one of its steps. */

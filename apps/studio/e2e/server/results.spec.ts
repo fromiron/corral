@@ -6,7 +6,15 @@ import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import { usageTotals } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { chooseRun, newConversation, openResult, panelTab, requestBox } from '../workbench.ts';
+import {
+  activityLine,
+  chooseRun,
+  lastRunSucceeded,
+  newConversation,
+  openResult,
+  panelTab,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
@@ -70,7 +78,8 @@ test('a completed run explains failed file steps and opens their reasons', async
   await head.getByRole('button', { expanded: false }).click();
   const tools = page.getByRole('list', { name: /^Tools · \d+$/ });
   await expect(tools).toContainText('The run completed, but some tool steps failed.');
-  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  await expect(activityLine(page)).not.toContainText('some tool steps failed');
+  await expect(activityLine(page)).not.toContainText('A failure needs attention');
   // Each helper's list_files failed the same way; the first one stands for them.
   const step = tools.getByRole('listitem').filter({ hasText: 'list_files' }).first();
   await expect(
@@ -124,8 +133,9 @@ test('selected-run usage and unique result identities survive reload without cha
     await expect(page.getByTestId('composer-stats')).toContainText(
       text.startsWith('First') ? '1 run' : '2 runs',
     );
-    // The newest run is the last run; its turn, not the composer, names its number.
-    await expect(page.getByRole('link', { name: 'Succeeded Last run', exact: true })).toBeVisible();
+    // The newest run is the last run; its turn, not the activity bar, names its number.
+    await expect(lastRunSucceeded(page)).toContainText('Last run');
+    await expect(activityLine(page)).not.toContainText(`Run #${index + 1}`);
     await expect(page.getByTestId('turn-run').last()).toHaveText(`Run #${index + 1}`);
   }
   // The same reading the comparison below makes: the figures wrap, so the laid-out text differs.
@@ -135,7 +145,8 @@ test('selected-run usage and unique result identities survive reload without cha
   await panelTab(page, 'Runs');
   await chooseRun(page, 1);
   await panelTab(page, 'Conversation');
-  const selected = page.getByRole('link', { name: /Selected run · Run #1 of 2/ });
+  // The activity bar names the run the conversation shows when it is not the last one.
+  const selected = activityLine(page).getByText('Selected run · Run #1 of 2', { exact: true });
   await expect(selected).toBeVisible();
   await page.reload();
   await expect(selected).toBeVisible();

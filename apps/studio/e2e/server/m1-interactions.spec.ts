@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { newConversation, panelTab, requestBox } from '../workbench.ts';
+import { activityBar, newConversation, openActivity, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -102,15 +102,17 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await expect(page.getByRole('button', { name: 'Remove notes.txt' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  // The question comes to the conversation's needed-now tray, in view: no notice repeats it.
+  // The question comes to the conversation's needed-now tray, in view: the bar does not repeat it.
   const question = page.locator('[data-pending-tray]').getByRole('form', {
     name: 'Waiting for you',
   });
   await expect(question).toBeVisible();
-  await expect(page.getByTestId('action-required')).toHaveCount(0);
-  // The plan is one line above the composer; the person expands it to read its steps.
-  await expect(page.getByTestId('work-plan-toggle')).toContainText('Read attachment and answer');
-  await page.getByTestId('work-plan-toggle').click();
+  await expect(activityBar(page)).not.toHaveAttribute('data-line', 'waiting');
+  // The plan is one part of the activity bar's line; the person opens the bar to read its steps.
+  await expect(activityBar(page).getByTestId('activity-step')).toContainText(
+    'Read attachment and answer',
+  );
+  await openActivity(page);
   const planItem = page.getByTestId('composer-work-plan').locator('[data-plan-item="answer"]');
   await expect(planItem).toBeVisible();
   await expect(planItem).toContainText('Read attachment and answer');

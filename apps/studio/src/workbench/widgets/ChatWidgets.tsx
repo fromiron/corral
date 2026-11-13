@@ -1,32 +1,19 @@
 import {
   AgentSteeringPlan,
-  Banner,
-  BannerActions,
-  BannerTitle,
   Button,
   focusRing,
   fontWeights,
+  Meter,
   Select,
 } from '@corral/react/design-kit';
-import {
-  ArrowRight,
-  ChevronDown,
-  Circle,
-  CircleAlert,
-  CircleCheck,
-  FileDiff,
-  ListChecks,
-  TriangleAlert,
-  X,
-} from '@corral/react/icons';
+import { ArrowRight, ChevronDown, FileDiff } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import type { SessionSearch } from '../panels/routes.ts';
-import { useRespondInConversation, useWaitingNoticeAllowed } from '../session/pendingTrayState.ts';
 import { formatCount } from './numbers.ts';
 import { RunStatusAnnouncement } from './RunStatusAnnouncement.tsx';
-import { actionCopy, actionTone, composerShowsRunStatus } from './selectors.ts';
+import { actionCopy } from './selectors.ts';
 import { type ChatWidgetModel, useChatWidget } from './useChatWidgets.tsx';
 
 const CATEGORIES = [
@@ -55,7 +42,7 @@ const number = (value: number) => value.toLocaleString();
  * "Last run" for the newest finished run, whose turn already links it by number; an older one
  * names its position (#72).
  */
-function viewedLabel(
+export function viewedLabel(
   viewed: NonNullable<ChatWidgetModel['viewed']>,
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
@@ -408,7 +395,7 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
     </>
   );
 }
-function ChangesChip({ model }: { model: ChatWidgetModel }) {
+export function ChangesChip({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   if (!model.runId) return null;
   const text =
@@ -429,7 +416,7 @@ function ChangesChip({ model }: { model: ChatWidgetModel }) {
     >
       <FileDiff size={14} className="shrink-0" />
       <span className="whitespace-nowrap">{text}</span>
-      {model.changeLines != null ? (
+      {model.changeLines ? (
         <span className="whitespace-nowrap text-micro @max-lg/composer-surface:hidden">
           {t('changesLines', { count: model.changeLines })}
         </span>
@@ -470,8 +457,8 @@ export function RunLink({
     />
   );
 }
-/** The plan's done count, as the line and its live region say it. */
-function planCount(
+/** The plan's done count, as the activity bar and its panel say it. */
+export function planCount(
   status: ChatWidgetModel['plan']['status'],
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
@@ -488,248 +475,129 @@ function planCount(
 }
 
 /**
- * An ended run's state as a mark, so a failure never looks like a success: a check for done,
- * an alert for failed, a cross for cancelled, a warning for interrupted. The word sits beside it.
+ * What the presented run's state changes say to assistive tech: what waits on the person or
+ * went wrong, and the run's state as it changes. Nothing else is announced (composer-flow.md
+ * "보안·성능·접근성"): no clock, no count.
  */
-function RunStateIcon({ status, failed }: { status: string | null; failed: boolean }) {
-  const state = failed ? 'failed' : status;
-  const mark = { size: 12, 'aria-hidden': true, 'data-state': state ?? undefined } as const;
-  if (state === 'failed') return <CircleAlert {...mark} className="shrink-0 text-danger" />;
-  if (state === 'succeeded') return <CircleCheck {...mark} className="shrink-0 text-success" />;
-  if (state === 'cancelled') return <X {...mark} className="shrink-0" />;
-  if (state === 'interrupted') return <TriangleAlert {...mark} className="shrink-0 text-warning" />;
-  return <Circle {...mark} className="shrink-0" />;
+export function ActivityAnnouncements({ model }: { model: ChatWidgetModel | null }) {
+  const t = useTranslations('Widgets');
+  if (!model?.runId) return null;
+  return (
+    <>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {model.action.visible ? actionLabel(model, t) : ''}
+      </p>
+      <RunStatusAnnouncement
+        runId={model.runId}
+        status={model.plan.runStatus}
+        ready={model.readState === 'ready'}
+      />
+    </>
+  );
+}
+
+/** What the run needs, in words: the first waiting question by its title, else the kind. */
+export function actionLabel(
+  model: ChatWidgetModel,
+  t: ReturnType<typeof useTranslations<'Widgets'>>,
+) {
+  return (
+    (model.action.summary === 'question' && model.questionNotice) ||
+    actionCopy(model.action)
+      .map((key) => (key === 'actionMixed' ? t(key, { count: model.action.count }) : t(key)))
+      .join(' · ')
+  );
 }
 
 /**
- * The composer's one-line status above the input, and its attention notice.
- *
- * The line holds the host's send intent (`lead`), an ended run's state, the plan's done count
- * with the step in progress (its toggle expands the Todo, `planId`), the change summary, the
- * current tool, the host's "applies to a new request only" note and the Overview opener. A live
- * run's state and controls belong to the top bar's pill, so the line never repeats them. One
- * announcement and a scoped entry to the existing approval/interaction host follow it; approvals
- * alone are announced only, since their turn's card in the conversation decides them.
+ * A failure or an unconfirmed outcome no card answers (chat-widgets-contract "컴포저"): the
+ * activity bar says it in its warning tone and leads to the run's own place. A failed run is
+ * told by its turn while that turn is the latest, and a run that completed with failed steps
+ * says so once, beside them.
  */
-export function ComposerDock({
-  lead,
-  note,
-  summary,
-  planId,
-  plan: planRegion,
-}: {
-  /** The next request's intent and target chips. */
-  lead?: ReactNode;
-  /** The one notice for items the current intent does not carry. */
-  note?: ReactNode;
-  /** The Overview opener. */
-  summary?: ReactNode;
-  /** The id of the Todo the plan toggle expands. */
-  planId?: string;
-  /** The Todo the plan toggle expands, directly under the line. */
-  plan?: ReactNode;
-}) {
-  const model = useChatWidget();
+export function unansweredAttention(model: ChatWidgetModel | null) {
+  if (!model?.runId || !model.action.visible || model.action.needsUser) return false;
+  return !(
+    model.action.summary === 'failure' &&
+    (model.action.completedWithFailures || model.viewed?.latest)
+  );
+}
+
+/** The context in the activity bar's panel: the share of the window, and compaction. */
+export function ActivityContext({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
-  const ts = useTranslations('Status');
-  const tt = useTranslations('Turn');
-  const run = model?.runId ? model : null;
-  // On a session screen the conversation's needed-now tray answers what waits; its card says it
-  // while the tray is in view, so the notice is only for a tray measured out of view (scrolled
-  // away or covered), never while the tray is still appearing or being measured.
-  const noticeAllowed = useWaitingNoticeAllowed();
-  const respondInTray = useRespondInConversation();
-  if (!run && !lead && !note) return null;
-  const status = run?.plan.status ?? { state: 'hidden' as const };
-  const open = Boolean(run?.plan.open);
-  const plan = 'plan' in status ? status.plan : null;
-  const countNotice =
-    'completed' in status ? t('planCount', { done: status.completed, total: status.total }) : '';
-  const step =
-    plan && run?.plan.selectedChoice?.live
-      ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
-      : null;
-  const running =
-    run?.live && run.plan.runStatus === 'running' && !run.action.visible
-      ? (run.tools.find((row) => row.tone === 'running')?.name ?? null)
-      : null;
-  // Named as the work log names it (Wait, not await_tasks); an unknown tool keeps its own name.
-  const tool = running && tt.has(`tool.${running}`) ? tt(`tool.${running}`) : running;
-  // A failed run is told by its turn's card when that card is the latest turn; the notice
-  // stays while another run or result is on screen, so the failure stays discoverable. A run
-  // that completed with failed steps says so once, in its turn, beside those steps. Approvals
-  // alone are decided in their turn's card, and the top bar's pill says the run waits, so the
-  // notice would only repeat them; the live region below still announces them.
-  const notice =
-    run?.action.visible &&
-    run.action.summary !== 'approval' &&
-    (!run.action.needsUser || noticeAllowed) &&
-    !(run.action.summary === 'failure' && (run.action.completedWithFailures || run.viewed?.latest));
-  // Waiting questions alone name the first one, as the conversation's notice does.
-  const actionLabel = run
-    ? (run.action.summary === 'question' && run.questionNotice) ||
-      actionCopy(run.action)
-        .map((key) => (key === 'actionMixed' ? t(key, { count: run.action.count }) : t(key)))
-        .join(' · ')
-    : '';
+  const tr = useTranslations('RunStatus');
+  const locale = useLocale();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!model.runId) return null;
+  const { context, compaction } = model;
+  const phase = compaction?.phase ?? null;
+  const running = phase === 'queued' || phase === 'started';
+  const compactable = Boolean(compaction && !compaction.reason);
+  // Nothing measured and nothing to do: no section.
+  if (context.percent == null && context.tokens == null && !compactable && !phase) return null;
   return (
-    <div
-      data-testid="composer-dock"
-      className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col"
+    <section
+      aria-label={t('context')}
+      data-testid="activity-context"
+      className="flex flex-col gap-1 border-t border-border/60 pt-2.5"
     >
-      {/* One line at every width, each part on one line. The plan count and the change count
-          stay whole; the plan toggle is what shrinks, and inside it the current step's words.
-          As the line narrows (container queries) the step leaves, then the change summary's line
-          count, then the Overview opener's word. */}
-      <div
-        data-testid="composer-status-pills"
-        className="mb-2 flex min-w-0 flex-nowrap items-center gap-1 empty:hidden"
-      >
-        {lead}
-        {run &&
-        composerShowsRunStatus({ runStatus: run.plan.runStatus, readState: run.readState }) ? (
-          // An ended run keeps one state, which leads to its record.
-          <RunLink model={run} className={`${chipClass} shrink-0`}>
-            <RunStateIcon
-              status={run.readState === 'ready' ? run.plan.runStatus : null}
-              failed={run.readState === 'error'}
-            />
-            <span>
-              {run.readState === 'error'
-                ? t('runUnavailable')
-                : run.readState === 'loading'
-                  ? t('runLoading')
-                  : run.plan.runStatus
-                    ? ts(run.plan.runStatus)
-                    : t('runUnavailable')}
-            </span>
-            {run.viewed ? (
-              <span className="whitespace-nowrap text-micro @max-2xl/composer-surface:hidden">
-                {viewedLabel(run.viewed, t)}
-              </span>
-            ) : null}
-          </RunLink>
-        ) : null}
-        {run &&
-        (run.plan.multiple ||
-          !run.plan.auto ||
-          (status.state === 'hidden' && run.plan.choices.length > 0)) ? (
-          <Select
-            label={t('planOwner')}
-            variant="chip"
-            value={run.plan.auto ? 'auto' : (run.plan.selectedKey ?? 'auto')}
-            onValueChange={(value) =>
-              value === 'auto' ? run.plan.follow() : run.plan.choose(value)
-            }
-            options={[
-              { value: 'auto', label: t('follow') },
-              ...run.plan.choices.map((choice) => ({
-                value: choice.key,
-                label: choice.key === 'team' ? t('teamPlan') : choice.label,
-                hint: choice.lastTeam
-                  ? t('teamLast')
-                  : choice.status
-                    ? ts(choice.status)
-                    : undefined,
-              })),
-            ]}
+      <div className="flex min-h-7 min-w-0 items-center gap-3 text-caption text-muted-foreground">
+        <span className="text-foreground" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('context')}
+        </span>
+        {context.percent != null ? (
+          <Meter
+            value={(context.barPercent ?? context.percent) / 100}
+            color={context.percent >= 90 ? 'var(--warning)' : 'var(--emphasis)'}
+            label={contextLabel(context, t, locale)}
+            className="w-24 shrink-0"
           />
         ) : null}
-        {run && status.state !== 'hidden' ? (
+        <span className="min-w-0 truncate tabular-nums">
+          {[
+            context.percent != null ? `${context.percent}%` : contextLabel(context, t, locale),
+            context.tokens != null
+              ? context.windowTokens
+                ? `${compactNumber(context.tokens, locale)} / ${compactNumber(context.windowTokens, locale)} ${t('tokens')}`
+                : `${compactNumber(context.tokens, locale)} ${t('tokens')}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
+        {/* Compaction only where it can be sent: a run with one open execution. */}
+        {compaction && !compaction.reason ? (
           <Button
-            type="button"
             variant="ghost"
-            data-testid="work-plan-toggle"
-            // The one part of the line that shrinks; whatever it cannot show is clipped, never
-            // drawn over its neighbours.
-            className={`${chipClass} overflow-hidden`}
-            aria-expanded={open}
-            aria-controls={planId}
-            onClick={() => run.plan.setOpen(!open)}
+            className="ml-auto shrink-0"
+            title={tr('compactHint')}
+            disabled={busy || compaction.pending || running}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              void compaction
+                .request()
+                .then((failure) => setError(failure))
+                .finally(() => setBusy(false));
+            }}
           >
-            <ListChecks size={14} aria-hidden="true" className="shrink-0" />
-            <span className="shrink-0 whitespace-nowrap @max-xl/composer-surface:hidden">
-              {t('planHeading')}
-            </span>
-            <span className="shrink-0 whitespace-nowrap tabular-nums">{planCount(status, t)}</span>
-            {/* Collapsed, the line names the step in progress; open, the Todo shows it. */}
-            {step && !open ? (
-              <span className="min-w-0 max-w-64 truncate @max-xl/composer-surface:hidden">
-                {step}
-              </span>
-            ) : null}
-            <ChevronDown
-              size={12}
-              aria-hidden="true"
-              className={`shrink-0 transition-[rotate] duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
-            />
+            {tr('compactRequest')}
           </Button>
         ) : null}
-        {run?.chips.includes('changes') ? <ChangesChip model={run} /> : null}
-        {tool ? (
-          <span
-            data-testid="composer-activity"
-            className="min-w-0 max-w-48 truncate px-2 text-caption text-muted-foreground @max-md/composer-surface:hidden"
-          >
-            {tool}
-          </span>
-        ) : null}
-        {note}
-        {run ? summary : null}
       </div>
-      {run ? planRegion : null}
-      {run && notice ? (
-        // The live region below announces it; the banner itself stays a note.
-        <Banner
-          data-testid="action-required"
-          status={actionTone(run.action)}
-          contrast="high"
-          role="note"
-          className="mb-2"
-        >
-          <BannerTitle>{actionLabel}</BannerTitle>
-          <BannerActions>
-            <Button
-              variant="secondary"
-              {...(run.action.needsUser && respondInTray
-                ? // To the tray: scrolled into view and focused.
-                  { onClick: respondInTray }
-                : {
-                    render: (
-                      <RunLink
-                        model={run}
-                        respond={run.action.needsUser}
-                        executionId={
-                          run.action.needsUser ? undefined : (run.failedExecutionId ?? undefined)
-                        }
-                      />
-                    ),
-                  })}
-            >
-              {t(
-                run.action.needsUser
-                  ? 'actionOpen'
-                  : run.failedExecutionId
-                    ? 'actionOpenFailure'
-                    : 'actionOpenRun',
-              )}
-            </Button>
-          </BannerActions>
-        </Banner>
+      {phase ? (
+        <p role="status" className="text-caption text-muted-foreground">
+          {tr(`compactPhase.${phase}`)}
+        </p>
       ) : null}
-      {run?.runId ? (
-        <>
-          <p className="sr-only" aria-live="polite" aria-atomic="true">
-            {[countNotice, run.action.visible ? actionLabel : ''].filter(Boolean).join(' · ')}
-          </p>
-          <RunStatusAnnouncement
-            runId={run.runId}
-            status={run.plan.runStatus}
-            ready={run.readState === 'ready'}
-          />
-        </>
+      {error ? (
+        <p role="alert" className="text-caption text-danger">
+          {error}
+        </p>
       ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -743,7 +611,7 @@ export function ComposerPlan({
   showAllKey,
   onShowAllKeyChange,
 }: {
-  variant?: 'composer' | 'steering';
+  variant?: 'composer' | 'steering' | 'activity';
   /** The composer Todo's id, which the line's plan toggle controls. */
   id?: string;
   showAllKey?: string | null;
@@ -819,7 +687,7 @@ export function ComposerPlan({
           }
           wrapTitles
           // The composer's Todo box has its own inset.
-          className={variant === 'composer' ? 'px-0 pb-0' : undefined}
+          className={variant !== 'steering' ? 'px-0 pb-0' : undefined}
         />
       ) : null}
       {plan && plan.items.length > 5 ? (
@@ -834,6 +702,54 @@ export function ComposerPlan({
       ) : null}
     </>
   );
+  const owner =
+    model.plan.multiple ||
+    !model.plan.auto ||
+    (status.state === 'hidden' && model.plan.choices.length > 0) ? (
+      <Select
+        label={t('planOwner')}
+        variant={variant === 'activity' ? 'chip' : 'ghost'}
+        value={model.plan.auto ? 'auto' : (model.plan.selectedKey ?? 'auto')}
+        onValueChange={(value) =>
+          value === 'auto' ? model.plan.follow() : model.plan.choose(value)
+        }
+        options={[
+          { value: 'auto', label: t('follow') },
+          ...model.plan.choices.map((choice) => ({
+            value: choice.key,
+            label: choice.key === 'team' ? t('teamPlan') : choice.label,
+            hint: choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : undefined,
+          })),
+        ]}
+      />
+    ) : null;
+  // In the activity bar's panel the plan is read as it is, under its heading and count.
+  if (variant === 'activity')
+    return status.state === 'hidden' && !owner ? null : (
+      <section
+        aria-label={t('planHeading')}
+        data-testid="composer-work-plan"
+        className="flex min-w-0 flex-col gap-1"
+      >
+        <div className="flex min-h-7 min-w-0 items-center gap-2 text-caption text-muted-foreground">
+          <span className="text-foreground" style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('planHeading')}
+          </span>
+          {owner}
+          {status.state !== 'hidden' ? (
+            <span className="ml-auto shrink-0 tabular-nums">{planCount(status, t)}</span>
+          ) : null}
+        </div>
+        {status.state !== 'hidden' ? (
+          <div
+            data-testid="work-plan-items"
+            className="work-plan-items max-h-[min(16rem,30dvh)] overflow-y-auto overscroll-contain"
+          >
+            {body}
+          </div>
+        ) : null}
+      </section>
+    );
   if (variant === 'composer')
     return status.state === 'hidden' ? null : (
       <div

@@ -4,7 +4,7 @@ import { createTextAttachment } from '@corral/core';
 import { fauxAssistantMessage } from '@corral/server/testing';
 import type { Locator, Page } from '@playwright/test';
 import { expect, type Harness, test } from '../server/harness.ts';
-import { newConversation, requestBox } from '../workbench.ts';
+import { newConversation, requestBox, runGoing } from '../workbench.ts';
 import { waitForStill } from './probe.ts';
 import {
   conversation,
@@ -363,7 +363,7 @@ test.describe('tall runs above the end', () => {
       await requestBox(page).fill(`Tall reply ${index}`);
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await finished(index);
-      await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+      await expect(runGoing(page)).toHaveCount(0);
     }
     const tallest = await timeline(page)
       .locator('[data-chat-item]')
