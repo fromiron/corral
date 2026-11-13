@@ -9387,12 +9387,23 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (!WORKING.has(run.projection.status));
           requireActive();
-          // An advisor asks the model only inside a review, and at most its cap per review.
+          // An advisor asks the model only inside a review, and at most its cap per review. The
+          // cap counts the requests actually permitted, a retry too; a preparation sent back for
+          // a stale context and the advisor's own compaction do not count (features/advisor.md).
+          const advisorReview =
+            input.assignment.kind === 'advisor'
+              ? run.advisors.advisors.get(input.nodeId)?.review
+              : undefined;
+          const counted = record?.purpose !== 'compaction';
           if (input.assignment.kind === 'advisor') {
-            const review = run.advisors.advisors.get(input.nodeId)?.review;
-            if (!review || review.ended || review.requests >= review.request.maxRequests)
+            if (!advisorReview || advisorReview.ended)
               throw new Error('the advisor has no review open for another model request');
-            review.requests += 1;
+            if (counted && advisorReview.requests >= advisorReview.request.maxRequests) {
+              // The cap ends the review: the advisor is told so before its request is refused.
+              advisorReview.ended = true;
+              run.handles.get(executionId)?.endReview?.(advisorReview.request.reviewId);
+              throw new Error('the advisor has no review open for another model request');
+            }
           }
           const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
           const request = runGates(this.gates['model.request'], view);
@@ -9578,6 +9589,7 @@ export class Coordinator {
             this.releaseSlot(run);
             throw error;
           }
+          if (advisorReview && counted) advisorReview.requests += 1;
           // Corral sets no output cap of its own: the model's maximum, or the fallback estimate.
           const maxOutputTokens = input.model.maxOutputTokens ?? FALLBACK_OUTPUT_TOKENS;
           const modelCallId = this.ids.next('model_call');
