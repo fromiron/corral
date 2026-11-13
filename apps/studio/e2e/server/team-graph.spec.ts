@@ -72,10 +72,16 @@ function branchesOf(coordinator: Pick<Coordinator, 'getSnapshot'>, runId: string
     .sort((a, b) => a.runSeq - b.runSeq);
 }
 
-/** What the run waits on, opened from the run header once something waits. */
+/**
+ * What the run waits on: the run header's Respond takes the person to the conversation's
+ * needed-now tray, where it is answered.
+ */
 async function needsYou(page: Page) {
-  await page.getByTestId('run-respond').click();
-  return page.getByTestId('run-needs-you');
+  const respond = page.getByTestId('run-respond');
+  if (await respond.isVisible()) await respond.click();
+  const tray = page.locator('[data-pending-tray]');
+  await expect(tray).toBeVisible();
+  return tray;
 }
 
 /**
@@ -245,9 +251,10 @@ test('a check Decision runs a registered check in the working copy, and a Loop t
     await page.goto(`${corral.server.url}/runs/${runId}`);
 
     // A check command not run before needs the person's approval; the Loop then stops changing.
-    const waiting = page.getByTestId('run-needs-you');
+    const waiting = page.locator('[data-pending-tray]');
+    // Whether to go on is asked in the kit's decision stack.
     const stalled = waiting
-      .locator('[data-testid^="approval-"]')
+      .locator('[data-continue-decisions]')
       .filter({ hasText: 'Loop stopped changing' });
     const check = waiting.getByRole('button', { name: 'Run this check once', exact: true });
     for (let step = 0; step < 4 && !(await stalled.isVisible()); step++) {

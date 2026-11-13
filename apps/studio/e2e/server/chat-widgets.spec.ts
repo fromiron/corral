@@ -275,8 +275,9 @@ test('live plans, context, manual collapse and an answer use the primary session
       /Context about \d+%/,
     );
     await closeOverview(page);
+    // Respond goes to the conversation's needed-now tray, where the question is answered.
     await page.getByTestId('action-required').getByText('Respond', { exact: true }).click();
-    await page.getByTestId('run-respond').click();
+    await expect(page.locator('[data-pending-tray]')).toBeFocused();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
@@ -390,7 +391,7 @@ test.describe('serialized provider context', () => {
     await expect(inspector).toBeHidden();
     await closeOverview(page);
     await page.getByTestId('action-required').getByRole('link').click();
-    await page.getByTestId('run-respond').click();
+    await expect(page.locator('[data-pending-tray]')).toBeFocused();
     const question = page.getByRole('form', { name: 'Waiting for you' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();
