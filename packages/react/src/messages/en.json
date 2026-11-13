@@ -956,7 +956,11 @@
       "foreground": "Foreground",
       "timeout": "Timeout",
       "editFile": "Edit file"
-    }
+    },
+    "continueHeading": "{count, plural, one {# decision} other {# decisions}}",
+    "continueAnswered": "Answered",
+    "continueRegion": "Continue or stop",
+    "continueStopped": "Stopped"
   },
   "Inbox": {
     "title": "Needs you",
@@ -1973,7 +1977,8 @@
       "tooMany": "Completion criteria have up to {max} lines.",
       "tooLong": "Line {line} is longer than {max} characters.",
       "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
-    }
+    },
+    "neededNow": "Needed now"
   },
   "Files": {
     "folderHeading": "Project source folder",

@@ -15,6 +15,7 @@ import { Check, Copy } from '../design-kit/icons.ts';
 import { Button, fontWeights, Input, Select, Tooltip } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow, RowAction } from './FirstRow.tsx';
+import { nextResponseTarget } from './responseFocus.ts';
 
 /** Whether the panel shows: a question or extension prompt waits, or an extension said something. */
 export const interactionShown = (events: readonly RunEvent[], projection: RunProjection | null) =>
@@ -24,10 +25,13 @@ export const interactionShown = (events: readonly RunEvent[], projection: RunPro
 export function InteractionPanel({
   session,
   action,
+  readOnly = false,
 }: {
   session: RunSessionStore;
   /** A control of the host's frame, at the end of the first row (see ApprovalPanel). */
   action?: ReactNode;
+  /** The prompts to read only; another place on the same screen answers them (ApprovalPanel). */
+  readOnly?: boolean;
 }) {
   const events = useStore(session, (s) => s.events);
   const projection = useStore(session, (s) => s.projection);
@@ -96,6 +100,7 @@ export function InteractionPanel({
               setRetry((n) => n + 1);
             }}
             action={index === 0 ? action : undefined}
+            readOnly={readOnly}
           />
         ) : (
           <ExtensionPrompt
@@ -113,6 +118,7 @@ export function InteractionPanel({
               setRetry((current) => current + 1);
             }}
             action={index === 0 ? action : undefined}
+            readOnly={readOnly}
           />
         ),
       )}
@@ -141,6 +147,7 @@ function ExtensionPrompt({
   loadFailed,
   retry,
   action,
+  readOnly,
 }: {
   session: RunSessionStore;
   event: EventOf<'extension.ui_requested'>;
@@ -148,6 +155,7 @@ function ExtensionPrompt({
   loadFailed: boolean;
   retry(): void;
   action?: ReactNode;
+  readOnly: boolean;
 }) {
   const t = useTranslations('Harness');
   const format = useFormatter();
@@ -222,7 +230,7 @@ function ExtensionPrompt({
       {request?.kind === 'confirm' ? (
         <p className="whitespace-pre-wrap break-words">{request.message}</p>
       ) : null}
-      {request?.kind === 'select' ? (
+      {readOnly ? null : request?.kind === 'select' ? (
         <Select
           label={request.title}
           disabled={busy}
@@ -234,7 +242,7 @@ function ExtensionPrompt({
           ]}
         />
       ) : null}
-      {request?.kind === 'input' ? (
+      {!readOnly && request?.kind === 'input' ? (
         <Input
           aria-label={request.title}
           disabled={busy}
@@ -244,28 +252,30 @@ function ExtensionPrompt({
           onChange={(e) => setValue(e.target.value)}
         />
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        {request?.kind === 'confirm' ? (
-          <>
-            <Button disabled={busy} onClick={() => void answer(true)}>
-              {t('confirmYes')}
+      {readOnly ? null : (
+        <div className="flex flex-wrap gap-2">
+          {request?.kind === 'confirm' ? (
+            <>
+              <Button disabled={busy} onClick={() => void answer(true)}>
+                {t('confirmYes')}
+              </Button>
+              <Button variant="tertiary" disabled={busy} onClick={() => void answer(false)}>
+                {t('confirmNo')}
+              </Button>
+            </>
+          ) : request ? (
+            <Button
+              disabled={busy || (request.kind === 'select' && !value)}
+              onClick={() => void answer(value)}
+            >
+              {t('sendAnswer')}
             </Button>
-            <Button variant="tertiary" disabled={busy} onClick={() => void answer(false)}>
-              {t('confirmNo')}
-            </Button>
-          </>
-        ) : request ? (
-          <Button
-            disabled={busy || (request.kind === 'select' && !value)}
-            onClick={() => void answer(value)}
-          >
-            {t('sendAnswer')}
+          ) : null}
+          <Button variant="ghost" disabled={busy} onClick={() => void answer(null)}>
+            {t('dismissPrompt')}
           </Button>
-        ) : null}
-        <Button variant="ghost" disabled={busy} onClick={() => void answer(null)}>
-          {t('dismissPrompt')}
-        </Button>
-      </div>
+        </div>
+      )}
       {error ? (
         <p role="alert" className="text-caption text-danger">
           {error}
@@ -282,6 +292,7 @@ function UserQuestionPrompt({
   loadFailed,
   retry,
   action,
+  readOnly,
 }: {
   session: RunSessionStore;
   event: EventOf<'user_input.requested'>;
@@ -289,6 +300,7 @@ function UserQuestionPrompt({
   loadFailed: boolean;
   retry(): void;
   action?: ReactNode;
+  readOnly: boolean;
 }) {
   const t = useTranslations('Harness');
   const form = useRef<HTMLFormElement>(null);
@@ -330,6 +342,7 @@ function UserQuestionPrompt({
     )
       return;
     const container = form.current?.closest('[data-chat-view]');
+    const tray = form.current?.closest('[data-pending-tray]');
     const ownedFocus = form.current?.contains(document.activeElement);
     setBusy(true);
     setError('');
@@ -347,11 +360,12 @@ function UserQuestionPrompt({
       });
       if (receipt.error) setError(receipt.error.message);
       else if (ownedFocus)
+        // As a decided approval does: the next waiting card's main action, else the request box.
         requestAnimationFrame(() => {
           if (container?.isConnected && document.activeElement === document.body)
-            container
-              .querySelector<HTMLTextAreaElement>('[data-testid=chat-composer] textarea')
-              ?.focus({ preventScroll: true });
+            nextResponseTarget(tray?.isConnected ? tray : null, container)?.focus({
+              preventScroll: true,
+            });
         });
     } catch {
       setError(t('answerUnconfirmed'));
@@ -431,6 +445,34 @@ function UserQuestionPrompt({
       </fieldset>
     );
   };
+  if (readOnly)
+    return (
+      <article
+        aria-label={t('userQuestions')}
+        className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
+      >
+        <ExecutionLine
+          session={session}
+          executionId={event.payload.executionId}
+          attemptNo={event.payload.attemptNo}
+          action={action}
+        />
+        {request ? (
+          request.questions.map((q) => (
+            <div key={q.id} className="flex flex-col gap-1">
+              <p style={{ fontVariationSettings: fontWeights.semibold }}>{q.prompt}</p>
+              {q.description ? (
+                <p className="whitespace-pre-wrap break-words text-muted-foreground">
+                  {q.description}
+                </p>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <p>{t(loadFailed || text !== undefined ? 'questionUnavailable' : 'loadingPrompt')}</p>
+        )}
+      </article>
+    );
   return (
     <form
       ref={form}

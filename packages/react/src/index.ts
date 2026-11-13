@@ -3,6 +3,7 @@ export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
 export { CommandReceipts } from './components/CommandReceipts.tsx';
+export { ContinueDecisions, isContinueDecision } from './components/ContinueDecisions.tsx';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
 export { CorralSymbol, CorralWordmark } from './components/CorralLogo.tsx';
 export { EmptyView, type EmptyViewAction } from './components/EmptyView.tsx';

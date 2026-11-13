@@ -956,7 +956,11 @@
       "foreground": "완료까지 실행",
       "timeout": "시간 제한",
       "editFile": "파일 변경"
-    }
+    },
+    "continueHeading": "결정 {count}건",
+    "continueAnswered": "답함",
+    "continueRegion": "계속 여부",
+    "continueStopped": "멈춤"
   },
   "Inbox": {
     "title": "확인 필요",
@@ -1973,7 +1977,8 @@
       "tooMany": "완료 기준은 {max}줄까지 적을 수 있습니다.",
       "tooLong": "{line}번째 줄이 {max}자를 넘습니다.",
       "changedElsewhere": "다른 곳에서 완료 기준이 바뀌었습니다. 저장하면 적은 내용으로 바꿉니다."
-    }
+    },
+    "neededNow": "지금 필요한 것"
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",

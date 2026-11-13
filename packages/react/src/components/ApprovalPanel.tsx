@@ -29,10 +29,11 @@ import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow, RowAction } from './FirstRow.tsx';
 import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
 import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
+import { nextResponseTarget } from './responseFocus.ts';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
 /** A Loop that stopped for a stall is asked about in its own words. */
-const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
+export const approvalCopyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
   approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
     ? `loop_${approval.loopStop}`
     : approval.kind;
@@ -67,6 +68,8 @@ export function ApprovalPanel({
   headed = true,
   policySettingsAction,
   action,
+  readOnly = false,
+  skip,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
@@ -92,6 +95,13 @@ export function ApprovalPanel({
    * own. For hosts that leave the plan out (`showPlan` false).
    */
   action?: ReactNode;
+  /**
+   * The requests shown to read, without their decisions: another place on the same screen
+   * answers them (a session's run record, whose conversation holds the response place).
+   */
+  readOnly?: boolean;
+  /** Approvals another part of the host draws and answers (continue-or-stop decisions). */
+  skip?: (approval: ApprovalView) => boolean;
 }) {
   const t = useTranslations('Approvals');
   const headingId = useId();
@@ -112,16 +122,16 @@ export function ApprovalPanel({
   const nodes = useStore(session, (s) => s.definition?.nodes);
   const tTurn = useTranslations('Turn');
   const approvals = useMemo(
-    () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
-    [all],
+    () => Object.values(all ?? {}).filter((a) => a.status === 'pending' && !skip?.(a)),
+    [all, skip],
   );
   // A card the run-wide decision covered leaves with no line of its own: that decision says it.
   const done = useMemo(
     () =>
       Object.values(all ?? {}).filter(
-        (a) => a.status === 'approved' && a.reason !== 'allowed_for_run',
+        (a) => a.status === 'approved' && a.reason !== 'allowed_for_run' && !skip?.(a),
       ),
-    [all],
+    [all, skip],
   );
   // The criteria a decision about versions is judged by; a run limit and a tool call have none.
   const criteriaId = approvals.find((a) => !a.limit && !a.tool)?.criteriaVersionId;
@@ -180,11 +190,16 @@ export function ApprovalPanel({
 
   // A decision sent while focus was in its card hands focus on once the card has left and the
   // decision's receipt is in (the buttons are enabled again), as an answered question does: to
-  // the next waiting card's main action (its decline when that action cannot be taken), else, in
-  // a chat view, to the request box. Focus the person moved elsewhere stays; other hosts (the Run
-  // page, Needs you) place focus themselves once nothing waits.
+  // the next waiting card's main action (its decline when that action cannot be taken) in the same
+  // response place (a conversation's needed-now tray holds every run's), else, in a chat view, to
+  // the request box. Focus the person moved elsewhere stays; other hosts (the Run page, Needs
+  // you) place focus themselves once nothing waits.
   const section = useRef<HTMLElement>(null);
-  const handoff = useRef<{ approvalId: string; chat: Element | null } | null>(null);
+  const handoff = useRef<{
+    approvalId: string;
+    chat: Element | null;
+    tray: Element | null;
+  } | null>(null);
   useEffect(() => {
     const owned = handoff.current;
     if (!owned || busy || approvals.some((approval) => approval.approvalId === owned.approvalId))
@@ -192,17 +207,27 @@ export function ApprovalPanel({
     const frame = requestAnimationFrame(() => {
       handoff.current = null;
       if (document.activeElement && document.activeElement !== document.body) return;
-      const next = section.current?.querySelector<HTMLElement>('[data-approval]');
-      const target =
-        next?.querySelector<HTMLButtonElement>('[data-approval-action="primary"]:not(:disabled)') ??
-        next?.querySelector<HTMLButtonElement>('[data-approval-action]:not(:disabled)') ??
-        (owned.chat?.isConnected
-          ? owned.chat.querySelector<HTMLTextAreaElement>('[data-testid=chat-composer] textarea')
-          : null);
-      target?.focus({ preventScroll: true });
+      nextResponseTarget(owned.tray?.isConnected ? owned.tray : section.current, owned.chat)?.focus(
+        { preventScroll: true },
+      );
     });
     return () => cancelAnimationFrame(frame);
   }, [approvals, busy]);
+  // The area itself left with the decision (its run waits on nothing else): the same hand-off,
+  // from the response place the card stood in.
+  useEffect(
+    () => () => {
+      const owned = handoff.current;
+      if (!owned) return;
+      requestAnimationFrame(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        nextResponseTarget(owned.tray?.isConnected ? owned.tray : null, owned.chat)?.focus({
+          preventScroll: true,
+        });
+      });
+    },
+    [],
+  );
 
   const related = showRelatedPanels ? (
     <>
@@ -211,7 +236,11 @@ export function ApprovalPanel({
         onOpenArtifact={onOpenArtifact}
         action={lead === 'recipe' ? action : undefined}
       />
-      <InteractionPanel session={session} action={lead === 'interaction' ? action : undefined} />
+      <InteractionPanel
+        session={session}
+        readOnly={readOnly}
+        action={lead === 'interaction' ? action : undefined}
+      />
     </>
   ) : null;
   if (approvals.length === 0)
@@ -240,7 +269,7 @@ export function ApprovalPanel({
   const kindText = (approval: ApprovalView) =>
     approval.limit
       ? limitText(approval.limit)
-      : t(`kind.${copyKey(approval)}`, {
+      : t(`kind.${approvalCopyKey(approval)}`, {
           step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
         });
   const toolLabel = (name: string) => (tTurn.has(`tool.${name}`) ? tTurn(`tool.${name}`) : name);
@@ -278,7 +307,11 @@ export function ApprovalPanel({
   ) => {
     // Focus in this decision's card is handed on when the card leaves.
     handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
-      ? { approvalId, chat: section.current?.closest('[data-chat-view]') ?? null }
+      ? {
+          approvalId,
+          chat: section.current?.closest('[data-chat-view]') ?? null,
+          tray: section.current?.closest('[data-pending-tray]') ?? null,
+        }
       : null;
     setBusy(true);
     try {
@@ -298,9 +331,8 @@ export function ApprovalPanel({
   // Buttons are the only way to decide: the card has no Enter/Escape shortcut. As in the kit's
   // permission card, the decline sits left of the primary action, and as there and in the kit
   // run screen's approval card, the decision row is compact at every interface density.
-  const decisionButtons = (approval: (typeof approvals)[number]) => (
-    <SizeScope size="compact">{decisionRow(approval)}</SizeScope>
-  );
+  const decisionButtons = (approval: (typeof approvals)[number]) =>
+    readOnly ? null : <SizeScope size="compact">{decisionRow(approval)}</SizeScope>;
   /** Decline, then approve; a tool call also offers approving it for the run. */
   const answers = (approval: (typeof approvals)[number]) => (
     <>
@@ -320,7 +352,7 @@ export function ApprovalPanel({
             )
           : approval.limit
             ? t('limit.reject')
-            : t(`rejectAs.${copyKey(approval)}`)}
+            : t(`rejectAs.${approvalCopyKey(approval)}`)}
       </Button>
       {approval.tool?.purpose === 'tool' ? (
         // The same call again needs no answer until the run ends; a command is matched by its
@@ -357,7 +389,7 @@ export function ApprovalPanel({
               )
             : approval.limit
               ? t('limit.then')
-              : t(`then.${copyKey(approval)}`)
+              : t(`then.${approvalCopyKey(approval)}`)
         }
         onClick={() => void decide(approval.approvalId, 'approve')}
       >
@@ -371,7 +403,7 @@ export function ApprovalPanel({
             )
           : approval.limit
             ? t('limit.approve')
-            : t(`approveAs.${copyKey(approval)}`)}
+            : t(`approveAs.${approvalCopyKey(approval)}`)}
       </Button>
     </>
   );
@@ -555,7 +587,7 @@ export function ApprovalPanel({
               ) : null}
               {compact || approval.tool ? null : (
                 <p className="text-muted-foreground">
-                  {approval.limit ? t('limit.explain') : t(`explain.${copyKey(approval)}`)}
+                  {approval.limit ? t('limit.explain') : t(`explain.${approvalCopyKey(approval)}`)}
                 </p>
               )}
               {/* A run limit is about the run, not a version: it names no subject or criteria. */}
@@ -593,7 +625,7 @@ export function ApprovalPanel({
                 </div>
               ) : null}
             </div>
-            {compact ? null : (
+            {compact || readOnly ? null : (
               <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 pt-3 pb-4">
                 {decisionButtons(approval)}
               </div>
