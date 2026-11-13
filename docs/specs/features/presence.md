@@ -34,7 +34,7 @@ Run의 표시 상태는 Run의 상태가 정한다. 그 Run의 실행 단위와 
 |---|---|---|
 | `approval` | 도구·출력·검사·route·중단점 승인 | 승인 / Approval |
 | `question` | 사용자 질문, 확장 요청 | 질문 / Question |
-| `continue` | 계속할지 묻는 승인(Loop 회차, 무진전, 무인 실행 예산, 회의 연쇄) | 계속 여부 / Continue? |
+| `continue` | 계속할지 묻는 승인(Loop 회차, 무진전, 회의 연쇄) | 계속 여부 / Continue? |
 
 `working`인 실행 단위는 세부를 가질 수 있다. 세부는 상태 이름을 대신하지 않고 그 옆의 활동 글자가 된다.
 
