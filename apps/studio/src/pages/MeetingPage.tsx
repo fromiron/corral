@@ -27,6 +27,7 @@ import { useServices } from '../services.tsx';
 import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
 import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
+import { MeetingContinue } from '../workbench/MeetingContinue.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
 import { MeetingDiagnostics } from '../workbench/MeetingDiagnostics.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
@@ -36,6 +37,7 @@ import {
   MeetingRecordsPanel,
   useNarrowScreen,
 } from '../workbench/MeetingRecords.tsx';
+import { MeetingRoundStatus } from '../workbench/MeetingRoundStatus.tsx';
 import { preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { TurnActions } from '../workbench/RunMessage.tsx';
@@ -53,6 +55,25 @@ import { useRemembered } from './Workbench.tsx';
 
 type RoundView = MeetingView['rounds'][number];
 type AnswerView = RoundView['answers'][number];
+
+/** Where an answer not yet started sits: after everything said, in the order of its round. */
+const WAITING = Number.MAX_SAFE_INTEGER;
+
+/** An answer's place in the timeline: when it spoke, or after its round's message. */
+const answerOrder = (round: RoundView, index: number, answer: AnswerView, n: number) =>
+  answer.order ?? (answer.status === 'waiting' ? WAITING : (round.order ?? index * 7) + n + 1);
+
+/**
+ * A continued round's line: just before its first answer. While that answer waits, the line
+ * waits with it at the end, after the earlier rounds' waiting answers, so it never pushes them
+ * down (the sort is stable, and the line comes first in its round).
+ */
+function continuedOrder(round: RoundView, index: number) {
+  const first = round.answers[0];
+  if (!first) return (round.order ?? index * 7) + 0.5;
+  const order = answerOrder(round, index, first, 0);
+  return order === WAITING ? WAITING : order - 0.5;
+}
 
 /**
  * The meeting room: participants on top, the conversation, then the composer. The minutes,
@@ -199,6 +220,20 @@ export function MeetingPage({ session }: { session: WorkSession }) {
             }
             items={view.rounds
               .flatMap((round, index) => [
+                ...(round.continued
+                  ? [
+                      {
+                        // A person chose to go on with the mention chain here.
+                        id: `${round.roundId}:continued`,
+                        order: continuedOrder(round, index),
+                        content: (
+                          <p role="status" className="mb-5 text-caption text-muted-foreground">
+                            {t('continued')}
+                          </p>
+                        ),
+                      },
+                    ]
+                  : []),
                 ...(round.message === null
                   ? []
                   : [
@@ -210,11 +245,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                     ]),
                 ...round.answers.map((answer, n) => ({
                   id: `${round.roundId}:${answer.participantId}`,
-                  order:
-                    answer.order ??
-                    (answer.status === 'waiting'
-                      ? Number.MAX_SAFE_INTEGER
-                      : (round.order ?? index * 7) + n + 1),
+                  order: answerOrder(round, index, answer, n),
                   content: (
                     <AnswerCard
                       answer={answer}
@@ -249,6 +280,19 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                   : []),
               ])
               .sort((a, b) => a.order - b.order)}
+            tray={
+              view.hold ? (
+                // What the meeting needs from the person now: a held chain's continue card.
+                <section data-pending-tray aria-label={t('hold.region')} className="pb-4">
+                  <MeetingContinue
+                    key={view.hold.after}
+                    hold={view.hold}
+                    continueChain={(commandId) => meetings.continueChain(sessionId, { commandId })}
+                    onSettled={refresh}
+                  />
+                </section>
+              ) : null
+            }
             composer={
               // The conversation's composer, with the recipients as its send target.
               <Composer
@@ -486,17 +530,12 @@ function MeetingActions({
 }
 
 /**
- * The person's message: the kit's sent bubble on the right, whom it was for above it, and its
- * time and copy action in the row the bubble reveals, as in a session.
+ * The person's message: the kit's sent bubble on the right, and its meta line with who receives
+ * it, and the time and copy action the bubble reveals, as in a session.
  */
 function MeetingMessage({ round, config }: { round: RoundView; config: MeetingConfig }) {
   const t = useTranslations('Meetings');
   const format = useFormatter();
-  const secretary = t('secretary');
-  const addressed =
-    round.kind === 'mention' || round.kind === 'secretary'
-      ? round.participantIds.map((id) => nameOf(config, id, secretary)).join(', ')
-      : null;
   // The time alone on the day it was sent; the date joins it afterwards and in the tooltip.
   const created = new Date(round.createdAt);
   const dated = !Number.isNaN(created.getTime());
@@ -509,11 +548,14 @@ function MeetingMessage({ round, config }: { round: RoundView; config: MeetingCo
       : full;
   return (
     <div className="chat-turn flex flex-col items-end gap-1">
-      {addressed ? (
-        <p className="px-1 text-caption text-muted-foreground">{t('to', { names: addressed })}</p>
-      ) : null}
+      {/* As a conversation's sent message: the kit's entrance, not its position animation (the
+          timeline holds every row in place itself), and one meta line that says who receives
+          it, at its end. */}
       <KitChatMessage
         from="user"
+        layout={false}
+        metaProps={{ 'data-chat-part': 'meta', className: 'w-max max-w-[125%]' }}
+        status={<MeetingRoundStatus round={round} config={config} />}
         time={
           when ? (
             <time dateTime={round.createdAt} title={full}>

@@ -158,6 +158,30 @@ test.describe('a meeting in the conversation frame', () => {
     expect(asked.answers.map((item) => item.participantId)).toEqual([picked.participantId]);
     expect(requests).toBe(1);
 
+    // How the meeting picked: Auto, on the message's meta line, opens the reason and the scores,
+    // the pick first; opening and closing it moves nothing.
+    const auto = timeline.getByRole('button', {
+      name: 'Auto: how the recipients were chosen',
+      exact: true,
+    });
+    await expect(auto).toHaveCount(1);
+    await waitForStill(page);
+    probe = createProbe(page, probeOptions);
+    await probe.start('meeting-how-chosen');
+    await auto.click();
+    const how = page.getByRole('dialog', { name: 'How the recipients were chosen', exact: true });
+    await expect(how).toContainText('the best fit for this message');
+    const ranking = how.getByRole('list', { name: 'Fit for this message', exact: true });
+    await expect(ranking.getByRole('listitem')).toHaveCount(3);
+    await expect(ranking.getByRole('listitem').first()).toContainText(picked.name);
+    await expect(ranking.locator('[data-picked]')).toHaveCount(1);
+    await waitForStill(page);
+    await page.keyboard.press('Escape');
+    await expect(how).toHaveCount(0);
+    await expect(auto).toBeFocused();
+    await waitForStill(page);
+    expectStill(await probe.stop());
+
     // No one again, after the answer, with Alt+Enter: every key sends to the meeting.
     probe = createProbe(page, probeOptions);
     await probe.start('meeting-none');
@@ -168,6 +192,130 @@ test.describe('a meeting in the conversation frame', () => {
     expect(noted.participantIds).toEqual([]);
     expect(noted.answers).toEqual([]);
     expect(requests).toBe(1);
+    expect(corral.errors).toEqual([]);
+  });
+
+  // Participants who keep mentioning each other are held after eight mention rounds; the hold is
+  // a continue card at the timeline's end, pressable while an answer still runs. It arrives and
+  // folds without moving what is on screen, and continuing marks where the replies went on.
+  test('a held mention chain waits on a continue card at the end', async ({ page, corral }) => {
+    test.setTimeout(240_000);
+    let id = '';
+    let mention = '';
+    let continued = false;
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    let gated = false;
+    // Every answer mentions everyone until the meeting holds; then the next answer waits, so it
+    // is still running beside the card, and after Continue nobody mentions anyone.
+    corral.fake?.setResponses(
+      Array.from({ length: 120 }, () => async () => {
+        if (continued) return fauxAssistantMessage('Agreed, Tuesday it is.');
+        if ((await meeting(page, id)).hold) {
+          gated = true;
+          await opened;
+          return fauxAssistantMessage('Agreed.');
+        }
+        return fauxAssistantMessage(`${mention} what do you think?`);
+      }),
+    );
+    await corral.open('/projects/default');
+    await page.getByRole('button', { name: 'New meeting', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create a meeting' });
+    await dialog.getByLabel('Meeting name', { exact: true }).fill('Launch day');
+    await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
+    await expect(page).toHaveURL(/\/sessions\/session_/);
+    id = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+    const { config } = await meeting(page, id);
+    mention = config.participants.map((person) => `@${person.participantId}`).join(' ');
+    const composer = page.getByTestId('chat-composer');
+    const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+    const recipients = composer.locator('[data-slot="composer-target"]');
+    const timeline = page.getByTestId('chat-timeline');
+    const tray = page.locator('[data-pending-tray]');
+
+    // The first message takes the empty room's centred composer to the bottom; not measured.
+    await recipients.click();
+    await page.getByRole('menuitemradio', { name: 'No one', exact: true }).click();
+    await box.fill('The launch is next week');
+    await box.press('Enter');
+    await expect(timeline.getByText('The launch is next week', { exact: true })).toBeVisible();
+    await waitForStill(page);
+
+    // The chain runs and is held; the card arrives at the end, and nothing on screen moves.
+    await box.fill('Which day should we launch?');
+    await waitForStill(page);
+    let probe = createProbe(page, probeOptions);
+    await probe.start('meeting-hold-arrives');
+    await box.press('Enter');
+    await expect(box).toHaveValue('');
+    const card = tray.locator('[data-meeting-hold]');
+    await expect(card).toBeVisible({ timeout: 120_000 });
+    await expect.poll(() => gated, { timeout: 60_000 }).toBe(true);
+    await waitForStill(page);
+    expectStill(await probe.stop());
+    await expect(tray).toHaveCount(1);
+    const atTheEnd = await page.evaluate(() => {
+      const element = document.querySelector('[data-pending-tray]');
+      const last = [...document.querySelectorAll('[data-chat-item]')].at(-1);
+      const composer = document.querySelector('[data-testid="chat-composer"]');
+      if (!element || !last || !composer) return null;
+      return {
+        afterLast: Boolean(
+          last.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING &&
+            !last.contains(element),
+        ),
+        aboveComposer:
+          element.getBoundingClientRect().bottom <= composer.getBoundingClientRect().top + 1,
+      };
+    });
+    expect(atTheEnd).toEqual({ afterLast: true, aboveComposer: true });
+    const held = await meeting(page, id);
+    expect(held.hold).toMatchObject({ kind: 'chain' });
+    // An answer still runs beside the card, and the card can be pressed.
+    await expect(
+      composer.getByRole('button', { name: 'Stop answering', exact: true }),
+    ).toBeVisible();
+    const press = card.getByRole('button', { name: 'Continue', exact: true });
+    await expect(press).toBeEnabled();
+
+    // Continued: the card folds and leaves, the focus goes to the box, and nothing moves.
+    probe = createProbe(page, probeOptions);
+    await probe.start('meeting-hold-folds');
+    continued = true;
+    await press.click();
+    await expect(tray).toHaveCount(0, { timeout: 30_000 });
+    await expect(box).toBeFocused();
+    await waitForStill(page);
+    expectStill(await probe.stop());
+    open();
+    await expect
+      .poll(
+        async () => {
+          const view = await meeting(page, id);
+          return (
+            view.rounds.some((round) => round.continued) &&
+            view.rounds.every((round) => round.answers.every((item) => item.status === 'answered'))
+          );
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    const after = await meeting(page, id);
+    expect(after.hold).toBeUndefined();
+    expect(after.rounds.filter((round) => round.continued)).toHaveLength(1);
+    // The line says once where the replies went on. The timeline draws only what is near the
+    // view, and the answers after it may have taken it out: read back up to it.
+    const line = timeline.getByText('You continued the replies here.', { exact: true });
+    await waitForStill(page);
+    await timeline.hover({ position: { x: 16, y: 200 } });
+    for (let step = 0; step < 40 && (await line.count()) === 0; step += 1) {
+      await page.mouse.wheel(0, -300);
+      await waitForStill(page);
+    }
+    await expect(line).toHaveCount(1);
     expect(corral.errors).toEqual([]);
   });
 
@@ -208,11 +356,15 @@ test.describe('a meeting in the conversation frame', () => {
       // Auto → one name → two names → no one, and back to Auto.
       let stop = await trackInputEdges(page);
       await recipients.click();
-      await choose('menuitemcheckbox', must(first, 'the first participant').name);
-      // Narrow, the chosen read as a count: the badge keeps its width.
-      await expect(recipients).toHaveAccessibleName('Recipients: 1 person');
-      await choose('menuitemcheckbox', must(second, 'the second participant').name);
-      await expect(recipients).toHaveAccessibleName('Recipients: 2 people');
+      const firstName = must(first, 'the first participant').name;
+      const secondName = must(second, 'the second participant').name;
+      await choose('menuitemcheckbox', firstName);
+      // Narrow, the chosen read as a count: the badge keeps its width; its name says who.
+      await expect(recipients).toHaveAccessibleName(`Recipients (1 person): ${firstName}`);
+      await choose('menuitemcheckbox', secondName);
+      await expect(recipients).toHaveAccessibleName(
+        `Recipients (2 people): ${firstName}, ${secondName}`,
+      );
       await choose('menuitemradio', 'No one');
       await expect(recipients).toHaveAccessibleName('Recipients: No one');
       // A menu used gives the focus back to the box.

@@ -18,11 +18,11 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
-  fontWeights,
   Menu,
   MenuItem,
   MenuPopup,
   MenuTrigger,
+  type QueuedMessage as QueuedCard,
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
@@ -49,7 +49,7 @@ import {
   readComposerDraft,
   writeComposerDraft,
 } from '../../sessionDraft.ts';
-import { TextAttachmentList } from '../../TextAttachments.tsx';
+import { QueueLine } from '../ComposerQueue.tsx';
 import { ComposerCard, type SendTarget } from './ComposerCard.tsx';
 import { backToInput, menuOpenChange } from './focus.ts';
 import { RecipientChip, type Recipients } from './SendControls.tsx';
@@ -284,28 +284,16 @@ export function MeetingSend({
   return (
     <ComposerSurface.Shell>
       {view.queued ? (
-        <div
-          role="status"
-          className="mb-2 flex flex-col gap-1 rounded-lg fill-control p-2 text-caption"
-        >
-          <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('queued')}</span>
-          <QueuedMessage
-            key={view.queued.commandId}
-            queued={view.queued}
-            config={view.config}
-            projectId={projectId}
-            edit={editQueued}
-          />
-          <span className="text-muted-foreground">
-            {active ? t('queuedHint') : t('queuedIdle')}
-          </span>
-          <div className="flex gap-2">
-            {active ? null : <Button onClick={() => void sendQueued()}>{t('sendQueued')}</Button>}
-            <Button variant="tertiary" onClick={() => void dropQueued()}>
-              {t('dropQueued')}
-            </Button>
-          </div>
-        </div>
+        <QueuedMessage
+          key={view.queued.commandId}
+          queued={view.queued}
+          config={view.config}
+          projectId={projectId}
+          active={active}
+          edit={editQueued}
+          send={() => void sendQueued()}
+          drop={() => void dropQueued()}
+        />
       ) : null}
       <ComposerCard
         label={t('message')}
@@ -488,27 +476,103 @@ function EvidenceChips({
   );
 }
 
-/** A message an earlier version left waiting: edited and sent as it was. */
+/**
+ * A message an earlier version left waiting, in the conversation's queue line: sent now while
+ * nothing answers, edited in place (keeping its command), or removed.
+ */
 function QueuedMessage({
   queued,
   config,
   projectId,
+  active,
   edit,
+  send,
+  drop,
+}: {
+  queued: QueuedMeetingMessage;
+  config: MeetingConfig;
+  projectId: string;
+  active: boolean;
+  edit(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
+  send(): void;
+  drop(): void;
+}) {
+  const t = useTranslations('Meetings');
+  const [editing, setEditing] = useState(false);
+  const identity = [
+    queued.commandId,
+    queued.text,
+    ...(queued.attachments ?? []).map((item) => item.sha256),
+  ].join('\u0000');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rebuilt only when the message changes
+  const items = useMemo<QueuedCard[]>(
+    () => [
+      {
+        id: queued.commandId,
+        text: queued.text,
+        files: (queued.attachments ?? []).map(
+          (item) => new File([item.text], item.name, { type: item.mime }),
+        ),
+      },
+    ],
+    [identity],
+  );
+  if (editing)
+    return (
+      <QueuedMessageEditor
+        queued={queued}
+        config={config}
+        projectId={projectId}
+        edit={edit}
+        onDone={() => setEditing(false)}
+      />
+    );
+  const names = queued.mentions.map((id) => nameOf(config, id, t('secretary'))).join(', ');
+  return (
+    <QueueLine
+      items={items}
+      onEdit={() => setEditing(true)}
+      onRemove={drop}
+      renderActions={() => (
+        <>
+          {names ? (
+            <span className="min-w-0 truncate text-caption text-muted-foreground" title={names}>
+              {t('to', { names })}
+            </span>
+          ) : null}
+          {active ? null : (
+            <Button variant="ghost" onClick={send}>
+              {t('sendQueued')}
+            </Button>
+          )}
+        </>
+      )}
+    />
+  );
+}
+
+/** The waiting message, edited where it stands: its recipients, words and evidence. */
+function QueuedMessageEditor({
+  queued,
+  config,
+  projectId,
+  edit,
+  onDone,
 }: {
   queued: QueuedMeetingMessage;
   config: MeetingConfig;
   projectId: string;
   edit(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
+  onDone(): void;
 }) {
   const t = useTranslations('Meetings');
   const [text, setText] = useState(queued.text);
   const [mentions, setMentions] = useState(queued.mentions);
   const [attachments, setAttachments] = useState(queued.attachments ?? []);
   const [attachmentLoading, setAttachmentLoading] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  return editing ? (
-    <div className="flex flex-col gap-2">
+  return (
+    <div className="mx-auto mb-2 flex w-full max-w-(--chat-content-max-width) flex-col gap-2 rounded-lg fill-control p-2">
       {/* The same recipients as the composer's; a waiting message has no No one. */}
       <div className="flex">
         <RecipientChip
@@ -548,7 +612,7 @@ function QueuedMessage({
                 mentions,
                 ...(attachments.length || queued.attachments ? { attachments } : {}),
               });
-              if (result?.ok) setEditing(false);
+              if (result?.ok) onDone();
             } finally {
               setSaving(false);
             }
@@ -556,35 +620,10 @@ function QueuedMessage({
         >
           {t('saveQueued')}
         </Button>
-        <Button variant="tertiary" disabled={saving} onClick={() => setEditing(false)}>
+        <Button variant="tertiary" disabled={saving} onClick={onDone}>
           {t('cancel')}
         </Button>
       </div>
     </div>
-  ) : (
-    <>
-      <p className="whitespace-pre-wrap wrap-anywhere">{queued.text}</p>
-      {queued.mentions.length ? (
-        <p>
-          {t('to', {
-            names: queued.mentions.map((id) => nameOf(config, id, t('secretary'))).join(', '),
-          })}
-        </p>
-      ) : null}
-      {queued.attachments?.length ? <TextAttachmentList attachments={queued.attachments} /> : null}
-      <div>
-        <Button
-          variant="tertiary"
-          onClick={() => {
-            setText(queued.text);
-            setMentions(queued.mentions);
-            setAttachments(queued.attachments ?? []);
-            setEditing(true);
-          }}
-        >
-          {t('editQueued')}
-        </Button>
-      </div>
-    </>
   );
 }

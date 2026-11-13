@@ -159,9 +159,9 @@ test('role and secretary selection survive reopening without more calls', async 
   await page.keyboard.press('Space');
   await expect(secretary).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('Escape');
-  // Narrow, the chosen read as a count, so the badge keeps its width.
+  // Narrow, the chosen read as a count, so the badge keeps its width; its name says who.
   await expect(
-    page.getByRole('button', { name: 'Recipients: 1 person', exact: true }),
+    page.getByRole('button', { name: 'Recipients (1 person): Secretary', exact: true }),
   ).toBeVisible();
   // Escape gave the focus back to the box.
   await expect(page.getByRole('textbox', { name: 'Meeting message', exact: true })).toBeFocused();

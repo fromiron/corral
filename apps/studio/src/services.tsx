@@ -272,6 +272,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       sendQueued: (id) => meetings.sendQueued(id),
       dropQueued: (id) => meetings.dropQueued(id),
       editQueued: (id, request) => meetings.editQueued(id, request),
+      continueChain: (id, request) => meetings.continueChain(id, request),
       adopt: (id, request) => meetingDecisions.adopt(id, request),
       withdraw: (id, request) => meetingDecisions.withdraw(id, request),
     },

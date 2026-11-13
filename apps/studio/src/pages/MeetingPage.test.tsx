@@ -540,7 +540,10 @@ it('a running round can be stopped and a waiting message is shown, sendable only
   expect(f.container.textContent).toContain('next question');
   await act(async () => f.button('stopRound')?.click());
   expect(f.meetings.stop).toHaveBeenCalledWith('session_1', 'round_1');
-  await act(async () => f.button('dropQueued')?.click());
+  // The conversation's queue line: the waiting message is a card of the kit's queue stack.
+  expect(f.button('removeQueuedMessage')).toBeDefined();
+  expect(f.button('editQueuedMessage')).toBeDefined();
+  await act(async () => f.button('removeQueuedMessage')?.click());
   expect(f.meetings.dropQueued).toHaveBeenCalledWith('session_1');
 });
 
@@ -575,8 +578,8 @@ it('active replies and a legacy draft never block new messages; editing preserve
   await act(async () => f.button('send')?.click());
   expect(f.meetings.send).toHaveBeenCalledTimes(2);
   await f.type('Keep my next draft');
-  expect(f.button('editQueued')).toBeDefined();
-  await act(async () => f.button('editQueued')?.click());
+  expect(f.button('editQueuedMessage')).toBeDefined();
+  await act(async () => f.button('editQueuedMessage')?.click());
   const queuedBox = f.container.querySelector<HTMLTextAreaElement>(
     'textarea[aria-label="queued"]',
   )!;
@@ -1516,7 +1519,7 @@ it('a waiting message is edited for Auto or names, never for no one', async () =
       rebuttal: null,
     }),
   );
-  await act(async () => f.button('editQueued')?.click());
+  await act(async () => f.button('editQueuedMessage')?.click());
   const editor = must(
     f.container
       .querySelector<HTMLTextAreaElement>('textarea[aria-label="queued"]')
@@ -1649,6 +1652,8 @@ it('on a narrow tool line the tools keep one width whatever the meeting is doing
   await idle.closeMenu();
   expect(idle.recipients()?.textContent).toContain('recipients.count');
   expect(idle.recipients()?.textContent).not.toContain('Builder');
+  // Its name says whom, not only how many.
+  expect(idle.recipients()?.getAttribute('aria-label')).toBe('recipients.labelNamed');
   expect(idle.recipients()?.closest('[data-slot="composer-target-place"]')).not.toBeNull();
   await idle.hide();
   const answering = await mount(
@@ -1697,4 +1702,23 @@ it('a recipients menu opened again before the focus comes back stays open, and t
   expect(taken).toBe(false);
   expect(document.activeElement).not.toBe(f.box);
   await f.closeMenu();
+});
+
+it('an earlier version’s waiting message stands in the conversation’s queue line, sent now only when idle', async () => {
+  const waiting = {
+    commandId: 'queued_1',
+    mode: 'mock' as const,
+    text: 'Left over',
+    mentions: ['p2'],
+  };
+  const idle = await mount(view({ queued: waiting, rebuttal: null }));
+  const card = must(idle.button('editQueuedMessage')?.closest('section'), 'the queue line');
+  expect(card.getAttribute('aria-label')).toBe('queueHeading');
+  expect(card.textContent).toContain('Left over');
+  // Whom it is for, on its card; and no line of explanation under it.
+  expect(card.textContent).toContain('to');
+  expect(idle.container.textContent).not.toContain('queuedHint');
+  expect(idle.container.textContent).not.toContain('queuedIdle');
+  await act(async () => idle.button('sendQueued')?.click());
+  expect(idle.meetings.sendQueued).toHaveBeenCalledWith('session_1');
 });
