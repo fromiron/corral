@@ -446,7 +446,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 완료 |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 완료 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 완료 |
-| U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 구현 중(`flow/u6-meta-line`, U11 브랜치 위) |
+| U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 구현 끝(`flow/u6-meta-line`). 코드 리뷰 중, 디자인 검수 수정 중(버튼 무게, 구분점·오른쪽 끝) |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 수정 끝, 델타 확인 중(`flow/u7-activity-bar`). 디자인 검수 수정 둘(패널 행의 상태 낱말, 보내지 못한 실행 조작의 표시) 진행 중 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
@@ -466,7 +466,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 완료 |
 | A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 완료(후속 수정은 같은 브랜치에서: 마지막 요청이 오류로 끝난 검토) |
 | A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 완료 |
-| A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 대기 |
+| A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | A8a(실행 기록·확인 필요 쪽) 구현 중(`flow/a8-advice-display`). A8b(대화의 조언 줄, 꼬리 줄, 활동 바의 감독 행)는 U6·U7 뒤 같은 브랜치에서 |
 | A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 계약·코어·서버 병합(A9a). 화면(도구 줄의 켜고 끄기, A9b)은 U7 뒤 |
 | V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
 
