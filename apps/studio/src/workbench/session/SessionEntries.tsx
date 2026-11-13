@@ -7,6 +7,7 @@ import {
   Popover,
   PopoverPopup,
   PopoverTrigger,
+  Skeleton,
   Tooltip,
 } from '@corral/react/design-kit';
 import { PanelRight, Pencil, Settings } from '@corral/react/icons';
@@ -21,6 +22,7 @@ import { editRequest, RESEND_REQUEST } from '../RefusalHelp.tsx';
 import { SentQuotes } from '../ReplySelection.tsx';
 import { RunChanges } from '../RunChanges.tsx';
 import { RunMessage } from '../RunMessage.tsx';
+import { RunHead, RunRow, RunTail } from '../RunRow.tsx';
 import { TextAttachmentList } from '../TextAttachments.tsx';
 import { EntryStatus } from './EntryStatus.tsx';
 import { type SteerRecord, steerMeta } from './entryMeta.ts';
@@ -41,6 +43,7 @@ export function EntryCard({
   heldAs,
   sourceShown = false,
   runsListed = true,
+  arriving = false,
 }: {
   sessionId: string;
   entry: SessionEntry;
@@ -61,6 +64,8 @@ export function EntryCard({
   sourceShown?: boolean;
   /** Whether the run list has been read: a run missing from it before then may be going. */
   runsListed?: boolean;
+  /** The request's run is on its way to the run list: the row's place is kept for it. */
+  arriving?: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tm = useTranslations('MessageBody');
@@ -140,6 +145,8 @@ export function EntryCard({
           ) : undefined
         }
       />
+    ) : entry.runId && arriving && entry.intent !== 'steer' ? (
+      <RunPlace runId={entry.runId} />
     ) : null;
   if (runOnly)
     return runRow ? (
@@ -280,6 +287,28 @@ export function useRunChecks(sessionId: string, runs: RunSummary[]) {
     };
   }, [workspaces, sessionId, key]);
   return { known: value.known, of: (runId: string) => value.map.get(runId) ?? null };
+}
+
+/**
+ * The row of a run a request started, before the run list lists it: the three lines the run's
+ * row draws before its record is read, so the row comes in the same place with the same size. The
+ * place of the run's state is its own already (features/presence.md).
+ */
+function RunPlace({ runId }: { runId: string }) {
+  return (
+    <section aria-busy="true" className="flex min-w-0 flex-col gap-3">
+      <RunRow
+        head={
+          <RunHead>
+            <Skeleton data-presence-label={`run:${runId}`} className="h-3 w-40 max-w-full" />
+          </RunHead>
+        }
+        tail={<RunTail />}
+      >
+        <Skeleton className="my-1 h-3.5 w-2/3" />
+      </RunRow>
+    </section>
+  );
 }
 
 /**
