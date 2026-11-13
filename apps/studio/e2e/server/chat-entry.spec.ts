@@ -9,7 +9,7 @@ test.describe('ordinary chat entry', () => {
     corral,
   }) => {
     await corral.open('/');
-    await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: /^Conversations/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -102,7 +102,7 @@ test.describe('model readiness guidance', () => {
   // when no model can be used; there are no step-by-step start cards.
   test('a ready keyless compatible model needs no connection step', async ({ page, corral }) => {
     await corral.open('/');
-    await expect(page.getByText('No sessions yet', { exact: true })).toBeVisible();
+    await expect(page.getByText('No conversations yet', { exact: true })).toBeVisible();
     await expect(page.getByRole('main').getByRole('link', { name: 'Connect a model' })).toHaveCount(
       0,
     );
@@ -127,12 +127,12 @@ test('a direct Corral library link still lets the user return to conversations',
   // Back returns to the work screen before it.
   await page.goBack();
   await expect(page).toHaveURL(/\/projects\/default$/);
-  await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: /^Conversations/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );
   await page.reload();
-  await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: /^Conversations/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );

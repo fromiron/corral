@@ -115,5 +115,5 @@ it('shows that the logical question timeout stops during a user pause', async ()
   wrap(<QuestionsPanel session={session} onOpenArtifact={vi.fn()} />);
   const row = screen.getByTestId(`question-${question.questionId}`);
   expect(row).toHaveTextContent('The question timeout is paused.');
-  expect(row).not.toHaveTextContent(`Waiting for an answer until ${question.deadline}`);
+  expect(row).not.toHaveTextContent(`Waiting for a reply until ${question.deadline}`);
 });

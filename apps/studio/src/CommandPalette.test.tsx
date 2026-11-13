@@ -105,7 +105,7 @@ const options = (container: HTMLElement) =>
     option.textContent?.trim(),
   );
 const scopeButton = (container: HTMLElement, name: string) => {
-  const group = container.querySelector('fieldset[aria-label="Find sessions in"]');
+  const group = container.querySelector('fieldset[aria-label="Find conversations in"]');
   const button = [...(group?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
     (item) => item.textContent === name,
   );

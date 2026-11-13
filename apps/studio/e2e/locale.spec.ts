@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 
 test('choosing 한국어 switches the whole UI and survives a reload', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: /^Conversations/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -20,7 +20,7 @@ test('choosing 한국어 switches the whole UI and survives a reload', async ({ 
   await page.getByRole('combobox', { name: '언어', exact: true }).click();
   await page.getByRole('option', { name: 'English', exact: true }).click();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-  await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: /^Conversations/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );

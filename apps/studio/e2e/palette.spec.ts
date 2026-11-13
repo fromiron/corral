@@ -7,7 +7,7 @@ test('Ctrl+K opens the command palette; typing filters and Enter runs the comman
 }) => {
   await page.goto('/');
   // A cold dev server under parallel workers can take a while to serve the first page.
-  await expect(page.getByRole('tab', { name: /^Sessions/ })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: /^Conversations/ })).toHaveAttribute(
     'aria-selected',
     'true',
     { timeout: 20_000 },

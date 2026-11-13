@@ -55,7 +55,7 @@ it('names each figure so it needs no definition, and opens nothing', async () =>
   );
   const stats = container.querySelector('[data-testid="composer-stats"]');
   expect(stats?.textContent).toBe(
-    'Session total · 2 runs · 0 tool and agent steps · 2.5K reported in/out tokens · cache not reported',
+    'Conversation total · 2 runs · 0 tool and agent steps · 2.5K reported in/out tokens · cache not reported',
   );
   // A line of figures, not a disclosure with a paragraph of definitions behind it.
   expect(container.querySelector('details, summary')).toBeNull();
@@ -83,7 +83,7 @@ it('breaks a narrow line between figures, never inside one, and keeps every figu
   expect(stats?.className).not.toMatch(/\btruncate\b/);
   const figures = [...(stats?.querySelectorAll<HTMLElement>('[data-stat]') ?? [])];
   expect(figures.map((figure) => figure.textContent?.replace(/^ · /, ''))).toEqual([
-    'Session total',
+    'Conversation total',
     '1 run',
     '0 tool and agent steps',
     '2.5K reported in/out tokens',

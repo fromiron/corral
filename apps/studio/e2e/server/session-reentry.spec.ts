@@ -92,9 +92,9 @@ test('renaming the active session updates the document title and the path keeps 
     .getByRole('banner')
     .getByRole('button', { name: /Actions for/ })
     .click();
-  await page.getByRole('menuitem', { name: 'Rename session', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Rename conversation', exact: true }).click();
   const rename = page.getByTestId('rename-session-dialog');
-  await rename.getByRole('textbox', { name: 'Session title' }).fill('Renamed active session');
+  await rename.getByRole('textbox', { name: 'Conversation title' }).fill('Renamed active session');
   await rename.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(rename).toBeHidden();
   await expect(page).toHaveTitle('Renamed active session · Corral Studio');
@@ -139,9 +139,9 @@ test.fixme('the active session tab stays in view when the tab strip overflows', 
     .getByRole('banner')
     .getByRole('button', { name: /Actions for/ })
     .click();
-  await page.getByRole('menuitem', { name: 'Rename session', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Rename conversation', exact: true }).click();
   const rename = page.getByTestId('rename-session-dialog');
-  await rename.getByRole('textbox', { name: 'Session title' }).fill('Renamed active session');
+  await rename.getByRole('textbox', { name: 'Conversation title' }).fill('Renamed active session');
   await rename.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(activeTab).toHaveText('Renamed active session');
   await expect(activeTab).toBeInViewport();

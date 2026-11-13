@@ -147,13 +147,13 @@ test.describe('a held run', () => {
     await expect(bar).toHaveAttribute('data-topbar-rows', '2');
     // The second row no longer holds the run, so the view tabs fit there again.
     await expect(
-      bar.getByRole('tablist', { name: 'Session views', exact: true }).getByRole('tab'),
+      bar.getByRole('tablist', { name: 'Conversation views', exact: true }).getByRole('tab'),
     ).toHaveCount(2);
     // A little wider, on one row, the views fold into one menu.
     await page.setViewportSize({ width: 520, height: 800 });
     await expect(bar).toHaveAttribute('data-topbar-rows', '1');
     // Folded into one menu, the views still switch, and each panel keeps its name.
-    const views = bar.getByRole('combobox', { name: 'Session views', exact: true });
+    const views = bar.getByRole('combobox', { name: 'Conversation views', exact: true });
     await expect(views).toContainText('Conversation');
     await panelTab(page, 'Runs');
     await expect(page.getByRole('tabpanel', { name: 'Runs', exact: true })).toBeVisible();
@@ -165,7 +165,7 @@ test.describe('a held run', () => {
       views
         .or(
           bar
-            .getByRole('tablist', { name: 'Session views', exact: true })
+            .getByRole('tablist', { name: 'Conversation views', exact: true })
             .getByRole('tab', { selected: true }),
         )
         .first(),
@@ -174,7 +174,7 @@ test.describe('a held run', () => {
     await page.setViewportSize({ width: 1600, height: 800 });
     await expect(bar).toHaveAttribute('data-topbar-tier', 'full');
     await expect(
-      bar.getByRole('tablist', { name: 'Session views', exact: true }).getByRole('tab'),
+      bar.getByRole('tablist', { name: 'Conversation views', exact: true }).getByRole('tab'),
     ).toHaveCount(2);
     expect(corral.errors).toEqual([]);
   });

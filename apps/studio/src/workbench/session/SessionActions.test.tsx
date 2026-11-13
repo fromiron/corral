@@ -155,7 +155,7 @@ it.each([
         </IntlProvider>,
       ),
     );
-    const changes = 'Session changes · 1 file';
+    const changes = 'Conversation changes · 1 file';
     const inBar = (name: string) =>
       [...bar.querySelectorAll('button')].some(
         (button) => (button.getAttribute('aria-label') ?? button.textContent) === name,

@@ -215,10 +215,10 @@ const tabs = (container: HTMLElement) => [
 const tabName = (tab: HTMLElement) =>
   (tab.querySelector('span > span:last-child')?.textContent ?? tab.textContent ?? '').trim();
 
-it('has Sessions, Runs, Environment and Instructions & memory tabs, and no Teams tab', async () => {
+it('has Conversations, Runs, Environment and Instructions & memory tabs, and no Teams tab', async () => {
   const { container } = await render();
   expect(tabs(container).map(tabName)).toEqual([
-    'Sessions 2',
+    'Conversations 2',
     'Runs',
     'Environment',
     'Instructions & memory',
@@ -430,7 +430,7 @@ it('stops reading working copies once the Environment tab is left', async () => 
   await settle();
   // A few at a time: the first batch is in flight.
   expect(workspaces.worktree).toHaveBeenCalledTimes(4);
-  const sessionsTab = tabs(container).find((tab) => tabName(tab).startsWith('Sessions'));
+  const sessionsTab = tabs(container).find((tab) => tabName(tab).startsWith('Conversations'));
   await act(async () => sessionsTab?.click());
   await settle();
   for (const read of reads.splice(0)) await act(async () => read());
@@ -611,7 +611,7 @@ it('groups the sessions by state, in order, each headed by its name and count', 
     ['No run yet', ['D']],
     ['Completed', ['E']],
     ['Cancelled', ['X']],
-    ['Empty session', ['Y']],
+    ['Empty conversation', ['Y']],
   ]);
   // The header is the group's name and its number of sessions, as Needs you heads its groups,
   // one level under the tab's own Sessions heading.
@@ -644,7 +644,7 @@ it('names the review kinds on a reviewed row, never their counts or a request bo
   expect(container.textContent).not.toContain('Private request body');
 });
 
-it('starts Cancelled and Empty session collapsed and every other group open', async () => {
+it('starts Cancelled and Empty conversation collapsed and every other group open', async () => {
   stateFixture(async () => reviewItems());
   const { container } = await render();
   expect(groups(container).map(({ name, details }) => [name, details.open])).toEqual([
@@ -654,21 +654,21 @@ it('starts Cancelled and Empty session collapsed and every other group open', as
     ['No run yet', true],
     ['Completed', true],
     ['Cancelled', false],
-    ['Empty session', false],
+    ['Empty conversation', false],
   ]);
   // A collapsed group opens from its header, and stays open through the next render.
-  const empty = groups(container).find((group) => group.name === 'Empty session');
+  const empty = groups(container).find((group) => group.name === 'Empty conversation');
   const summary = empty?.details.querySelector<HTMLElement>('summary');
-  expect(summary?.textContent).toBe('Empty session1');
+  expect(summary?.textContent).toBe('Empty conversation1');
   await act(async () => summary?.click());
   await settle();
   await search(container, 'x');
   await search(container, '');
-  expect(groups(container).find((group) => group.name === 'Empty session')?.details.open).toBe(
+  expect(groups(container).find((group) => group.name === 'Empty conversation')?.details.open).toBe(
     true,
   );
   expect(
-    empty?.details.querySelector('button[aria-label="Archive empty session: Blank page"]'),
+    empty?.details.querySelector('button[aria-label="Archive empty conversation: Blank page"]'),
   ).toBeTruthy();
 });
 
@@ -681,7 +681,7 @@ it('keeps only matching rows while searching, with every group open', async () =
     ['Needs attention', ['A'], true],
     ['No run yet', ['D'], true],
     ['Cancelled', ['X'], true],
-    ['Empty session', ['Y'], true],
+    ['Empty conversation', ['Y'], true],
   ]);
   // Without a query the groups are as they started.
   await search(container, '');
@@ -706,7 +706,7 @@ it('groups by run state alone when the first inbox read fails, says so once and 
     ['No run yet', ['D']],
     ['Completed', ['B', 'E']],
     ['Cancelled', ['X']],
-    ['Empty session', ['Y']],
+    ['Empty conversation', ['Y']],
   ]);
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
   // Its own words: not the Needs you line, which here would read as the project failing.
@@ -981,7 +981,7 @@ it('never moves a session to another group for its facts', async () => {
     ['No run yet', ['D']],
     ['Completed', ['E']],
     ['Cancelled', ['X']],
-    ['Empty session', ['Y']],
+    ['Empty conversation', ['Y']],
   ]);
 });
 

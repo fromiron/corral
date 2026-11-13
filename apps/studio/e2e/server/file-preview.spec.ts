@@ -83,7 +83,7 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
       .click();
     await page.getByRole('tab', { name: 'Files', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'File source', exact: true })).toContainText(
-      'Session working copy',
+      'Conversation working copy',
     );
     await page.getByRole('treeitem', { name: 'index.html', exact: true }).click();
     await page.getByRole('button', { name: 'Open preview', exact: true }).click();

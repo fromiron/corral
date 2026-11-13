@@ -139,7 +139,7 @@ it('folds the tabs into one menu that shows the current view and switches views'
   const menus = [...view.topbar.querySelectorAll<HTMLElement>('[role="combobox"]')].filter(shown);
   expect(menus).toHaveLength(1);
   const [menu] = menus;
-  expect(menu?.getAttribute('aria-label')).toBe('Session views');
+  expect(menu?.getAttribute('aria-label')).toBe('Conversation views');
   expect(menu?.textContent).toContain('Changes');
   expect(menu?.textContent).toContain('3');
   // The tabs stay in the document, hidden, so each panel keeps its name.
@@ -258,7 +258,7 @@ it('keeps the folded view menu, and its focus, while the bar tries a roomier tie
   expect(bar?.getAttribute('data-topbar-tier')).toBe('two-rows-menu');
   const trigger = () =>
     [...container.querySelectorAll<HTMLElement>('[role="combobox"]')].find(
-      (element) => element.getAttribute('aria-label') === 'Session views' && shown(element),
+      (element) => element.getAttribute('aria-label') === 'Conversation views' && shown(element),
     );
   const menu = trigger();
   expect(menu).toBeDefined();

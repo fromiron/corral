@@ -23,7 +23,7 @@ test('archived sessions run only after explicit sending and stay archived', asyn
     .getByRole('button', { name: /Actions for/ })
     .click();
   await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
-  await expect(page.getByText('Sending a message keeps this session archived.')).toBeVisible();
+  await expect(page.getByText('Sending a message keeps this conversation archived.')).toBeVisible();
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
   await requestBox(page).fill('A new request in this archived session');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -31,7 +31,7 @@ test('archived sessions run only after explicit sending and stay archived', asyn
   const response = await page.request.get(`${corral.server.url}/api/v1/sessions/${sessionId}`);
   expect((await response.json()).archivedAt).toBeTruthy();
   await expect(sidebarSession).toHaveCount(0);
-  await expect(page.getByText('Sending a message keeps this session archived.')).toBeVisible();
+  await expect(page.getByText('Sending a message keeps this conversation archived.')).toBeVisible();
 });
 
 test('search scopes lead to explicit private search and group matching entries by session', async ({
@@ -60,7 +60,7 @@ test('search scopes lead to explicit private search and group matching entries b
   // scope it shows, and message and result text is a separate search at the end of its list.
   const { palette, input } = await openSessionSearch(page);
   await input.fill('moonstone');
-  const scope = palette.getByRole('group', { name: 'Find sessions in', exact: true });
+  const scope = palette.getByRole('group', { name: 'Find conversations in', exact: true });
   await expect(scope.getByRole('button', { name: 'My project', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -73,7 +73,7 @@ test('search scopes lead to explicit private search and group matching entries b
   await palette
     .getByRole('option', { name: 'Search messages and results for “moonstone”', exact: true })
     .click();
-  const dialog = page.getByRole('dialog', { name: 'Search sessions and results' });
+  const dialog = page.getByRole('dialog', { name: 'Search conversations and results' });
   await expect(dialog).toBeVisible();
   // The palette's chips showed the chosen scope; this search covers every project, and its
   // status line names what it searched (workbench.md: "고른 범위를 표시하고 … 세션·결과 검색은
@@ -112,7 +112,7 @@ test('primary icon controls expose tooltips on hover and keyboard focus', async 
     [sidebar.getByRole('button', { name: 'Hide the sidebar' }), /Hide the sidebar/],
     [
       page.getByRole('banner').getByRole('button', { name: /Actions for/ }),
-      /Actions for New session/,
+      /Actions for New conversation/,
     ],
     [page.getByRole('button', { name: 'Open file viewer', exact: true }), /Open file viewer/],
     [page.getByRole('banner').getByRole('button', { name: 'Search', exact: true }), /Search/],

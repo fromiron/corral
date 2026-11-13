@@ -221,9 +221,9 @@ it('puts this session’s rename, pin and archive above the session list and run
   const archive = vi.fn();
   // The session page registers these with its revision checks (session/SessionActions.tsx).
   setCommands('session', [
-    { id: 'session:rename', title: 'Rename session', group: 'Session', run: rename },
-    { id: 'session:pin', title: 'Pin session', group: 'Session', run: pin },
-    { id: 'session:archive', title: 'Archive session', group: 'Session', run: archive },
+    { id: 'session:rename', title: 'Rename conversation', group: 'Session', run: rename },
+    { id: 'session:pin', title: 'Pin conversation', group: 'Session', run: pin },
+    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run: archive },
     { id: 'session:review', title: 'Open the review screen', group: 'Session', run: vi.fn() },
   ]);
   try {
@@ -245,9 +245,9 @@ it('puts this session’s rename, pin and archive above the session list and run
       ...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]'),
     ];
     expect(rows.map((row) => `${row.getAttribute('role')}:${visibleText(row)}`)).toEqual([
-      'menuitem:Rename session',
-      'menuitem:Pin session',
-      'menuitem:Archive session',
+      'menuitem:Rename conversation',
+      'menuitem:Pin conversation',
+      'menuitem:Archive conversation',
       expect.stringMatching(/^menuitemradio:Session current/),
       expect.stringMatching(/^menuitemradio:Session old/),
     ]);
@@ -262,7 +262,7 @@ it('puts this session’s rename, pin and archive above the session list and run
 
 it('shows only the actions the open page offers, as for a meeting', async () => {
   setCommands('session', [
-    { id: 'session:archive', title: 'Archive session', group: 'Session', run: vi.fn() },
+    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run: vi.fn() },
   ]);
   try {
     const container = await render(
@@ -278,7 +278,7 @@ it('shows only the actions the open page offers, as for a meeting', async () => 
     await act(async () => container.querySelector<HTMLElement>('h2 button')?.click());
     expect(
       [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(visibleText),
-    ).toEqual(['Archive session']);
+    ).toEqual(['Archive conversation']);
   } finally {
     setCommands('session', null);
   }

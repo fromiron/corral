@@ -130,11 +130,11 @@ test('[§11] workbench timings and accessibility on a fixed workload', async ({ 
     const findings: Record<string, string[]> = {};
     await page.reload();
     await expect(
-      page.getByRole('heading', { name: 'Sessions', exact: true }).first(),
+      page.getByRole('heading', { name: 'Conversations', exact: true }).first(),
     ).toBeVisible();
     findings.project = await serious(page);
 
-    const sidebar = page.getByRole('navigation', { name: 'Projects and sessions' });
+    const sidebar = page.getByRole('navigation', { name: 'Projects and conversations' });
     await page
       .getByTestId('app-sidebar')
       .getByRole('searchbox', { name: 'Filter conversations' })

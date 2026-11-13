@@ -295,14 +295,14 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(
       checkpoints
         .getByTestId('checkpoint-restore')
-        .filter({ hasText: 'Session working copy' })
+        .filter({ hasText: 'Conversation working copy' })
         .first(),
     ).toContainText('Restore: Applied');
     await expect(
       checkpoints
         .getByTestId('checkpoint-row')
         .filter({ hasText: 'Before restore' })
-        .filter({ hasText: 'Session working copy' }),
+        .filter({ hasText: 'Conversation working copy' }),
     ).toBeVisible();
     expect(corral.errors).toEqual([]);
   } finally {

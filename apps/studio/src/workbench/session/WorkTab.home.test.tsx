@@ -85,7 +85,7 @@ const session = (entries: SessionEntry[] = []): WorkSession => ({
   projectId: 'project',
   corralId: null,
   auto: null,
-  title: 'New session',
+  title: 'New conversation',
   objective: '',
   pinned: false,
   revision: 1,

@@ -647,7 +647,7 @@ it('names a non-decision item fully on its row, and its detail is only the way t
     line: 'Queued request',
     header: 'Write docs',
     rest: [],
-    links: [['Open session', '/sessions/s_c']],
+    links: [['Open conversation', '/sessions/s_c']],
   });
   expect(container.innerHTML).not.toContain('Private request body');
 });
