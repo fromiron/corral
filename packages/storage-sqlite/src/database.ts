@@ -720,6 +720,17 @@ CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
   PRIMARY KEY (run_id, execution_id)
 ) STRICT;`,
   },
+  {
+    // the advisor a session's conversation runs with; null when off, as for existing sessions.
+    name: '0044_session_advisor',
+    sql: '-- the column is added below, once, so running this step again changes nothing.',
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(work_sessions)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'advisor_json'))
+        db.exec(`ALTER TABLE work_sessions ADD COLUMN advisor_json TEXT
+  CHECK (advisor_json IS NULL OR (json_valid(advisor_json) AND json_type(advisor_json) = 'object'))`);
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

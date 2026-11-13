@@ -172,10 +172,19 @@ export interface WorkSession {
   archivedAt: string | null;
   /** Whether the server starts the first queued request when the session's run ends. */
   autoStart: boolean;
+  /**
+   * The advisor that watches the conversation's answering role in runs started from now on; null
+   * when off. Stores always return it; only sessions built by hand may lack it.
+   */
+  advisor?: SessionAdvisor | null;
   entries: SessionEntry[];
   /** present only for a meeting; changed only by the meeting service. */
   meeting?: MeetingState;
 }
+
+/** The session's advisor setting (features/advisor.md, 계약): its model profile. */
+export const SessionAdvisor = z.strictObject({ modelProfile: Identifier });
+export type SessionAdvisor = z.infer<typeof SessionAdvisor>;
 
 /** 0 to 20 lines of 1 to 200 characters each, trimmed; a blank line is refused, not stored. */
 export const SESSION_CRITERIA_MAX = 20;
@@ -194,6 +203,8 @@ export interface SessionChange {
   pinned?: boolean;
   archived?: boolean;
   autoStart?: boolean;
+  /** turns the session's advisor on with a model, or off with null. */
+  advisor?: SessionAdvisor | null;
   /** the meeting service's next state; a work session cannot become a meeting. */
   meeting?: MeetingState;
   expectedRevision: number;
@@ -354,6 +365,7 @@ export function planSessionCreate(
       updatedAt: context.now,
       archivedAt: null,
       autoStart: true,
+      advisor: null,
       entries: [],
       ...(meeting ? { meeting: { config: meeting.data, rounds: [], queued: null } } : {}),
     },
@@ -376,6 +388,12 @@ export function planSessionUpdate(
     };
   if (change.autoStart !== undefined && typeof change.autoStart !== 'boolean')
     return { ok: false, error: 'invalid', message: 'autoStart is true or false.' };
+  if (
+    change.advisor !== undefined &&
+    change.advisor !== null &&
+    !SessionAdvisor.safeParse(change.advisor).success
+  )
+    return { ok: false, error: 'invalid', message: 'The advisor names one model profile.' };
   if (change.auto && !AutoModelChoice.safeParse(change.auto).success)
     return { ok: false, error: 'invalid', message: 'The auto model choice is not valid.' };
   if (
@@ -414,6 +432,9 @@ export function planSessionUpdate(
       ...(change.auto !== undefined ? { auto: change.auto } : {}),
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
       ...(change.autoStart !== undefined ? { autoStart: change.autoStart } : {}),
+      ...(change.advisor !== undefined
+        ? { advisor: change.advisor ? SessionAdvisor.parse(change.advisor) : null }
+        : {}),
       ...(change.meeting !== undefined ? { meeting: MeetingState.parse(change.meeting) } : {}),
       ...(change.archived === undefined
         ? {}
@@ -975,6 +996,7 @@ export function createKeyValueCorralRepository(
       ...x,
       auto: x.auto ?? null,
       autoStart: x.autoStart ?? true,
+      advisor: x.advisor ?? null,
     }));
   };
   const findSession = (sessionId: string) =>

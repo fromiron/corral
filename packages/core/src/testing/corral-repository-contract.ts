@@ -840,6 +840,44 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(id))?.entries[0]?.auto).toEqual(auto);
       });
 
+      it('saves the session advisor, off by default, and refuses a malformed one', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Watched chat' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect(created.session.advisor).toBeNull();
+        expect((await repo.getSession(id))?.advisor).toBeNull();
+        const on = await repo.updateSession(id, {
+          advisor: { modelProfile: 'model-b' },
+          expectedRevision: 1,
+        });
+        expect(on).toMatchObject({ ok: true, session: { advisor: { modelProfile: 'model-b' } } });
+        expect((await repo.getSession(id))?.advisor).toEqual({ modelProfile: 'model-b' });
+        // Another change leaves it as it is.
+        await repo.updateSession(id, { title: 'Renamed', expectedRevision: 2 });
+        expect((await repo.getSession(id))?.advisor).toEqual({ modelProfile: 'model-b' });
+        expect(await repo.updateSession(id, { advisor: null, expectedRevision: 2 })).toMatchObject({
+          ok: false,
+          error: 'revision_conflict',
+        });
+        for (const advisor of [
+          { modelProfile: '' },
+          { modelProfile: 'model-b', interval: 2 },
+          { model: 'model-b' },
+          'model-b',
+        ])
+          expect(
+            await repo.updateSession(id, {
+              advisor: advisor as unknown as { modelProfile: string },
+              expectedRevision: 3,
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        expect((await repo.getSession(id))?.advisor).toEqual({ modelProfile: 'model-b' });
+        const off = await repo.updateSession(id, { advisor: null, expectedRevision: 3 });
+        expect(off).toMatchObject({ ok: true, session: { advisor: null, revision: 4 } });
+        expect((await repo.getSession(id))?.advisor).toBeNull();
+      });
+
       it('saves autoStart, true by default, and a queued start snapshot and carried source', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'Server queue' });
