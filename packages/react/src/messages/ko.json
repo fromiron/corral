@@ -2575,7 +2575,6 @@
     "targetLabel": "{name}에게 보내기",
     "targetAwaiting": "{name} · 결정 뒤에 읽힘",
     "targetNone": "지금 지시를 받을 역할 없음",
-    "targetMenu": "보낼 역할",
     "lowered": "이 역할은 지금 끼어들 수 없어 다음 요청에 읽힙니다."
   },
   "Commands": {

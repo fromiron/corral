@@ -17,7 +17,8 @@ const NO_TARGETS: { targets: SteerTarget[]; lead: string | null } = { targets: [
  * Executions of the session's run that can take an instruction now, read from the run's live
  * projection (features/composer-flow.md "계약"): the store the conversation already follows,
  * so an execution that ends while the person types leaves the list at once, without polling.
- * `ready` is false until that projection is read, so a send never guesses the target.
+ * `ready` is false until that projection is read, so a send never guesses the target; `ended`
+ * is true once it says the run ended, which the run list may say only later.
  */
 export function useSteerTargets(
   ownActive: RunSummary | null,
@@ -55,7 +56,11 @@ export function useSteerTargets(
   for (const x of read.targets) targetNames.current.set(x.id, x.label);
   // A run whose record cannot be read takes no instruction; the composer queues instead.
   const ready = !runId || current || (view.runId === runId && view.failed);
-  return { targets: read.targets, lead: read.lead, ready, targetNames };
+  // The run's own record says it ended before the run list does.
+  const ended = Boolean(
+    current && view.projection && TERMINAL_RUN_STATUSES.has(view.projection.status),
+  );
+  return { targets: read.targets, lead: read.lead, ready, ended, targetNames };
 }
 
 // Read while the session has no run going: nothing to follow.

@@ -454,6 +454,19 @@ describe('composer send paths', () => {
     expect(ids).toEqual(['cmd_fixed', 'cmd_second']);
   });
 
+  it('a lost join sent again with another attachment is another command', async () => {
+    const h = harness({ ownActive: running });
+    h.sendCommand.mockRejectedValueOnce(new Error('connection reset'));
+    const join = { intent: 'steer', delivery: 'next_request', steerTarget: 'exec_1' } as const;
+    await sendRequest(h.deps, input({ ...join, attachments: [attachment] }));
+    const other = { ...attachment, text: 'other notes', sha256: `sha256:${'b'.repeat(64)}` };
+    await sendRequest(h.deps, input({ ...join, attachments: [other] }));
+    const ids = h.sendCommand.mock.calls.map(
+      (call) => (call[0] as { commandId: string }).commandId,
+    );
+    expect(ids).toEqual(['cmd_fixed', 'cmd_second']);
+  });
+
   it('sends one command when the same send is pressed twice', async () => {
     const h = harness({ ownActive: running });
     const join = input({ intent: 'steer', delivery: 'next_request', steerTarget: 'exec_1' });

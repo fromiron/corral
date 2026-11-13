@@ -205,7 +205,12 @@ export function Composer({
   // An interrupt the runtime could not deliver was read at the next request instead.
   const [lowered, setLowered] = useState(false);
 
-  const { targets, lead, ready, targetNames } = useSteerTargets(ownActive, restored);
+  const { targets, lead, ready, ended, targetNames } = useSteerTargets(ownActive, restored);
+  // Once the run's own record says it ended, the composer is idle at once, before the run list
+  // says so: a send is a new request that carries the conversation through that run.
+  const going = ended ? null : ownActive;
+  const waitingOn = ended && active?.runId === ownActive?.runId ? null : active;
+  const throughRunId = (ended ? ownActive?.runId : lastEnded?.runId) ?? null;
   const draft = useComposerDraft({
     session,
     team,
@@ -224,13 +229,21 @@ export function Composer({
     loading,
     intent,
     forKey,
-    sendAs,
+    forChoice,
     steerTarget,
     targetName,
     write,
     chooseIntent,
     chooseTarget,
-  } = useComposerIntent({ draft, targets, lead, ready, targetNames, ownActive, active });
+  } = useComposerIntent({
+    draft,
+    targets,
+    lead,
+    ready,
+    targetNames,
+    ownActive: going,
+    active: waitingOn,
+  });
   useFileReference({ reference, input, text, write, setPicked, onReferenceUsed });
   const { references, chips, missingChips } = draft;
   // Whether a send of this intent can go now, and why not. Until the run's record is read the
@@ -261,7 +274,7 @@ export function Composer({
     session,
     choice: autoChoice,
     teamMode,
-    throughRunId: lastEnded?.runId ?? null,
+    throughRunId,
     missingTeam,
     messages: { selectedTeamMissing: t('selectedTeamMissing'), noResult: t('noResult'), failed },
     commands,
@@ -292,7 +305,7 @@ export function Composer({
   /** Sends as a key, or a choice in the send menu, says (features/composer-flow.md "전송"). */
   const send = async (pick: { role: SendKeyRole } | { choice: SendChoice }) => {
     const body = text.trim();
-    const how = 'role' in pick ? forKey(pick.role) : sendAs(pick.choice);
+    const how = 'role' in pick ? forKey(pick.role) : forChoice(pick.choice);
     const explicitQueue = 'role' in pick ? pick.role === 'queue' : pick.choice === 'queue';
     if (!body || busy || autoSaving.current || availableFor(how.intent, explicitQueue).unavailable)
       return;
@@ -325,6 +338,19 @@ export function Composer({
     );
     if (mounted.current) setLowered(outcome.lowered);
   };
+
+  // A menu or notice of the composer, once used, gives the focus back to the box; a click that
+  // moved it elsewhere keeps it there.
+  const backToInput = () =>
+    requestAnimationFrame(() => {
+      const focused = document.activeElement;
+      if (
+        !focused ||
+        focused === document.body ||
+        focused.closest('[role="menu"], [data-slot="composer-host"]')
+      )
+        input.current?.focus();
+    });
 
   const requestStop = () => {
     setConfirmStop(ownActive !== null);
@@ -436,6 +462,7 @@ export function Composer({
             sendKey={prefs.sendKey}
             disabled={busy || !text.trim()}
             onSend={(choice) => void send({ choice })}
+            onClose={backToInput}
           />
         </>
       )}
@@ -454,7 +481,10 @@ export function Composer({
           }
           onViewRun={onViewRun}
           blocked={blocked}
-          onChooseIntent={chooseIntent}
+          onChooseIntent={(value) => {
+            chooseIntent(value);
+            input.current?.focus();
+          }}
           notReady={notReady}
           autoBlockedModel={autoBlocked ? (autoProfile?.label ?? autoChoice.modelProfile) : null}
           missingTeam={missingTeam}
@@ -518,8 +548,10 @@ export function Composer({
             target={steerTarget || null}
             targets={targets}
             name={targetName(steerTarget)}
+            loading={loading}
             disabled={busy}
             onChoose={chooseTarget}
+            onClose={backToInput}
           />
           {(intent === 'next' || intent === 'queue') && !blocked ? (
             <TeamChoice
@@ -538,7 +570,12 @@ export function Composer({
           {/* The request's settings, then the keys, right before voice and Send. */}
           <span className="ml-auto flex min-w-0 items-center gap-1.5">
             <RequestTools only="settings" {...requestTools} />
-            <KeyHint keys={sendKeys} situation={situation} sendKey={prefs.sendKey} />
+            <KeyHint
+              keys={sendKeys}
+              situation={situation}
+              loading={loading}
+              sendKey={prefs.sendKey}
+            />
           </span>
         </>
       }
@@ -581,6 +618,8 @@ export function Composer({
       <ComposerQueue
         queued={queued}
         autoStart={autoStart}
+        // Auto start is the server's; the browser demo has none, so it has no such setting.
+        autoStartShown={services.mode !== 'browser'}
         onAutoStartChange={(value) => void updateAutoStart(value)}
         startDisabled={Boolean(active) || busy || savedRequestUnavailable}
         onStart={(entry) => void queue.start(entry)}

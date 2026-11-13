@@ -151,8 +151,8 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
     .click();
   await expect(request(page)).toHaveValue('Keep this purpose through team setup');
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
-  // Nothing to ask about yet: the only choice is a next request, so no intent picker shows.
-  await expect(page.getByRole('combobox', { name: 'What this is' })).toHaveCount(0);
+  // Nothing runs yet: every send is a new request, so the send menu offers no other way.
+  await expect(page.getByRole('button', { name: 'Send as', exact: true })).toBeDisabled();
   await request(page).fill('');
   await page.reload();
   await expect(request(page)).toHaveValue('');

@@ -55,7 +55,8 @@ const SEND_KEYS: Record<Exclude<Situation, 'blocked'>, Record<SendKeyRole, SendK
   noTarget: { send: 'queue', interrupt: 'queue', queue: 'queue' },
 };
 
-const CHOICE_KEY: Record<SendChoice, SendKeyRole> = {
+/** The key each one-time choice stands for. */
+export const CHOICE_KEY: Record<SendChoice, SendKeyRole> = {
   join: 'send',
   interrupt: 'interrupt',
   queue: 'queue',
@@ -68,6 +69,8 @@ export interface ResolvedIntent {
   blocked: Blocked;
   /** What each key sends now. */
   keys: Record<SendKeyRole, SendKind>;
+  /** What each key sends before a one-time choice; the send menu's sends follow these. */
+  base: Record<SendKeyRole, SendKind>;
 }
 
 export function resolveIntent({
@@ -80,8 +83,6 @@ export function resolveIntent({
 }: {
   /** This session's run is going (an instruction can still reach it). */
   running: boolean;
-  /** A new request sent now waits behind a run that is going; see `intentOf`. */
-  waiting: boolean;
   /** Executions that can take an instruction now. */
   targets: readonly SteerTarget[];
   /** The execution writing the conversation's answer. */
@@ -93,8 +94,18 @@ export function resolveIntent({
   /** A send picked for the next send only. */
   chosen: SendChoice | null;
 }): ResolvedIntent {
-  const withChoice = (keys: Record<SendKeyRole, SendKind>) =>
-    chosen ? { ...keys, send: keys[CHOICE_KEY[chosen]] } : keys;
+  const resolved = (
+    situation: Situation,
+    target: string | null,
+    blocked: Blocked,
+    base: Record<SendKeyRole, SendKind>,
+  ): ResolvedIntent => ({
+    situation,
+    target,
+    blocked,
+    base,
+    keys: chosen ? { ...base, send: base[CHOICE_KEY[chosen]] } : base,
+  });
   const situationOf = (target: SteerTarget): Exclude<Situation, 'blocked' | 'idle' | 'noTarget'> =>
     target.awaiting ? 'awaiting' : target.interruptible ? 'join' : 'joinOnly';
 
@@ -102,36 +113,24 @@ export function resolveIntent({
     const fixed = running ? targets.find((item) => item.id === lock.target) : undefined;
     if (fixed) {
       const situation = situationOf(fixed);
-      return {
-        situation,
-        target: fixed.id,
-        blocked: null,
-        keys: withChoice(SEND_KEYS[situation]),
-      };
+      return resolved(situation, fixed.id, null, SEND_KEYS[situation]);
     }
-    // Blocked: the fixed instruction goes nowhere else. Only an explicit other send leaves it.
-    return {
-      situation: 'blocked',
-      target: lock.target,
-      blocked: running ? 'target' : 'run',
-      keys: withChoice({ send: 'join', interrupt: 'join', queue: running ? 'queue' : 'new' }),
-    };
+    // Blocked: the fixed instruction goes nowhere else. Only an explicit other send leaves it,
+    // and with no run going that send is a new request.
+    return resolved('blocked', lock.target, running ? 'target' : 'run', {
+      send: 'join',
+      interrupt: 'join',
+      queue: running ? 'queue' : 'new',
+    });
   }
-  if (!running)
-    return { situation: 'idle', target: null, blocked: null, keys: withChoice(SEND_KEYS.idle) };
+  if (!running) return resolved('idle', null, null, SEND_KEYS.idle);
   const target =
     targets.find((item) => item.id === chosenTarget) ??
     targets.find((item) => item.id === lead) ??
     targets[0];
-  if (!target)
-    return {
-      situation: 'noTarget',
-      target: null,
-      blocked: null,
-      keys: withChoice(SEND_KEYS.noTarget),
-    };
+  if (!target) return resolved('noTarget', null, null, SEND_KEYS.noTarget);
   const situation = situationOf(target);
-  return { situation, target: target.id, blocked: null, keys: withChoice(SEND_KEYS[situation]) };
+  return resolved(situation, target.id, null, SEND_KEYS[situation]);
 }
 
 /** The session entry intent and instruction delivery of a send. */

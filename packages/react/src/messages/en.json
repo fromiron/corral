@@ -2575,7 +2575,6 @@
     "targetLabel": "Send to {name}",
     "targetAwaiting": "{name} · read after the decision",
     "targetNone": "No role takes instructions now",
-    "targetMenu": "Send to",
     "lowered": "This role cannot be interrupted now; the message is read at its next request."
   },
   "Commands": {

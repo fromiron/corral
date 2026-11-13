@@ -21,7 +21,6 @@ const research: SteerTarget = {
 
 const base = {
   running: true,
-  waiting: true,
   targets: [writer, research],
   lead: 'exec_writer',
   chosenTarget: null,
@@ -31,13 +30,12 @@ const base = {
 
 describe('send keys by situation', () => {
   it('sends a new request with every key while nothing runs', () => {
-    expect(
-      resolveIntent({ ...base, running: false, waiting: false, targets: [], lead: null }),
-    ).toEqual({
+    expect(resolveIntent({ ...base, running: false, targets: [], lead: null })).toEqual({
       situation: 'idle',
       target: null,
       blocked: null,
       keys: { send: 'new', interrupt: 'new', queue: 'new' },
+      base: { send: 'new', interrupt: 'new', queue: 'new' },
     });
   });
 
@@ -47,6 +45,7 @@ describe('send keys by situation', () => {
       target: 'exec_writer',
       blocked: null,
       keys: { send: 'join', interrupt: 'interrupt', queue: 'queue' },
+      base: { send: 'join', interrupt: 'interrupt', queue: 'queue' },
     });
   });
 
@@ -57,6 +56,7 @@ describe('send keys by situation', () => {
       target: 'exec_writer',
       blocked: null,
       keys: { send: 'join', interrupt: 'join', queue: 'queue' },
+      base: { send: 'join', interrupt: 'join', queue: 'queue' },
     });
   });
 
@@ -66,6 +66,7 @@ describe('send keys by situation', () => {
       target: null,
       blocked: null,
       keys: { send: 'queue', interrupt: 'queue', queue: 'queue' },
+      base: { send: 'queue', interrupt: 'queue', queue: 'queue' },
     });
   });
 
@@ -76,6 +77,7 @@ describe('send keys by situation', () => {
       target: 'exec_writer',
       blocked: null,
       keys: { send: 'join', interrupt: 'join', queue: 'queue' },
+      base: { send: 'join', interrupt: 'join', queue: 'queue' },
     });
   });
 
@@ -96,7 +98,7 @@ describe('send keys by situation', () => {
 
 describe('counterexamples', () => {
   it('a run that just ended sends a new request, never an instruction to its stale targets', () => {
-    const ended = resolveIntent({ ...base, running: false, waiting: false });
+    const ended = resolveIntent({ ...base, running: false });
     expect(ended.situation).toBe('idle');
     expect(ended.target).toBeNull();
     expect(ended.keys.send).toBe('new');
@@ -150,6 +152,7 @@ describe('the target', () => {
       target: 'exec_research',
       blocked: 'target',
       keys: { send: 'join', interrupt: 'join', queue: 'queue' },
+      base: { send: 'join', interrupt: 'join', queue: 'queue' },
     });
   });
 
@@ -157,7 +160,6 @@ describe('the target', () => {
     const blocked = resolveIntent({
       ...base,
       running: false,
-      waiting: false,
       targets: [],
       lock: { intent: 'steer', target: 'exec_writer' },
     });
@@ -168,9 +170,9 @@ describe('the target', () => {
   });
 
   it('a draft not fixed on a target follows the run: joins when one starts, new when it ends', () => {
-    const idle = { ...base, running: false, waiting: false, targets: [], lead: null };
+    const idle = { ...base, running: false, targets: [], lead: null };
     expect(resolveIntent(idle).keys.send).toBe('new');
-    expect(resolveIntent({ ...idle, running: true, waiting: true, targets: [writer] })).toEqual(
+    expect(resolveIntent({ ...idle, running: true, targets: [writer] })).toEqual(
       expect.objectContaining({
         target: 'exec_writer',
         keys: expect.objectContaining({ send: 'join' }),
@@ -185,7 +187,6 @@ describe('the target', () => {
         resolveIntent({
           ...base,
           running: false,
-          waiting: false,
           targets: [],
           lock: { intent, target: null },
         }).keys.send,
@@ -210,13 +211,32 @@ describe('a send chosen once (/next, /steer, /interrupt or the send menu)', () =
       resolveIntent({
         ...base,
         running: false,
-        waiting: false,
         targets: [],
         lead: null,
         chosen: 'queue',
       }).keys.send,
     ).toBe('new');
     expect(resolveIntent({ ...base, targets: [], chosen: 'join' }).keys.send).toBe('queue');
+  });
+
+  it('leaves what the keys send without it, which the send menu follows', () => {
+    expect(resolveIntent({ ...base, chosen: 'queue' }).base).toEqual({
+      send: 'join',
+      interrupt: 'interrupt',
+      queue: 'queue',
+    });
+  });
+
+  it('with a fixed target whose run ended, a next request is a new request', () => {
+    const blocked = resolveIntent({
+      ...base,
+      running: false,
+      targets: [],
+      lock: { intent: 'steer', target: 'exec_writer' },
+      chosen: 'queue',
+    });
+    expect(blocked.keys.send).toBe('new');
+    expect(blocked.base.queue).toBe('new');
   });
 });
 
@@ -308,6 +328,18 @@ describe('targets read from the run projection', () => {
       value.status = status;
       expect(targetsOf(value, definition() as never).targets).toEqual([]);
     }
+  });
+
+  it('an execution that is stopping takes no instruction', () => {
+    const value = projection();
+    value.executions.exec_writer = {
+      ...value.executions.exec_writer,
+      status: 'cancelling',
+    } as never;
+    expect(targetsOf(value, definition() as never).targets.map((item) => item.id)).toEqual([
+      'exec_review',
+      'exec_second',
+    ]);
   });
 
   it('names an execution by its node id while the definition is not read yet', () => {

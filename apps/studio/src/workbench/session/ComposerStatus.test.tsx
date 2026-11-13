@@ -59,7 +59,6 @@ it.each(['en', 'ko'] as const)(
     for (const targets of [[writer], [{ ...writer, interruptible: false }], []]) {
       const { keys, situation } = resolveIntent({
         running: true,
-        waiting: true,
         targets,
         lead: 'w',
         chosenTarget: null,

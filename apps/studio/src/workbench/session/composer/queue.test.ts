@@ -113,6 +113,30 @@ describe('starting a queued request', () => {
     expect(h.startAuto).not.toHaveBeenCalled();
   });
 
+  it('sent again after a failed run, it is a new request with today’s choices, and records them', async () => {
+    const h = deps();
+    await startQueued(h.deps, entry, true);
+    expect(h.startAuto).toHaveBeenCalledTimes(1);
+    expect(h.startAuto.mock.calls[0]?.[0]).toMatchObject({
+      permissionMode: 'ask',
+      choice: { modelProfile: 'model-b' },
+      team: 'none',
+      brief: 'Run the tests too',
+    });
+    expect(h.deps.services.repository.addSessionEntry).toHaveBeenCalledWith(
+      'session',
+      expect.objectContaining({
+        intent: 'next',
+        start: {
+          permissionMode: 'ask',
+          choice: { modelProfile: 'model-b' },
+          team: 'none',
+          mode: 'live',
+        },
+      }),
+    );
+  });
+
   it('has no client auto-start: the server starts the queue when a run ends', () => {
     expect('useAutoStart' in queue).toBe(false);
     expect('autoStartEntry' in queue).toBe(false);

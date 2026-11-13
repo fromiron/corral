@@ -324,7 +324,8 @@ export function ComposerInput({
           const role = sendKeyRole(e, sendKey);
           if (role) {
             e.preventDefault();
-            onSend(role);
+            // A command being chosen is not a message: no send key sends it.
+            if (!(open && kind === 'slash')) onSend(role);
             return;
           }
           onKeyDown(e);

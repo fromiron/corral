@@ -34,20 +34,23 @@ const ROLES: readonly SendKeyRole[] = ['send', 'interrupt', 'queue'];
  * it is left out (an execution that cannot be cut joins with the interrupt key too). It closes
  * the tool line's left side, next to Send. It shows whole or not at all: where the line runs
  * short the folder notice gives way first, and only then does the hint drop (the send menu
- * lists the same keys).
+ * lists the same keys). While the run's record is being read the keys are not known yet: the
+ * line keeps its place, empty.
  */
 export function KeyHint({
   keys,
   situation,
+  loading = false,
   sendKey,
 }: {
   keys: Record<SendKeyRole, SendKind>;
   situation: Situation;
+  loading?: boolean;
   sendKey: Preferences['sendKey'];
 }) {
   const tc = useTranslations('Composer');
   const labels = sendKeyLabels(sendKey);
-  const shown = usableRoles(keys, situation);
+  const shown = loading ? [] : usableRoles(keys, situation);
   return (
     <p
       data-slot="composer-keys"
@@ -100,12 +103,15 @@ export function SendMenu({
   sendKey,
   disabled,
   onSend,
+  onClose,
 }: {
   situation: Situation;
   sendKey: Preferences['sendKey'];
   /** Nothing to send, or sending is held. */
   disabled: boolean;
   onSend: (choice: SendChoice) => void;
+  /** The menu closed, by a send or Escape. */
+  onClose?: () => void;
 }) {
   const tc = useTranslations('Composer');
   const labels = sendKeyLabels(sendKey);
@@ -116,7 +122,7 @@ export function SendMenu({
     ['queue', 'queue'],
   ];
   return (
-    <Menu>
+    <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
       <MenuTrigger
         disabled={situation === 'idle'}
         render={
@@ -152,33 +158,41 @@ export function SendMenu({
 /**
  * Where an instruction goes, on the left of the tool line: the target role, which opens the
  * list of executions that can take an instruction now; while a run goes and none can, the one
- * line saying so. Nothing while no run goes.
+ * line saying so. Nothing while no run goes; while the run's record is being read, its place
+ * stays empty.
  */
 export function TargetChip({
   situation,
   target,
   targets,
   name,
+  loading = false,
   disabled,
   onChoose,
+  onClose,
 }: {
   situation: Situation;
   target: string | null;
   targets: readonly SteerTarget[];
   /** The target's name, also after it ended. */
   name: string;
+  /** The run's record is being read: where an instruction goes is not known yet. */
+  loading?: boolean;
   disabled: boolean;
   onChoose: (id: string) => void;
+  /** The list closed, by a pick or Escape. */
+  onClose?: () => void;
 }) {
   const tc = useTranslations('Composer');
   if (situation === 'idle') return null;
+  // The reason keeps the room before the folder notice does, and gives way before the keys.
+  const reasonRoom =
+    'min-w-0 truncate px-1 text-caption text-muted-foreground sm:min-w-12 sm:max-w-max sm:grow-[100] sm:basis-0';
+  if (loading)
+    return <span aria-hidden="true" data-slot="composer-target-pending" className={reasonRoom} />;
   if (situation === 'noTarget' || !target)
-    // The reason keeps the room before the folder notice does, and gives way before the keys.
     return (
-      <span
-        title={tc('targetNone')}
-        className="min-w-0 truncate px-1 text-caption text-muted-foreground sm:min-w-12 sm:max-w-max sm:grow-[100] sm:basis-0"
-      >
+      <span title={tc('targetNone')} className={reasonRoom}>
         {tc('targetNone')}
       </span>
     );
@@ -202,7 +216,7 @@ export function TargetChip({
       </span>
     );
   return (
-    <Menu>
+    <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
       <MenuTrigger
         data-slot="composer-target"
         disabled={disabled}

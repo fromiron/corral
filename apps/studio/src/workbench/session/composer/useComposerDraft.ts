@@ -231,8 +231,9 @@ export function useComposerDraft({
     setPermissionMode(entry.permissionMode);
     setAttachments(entry.attachments ?? []);
     setImages(entry.images ?? []);
-    // Sent again, it is a next request: it waits while a run is going, else it starts.
-    setChosen(null);
+    // Sent again, it is a next request: it waits while a run is going, else it starts. The send
+    // key sends it as one, never as a join that would drop its permission mode and images.
+    setChosen('queue');
     setLock(null);
   };
 

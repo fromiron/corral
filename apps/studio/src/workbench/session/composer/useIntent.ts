@@ -2,6 +2,7 @@ import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
 import { useState } from 'react';
 import {
+  CHOICE_KEY,
   intentOf,
   resolveIntent,
   type SendChoice,
@@ -43,7 +44,6 @@ export function useComposerIntent({
   const waiting = Boolean(active && !TERMINAL_RUN_STATUSES.has(active.status));
   const resolved = resolveIntent({
     running: Boolean(ownActive),
-    waiting,
     targets,
     lead,
     chosenTarget,
@@ -56,6 +56,8 @@ export function useComposerIntent({
   const sendAs = (kind: SendKind) => ({ kind, ...intentOf(kind, waiting) });
   /** What a key sends now. */
   const forKey = (role: SendKeyRole) => sendAs(resolved.keys[role]);
+  /** What a send picked in the send menu sends now: its key's send, before any one-time choice. */
+  const forChoice = (choice: SendChoice) => sendAs(resolved.base[CHOICE_KEY[choice]]);
   // The send key's meaning, which Send says and the composer's checks follow.
   const { intent } = forKey('send');
 
@@ -85,7 +87,7 @@ export function useComposerIntent({
     loading: Boolean(ownActive) && !ready && !lock,
     intent,
     forKey,
-    sendAs,
+    forChoice,
     steerTarget,
     targetName,
     write,

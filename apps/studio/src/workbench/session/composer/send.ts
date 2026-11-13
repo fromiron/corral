@@ -144,6 +144,23 @@ export function entryStart(request: AutoRunStart): SessionEntryStart {
   return start;
 }
 
+/** The start a next request is saved with: the server starts it with this once the run ends. */
+export function queuedStart(
+  deps: Pick<StartDeps, 'services' | 'session' | 'choice' | 'teamMode'>,
+  brief: string,
+  permissionMode?: PermissionMode,
+): SessionEntryStart {
+  return entryStart(
+    conversationRequest(deps.services, deps.session, {
+      ...(permissionMode ? { permissionMode } : {}),
+      commandId: '',
+      brief,
+      choice: deps.choice,
+      team: deps.teamMode,
+    }),
+  );
+}
+
 /** Starts a follow-up with the team; returns the run or why not. */
 export async function startNext(
   deps: StartDeps,
@@ -394,23 +411,13 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         return outcome;
       }
     } else if (intent === 'queue') {
-      // The server starts it with this snapshot once the session's run ends.
-      const start = entryStart(
-        conversationRequest(services, session, {
-          ...(permissionMode ? { permissionMode } : {}),
-          commandId: '',
-          brief: body,
-          choice: deps.choice,
-          team: deps.teamMode,
-        }),
-      );
       await recordEntry(deps, {
         intent,
         text: body,
         state: 'queued',
         ...(attachments.length ? { attachments } : {}),
         ...(permissionMode ? { permissionMode } : {}),
-        start,
+        start: queuedStart(deps, body, permissionMode),
       });
     } else if (intent === 'steer' && delivery && ownActive && steerTarget) {
       // The delivery and the attachments are part of the instruction: changing either after a

@@ -13,6 +13,7 @@ import { setCommands } from '../../commandRegistry.ts';
 import { changePreferences } from '../preferences.ts';
 import { writeComposerDraft } from '../sessionDraft.ts';
 import { Composer } from './Composer.tsx';
+import { menuSends } from './composer/SendControls.tsx';
 
 // features/composer-flow.md "전송", "합류 대상", "대기 요청과 넘겨받기": what the composer sends
 // while a run goes, where it goes, and that the server, not the page, starts queued requests.
@@ -92,9 +93,13 @@ function execution(id: string, nodeId: string, status: string) {
   } as never;
 }
 
-function projection(executions: Record<string, string> = { exec_writer: 'active' }) {
-  const value = emptyProjection('run_live');
-  value.status = 'running';
+function projection(
+  executions: Record<string, string> = { exec_writer: 'active' },
+  runId = 'run_live',
+  status: RunProjection['status'] = 'running',
+) {
+  const value = emptyProjection(runId);
+  value.status = status;
   value.executionOrder = Object.keys(executions);
   for (const [id, status] of Object.entries(executions))
     value.executions[id] = execution(id, id.replace('exec_', ''), status);
@@ -127,12 +132,17 @@ async function mount({
   session = baseSession,
   queued = [] as SessionEntry[],
   sendKey,
+  mode = 'server',
+  runState = {},
 }: {
   active?: RunSummary | null;
   executions?: Record<string, string>;
   session?: WorkSession;
   queued?: SessionEntry[];
   sendKey?: 'enter' | 'mod-enter';
+  mode?: 'server' | 'browser';
+  /** The run's record as the store holds it at first. */
+  runState?: Partial<RunState>;
 } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -157,6 +167,7 @@ async function mount({
     streamError: null,
     missingRunId: null,
     open: vi.fn(async () => {}),
+    ...runState,
   }));
   const sendCommand = vi.fn(async (command: { commandId: string }) => ({
     commandId: command.commandId,
@@ -195,7 +206,7 @@ async function mount({
     },
     runFor: () => store,
     retainRun: () => () => {},
-    mode: 'server',
+    mode,
     live: true,
     workspaceId: 'host',
     workspaces: null,
@@ -253,6 +264,24 @@ async function mount({
     await act(async () => {});
   };
   const keysLine = () => container.querySelector('[data-slot="composer-keys"]');
+  const keyCount = () => container.querySelectorAll('[data-slot="composer-key"]').length;
+  // The menu beside Send, opened, and one of its items or the target list's.
+  const openSendMenu = async () => {
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="Send as"]')?.click(),
+    );
+  };
+  const menuItem = (label: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]')].find(
+      (node) => node.textContent?.includes(label),
+    );
+  const pickTarget = async (label: string) => {
+    await act(async () => targetButton()?.click());
+    await act(async () => menuItem(label)?.click());
+  };
+  // A frame passes, so focus given back after a menu closes has landed.
+  const frame = async () =>
+    act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   const targetButton = () =>
     container.querySelector<HTMLButtonElement>('[data-slot="composer-target"]');
   return {
@@ -265,7 +294,13 @@ async function mount({
     type,
     press,
     keysLine,
+    keyCount,
     targetButton,
+    box,
+    openSendMenu,
+    menuItem,
+    pickTarget,
+    frame,
   };
 }
 
@@ -434,11 +469,13 @@ describe('the target', () => {
   });
 
   it.each([
-    ['joins', running, true],
-    ['starts a new request', null, false],
+    ['joins', running, {}, true],
+    // A saved next request carries no images: the server starts it without them.
+    ['saves a next request', running, { exec_writer: 'succeeded' }, true],
+    ['starts a new request', null, {}, false],
   ] as const)(
-    'says images apply to a new request only while the send key %s: %s',
-    async (_, active, shown) => {
+    'says images apply to a new request only while the send key %s',
+    async (_, active, executions, shown) => {
       const image = {
         kind: 'image_attachment' as const,
         imageId: 'img_0123456789abcdef',
@@ -459,7 +496,7 @@ describe('the target', () => {
       };
       const held = messages.Composer.heldForNew.replace('{items}', messages.Composer.held.images);
       writeComposerDraft('session', draft);
-      const f = await mount({ active });
+      const f = await mount({ active, executions });
       expect(f.container.textContent?.includes(held)).toBe(shown);
     },
   );
@@ -550,4 +587,452 @@ describe('queued requests', () => {
       }),
     );
   });
+});
+
+const saved: SessionEntry = {
+  entryId: 'entry_saved',
+  intent: 'queue',
+  text: 'Write the summary after',
+  createdAt: '2026-11-13T00:00:00Z',
+  state: 'queued',
+  runId: null,
+  executionId: null,
+  detail: null,
+  permissionMode: 'accept_edits',
+  start: {
+    permissionMode: 'accept_edits',
+    choice: { modelProfile: 'model-a' },
+    team: 'none',
+    mode: 'live',
+  },
+};
+
+const lastEntry = (repository: { addSessionEntry: ReturnType<typeof vi.fn> }) =>
+  repository.addSessionEntry.mock.calls.at(-1)?.[1] as Record<string, unknown> | undefined;
+
+describe('a queued request taken back to edit', () => {
+  it('during a run, goes again as a next request with its permission mode, never as a join', async () => {
+    const f = await mount({ queued: [saved] });
+    const edit = f.container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${messages.Sessions.editQueuedMessage.replace('{text}', saved.text)}"]`,
+    );
+    expect(edit).not.toBeNull();
+    await act(async () => edit?.click());
+    expect(f.box().value).toBe(saved.text);
+    // The send key says what it does now, on the key line and on Send.
+    expect(f.container.querySelector('[data-slot="composer-key"]')?.textContent).toContain(
+      messages.Composer.keyHint.queue,
+    );
+    expect(
+      f.container.querySelector('button[aria-label="Send"]')?.getAttribute('aria-description'),
+    ).toContain(messages.Composer.sendAs.queue);
+    await f.press();
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({
+      intent: 'queue',
+      state: 'queued',
+      text: saved.text,
+      permissionMode: 'accept_edits',
+      start: { permissionMode: 'accept_edits', choice: { modelProfile: 'model-a' } },
+    });
+  });
+});
+
+describe('auto start', () => {
+  it('has no switch in the browser demo, which has no server to start a saved request', async () => {
+    const f = await mount({ queued: [saved], mode: 'browser' });
+    expect(f.container.querySelector('section')?.textContent).toContain(saved.text);
+    expect(f.container.querySelector('[role="switch"]')).toBeNull();
+  });
+
+  it('shows the saved value at once and saves the next change on the revision it got', async () => {
+    const f = await mount({ queued: [saved] });
+    const toggle = () => f.container.querySelector<HTMLElement>('[role="switch"]');
+    await act(async () => toggle()?.click());
+    // The session the page holds still says revision 3 and on; the save said 4 and off.
+    expect(toggle()?.getAttribute('aria-checked')).toBe('false');
+    await act(async () => toggle()?.click());
+    expect(f.repository.updateSession).toHaveBeenLastCalledWith('session', {
+      autoStart: true,
+      expectedRevision: 4,
+    });
+  });
+});
+
+describe('while the run’s record is read', () => {
+  // The store still holds another run's record: where an instruction goes is not known yet.
+  const another = {
+    runId: 'run_other',
+    projection: projection({ exec_other: 'active' }, 'run_other'),
+  };
+
+  it('keeps the target and the keys in their place, empty', async () => {
+    const f = await mount({ runState: another });
+    expect(f.keyCount()).toBe(0);
+    expect(f.keysLine()).not.toBeNull();
+    expect(f.container.textContent).not.toContain(messages.Composer.targetNone);
+    expect(f.targetButton()).toBeNull();
+    expect(f.container.querySelector('[data-slot="composer-target-pending"]')).not.toBeNull();
+  });
+
+  it('the send key sends nothing, and nothing is sent once it is read', async () => {
+    const f = await mount({ runState: another });
+    await f.type('Keep going');
+    await f.press();
+    await f.press({ ctrlKey: true });
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+    await act(async () => f.store.setState({ runId: 'run_live', projection: projection() }));
+    expect(f.keyCount()).toBe(3);
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+    expect(f.box().value).toBe('Keep going');
+  });
+
+  it('Alt+Enter still saves a next request', async () => {
+    const f = await mount({ runState: another });
+    await f.type('After this run');
+    await f.press({ altKey: true });
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({ intent: 'queue', text: 'After this run' });
+  });
+
+  it('a record that cannot be read takes a next request with the send key', async () => {
+    const f = await mount({ runState: { projection: null, streamError: 'lost' } });
+    expect(f.container.textContent).toContain(messages.Composer.targetNone);
+    await f.type('After this run');
+    await f.press();
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({ intent: 'queue', text: 'After this run' });
+  });
+});
+
+describe('a run its record says ended, before the run list does', () => {
+  it('leaves the composer idle at once: a new request through that run', async () => {
+    const f = await mount();
+    await f.type('Next part');
+    await act(async () =>
+      f.store.setState({
+        projection: projection({ exec_writer: 'succeeded' }, 'run_live', 'succeeded'),
+      }),
+    );
+    expect(f.container.textContent).not.toContain(messages.Composer.targetNone);
+    expect(f.targetButton()).toBeNull();
+    expect(f.keyCount()).toBe(1);
+    expect(f.keysLine()?.textContent).toContain(messages.Composer.keyHint.new);
+    await f.press();
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(f.startAuto).toHaveBeenCalledTimes(1);
+    expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
+      brief: 'Next part',
+      conversation: { throughRunId: 'run_live' },
+    });
+    expect(lastEntry(f.repository)).toMatchObject({ intent: 'next', state: 'started' });
+  });
+});
+
+describe('the send menu', () => {
+  it('sends what its item says: Interrupt interrupts', async () => {
+    const f = await mount();
+    await f.type('Stop and look at session.ts');
+    await f.openSendMenu();
+    await act(async () => f.menuItem(messages.Composer.sendAs.interrupt)?.click());
+    expect(f.sendCommand).toHaveBeenCalledTimes(1);
+    expect(steerPayload(f.sendCommand)).toMatchObject({ delivery: 'interrupt' });
+  });
+
+  it.each([
+    ['cannot be cut', { exec_writer: 'waiting_children' }, ['interrupt']],
+    ['none can take an instruction', { exec_writer: 'succeeded' }, ['join', 'interrupt']],
+  ] as const)('offers only the sends usable now when the target %s', async (_, executions, off) => {
+    const f = await mount({ executions });
+    await f.type('Shorter');
+    await f.openSendMenu();
+    for (const choice of ['join', 'interrupt', 'queue'] as const)
+      expect(
+        f.menuItem(messages.Composer.sendAs[choice])?.getAttribute('aria-disabled') === 'true',
+        choice,
+      ).toBe((off as readonly string[]).includes(choice));
+  });
+
+  it('is not offered while nothing runs: every send is a new request', async () => {
+    const f = await mount({ active: null });
+    expect(
+      f.container.querySelector<HTMLButtonElement>('button[aria-label="Send as"]')?.disabled,
+    ).toBe(true);
+    expect(menuSends('idle')).toEqual({ join: false, interrupt: false, queue: false });
+  });
+
+  it('gives the focus back to the box after Escape and after a send', async () => {
+    const f = await mount();
+    await f.type('Shorter');
+    await f.openSendMenu();
+    expect(f.menuItem(messages.Composer.sendAs.join)).toBeDefined();
+    await act(async () => {
+      (document.activeElement ?? document.body).dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+    });
+    await f.frame();
+    expect(document.activeElement).toBe(f.box());
+    await f.openSendMenu();
+    await act(async () => f.menuItem(messages.Composer.sendAs.join)?.click());
+    await f.frame();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ delivery: 'next_request' });
+    expect(document.activeElement).toBe(f.box());
+  });
+
+  it.each([
+    ['Alt+Enter', 'key'],
+    ['the send menu’s Next request', 'menu'],
+  ] as const)('with a fixed target whose run ended, %s starts a new request', async (_, how) => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await f.pickTarget('Review');
+    await f.type('Check the edge case');
+    await f.render(ended);
+    expect(f.container.querySelector('[data-testid="intent-blocked"]')).not.toBeNull();
+    if (how === 'key') await f.press({ altKey: true });
+    else {
+      await f.openSendMenu();
+      await act(async () => f.menuItem(messages.Composer.sendAs.queue)?.click());
+    }
+    expect(f.startAuto).toHaveBeenCalledTimes(1);
+    expect(lastEntry(f.repository)).toMatchObject({ intent: 'next', text: 'Check the edge case' });
+  });
+});
+
+describe('a fixed target', () => {
+  it('lasts for the run it was picked in: a new run goes to its lead', async () => {
+    const both = { exec_writer: 'active', exec_review: 'active' };
+    const f = await mount({ executions: both });
+    await f.pickTarget('Review');
+    await act(async () =>
+      f.store.setState({ runId: 'run_two', projection: projection(both, 'run_two') }),
+    );
+    await f.render({ ...running, runId: 'run_two' });
+    await f.type('Start with the outline');
+    await f.press();
+    expect(f.sendCommand.mock.calls.at(-1)?.[0]).toMatchObject({
+      runId: 'run_two',
+      payload: { targetExecutionId: 'exec_writer' },
+    });
+  });
+
+  it('is let go when the text is cleared', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await f.pickTarget('Review');
+    await f.type('Check');
+    await f.type('');
+    await act(async () =>
+      f.store.setState({
+        projection: projection({ exec_writer: 'active', exec_review: 'succeeded' }),
+      }),
+    );
+    await f.type('Check the edge case');
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ targetExecutionId: 'exec_writer' });
+  });
+
+  it('is let go once sent', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await f.pickTarget('Review');
+    await f.type('Check the edge case');
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ targetExecutionId: 'exec_review' });
+    await act(async () =>
+      f.store.setState({
+        projection: projection({ exec_writer: 'active', exec_review: 'succeeded' }),
+      }),
+    );
+    await f.type('And the docs');
+    await f.press();
+    expect(f.sendCommand).toHaveBeenCalledTimes(2);
+    expect(steerPayload(f.sendCommand)).toMatchObject({ targetExecutionId: 'exec_writer' });
+  });
+
+  it('picked in the list gives the focus back to the box', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await f.pickTarget('Review');
+    await f.frame();
+    expect(f.targetButton()?.textContent).toContain('Review');
+    expect(document.activeElement).toBe(f.box());
+  });
+
+  it('that ended: Alt+Enter saves a next request', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await f.pickTarget('Review');
+    await f.type('Check the edge case');
+    await act(async () =>
+      f.store.setState({
+        projection: projection({ exec_writer: 'active', exec_review: 'succeeded' }),
+      }),
+    );
+    await f.press({ altKey: true });
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({ intent: 'queue', text: 'Check the edge case' });
+  });
+
+  it('that ended: the notice’s next request lets it go, back in the box, and the send key saves it', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await f.pickTarget('Review');
+    await f.type('Check the edge case');
+    await act(async () =>
+      f.store.setState({
+        projection: projection({ exec_writer: 'active', exec_review: 'succeeded' }),
+      }),
+    );
+    const banner = () => f.container.querySelector('[data-testid="intent-blocked"]');
+    const next = [...(banner()?.querySelectorAll('button') ?? [])].find(
+      (node) => node.textContent === messages.Composer.switchTo.next,
+    );
+    await act(async () => next?.click());
+    expect(banner()).toBeNull();
+    expect(document.activeElement).toBe(f.box());
+    await f.press();
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({ intent: 'queue', text: 'Check the edge case' });
+  });
+});
+
+describe('the tool line', () => {
+  it.each([
+    ['nothing runs', null, {}, 1],
+    ['the target cannot be cut', running, { exec_writer: 'waiting_children' }, 2],
+    ['the target can be cut', running, { exec_writer: 'active' }, 3],
+  ] as const)('lists each usable key once when %s', async (_, active, executions, count) => {
+    const f = await mount({ active, executions });
+    expect(f.keyCount()).toBe(count);
+  });
+
+  it('says nothing of a target while nothing runs', async () => {
+    const f = await mount({ active: null });
+    expect(f.targetButton()).toBeNull();
+    expect(f.container.textContent).not.toContain(messages.Composer.targetNone);
+  });
+
+  it.each([
+    ['joining', running, false],
+    ['starting a new request', null, true],
+  ] as const)('offers the team only for a request: %s', async (_, active, shown) => {
+    const f = await mount({ active });
+    expect(Boolean(f.container.querySelector('[aria-label="Team"]'))).toBe(shown);
+  });
+});
+
+describe('the composer', () => {
+  it('says when an interrupt was read at the next request instead', async () => {
+    const f = await mount();
+    await f.type('Stop');
+    await f.press({ ctrlKey: true });
+    expect(f.container.textContent).toContain(messages.Composer.lowered);
+  });
+
+  it('sends a lost interrupt again as an interrupt', async () => {
+    const f = await mount();
+    f.sendCommand.mockRejectedValueOnce(new Error('connection reset'));
+    await f.type('Stop');
+    await f.press({ ctrlKey: true });
+    const retry = [...f.container.querySelectorAll('button')].find(
+      (node) => node.textContent === messages.Refusal.retry,
+    );
+    expect(retry).toBeDefined();
+    await act(async () => retry?.click());
+    expect(f.sendCommand).toHaveBeenCalledTimes(2);
+    expect(steerPayload(f.sendCommand)).toMatchObject({ delivery: 'interrupt' });
+  });
+
+  it('sends nothing but spaces with no key', async () => {
+    const f = await mount();
+    await f.type('   ');
+    for (const init of [{}, { ctrlKey: true }, { altKey: true }]) await f.press(init);
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing with any key while a command is being chosen', async () => {
+    const f = await mount();
+    await f.type('/zzz');
+    expect(f.box().getAttribute('aria-expanded')).toBe('true');
+    for (const init of [{}, { ctrlKey: true }, { altKey: true }]) await f.press(init);
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+  });
+
+  it('a send chosen with /interrupt lasts one send', async () => {
+    const f = await mount();
+    await f.type('/');
+    const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+      node.textContent?.includes('/interrupt'),
+    );
+    await act(async () => {
+      option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    await f.type('Stop');
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ delivery: 'interrupt' });
+    await f.type('Then go on');
+    await f.press();
+    expect(f.sendCommand).toHaveBeenCalledTimes(2);
+    expect(steerPayload(f.sendCommand)).toMatchObject({ delivery: 'next_request' });
+  });
+
+  it.each([
+    ['nothing runs', null, {}, ['/next'], ['/interrupt', '/steer']],
+    [
+      'the target cannot be cut',
+      running,
+      { exec_writer: 'waiting_children' },
+      ['/next', '/steer'],
+      ['/interrupt'],
+    ],
+  ] as const)(
+    'lists the sends usable now as commands when %s',
+    async (_, active, executions, on, off) => {
+      const f = await mount({ active, executions });
+      await f.type('/');
+      const listed = [...document.querySelectorAll('[role="option"]')].map(
+        (node) => node.textContent ?? '',
+      );
+      for (const name of on)
+        expect(
+          listed.some((text) => text.includes(name)),
+          name,
+        ).toBe(true);
+      for (const name of off)
+        expect(
+          listed.some((text) => text.includes(name)),
+          name,
+        ).toBe(false);
+    },
+  );
+
+  it.each([
+    ['joins', running, {}, true],
+    ['saves a next request', running, { exec_writer: 'succeeded' }, true],
+    ['starts a new request', null, {}, false],
+  ] as const)(
+    'says references apply to a new request only while the send key %s',
+    async (_, active, executions, shown) => {
+      writeComposerDraft('session', {
+        text: 'Read @README.md first',
+        intent: null,
+        target: null,
+        targetLabel: null,
+        references: [
+          {
+            id: 'file:readme',
+            kind: 'file',
+            label: 'README.md',
+            reference: { kind: 'file', path: 'README.md' },
+          },
+        ],
+      } as never);
+      const held = messages.Composer.heldForNew.replace(
+        '{items}',
+        messages.Composer.held.references,
+      );
+      const f = await mount({ active, executions });
+      expect(f.container.textContent?.includes(held)).toBe(shown);
+    },
+  );
 });
