@@ -885,7 +885,11 @@ describe('a fixed target', () => {
     const next = [...(banner()?.querySelectorAll('button') ?? [])].find(
       (node) => node.textContent === messages.Composer.switchTo.next,
     );
-    await act(async () => next?.click());
+    // A click focuses the button it presses; jsdom does not, so the test does.
+    await act(async () => {
+      next?.focus();
+      next?.click();
+    });
     expect(banner()).toBeNull();
     expect(document.activeElement).toBe(f.box());
     await f.press();
