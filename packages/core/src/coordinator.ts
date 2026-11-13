@@ -3333,9 +3333,10 @@ export class Coordinator {
       return refuse({ code: 'TARGET_TERMINAL', message: 'the scope is cancelling' });
     const directiveId = this.ids.next('directive');
     const handle = run.handles.get(executionId);
-    // An interrupt the target's adapter cannot take is lowered to the next request.
+    // An interrupt is lowered to the next request when the target's adapter cannot take one, or
+    // when its worker has not been handed over yet, so whether it can is unknown.
     const delivery =
-      command.payload.delivery === 'interrupt' && handle && !handle.interrupt
+      command.payload.delivery === 'interrupt' && !handle?.interrupt
         ? 'next_request'
         : command.payload.delivery;
     this.commit(
@@ -8831,7 +8832,11 @@ export class Coordinator {
           ) ||
           TERMINAL_RUN_STATUSES.has(run.projection.status) ||
           run.projection.tasks[input.taskId]?.activeExecutionId !== executionId;
-        const responseRef = late ? null : `response_${observation.modelCallId}`;
+        // Only a whole response is a confirmed one; a cut or failed call's text stays partial output.
+        const responseRef =
+          late || observation.interrupted || observation.failed
+            ? null
+            : `response_${observation.modelCallId}`;
         const normalizedUsage = {
           inputTokens: observation.usage.inputTokens,
           outputTokens: observation.usage.outputTokens,
