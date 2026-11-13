@@ -211,7 +211,6 @@
       "approval": "Your approval",
       "rule": "Required tasks submitted"
     },
-    "maxIterations": "Automatic rounds (1–10)",
     "requireApproval": "Ask for final approval",
     "loopMembership": "Inside Loop",
     "notInLoop": "Not in a Loop",
@@ -255,7 +254,23 @@
     "editingModeHashline": "Hashline",
     "editingModeHint": "Existing runs keep their selection.",
     "inputVersion": "Result version",
-    "parentQuestions": "The called agent may ask this one"
+    "parentQuestions": "The called agent may ask this one",
+    "loopLimit": {
+      "group": "Limit",
+      "upTo": "Up to",
+      "rounds": "{count, plural, one {round} other {rounds}}",
+      "roundsField": "Most rounds",
+      "unlimited": "No limit",
+      "atLimit": "At the limit",
+      "policy": {
+        "exhaust": "End",
+        "raise_reasoning": "Raise reasoning",
+        "upper_model": "Switch model"
+      },
+      "level": "Level to raise to",
+      "model": "Model to switch to",
+      "recipeOnly": "A Loop with a review recipe ends at the recipe’s attempts."
+    }
   },
   "Validation": {
     "codes": {
@@ -278,7 +293,7 @@
       "JOIN_SINGLE_INPUT": "A Join waits for two or more branches.",
       "LOOP_DEAD_END": "This path stops inside the Loop. Lead it to exit, repeat or an Output.",
       "LOOP_MAX_ITERATIONS": "Set the Loop’s round limit, or make it run without one.",
-      "LOOP_LIMIT_RECIPE": "A Loop with a review recipe ends at the recipe’s attempts; it can only finish.",
+      "LOOP_LIMIT_RECIPE": "A Loop with a review recipe ends at the recipe’s attempts; it can only end.",
       "LOOP_REASONING_OFF": "Choose a reasoning level above off to raise to.",
       "LOOP_UPPER_MODEL": "The Loop switches to a model that is not configured.",
       "LOOP_NO_BODY": "Connect “body” to the first step inside the Loop.",
@@ -1077,7 +1092,8 @@
     "loadingCriteria": "Loading current criteria…",
     "finished": "This run has ended. Its settings history remains available.",
     "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots.",
-    "reasoningModel": "Also change model profile (blank keeps current)"
+    "reasoningModel": "Also change model profile (blank keeps current)",
+    "unlimited": "No round limit"
   },
   "Demo": {
     "template": "Demo template",
@@ -5669,7 +5685,9 @@
     "unavailable": "This round is unavailable",
     "metadataOnly": "Round selection shows relationships; current run controls stay active.",
     "repeat": "Repeat {name}",
-    "exit": "Exit {name}"
+    "exit": "Exit {name}",
+    "raised": "Reasoning raised to {level}",
+    "switched": "Switched to {model}"
   },
   "TeamEditor": {
     "canvas": "Team graph",

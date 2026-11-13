@@ -64,6 +64,11 @@ it('counts a correct candidate rejected by a recipe and records the repair linea
   const definition = CorralDefinition.parse(reviewTeam),
     loop = definition.nodes.find((node) => node.type === 'loop');
   if (!loop) throw new Error('missing loop');
+  // Without its exhausted path, a recipe that rejects the last attempt fails the Run.
+  definition.controlEdges = definition.controlEdges.filter(
+    (edge) => !(edge.source === loop.id && edge.sourcePort === 'exhausted'),
+  );
+  expect(definition.controlEdges.some((edge) => edge.source === loop.id)).toBe(true);
   loop.reviewRecipe = {
     recipeId: 'eval-review',
     revision: 1,

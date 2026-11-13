@@ -87,7 +87,9 @@ export function SettingsPatchPanel({
           : definition.input.criteria.join('\n')
         : field === 'reasoning'
           ? JSON.stringify(nodeSettings.reasoning ?? null)
-          : String(nodeSettings[field] ?? '');
+          : field === 'maxIterations' && nodeSettings.maxIterations === undefined
+            ? t('unlimited')
+            : String(nodeSettings[field] ?? '');
   const target = kind === 'run_limits' || kind === 'criteria' ? projection.runId : (node?.id ?? '');
   const fields: Field[] =
     kind === 'run_limits'

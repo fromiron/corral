@@ -211,7 +211,6 @@
       "approval": "사용자 승인",
       "rule": "필수 작업 제출"
     },
-    "maxIterations": "자동 반복 횟수(1–10)",
     "requireApproval": "최종 승인 받기",
     "loopMembership": "속한 Loop",
     "notInLoop": "Loop 밖",
@@ -255,7 +254,23 @@
     "editingModeHashline": "Hashline",
     "editingModeHint": "진행 중인 실행에는 적용되지 않습니다.",
     "inputVersion": "결과 버전",
-    "parentQuestions": "호출된 에이전트가 이 에이전트에게 물을 수 있음"
+    "parentQuestions": "호출된 에이전트가 이 에이전트에게 물을 수 있음",
+    "loopLimit": {
+      "group": "한도",
+      "upTo": "최대",
+      "rounds": "{count, plural, other {회}}",
+      "roundsField": "최대 회차",
+      "unlimited": "제한 없음",
+      "atLimit": "닿으면",
+      "policy": {
+        "exhaust": "끝내기",
+        "raise_reasoning": "추론 올리기",
+        "upper_model": "모델 바꾸기"
+      },
+      "level": "올릴 추론 수준",
+      "model": "바꿀 모델",
+      "recipeOnly": "검토 레시피가 있는 Loop는 레시피의 시도 수에서 끝납니다."
+    }
   },
   "Validation": {
     "codes": {
@@ -1077,7 +1092,8 @@
     "loadingCriteria": "현재 기준을 불러오는 중…",
     "finished": "이 실행은 끝났습니다. 설정 변경 기록은 계속 볼 수 있습니다.",
     "snapshotsUnchanged": "이미 준비된 요청은 기록된 입력 스냅샷을 그대로 씁니다.",
-    "reasoningModel": "모델 프로필도 변경 (빈칸이면 유지)"
+    "reasoningModel": "모델 프로필도 변경 (빈칸이면 유지)",
+    "unlimited": "회차 제한 없음"
   },
   "Demo": {
     "template": "데모 템플릿",
@@ -5669,7 +5685,9 @@
     "unavailable": "이 회차를 확인할 수 없습니다",
     "metadataOnly": "회차를 선택하면 관계 기록을 보여줍니다. 실행 제어는 현재 상태를 유지합니다.",
     "repeat": "{name} 다시 반복",
-    "exit": "{name} 반복 종료"
+    "exit": "{name} 반복 종료",
+    "raised": "추론 수준 올림 · {level}",
+    "switched": "모델 바꿈 · {model}"
   },
   "TeamEditor": {
     "canvas": "팀 그래프",
