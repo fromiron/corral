@@ -101,7 +101,7 @@ const rowOf = (element: HTMLElement) =>
 it('puts the close on the decision card heading row, first in focus order', () => {
   show({ approvals: [approval('approval_1', 'pending')] });
   expect(screen.getAllByRole('button', { name: 'Close details' })).toHaveLength(1);
-  const card = screen.getByRole('article', { name: messages.Approvals.heading });
+  const card = screen.getByRole('article', { name: messages.Approvals.kind.user_action });
   const row = rowOf(close());
   expect(row?.textContent).toContain(messages.Approvals.kind.user_action);
   expect(card.contains(row)).toBe(true);
@@ -126,6 +126,6 @@ it('puts the close on the question card head row, with its question, not on a la
   expect(
     within(row as HTMLElement).getByRole('button', { name: 'Copy execution ID' }),
   ).toBeVisible();
-  const card = screen.getByRole('article', { name: messages.Approvals.heading });
+  const card = screen.getByRole('article', { name: messages.Approvals.kind.user_action });
   expect(within(card).queryByRole('button', { name: 'Close details' })).toBeNull();
 });

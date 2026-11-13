@@ -4,6 +4,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, within } from 'storybook/test';
 import { projectionWith, sessionStore } from '../stories/fixtures.tsx';
 import { ApprovalPanel } from './ApprovalPanel.tsx';
+import { RequestAreaContext, RequestRunContext } from './RequestCard.tsx';
 
 // Every waiting request in one card grammar (RequestCard.tsx): an approval beside a question with
 // a written answer, with options, with several questions, and an extension's prompts.
@@ -226,4 +227,34 @@ export const ExtensionPrompts: Story = {
     ]),
   },
   play: async ({ canvasElement }) => sameFrame(canvasElement),
+};
+
+/**
+ * Two runs waiting in one place, as a conversation's tray holds them: each area is named by its
+ * run, and inside it every card by its own title, so no two landmarks share a name.
+ */
+export const SeveralRuns: Story = {
+  render: (args) => (
+    <div className="flex flex-col gap-3">
+      {(['Run #1', 'Run #2'] as const).map((run, index) => (
+        <section key={run} aria-label={`${run} · Waiting for you`}>
+          <RequestRunContext.Provider value={run}>
+            <RequestAreaContext.Provider value={true}>
+              <ApprovalPanel
+                {...args}
+                session={index === 0 ? store([written]) : store([written], [outputApproval])}
+              />
+            </RequestAreaContext.Provider>
+          </RequestRunContext.Provider>
+        </section>
+      ))}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole('region', { name: 'Run #1 · Waiting for you' })).toBeVisible();
+    await expect(canvas.getByRole('region', { name: 'Run #2 · Waiting for you' })).toBeVisible();
+    await expect(canvas.queryAllByRole('region', { name: 'Waiting for you' })).toHaveLength(0);
+    await expect(canvas.queryAllByRole('article', { name: 'Waiting for you' })).toHaveLength(0);
+  },
 };

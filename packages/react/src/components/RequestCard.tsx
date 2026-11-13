@@ -65,6 +65,13 @@ export function RequestCardHead({
 export const RequestRunContext = createContext<string | null>(null);
 
 /**
+ * Inside a response area its host names (Needs you, a run record, the tray's per-run area): the
+ * sections within add no name of their own, so a screen reader hears the area's name once and
+ * each card by its own title.
+ */
+export const RequestAreaContext = createContext(false);
+
+/**
  * Who a request comes from, as its card's head names it: the role (the agent node) where the run
  * has more than one, and the run as well where the response place holds several runs' requests.
  * A lone conversation run's request names nobody: the run's row already says whose it is.

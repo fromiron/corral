@@ -9,7 +9,7 @@ import {
   ToolPermissionPlan,
 } from '@corral/contracts';
 import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -27,9 +27,15 @@ import {
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow, RowAction } from './FirstRow.tsx';
+import { useFreshDecisions } from './freshDecisions.ts';
 import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
 import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
-import { RequestCardHead, requestCard, useRequestOwner } from './RequestCard.tsx';
+import {
+  RequestAreaContext,
+  RequestCardHead,
+  requestCard,
+  useRequestOwner,
+} from './RequestCard.tsx';
 import { nextResponseTarget } from './responseFocus.ts';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
@@ -113,6 +119,7 @@ export function ApprovalPanel({
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
   const owner = useRequestOwner(session);
+  const inArea = useContext(RequestAreaContext);
   const toolCalls = useStore(session, (s) => s.projection?.toolCalls);
   const nodes = useStore(session, (s) => s.definition?.nodes);
   const tTurn = useTranslations('Turn');
@@ -121,12 +128,23 @@ export function ApprovalPanel({
     [all, skip],
   );
   // A card the run-wide decision covered leaves with no line of its own: that decision says it.
-  const done = useMemo(
+  const decided = useMemo(
     () =>
       Object.values(all ?? {}).filter(
         (a) => a.status === 'approved' && a.reason !== 'allowed_for_run' && !skip?.(a),
       ),
     [all, skip],
+  );
+  // Only decisions of the current wait fold into a line; earlier waits' never come back.
+  const fresh = useFreshDecisions(session, 'approval');
+  const freshKey = decided
+    .filter((approval) => fresh(approval.approvalId))
+    .map((approval) => approval.approvalId)
+    .join(',');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: freshKey names the kept decisions
+  const done = useMemo(
+    () => decided.filter((approval) => freshKey.split(',').includes(approval.approvalId)),
+    [decided, freshKey],
   );
   // The criteria a decision about versions is judged by; a run limit and a tool call have none.
   const criteriaId = approvals.find((a) => !a.limit && !a.tool)?.criteriaVersionId;
@@ -452,7 +470,11 @@ export function ApprovalPanel({
       {showPlan ? <WorkPlanPanel session={session} /> : null}
       <section
         ref={section}
-        {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
+        {...(headed
+          ? { 'aria-labelledby': headingId }
+          : inArea
+            ? {}
+            : { 'aria-label': t('heading') })}
         className={`flex flex-col gap-2 ${className ?? ''}`}
       >
         {headed ? (
@@ -487,7 +509,10 @@ export function ApprovalPanel({
             data-testid={`approval-${approval.approvalId}`}
             data-approval={approval.approvalId}
             role="article"
-            aria-label={t('heading')}
+            // Named by its own title: several waiting cards are told apart.
+            {...(compact
+              ? { 'aria-label': headingText(approval) }
+              : { 'aria-labelledby': `${headingId}-${approval.approvalId}` })}
             className="text-caption"
           >
             {compact ? (
@@ -509,6 +534,7 @@ export function ApprovalPanel({
             ) : (
               <RequestCardHead
                 title={headingText(approval)}
+                titleId={`${headingId}-${approval.approvalId}`}
                 owner={owner({
                   executionId: approval.tool?.executionId ?? null,
                   nodeId: approval.tool ? null : (approval.nodeId ?? null),

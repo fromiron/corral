@@ -5495,6 +5495,7 @@
       "now": "Now"
     },
     "activity": "Activity",
+    "runWaiting": "{run} · Waiting for you",
     "respond": "{count, plural, =1 {Respond} other {Respond · #}}",
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",

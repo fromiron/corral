@@ -5495,6 +5495,7 @@
       "now": "지금"
     },
     "activity": "활동",
+    "runWaiting": "{run} · 응답 대기",
     "respond": "{count, plural, =1 {응답하기} other {응답하기 · #}}",
     "showPanel": "옆 패널 보기",
     "hidePanel": "옆 패널 숨기기",

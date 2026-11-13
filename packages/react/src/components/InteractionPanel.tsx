@@ -8,7 +8,7 @@ import {
   validUserAnswers,
 } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Check, Copy } from '../design-kit/icons.ts';
@@ -25,7 +25,15 @@ import {
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow } from './FirstRow.tsx';
-import { RequestCardFoot, RequestCardHead, requestCard, useRequestOwner } from './RequestCard.tsx';
+import { useFreshDecisions } from './freshDecisions.ts';
+import {
+  RequestAreaContext,
+  RequestCardFoot,
+  RequestCardHead,
+  RequestRunContext,
+  requestCard,
+  useRequestOwner,
+} from './RequestCard.tsx';
 import { nextResponseTarget } from './responseFocus.ts';
 
 /** Whether the panel shows: a question or extension prompt waits, or an extension said something. */
@@ -52,7 +60,12 @@ function answerSummary(requestText: string | undefined, answerText: string | und
       .filter(Boolean)
       .join(' · ');
     // The line cuts the rest on screen; this only keeps a long answer out of the page.
-    return words.trim().split('\n')[0]?.slice(0, 200) || null;
+    // By code point, so a character outside the basic plane is never cut in half.
+    return (
+      Array.from(words.trim().split('\n')[0] ?? '')
+        .slice(0, 200)
+        .join('') || null
+    );
   } catch {
     return null;
   }
@@ -75,15 +88,20 @@ export function InteractionPanel({
   const [failedRefs, setFailedRefs] = useState<Set<string>>(new Set());
   const [retry, setRetry] = useState(0);
   const t = useTranslations('Harness');
+  const inArea = useContext(RequestAreaContext);
   const waiting = pendingInteractions(events, projection);
   const pendingIds = new Set(
     waiting.flatMap((item) => (item.kind === 'approval' ? [] : [item.event.payload.requestId])),
   );
   // A question answered in this run folds into one line in its place while the run still waits on
   // something, as a decided approval does; once nothing waits, it leaves with the area.
+  // Only answers of the current wait fold into a line; earlier waits' never come back.
+  const fresh = useFreshDecisions(session, 'answer');
   const answers = new Map(
     (waiting.length ? events : []).flatMap((event) =>
-      event.type === 'user_input.answered' ? [[event.payload.requestId, event] as const] : [],
+      event.type === 'user_input.answered' && fresh(event.payload.requestId)
+        ? [[event.payload.requestId, event] as const]
+        : [],
     ),
   );
   const requests = [
@@ -147,7 +165,9 @@ export function InteractionPanel({
   const lead = pending[0]?.payload.requestId;
   return (
     <section
-      aria-label={pending.length ? t('extensionUi') : t('extensionNotice')}
+      {...(inArea
+        ? {}
+        : { 'aria-label': pending.length ? t('extensionUi') : t('extensionNotice') })}
       className="flex flex-col gap-2"
     >
       {requests.map((event) => {
@@ -303,6 +323,7 @@ function ExtensionPrompt({
   const t = useTranslations('Harness');
   const format = useFormatter();
   const askedBy = useAskedBy(session, event.payload.executionId, event.payload.attemptNo);
+  const titleId = useId();
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -338,11 +359,12 @@ function ExtensionPrompt({
   return (
     <AgentCard
       role="article"
-      aria-label={t('extensionUi')}
+      aria-labelledby={titleId}
       className="text-caption"
       data-testid={`extension-ui-${event.payload.requestId}`}
     >
       <RequestCardHead
+        titleId={titleId}
         title={
           request?.title ??
           t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')
@@ -442,6 +464,7 @@ function UserQuestionPrompt({
 }) {
   const t = useTranslations('Harness');
   const askedBy = useAskedBy(session, event.payload.executionId, event.payload.attemptNo);
+  const run = useContext(RequestRunContext);
   const form = useRef<HTMLFormElement>(null);
   const stepHeading = useRef<HTMLParagraphElement>(null);
   const headingId = useId();
@@ -620,7 +643,7 @@ function UserQuestionPrompt({
     return (
       <AgentCard
         role="article"
-        aria-label={t('userQuestions')}
+        aria-labelledby={headingId}
         data-question={event.payload.requestId}
         className="text-caption"
       >
@@ -664,12 +687,16 @@ function UserQuestionPrompt({
           if (stepped && !reviewing) goTo(step + 1);
           else void submit();
         }}
-        // Each question's form is its own landmark, told apart by its first question.
-        aria-label={
+        // Each question's form is its own landmark, told apart by its first question, and by its
+        // run where several runs' requests stand together.
+        aria-label={[
+          run,
           request?.questions[0]
             ? t('userQuestionsNamed', { question: request.questions[0].prompt })
-            : t('userQuestions')
-        }
+            : t('userQuestions'),
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       >
         {head}
         <div className={requestCard.body}>
