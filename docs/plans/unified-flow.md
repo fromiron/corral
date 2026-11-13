@@ -442,7 +442,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 수정 중(`flow/u2-timeline-frame-2`, 자라는 실행 행에서 끝으로 되돌아감) |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 대기 |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 구현 중(`flow/u4-pending-tray`, U3 브랜치 위) |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
@@ -635,7 +635,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 ### U12 확인 필요: 같은 응답 영역, 계속 여부 카드
 - 명세: `features/inbox.md`.
 - 대상: `S/pages/InboxPage.tsx`(638행 부근)와 테스트.
-- 구현: `decision` 항목은 U4의 지금 필요한 것과 같은 `RunResponseArea`를 쓴다(이미 그렇다면 그대로). 계속 여부 승인(`loop_cap`, 무진전, `request_budget`)이 같은 카드로 보이고 답할 수 있어야 한다. 답한 뒤의 동작은 지금 명세 그대로다: 포커스가 다음 항목으로 가고, 답한 항목의 상세는 "실행 열기"를 유지하며, 다른 항목을 자동으로 고르지 않는다.
+- 구현: `decision` 항목은 U4의 지금 필요한 것과 같은 `RunResponseArea`를 쓴다(이미 그렇다면 그대로). 계속 여부 승인(무진전)이 같은 카드로 보이고 답할 수 있어야 한다. 답한 뒤의 동작은 지금 명세 그대로다: 포커스가 다음 항목으로 가고, 답한 항목의 상세는 "실행 열기"를 유지하며, 다른 항목을 자동으로 고르지 않는다.
 - 완료 체크: 확인 필요와 대화가 같은 응답 컴포넌트를 쓰는 테스트(가져오기 경로 단언), 계속 여부 카드에 답하는 테스트, 기존 확인 필요 테스트 통과.
 
 ### U13 중복·사문 제거
