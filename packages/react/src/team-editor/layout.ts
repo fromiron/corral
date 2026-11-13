@@ -398,10 +398,17 @@ export function routeTeam(
     return shown;
   };
   const ports = portsOf(definition, items, shownAs);
+  const control = definition.controlEdges.flatMap((edge) =>
+    routeControl(edge, nodes, items, shownAs, ports),
+  );
+  const cards = [...items.values()].filter((i) => i.kind !== 'box' && shownAs(i.id) === i.id);
+  const runs = control.flatMap((edge) => verticalRuns(edge.path));
   const edges = [
-    ...definition.controlEdges.flatMap((edge) => routeControl(edge, nodes, items, shownAs, ports)),
+    ...control,
     ...definition.capabilityLinks.flatMap((link) =>
-      link.kind === 'advise' ? routeAdvise(link, items, shownAs) : routeCall(link, items, shownAs),
+      link.kind === 'advise'
+        ? routeAdvise(link, items, shownAs, cards, runs)
+        : routeCall(link, items, shownAs),
     ),
   ];
   return { edges, ports: [...ports.values()] };
@@ -551,15 +558,81 @@ function routeControl(
   ];
 }
 
+/** A path's vertical stretches (`V` commands), to keep a watch line from running along one. */
+function verticalRuns(path: string): { x: number; from: number; to: number }[] {
+  const runs: { x: number; from: number; to: number }[] = [];
+  let x = 0;
+  let y = 0;
+  for (const [, command, args] of path.matchAll(/([MLHVQC])([^MLHVQC]*)/g)) {
+    const n = (args ?? '')
+      .trim()
+      .split(/[\s,]+/)
+      .filter(Boolean)
+      .map(Number);
+    if (command === 'H') x = n[0] ?? x;
+    else if (command === 'V') {
+      const to = n[0] ?? y;
+      runs.push({ x, from: Math.min(y, to), to: Math.max(y, to) });
+      y = to;
+    } else {
+      x = n[n.length - 2] ?? x;
+      y = n[n.length - 1] ?? y;
+    }
+  }
+  return runs;
+}
+
+/** Whether a straight stretch from `p` to `q` passes through `rect` or within `clear` of it. */
+function crosses(p: Point, q: Point, rect: Rect, clear: number): boolean {
+  return (
+    Math.max(p.x, q.x) > rect.x - clear &&
+    Math.min(p.x, q.x) < rect.x + rect.w + clear &&
+    Math.max(p.y, q.y) > rect.y - clear &&
+    Math.min(p.y, q.y) < rect.y + rect.h + clear
+  );
+}
+
+/** Straight stretches through `points` with each turn rounded as a control connection's. */
+function rounded(points: Point[]): string {
+  const [first] = points as [Point];
+  let path = `M${first.x} ${first.y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [prev, at, next] = [points[i - 1], points[i], points[i + 1]] as [Point, Point, Point];
+    const into = Math.hypot(at.x - prev.x, at.y - prev.y);
+    const out = Math.hypot(next.x - at.x, next.y - at.y);
+    const r = Math.min(10, into / 2, out / 2);
+    const before = {
+      x: at.x - (Math.sign(at.x - prev.x) || 0) * r,
+      y: at.y - (Math.sign(at.y - prev.y) || 0) * r,
+    };
+    const after = {
+      x: at.x + (Math.sign(next.x - at.x) || 0) * r,
+      y: at.y + (Math.sign(next.y - at.y) || 0) * r,
+    };
+    path += ` L${before.x} ${before.y} Q${at.x} ${at.y} ${after.x} ${after.y}`;
+  }
+  const last = points[points.length - 1] as Point;
+  return `${path} L${last.x} ${last.y}`;
+}
+
 /**
  * From the bottom of an advisor down to the top of an agent it watches. It has no name: it is
  * the only link of its kind, and its dash-dot line tells it apart. One that does not lie below
  * is drawn along a call link's path.
+ *
+ * A watch line passes behind no card but its two ends, or it would read as ending there. When
+ * the direct curve would, it turns between the advisor row and the flow into the empty gap
+ * beside the watched agent's column, runs down it, and comes in at that side of the agent's
+ * top. The gap is the side whose path meets no card, the nearer to the advisor when both do
+ * (the left on a tie), and never on a control connection's vertical stretch. With both sides
+ * blocked it keeps the direct curve.
  */
 function routeAdvise(
   link: CapabilityLink,
   items: ReadonlyMap<string, LaidItem>,
   shownAs: (id: string) => string,
+  cards: readonly LaidItem[],
+  runs: readonly { x: number; from: number; to: number }[],
 ): LaidEdge[] {
   const from = shownAs(link.sourceNodeId);
   const to = shownAs(link.targetNodeId);
@@ -574,17 +647,65 @@ function routeAdvise(
   const a = { x: source.rect.x + source.rect.w / 2, y: source.rect.y + source.rect.h };
   const b = { x: target.rect.x + target.rect.w / 2, y: target.rect.y };
   const bend = Math.max(24, (b.y - a.y) / 2);
+  const others = cards.filter((card) => card.id !== from && card.id !== to);
+  const curve = (t: number) => {
+    const u = 1 - t;
+    return {
+      x: (u ** 3 + 3 * u * u * t) * a.x + (3 * u * t * t + t ** 3) * b.x,
+      y: u ** 3 * a.y + 3 * u * u * t * (a.y + bend) + 3 * u * t * t * (b.y - bend) + t ** 3 * b.y,
+    };
+  };
+  const hidden = Array.from({ length: 49 }, (_, i) => curve(i / 48)).some((p) =>
+    others.some((card) => crosses(p, p, card.rect, 0)),
+  );
+  const path = hidden ? around(a, target.rect, others, runs) : undefined;
   return [
     {
       id: link.id,
       kind: 'advise',
       from,
       to,
-      path: `M${a.x} ${a.y} C${a.x} ${a.y + bend} ${b.x} ${b.y - bend} ${b.x} ${b.y}`,
+      path: path ?? `M${a.x} ${a.y} C${a.x} ${a.y + bend} ${b.x} ${b.y - bend} ${b.x} ${b.y}`,
       arrow: true,
       insertAt: null,
     },
   ];
+}
+
+/** The way round through the gap beside `target`'s column, or undefined when both are blocked. */
+function around(
+  a: Point,
+  target: Rect,
+  others: readonly LaidItem[],
+  runs: readonly { x: number; from: number; to: number }[],
+): string | undefined {
+  const turn = a.y + GEOMETRY.callGap / 2;
+  const enter = target.y - GEOMETRY.gapY / 2;
+  if (enter <= turn) return undefined;
+  const sides = (['left', 'right'] as const).flatMap((side) => {
+    const centre =
+      side === 'left' ? target.x - GEOMETRY.gapX / 2 : target.x + target.w + GEOMETRY.gapX / 2;
+    const inward = side === 'left' ? 1 : -1;
+    // Into the top near that side's corner: clear of the rounding, and no port is on a top.
+    const at = side === 'left' ? target.x + 24 : target.x + target.w - 24;
+    for (const x of [centre, centre + inward * 16, centre - inward * 16]) {
+      const alongside = runs.some(
+        (run) => Math.abs(run.x - x) < 8 && run.to > turn && run.from < enter,
+      );
+      if (alongside) continue;
+      const points = [a, { x: a.x, y: turn }, { x, y: turn }, { x, y: enter }, { x: at, y: enter }];
+      const blocked = points
+        .slice(1)
+        .some((q, i) => others.some((card) => crosses(points[i] as Point, q, card.rect, 12)));
+      if (!blocked)
+        return [
+          { far: Math.abs(centre - a.x), path: rounded([...points, { x: at, y: target.y }]) },
+        ];
+    }
+    return [];
+  });
+  // Nearer the advisor first; on a tie the left, which comes first.
+  return sides.sort((p, q) => p.far - q.far)[0]?.path;
 }
 
 function routeCall(

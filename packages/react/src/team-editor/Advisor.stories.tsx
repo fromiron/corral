@@ -3,7 +3,7 @@ import { useEffect, useMemo } from 'react';
 import { expect, waitFor, within } from 'storybook/test';
 import { IntlProvider } from 'use-intl';
 import { StudioStoresProvider } from '../context.tsx';
-import { type EditorDraft, emptyDraft } from '../editor/model.ts';
+import { connectCapability, type EditorDraft, emptyDraft } from '../editor/model.ts';
 import { createEditorStore } from '../editor/store.ts';
 import messages from '../messages/en.json' with { type: 'json' };
 import koMessages from '../messages/ko.json' with { type: 'json' };
@@ -23,9 +23,10 @@ function ok(result: EditResult): { draft: EditorDraft; nodeId: string } {
 
 /**
  * Draft → Review → Revise → Output, and an advisor watching Draft and Revise. With `branch`,
- * Draft also leads to Second opinion below Review, and the advisor watches only that.
+ * Draft also leads to Second opinion below Review, and the advisor watches only that. With
+ * `callable`, Revise calls Sources, a callable agent under the flow, and the advisor watches it.
  */
-function team(watch: boolean, branch = false) {
+function team(watch: boolean, branch = false, callable = false) {
   let { draft, nodeId } = ok(
     placeStep(emptyDraft('advised', 'Advised team'), 'agent', { kind: 'empty' }),
   );
@@ -55,6 +56,16 @@ function team(watch: boolean, branch = false) {
     const named = patchNode(linked, second.nodeId, { label: 'Second opinion' });
     return ok(placeStep(named, 'observer', { kind: 'after', nodeId: second.nodeId })).draft;
   }
+  if (callable) {
+    const helper = ok(placeStep(draft, 'agent', { kind: 'empty' }));
+    const named = patchNode(helper.draft, helper.nodeId, {
+      label: 'Sources',
+      invocation: 'callable',
+    });
+    const called = connectCapability(named, 'agent_3', helper.nodeId, 'delegate');
+    if (!called.ok) throw new Error(called.reason);
+    return ok(placeStep(called.draft, 'observer', { kind: 'after', nodeId: helper.nodeId })).draft;
+  }
   const added = ok(
     placeStep(draft, 'observer', watch ? { kind: 'after', nodeId: 'agent_1' } : { kind: 'empty' }),
   );
@@ -70,13 +81,18 @@ function AdvisedTeam({
   select,
   dark,
   branch,
+  callable,
 }: {
   watch: boolean;
   select: boolean;
   dark: boolean;
   branch?: boolean;
+  callable?: boolean;
 }) {
-  const editor = useMemo(() => createEditorStore(team(watch, branch)), [watch, branch]);
+  const editor = useMemo(
+    () => createEditorStore(team(watch, branch, callable)),
+    [watch, branch, callable],
+  );
   const session = useMemo(() => sessionStore(), []);
   useEffect(() => {
     if (select) editor.getState().select('advisor_1');
@@ -203,7 +219,10 @@ export const SettingsKorean: Story = {
   },
 };
 
-/** Watching the lower branch of a fan-out: the line passes behind the card above it. */
+/**
+ * Watching the lower branch of a fan-out: the line goes round the card above it, down the gap
+ * beside the column, and behind no card but its ends.
+ */
 export const WatchingLowerBranch: Story = {
   args: { branch: true },
   play: async ({ canvasElement }) => {
@@ -219,4 +238,15 @@ export const WatchingLowerBranch: Story = {
 export const WatchingLowerBranchDark: Story = {
   ...WatchingLowerBranch,
   args: { branch: true, dark: true },
+};
+
+/** Watching a callable agent under the flow: the line goes round the flow card above it. */
+export const WatchingCallable: Story = {
+  args: { callable: true },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(advisorCard(canvasElement)).toBeTruthy());
+    await expect(
+      canvasElement.querySelector('[data-team-canvas] [data-node="agent_4"]'),
+    ).toBeTruthy();
+  },
 };
