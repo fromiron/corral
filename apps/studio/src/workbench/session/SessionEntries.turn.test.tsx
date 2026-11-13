@@ -268,11 +268,11 @@ it('the visible meta is the time and what became of the message; the rest stays 
     entry({ intent: 'queue', state: 'refused', runId: null, detail: 'The request did not start' }),
   );
   expect(refused.container.querySelector('[data-testid="entry-flag"]')).toBeNull();
-  // On the meta line: the kind first, then the reason.
+  // On the meta line: the reason (a queued request is no kind of message to name first).
   const status = refused.container.querySelector(
     '[data-chat-part="meta"] [data-testid="entry-status"]',
   );
-  expect(status?.textContent?.startsWith(messages.Sessions.intentShort.queue)).toBe(true);
+  expect(status?.textContent?.startsWith(messages.Refusal.other)).toBe(true);
   expect(status?.textContent).toContain(messages.Refusal.other);
   expect(status?.closest('.sr-only')).toBeNull();
 });

@@ -1308,7 +1308,7 @@ it('a next request that will wait is said by the input description only', async 
   expect(describedBy(f.container)).toContain(line?.id);
   expect(
     f.container.querySelector('[data-testid="composer-status-pills"]')?.textContent,
-  ).not.toContain(messages.Sessions.intentShort.queue);
+  ).not.toContain('Queue');
 });
 
 it('an instruction whose target ended shows that it cannot be delivered', async () => {

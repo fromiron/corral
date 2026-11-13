@@ -107,12 +107,11 @@ export function carries(record: SteerRecord, entries: readonly SessionEntry[]): 
 
 /** What kind of message it was, when it was more than a plain request or an instruction. */
 export function entryKind(
-  entry: Pick<SessionEntry, 'intent' | 'commandId' | 'carriedFrom'>,
-): 'scheduled' | 'queue' | 'explain' | null {
+  entry: Pick<SessionEntry, 'intent' | 'commandId'>,
+): 'scheduled' | 'explain' | null {
+  // A next request waiting in the queue is a request like any other, not a kind of message.
   if (entry.commandId?.startsWith('scheduled_')) return 'scheduled';
-  // A carried request's line says it was carried; "queue" would only repeat it.
-  if (entry.carriedFrom) return null;
-  return entry.intent === 'queue' || entry.intent === 'explain' ? entry.intent : null;
+  return entry.intent === 'explain' ? 'explain' : null;
 }
 
 /** How each entry is drawn in the conversation. */

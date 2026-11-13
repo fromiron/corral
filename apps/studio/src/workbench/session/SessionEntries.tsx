@@ -145,7 +145,9 @@ export function EntryCard({
         <KitChatMessage
           from="user"
           layout={false}
-          metaProps={{ 'data-chat-part': 'meta' }}
+          // The line may take the column's width, not only the message's 80%: a reason fits
+          // whole at a desktop width. It stays right-aligned and runs out to the left.
+          metaProps={{ 'data-chat-part': 'meta', className: 'w-max max-w-[125%]' }}
           time={
             <time dateTime={entry.createdAt} title={full}>
               {when}

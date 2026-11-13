@@ -1921,7 +1921,6 @@
     "checked": "검사: {name} {state}",
     "notChecked": "검사 안 함",
     "intentShort": {
-      "queue": "대기열",
       "explain": "질문"
     },
     "editTeam": "팀 설계 열기",

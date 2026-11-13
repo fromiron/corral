@@ -197,6 +197,9 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx', near: /'workFolder'/ },
   { file: 'apps/studio/src/workbench/WorkFolderNotice.tsx', near: /working-copy-chip/ },
   { file: 'apps/studio/src/workbench/LiveVoice.tsx', near: /ref=\{trigger\}/ },
+  // A sent message's meta line is caption-sized: its text buttons are the kit's smallest quiet
+  // ones, like the actions in a run row's line, never controls the size of the composer's.
+  { file: 'apps/studio/src/workbench/session/EntryStatus.tsx', near: /<SizeScope size="compact">/ },
   // The copy button over a code block: an icon button inside a field.
   { file: 'packages/react/src/components/CopyTextButton.tsx', near: /code \?/ },
 ];

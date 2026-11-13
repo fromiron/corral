@@ -1921,7 +1921,6 @@
     "checked": "Checked: {name} {state}",
     "notChecked": "Not checked",
     "intentShort": {
-      "queue": "Queue",
       "explain": "Question"
     },
     "editTeam": "Open team design",

@@ -65,7 +65,11 @@ vi.mock('../MessageBranch.tsx', () => ({
   ),
 }));
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children?: ReactNode }) => <a href="#link">{children}</a>,
+  Link: ({ children, className }: { children?: ReactNode; className?: string }) => (
+    <a href="#link" className={className}>
+      {children}
+    </a>
+  ),
 }));
 
 const cleanup: (() => void)[] = [];
@@ -329,6 +333,7 @@ it('before the record is read the line holds its place and says nothing', async 
 it('the role name opens that execution’s run record', async () => {
   const f = await show(entry(), { record: record('delivered') });
   const role = f.button('Writer');
+  expectQuiet(f.status());
   expect(role).toBeDefined();
   await act(async () => role?.click());
   expect(f.onPanel).toHaveBeenCalledWith('run', {
@@ -356,6 +361,7 @@ it('resend goes the resend path and waits while a run is going', async () => {
   const idle = await show(entry(), { record: record('not_delivered') });
   await act(async () => idle.button(m.resend)?.click());
   expect(sent).toHaveBeenCalledTimes(1);
+  expectQuiet(idle.status());
   expect((sent.mock.calls[0] as unknown as [CustomEvent])[0].detail).toEqual({
     sessionId: 'session_meta',
     entryId: 'entry_steer',
@@ -453,6 +459,19 @@ it('a started request leaves its number and state to the run row', async () => {
   expect(scheduled.status()?.textContent).toBe(messages.Sessions.scheduledRequest);
 });
 
+/**
+ * The line's buttons are the kit's smallest quiet ones: never the primary variant (the screen's
+ * one primary is Send) and never the default control height.
+ */
+function expectQuiet(status: HTMLElement | null | undefined) {
+  const controls = [...(status?.querySelectorAll<HTMLElement>('button, a') ?? [])];
+  expect(controls.length).toBeGreaterThan(0);
+  for (const control of controls) {
+    expect(control.className, control.textContent ?? '').not.toContain('text-background');
+    expect(control.className, control.textContent ?? '').toContain('h-7');
+  }
+}
+
 it('a refused request says why in one line; the reason opens the runtime’s words', async () => {
   const value = request({
     intent: 'queue',
@@ -465,8 +484,8 @@ it('a refused request says why in one line; the reason opens the runtime’s wor
   });
   const f = await show(value);
   const status = f.status();
-  // The kind first, then the reason in the danger color.
-  expect(status?.textContent?.startsWith(messages.Sessions.intentShort.queue)).toBe(true);
+  // A queued request is not a kind of message: the reason comes first, in the danger color.
+  expect(status?.textContent?.startsWith(messages.Refusal.profile)).toBe(true);
   const reason = f.button(messages.Refusal.profile);
   expect(reason).toBeDefined();
   expect(reason?.className).toContain('text-danger');
@@ -476,6 +495,7 @@ it('a refused request says why in one line; the reason opens the runtime’s wor
   expect(f.container.querySelector('[role="alert"]')).toBeNull();
   // The actions for its kind, on the same line.
   expect(status?.textContent).toContain(messages.Refusal.connect);
+  expectQuiet(f.status());
   // Its edit is the message's own pencil on this line: the line does not offer it twice.
   expect(f.button(messages.Refusal.edit)).toBeUndefined();
   const edit = f.button(messages.MessageBody.editAsNew);
@@ -502,6 +522,7 @@ it('a terminal refusal offers the terminal on the line; the owner is in the raw 
     } as Partial<SessionEntry>),
   );
   expect(f.status()?.textContent).toContain(messages.Refusal.openTerminal);
+  expectQuiet(f.status());
   await act(async () => f.button(messages.Refusal.terminal)?.click());
   expect(document.body.querySelector('[data-testid="refusal-raw"]')?.textContent).toContain(
     'term_1',
@@ -512,6 +533,7 @@ it('a refused instruction, or a carried request that did not start, offers the e
   const steer = entry({ state: 'refused', detail: 'The run has ended', runId: 'run_live' });
   const f = await show(steer, { record: null });
   expect(f.button(messages.MessageBody.editAsNew)).toBeUndefined();
+  expectQuiet(f.status());
   await act(async () => f.button(messages.Refusal.edit)?.click());
   expect(fixture.editRequest).toHaveBeenCalledWith(steer.text, steer);
   const carried = entry({

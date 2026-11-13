@@ -75,6 +75,11 @@ export interface RefusalProps {
   onQueue?: (() => void) | undefined;
   sessionId?: string | undefined;
   owner?: CommandError['owner'] | undefined;
+  /**
+   * A line that is not the place's main action (a sent message's meta line): every button is
+   * the kit's quiet variant with these classes, never the primary one.
+   */
+  quiet?: string | undefined;
 }
 
 /** The buttons that help after a refusal, in the order `refusalActions` gives. */
@@ -87,8 +92,14 @@ export function RefusalActions({
   onQueue,
   sessionId,
   owner,
+  quiet,
 }: RefusalProps) {
   const t = useTranslations('Refusal');
+  // The variant each action has where it is the next step; on a quiet line, all are ghost.
+  const look = (variant: 'primary' | 'tertiary') =>
+    quiet !== undefined
+      ? ({ variant: 'ghost', className: quiet } as const)
+      : ({ variant, className: 'shrink-0' } as const);
   const navigation = useSettingsNavigation();
   const kind = refusalKind({ code, message, network, owner });
   const terminalSession = owner?.sessionId ?? sessionId;
@@ -103,8 +114,7 @@ export function RefusalActions({
         return (
           <Button
             key={action}
-            variant="tertiary"
-            className="shrink-0"
+            {...look('tertiary')}
             render={
               <Link
                 to="/sessions/$sessionId"
@@ -121,7 +131,7 @@ export function RefusalActions({
         return (
           <Button
             key={action}
-            className="shrink-0"
+            {...look('primary')}
             render={<Link {...navigation.link('models')} />}
           >
             {t(action)}
@@ -129,19 +139,19 @@ export function RefusalActions({
         );
       case 'retry':
         return (
-          <Button key={action} className="shrink-0" onClick={onRetry}>
+          <Button key={action} {...look('primary')} onClick={onRetry}>
             {t('retry')}
           </Button>
         );
       case 'queue':
         return (
-          <Button key={action} variant="tertiary" className="shrink-0" onClick={onQueue}>
+          <Button key={action} {...look('tertiary')} onClick={onQueue}>
             {t('queue')}
           </Button>
         );
       default:
         return (
-          <Button key={action} variant="tertiary" className="shrink-0" onClick={onEdit}>
+          <Button key={action} {...look('tertiary')} onClick={onEdit}>
             {t('edit')}
           </Button>
         );

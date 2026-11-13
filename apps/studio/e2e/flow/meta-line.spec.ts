@@ -58,7 +58,11 @@ async function shot(page: Page, name: string, target?: Locator) {
   await page.screenshot({ path: join(SHOTS, `${name}.png`) });
 }
 
-/** Every meta line on the page is one control line high and nothing in it sits below its top. */
+/**
+ * Every meta line on the page: one control line high with nothing below its top, nothing
+ * overflowing; its last visible glyph at the row's inner right edge (`end`, px off it); the same
+ * space on both sides of each dot (`dots`, the largest difference); its status words cut or not.
+ */
 async function oneLine(page: Page) {
   return page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('[data-chat-part="meta"]')].map((meta) => {
@@ -69,11 +73,48 @@ async function oneLine(page: Page) {
         .map((node) => node.getBoundingClientRect())
         .filter((rect) => rect.width > 0 && rect.height > 0)
         .map((rect) => rect.bottom - box.top);
+      // The status's glyphs, in order: each text node's drawn extent, clipped by its element.
+      const status = meta.querySelector('[data-testid="entry-status"]');
+      const glyphs: { text: string; left: number; right: number; cut: boolean }[] = [];
+      if (status) {
+        const walker = document.createTreeWalker(status, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const parent = node.parentElement;
+          if (!parent || parent.closest('.sr-only') || !node.textContent?.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const rect = range.getBoundingClientRect();
+          // The nearest box that draws (a label may be laid out as its contents only).
+          let box = parent as HTMLElement | null;
+          while (box && box.getBoundingClientRect().width === 0) box = box.parentElement;
+          const clip = (box ?? parent).getBoundingClientRect();
+          if (rect.width <= 0) continue;
+          glyphs.push({
+            text: node.textContent.trim(),
+            left: Math.max(rect.left, clip.left),
+            right: Math.min(rect.right, clip.right),
+            cut: rect.right > clip.right + 1,
+          });
+        }
+      }
+      const padding = Number.parseFloat(getComputedStyle(meta).paddingRight);
+      const last = glyphs.at(-1);
+      const dots = glyphs.flatMap((glyph, index) => {
+        const before = glyphs[index - 1];
+        const after = glyphs[index + 1];
+        return glyph.text === '·' && before && after
+          ? [Math.abs(glyph.left - before.right - (after.left - glyph.right))]
+          : [];
+      });
+      const cut = glyphs.some((glyph) => glyph.cut);
       return {
         height: Math.round(box.height),
         below: tops.filter((bottom) => bottom > box.height + 1).length,
         overflow: meta.scrollWidth > meta.clientWidth + 1,
-        said: `${meta.textContent}|${meta.scrollWidth}|${meta.clientWidth}|${[...meta.children].map((c) => Math.round(c.getBoundingClientRect().width)).join(',')}|${Math.round(meta.parentElement?.getBoundingClientRect().width ?? 0)}`,
+        end: last ? Math.round(box.right - padding - last.right) : 0,
+        dots: Math.round(Math.max(0, ...dots)),
+        cut,
+        said: meta.textContent ?? '',
       };
     }),
   );
@@ -285,7 +326,11 @@ test('the meta line says what became of each message and moves nothing', async (
   }, sessionId);
   await page.reload();
   await expect(status('Write the release notes')).toContainText('Connect a model');
+  await page.mouse.move(4, 4);
   await shot(page, 'refusal', message('Write the release notes'));
+  await message('Write the release notes').locator('[data-chat-part="meta"]').hover();
+  await shot(page, 'refusal-hover');
+  await page.mouse.move(4, 4);
   await message('Write the release notes')
     .getByRole('button', { name: /model profile that is not set up/ })
     .click();
@@ -296,16 +341,31 @@ test('the meta line says what became of each message and moves nothing', async (
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(4, 4);
 
-  // Every meta line is one control line, at 1280 and at 480.
+  // Every meta line is one control line, at 1280 and at 480; its last glyph at its inner edge,
+  // a button's as a word's, and the dots evenly spaced. At 1280, not pointed at, nothing is cut.
   const wide = await oneLine(page);
   expect(wide.length).toBeGreaterThan(4);
-  for (const { said, ...line } of wide)
-    expect(line, said).toEqual({ height: wide[0]?.height, below: 0, overflow: false });
+  for (const { said, cut, ...line } of wide) {
+    expect(line, said).toEqual({
+      height: wide[0]?.height,
+      below: 0,
+      overflow: false,
+      end: 0,
+      dots: 0,
+    });
+    expect(cut, `${said}: cut at 1280`).toBe(false);
+  }
   await page.setViewportSize({ width: 480, height: 800 });
   await waitForStill(page);
   const narrow = await oneLine(page);
-  for (const { said, ...line } of narrow)
-    expect(line, said).toEqual({ height: wide[0]?.height, below: 0, overflow: false });
+  for (const { said, cut: _cut, ...line } of narrow)
+    expect(line, said).toEqual({
+      height: wide[0]?.height,
+      below: 0,
+      overflow: false,
+      end: 0,
+      dots: 0,
+    });
   await shot(page, 'narrow-refusal', message('Write the release notes'));
   await shot(page, 'narrow-read', message('Run the tests too'));
 

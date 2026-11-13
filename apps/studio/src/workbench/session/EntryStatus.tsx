@@ -1,6 +1,13 @@
 import type { CommandError } from '@corral/contracts';
 import type { SessionEntry } from '@corral/core';
-import { Button, Popover, PopoverPopup, PopoverTrigger } from '@corral/react/design-kit';
+import {
+  Button,
+  MetaDot,
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
+  SizeScope,
+} from '@corral/react/design-kit';
 import { isValidElement, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SessionPanel } from '../panels/registry.ts';
@@ -17,13 +24,14 @@ const Text = ({ children, danger = false }: { children: string; danger?: boolean
     {children}
   </span>
 );
-/** A text button that gives way first: its label is cut, with its whole words in the title. */
-const SHRINKS = 'min-w-0 shrink justify-start px-1 [&_span]:min-w-0 [&_span]:truncate';
-const Dot = () => (
-  <span aria-hidden className="shrink-0">
-    ·
-  </span>
-);
+/**
+ * The line's buttons are the kit's smallest quiet button. Their padding is taken back by an
+ * equal negative margin, so their words sit where plain words would: the same space on both
+ * sides of a dot, and the line's last word at its inner edge whether it is a button or not.
+ */
+export const LINE_BUTTON = '-mx-1 shrink-0 px-1';
+/** A line button that gives way first: its label is cut, with its whole words in the title. */
+const SHRINKS = '-mx-1 min-w-0 shrink justify-start px-1 [&_span]:min-w-0 [&_span]:truncate';
 
 export function EntryStatus({
   sessionId,
@@ -79,11 +87,15 @@ export function EntryStatus({
     // Carried over from an instruction sent from the run record: no source message here.
     parts.push(<Text key="carried">{t('meta.carriedStarted')}</Text>);
   return (
-    <span data-testid="entry-status" className="flex min-w-0 flex-nowrap items-center gap-1">
-      {parts.flatMap((part, index) =>
-        index && isValidElement(part) ? [<Dot key={`dot-${part.key}`} />, part] : [part],
-      )}
-    </span>
+    <SizeScope size="compact">
+      <span data-testid="entry-status" className="flex min-w-0 flex-nowrap items-center gap-1.5">
+        {parts.flatMap((part, index) =>
+          index && isValidElement(part)
+            ? [<MetaDot key={`dot-${String(part.key)}`} />, part]
+            : [part],
+        )}
+      </span>
+    </SizeScope>
   );
 }
 
@@ -102,9 +114,9 @@ function steerLine(
     case 'read':
     case 'interrupted':
       return (
-        <span key="steer" className="flex min-w-0 flex-nowrap items-center gap-1">
+        <span key="steer" className="flex min-w-0 flex-nowrap items-center gap-1.5">
           <Text>{t(meta.kind === 'read' ? 'meta.read' : 'meta.interrupted')}</Text>
-          <Dot />
+          <MetaDot />
           {/* The role, named as the send menu names it, opens that execution's record. */}
           <Button
             variant="ghost"
@@ -126,9 +138,9 @@ function steerLine(
       return <RefusalLine key="steer" sessionId={sessionId} entry={meta.carried} edit />;
     case 'notDelivered':
       return (
-        <span key="steer" className="flex min-w-0 flex-nowrap items-center gap-1">
+        <span key="steer" className="flex min-w-0 flex-nowrap items-center gap-3">
           <Text>{t('meta.notDelivered')}</Text>
-          <Button variant="tertiary" className="shrink-0" disabled={!canResend} onClick={onResend}>
+          <Button variant="ghost" className={LINE_BUTTON} disabled={!canResend} onClick={onResend}>
             {t('meta.resend')}
           </Button>
         </span>
@@ -159,11 +171,11 @@ function RefusalLine({
   const kind = refusalKind({ code, message, owner });
   const reason = t(kind);
   return (
-    <span className="flex min-w-0 flex-nowrap items-center gap-1">
+    <span className="flex min-w-0 flex-nowrap items-center gap-3">
       <Popover>
         <PopoverTrigger
           title={reason}
-          render={<Button variant="ghost" className={`${SHRINKS} text-danger`} />}
+          render={<Button variant="ghost" className={`${SHRINKS} text-danger hover:text-danger`} />}
         >
           <span className="block">{reason}</span>
         </PopoverTrigger>
@@ -184,6 +196,7 @@ function RefusalLine({
         code={code}
         owner={owner}
         sessionId={sessionId}
+        quiet={LINE_BUTTON}
         // Edited as the pencil edits it: with everything it was sent with.
         onEdit={edit ? () => editRequest(entry.text, entry) : undefined}
       />
