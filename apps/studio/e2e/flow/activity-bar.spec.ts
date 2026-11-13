@@ -679,19 +679,45 @@ test('⑥ the line decides a call only while it says it whole; the next call in 
     const spot = await approve.boundingBox();
     if (!spot) throw new Error('Allow once is missing');
     const first = pending();
-    await page.mouse.click(spot.x + spot.width / 2, spot.y + spot.height / 2);
-    // The next call comes to the same place; the same place pressed again does not decide it.
+    const x = spot.x + spot.width / 2;
+    const y = spot.y + spot.height / 2;
+    // From inside the page, every frame: the frame the next call's Allow once first stands on the
+    // same place, that place is pressed, before anything else runs.
+    await page.evaluate(
+      ({ x, y }) => {
+        const w = window as unknown as {
+          nextPress: { disabled: boolean; at: number } | null;
+        };
+        w.nextPress = null;
+        const tick = () => {
+          const under = document.elementFromPoint(x, y)?.closest('button');
+          if (under?.getAttribute('aria-label') === 'Allow once · Run · echo second') {
+            w.nextPress = { disabled: under.disabled, at: performance.now() };
+            under.click();
+            return;
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      },
+      { x, y },
+    );
+    await page.mouse.click(x, y);
+    // The next call comes to the same place; the same place pressed as it comes does not decide it.
     await expect(activityLine(page)).toContainText('echo second', { timeout: 30_000 });
     const next = activityLine(page).getByRole('button', {
       name: 'Allow once · Run · echo second',
       exact: true,
     });
-    const arrived = { disabled: await next.isDisabled(), box: await next.boundingBox() };
-    await page.mouse.click(spot.x + spot.width / 2, spot.y + spot.height / 2);
+    const pressed = await page
+      .waitForFunction(() => (window as unknown as { nextPress: unknown }).nextPress, null, {
+        timeout: 10_000,
+      })
+      .then((handle) => handle.jsonValue() as Promise<{ disabled: boolean; at: number }>);
     await page.waitForTimeout(200);
     const waiting = pending();
-    record('next-in-place', { first, arrived, waiting, spot });
-    expect(arrived.disabled).toBe(true);
+    record('next-in-place', { first, pressed, waiting, spot });
+    expect(pressed.disabled).toBe(true);
     expect(waiting).toHaveLength(1);
     expect(waiting).not.toEqual(first);
     // A moment later it is decided by a press.
@@ -1033,13 +1059,11 @@ test('⑨ on a slow machine with reduced motion, a press where View stood alone 
     const timeline = page.getByTestId('chat-timeline');
     await timeline.hover({ position: { x: 16, y: 120 } });
     for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
-    await expect
-      .poll(() => page.evaluate(() => (window as unknown as { viewAt: unknown }).viewAt), {
-        timeout: 10_000,
-      })
-      .not.toBeNull()
-      .catch(() => undefined);
-    await page.waitForTimeout(2_000);
+    // The line comes to its buttons, and the 0.6 s after any View alone before them goes by.
+    await expect(
+      activityLine(page).getByRole('button', { name: 'Allow once · Run · echo tray-ok' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(1_500);
     const seen = await page.evaluate(() => {
       const w = window as unknown as { viewAt: number | null; press: unknown; frames: string[] };
       return { viewAlone: w.viewAt !== null, press: w.press, frames: w.frames };
