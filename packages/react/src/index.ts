@@ -66,6 +66,7 @@ export {
 } from './editor/store.ts';
 export { default as enMessages } from './messages/en.json' with { type: 'json' };
 export { default as koMessages } from './messages/ko.json' with { type: 'json' };
+export { agentName, useAgentName, useSeverityName } from './run/advisor.ts';
 export { useCancelConfirmation } from './run/cancel-confirmation.ts';
 export { type CompareRow, compareRuns } from './run/compare.ts';
 export {

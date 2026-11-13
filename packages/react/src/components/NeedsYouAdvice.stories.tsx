@@ -67,16 +67,18 @@ type Story = StoryObj<typeof meta>;
 export const AdviceRows: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    // The advice's first line is isolated in its own element, so the rows are read as text.
+    const lines = () =>
+      [...canvasElement.querySelectorAll('[data-slot="card-description"]')].map(
+        (line) => line.textContent,
+      );
     await waitFor(() =>
-      expect(
-        canvas.getByText(
-          'Concern · The answer cites one source where the brief asks for two. · Run #1',
-        ),
-      ).toBeVisible(),
+      expect(lines()).toEqual([
+        'Concern · The answer cites one source where the brief asks for two. · Run #1',
+        'Blocker · The new client still calls the retired v1 endpoint.',
+        'Check failed: Types',
+      ]),
     );
-    expect(
-      canvas.getByText('Blocker · The new client still calls the retired v1 endpoint.'),
-    ).toBeVisible();
     expect(canvas.getByText('Review')).toBeVisible();
   },
 };

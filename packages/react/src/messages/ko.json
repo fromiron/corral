@@ -1028,7 +1028,7 @@
       "uncertain_write": "{count, plural, other {결과를 모르는 파일 쓰기 #개}}",
       "unreviewed": "{count, plural, other {확인하지 않은 파일 쓰기 #개}}",
       "lsp_proposal": "{count, plural, other {언어 서버 제안 #개}}",
-      "advice": "{severity} · {detail}"
+      "advice": "{severity} · <line>{detail}</line>"
     },
     "close": "닫기",
     "backToList": "목록으로",
@@ -1304,8 +1304,8 @@
     "cancelConfirmed": "취소 확정",
     "observationLate": "늦게 온 {what}을(를) 무시함",
     "outputFinalized": "최종 출력 준비됨",
-    "adviceAdmitted": "{advisor}의 조언({severity, select, nit {참고} concern {우려} blocker {중단 권고} other {{severity}}}) → {node} · {delivery, select, next_request {다음 요청으로 전달} interrupt {끼어들어 전달} preserve {기록에만 보존} other {{delivery}}}",
-    "adviceSuppressed": "{advisor}의 조언을 버림({severity, select, nit {참고} concern {우려} blocker {중단 권고} other {{severity}}}): {reason, select, noise {빈말} duplicate {이미 낸 조언} over_budget {한 검토의 조언 수 초과} target_terminal {대상이 이미 끝남} other {{reason}}}",
+    "adviceAdmitted": "<isolate>{advisor}</isolate>의 조언({severity, select, nit {참고} concern {우려} blocker {중단 권고} other {{severity}}}) → <isolate>{node}</isolate> · {delivery, select, next_request {다음 요청으로 전달} interrupt {끼어들어 전달} preserve {기록에만 보존} other {{delivery}}}",
+    "adviceSuppressed": "<isolate>{advisor}</isolate>의 조언을 버림({severity, select, nit {참고} concern {우려} blocker {중단 권고} other {{severity}}}): {reason, select, noise {빈말} duplicate {이미 낸 조언} over_budget {한 검토의 조언 수 초과} target_terminal {대상이 이미 끝남} other {{reason}}}",
     "adviceDirectiveAccepted": "{node}에 대한 조언 접수",
     "adviceDirectiveAttached": "조언이 요청에 첨부됨",
     "adviceDirectiveDispatched": "조언을 보냄",
@@ -5691,8 +5691,7 @@
       "delegate": "작업 위임",
       "review": "검토",
       "branch": "분기 선택",
-      "output": "최종 결과 확정",
-      "advice": "조언"
+      "output": "최종 결과 확정"
     },
     "port": {
       "out": "출력",
@@ -5746,8 +5745,7 @@
       "fail": "실패",
       "inconclusive": "판단 보류",
       "not_evaluated": "평가 전"
-    },
-    "itemCount": "기록 {count}건"
+    }
   },
   "RunLoop": {
     "title": "루프 · {name}",
@@ -6204,11 +6202,6 @@
       "concern": "우려",
       "blocker": "중단 권고"
     },
-    "delivery": {
-      "next_request": "다음 요청",
-      "interrupt": "끼어들기",
-      "preserve": "기록에만 보존"
-    },
-    "from": "{advisor} · {severity}"
+    "from": "<isolate>{advisor}</isolate> · {severity}"
   }
 }

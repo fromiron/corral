@@ -97,8 +97,6 @@ interface HandoffCard {
   /** Footer text. Defaults per status ("Looks good", "Check before use", "Handing off"). */
   stateLabel?: string;
   items: HandoffItem[];
-  /** The line under the title, in place of the joined item labels. */
-  summary?: string;
   /** Host details/actions, outside the disclosure button. */
   detail?: ReactNode;
 }
@@ -381,12 +379,10 @@ function QueueCard({
   const icons = useIcons();
   const status = card.status ?? 'done';
   const Mark = resolveMark(card.logo) ?? icons.pencil;
-  const kept =
-    card.summary ??
-    card.items
-      .filter((i) => !i.lost)
-      .map((i) => i.label)
-      .join(', ');
+  const kept = card.items
+    .filter((i) => !i.lost)
+    .map((i) => i.label)
+    .join(', ');
   const LostIcon = icons.x;
 
   return (

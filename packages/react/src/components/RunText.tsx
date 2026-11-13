@@ -185,7 +185,17 @@ export function EventText({
 }) {
   const t = useTranslations('Events');
   const described = describeEvent(event, labelOf, nodeLabel, context);
-  return <>{described ? t(described.key, described.values) : event.type}</>;
+  // Names a model or a person wrote are isolated, so their direction stays inside them.
+  return (
+    <>
+      {described
+        ? t.rich(described.key, {
+            ...described.values,
+            isolate: (chunks) => <bdi>{chunks}</bdi>,
+          })
+        : event.type}
+    </>
+  );
 }
 
 const REASONS = new Set([

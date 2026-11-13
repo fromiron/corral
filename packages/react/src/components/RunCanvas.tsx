@@ -268,10 +268,16 @@ export function RunCanvas({
     };
   }, [definition]);
   const signature = useRunDisplay(session, readGraph);
-  const { graph, models, ended, awaiting } = useMemo(
-    () => JSON.parse(signature) as GraphSnapshot,
-    [signature],
-  );
+  const adviceText = useTranslations('Advice');
+  const advisorWord = adviceText('advisor');
+  const { graph, models, ended, awaiting } = useMemo(() => {
+    const snapshot = JSON.parse(signature) as GraphSnapshot;
+    // A conversation's advisor has no name of its own: the screen calls it "advisor".
+    snapshot.graph.nodes = snapshot.graph.nodes.map((node) =>
+      node.sessionAdvisor ? { ...node, label: advisorWord } : node,
+    );
+    return snapshot;
+  }, [signature, advisorWord]);
   const readingInitialHistory = useStore(session, (state) => state.initialLoadSeq !== undefined);
   const placed = useRef(new Map<string, AgentGraphPosition>());
   const positions = useMemo(() => {

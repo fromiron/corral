@@ -3,6 +3,7 @@ import { type ReactNode, useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { AgentSteering, type SteerStep } from '../design-kit/components/agent/agent-steering.tsx';
+import { useAgentName, useSeverityName } from '../run/advisor.ts';
 import { executionIntervals } from '../run/history.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript } from '../run/transcript.ts';
@@ -43,10 +44,12 @@ export function ExecutionSteering({
   const planText = useTranslations('WorkPlan');
   const activityText = useTranslations('RunPage.tabs');
   const adviceText = useTranslations('Advice');
+  const severityName = useSeverityName();
   const runId = useStore(session, (s) => s.runId);
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
+  const nameOf = useAgentName(definition);
   const execution = projection?.executions?.[target.executionId];
   const planRef =
     planSlot !== undefined
@@ -107,10 +110,12 @@ export function ExecutionSteering({
   const adviceFrom = (advice: (typeof directives)[number]['advice']) => {
     if (!advice) return null;
     const nodeId = projection?.executions[advice.observerExecutionId]?.nodeId;
-    const advisor = nodeId
-      ? (definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId)
-      : adviceText('advisor');
-    return adviceText('from', { advisor, severity: adviceText(`severity.${advice.severity}`) });
+    // The advisor's name is isolated: a model-written override cannot turn the line around.
+    return adviceText.rich('from', {
+      advisor: nodeId ? nameOf(nodeId) : adviceText('advisor'),
+      severity: severityName(advice.severity),
+      isolate: (chunks) => <bdi>{chunks}</bdi>,
+    });
   };
   const model = execution
     ? (projection?.modelProfiles?.[execution.modelProfile]?.modelId ?? execution.modelProfile)

@@ -3,7 +3,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { isSessionAdvisor, type RunProjection } from '@corral/core';
 import { executionWatching } from './presence.ts';
 import { currentAttempts, type NodeRunSummary, nodeRunSummary } from './selectors.ts';
 
@@ -15,6 +15,8 @@ export interface RunAgentGraphNode {
   lead: boolean;
   /** An advisor resting between reviews (presence `watching`), not waiting for an answer. */
   watching?: true;
+  /** The advisor a conversation's session setting added: the screen calls it "advisor". */
+  sessionAdvisor?: true;
 }
 
 export interface RunAgentGraphRelation {
@@ -64,6 +66,7 @@ export function buildRunAgentGraph(
         executionIds: instances.map((execution) => execution.executionId),
         summary: nodeRunSummary(projection, id),
         ...(executionWatching(instances.at(-1)) ? { watching: true as const } : {}),
+        ...(isSessionAdvisor(definition, id) ? { sessionAdvisor: true as const } : {}),
         lead: instances.some(
           (execution) =>
             !execution.parentExecutionId && !responders.has(execution.taskId) && !execution.advisor,

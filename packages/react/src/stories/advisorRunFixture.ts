@@ -1,5 +1,11 @@
 import { type CorralDefinition, type EventOf, RunEvent } from '@corral/contracts';
-import { applyEvent, emptyProjection, type RunProjection } from '@corral/core';
+import {
+  applyEvent,
+  emptyProjection,
+  type RunProjection,
+  SESSION_ADVISOR_ID,
+  withSessionAdvisor,
+} from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import { sessionStore } from './fixtures.tsx';
 
@@ -10,8 +16,23 @@ export const ADVISOR_RUN = 'run_advisor';
 export const ADVICE_TEXT =
   'The brief asks for two sources; the answer cites one.\nCheck the second claim before submitting.';
 
-export function advisorDefinition(): CorralDefinition {
-  const definition = linearCorral(['implementer']);
+/** Options: `session` uses the advisor a conversation's session setting adds (core). */
+export interface AdvisorRunOptions {
+  advised?: boolean;
+  session?: boolean;
+}
+
+/** The advisor's node: the team's Reviewer, or the conversation's built-in advisor. */
+export const advisorNodeId = ({ session = false }: AdvisorRunOptions = {}) =>
+  session ? `${SESSION_ADVISOR_ID}` : 'reviewer';
+
+export function advisorDefinition({ session = false }: AdvisorRunOptions = {}): CorralDefinition {
+  const base = linearCorral(['implementer']);
+  base.nodes = base.nodes.map((node) =>
+    node.id === 'implementer' ? { ...node, label: 'Implementer' } : node,
+  );
+  if (session) return withSessionAdvisor(base, { modelProfile: 'model-a' });
+  const definition = base;
   const role = definition.roles[0] as CorralDefinition['roles'][number];
   definition.roles.push({
     ...role,
@@ -20,9 +41,7 @@ export function advisorDefinition(): CorralDefinition {
     prompt: 'Watch the implementer.',
   });
   definition.nodes = [
-    ...definition.nodes.map((node) =>
-      node.id === 'implementer' ? { ...node, label: 'Implementer' } : node,
-    ),
+    ...definition.nodes,
     {
       id: 'reviewer',
       type: 'agent',
@@ -49,7 +68,8 @@ const usage = (outputTokens: number) => ({
 });
 
 /** The run's events; without `advised`, the advisor has reviewed once and said nothing. */
-export function advisorRunEvents({ advised = true }: { advised?: boolean } = {}): RunEvent[] {
+export function advisorRunEvents(options: AdvisorRunOptions = {}): RunEvent[] {
+  const { advised = true } = options;
   const created = (executionId: string, nodeId: string, advisor = false): Draft => [
     'execution.created',
     {
@@ -107,7 +127,7 @@ export function advisorRunEvents({ advised = true }: { advised?: boolean } = {})
       'impl_1',
     ],
     ...request('impl_1', 'call_impl_1', 300),
-    created('advisor_1', 'reviewer', true),
+    created('advisor_1', advisorNodeId(options), true),
     [
       'execution.state_changed',
       {
@@ -202,11 +222,11 @@ export function advisorRunProjection(events = advisorRunEvents()): RunProjection
   };
 }
 
-export function advisorRunSession(options: { advised?: boolean } = {}) {
+export function advisorRunSession(options: AdvisorRunOptions = {}) {
   const events = advisorRunEvents(options);
   return sessionStore({
     runId: ADVISOR_RUN,
-    definition: advisorDefinition(),
+    definition: advisorDefinition(options),
     events,
     projection: advisorRunProjection(events),
   });

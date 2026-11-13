@@ -17,6 +17,7 @@ import {
   useSize,
 } from '../design-kit/index.ts';
 import { formatClock } from '../design-kit/lib/agent-format.ts';
+import { useAgentName } from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
@@ -65,8 +66,8 @@ export function Timeline({
     advisor: (executionId: string) => executionViews?.[executionId]?.advisor === true,
   };
   const definition = useStore(session, (s) => s.definition);
-  const nodeLabel = (nodeId: string) =>
-    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  // A conversation's advisor is called "advisor", in the reader's language.
+  const nodeLabel = useAgentName(definition);
   const labelOf = (executionId: string | undefined) => {
     const nodeId = executionId ? executionViews?.[executionId]?.nodeId : undefined;
     return nodeId ? nodeLabel(nodeId) : (executionId ?? '');
@@ -90,7 +91,7 @@ export function Timeline({
       const round = view?.iterationId ? iterations?.[view.iterationId]?.no : null;
       const nodeId = view?.nodeId;
       const base = [
-        (nodeId && definition?.nodes.find((n) => n.id === nodeId)?.label) || nodeId || id,
+        (nodeId && nodeLabel(nodeId)) || id,
         round ? t('round', { no: round }) : null,
         view && view.attemptNo > 1 ? t('attempt', { no: view.attemptNo }) : null,
       ]
@@ -100,7 +101,7 @@ export function Timeline({
       seen.set(base, count);
       return [id, count > 1 ? `${base} (${count})` : base];
     });
-  }, [executions, executionViews, iterations, definition, t]);
+  }, [executions, executionViews, iterations, nodeLabel, t]);
   const origin = useMemo(() => {
     const first = startedAt ?? events[0]?.recordedAt;
     return first ? Date.parse(first) : null;

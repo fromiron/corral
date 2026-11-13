@@ -720,7 +720,13 @@ export class ReviewService {
             runId: run.runId,
             executionId: advice.targetExecutionId,
             severity: advice.severity,
-            detail: (advice.text.split('\n')[0] ?? '').slice(0, 120),
+            // Its first line that has text: a model's reply may open with blank lines.
+            detail:
+              advice.text
+                .split('\n')
+                .map((line) => line.trim())
+                .find((line) => line.length > 0)
+                ?.slice(0, 120) ?? null,
           });
         }
       if (latest && run.status === 'failed' && run.sessionId && titleOf.has(run.sessionId)) {

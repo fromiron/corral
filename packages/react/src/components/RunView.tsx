@@ -1,5 +1,5 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { isSessionAdvisor, type RunProjection } from '@corral/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -16,6 +16,7 @@ import {
   Select,
 } from '../design-kit/index.ts';
 import { useIcon } from '../design-kit/lib/icon-context.tsx';
+import { useAgentName } from '../run/advisor.ts';
 import type { ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import {
@@ -322,6 +323,7 @@ export function ExecutionTree({
   const projection = useRunDisplay(session, (s) => s.projection);
   const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
+  const nameOf = useAgentName(definition);
   const streams = useRunDisplay(session, (s) => s.streams);
   const own = useRoundInspection(projection, selectedExecutionId);
   // The tree's own width sets how wide its cards can be.
@@ -368,7 +370,6 @@ export function ExecutionTree({
   const loopById = new Map(loops.map((loop) => [loop.nodeId, loop]));
   const loopTreeId = (id: string) => `loop-group-${id}`;
   const treeLoop = new Map(loops.map((loop) => [loopTreeId(loop.nodeId), loop]));
-  const nodeDefinition = new Map(definition?.nodes.map((node) => [node.id, node]));
   const iterationOf = new Map(
     projection.executionOrder.map((id) => [id, runFlowExecutionIterationId(projection, id)]),
   );
@@ -392,7 +393,7 @@ export function ExecutionTree({
     }),
   );
   const statusLabel = (value: string) => (status.has(value) ? status(value) : value);
-  const labelOf = (nodeId: string) => nodeDefinition.get(nodeId)?.label ?? nodeId;
+  const labelOf = nameOf;
   const childrenOf = new Map<string | null, string[]>();
   const addChild = (parent: string | null, id: string) => {
     const children = childrenOf.get(parent) ?? [];
@@ -546,8 +547,15 @@ export function ExecutionTree({
     return {
       id,
       name: labelOf(execution.nodeId),
+      // A team's advisor is its name and the badge; a conversation's advisor is called
+      // "advisor" once, by its name alone (features/advisor.md, 보이는 곳).
       ...(execution.advisor
-        ? { tag: <KitBadge>{adviceText('advisor')}</KitBadge>, outsideFlow: true }
+        ? {
+            outsideFlow: true,
+            ...(definition && isSessionAdvisor(definition, execution.nodeId)
+              ? {}
+              : { tag: <KitBadge>{adviceText('advisor')}</KitBadge> }),
+          }
         : {}),
       model: model?.modelId ?? execution.modelProfile,
       ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
@@ -556,7 +564,7 @@ export function ExecutionTree({
       ...(task ? { task } : {}),
       ...(interval ? { startedAt: Date.parse(interval.startedAt) } : {}),
       ...(interval?.finished ? { endedAt: Date.parse(interval.endedAt) } : {}),
-      ...(execution.waitingOn && !watching
+      ...(execution.waitingOn
         ? {
             ask: t(`waiting.${execution.waitingOn.kind}`, {
               count: execution.waitingOn.targetIds.length,

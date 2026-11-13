@@ -70,19 +70,26 @@ export function inboxDestination(target: NotificationTarget): InboxDestination |
       params,
       search: { panel: 'run', view: 'run', run: target.runId },
     };
-  if (target.kind === 'advice')
-    return target.runId && target.executionId
-      ? {
-          to: '/sessions/$sessionId',
-          params,
-          search: { panel: 'run', view: 'run', run: target.runId, execution: target.executionId },
-        }
-      : null;
+  if (target.kind === 'advice') return adviceDestination(target);
   if (target.kind === 'queued') return { to: '/sessions/$sessionId', params, search: {} };
   // A failed check opens the review's Checks view; other review items open the review.
   if (target.kind === 'check_failed')
     return { to: '/sessions/$sessionId', params, search: { panel: 'checks' } };
   return { to: '/sessions/$sessionId/review', params, search: {} };
+}
+
+/**
+ * Where an advice is gone to, from Needs you, a desktop notification or the sidebar's: its run's
+ * record on the execution row it was for. Every path builds it here alone.
+ */
+export function adviceDestination(target: NotificationTarget): InboxDestination | null {
+  return target.runId && target.executionId
+    ? {
+        to: '/sessions/$sessionId',
+        params: { sessionId: target.sessionId },
+        search: { panel: 'run', view: 'run', run: target.runId, execution: target.executionId },
+      }
+    : null;
 }
 
 export function destinationHref(destination: InboxDestination): string {

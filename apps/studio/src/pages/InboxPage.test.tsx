@@ -1296,12 +1296,9 @@ it('names a severity by its Korean name too', async () => {
   expect(lines).toEqual(['우려', '중단 권고']);
 });
 
-it('opens an advice’s execution row and tells the server, keeping the row until it is read again', async () => {
-  let listed = [adviceV, checkD];
-  const opened = deferred<void>();
-  const { services, rowButton, detail, click, refocus } = await mount({
-    inbox: async () => listed,
-    executionOpened: () => opened.promise,
+it('opens an advice’s execution row where a notification would, and only goes there', async () => {
+  const { services, rowButton, detail, click } = await mount({
+    inbox: async () => [adviceV, checkD],
   });
   await click(rowButton('Compare sources'));
   const link = detail()?.querySelector('a');
@@ -1318,30 +1315,40 @@ it('opens an advice’s execution row and tells the server, keeping the row unti
   );
   link?.addEventListener('click', (event) => event.preventDefault());
   await click(link);
-  expect(services.workspaces.executionOpened).toHaveBeenCalledWith('run_v', 'exec_v');
-  // Not removed ahead of the server: the row stays while the call is out and after it lands.
+  // Going there is not reading it: the server is told only where the advice is read.
+  expect(services.workspaces.executionOpened).not.toHaveBeenCalled();
   expect(rowButton('Compare sources')).toBeDefined();
-  await act(async () => opened.resolve());
-  await flush();
-  expect(rowButton('Compare sources')).toBeDefined();
-  // The next read is the server's word: the opened row's advice is gone.
-  listed = [checkD];
-  await refocus();
-  expect(rowButton('Compare sources')).toBeUndefined();
 });
 
-it('keeps an advice when telling the server its row was opened fails', async () => {
-  const { services, rowButton, detail, click, refocus } = await mount({
-    inbox: async () => [adviceV],
-    executionOpened: async () => {
-      throw new Error('offline');
-    },
+it('names an advice by its severity when its first line is empty', async () => {
+  const { container } = await mount({
+    runs: [runSummary('run_v', 's_v', '2026-11-10T00:00:00Z')],
+    inbox: async () => [{ ...adviceV, detail: null }],
   });
-  await click(rowButton('Compare sources'));
-  const link = detail()?.querySelector('a');
-  link?.addEventListener('click', (event) => event.preventDefault());
-  await click(link);
-  expect(services.workspaces.executionOpened).toHaveBeenCalledTimes(1);
-  await refocus();
-  expect(rowButton('Compare sources')).toBeDefined();
+  expect(container.querySelector('[data-slot="card-description"]')?.textContent).toBe(
+    'Concern · Run #1',
+  );
+});
+
+it('isolates an advice’s first line, so a direction mark in it cannot turn the row around', async () => {
+  const rtl = '\u202Eecivda desrever\u202C';
+  const { container } = await mount({ inbox: async () => [{ ...adviceV, detail: rtl }] });
+  const line = container.querySelector('[data-slot="card-description"]');
+  expect(line?.textContent).toBe(`Concern · ${rtl}`);
+  expect(line?.querySelector('bdi')?.textContent).toBe(rtl);
+});
+
+it('shows a severity this version has no name for as it was recorded', async () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const { container } = await mount({
+      inbox: async () => [{ ...adviceV, severity: 'critical' as never }],
+    });
+    expect(container.querySelector('[data-slot="card-description"]')?.textContent).toBe(
+      'critical · The answer cites one source where the brief asks for two.',
+    );
+    expect(errors).not.toHaveBeenCalled();
+  } finally {
+    errors.mockRestore();
+  }
 });

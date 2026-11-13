@@ -23,7 +23,6 @@ import {
   type RunFlowNode,
   runFlowExecutionIterationId,
 } from '../run/flow.ts';
-import { executionWatching } from '../run/presence.ts';
 import { nodeRunSummary } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { LoopEscalationText } from './RunText.tsx';
@@ -61,8 +60,7 @@ function relationshipGroups(flow: RunFlow): { groups: Relationship[]; remaining:
         : undefined;
     const from = author ? nodes.get(author.from) : source;
     if (from?.kind !== 'agent' || target.kind !== 'agent' || from.id === target.id) continue;
-    if (!['read', 'input', 'question', 'answer', 'delegate', 'advice'].includes(edge.kind))
-      continue;
+    if (!['read', 'input', 'question', 'answer', 'delegate'].includes(edge.kind)) continue;
     const id = `${from.id}:${target.id}`;
     const group = groups.get(id) ?? { id, from, to: target, cards: [] };
     const cardId = source.kind === 'artifact' ? source.id : edge.kind;
@@ -106,9 +104,6 @@ export function RunFlowView({
   const status = useTranslations('Canvas.nodeStatus');
   const loopText = useTranslations('RunLoop');
   const roundText = useTranslations('Run');
-  const adviceText = useTranslations('Advice');
-  const statusText = useTranslations('Status');
-  const presenceText = useTranslations('Presence');
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
   const [roundChoices, setRoundChoices] = useState<{
@@ -149,14 +144,10 @@ export function RunFlowView({
   const asAgent = (node: RunFlowNode): HandoffAgent => {
     const execution = projection.executions[node.executionIds.at(-1) ?? ''];
     const summary = node.nodeId ? nodeRunSummary(projection, node.nodeId) : null;
-    // An advisor between reviews watches; it waits for nobody's answer.
-    const watching = executionWatching(execution);
-    const label = (value: string) =>
-      watching && value === 'waiting_message' ? presenceText('detail.watching') : stateLabel(value);
     const description = summary
       ? [
           ...Object.entries(summary.counts).map(([value, count]) =>
-            status('stateCount', { status: label(value), count: count ?? 0 }),
+            status('stateCount', { status: stateLabel(value), count: count ?? 0 }),
           ),
           ...(summary.previousFailures
             ? [status('previousFailures', { count: summary.previousFailures })]
@@ -168,7 +159,7 @@ export function RunFlowView({
       name: node.label,
       ...(execution ? { model: execution.modelProfile } : {}),
       working: ['active', 'model', 'tool', 'finalizing'].includes(node.status),
-      statusLabel: label(node.status),
+      statusLabel: stateLabel(node.status),
       selectable: node.executionIds.length > 0,
       description,
       idleLabel: node.executionIds.length
@@ -180,38 +171,17 @@ export function RunFlowView({
     };
   };
   const cards: HandoffCard[] =
-    group?.cards.map((card) => {
-      const title = card.artifact?.label ?? t(`relation.${card.edges[0]?.kind ?? 'delegate'}`);
-      const items = [
-        ...card.edges.flatMap((edge) =>
-          edge.kind === 'advice'
-            ? // Each advice by its severity, how it goes and where its delivery stands; a
-              // delivered advice is not shown as followed.
-              (edge.adviceIds ?? []).flatMap((id) => {
-                const advice = projection.advice?.[id];
-                if (!advice) return [];
-                const directive = advice.directiveId
-                  ? projection.directives[advice.directiveId]
-                  : undefined;
-                return [
-                  {
-                    id: `advice:${id}`,
-                    label: [
-                      adviceText(`severity.${advice.severity}`),
-                      adviceText(`delivery.${advice.delivery}`),
-                      directive ? statusText(directive.status) : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · '),
-                    kind: 'link' as const,
-                  },
-                ];
-              })
-            : // A relation card is titled by its kind; a result's card lists how it moved.
-              card.artifact
-              ? [{ id: edge.id, label: t(`relation.${edge.kind}`), kind: 'link' as const }]
-              : [],
-        ),
+    group?.cards.map((card) => ({
+      id: card.id,
+      title: card.artifact?.label ?? t(`relation.${card.edges[0]?.kind ?? 'delegate'}`),
+      status: 'done',
+      stateLabel: t('observed'),
+      items: [
+        ...card.edges.map((edge) => ({
+          id: edge.id,
+          label: t(`relation.${edge.kind}`),
+          kind: 'link' as const,
+        })),
         ...(!card.artifact
           ? [...new Set(card.edges.flatMap((edge) => edge.artifactVersionIds))].map((id) => ({
               id: `attachment:${id}`,
@@ -219,36 +189,24 @@ export function RunFlowView({
               kind: 'file' as const,
             }))
           : []),
-      ];
-      return {
-        id: card.id,
-        title,
-        status: 'done' as const,
-        stateLabel: t('observed'),
-        // Each line once: a lone item is the line under the title; several are counted there.
-        ...(items.length === 1
-          ? { summary: items[0]?.label ?? '', items: [] }
-          : items.length > 1
-            ? { summary: t('itemCount', { count: items.length }), items }
-            : { items }),
-        detail: (
-          <div className="grid gap-2 text-caption text-muted-foreground">
-            {card.artifact && <span>{t('createdBy', { name: group.from.label })}</span>}
-            <ObservedTime value={card.artifact?.recordedAt ?? card.edges[0]?.recordedAt ?? null} />
-            {card.artifact?.current && card.artifact.artifactVersionId ? (
-              <Button
-                variant="tertiary"
-                onClick={() => onOpenArtifact(card.artifact?.artifactVersionId ?? '')}
-              >
-                {t('open', { name: card.artifact.label })}
-              </Button>
-            ) : card.artifact ? (
-              <span>{t('metadataOnly')}</span>
-            ) : null}
-          </div>
-        ),
-      };
-    }) ?? [];
+      ],
+      detail: (
+        <div className="grid gap-2 text-caption text-muted-foreground">
+          {card.artifact && <span>{t('createdBy', { name: group.from.label })}</span>}
+          <ObservedTime value={card.artifact?.recordedAt ?? card.edges[0]?.recordedAt ?? null} />
+          {card.artifact?.current && card.artifact.artifactVersionId ? (
+            <Button
+              variant="tertiary"
+              onClick={() => onOpenArtifact(card.artifact?.artifactVersionId ?? '')}
+            >
+              {t('open', { name: card.artifact.label })}
+            </Button>
+          ) : card.artifact ? (
+            <span>{t('metadataOnly')}</span>
+          ) : null}
+        </div>
+      ),
+    })) ?? [];
 
   return (
     // Named by the tab that shows it; no heading of its own.

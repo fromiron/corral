@@ -1028,7 +1028,7 @@
       "uncertain_write": "{count, plural, one {# file write with an unknown outcome} other {# file writes with unknown outcomes}}",
       "unreviewed": "{count, plural, one {# unreviewed file write} other {# unreviewed file writes}}",
       "lsp_proposal": "{count, plural, one {# language server proposal} other {# language server proposals}}",
-      "advice": "{severity} · {detail}"
+      "advice": "{severity} · <line>{detail}</line>"
     },
     "close": "Close",
     "backToList": "Back to list",
@@ -1304,8 +1304,8 @@
     "cancelConfirmed": "Cancellation confirmed",
     "observationLate": "A late {what} was ignored",
     "outputFinalized": "Final output ready",
-    "adviceAdmitted": "{advisor} advised {node} ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}), {delivery, select, next_request {for its next request} interrupt {interrupting its response} preserve {kept on record} other {{delivery}}}",
-    "adviceSuppressed": "Advice from {advisor} dropped ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}): {reason, select, noise {nothing to act on} duplicate {already given} over_budget {too many in one review} target_terminal {the target had finished} other {{reason}}}",
+    "adviceAdmitted": "<isolate>{advisor}</isolate> advised <isolate>{node}</isolate> ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}), {delivery, select, next_request {for its next request} interrupt {interrupting its response} preserve {kept on record} other {{delivery}}}",
+    "adviceSuppressed": "Advice from <isolate>{advisor}</isolate> dropped ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}): {reason, select, noise {nothing to act on} duplicate {already given} over_budget {too many in one review} target_terminal {the target had finished} other {{reason}}}",
     "adviceDirectiveAccepted": "Advice for {node} was accepted",
     "adviceDirectiveAttached": "Advice was attached to a request",
     "adviceDirectiveDispatched": "Advice was sent",
@@ -5691,8 +5691,7 @@
       "delegate": "Delegated task",
       "review": "Reviewed",
       "branch": "Selected branch",
-      "output": "Finalized",
-      "advice": "Advice"
+      "output": "Finalized"
     },
     "port": {
       "out": "Output",
@@ -5746,8 +5745,7 @@
       "fail": "Fail",
       "inconclusive": "Inconclusive",
       "not_evaluated": "Not evaluated"
-    },
-    "itemCount": "{count, plural, one {# record} other {# records}}"
+    }
   },
   "RunLoop": {
     "title": "{name} Loop",
@@ -6204,11 +6202,6 @@
       "concern": "Concern",
       "blocker": "Blocker"
     },
-    "delivery": {
-      "next_request": "Next request",
-      "interrupt": "Interrupt",
-      "preserve": "Kept on record"
-    },
-    "from": "{advisor} · {severity}"
+    "from": "<isolate>{advisor}</isolate> · {severity}"
   }
 }

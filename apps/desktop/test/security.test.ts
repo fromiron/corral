@@ -153,6 +153,7 @@ it('advice notifications require the exact run and execution row and do not acce
     { ...target, executionId: undefined },
     { ...target, executionId: '../other' },
     { ...target, runId: null },
+    { ...target, terminalId: 'pty_a' },
     { ...target, kind: 'decision' },
     { kind: 'queued', sessionId: 'session_a', runId: null, executionId: 'exec_a' },
   ])
