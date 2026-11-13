@@ -319,6 +319,78 @@ test.describe('a meeting in the conversation frame', () => {
     expect(corral.errors).toEqual([]);
   });
 
+  // Every answer mentions everyone and nothing waits: once all have answered, a continue follows
+  // the held mentions and the meeting holds again in the same call, after the same round. That is
+  // a new card with a new command, pressed again; continuing never leaves a card that cannot be.
+  test('a chain held again after a continue gets a new card, pressed again', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    let id = '';
+    let mention = '';
+    let quiet = false;
+    corral.fake?.setResponses(
+      Array.from(
+        { length: 200 },
+        () => () =>
+          fauxAssistantMessage(quiet ? 'Agreed, Tuesday it is.' : `${mention} what do you think?`),
+      ),
+    );
+    await corral.open('/projects/default');
+    await page.getByRole('button', { name: 'New meeting', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create a meeting' });
+    await dialog.getByLabel('Meeting name', { exact: true }).fill('Launch day');
+    await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
+    await expect(page).toHaveURL(/\/sessions\/session_/);
+    id = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+    const { config } = await meeting(page, id);
+    mention = config.participants.map((person) => `@${person.participantId}`).join(' ');
+    const composer = page.getByTestId('chat-composer');
+    const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+    const tray = page.locator('[data-pending-tray]');
+    const press = tray.getByRole('button', { name: 'Continue', exact: true });
+    const sent: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().endsWith('/meeting/continue'))
+        sent.push((request.postDataJSON() as { commandId: string }).commandId);
+    });
+    const settled = async () => {
+      const view = await meeting(page, id);
+      return view.rounds.every((round) =>
+        round.answers.every((item) => item.status === 'answered'),
+      );
+    };
+
+    await box.fill('Which day should we launch?');
+    await box.press('Enter');
+    await expect(press).toBeEnabled({ timeout: 120_000 });
+    await expect.poll(settled, { timeout: 120_000 }).toBe(true);
+    const first = must((await meeting(page, id)).hold, 'the first hold');
+
+    // Continued with every answer in: held again at once, after the same round.
+    quiet = true;
+    await press.click();
+    await expect
+      .poll(async () => (await meeting(page, id)).rounds.filter((round) => round.continued).length)
+      .toBe(1);
+    const again = (await meeting(page, id)).hold;
+    expect(again).toEqual(first);
+    // A new card: pressable, not left as Continued.
+    await expect(press).toBeEnabled({ timeout: 30_000 });
+    await expect(tray.getByText('Continued', { exact: true })).toHaveCount(0);
+
+    // Pressed again, with a command of its own; the hold is released and the card goes.
+    await expect.poll(settled, { timeout: 120_000 }).toBe(true);
+    await press.click();
+    await expect(tray).toHaveCount(0, { timeout: 30_000 });
+    await expect.poll(settled, { timeout: 120_000 }).toBe(true);
+    expect((await meeting(page, id)).hold).toBeUndefined();
+    expect(sent).toHaveLength(2);
+    expect(new Set(sent).size).toBe(2);
+    expect(corral.errors).toEqual([]);
+  });
+
   // Under 640px the kit's tool line wraps; what the meeting puts on it keeps one width whatever
   // the recipients are and whether someone answers, so the line, and the input above it, stay.
   for (const width of [480, 390]) {

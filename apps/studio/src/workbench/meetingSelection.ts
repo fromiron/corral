@@ -12,8 +12,10 @@ export type RoundMeta =
   | { kind: 'names'; names: string[] }
   /** The meeting picked who answers; the answers name them. */
   | { kind: 'auto' }
-  /** Nobody answers; `explained` when the meeting, not the person, picked nobody. */
-  | { kind: 'noReply'; explained: boolean };
+  /** Nobody was to answer; `explained` when the meeting, not the person, picked nobody. */
+  | { kind: 'noReply'; explained: boolean }
+  /** It had receivers, but a later message was taken first and every answer was skipped. */
+  | { kind: 'skipped' };
 
 interface RoundLike {
   kind: 'all' | 'mention' | 'rebuttal' | 'secretary';
@@ -38,9 +40,10 @@ export function roundMeta(
       ? { kind: 'names', names: names() }
       : null;
   if (round.answers.length === 0)
-    return { kind: 'noReply', explained: AUTOMATIC.has(selection.strategy) };
+    return round.participantIds.length
+      ? { kind: 'skipped' }
+      : { kind: 'noReply', explained: AUTOMATIC.has(selection.strategy) };
   if (AUTOMATIC.has(selection.strategy)) return { kind: 'auto' };
-  if (selection.strategy === 'none') return { kind: 'noReply', explained: false };
   return { kind: 'names', names: names() };
 }
 

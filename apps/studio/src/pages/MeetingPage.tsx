@@ -63,6 +63,10 @@ const WAITING = Number.MAX_SAFE_INTEGER;
 const answerOrder = (round: RoundView, index: number, answer: AnswerView, n: number) =>
   answer.order ?? (answer.status === 'waiting' ? WAITING : (round.order ?? index * 7) + n + 1);
 
+/** The command of the last continue of a held chain, if the meeting was ever continued. */
+const lastContinue = (view: MeetingView) =>
+  view.rounds.findLast((round) => round.continued)?.commandId;
+
 /**
  * A continued round's line: just before its first answer. While that answer waits, the line
  * waits with it at the end, after the earlier rounds' waiting answers, so it never pushes them
@@ -282,15 +286,18 @@ export function MeetingPage({ session }: { session: WorkSession }) {
               .sort((a, b) => a.order - b.order)}
             tray={
               view.hold ? (
-                // What the meeting needs from the person now: a held chain's continue card.
-                <section data-pending-tray aria-label={t('hold.region')} className="pb-4">
+                // What the meeting needs from the person now: a held chain's continue card. The
+                // card names itself; this place adds no second name.
+                <div data-pending-tray className="pb-4">
                   <MeetingContinue
-                    key={view.hold.after}
+                    // A hold is where the chain stopped and the continue before it: held again
+                    // at the same place after a continue, it is a new card with a new command.
+                    key={`${view.hold.after}/${lastContinue(view) ?? ''}`}
                     hold={view.hold}
                     continueChain={(commandId) => meetings.continueChain(sessionId, { commandId })}
                     onSettled={refresh}
                   />
-                </section>
+                </div>
               ) : null
             }
             composer={

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { MeetingSelection, MeetingView } from '@corral/contracts';
+import { type MeetingSelection, type MeetingView, SECRETARY_ID } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -338,6 +338,73 @@ describe('the message’s meta line says who receives it, once', () => {
     expect(popover()?.textContent).toContain(m.selection.reason.no_reply_needed);
   });
 
+  it('receivers, but every answer skipped for a later message: Skipped, words only, however chosen', async () => {
+    const f = await mount(
+      view([
+        round('picked', {
+          participantIds: ['p2'],
+          answers: [],
+          ...select({
+            strategy: 'selector',
+            reason: 'top_score',
+            scores: [{ participantId: 'p2', score: 0.8 }],
+          }),
+        }),
+        round('chosen', {
+          participantIds: ['p1', 'p3'],
+          answers: [],
+          ...select({ strategy: 'explicit', reason: 'composer_recipients' }),
+        }),
+      ]),
+    );
+    for (const id of ['picked', 'chosen']) {
+      const line = f.meta(id)?.textContent ?? '';
+      expect(line, id).toContain(m.meta.skipped);
+      // Not "No reply", and nothing that opens a pick no one answered.
+      expect(line, id).not.toContain(m.meta.noReply);
+      expect(f.meta(id)?.querySelector('[aria-haspopup]'), id).toBeNull();
+    }
+  });
+
+  it('a reason this screen does not know is said by its method alone', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const f = await mount(
+      view([
+        round('r1', {
+          participantIds: ['p2'],
+          answers: [answered('p2')],
+          selection: { strategy: 'selector', reason: 'a_future_reason' } as never,
+        }),
+      ]),
+    );
+    await act(async () =>
+      f
+        .meta('r1')
+        ?.querySelector('button[aria-haspopup]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    );
+    await vi.waitFor(() => expect(popover()).not.toBeNull());
+    expect(popover()?.textContent).toContain(m.selection.method.selector);
+    expect(popover()?.textContent).not.toContain('a_future_reason');
+    expect(popover()?.textContent).not.toContain('selection.reason');
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it('a message for the secretary names the secretary', async () => {
+    const f = await mount(
+      view([
+        round('r1', {
+          kind: 'secretary',
+          participantIds: [SECRETARY_ID],
+          answers: [answered(SECRETARY_ID)],
+          ...select({ strategy: 'explicit', reason: 'composer_recipients' }),
+        }),
+      ]),
+    );
+    expect(f.meta('r1')?.textContent).toContain(m.to.replace('{names}', m.secretary));
+  });
+
   it('a round kept without its selection says only whom a mention was for', async () => {
     const f = await mount(
       view([
@@ -456,7 +523,10 @@ describe('a held mention chain waits on the continue card', () => {
     expect(ids()[2]).not.toBe(ids()[0]);
   });
 
-  it('a receipt that comes after the hold was released changes nothing', async () => {
+  it.each([
+    ['a refusal', { ok: false, error: 'conflict', message: 'Late refusal.' }],
+    ['a confirmation', { ok: true, outcome: 'started', roundId: 'r3' }],
+  ])('%s that comes after the hold was released changes nothing', async (_name, receipt) => {
     const f = await mount(heldView());
     let finish!: (value: unknown) => void;
     f.meetings.continueChain.mockImplementationOnce(
@@ -469,9 +539,168 @@ describe('a held mention chain waits on the continue card', () => {
     // The poll reads the meeting going on before the receipt arrives.
     await f.refresh(view([round('r1'), round('r3', { continued: true, message: null })]));
     await vi.waitFor(() => expect(f.card()).toBeNull(), { timeout: 3000 });
-    await act(async () => finish({ ok: false, error: 'conflict', message: 'Late refusal.' }));
+    const reads = f.meetings.view.mock.calls.length;
+    await act(async () => finish(receipt));
     expect(f.card()).toBeNull();
     expect(f.container.textContent).not.toContain('Late refusal.');
+    // Nothing is read again for a card that is gone.
+    expect(f.meetings.view.mock.calls.length).toBe(reads);
+  });
+
+  it('confirmed: the card says Continued, its head says nothing more, and it has one name', async () => {
+    const f = await mount(heldView());
+    // The meeting is read again and still holds at the same place (not yet gone on).
+    await act(async () => f.continueButton()?.click());
+    await vi.waitFor(() => expect(f.continueButton()).toBeUndefined());
+    expect(f.card()?.querySelector('[role="status"]')?.textContent).toBe(m.hold.continued);
+    expect(f.card()?.querySelector('header')?.textContent).toBe('');
+    // The card names itself; the place it stands in adds no second name.
+    expect(
+      [...f.container.querySelectorAll('[aria-label]')].filter(
+        (node) => node.getAttribute('aria-label') === m.hold.region,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('held again at the same place after a continue: a new card with a new command', async () => {
+    const f = await mount(heldView());
+    // The chain goes on and stops again after the same round, in the same call.
+    const heldAgain = (commandId: string) =>
+      view(
+        [
+          round('r1'),
+          round('r2', {
+            kind: 'mention',
+            message: null,
+            participantIds: ['p1', 'p3'],
+            answers: [answered('p1', '@Builder over to you'), answered('p3')],
+          }),
+          round('r3', {
+            kind: 'mention',
+            message: null,
+            continued: true,
+            commandId,
+            participantIds: ['p2'],
+            answers: [answered('p2', '@Architect your turn')],
+          }),
+        ],
+        { hold: { kind: 'chain', after: 'r2' } },
+      );
+    f.meetings.continueChain.mockImplementationOnce(async (_id, { commandId }) => {
+      f.next(heldAgain(commandId));
+      return { ok: true, outcome: 'started', roundId: 'r3' };
+    });
+    await act(async () => f.continueButton()?.click());
+    // Not left as Continued: a card to press again.
+    await vi.waitFor(() => expect(f.continueButton()?.disabled).toBe(false));
+    expect(f.card()?.querySelector('[role="status"]')).toBeNull();
+    expect(f.card()?.querySelector('header')?.textContent).toBe(m.hold.heading);
+    await act(async () => f.continueButton()?.click());
+    const ids = f.meetings.continueChain.mock.calls.map((call) => call[1].commandId);
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).not.toBe(ids[0]);
+  });
+
+  it('not confirmed, but the meeting went on: read once, and the hold that came again is new', async () => {
+    const f = await mount(heldView());
+    f.meetings.continueChain.mockImplementationOnce(async (_id, { commandId }) => {
+      f.next(
+        view(
+          [
+            round('r1'),
+            round('r3', { kind: 'mention', message: null, continued: true, commandId }),
+          ],
+          { hold: { kind: 'chain', after: 'r2' } },
+        ),
+      );
+      throw new Error('connection lost');
+    });
+    const reads = f.meetings.view.mock.calls.length;
+    await act(async () => f.continueButton()?.click());
+    await vi.waitFor(() => expect(f.meetings.view.mock.calls.length).toBe(reads + 1));
+    await vi.waitFor(() => expect(f.continueButton()?.disabled).toBe(false));
+    await act(async () => f.continueButton()?.click());
+    const ids = f.meetings.continueChain.mock.calls.map((call) => call[1].commandId);
+    expect(ids[1]).not.toBe(ids[0]);
+  });
+
+  it('refused or not confirmed: the focus is back on Continue, unless the person moved it', async () => {
+    const f = await mount(heldView());
+    const deferred = () => {
+      let settle!: { resolve(value: unknown): void; reject(error: Error): void };
+      f.meetings.continueChain.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            settle = { resolve, reject };
+          }),
+      );
+      return () => settle;
+    };
+    // While it is on its way the button is disabled, and the browser drops its focus (jsdom
+    // keeps it on a disabled button, so the focus goes through an element that then leaves).
+    const press = async () => {
+      f.continueButton()?.focus();
+      await act(async () => f.continueButton()?.click());
+      const passing = document.body.appendChild(document.createElement('button'));
+      passing.focus();
+      passing.remove();
+      expect(document.activeElement).toBe(document.body);
+    };
+    let settle = deferred();
+    await press();
+    await act(async () => settle().resolve({ ok: false, error: 'busy', message: 'Busy.' }));
+    expect(document.activeElement).toBe(f.continueButton());
+    settle = deferred();
+    await press();
+    await act(async () => settle().reject(new Error('connection lost')));
+    await vi.waitFor(() => expect(document.activeElement).toBe(f.continueButton()));
+    // Moved elsewhere while it was on its way: left there.
+    settle = deferred();
+    await press();
+    f.box()?.focus();
+    await act(async () => settle().resolve({ ok: false, error: 'busy', message: 'Busy.' }));
+    expect(document.activeElement).toBe(f.box());
+  });
+
+  it('answered from the card with the focus moved away meanwhile: the focus stays', async () => {
+    const f = await mount(heldView());
+    let finish!: (value: unknown) => void;
+    f.meetings.continueChain.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    f.continueButton()?.focus();
+    await act(async () => f.continueButton()?.click());
+    const elsewhere = f.container.querySelector<HTMLButtonElement>('button[aria-label="copy"]');
+    elsewhere?.focus();
+    f.next(view([round('r1'), round('r3', { continued: true, message: null })]));
+    await act(async () => finish({ ok: true, outcome: 'started', roundId: 'r3' }));
+    await vi.waitFor(() => expect(f.card()).toBeNull());
+    await act(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it('a continued round with no answer yet: its line comes after what was said', async () => {
+    const f = await mount(
+      view([
+        round('r1', { order: 0, answers: [{ ...answered('p2'), order: 1 }] }),
+        round('r2', {
+          kind: 'mention',
+          message: null,
+          order: 2,
+          continued: true,
+          participantIds: [],
+          answers: [],
+        }),
+      ]),
+    );
+    expect(
+      [...f.container.querySelectorAll('[data-chat-item]')].map((node) =>
+        node.getAttribute('data-chat-item'),
+      ),
+    ).toEqual(['r1:message', 'r1:p2', 'r2:continued']);
   });
 
   it('answered from the card, the focus goes to the message box', async () => {

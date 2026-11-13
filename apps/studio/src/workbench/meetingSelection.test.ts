@@ -74,6 +74,30 @@ describe('what a person’s message says about who receives it', () => {
     ).toEqual({ kind: 'noReply', explained: true });
   });
 
+  it.each([
+    ['selector', 'top_score'],
+    ['fallback', 'rotation'],
+    ['fallback', 'analysis_off'],
+    ['address', 'addressed'],
+    ['explicit', 'composer_recipients'],
+    ['mention', 'mention'],
+  ] as const)(
+    '%s (%s) with receivers but no answer (a later message went first): Skipped, however it was chosen',
+    (strategy, reason) => {
+      expect(
+        roundMeta(
+          round({
+            kind: strategy === 'mention' ? 'mention' : 'all',
+            participantIds: ['p2'],
+            answers: [],
+            selection: { strategy, reason } as MeetingSelection,
+          }),
+          nameOf,
+        ),
+      ).toEqual({ kind: 'skipped' });
+    },
+  );
+
   it('a round kept before its selection was: only whom a mention or the secretary was for', () => {
     expect(
       roundMeta(
@@ -168,5 +192,11 @@ it('every reason a selection may record is worded in English and Korean', () => 
       expect(worded[reason]?.trim(), `${locale} ${reason}`).toBeTruthy();
     // No wording for a code the contract does not have.
     expect(Object.keys(worded).sort(), locale).toEqual([...reasons].sort());
+    // A code this screen does not know is said by its method alone: every method is worded.
+    const methods = messages.Meetings.selection.method as Record<string, string>;
+    expect(Object.keys(methods).sort(), locale).toEqual(
+      Object.keys(MEETING_SELECTION_REASONS).sort(),
+    );
+    for (const sentence of Object.values(methods)) expect(sentence.trim(), locale).toBeTruthy();
   }
 });

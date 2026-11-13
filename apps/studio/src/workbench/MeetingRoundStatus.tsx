@@ -14,12 +14,13 @@ import { rankedScores, roundMeta } from './meetingSelection.ts';
 import { LINE_BUTTON } from './session/EntryStatus.tsx';
 
 type RoundView = MeetingView['rounds'][number];
+type Selection = NonNullable<RoundView['selection']>;
 
 /**
  * The always-shown end of a person's message's meta line in a meeting: who receives it, said
  * once (workbench.md, the meeting's timeline). The chosen and the @mentioned by name; the
- * meeting's own pick as "Auto", and nobody as "No reply". Auto, and a No reply the meeting chose,
- * open how it was chosen.
+ * meeting's own pick as "Auto", and nobody as "No reply"; a message whose answers a later one
+ * took the place of, "Skipped". Auto, and a No reply the meeting chose, open how it was chosen.
  */
 export function MeetingRoundStatus({ round, config }: { round: RoundView; config: MeetingConfig }) {
   const t = useTranslations('Meetings');
@@ -34,6 +35,8 @@ export function MeetingRoundStatus({ round, config }: { round: RoundView; config
       <span data-testid="round-status" className="flex min-w-0 flex-nowrap items-center">
         {meta.kind === 'names' ? (
           <Words>{t('to', { names: meta.names.join(', ') })}</Words>
+        ) : meta.kind === 'skipped' ? (
+          <Words>{t('meta.skipped')}</Words>
         ) : meta.kind === 'auto' || meta.explained ? (
           <HowChosen
             label={meta.kind === 'auto' ? t('meta.auto') : t('meta.noReply')}
@@ -53,6 +56,17 @@ const Words = ({ children }: { children: string }) => (
     {children}
   </span>
 );
+
+/**
+ * How a round was chosen, in one sentence: its reason, or for a reason code this screen does not
+ * know, its method alone. What was stored is never drawn as it is.
+ */
+function sentence(t: ReturnType<typeof useTranslations<'Meetings'>>, selection: Selection) {
+  const reason = `selection.reason.${selection.reason}` as const;
+  if (t.has(reason)) return t(reason);
+  const method = `selection.method.${selection.strategy}` as const;
+  return t.has(method) ? t(method) : null;
+}
 
 /** The pick's method and reason in one sentence, and the selector's scores as a ranking. */
 function HowChosen({
@@ -78,9 +92,7 @@ function HowChosen({
       </PopoverTrigger>
       <PopoverPopup align="end" width="md" aria-label={t('selection.title')}>
         <div data-meeting-selection className="flex flex-col gap-3 text-caption">
-          {selection ? (
-            <p className="text-foreground">{t(`selection.reason.${selection.reason}`)}</p>
-          ) : null}
+          {selection ? <p className="text-foreground">{sentence(t, selection)}</p> : null}
           {ranked.length ? (
             <ol aria-label={t('selection.ranking')} className="flex flex-col gap-1.5">
               {ranked.map((item) => (

@@ -1,9 +1,12 @@
 import type { MeetingHold } from '@corral/contracts';
 import type { MeetingResult } from '@corral/core';
 import { DecisionInbox } from '@corral/react/design-kit';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { newCommandId } from '../sessionActions.ts';
+
+/** Nothing has the focus: it was on something that went (or could no longer be focused). */
+const focusLost = () => !document.activeElement || document.activeElement === document.body;
 
 /**
  * The focus left with the answer (its button gave way to the result, or the card left): to the
@@ -12,8 +15,7 @@ import { newCommandId } from '../sessionActions.ts';
 function toBox(handoff: { current: Element | null }) {
   const chat = handoff.current;
   handoff.current = null;
-  if (!chat?.isConnected) return;
-  if (document.activeElement && document.activeElement !== document.body) return;
+  if (!chat?.isConnected || !focusLost()) return;
   chat.querySelector<HTMLElement>('[data-testid=chat-composer] textarea')?.focus({
     preventScroll: true,
   });
@@ -24,7 +26,8 @@ function toBox(handoff: { current: Element | null }) {
  * in the place of what the conversation needs now, with one answer, Continue. The kit's decision
  * stack answers only on its receipt: a press sends the command and the button waits, unpressable,
  * until it comes; a refusal frees it with the reason in its place; a receipt that never came is
- * sent again with the same command. Mount one per hold (keyed by it): each hold has its command.
+ * sent again with the same command, after the meeting is read once more. Mount one per hold and
+ * per continue before it (keyed by both): each such hold has its command.
  */
 export function MeetingContinue({
   hold,
@@ -34,7 +37,7 @@ export function MeetingContinue({
 }: {
   hold: MeetingHold;
   continueChain: (commandId: string) => Promise<MeetingResult>;
-  /** The meeting is read again: the hold goes once the chain goes on. */
+  /** The meeting is read again: the hold goes, or comes again as a new card, once it went on. */
   onSettled: () => Promise<void> | void;
   newId?: () => string;
 }) {
@@ -49,6 +52,8 @@ export function MeetingContinue({
   const live = useRef(true);
   // Answered from the card: when it folds or leaves, the focus goes to the message box.
   const handoff = useRef<Element | null>(null);
+  // Pressable again (refused, or not confirmed) with the focus lost on the way: back to it.
+  const [refocus, setRefocus] = useState(0);
   useEffect(() => {
     live.current = true;
     return () => {
@@ -61,6 +66,12 @@ export function MeetingContinue({
     const frame = requestAnimationFrame(() => toBox(handoff));
     return () => cancelAnimationFrame(frame);
   }, [continued]);
+  useLayoutEffect(() => {
+    if (!refocus || !focusLost()) return;
+    box.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus({
+      preventScroll: true,
+    });
+  }, [refocus]);
 
   const decide = async () => {
     if (inFlight.current || continued) return;
@@ -74,23 +85,35 @@ export function MeetingContinue({
     try {
       result = await continueChain(commandId);
     } catch {
-      // Not confirmed: the hold still waits, and the next press sends this same command.
+      // Not confirmed: read below whether the meeting went on anyway.
       result = null;
     } finally {
       inFlight.current = false;
     }
     // Released while it was on its way (the meeting went on): nothing here to say.
     if (!live.current) return;
-    setPending(false);
-    if (result && !result.ok) {
-      handoff.current = null;
+    if (result?.ok) {
+      setPending(false);
+      setContinued(true);
+      await onSettled();
+      return;
+    }
+    if (result) {
+      setPending(false);
       setRefused(t('hold.refused', { message: result.message }));
-    } else if (result) setContinued(true);
-    else handoff.current = null;
-    if (result?.ok) await onSettled();
+    } else {
+      // Read the meeting once: if the chain went on, its hold goes or comes again as a new card
+      // and this one leaves; if not, this card waits to be pressed again, with the same command.
+      await onSettled();
+      if (!live.current) return;
+      setPending(false);
+    }
+    const owned = handoff.current !== null;
+    handoff.current = null;
+    if (owned) setRefocus((count) => count + 1);
   };
   return (
-    <div ref={box} data-meeting-hold className="flex flex-col gap-2">
+    <div ref={box} data-meeting-hold>
       <DecisionInbox
         decisions={[
           {
@@ -105,8 +128,8 @@ export function MeetingContinue({
         ]}
         optimistic={false}
         onDecide={() => void decide()}
-        heading={() => t('hold.heading')}
-        clearHeading={t('hold.continued')}
+        // Answered, the card's head says nothing more: its answer says it.
+        heading={(open) => (open ? t('hold.heading') : '')}
         emptyLabel=""
         labels={{ region: t('hold.region') }}
       />

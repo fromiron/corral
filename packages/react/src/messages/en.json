@@ -5334,13 +5334,22 @@
     },
     "meta": {
       "auto": "Auto",
-      "noReply": "No reply"
+      "noReply": "No reply",
+      "skipped": "Skipped"
     },
     "selection": {
       "open": "{label}: how the recipients were chosen",
       "title": "How the recipients were chosen",
       "ranking": "Fit for this message",
       "picked": "Answers",
+      "method": {
+        "explicit": "You chose the recipients.",
+        "mention": "They were called with an @mention.",
+        "address": "The message addressed them by name.",
+        "selector": "The meeting’s selector picked who answers.",
+        "fallback": "The meeting could not score this message, so it picked another way.",
+        "none": "Nobody was asked to reply."
+      },
       "reason": {
         "composer_recipients": "You chose the recipients in the composer.",
         "rebuttal": "You asked the previous round’s participants for a rebuttal.",
@@ -5355,7 +5364,7 @@
         "recent_speaker": "The meeting could not score this message, so the most recent speaker answers.",
         "rotation": "The meeting could not score this message, so the next participant in turn answers.",
         "nobody_available": "The meeting could not score this message, and no participant was free to answer.",
-        "analysis_off": "Meeting analysis is off, so every participant answers.",
+        "analysis_off": "Meeting analysis is off, so every participant allowed to answer does.",
         "no_recipients": "You sent it to no one."
       }
     },
