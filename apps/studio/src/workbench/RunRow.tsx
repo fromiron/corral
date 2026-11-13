@@ -95,21 +95,19 @@ export function TurnEnd({
 }
 
 /**
- * The row: its head (with the work log it opens), its body and its tail, then what stands
- * outside the row (a waiting approval's card). Hovering or focusing the row shows its icon
- * actions, as hovering a message did.
+ * The row: its head (with the work log it opens), its body and its tail. What waits on the person
+ * is not part of it: the conversation's needed-now tray holds it. Hovering or focusing the row
+ * shows its icon actions, as hovering a message did.
  */
 export function RunRow({
   head,
   tail,
-  after,
   minHeight,
   ref,
   children,
 }: {
   head: ReactNode;
   tail: ReactNode;
-  after?: ReactNode;
   /** The height the row keeps while it is read again after the timeline mounted it again. */
   minHeight?: number;
   ref?: Ref<HTMLDivElement>;
@@ -132,7 +130,6 @@ export function RunRow({
         </div>
         <div className="mt-1">{tail}</div>
       </div>
-      {after}
     </div>
   );
 }

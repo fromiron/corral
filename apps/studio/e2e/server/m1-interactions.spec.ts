@@ -102,7 +102,12 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await expect(page.getByRole('button', { name: 'Remove notes.txt' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByTestId('action-required')).toBeVisible();
+  // The question comes to the conversation's needed-now tray, in view: no notice repeats it.
+  const question = page.locator('[data-pending-tray]').getByRole('form', {
+    name: 'Waiting for you',
+  });
+  await expect(question).toBeVisible();
+  await expect(page.getByTestId('action-required')).toHaveCount(0);
   // The plan is one line above the composer; the person expands it to read its steps.
   await expect(page.getByTestId('work-plan-toggle')).toContainText('Read attachment and answer');
   await page.getByTestId('work-plan-toggle').click();
@@ -112,9 +117,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
   // Product gap: the composer's Todo rows are not AgentSteering plan rows (chat-widgets-contract
   // §4.1), so the step in progress has no aria-current. Soft, so the journey below still runs.
   await expect.soft(planItem).toHaveAttribute('aria-current', 'step');
-  await page.getByTestId('action-required').getByRole('link').click();
-  const question = page.getByRole('form', { name: 'Waiting for you' });
-  await expect(question).toHaveCount(1);
+  await expect(page.getByRole('form', { name: 'Waiting for you' })).toHaveCount(1);
   const answer = question.getByRole('textbox', { name: 'Your answer' });
   await answer.fill('A table');
   expect(

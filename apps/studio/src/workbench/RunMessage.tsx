@@ -271,9 +271,8 @@ export function RunMessage({
     () => buildTurnProcess(state.events, projection, {}, label),
     [state.events, projection, label],
   );
-  // Waiting questions are answered in the exact run's response area; the composer's notice
-  // names the first and carries the way there, so the turn does not repeat it. A waiting
-  // approval is its card below, which says what it waits for.
+  // What waits on the person is answered in the conversation's needed-now tray, and the
+  // composer's notice names a waiting question, so the turn does not repeat either.
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
   if (!projection && sessionId)
     // The row's three lines before its record is read; the words come into the same places.
@@ -489,8 +488,7 @@ export function RunMessage({
       })}
     </ul>
   ) : null;
-  // An ended turn's reason closes its body; a waiting question is the composer notice's, and a
-  // waiting approval is its card's.
+  // An ended turn's reason closes its body; what waits on the person says itself in the tray.
   const reasonLine =
     projection.statusReason &&
     !unfinished &&
@@ -501,26 +499,10 @@ export function RunMessage({
         {trun('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={label} />
       </p>
     ) : null;
-  const approval = (
-    <ApprovalPanel
-      session={store}
-      onOpenArtifact={onOpenArtifact}
-      showPlan={!sessionId}
-      showRelatedPanels={!sessionId}
-      // In a conversation the top bar's pill says the run waits; the card names the decision.
-      headed={!sessionId}
-      policySettingsAction={
-        sessionId ? (
-          // A way out of the card, quieter than its decisions.
-          <Button
-            variant="ghost"
-            render={<Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />}
-          >
-            {trun('permissionSettings')}
-          </Button>
-        ) : undefined
-      }
-    />
+  // Outside a conversation the run's cards stand in its turn. In one, what waits on the person is
+  // answered in the conversation's needed-now tray at the end of the timeline, not in the row.
+  const approval = sessionId ? null : (
+    <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />
   );
   const textOf = (result: ResultItem) =>
     result.artifactVersionId === preservedTurn?.artifactVersionId
@@ -681,7 +663,6 @@ export function RunMessage({
             ) : null}
           </RunTail>
         }
-        after={approval}
       >
         {replyPending ? (
           // Where the answer will appear, until the run shows its first words or a result. It

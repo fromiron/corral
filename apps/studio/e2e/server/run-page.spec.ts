@@ -154,9 +154,49 @@ test('live event counts keep event filters, selection and scroll in the primary 
   await page.setViewportSize({ width: 1600, height: 900 });
   const { runId } = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/runs/${runId}`);
-  await page.getByTestId('run-respond').click();
-  const approval = page.getByRole('button', { name: 'Continue with this version', exact: true });
-  await expect(approval).toBeVisible();
+  // The run waits; its record reads the request beside the conversation, whose tray answers it.
+  await expect(page.getByTestId('run-side').getByTestId('respond-in-conversation')).toBeVisible({
+    timeout: 30_000,
+  });
+  // The decision comes from elsewhere (another client), so events arrive while this view stays.
+  const approve = () =>
+    page.evaluate(
+      async ({ runId, approval }) => {
+        const { csrfToken } = await (await fetch('/api/v1/session')).json();
+        const response = await fetch(`/api/v1/runs/${runId}/commands`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify({
+            schemaVersion: '0.1',
+            commandId: 'live-events-approval',
+            runId,
+            type: 'resolve_approval',
+            expectedControlRevision: approval.controlRevision,
+            payload: {
+              approvalId: approval.approvalId,
+              decision: 'approve',
+              subjectVersionId: approval.subjectVersionId,
+            },
+          }),
+        });
+        if (!response.ok) throw new Error(`approve: ${response.status}`);
+      },
+      (() => {
+        const { projection } = corral.server.coordinator.getSnapshot(runId);
+        const waiting = Object.values(projection.approvals).find(
+          (item) => item.status === 'pending',
+        );
+        if (!waiting) throw new Error('no waiting approval');
+        return {
+          runId,
+          approval: {
+            approvalId: waiting.approvalId,
+            subjectVersionId: waiting.subjectVersionIds[0] ?? '',
+            controlRevision: projection.controlRevision,
+          },
+        };
+      })(),
+    );
   const monitor = page.getByTestId('run-monitor');
   const tab = monitor.getByRole('tab', { name: /^Events \d+$/ });
   await tab.click();
@@ -173,7 +213,7 @@ test('live event counts keep event filters, selection and scroll in the primary 
   await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const top = await scroll.evaluate((element) => element.scrollTop);
   const count = await tab.textContent();
-  await approval.click();
+  await approve();
   await expect(tab).not.toHaveText(count ?? '');
   await expect(kind).toContainText('tool');
   await expect(selected).toHaveText(selectedText ?? '');
@@ -486,28 +526,27 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
 });
 
-test('the waiting pill opens the run’s response area, even in a narrow window', async ({
+test('the waiting pill brings the conversation’s needed-now tray into view, even in a narrow window', async ({
   page,
   corral,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
-  // An approval alone is decided in its turn's card; the composer has no notice for it, and the
-  // top bar's pill (only the run's number at this width) is the way to the response area.
+  // An approval alone is decided in the conversation's tray; the composer has no notice for it,
+  // and the top bar's pill (only the run's number at this width) is the way to that tray.
   const pill = page.getByRole('banner').getByTestId('dock-open-active-run');
   await expect(pill).toHaveAttribute('data-state', 'waiting', { timeout: 30_000 });
   await expect(page.getByTestId('action-required')).toHaveCount(0);
   await pill.click();
-  const response = page.locator(`[data-run-response="${started.runId}"]`);
-  await expect(response).toBeVisible();
-  await expect(response).toBeFocused();
+  // The request to respond opens the conversation, not the run record, and focuses the tray.
+  const tray = page.locator('[data-pending-tray]');
+  await expect(tray).toBeFocused();
+  await expect(tray).toBeInViewport();
+  await expect(tray.locator(`[data-run-response="${started.runId}"]`)).toHaveCount(1);
+  await expect(page.getByTestId('run-monitor')).toBeHidden();
   // The request is answered once: it does not stay in the address.
   await expect(page).not.toHaveURL(/respond=/);
-  // Closed by hand, the same request does not come back.
-  await page.getByTestId('run-side').getByRole('button', { name: 'Close details' }).click();
-  await expect(response).toBeHidden();
-  await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
 
@@ -601,18 +640,25 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   );
   await expect(action).not.toContainText('Respond');
   await action.click();
-  // The waiting pill leads to the response area, which opens and takes focus by itself.
-  const response = page.locator('[data-run-response]');
-  await expect(response).toBeFocused();
+  // The waiting pill leads to the conversation's needed-now tray, which takes focus.
+  const tray = page.locator('[data-pending-tray]');
+  await expect(tray).toBeFocused();
+  const response = tray.locator('[data-run-response]');
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
+  // A subject opens beside the conversation, and the tray keeps the decision.
   await response.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect(
     page.getByTestId('run-monitor').getByRole('region', { name: 'draft · Version 2', exact: true }),
   ).toBeVisible();
+  // The run record reads what waits and does not answer it.
   await page
     .getByTestId('run-document')
     .getByRole('button', { name: 'Back to work', exact: true })
     .click();
+  await expect(
+    page.getByTestId('run-monitor').getByRole('button', { name: 'Continue with this version' }),
+  ).toHaveCount(0);
+  await panelTab(page, 'Conversation');
   await expect(response).toBeVisible();
   await response.getByRole('button', { name: 'review v2', exact: true }).click();
   await expect(
@@ -626,8 +672,6 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     .click();
   await panelTab(page, 'Conversation');
   const input = requestBox(page);
-  await input.fill('Keep typing while the run continues');
-  await expect(input).toBeFocused();
 
   let releaseApproval!: () => void;
   const approvalReady = new Promise<void>((resolve) => {
@@ -638,15 +682,15 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await route.continue();
   });
   try {
-    await panelTab(page, 'Runs');
     const posted = page.waitForRequest(
       (request) =>
         request.url().endsWith('/commands') && request.postDataJSON()?.type === 'resolve_approval',
     );
     await response.getByRole('button', { name: 'Continue with this version' }).click();
     await posted;
-    await panelTab(page, 'Conversation');
-    await input.focus();
+    // While the decision waits for its receipt, the person goes on typing.
+    await input.fill('Keep typing while the run continues');
+    await expect(input).toBeFocused();
     releaseApproval();
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),

@@ -970,7 +970,12 @@
       "foreground": "Foreground",
       "timeout": "Timeout",
       "editFile": "Edit file"
-    }
+    },
+    "continueHeading": "{count, plural, one {# decision} other {# decisions}}",
+    "continueAnswered": "Answered",
+    "continueRegion": "Continue or stop",
+    "continueRegionOfRun": "{run} · Continue or stop",
+    "continueStopped": "Stopped"
   },
   "Inbox": {
     "title": "Needs you",
@@ -1990,7 +1995,8 @@
       "tooMany": "Completion criteria have up to {max} lines.",
       "tooLong": "Line {line} is longer than {max} characters.",
       "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
-    }
+    },
+    "neededNow": "Needed now"
   },
   "Files": {
     "folderHeading": "Project source folder",
@@ -2818,6 +2824,9 @@
       "unknown": "Side effects not classified"
     },
     "userQuestions": "Waiting for you",
+    "userQuestionsNamed": "Waiting for you: {question}",
+    "answered": "Answered",
+    "answeredLine": "Answered: {answer}",
     "questionUnavailable": "The question could not be loaded. Try again or cancel the run.",
     "recommended": "Recommended",
     "yourAnswer": "Your answer",
@@ -5507,6 +5516,7 @@
       "now": "Now"
     },
     "activity": "Activity",
+    "runWaiting": "{run} · Waiting for you",
     "respond": "{count, plural, =1 {Respond} other {Respond · #}}",
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",

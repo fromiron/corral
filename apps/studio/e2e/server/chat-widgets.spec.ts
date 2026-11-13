@@ -268,15 +268,15 @@ test('live plans, context, manual collapse and an answer use the primary session
     expect(liveBody.items[2].status).toBe('in_progress');
     ask.release();
     const question = page.getByRole('form', { name: 'Waiting for you' });
-    await expect(page.getByTestId('action-required')).toBeVisible();
+    // The question comes to the conversation's needed-now tray, in view: no notice repeats it.
+    await expect(page.locator('[data-pending-tray]').getByRole('form')).toBeVisible();
+    await expect(page.getByTestId('action-required')).toHaveCount(0);
     // Faux responses do not serialize a provider request or invoke onPayload.
     // Their assembled context must not be promoted to a complete measurement.
     await expect((await openOverview(page)).getByTestId('context-usage-chip')).not.toContainText(
       /Context about \d+%/,
     );
     await closeOverview(page);
-    await page.getByTestId('action-required').getByText('Respond', { exact: true }).click();
-    await page.getByTestId('run-respond').click();
     await expect(question).toBeVisible();
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
@@ -347,7 +347,9 @@ test.describe('serialized provider context', () => {
     });
     await session(page, corral);
     await send(page, 'Read this text, make a short plan, and ask before answering.');
-    await expect(page.getByTestId('action-required')).toBeVisible();
+    await expect(
+      page.locator('[data-pending-tray]').getByRole('form', { name: 'Waiting for you' }),
+    ).toBeVisible();
 
     // Read back the persisted public event through the Coordinator's existing stream.
     const events: RunEvent[] = [];
@@ -389,8 +391,6 @@ test.describe('serialized provider context', () => {
     await page.keyboard.press('Escape');
     await expect(inspector).toBeHidden();
     await closeOverview(page);
-    await page.getByTestId('action-required').getByRole('link').click();
-    await page.getByTestId('run-respond').click();
     const question = page.getByRole('form', { name: 'Waiting for you' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();

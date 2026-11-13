@@ -251,7 +251,11 @@ test.describe('active work and credentials', () => {
       await page.keyboard.press('Control+.');
       await page.keyboard.press('Control+k');
       release();
-      await expect(page.getByTestId('action-required')).toContainText('A question is waiting');
+      // The question arrives in the conversation's needed-now tray, under Settings.
+      const asked = page.locator('[data-pending-tray]').getByRole('form', {
+        name: 'Waiting for you',
+      });
+      await expect(asked).toBeAttached();
       await expect(key).toBeFocused();
       await expect(key).toHaveValue('fixture-secret');
       expect(await original?.evaluate((node) => node.isConnected)).toBe(true);
@@ -268,7 +272,7 @@ test.describe('active work and credentials', () => {
       await dialog.getByRole('button', { name: 'Close settings' }).click();
       await expect(page).toHaveURL(workUrl);
       await expect(input).toHaveValue('다음 초안 日本語');
-      await expect(page.getByTestId('action-required')).toBeVisible();
+      await expect(asked).toBeVisible();
       expect(await original?.evaluate((node: HTMLTextAreaElement) => node.selectionStart)).toBe(3);
       expect(
         await page.evaluate(() =>

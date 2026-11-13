@@ -10,6 +10,7 @@ import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
 import { RunMessage } from './RunMessage.tsx';
+import { PendingTray } from './session/PendingTray.tsx';
 
 const fixture = vi.hoisted(() => ({
   store: null as RunSessionStore | null,
@@ -22,6 +23,9 @@ vi.mock('./useCorralChat.ts', () => ({
     conversationTurn: null,
     bodyMetadataCurrent: true,
   }),
+}));
+vi.mock('../services.tsx', () => ({
+  useServices: () => ({ runFor: () => fixture.store, retainRun: () => () => {} }),
 }));
 vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: (_key: string, initial: boolean) => useState(initial),
@@ -101,7 +105,8 @@ const question = (requestId: string, executionId: string, runSeq: number) =>
 const body = (prompt: string) =>
   JSON.stringify({ key: 'layout', questions: [{ id: 'layout', kind: 'text', prompt }] });
 
-async function show(sessionId: string | null = 'session_chat') {
+/** The turn; with `tray`, the conversation's needed-now tray after it, as the session shows it. */
+async function show(sessionId: string | null = 'session_chat', tray = false) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -113,6 +118,22 @@ async function show(sessionId: string | null = 'session_chat') {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <RunMessage runId="run_chat" sessionId={sessionId} live onOpenArtifact={vi.fn()} />
+        {tray && sessionId ? (
+          <PendingTray
+            sessionId={sessionId}
+            runs={[
+              {
+                runId: 'run_chat',
+                status: 'awaiting_user',
+                corralId: 'team',
+                projectId: 'project',
+                sessionId,
+                startedAt: '2026-11-09T00:00:00.000Z',
+              },
+            ]}
+            onOpenArtifact={vi.fn()}
+          />
+        ) : null}
       </IntlProvider>,
     ),
   );
@@ -177,11 +198,13 @@ it('leaves a waiting question to the composer notice: the turn neither names nor
   expect(loadArtifact).not.toHaveBeenCalledWith('body_q_2');
 });
 
-it('draws a waiting approval in the turn under no heading of its own', async () => {
+it('draws a waiting approval in the needed-now tray under no heading of its own', async () => {
   fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
-  const container = await show();
-  // The card is the decision, with its buttons, in the conversation.
+  const container = await show('session_chat', true);
+  // The card is the decision, with its buttons, in the conversation's tray, not in the turn.
   const card = container.querySelector('[data-testid="approval-approval_1"]');
+  expect(card?.closest('[data-pending-tray]')).not.toBeNull();
+  expect(card?.closest('[data-chat-part]')).toBeNull();
   expect(card?.textContent).toContain(messages.Approvals.kind.user_action);
   const buttons = [...(card?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
   expect(buttons).toEqual(
@@ -206,7 +229,7 @@ it('draws a waiting approval in the turn under no heading of its own', async () 
 
 it('leaves why the run waits to the approval card, with no reason line under it', async () => {
   fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
-  const container = await show();
+  const container = await show('session_chat', true);
   expect(container.querySelector('[data-testid="approval-approval_1"]')).not.toBeNull();
   expect(container.querySelector('[data-testid="run-reason"]')).toBeNull();
   const visible = visibleLines(container).join('\n');
