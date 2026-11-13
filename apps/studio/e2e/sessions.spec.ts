@@ -81,6 +81,8 @@ test('while a run works, a request waits in the queue until a person starts it',
   await box(page).press('Alt+Enter');
   const queue = page.getByRole('region', { name: 'Queued next tasks' });
   await expect(queue).toContainText('Then summarise it');
+  // Auto start is the server's; the browser demo has none, so a person starts it.
+  await expect(queue.getByRole('switch')).toHaveCount(0);
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();
   await expect(status(cards(page).first(), 'Succeeded')).toBeVisible({
     timeout: 20_000,
