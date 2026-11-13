@@ -28,6 +28,7 @@ import type { FolderAccess } from '../WorkFolderNotice.tsx';
 import { ComposerActivity } from './ComposerActivity.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
+import { AdvisorControl, openAdvisorControl } from './composer/AdvisorControl.tsx';
 import { composerAvailability } from './composer/availability.ts';
 import { ComposerCard, type SendTarget } from './composer/ComposerCard.tsx';
 import { ComposerNotices } from './composer/ComposerNotices.tsx';
@@ -173,7 +174,19 @@ function SessionComposer({
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
   const failed = (message: string) => t('failed', { message });
-  const { autoChoice, updateAuto, updateTeam, autoStart, updateAutoStart } = useSessionSettings({
+  const {
+    autoChoice,
+    updateAuto,
+    updateTeam,
+    autoStart,
+    updateAutoStart,
+    advisor,
+    advisorUnknown,
+    advisorSaving,
+    advisorProblem,
+    updateAdvisor,
+    recheckAdvisor,
+  } = useSessionSettings({
     session,
     profiles,
     busy,
@@ -329,6 +342,11 @@ function SessionComposer({
     const explicitQueue = 'role' in pick ? pick.role === 'queue' : pick.choice === 'queue';
     if (!body || busy || autoSaving.current || availableFor(how.intent, explicitQueue).unavailable)
       return;
+    // Whether the advisor rides along is not known: the session is read first, or nothing goes.
+    if (advisorUnknown && !(await recheckAdvisor())) {
+      if (mounted.current) setError(tc('advisor.unconfirmedSend'));
+      return;
+    }
     onSent?.();
     lastPick.current = pick;
     setLowered(false);
@@ -575,6 +593,7 @@ function SessionComposer({
           missingTeam={missingTeam}
           refusal={refusal}
           onRetry={() => void send(lastPick.current)}
+          onAdvisor={openAdvisorControl}
           missingChipCount={missingChips.length}
           chips={chips}
           missing={missing}
@@ -609,21 +628,35 @@ function SessionComposer({
         />
       }
       afterTarget={
-        // While the run's record is read, what a send is is not known: no request settings.
-        (intent === 'next' || intent === 'queue') && !blocked && !loading ? (
-          <TeamChoice
-            projectId={session.projectId}
-            team={team}
-            teamMode={teamMode}
-            corrals={corrals}
-            isAuto={isAuto}
-            disabled={busy}
-            open={teamOpen}
-            onOpenChange={setTeamOpen}
-            onTeamMode={setTeamMode}
-            onTeam={(corralId) => void updateTeam(corralId)}
+        <>
+          {/* While the run's record is read, what a send is is not known: no request settings. */}
+          {(intent === 'next' || intent === 'queue') && !blocked && !loading ? (
+            <TeamChoice
+              projectId={session.projectId}
+              team={team}
+              teamMode={teamMode}
+              corrals={corrals}
+              isAuto={isAuto}
+              disabled={busy}
+              open={teamOpen}
+              onOpenChange={setTeamOpen}
+              onTeamMode={setTeamMode}
+              onTeam={(corralId) => void updateTeam(corralId)}
+            />
+          ) : null}
+          {/* A session setting for the next requests: it stays in view while a run goes. */}
+          <AdvisorControl
+            value={advisor}
+            unknown={advisorUnknown}
+            onRecheck={() => void recheckAdvisor()}
+            defaultModel={autoChoice.modelProfile}
+            profiles={profiles}
+            saving={advisorSaving}
+            disabled={busy && !advisorSaving}
+            problem={advisorProblem}
+            onChange={(next) => void updateAdvisor(next)}
           />
-        ) : null
+        </>
       }
       settings={loading ? null : <RequestTools only="settings" {...requestTools} />}
       end={<RequestTools only="voice" {...requestTools} />}

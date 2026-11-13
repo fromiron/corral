@@ -14,6 +14,7 @@ import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { editRequest, RefusalActions } from '../RefusalHelp.tsx';
 import { refusalKind } from '../refusal.ts';
+import { openAdvisorControl } from './composer/AdvisorControl.tsx';
 import { entryKind, type SteerMeta } from './entryMeta.ts';
 
 // The always-shown end of a sent message's meta line: what became of it, on one line. Text
@@ -201,6 +202,8 @@ function RefusalLine({
         owner={owner}
         sessionId={sessionId}
         quiet={LINE_BUTTON}
+        // The conversation's advisor control, beside the request box under this line.
+        onAdvisor={openAdvisorControl}
         // Edited as the pencil edits it: with everything it was sent with.
         onEdit={edit ? () => editRequest(entry.text, entry) : undefined}
       />

@@ -37,6 +37,7 @@ export function editRequest(
 export type RefusalAction =
   | 'openTerminal'
   | 'connect'
+  | 'chooseAdvisor'
   | 'chooseImageModel'
   | 'retry'
   | 'queue'
@@ -44,9 +45,11 @@ export type RefusalAction =
 
 export function refusalActions(
   kind: RefusalKind,
-  can: { terminal: boolean; retry: boolean; queue: boolean; edit: boolean },
+  can: { terminal: boolean; retry: boolean; queue: boolean; edit: boolean; advisor?: boolean },
 ): RefusalAction[] {
   const actions: RefusalAction[] = [];
+  // The advisor's control, to choose another model or turn it off.
+  if (kind === 'advisor' && can.advisor) actions.push('chooseAdvisor');
   if ((kind === 'terminal' || kind === 'terminalUncertain') && can.terminal)
     actions.push('openTerminal');
   if (kind === 'signin' || kind === 'profile') actions.push('connect');
@@ -64,6 +67,7 @@ export const REFUSAL_DIAGNOSTICS = new Set<RefusalKind>([
   'busy',
   'image',
   'capability',
+  'advisor',
 ]);
 
 export interface RefusalProps {
@@ -73,6 +77,8 @@ export interface RefusalProps {
   onEdit?: (() => void) | undefined;
   onRetry?: (() => void) | undefined;
   onQueue?: (() => void) | undefined;
+  /** Opens the conversation's advisor control. */
+  onAdvisor?: (() => void) | undefined;
   sessionId?: string | undefined;
   owner?: CommandError['owner'] | undefined;
   /**
@@ -90,6 +96,7 @@ export function RefusalActions({
   onEdit,
   onRetry,
   onQueue,
+  onAdvisor,
   sessionId,
   owner,
   quiet,
@@ -108,6 +115,7 @@ export function RefusalActions({
     retry: Boolean(onRetry),
     queue: Boolean(onQueue),
     edit: Boolean(onEdit),
+    advisor: Boolean(onAdvisor),
   }).map((action) => {
     switch (action) {
       case 'openTerminal':
@@ -135,6 +143,12 @@ export function RefusalActions({
             render={<Link {...navigation.link('models')} />}
           >
             {t(action)}
+          </Button>
+        );
+      case 'chooseAdvisor':
+        return (
+          <Button key={action} {...look('primary')} onClick={onAdvisor}>
+            {t('chooseAdvisor')}
           </Button>
         );
       case 'retry':
