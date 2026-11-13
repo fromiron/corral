@@ -124,7 +124,9 @@ export function ApprovalPanel({
     [all],
   );
   // The criteria a decision about versions is judged by; a run limit and a tool call have none.
-  const criteriaId = approvals.find((a) => !a.limit && !a.tool)?.criteriaVersionId;
+  const criteriaId = approvals.find(
+    (a) => !a.limit && !a.tool && a.kind !== 'request_budget',
+  )?.criteriaVersionId;
   const criteria = useStore(session, (s) => (criteriaId ? s.artifactTexts[criteriaId] : undefined));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<Receipt | null>(null);
@@ -236,16 +238,34 @@ export function ApprovalPanel({
   /** Which limit paused the run, and at what count. */
   const limitText = (limit: NonNullable<ApprovalView['limit']>) =>
     t(`limit.title.${limit.kind}`, { used: limit.used, max: limit.max });
+  /** The agent a request budget holds, by its step's name. */
+  const budgetRole = (approval: ApprovalView) => {
+    const nodeId = executions?.[approval.executionId ?? '']?.nodeId;
+    return nodes?.find((node) => node.id === nodeId)?.label ?? t('budget.agent');
+  };
+  /** One agent's request budget: who, and how many requests against what budget. */
+  const budgetText = (approval: ApprovalView) =>
+    approval.limit
+      ? t('budget.title', {
+          role: budgetRole(approval),
+          used: approval.limit.used,
+          max: approval.limit.max,
+        })
+      : t('budget.titleBare', { role: budgetRole(approval) });
   /** What waits; a breakpoint names the step it holds, a run limit the limit. */
   const kindText = (approval: ApprovalView) =>
-    approval.limit
-      ? limitText(approval.limit)
-      : t(`kind.${copyKey(approval)}`, {
-          step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
-        });
+    approval.kind === 'request_budget'
+      ? budgetText(approval)
+      : approval.limit
+        ? limitText(approval.limit)
+        : t(`kind.${copyKey(approval)}`, {
+            step:
+              nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
+          });
   const toolLabel = (name: string) => (tTurn.has(`tool.${name}`) ? tTurn(`tool.${name}`) : name);
   /** A decision already made, in words: the limit, the call or check, or the version. */
   const doneText = (approval: ApprovalView) => {
+    if (approval.kind === 'request_budget') return t('budget.done', { role: budgetRole(approval) });
     if (approval.limit) return t('doneLimit', { limit: limitText(approval.limit) });
     if (approval.tool?.purpose === 'tool') {
       const plan = toolPlans[approval.tool.bodyRef];
@@ -318,9 +338,11 @@ export function ApprovalPanel({
                   ? 'rejectLsp'
                   : 'rejectCheck',
             )
-          : approval.limit
-            ? t('limit.reject')
-            : t(`rejectAs.${copyKey(approval)}`)}
+          : approval.kind === 'request_budget'
+            ? t('budget.reject', { role: budgetRole(approval) })
+            : approval.limit
+              ? t('limit.reject')
+              : t(`rejectAs.${copyKey(approval)}`)}
       </Button>
       {approval.tool?.purpose === 'tool' ? (
         // The same call again needs no answer until the run ends; a command is matched by its
@@ -355,9 +377,11 @@ export function ApprovalPanel({
                     ? 'lspOnce'
                     : 'checkOnce',
               )
-            : approval.limit
-              ? t('limit.then')
-              : t(`then.${copyKey(approval)}`)
+            : approval.kind === 'request_budget'
+              ? t('budget.then')
+              : approval.limit
+                ? t('limit.then')
+                : t(`then.${copyKey(approval)}`)
         }
         onClick={() => void decide(approval.approvalId, 'approve')}
       >
@@ -369,9 +393,11 @@ export function ApprovalPanel({
                   ? 'approveLsp'
                   : 'approveCheck',
             )
-          : approval.limit
-            ? t('limit.approve')
-            : t(`approveAs.${copyKey(approval)}`)}
+          : approval.kind === 'request_budget'
+            ? t('budget.approve')
+            : approval.limit
+              ? t('limit.approve')
+              : t(`approveAs.${copyKey(approval)}`)}
       </Button>
     </>
   );
@@ -555,12 +581,17 @@ export function ApprovalPanel({
               ) : null}
               {compact || approval.tool ? null : (
                 <p className="text-muted-foreground">
-                  {approval.limit ? t('limit.explain') : t(`explain.${copyKey(approval)}`)}
+                  {approval.kind === 'request_budget'
+                    ? t('budget.then')
+                    : approval.limit
+                      ? t('limit.explain')
+                      : t(`explain.${copyKey(approval)}`)}
                 </p>
               )}
               {/* A run limit is about the run, not a version: it names no subject or criteria. */}
               {approval.tool ||
               approval.limit ||
+              approval.kind === 'request_budget' ||
               !approval.subjectVersionIds.some((id) => label(id)) ? null : (
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="text-muted-foreground">{t('subject')}</span>
@@ -582,7 +613,10 @@ export function ApprovalPanel({
                   })}
                 </div>
               )}
-              {criteria && !approval.limit && approval.criteriaVersionId === criteriaId ? (
+              {criteria &&
+              !approval.limit &&
+              approval.kind !== 'request_budget' &&
+              approval.criteriaVersionId === criteriaId ? (
                 <div className="text-muted-foreground">
                   {t('criteria')}
                   <ul className="list-disc pl-5">

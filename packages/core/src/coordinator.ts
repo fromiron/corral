@@ -157,6 +157,7 @@ import {
   LogicalDeadline,
   NO_PROGRESS_TURNS,
   REQUEST_BUDGET_NOTICES,
+  ROUTER_CHOOSER_ROLE_ID,
   requestBudgetKind,
   requestBudgetOf,
   requestBudgetStage,
@@ -673,7 +674,7 @@ export function runModelProfiles(definition: CorralDefinition): string[] {
 
 /** The built-in role a router's chooser runs with: no tools, its last reply is the answer. */
 const chooserRole = (modelProfile: string): import('@corral/contracts').AgentRole => ({
-  id: 'router_chooser',
+  id: ROUTER_CHOOSER_ROLE_ID,
   name: 'Router',
   prompt:
     'You choose which way the work goes next. Read the inputs and the routes, then reply with ' +
@@ -991,8 +992,10 @@ export class Coordinator {
     )
       blockers.push('checkpoint_capacity');
     if (
+      // Only the person's newer words are an instruction the checkpoint would lose; a system
+      // notice is not.
       Object.values(source.projection.directives).some(
-        (directive) => directive.acceptedSeq > manifest.eventSeq,
+        (directive) => directive.origin === 'user' && directive.acceptedSeq > manifest.eventSeq,
       ) ||
       events.some(
         (event) =>
@@ -2856,6 +2859,14 @@ export class Coordinator {
         this.commit(run, this.askerResumes(run, q.askerExecutionId, questionId, 'cancelled'));
         q.wake({ questionId, outcome: 'cancelled' });
       }
+    // A limit's approval closes with what waits on it, before the cancellation is confirmed.
+    this.closeLimitApprovals(
+      run,
+      scope.kind === 'run'
+        ? this.openLimitApprovals(run)
+        : [...affected].flatMap((id) => this.openLimitApprovals(run, id)),
+      'cancelled',
+    );
     if (scope.kind === 'run') {
       for (const resolve of run.approvals.values()) resolve('reject');
       run.approvals.clear();
@@ -3456,30 +3467,70 @@ export class Coordinator {
     run.handles.get(executionId)?.pushDirective?.({ directiveId, text, origin: 'system' });
   }
 
-  /** A request-budget approval the run was cancelled under closes with it. */
-  private closeBudgetApproval(run: LiveRun, executionId: string): void {
-    if (TERMINAL_RUN_STATUSES.has(run.projection.status)) return;
-    for (const approval of Object.values(run.projection.approvals)) {
-      if (
-        approval.kind !== 'request_budget' ||
-        approval.executionId !== executionId ||
-        approval.status !== 'pending'
-      )
-        continue;
-      this.commit(run, [
-        {
-          type: 'approval.resolved',
-          executionId,
-          payload: {
-            approvalId: approval.approvalId,
-            decision: 'reject',
-            actor: RUNTIME.id,
-            subjectVersionIds: approval.subjectVersionIds,
-            reason: 'cancelled',
-          },
+  /**
+   * Open approvals a limit asked for: one execution's request budget, or with no execution every
+   * request budget and the run's no-progress pause.
+   */
+  private openLimitApprovals(run: LiveRun, executionId?: string): ApprovalView[] {
+    return Object.values(run.projection.approvals).filter(
+      (approval) =>
+        approval.status === 'pending' &&
+        !approval.tool &&
+        (executionId
+          ? approval.kind === 'request_budget' && approval.executionId === executionId
+          : approval.kind === 'request_budget' ||
+            (approval.kind === 'user_action' && approval.limit !== undefined)),
+    );
+  }
+
+  /** The runtime's rejection of each approval, for a commit that closes them. */
+  private limitApprovalClosings(
+    run: LiveRun,
+    approvals: readonly ApprovalView[],
+    reason: 'cancelled' | 'execution_ended',
+  ): EventDraft[] {
+    return approvals.map((approval) => {
+      // Whoever waits on it is told no once the closing is committed.
+      const resume = run.approvals.get(approval.approvalId);
+      run.approvals.delete(approval.approvalId);
+      resume?.('reject');
+      return {
+        type: 'approval.resolved',
+        ...(approval.executionId ? { executionId: approval.executionId } : {}),
+        payload: {
+          approvalId: approval.approvalId,
+          decision: 'reject',
+          actor: RUNTIME.id,
+          subjectVersionIds: approval.subjectVersionIds,
+          reason,
         },
-      ]);
-    }
+      };
+    });
+  }
+
+  /**
+   * Closes limit approvals whose execution or run ended: no request is left for a target that is
+   * gone. A run that waited only on them goes back to running.
+   */
+  private closeLimitApprovals(
+    run: LiveRun,
+    approvals: readonly ApprovalView[],
+    reason: 'cancelled' | 'execution_ended',
+  ): void {
+    if (!approvals.length || this.storageError || TERMINAL_RUN_STATUSES.has(run.projection.status))
+      return;
+    const drafts = this.limitApprovalClosings(run, approvals, reason);
+    const waiting =
+      run.approvals.size > 0 ||
+      run.userInputs.size > 0 ||
+      run.extensionUi.size > 0 ||
+      Object.values(run.projection.tasks).some((t) => t.status === 'blocked');
+    this.commit(run, [
+      ...drafts,
+      ...(run.projection.status === 'awaiting_user' && !waiting
+        ? [runState('awaiting_user', 'running', 'approval_resolved')]
+        : []),
+    ]);
   }
 
   /** A steer receipt follows its directive: queued until a request carries it. */
@@ -4177,6 +4228,8 @@ export class Coordinator {
       q.wake({ questionId, outcome: 'cancelled' });
     }
     run.questions.clear();
+    // A limit's approval closes with the run, in the same commit that ends it.
+    drafts.push(...this.limitApprovalClosings(run, this.openLimitApprovals(run), 'cancelled'));
     for (const resolve of run.approvals.values()) resolve('reject');
     run.approvals.clear();
     this.wake(run);
@@ -5284,6 +5337,11 @@ export class Coordinator {
           if (batch.ownerExecutionId === input.executionId) batch.stopped = true;
         for (const pending of run.toolApprovals.values())
           if (pending.input.executionId === input.executionId) pending.expire('execution_ended');
+        this.closeLimitApprovals(
+          run,
+          this.openLimitApprovals(run, input.executionId),
+          run.cancelRequested.has(input.executionId) ? 'cancelled' : 'execution_ended',
+        );
         for (const pending of run.extensionUi.values())
           if (pending.input.executionId === input.executionId)
             this.closeExtensionUi(run, pending.requestId, 'execution_ended');
@@ -8518,10 +8576,13 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (!WORKING.has(run.projection.status));
           requireActive();
-          const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
-          const request = runGates(this.gates['model.request'], view);
-          if (request.kind === 'refuse') this.refuseModelRequest(run, request);
-          if (request.kind === 'require_approval') {
+          // Each limit the request reaches is answered before it goes: after one approval the
+          // gates are asked again, so no progress and the request budget both wait for theirs.
+          for (;;) {
+            const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
+            const request = runGates(this.gates['model.request'], view);
+            if (request.kind === 'refuse') this.refuseModelRequest(run, request);
+            if (request.kind !== 'require_approval') break;
             // A run limit belongs to the run, not to one branch: every worker that reaches it
             // waits on the same intervention. A request budget is the execution's own.
             const own = request.limit.executionId;
@@ -8565,10 +8626,7 @@ export class Coordinator {
             }
             run.boundaries.add(executionId);
             try {
-              if ((await decision) !== 'approve') {
-                if (own) this.closeBudgetApproval(run, own);
-                throw new Error(`${request.limit.kind} stopped`);
-              }
+              if ((await decision) !== 'approve') throw new Error(`${request.limit.kind} stopped`);
             } finally {
               run.boundaries.delete(executionId);
             }

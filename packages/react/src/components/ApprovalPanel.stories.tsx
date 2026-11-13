@@ -217,3 +217,49 @@ export const NoCheckVerdict: Story = {
     await expect(rerun).toHaveBeenCalledWith('approval_checks', 'approve');
   },
 };
+
+const budgetApproval: Approval = {
+  approvalId: 'approval_budget',
+  kind: 'request_budget',
+  executionId: 'exec_helper',
+  subjectVersionIds: ['criteria_1'],
+  criteriaVersionId: 'criteria_1',
+  status: 'pending',
+  limit: { kind: 'request_budget', used: 80, max: 50, executionId: 'exec_helper' },
+};
+const stopped = fn();
+
+/** A dynamically created helper past its request budget: continue it, or stop only it. */
+export const RequestBudget: Story = {
+  args: {
+    session: sessionStore({
+      projection: projectionWith({
+        status: 'awaiting_user',
+        approvals: { approval_budget: budgetApproval },
+        executions: {
+          exec_lead: { executionId: 'exec_lead', nodeId: 'research' },
+          exec_helper: { executionId: 'exec_helper', nodeId: 'helper' },
+        } as never,
+      }),
+      definition: {
+        nodes: [
+          { id: 'research', type: 'agent', label: 'Research' },
+          { id: 'helper', type: 'agent', label: 'Research Helper' },
+        ],
+      } as never,
+      resolveApproval: async (...args: unknown[]) => {
+        stopped(...args);
+        return { status: 'applied' } as never;
+      },
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByText('Research Helper used 80 model requests (budget 50)'),
+    ).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    fireEvent.click(canvas.getByRole('button', { name: 'Stop Research Helper' }));
+    await expect(stopped).toHaveBeenCalledWith('approval_budget', 'reject');
+  },
+};

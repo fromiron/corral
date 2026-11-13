@@ -192,17 +192,24 @@ export function requestBudgetOf(
   return effectiveRequestBudget(limits)[kind];
 }
 
+/** The built-in role a router's chooser runs with. */
+export const ROUTER_CHOOSER_ROLE_ID = 'router_chooser';
+
 /**
  * Which budget an execution counts against, or null when it answers the conversation directly:
  * a scheduled execution whose last reply is the run's answer (the conversation lead, a question
- * about a result) or a meeting answer. A team role counts against `role`; an execution created
- * while the run goes (a delegated child, a question's responder) against `child`.
+ * about a result) or a meeting answer. A team role and a router's chooser count against `role`;
+ * an execution created while the run goes (a delegated child, a question's responder, a final-
+ * reply copy among them) against `child`. A scheduled final-reply role of a saved team cannot be
+ * told from a conversation lead by the run's input, so it is not counted either.
  */
 export function requestBudgetKind(
   input: Pick<AgentStartInput, 'assignment' | 'role' | 'meeting'>,
 ): Exclude<RequestBudgetKind, 'advisor'> | null {
   if (input.assignment.kind !== 'scheduled') return 'child';
-  return input.role.answer === 'final_reply' || input.meeting ? null : 'role';
+  if (input.meeting) return null;
+  if (input.role.id === ROUTER_CHOOSER_ROLE_ID) return 'role';
+  return input.role.answer === 'final_reply' ? null : 'role';
 }
 
 /** The requests an execution may still make after the submit notice before it waits. */

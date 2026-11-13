@@ -1,25 +1,34 @@
 import {
   type AgentHost,
   type AgentSettlement,
-  type CorralDefinition,
+  type AgentStartInput,
+  CorralDefinition,
   DEFAULT_LIMITS,
   type DEFAULT_REQUEST_BUDGET,
+  type DeliveredDirective,
   type RequestPermit,
   type RunCommand,
   type RunEvent,
+  type StartRunRequest,
 } from '@corral/contracts';
 import { collaborationCorral, FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   applyEvent,
   Coordinator,
+  canonicalJson,
   carriedDirectives,
   emptyProjection,
   InMemoryRunStore,
+  pendingInteractions,
   REQUEST_BUDGET_NOTICES,
+  ROUTER_CHOOSER_ROLE_ID,
   type RunProjection,
+  requestBudgetKind,
   requestBudgetOf,
   SPEC_HARD_CAPS,
+  sha256Hex,
 } from '../src/index.ts';
 
 // The unattended request budget (product contract §9): a team role or a dynamically created
@@ -36,13 +45,21 @@ function required<T>(value: T | null | undefined): T {
 }
 
 const N = 50;
+const hashOf = (value: unknown) => sha256Hex(canonicalJson(value));
 const SUBMIT = Math.ceil(1.5 * N);
 
-function setup(definition: CorralDefinition = linearCorral(['writer'])) {
+function setup(
+  definition: CorralDefinition = linearCorral(['writer']),
+  start: Partial<Pick<StartRunRequest, 'sessionId' | 'meeting'>> = {},
+) {
   const store = new InMemoryRunStore();
   const clock = new FakeClock();
   const hosts: AgentHost[] = [];
+  const inputs: AgentStartInput[] = [];
   const exits: ((result: AgentSettlement) => void)[] = [];
+  // What each execution's handle was given, in order: directives pushed and interrupts.
+  const pushed: DeliveredDirective[][] = [];
+  const interrupts: DeliveredDirective[][] = [];
   const coordinator = new Coordinator({
     store,
     clock,
@@ -50,20 +67,36 @@ function setup(definition: CorralDefinition = linearCorral(['writer'])) {
     ids: new SequentialIdFactory(),
     policy: SPEC_HARD_CAPS,
     agents: {
-      async start(_input, host) {
+      async start(input, host) {
         hosts.push(host);
+        inputs.push(input);
+        const mine: DeliveredDirective[] = [];
+        const cuts: DeliveredDirective[] = [];
+        pushed.push(mine);
+        interrupts.push(cuts);
         const settled = new Promise<AgentSettlement>((resolve) => exits.push(resolve));
         const index = exits.length - 1;
         return {
           cancel: async () => exits[index]?.({ outcome: 'cancelled' }),
           waitForSettlement: () => settled,
+          pushDirective: (directive) => {
+            mine.push(directive);
+          },
+          interrupt: (directive) => {
+            cuts.push(directive);
+          },
         };
       },
     },
   });
   const runId = required(
-    coordinator.startRun({ schemaVersion: '0.1', commandId: 'start', mode: 'mock', definition })
-      .runId,
+    coordinator.startRun({
+      schemaVersion: '0.1',
+      commandId: 'start',
+      mode: 'mock',
+      definition,
+      ...start,
+    }).runId,
   );
   const projection = () => coordinator.getSnapshot(runId).projection;
   const send = (type: RunCommand['type'], payload: unknown, commandId: string) =>
@@ -76,7 +109,20 @@ function setup(definition: CorralDefinition = linearCorral(['writer'])) {
       expectedControlRevision: projection().controlRevision,
     } as RunCommand);
   const events = () => store.readEvents(runId, 0);
-  return { coordinator, store, clock, hosts, exits, runId, projection, send, events };
+  return {
+    coordinator,
+    store,
+    clock,
+    hosts,
+    inputs,
+    exits,
+    pushed,
+    interrupts,
+    runId,
+    projection,
+    send,
+    events,
+  };
 }
 
 type Setup = ReturnType<typeof setup>;
@@ -85,7 +131,7 @@ type Setup = ReturnType<typeof setup>;
  * One request and its reply. The first replies are ordinary; later ones are cut (an interrupted
  * reply is no turn without progress), so the no-progress pause never comes first.
  */
-async function turn(s: Setup, host: AgentHost): Promise<RequestPermit> {
+async function turn(s: Setup, host: AgentHost, cut?: boolean): Promise<RequestPermit> {
   const permit = await host.prepareModelRequest();
   await host.modelRequestDispatched?.(permit.modelCallId);
   const count = Object.keys(s.projection().modelCalls).length;
@@ -94,15 +140,35 @@ async function turn(s: Setup, host: AgentHost): Promise<RequestPermit> {
     modelCallId: permit.modelCallId,
     text: 'response',
     usage: { inputTokens: null, outputTokens: 1 },
-    ...(count > 3 ? { interrupted: true as const } : {}),
+    ...((cut ?? count > 3) ? { interrupted: true as const } : {}),
   });
   return permit;
 }
 
-async function turns(s: Setup, host: AgentHost, count: number): Promise<RequestPermit[]> {
+async function turns(
+  s: Setup,
+  host: AgentHost,
+  count: number,
+  cut?: boolean,
+): Promise<RequestPermit[]> {
   const permits: RequestPermit[] = [];
-  for (let i = 0; i < count; i++) permits.push(await turn(s, host));
+  for (let i = 0; i < count; i++) permits.push(await turn(s, host, cut));
   return permits;
+}
+
+/** A preparation left waiting, and how it ended so far. */
+function waitFor(host: AgentHost) {
+  const state: { outcome: 'pending' | 'permit' | string } = { outcome: 'pending' };
+  const promise = host.prepareModelRequest();
+  promise.then(
+    () => {
+      state.outcome = 'permit';
+    },
+    (error: Error) => {
+      state.outcome = `threw: ${error.message}`;
+    },
+  );
+  return { promise, state };
 }
 
 const budget = (s: Setup, value: Partial<typeof DEFAULT_REQUEST_BUDGET>, id = 'budget') =>
@@ -218,11 +284,17 @@ describe('request budget stages', () => {
     );
     expect(accepted?.actor.kind).toBe('runtime');
     expect(accepted?.commandId).toBeUndefined();
+    // The worker is handed it once, as a next-request directive, never as a cut.
+    expect(s.pushed[0]).toEqual([
+      { directiveId: wrap?.directiveId, text: REQUEST_BUDGET_NOTICES.wrapUp(N), origin: 'system' },
+    ]);
+    expect(s.interrupts[0]).toEqual([]);
     // The next request carries it, and it is delivered like a person's directive.
     const next = await host.prepareModelRequest();
     expect(next.directives).toEqual([
       { directiveId: wrap?.directiveId, text: wrap?.text, origin: 'system' },
     ]);
+    expect(s.projection().modelCalls[next.modelCallId]?.directiveIds).toEqual([wrap?.directiveId]);
     await host.modelRequestDispatched?.(next.modelCallId);
     expect(s.projection().directives[wrap?.directiveId ?? '']?.status).toBe('delivered');
     await host.observe({
@@ -240,6 +312,10 @@ describe('request budget stages', () => {
       REQUEST_BUDGET_NOTICES.wrapUp(N),
       REQUEST_BUDGET_NOTICES.submit,
     ]);
+    expect(s.pushed[0]?.map((d) => [d.directiveId, d.origin])).toEqual(
+      notices.map((d) => [d.directiveId, 'system']),
+    );
+    expect(s.interrupts[0]).toEqual([]);
     await turns(s, host, 4);
     // ceil(1.5N) + 4: the fifth request after the submit notice still goes out.
     expect(budgetApprovals(s.projection())).toHaveLength(0);
@@ -483,7 +559,7 @@ describe('request budget decisions', () => {
     await drain();
   });
 
-  it('a gate called again while waiting asks once', async () => {
+  it('a second preparation while one waits is refused and asks nothing more', async () => {
     const s = setup();
     await drain();
     budget(s, { role: N });
@@ -512,7 +588,16 @@ describe('request budget decisions', () => {
     await expect(waiting).rejects.toThrow();
     await drain();
     expect(s.projection().status).toBe('cancelled');
-    expect(budgetApprovals(s.projection()).every((a) => a.status !== 'pending')).toBe(true);
+    expect(budgetApprovals(s.projection()).map((a) => [a.status, a.reason])).toEqual([
+      ['rejected', 'cancelled'],
+    ]);
+    const closed = s.events().filter((e) => e.type === 'approval.resolved');
+    expect(closed.map((e) => e.type === 'approval.resolved' && e.payload.decision)).toEqual([
+      'reject',
+    ]);
+    // Closed before the run ended.
+    const ended = s.events().findIndex((e) => e.type === 'cancel.confirmed');
+    expect(s.events().indexOf(required(closed[0]))).toBeLessThan(ended);
     expect(s.events().some((e) => e.type === 'cancel.confirmed')).toBe(true);
   });
 
@@ -684,7 +769,7 @@ describe('request budget records', () => {
     expect(s.store.readEvents(s.runId, 0)).toEqual(after);
   });
 
-  it('a compaction summary call recorded for the execution counts like any request', () => {
+  it('the projection counts a prepared request whatever its purpose', () => {
     const run = 'run_x';
     const base = {
       runId: run,
@@ -733,5 +818,559 @@ describe('request budget records', () => {
     ]);
     s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
     await drain();
+  });
+});
+
+/** Collaboration where Research may also ask the Source Responder (a question's execution). */
+function questionCorral(): CorralDefinition {
+  const definition = collaborationCorral();
+  const researcher = required(definition.roles.find((role) => role.id === 'researcher'));
+  researcher.allowedCollaborationTools.push('ask');
+  definition.capabilityLinks.push({
+    id: 'research_question',
+    kind: 'question',
+    sourceNodeId: 'research',
+    targetNodeId: 'respond',
+  });
+  return definition;
+}
+
+/** Research spawns one Helper; returns the Helper's host and execution. */
+async function spawnHelper(s: Setup) {
+  await required(s.hosts[0]).invokeTool({
+    name: 'spawn_subagents',
+    args: { tasks: [{ targetNodeId: 'helper', brief: 'Part' }] },
+  });
+  await drain();
+  return { child: required(s.hosts[1]), childId: executionOf(s, 1) };
+}
+
+const pendingOf = (p: RunProjection) =>
+  Object.values(p.approvals).filter((a) => a.status === 'pending');
+
+const answer = (
+  s: Setup,
+  approval: { approvalId: string; subjectVersionIds: string[] } | undefined,
+  decision: 'approve' | 'reject',
+  commandId: string,
+) =>
+  s.send(
+    'resolve_approval',
+    {
+      approvalId: approval?.approvalId,
+      decision,
+      subjectVersionId: approval?.subjectVersionIds[0],
+    },
+    commandId,
+  );
+
+describe('who the budget counts', () => {
+  type Shown = Pick<AgentStartInput, 'assignment' | 'role' | 'meeting'>;
+  const writer = required(linearCorral(['writer']).roles[0]);
+  const input = (over: Partial<Shown>): Shown => ({
+    assignment: { kind: 'scheduled' },
+    role: writer,
+    ...over,
+  });
+  const finalReply = { ...writer, answer: 'final_reply' as const };
+  const delegated = { kind: 'delegated' as const, brief: 'Part', parentExecutionId: 'exec_1' };
+  const question = {
+    kind: 'question' as const,
+    questionId: 'q_1',
+    body: 'Why?',
+    askerExecutionId: 'exec_1',
+  };
+  const meeting = { sessionId: 'session_m', roundId: 'round_1', participantId: 'p_1' };
+
+  it.each([
+    ['the lead of a conversation without a team', input({ role: finalReply }), null],
+    ['the lead of a conversation with a team', input({ role: finalReply }), null],
+    ['the explainer of a question about a result', input({ role: finalReply }), null],
+    ['a meeting participant', input({ meeting }), null],
+    ['a delegated final-reply copy', input({ role: finalReply, assignment: delegated }), 'child'],
+    ['a delegated child', input({ assignment: delegated }), 'child'],
+    ['a question responder', input({ assignment: question }), 'child'],
+    [
+      'a question responder with a final reply',
+      input({ role: finalReply, assignment: question }),
+      'child',
+    ],
+    ['a role of a team definition, also inside a Loop', input({}), 'role'],
+    [
+      "a router's chooser",
+      input({ role: { ...finalReply, id: ROUTER_CHOOSER_ROLE_ID, allowedWorkTools: [] } }),
+      'role',
+    ],
+  ] as const)('%s', (_name, execution, kind) => {
+    expect(requestBudgetKind(execution)).toBe(kind);
+  });
+
+  it('a delegated final-reply copy counts against the child budget', async () => {
+    const definition = collaborationCorral();
+    definition.roles = definition.roles.map((role) =>
+      role.id === 'helper'
+        ? {
+            ...role,
+            answer: 'final_reply' as const,
+            allowedWorkTools: [],
+            allowedCollaborationTools: [],
+          }
+        : role,
+    );
+    const s = setup(definition);
+    await drain();
+    budget(s, { role: 0, child: N });
+    const { child, childId } = await spawnHelper(s);
+    expect(s.inputs[1]?.role.answer).toBe('final_reply');
+    await turns(s, child, N);
+    expect(systemDirectives(s.projection(), childId).map((d) => d.text)).toEqual([
+      REQUEST_BUDGET_NOTICES.wrapUp(N),
+    ]);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it("a question's responder counts against the child budget", async () => {
+    const s = setup(questionCorral());
+    await drain();
+    budget(s, { role: 0, child: N });
+    void required(s.hosts[0]).invokeTool({
+      name: 'ask',
+      args: { targetNodeId: 'respond', body: 'Evidence?' },
+    });
+    await drain();
+    const responder = required(s.hosts[1]);
+    const responderId = required(s.inputs[1]).executionId;
+    expect(s.inputs[1]?.assignment.kind).toBe('question');
+    await turns(s, responder, N);
+    expect(systemDirectives(s.projection(), responderId)).toHaveLength(1);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it('a meeting participant is never counted', async () => {
+    const definition = linearCorral(['answer']);
+    definition.limits = { ...DEFAULT_LIMITS, requestBudget: { role: N, child: N } };
+    const s = setup(definition, {
+      sessionId: 'session_m',
+      meeting: { sessionId: 'session_m', roundId: 'round_1', participantId: 'p_1' },
+    });
+    await drain();
+    const host = required(s.hosts[0]);
+    expect(s.inputs[0]?.meeting).toBeDefined();
+    await turns(s, host, SUBMIT + 8);
+    expect(systemDirectives(s.projection())).toHaveLength(0);
+    expect(budgetApprovals(s.projection())).toHaveLength(0);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+});
+
+describe('request budget boundaries', () => {
+  it('rounds 1.5 times an odd budget up', async () => {
+    const s = setup();
+    await drain();
+    budget(s, { role: 51 });
+    const host = required(s.hosts[0]);
+    await turns(s, host, 76);
+    expect(systemDirectives(s.projection())).toHaveLength(1);
+    await turn(s, host);
+    expect(systemDirectives(s.projection())).toHaveLength(2);
+    await turns(s, host, 5);
+    expect(budgetApprovals(s.projection())).toHaveLength(0);
+    const waiting = waitFor(host);
+    await drain();
+    expect(waiting.state.outcome).toBe('pending');
+    expect(limits(s.events()).map((e) => [e.payload.used, e.payload.max])).toEqual([[82, 51]]);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it('two executions wait apart, and continuing one leaves the other waiting', async () => {
+    const s = setup(collaborationCorral());
+    await drain();
+    budget(s, { role: N, child: N });
+    const { child, childId } = await spawnHelper(s);
+    const parent = required(s.hosts[0]);
+    const parentId = executionOf(s, 0);
+    const childWait = (await toApproval(s, child)).waiting;
+    await toApproval(s, parent);
+    const waiting = pendingOf(s.projection());
+    expect(waiting.map((a) => a.executionId).sort()).toEqual([parentId, childId].sort());
+    const own = waiting.find((a) => a.executionId === childId);
+    expect(answer(s, own, 'approve', 'child_on').status).toBe('applied');
+    await childWait;
+    expect(pendingOf(s.projection()).map((a) => a.executionId)).toEqual([parentId]);
+    expect(s.projection().requestBudgets?.[childId]?.used).toBe(1);
+    expect(s.projection().requestBudgets?.[parentId]?.used).toBe(SUBMIT + 5);
+    expect(s.projection().status).toBe('awaiting_user');
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it('a criteria change asks again for the same execution, and continuing counts from 0', async () => {
+    const s = setup(CorralDefinition.parse(researchTeam));
+    await drain();
+    budget(s, { role: N });
+    const research = required(s.hosts[0]);
+    const written = await research.invokeTool({ name: 'write_artifact', args: { text: 'notes' } });
+    if (!written.ok) throw new Error('write refused');
+    await research.invokeTool({
+      name: 'submit_result',
+      args: { artifactVersionIds: [written.result.artifactVersionId] },
+    });
+    required(s.exits[0])({ outcome: 'succeeded' });
+    await drain();
+    const at = s.inputs.findIndex((i) => i.nodeId === 'write');
+    const writer = required(s.hosts[at]);
+    const writerId = required(s.inputs[at]).executionId;
+    const { waiting } = await toApproval(s, writer);
+    const base = required(s.projection().currentCriteriaVersionId);
+    expect(
+      s.send(
+        'patch',
+        { kind: 'criteria', baseCriteriaVersionId: base, criteria: ['New bar.'] },
+        'crit',
+      ).status,
+    ).toBe('applied');
+    const [again] = pendingOf(s.projection());
+    expect(again).toMatchObject({ kind: 'request_budget', executionId: writerId });
+    expect(answer(s, again, 'approve', 'go').status).toBe('applied');
+    await waiting;
+    expect(s.projection().requestBudgets?.[writerId]?.used).toBe(1);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+});
+
+describe('a budget approval whose execution or run ends', () => {
+  it('closes when the waiting execution is cancelled, and a late answer is refused', async () => {
+    const s = setup(collaborationCorral());
+    await drain();
+    budget(s, { role: 400, child: N });
+    const { child, childId } = await spawnHelper(s);
+    await toApproval(s, child);
+    const [approval] = pendingOf(s.projection());
+    s.send(
+      'cancel',
+      { scope: { kind: 'execution', executionId: childId }, reason: 'stop it' },
+      'c',
+    );
+    // Closed by the cancellation itself, before the worker has stopped.
+    expect(s.projection().executions[childId]?.status).not.toBe('cancelled');
+    expect(s.projection().approvals[approval?.approvalId ?? '']?.status).toBe('rejected');
+    await drain();
+    const p = s.projection();
+    expect(p.executions[childId]?.status).toBe('cancelled');
+    expect(p.approvals[approval?.approvalId ?? '']).toMatchObject({
+      status: 'rejected',
+      reason: 'cancelled',
+    });
+    expect(pendingInteractions(s.events(), p)).toEqual([]);
+    for (const decision of ['approve', 'reject'] as const)
+      expect(answer(s, approval, decision, `late_${decision}`).status).toBe('rejected');
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it('closes when the waiting worker ends by itself, and the run goes on', async () => {
+    const s = setup(collaborationCorral());
+    await drain();
+    budget(s, { role: 400, child: N });
+    const { child } = await spawnHelper(s);
+    await toApproval(s, child);
+    const [approval] = pendingOf(s.projection());
+    required(s.exits[1])({ outcome: 'failed', error: 'worker crashed' });
+    await drain();
+    const p = s.projection();
+    expect(p.approvals[approval?.approvalId ?? '']).toMatchObject({
+      status: 'rejected',
+      reason: 'execution_ended',
+    });
+    expect(pendingInteractions(s.events(), p)).toEqual([]);
+    expect(p.status).toBe('running');
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it("closes when the waiting child's parent is cancelled", async () => {
+    const s = setup(collaborationCorral());
+    await drain();
+    budget(s, { role: 400, child: N });
+    const { child, childId } = await spawnHelper(s);
+    await toApproval(s, child);
+    s.send(
+      'cancel',
+      { scope: { kind: 'execution', executionId: executionOf(s, 0) }, reason: 'stop' },
+      'c',
+    );
+    await drain();
+    const p = s.projection();
+    expect(p.executions[childId]?.status).toBe('cancelled');
+    expect(pendingOf(p)).toEqual([]);
+    expect(pendingInteractions(s.events(), p)).toEqual([]);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it('closes when the run fails while the worker waits', async () => {
+    const s = setup();
+    await drain();
+    budget(s, { role: N });
+    await toApproval(s, required(s.hosts[0]));
+    required(s.exits[0])({ outcome: 'failed', error: 'worker crashed' });
+    await drain();
+    const p = s.projection();
+    expect(p.status).toBe('failed');
+    expect(budgetApprovals(p).map((a) => [a.status, a.reason])).toEqual([
+      ['rejected', 'execution_ended'],
+    ]);
+  });
+});
+
+describe('a no-progress approval when its run ends', () => {
+  const stalled = async (s: Setup) => {
+    await drain();
+    const host = required(s.hosts[0]);
+    await turns(s, host, 6, false);
+    const waiting = waitFor(host);
+    await drain();
+    expect(pendingOf(s.projection()).map((a) => a.limit?.kind)).toEqual(['no_progress']);
+    return waiting;
+  };
+
+  it('closes as rejected when the run is cancelled', async () => {
+    const s = setup();
+    await stalled(s);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
+    await drain();
+    const p = s.projection();
+    expect(p.status).toBe('cancelled');
+    expect(Object.values(p.approvals).map((a) => [a.status, a.reason])).toEqual([
+      ['rejected', 'cancelled'],
+    ]);
+  });
+
+  it('closes when the run fails', async () => {
+    const s = setup();
+    await stalled(s);
+    required(s.exits[0])({ outcome: 'failed', error: 'worker crashed' });
+    await drain();
+    const p = s.projection();
+    expect(p.status).toBe('failed');
+    expect(pendingOf(p)).toEqual([]);
+  });
+});
+
+describe('no progress and the budget on the same request', () => {
+  it.each(['approve', 'reject'] as const)(
+    'asks both before the request goes out (no progress: %s)',
+    async (first) => {
+      const s = setup();
+      await drain();
+      budget(s, { role: N });
+      const host = required(s.hosts[0]);
+      await turns(s, host, SUBMIT - 1, true);
+      await turns(s, host, 6, false);
+      const waiting = waitFor(host);
+      await drain();
+      const [stall] = pendingOf(s.projection());
+      expect(stall?.limit?.kind).toBe('no_progress');
+      answer(s, stall, first, 'stall');
+      await drain();
+      if (first === 'reject') {
+        // A refusal of one stops the request; the other is not asked.
+        expect(waiting.state.outcome).toMatch(/^threw/);
+        expect(budgetApprovals(s.projection())).toHaveLength(0);
+        return;
+      }
+      // The same request, still unsent, now waits for the budget.
+      expect(waiting.state.outcome).toBe('pending');
+      expect(Object.keys(s.projection().modelCalls)).toHaveLength(SUBMIT + 5);
+      const [own] = pendingOf(s.projection());
+      expect(own?.kind).toBe('request_budget');
+      expect(answer(s, own, 'approve', 'go_on').status).toBe('applied');
+      await waiting.promise;
+      expect(Object.keys(s.projection().modelCalls)).toHaveLength(SUBMIT + 6);
+      s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+      await drain();
+    },
+  );
+
+  it('an execution past its budget asks for it after the shared no-progress decision', async () => {
+    const s = setup(collaborationCorral());
+    await drain();
+    budget(s, { role: 400, child: N });
+    const { child, childId } = await spawnHelper(s);
+    const parent = required(s.hosts[0]);
+    await turns(s, child, SUBMIT + 5, true);
+    await turns(s, parent, 6, false);
+    const parentWait = waitFor(parent);
+    const childWait = waitFor(child);
+    await drain();
+    const shown = pendingOf(s.projection());
+    expect(shown.map((a) => a.limit?.kind)).toEqual(['no_progress']);
+    answer(s, shown[0], 'approve', 'stall');
+    await drain();
+    expect(parentWait.state.outcome).toBe('permit');
+    expect(childWait.state.outcome).toBe('pending');
+    expect(pendingOf(s.projection()).map((a) => [a.kind, a.executionId])).toEqual([
+      ['request_budget', childId],
+    ]);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+});
+
+describe('a budget patch while an approval waits', () => {
+  it('turning it off leaves the approval to the person; continuing then has no stages', async () => {
+    const s = setup();
+    await drain();
+    budget(s, { role: N });
+    const host = required(s.hosts[0]);
+    const { waiting } = await toApproval(s, host);
+    budget(s, { role: 0 }, 'off');
+    await drain();
+    expect(pendingOf(s.projection())).toHaveLength(1);
+    resolve(s, 'approve', 'go');
+    await waiting;
+    await turns(s, host, SUBMIT + 10);
+    expect(systemDirectives(s.projection())).toHaveLength(2);
+    expect(budgetApprovals(s.projection())).toHaveLength(1);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it('raising it leaves the approval to the person; continuing counts to the new value', async () => {
+    const s = setup();
+    await drain();
+    budget(s, { role: N });
+    const host = required(s.hosts[0]);
+    const { waiting } = await toApproval(s, host);
+    budget(s, { role: 100 }, 'raise');
+    await drain();
+    expect(pendingOf(s.projection())).toHaveLength(1);
+    resolve(s, 'approve', 'go');
+    await waiting;
+    await turns(s, host, 98);
+    expect(systemDirectives(s.projection())).toHaveLength(2);
+    await turn(s, host);
+    expect(systemDirectives(s.projection()).at(-1)?.text).toBe(REQUEST_BUDGET_NOTICES.wrapUp(100));
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+
+  it('raised after the wrap-up: no wrap-up again, and the submit at the new 1.5 times', async () => {
+    const s = setup();
+    await drain();
+    budget(s, { role: N });
+    const host = required(s.hosts[0]);
+    await turns(s, host, N);
+    budget(s, { role: 100 }, 'raise');
+    await turns(s, host, 100 - N);
+    expect(systemDirectives(s.projection()).map((d) => d.text)).toEqual([
+      REQUEST_BUDGET_NOTICES.wrapUp(N),
+    ]);
+    await turns(s, host, 49);
+    expect(systemDirectives(s.projection())).toHaveLength(1);
+    await turn(s, host);
+    expect(systemDirectives(s.projection()).map((d) => d.text)).toEqual([
+      REQUEST_BUDGET_NOTICES.wrapUp(N),
+      REQUEST_BUDGET_NOTICES.submit,
+    ]);
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'end' }, 'cancel');
+    await drain();
+  });
+});
+
+describe('a runtime checkpoint after a budget notice', () => {
+  it("is held back by the person's newer directive, not by a system notice", async () => {
+    const store = new InMemoryRunStore();
+    const clock = new FakeClock();
+    let host: AgentHost | undefined;
+    const coordinator = new Coordinator({
+      store,
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      policy: SPEC_HARD_CAPS,
+      models: {
+        resolve: (profile: string) => ({
+          ok: true as const,
+          snapshot: { profile, provider: 'fixture', modelId: 'fixture', auth: 'api_key' as const },
+        }),
+      },
+      runtimeRecovery: { confirm: async () => {} },
+      agents: {
+        async start(_input, started) {
+          host = started;
+          return { cancel: async () => {}, waitForSettlement: () => new Promise(() => {}) };
+        },
+      },
+    });
+    const runId = required(
+      coordinator.startRun({
+        schemaVersion: '0.1',
+        commandId: 'start',
+        mode: 'live',
+        definition: linearCorral(['writer']),
+      }).runId,
+    );
+    await drain();
+    const worker = required(host);
+    const send = (type: RunCommand['type'], payload: unknown, commandId: string) =>
+      coordinator.submit({
+        schemaVersion: '0.1',
+        commandId,
+        runId,
+        type,
+        payload,
+        expectedControlRevision: coordinator.getSnapshot(runId).projection.controlRevision,
+      } as RunCommand);
+    send('patch', { kind: 'run_limits', changes: { requestBudget: { role: N } } }, 'budget');
+    const context = { messages: [{ role: 'user', content: 'Request', timestamp: 1 }] };
+    const permit = await worker.prepareModelRequest();
+    await worker.modelRequestDispatched?.(permit.modelCallId);
+    await worker.observe({
+      kind: 'model_completed',
+      modelCallId: permit.modelCallId,
+      text: 'reply',
+      usage: { inputTokens: null, outputTokens: 1 },
+      interrupted: true,
+    });
+    expect(
+      await worker.checkpointContext?.({
+        version: 1,
+        piVersion: '1.3.0',
+        runtime: 'pi-core',
+        context,
+        contextHash: hashOf(context),
+      }),
+    ).not.toBeNull();
+    for (let i = 1; i < N; i++) {
+      const next = await worker.prepareModelRequest();
+      await worker.modelRequestDispatched?.(next.modelCallId);
+      await worker.observe({
+        kind: 'model_completed',
+        modelCallId: next.modelCallId,
+        text: 'reply',
+        usage: { inputTokens: null, outputTokens: 1 },
+        interrupted: true,
+      });
+    }
+    const projection = coordinator.getSnapshot(runId).projection;
+    expect(systemDirectives(projection)).toHaveLength(1);
+    const blockers = async () => (await coordinator.runtimeCheckpoints(runId))[0]?.blockers ?? [];
+    expect(await blockers()).not.toContain('newer_instruction');
+    send(
+      'steer',
+      {
+        targetExecutionId: projection.executionOrder[0],
+        text: 'Shorter.',
+        delivery: 'next_request',
+      },
+      'steer',
+    );
+    expect(await blockers()).toContain('newer_instruction');
   });
 });

@@ -859,8 +859,7 @@
       "loop_stalled": "Loop stopped changing",
       "route": "Choose a route",
       "check": "Checks gave no verdict",
-      "breakpoint": "Paused before {step}",
-      "request_budget": "Request budget used up"
+      "breakpoint": "Paused before {step}"
     },
     "explain": {
       "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
@@ -869,8 +868,7 @@
       "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run.",
       "route": "The router could not choose where the work goes next. Pick a route to continue, or stop the run.",
       "check": "The checks did not pass or fail: one errored, timed out, was stopped, or ran on a changed working copy. Approve to run them again, or reject to stop the run.",
-      "breakpoint": "The step has not started. Continue starts it with the current settings.",
-      "request_budget": "This agent used its model request budget and was told to submit. Continue for another budget of requests, or stop the run."
+      "breakpoint": "The step has not started. Continue starts it with the current settings."
     },
     "subject": "About",
     "criteria": "Criteria",
@@ -891,8 +889,7 @@
       "loop_stalled": "Approving runs one more round; rejecting stops the run.",
       "route": "Continues the run along this route.",
       "check": "Approving runs the checks again; rejecting stops the run.",
-      "breakpoint": "Starts this step with the current settings; stopping cancels the run.",
-      "request_budget": "Continuing gives this agent another budget of requests; stopping ends the run."
+      "breakpoint": "Starts this step with the current settings; stopping cancels the run."
     },
     "approveAs": {
       "user_action": "Continue with this version",
@@ -901,8 +898,7 @@
       "loop_stalled": "Try once more",
       "route": "Continue along this route",
       "check": "Run checks again",
-      "breakpoint": "Continue",
-      "request_budget": "Continue"
+      "breakpoint": "Continue"
     },
     "rejectAs": {
       "user_action": "Reject and stop",
@@ -911,8 +907,7 @@
       "loop_stalled": "Stop here",
       "route": "Stop here",
       "check": "Stop here",
-      "breakpoint": "Stop the run",
-      "request_budget": "Stop the run"
+      "breakpoint": "Stop the run"
     },
     "limit": {
       "title": {
@@ -920,13 +915,21 @@
         "spawns": "Agent limit reached ({used} of {max})",
         "questions": "Question limit reached ({used} of {max})",
         "depth": "Delegation depth limit reached ({used} of {max})",
-        "loop_iterations": "Round limit reached ({used} of {max})",
-        "request_budget": "Request budget used up ({used} requests, budget {max})"
+        "loop_iterations": "Round limit reached ({used} of {max})"
       },
       "explain": "The run paused here. Continue to let it go on, or stop the run.",
       "then": "Continuing lets the run go on; stopping ends it.",
       "approve": "Continue",
       "reject": "Stop the run"
+    },
+    "budget": {
+      "agent": "This agent",
+      "title": "{role} used {used} model requests (budget {max})",
+      "titleBare": "{role} used its model request budget",
+      "then": "Continuing gives it another budget of requests.",
+      "approve": "Continue",
+      "reject": "Stop {role}",
+      "done": "{role}: continued"
     },
     "checkHeading": "Approve check launch",
     "checkScope": "{execution} · attempt {attempt} · config r{revision} · {fingerprint} · tree {tree}",

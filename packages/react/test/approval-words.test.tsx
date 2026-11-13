@@ -19,6 +19,8 @@ function show(
     toolCalls?: Record<string, unknown>;
     locale?: 'en' | 'ko';
     resolveApproval?: () => Promise<Receipt>;
+    executions?: Record<string, unknown>;
+    nodes?: unknown[];
   } = {},
 ) {
   const session = sessionStore({
@@ -27,7 +29,9 @@ function show(
       currentCriteriaVersionId: 'crit_0001',
       approvals: approvals as never,
       toolCalls: (options.toolCalls ?? {}) as never,
+      ...(options.executions ? { executions: options.executions as never } : {}),
     }),
+    ...(options.nodes ? { definition: { nodes: options.nodes } as never } : {}),
     artifactTexts: options.texts ?? {},
     ...(options.resolveApproval ? { resolveApproval: options.resolveApproval } : {}),
   });
@@ -42,6 +46,24 @@ function show(
   );
   return view;
 }
+
+const budgetApproval = {
+  approvalId: 'appr_0001',
+  kind: 'request_budget',
+  executionId: 'exec_0002',
+  subjectVersionIds: ['crit_0001'],
+  criteriaVersionId: 'crit_0001',
+  status: 'pending',
+  limit: { kind: 'request_budget', used: 80, max: 50, executionId: 'exec_0002' },
+};
+const helperRun = {
+  exec_0001: { executionId: 'exec_0001', nodeId: 'research' },
+  exec_0002: { executionId: 'exec_0002', nodeId: 'helper' },
+};
+const helperNodes = [
+  { id: 'research', type: 'agent', label: 'Research' },
+  { id: 'helper', type: 'agent', label: 'Research Helper' },
+];
 
 const noProgress = {
   approvalId: 'appr_0001',
@@ -97,32 +119,64 @@ describe('an approval a run limit asked for', () => {
   });
 
   it.each(['en', 'ko'] as const)(
-    'a request budget approval names the budget and its count, with or without the limit (%s)',
-    (locale) => {
+    'a request budget card names the agent and its count, and stops only that agent (%s)',
+    async (locale) => {
       const messages = locale === 'ko' ? ko : en;
-      const budget = {
-        ...noProgress,
-        kind: 'request_budget',
-        executionId: 'exec_0001',
-        limit: { kind: 'request_budget', used: 80, max: 50, executionId: 'exec_0001' },
-      };
-      const { container, unmount } = show({ appr_0001: budget }, { locale });
+      const words = messages.Approvals.budget;
+      const decide = vi.fn(async () => ({ status: 'applied' }) as Receipt);
+      const { container } = show(
+        { appr_0001: budgetApproval },
+        { locale, executions: helperRun, nodes: helperNodes, resolveApproval: decide },
+      );
       const card = screen.getByTestId('approval-appr_0001');
       expect(card.textContent).toContain(
-        messages.Approvals.limit.title.request_budget
+        words.title
+          .replace('{role}', 'Research Helper')
           .replace('{used}', '80')
           .replace('{max}', '50'),
       );
+      expect(card.textContent).toContain(words.then);
+      expect(card.textContent).not.toMatch(/\brun\b|Run|실행을/i);
+      expect(card.textContent).not.toContain(messages.Approvals.limit.explain);
+      expect(card.textContent).not.toContain(messages.Approvals.subject);
       expect(container.textContent).not.toMatch(RAW_ID);
-      unmount();
-      // A criteria change asks again without the limit fact; the kind still reads.
-      const { limit: _limit, ...asked } = budget;
-      show({ appr_0001: asked }, { locale });
-      expect(screen.getByTestId('approval-appr_0001').textContent).toContain(
-        messages.Approvals.kind.request_budget,
+      expect(screen.getByRole('button', { name: words.approve })).toBeVisible();
+      fireEvent.click(
+        screen.getByRole('button', { name: words.reject.replace('{role}', 'Research Helper') }),
       );
+      await vi.waitFor(() => expect(decide).toHaveBeenCalledWith('appr_0001', 'reject'));
     },
   );
+
+  it('a request budget card asked again without its count still names the agent', () => {
+    const { limit: _limit, ...asked } = budgetApproval;
+    show({ appr_0001: asked }, { executions: helperRun, nodes: helperNodes });
+    expect(screen.getByTestId('approval-appr_0001').textContent).toContain(
+      en.Approvals.budget.titleBare.replace('{role}', 'Research Helper'),
+    );
+  });
+
+  it('a closed request budget approval of an ended agent draws no card or buttons', () => {
+    show(
+      { appr_0001: { ...budgetApproval, status: 'rejected', reason: 'execution_ended' } },
+      { executions: helperRun, nodes: helperNodes },
+    );
+    expect(screen.queryByTestId('approval-appr_0001')).toBeNull();
+    expect(screen.queryAllByRole('button')).toEqual([]);
+  });
+
+  it('a continued request budget approval says which agent went on', () => {
+    show(
+      {
+        appr_0001: { ...budgetApproval, status: 'approved' },
+        appr_0002: { ...noProgress, approvalId: 'appr_0002' },
+      },
+      { executions: helperRun, nodes: helperNodes },
+    );
+    expect(screen.getByTestId('approved-appr_0001').textContent).toBe(
+      en.Approvals.budget.done.replace('{role}', 'Research Helper'),
+    );
+  });
 
   it('the line of a limit approval already decided says it continued, without an id', () => {
     const { container } = show({

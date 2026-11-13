@@ -859,8 +859,7 @@
       "loop_stalled": "Loop 결과가 그대로임",
       "route": "갈 길 고르기",
       "check": "검사 판정 없음",
-      "breakpoint": "{step} 시작 전 멈춤",
-      "request_budget": "요청 예산 소진"
+      "breakpoint": "{step} 시작 전 멈춤"
     },
     "explain": {
       "final_output": "승인하면 바로 이 버전이 출력이 됩니다. 더 새 버전은 따로 승인해야 합니다.",
@@ -869,8 +868,7 @@
       "loop_stalled": "이번 회차가 지난 회차와 같은 결과를 냈습니다. 승인하면 그래도 한 번 더 돌고, 반려하면 실행을 멈춥니다.",
       "route": "라우터가 다음 길을 고르지 못했습니다. 길을 하나 골라 계속하거나 실행을 멈추세요.",
       "check": "검사가 통과도 실패도 하지 않았습니다. 오류, 시간 초과, 중단, 또는 실행 중 작업 사본이 바뀌었습니다. 승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춥니다.",
-      "breakpoint": "이 단계는 아직 시작하지 않았습니다. 계속하면 지금 설정으로 시작합니다.",
-      "request_budget": "이 에이전트가 모델 요청 예산을 다 쓰고 제출 지시를 받았습니다. 계속하면 예산만큼 더 일하고, 중단하면 실행을 멈춥니다."
+      "breakpoint": "이 단계는 아직 시작하지 않았습니다. 계속하면 지금 설정으로 시작합니다."
     },
     "subject": "대상",
     "criteria": "기준",
@@ -891,8 +889,7 @@
       "loop_stalled": "승인하면 한 회차를 더 돌고, 반려하면 실행을 멈춥니다.",
       "route": "이 길로 실행을 이어 갑니다.",
       "check": "승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춥니다.",
-      "breakpoint": "지금 설정으로 이 단계를 시작합니다. 중단하면 실행을 취소합니다.",
-      "request_budget": "계속하면 예산만큼 더 요청하고, 중단하면 실행을 끝냅니다."
+      "breakpoint": "지금 설정으로 이 단계를 시작합니다. 중단하면 실행을 취소합니다."
     },
     "approveAs": {
       "user_action": "이 버전으로 계속",
@@ -901,8 +898,7 @@
       "loop_stalled": "한 번 더 해 보기",
       "route": "이 길로 계속",
       "check": "검사 다시 실행",
-      "breakpoint": "계속",
-      "request_budget": "계속"
+      "breakpoint": "계속"
     },
     "rejectAs": {
       "user_action": "반려하고 멈춤",
@@ -911,8 +907,7 @@
       "loop_stalled": "여기서 멈춤",
       "route": "여기서 멈춤",
       "check": "여기서 멈춤",
-      "breakpoint": "실행 중단",
-      "request_budget": "실행 중단"
+      "breakpoint": "실행 중단"
     },
     "limit": {
       "title": {
@@ -920,13 +915,21 @@
         "spawns": "에이전트 한도에 닿음 ({used}/{max})",
         "questions": "질문 한도에 닿음 ({used}/{max})",
         "depth": "위임 깊이 한도에 닿음 ({used}/{max})",
-        "loop_iterations": "반복 한도에 닿음 ({used}/{max})",
-        "request_budget": "요청 예산 소진 ({used}회, 예산 {max}회)"
+        "loop_iterations": "반복 한도에 닿음 ({used}/{max})"
       },
       "explain": "실행이 여기서 멈췄습니다. 계속하거나 실행을 중지하세요.",
       "then": "계속하면 실행이 이어지고, 중지하면 끝납니다.",
       "approve": "계속",
       "reject": "실행 중지"
+    },
+    "budget": {
+      "agent": "이 에이전트",
+      "title": "{role}: 모델 요청 {used}회 사용 (예산 {max}회)",
+      "titleBare": "{role}: 모델 요청 예산 소진",
+      "then": "계속하면 예산만큼 더 요청합니다.",
+      "approve": "계속",
+      "reject": "{role} 중지",
+      "done": "{role}: 계속함"
     },
     "checkHeading": "검사 실행 승인",
     "checkScope": "{execution} · 시도 {attempt} · 설정 r{revision} · 실행 해시 {fingerprint} · 파일 상태 {tree}",
