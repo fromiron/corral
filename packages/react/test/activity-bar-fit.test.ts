@@ -161,23 +161,41 @@ describe('callLine: decided on the line only when it holds every argument of the
   });
 
   it.each([
-    ['a line feed', '\n'],
-    ['a carriage return', '\r'],
-    ['a carriage return and line feed', '\r\n'],
-    ['a next line', '\u0085'],
-    ['a line separator', '\u2028'],
-    ['a paragraph separator', '\u2029'],
-    ['a vertical tab', '\u000B'],
-    ['a form feed', '\u000C'],
-  ])('counts a command split by %s as several lines: View alone', (_name, separator) => {
+    ['a line feed', 0x0a],
+    ['a carriage return', 0x0d],
+    ['a next line', 0x85],
+    ['a line separator', 0x2028],
+    ['a paragraph separator', 0x2029],
+    ['a vertical tab', 0x0b],
+    ['a form feed', 0x0c],
+  ])('counts a command split by %s as several lines: View alone', (_name, code) => {
+    const separator = String.fromCodePoint(code);
     expect(line(resolved({ command: `echo ok${separator}rm -rf build` })).whole).toBe(false);
-    expect(line(resolved({ command: `echo ok${separator}${separator}` })).subject).toBe('echo ok');
-    // A command's line break at its end ends no line of its: the shell runs the one line.
-    expect(line(resolved({ command: `echo ok${separator}` })).whole).toBe(true);
-    expect(line(resolved({ command: `echo ok${separator} \t${separator}` })).whole).toBe(true);
-    // A path's is part of the name the line cannot show.
     expect(line(call('delete_file', { path: `src/index.ts${separator}` })).whole).toBe(false);
   });
+
+  it("does not count line feeds at a command's end, with the blanks between them", () => {
+    for (const command of ['echo ok\n', 'echo ok\n\n', 'echo ok\n \t\n', 'echo ok \n'])
+      expect(line(resolved({ command }))).toMatchObject({ subject: 'echo ok', whole: true });
+    // A path's is part of the name the line cannot show.
+    expect(line(call('delete_file', { path: 'src/index.ts\n' })).whole).toBe(false);
+  });
+
+  it.each([
+    ['a carriage return', 0x0d],
+    ['a next line', 0x85],
+    ['a line separator', 0x2028],
+    ['a paragraph separator', 0x2029],
+    ['a vertical tab', 0x0b],
+    ['a form feed', 0x0c],
+  ])(
+    'leaves a command ending in %s to its card: the shell runs it as part of the last word',
+    (_name, code) => {
+      const end = String.fromCodePoint(code);
+      for (const command of [`./deploy.sh${end}`, `./deploy.sh${end}\n`])
+        expect(line(resolved({ command })).whole).toBe(false);
+    },
+  );
 
   it.each([
     ['Hebrew letters', 'echo שלום'],
@@ -199,28 +217,64 @@ describe('callLine: decided on the line only when it holds every argument of the
   );
 
   it.each([
-    ['a right-to-left override', '\u202E'],
-    ['a left-to-right isolate', '\u2066'],
-    ['a zero-width space', '\u200B'],
-    ['a zero-width joiner', '\u200D'],
-    ['a byte order mark', '\uFEFF'],
-    ['a soft hyphen', '\u00AD'],
-    ['an escape', '\u001B'],
-    ['a null', '\u0000'],
-    ['an emoji presentation selector', '️'],
-    ['a variation selector supplement', '\u{E0100}'],
-    ['a combining grapheme joiner', '͏'],
-    ['a Hangul filler', 'ㅤ'],
-    ['a Hangul choseong filler', 'ᅟ'],
-    ['a Hangul jungseong filler', 'ᅠ'],
-    ['a halfwidth Hangul filler', 'ﾠ'],
-    ['a blank braille pattern', '⠀'],
-    ['a Mongolian free variation selector', '᠋'],
-    ['a Khmer inherent vowel', '឴'],
-    ['a musical null notehead', '\u{1D159}'],
-  ])('leaves a subject with %s to its card: the line cannot show all of it', (_name, hidden) => {
+    ['a right-to-left override', 0x202e],
+    ['a left-to-right isolate', 0x2066],
+    ['a zero-width space', 0x200b],
+    ['a zero-width joiner', 0x200d],
+    ['a byte order mark', 0xfeff],
+    ['a soft hyphen', 0xad],
+    ['an escape', 0x1b],
+    ['a null', 0x00],
+    ['an emoji presentation selector', 0xfe0f],
+    ['a variation selector supplement', 0xe0100],
+    ['a combining grapheme joiner', 0x034f],
+    ['a Hangul filler', 0x3164],
+    ['a Hangul choseong filler', 0x115f],
+    ['a Hangul jungseong filler', 0x1160],
+    ['a halfwidth Hangul filler', 0xffa0],
+    ['a blank braille pattern', 0x2800],
+    ['a Mongolian free variation selector', 0x180b],
+    ['a Khmer inherent vowel', 0x17b4],
+    ['a musical null notehead', 0x1d159],
+    ['an object replacement character', 0xfffc],
+    ['a Khitan filler', 0x16fe4],
+    ['an Egyptian hieroglyph insertion mark', 0x13441],
+    ['an Egyptian hieroglyph lost sign', 0x13442],
+    ['a no-break space', 0xa0],
+    ['an en quad', 0x2000],
+    ['an em space', 0x2003],
+    ['a hair space', 0x200a],
+    ['a narrow no-break space', 0x202f],
+    ['a medium mathematical space', 0x205f],
+    ['an ideographic space', 0x3000],
+    ['an ogham space mark', 0x1680],
+  ])('leaves a subject with %s to its card: the line cannot show all of it', (_name, code) => {
+    const hidden = String.fromCodePoint(code);
     expect(line(resolved({ command: `echo ${hidden}ok` })).whole).toBe(false);
     expect(line(call('delete_file', { path: `src/${hidden}index.ts` })).whole).toBe(false);
+  });
+
+  it.each([
+    ['an ideographic level tone mark', 0x302a],
+    ['an ideographic rising tone mark', 0x302b],
+  ])(
+    'leaves a subject with %s standing alone to its card, and decides one on its letter',
+    (_name, code) => {
+      const mark = String.fromCodePoint(code);
+      for (const command of [`echo ${mark}`, `${mark}echo ok`, `echo ${mark} ok`])
+        expect(line(resolved({ command })).whole).toBe(false);
+      expect(line(resolved({ command: `echo 中${mark}` })).whole).toBe(true);
+    },
+  );
+
+  it.each([
+    ['before', ' src/index.ts'],
+    ['after', 'src/index.ts '],
+    ['as a tab after', 'src/index.ts\t'],
+  ])('leaves a path with a blank %s it to its card', (_name, path) => {
+    expect(line(call('delete_file', { path })).whole).toBe(false);
+    expect(line(call('move_file', { from: path, to: 'src/main.ts' })).whole).toBe(false);
+    expect(line(call('move_file', { from: 'src/main.ts', to: path })).whole).toBe(false);
   });
 
   it('still decides a command with a tab in it', () => {

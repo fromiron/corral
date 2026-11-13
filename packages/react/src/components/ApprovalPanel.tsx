@@ -72,20 +72,28 @@ const SUBJECT_MAX = 80;
 /** Every character that ends a line, whatever its kind: a subject with one is several lines. */
 const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
 /**
- * Characters a line draws as nothing or reorders (controls but a tab, format characters such as
- * direction overrides and zero-width ones, the default-ignorable ones such as variation selectors
- * and Hangul fillers, and those drawn blank: the empty braille pattern, the null notehead): with
- * one, the line cannot say all of its subject. An emoji with a variation selector is one of them.
+ * Characters a line draws as nothing, as a blank or a box, or reorders: controls but a tab, format
+ * characters such as direction overrides and zero-width ones, the default-ignorable ones such as
+ * variation selectors and Hangul fillers, those drawn blank or as a box (the empty braille pattern,
+ * the null notehead, the object replacement character, the Khitan filler, the Egyptian insertion
+ * and lost signs), and every space but the plain one. With one, the line cannot say all of its
+ * subject. An emoji with a variation selector is one of them.
  */
-const UNSEEN = /[^\P{Cc}\t]|\p{Cf}|\p{Default_Ignorable_Code_Point}|[\u2800\u{1D159}]/u;
+const UNSEEN =
+  /[^\P{Cc}\t]|\p{Cf}|\p{Default_Ignorable_Code_Point}|[\u2800\uFFFC\u{1D159}\u{16FE4}\u{13441}\u{13442}]|[^\P{Zs} ]/u;
+/** An ideographic tone mark with no letter to sit on: drawn as nothing or a blank. */
+const LONE_MARK = /(?:^|\s)[\u302A\u302B]/u;
 /**
  * Right-to-left text, letters and digits alike (Hebrew, Arabic, Syriac, Thaana, NKo and the rest
  * of their blocks): the line lays it out in another order than it is run.
  */
 const RIGHT_TO_LEFT =
   /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
-/** Line breaks, with the blanks between them, at a command's end: the shell runs the one line. */
-const TRAILING_BREAKS = /[\n\r\v\f\u0085\u2028\u2029][\n\r\v\f\u0085\u2028\u2029\t ]*$/;
+/**
+ * Line feeds, with the spaces and tabs between them, at a command's end: the shell ends its one line
+ * there. Any other line break at the end is part of the last word (`./deploy.sh\r` is another name).
+ */
+const TRAILING_BREAKS = /\n[\n\t ]*$/;
 
 /**
  * The call's main subject in one line, and whether the line holds all its arguments. Judged by
@@ -114,7 +122,11 @@ function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean }
   return {
     text,
     whole:
-      parts.every((part) => !UNSEEN.test(part) && !RIGHT_TO_LEFT.test(part)) &&
+      parts.every(
+        (part) => !UNSEEN.test(part) && !LONE_MARK.test(part) && !RIGHT_TO_LEFT.test(part),
+      ) &&
+      // A path's blanks at either end are part of its name, which the line shows trimmed.
+      (command || parts.every((part) => part === part.trim())) &&
       Object.keys(args).every((key) => said.includes(key)),
   };
 }
