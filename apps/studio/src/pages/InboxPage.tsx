@@ -608,6 +608,7 @@ function destinationLink(destination: InboxDestination) {
 
 function destinationKind(destination: InboxDestination) {
   if (destination.to === '/sessions/$sessionId/review') return 'review';
+  if (destination.search.advice) return 'advice';
   return destination.search.panel ?? 'session';
 }
 

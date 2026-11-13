@@ -36,7 +36,7 @@ import {
   type RuntimeTransport,
   type StartRunResult,
 } from '@corral/core';
-import { createRunRecovery, type RunSessionStore } from '@corral/react';
+import { AdviceSeenProvider, createRunRecovery, type RunSessionStore } from '@corral/react';
 import { createContext, type ReactNode, useContext } from 'react';
 import { createDemoWorkspaces, type WorkspacesClient } from './demo/workspaces-client.ts';
 import type {} from './desktop.tsx';
@@ -310,7 +310,21 @@ export function ServicesProvider({
   services: StudioServices;
   children: ReactNode;
 }) {
-  return <ServicesContext.Provider value={services}>{children}</ServicesContext.Provider>;
+  return (
+    <ServicesContext.Provider value={services}>
+      {/* Advice shown in full tells the server once, wherever it shows (features/inbox.md). The
+          client is read when telling: with none, nothing is told, and it is tried again. */}
+      <AdviceSeenProvider
+        send={(runId, executionId) =>
+          services.workspaces
+            ? services.workspaces.executionOpened(runId, executionId)
+            : Promise.reject(new Error('no workspace client'))
+        }
+      >
+        {children}
+      </AdviceSeenProvider>
+    </ServicesContext.Provider>
+  );
 }
 
 export function useServices(): StudioServices {

@@ -1,5 +1,6 @@
 import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { ModelCallView, RunProjection } from '@corral/core';
+import { type DeliveredAdvice, deliveredAdvice } from './advisor.ts';
 import type { StreamText } from './session.ts';
 import { buildTranscript, type TranscriptEntry } from './transcript.ts';
 
@@ -48,7 +49,9 @@ export type ProcessRow =
       label: string;
       status: string;
       tools: ToolEntry[];
-    });
+    })
+  /** An advisor's advice to the role whose work it stands in, where it was accepted. */
+  | (ProcessState & DeliveredAdvice & { kind: 'advice'; id: string });
 
 export interface TurnProcess {
   rows: ProcessRow[];
@@ -155,8 +158,25 @@ export function buildTurnProcess(
         const artifact = projection.artifacts[id];
         return artifact ? [{ id, label: artifact.name }] : [];
       });
+    // An advice's line stands where it was accepted in its target's work (features/advisor.md).
+    const advice = (executionId: string) =>
+      deliveredAdvice(projection, executionId).map(
+        (item): ProcessRow => ({
+          ...item,
+          kind: 'advice',
+          id: item.adviceId,
+          active: false,
+          sources: [],
+        }),
+      );
+    const leadAdvice = advice(lead);
+    const adviceBefore = (seq: number) => {
+      while (leadAdvice[0] && (leadAdvice[0] as DeliveredAdvice).seq < seq)
+        rows.push(leadAdvice.shift() as ProcessRow);
+    };
     const entries = buildTranscript(executionEvents.get(lead) ?? [], projection, {}, lead);
     for (const entry of entries) {
+      adviceBefore(entry.seq);
       if (entry.kind === 'request') {
         const call = projection.modelCalls[entry.modelCallId];
         const phase = modelPhase(projection, lead, entry.modelCallId, dispatched);
@@ -204,9 +224,11 @@ export function buildTurnProcess(
         });
       }
     }
+    rows.push(...leadAdvice);
     for (const id of projection.executionOrder.slice(1)) {
       const execution = projection.executions[id];
-      if (!execution) continue;
+      // An advisor is not one of the run's roles: it watches them (features/advisor.md).
+      if (!execution || execution.advisor) continue;
       rows.push({
         kind: 'agent',
         id,
@@ -218,12 +240,14 @@ export function buildTurnProcess(
         ),
         sources: sources(authored.get(id) ?? []),
       });
+      rows.push(...advice(id));
     }
   }
   return {
     rows,
-    // Preserve the existing task-step statistic: tools and other executions, not model requests.
-    steps: rows.filter((row) => row.kind !== 'model').length,
+    // Preserve the existing task-step statistic: tools and other executions, not model requests
+    // (nor advice, which is no step of the work).
+    steps: rows.filter((row) => row.kind === 'tool' || row.kind === 'agent').length,
     startedAt: projection?.startedAt ?? events[0]?.recordedAt ?? null,
     endedAt: running ? null : (projection?.endedAt ?? events.at(-1)?.recordedAt ?? null),
     running,
@@ -240,11 +264,13 @@ export function turnSummary(
     (call) => call.executionId === lead && !PUBLISHING.has(call.name),
   ).length;
   const running = !TERMINAL_RUN_STATUSES.has(projection.status);
+  // An advisor is neither one of the roles nor work going on.
+  const roles = projection.executionOrder.filter((id) => !projection.executions[id]?.advisor);
   return {
-    steps: tools + Math.max(0, projection.executionOrder.length - 1),
+    steps: tools + Math.max(0, roles.length - 1),
     startedAt: projection.startedAt,
     endedAt: running ? null : projection.endedAt,
     running,
-    active: projection.executionOrder.some((id) => activeExecution(projection, id)),
+    active: roles.some((id) => activeExecution(projection, id)),
   };
 }

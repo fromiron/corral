@@ -1303,8 +1303,8 @@ it('opens an advice’s execution row where a notification would, and only goes 
   await click(rowButton('Compare sources'));
   const link = detail()?.querySelector('a');
   expect([link?.textContent, link?.getAttribute('href')]).toEqual([
-    'Open run',
-    '/sessions/s_v?panel=run&view=run&run=run_v&execution=exec_v',
+    'Open advice',
+    '/sessions/s_v?advice=run_v',
   ]);
   // The link leads where a notification would.
   expect(link?.getAttribute('href')).toBe(

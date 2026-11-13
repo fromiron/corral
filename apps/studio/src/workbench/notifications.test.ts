@@ -96,9 +96,8 @@ it('an advice target names its execution row, and only an advice carries one', a
   const [first, second] = targets;
   if (!first || !second) throw new Error('targets');
   const source = { getSession: vi.fn(async () => session), inbox: vi.fn(async () => [advice]) };
-  expect(await notificationDestination(first, source)).toBe(
-    '/sessions/session_a?panel=run&view=run&run=run_a&execution=exec_a',
-  );
+  // The conversation's row of its run, with that row's advice open (features/inbox.md).
+  expect(await notificationDestination(first, source)).toBe('/sessions/session_a?advice=run_a');
   // That row's advice is no longer listed: the notification leads nowhere.
   expect(await notificationDestination(second, source)).toBeNull();
 });

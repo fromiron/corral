@@ -43,6 +43,8 @@ export type InboxDestination =
         execution?: string;
         terminal?: string;
         respond?: true;
+        /** The run whose row's unread advice opens in the conversation. */
+        advice?: string;
       };
     }
   | { to: '/sessions/$sessionId/review'; params: { sessionId: string }; search: object };
@@ -79,15 +81,16 @@ export function inboxDestination(target: NotificationTarget): InboxDestination |
 }
 
 /**
- * Where an advice is gone to, from Needs you, a desktop notification or the sidebar's: its run's
- * record on the execution row it was for. Every path builds it here alone.
+ * Where an advice is gone to, from Needs you, a desktop notification or the sidebar's: the
+ * conversation's row of its run, with the advice its target never read open on the row's tail
+ * (features/inbox.md `advice`). Every path builds it here alone.
  */
 export function adviceDestination(target: NotificationTarget): InboxDestination | null {
   return target.runId && target.executionId
     ? {
         to: '/sessions/$sessionId',
         params: { sessionId: target.sessionId },
-        search: { panel: 'run', view: 'run', run: target.runId, execution: target.executionId },
+        search: { advice: target.runId },
       }
     : null;
 }

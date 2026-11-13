@@ -130,9 +130,7 @@ it('opens the same exact targets as a desktop notification for every kind', asyn
     '/sessions/session_a?panel=run&view=run&run=run_session_a',
   );
   // An advice opens its run's record on the execution row it was for.
-  expect(hrefOf(item('advice'))).toBe(
-    '/sessions/session_a?panel=run&view=run&run=run_session_a&execution=exec_session_a',
-  );
+  expect(hrefOf(item('advice'))).toBe('/sessions/session_a?advice=run_session_a');
   const { executionId: _row, ...rowless } = item('advice');
   expect(hrefOf(rowless)).toBeNull();
   // A terminal item tied to a run is not a terminal's own control screen.

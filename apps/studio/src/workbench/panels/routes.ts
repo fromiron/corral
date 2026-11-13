@@ -15,6 +15,8 @@ export interface RunDetailSearch {
 export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   review?: true | undefined;
   message?: string | undefined;
+  /** A run whose row's unread advice the conversation opens (features/inbox.md `advice`). */
+  advice?: string | undefined;
   compose?: true | undefined;
   /** Old links only (`tab=run`); read into `panel`. */
   tab?: 'work' | 'team' | 'run' | undefined;
@@ -55,7 +57,7 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
   if (out.panel === 'run' && search.respond === true) out.respond = true;
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
-  for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
+  for (const key of ['run', 'execution', 'artifact', 'result', 'message', 'advice'] as const) {
     const value = text(search[key]);
     if (value) out[key] = value;
   }

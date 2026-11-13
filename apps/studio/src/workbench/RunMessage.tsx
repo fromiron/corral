@@ -1,7 +1,11 @@
 import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
 import {
+  type AdviceEntry,
+  AdviceSummary,
+  AdviceText,
   ApprovalPanel,
+  agentName,
   buildTurnProcess,
   CopyTextButton,
   ExecutionTranscript,
@@ -17,6 +21,8 @@ import {
   runResults,
   SafeMarkdown,
   StatusBadge,
+  unreadAdviceOf,
+  useAdviceSeen,
   WorkPlanPanel,
 } from '@corral/react';
 import {
@@ -37,6 +43,7 @@ import { Link } from '@tanstack/react-router';
 import {
   type ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -48,6 +55,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { markRunReviewed } from '../pages/GettingStarted.tsx';
 import { useRemembered } from '../pages/Workbench.tsx';
+import { AdviceArrival } from './adviceArrival.ts';
 import { agentSummary } from './agentSummary.ts';
 import { holdPointer } from './ChatView.tsx';
 import { type ChatDensity, preferences } from './preferences.ts';
@@ -209,10 +217,18 @@ export function RunMessage({
     },
     [runId],
   );
+  const ta = useTranslations('Advice');
+  const advisorWord = ta('advisor');
+  // A conversation's own advisor has no name: it is called by the one word (features/advisor.md).
   const label = useCallback(
-    (nodeId: string) => state.definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId,
-    [state.definition],
+    (nodeId: string) => agentName(state.definition, nodeId, advisorWord),
+    [state.definition, advisorWord],
   );
+  // Advice no target read, on the row's tail: open when the person came here to read it.
+  const arrival = useContext(AdviceArrival);
+  const [adviceOpen, setAdviceOpen] = useState(() => arrival === runId);
+  const adviceId = useId();
+  const adviceSeen = useAdviceSeen();
   const results = useMemo(
     () => (state.projection ? runResults(state.projection) : null),
     [state.projection],
@@ -319,7 +335,9 @@ export function RunMessage({
   // In a conversation the process opens only by the detailed density or by the person; the
   // run starting or ending neither opens nor folds it.
   const processOpen = chosen ?? chatDensity === 'detailed';
-  const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
+  // The run's roles: an advisor watches them and is not one (features/advisor.md).
+  const roles = projection.executionOrder.filter((id) => !projection.executions[id]?.advisor);
+  const executions = roles.flatMap((id) => projection.executions[id] ?? []);
   // Current session activity lives by the composer and in the agent widget.
   // Historical failures stay visible here, while standalone consumers keep their activity row.
   const busy =
@@ -441,7 +459,10 @@ export function RunMessage({
   // The wait names the tool or role in progress, as the log names it; the head already says the
   // state. A model request's name says nothing to the person, so it waits with the mark alone.
   const activeStep = process.rows.filter((row) => row.active).at(-1);
-  const pendingStep = activeStep && activeStep.kind !== 'model' ? stepName(activeStep) : null;
+  const pendingStep =
+    activeStep && activeStep.kind !== 'model' && activeStep.kind !== 'advice'
+      ? stepName(activeStep)
+      : null;
   const pendingWord = tw(projection.status === 'running' ? 'activityWorking' : 'activityStarting');
   // A turn that did not finish says so once: its readable cause, whether it made anything,
   // and what to do next. One agent's failure is the turn's failure; a team lists its agents.
@@ -646,6 +667,19 @@ export function RunMessage({
           ? [resultGroup]
           : [],
     );
+    // Advice a role ended before reading: a concern or a blocker stays here (features/advisor.md).
+    const unread = unreadAdviceOf(projection);
+    const adviserOf = (item: AdviceEntry) => {
+      const observer = projection.executions[item.observerExecutionId];
+      return observer ? label(observer.nodeId) : item.observerExecutionId;
+    };
+    const advisers = new Set(unread.map((item) => item.observerExecutionId));
+    const unreadName =
+      advisers.size > 1
+        ? ta('advisors', { count: advisers.size })
+        : unread[0]
+          ? adviserOf(unread[0])
+          : '';
     const tailValues = [
       changes ? { key: 'changes', node: tturn('changes', { count: changes }) } : null,
       blocks ? { key: 'results', node: tturn('results', { count: blocks }) } : null,
@@ -682,24 +716,49 @@ export function RunMessage({
           </TurnProcess>
         }
         tail={
-          <RunTail values={tailValues}>
-            {tailResult ? (
-              <ResultActions
-                projection={projection}
-                result={tailResult}
-                text={textOf(tailResult)}
-                readable={
-                  bodyMetadataCurrent &&
-                  canReadArtifactBody(projection, tailResult.artifactVersionId)
-                }
-                sessionId={sessionId}
+          <>
+            <RunTail values={tailValues}>
+              {/* The answer's actions keep their place whatever the line holds after them. */}
+              {tailResult ? (
+                <ResultActions
+                  projection={projection}
+                  result={tailResult}
+                  text={textOf(tailResult)}
+                  readable={
+                    bodyMetadataCurrent &&
+                    canReadArtifactBody(projection, tailResult.artifactVersionId)
+                  }
+                  sessionId={sessionId}
+                />
+              ) : kept !== null ? (
+                <TurnActions>
+                  <CopyTextButton text={kept} />
+                </TurnActions>
+              ) : null}
+              {unread.length ? (
+                // Written into the tail's own line, after what it held: an ended row keeps its
+                // height and nothing on it moves (rule 3). Narrow, its first line gives way.
+                <AdviceSummary
+                  name={unreadName}
+                  items={unread}
+                  open={adviceOpen}
+                  controls={adviceId}
+                  onToggle={() => setAdviceOpen((value) => !value)}
+                />
+              ) : null}
+            </RunTail>
+            {unread.length ? (
+              // Opened by the person, so the row may grow under its tail.
+              <AdviceText
+                id={adviceId}
+                open={adviceOpen}
+                items={unread}
+                nameOf={adviserOf}
+                {...(adviceSeen ? { onSeen: (shown) => adviceSeen.seen(runId, shown) } : {})}
+                className="text-caption"
               />
-            ) : kept !== null ? (
-              <TurnActions>
-                <CopyTextButton text={kept} />
-              </TurnActions>
             ) : null}
-          </RunTail>
+          </>
         }
       >
         {replyPending ? (
@@ -850,13 +909,13 @@ export function RunMessage({
         onOpenChange={(open) => setDisclosure({ runId, density: chatDensity, open })}
       >
         <ThinkingStepsHeader>
-          {t('activity')} <span className="tabular-nums">{projection.executionOrder.length}</span>
+          {t('activity')} <span className="tabular-nums">{roles.length}</span>
         </ThinkingStepsHeader>
         <ThinkingStepsContent>
           {expanded || logShown ? (
             <>
               <WorkPlanPanel session={store} />
-              {projection.executionOrder.map((id, index) => {
+              {roles.map((id, index) => {
                 const execution = projection.executions[id];
                 if (!execution) return null;
                 const key = `${runId}:${id}`;
@@ -873,7 +932,7 @@ export function RunMessage({
                           ? 'x'
                           : 'dot'
                     }
-                    isLast={index === projection.executionOrder.length - 1}
+                    isLast={index === roles.length - 1}
                   >
                     <span className="flex flex-wrap items-center gap-2 text-caption">
                       <StatusBadge status={execution.status} />
@@ -966,7 +1025,7 @@ export function TurnActions({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="turn-actions"
-      className={`turn-actions ${compact ? '-ml-1.5 min-h-7' : '-ml-2.5 min-h-9'} flex flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none`}
+      className={`turn-actions ${compact ? '-ml-1.5 min-h-7' : '-ml-2.5 min-h-9'} flex shrink-0 flex-wrap items-center gap-0.5 text-muted-foreground transition-opacity duration-(--duration-moderate) ease-(--ease-out-soft) motion-reduce:transition-none`}
     >
       {children}
     </div>

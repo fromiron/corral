@@ -1,4 +1,5 @@
 export { type DiffLine, diffLines } from './artifacts/diff.ts';
+export { AdviceSummary, AdviceText } from './components/AdviceLine.tsx';
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
@@ -66,7 +67,23 @@ export {
 } from './editor/store.ts';
 export { default as enMessages } from './messages/en.json' with { type: 'json' };
 export { default as koMessages } from './messages/ko.json' with { type: 'json' };
-export { agentName, useAgentName, useSeverityName } from './run/advisor.ts';
+export {
+  type AdviceSeen,
+  AdviceSeenProvider,
+  type AdviceSeenSend,
+  createAdviceSeen,
+  useAdviceSeen,
+} from './run/adviceSeen.tsx';
+export {
+  type AdviceEntry,
+  agentName,
+  type DeliveredAdvice,
+  deliveredAdvice,
+  firstLine,
+  unreadAdviceOf,
+  useAgentName,
+  useSeverityName,
+} from './run/advisor.ts';
 export { useCancelConfirmation } from './run/cancel-confirmation.ts';
 export { type CompareRow, compareRuns } from './run/compare.ts';
 export {
@@ -75,6 +92,12 @@ export {
   type ModelPrices,
   type RunCostEstimate,
 } from './run/cost.ts';
+export {
+  awaitsPerson,
+  cutBefore,
+  type DeliveryState,
+  deliveryState,
+} from './run/delivery.ts';
 export { RunDisplayProvider, type RunDisplaySnapshot, useRunDisplay } from './run/display.tsx';
 export {
   buildRunFlow,

@@ -54,15 +54,23 @@ vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: nul
 vi.mock('../../router.tsx', () => ({ sessionRoute: { useSearch: () => fixture.search } }));
 vi.mock('../MeetingHandoff.tsx', () => ({ MeetingHandoffLinks: () => null }));
 vi.mock('../WorkFolderNotice.tsx', () => ({ useFolderAccess: () => 'unknown' }));
-vi.mock('./SessionEntries.tsx', () => ({
-  EntryCard: (props: CardProps) => {
-    fixture.cards.set(props.entry.entryId, props);
-    return props.runOnly && !props.entry.runId ? null : <p>{props.entry.text}</p>;
-  },
-  RunCard: () => null,
-  RunChecks: createContext(null),
-  useRunChecks: () => null,
-}));
+vi.mock('./SessionEntries.tsx', async () => {
+  const { useContext } = await import('react');
+  const { AdviceArrival } = await import('../adviceArrival.ts');
+  return {
+    EntryCard: (props: CardProps) => {
+      fixture.cards.set(props.entry.entryId, props);
+      // The run a person came to read advice in, as each row hears it.
+      const arrival = useContext(AdviceArrival);
+      return props.runOnly && !props.entry.runId ? null : (
+        <p data-arrival={arrival ?? ''}>{props.entry.text}</p>
+      );
+    },
+    RunCard: () => null,
+    RunChecks: createContext(null),
+    useRunChecks: () => null,
+  };
+});
 vi.mock('./Composer.tsx', () => ({ Composer: () => <textarea aria-label="Request" /> }));
 
 const cleanup: (() => void)[] = [];
@@ -252,4 +260,16 @@ it('a link to a carried request drawn as nothing goes to the message it came fro
   expect(
     f.container.querySelector('[aria-current="location"]')?.getAttribute('data-chat-item'),
   ).toBe('a');
+});
+
+it('a link to an advice goes to its run’s row and opens the advice there', async () => {
+  fixture.search = { advice: 'run_two' };
+  const f = await show([
+    entry('a', { intent: 'next' }),
+    entry('b', { intent: 'next', runId: 'run_two' }),
+  ]);
+  expect(
+    f.container.querySelector('[aria-current="location"]')?.getAttribute('data-chat-item'),
+  ).toBe('b');
+  expect(f.container.querySelector('[data-arrival]')?.getAttribute('data-arrival')).toBe('run_two');
 });

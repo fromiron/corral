@@ -1021,7 +1021,8 @@
       "review": "변경 열기",
       "checks": "검사 열기",
       "session": "세션 열기",
-      "terminal": "터미널 열기"
+      "terminal": "터미널 열기",
+      "advice": "조언 열기"
     },
     "summary": {
       "check_failed": "검사 실패: {name}",
@@ -1204,6 +1205,7 @@
     },
     "request": "요청 {no}",
     "withInstructions": "{count, plural, one {지시 포함} other {지시 #개 포함}}",
+    "withAdvice": "{count, plural, one {조언 포함} other {조언 #건 포함}}",
     "effort": "강도 {level} · {provider}",
     "waiting": "모델을 기다리는 중…",
     "emptyReply": "응답 완료 · 텍스트 없음",
@@ -6209,6 +6211,8 @@
       "concern": "우려",
       "blocker": "중단 권고"
     },
-    "from": "<isolate>{advisor}</isolate> · {severity}"
+    "from": "<isolate>{advisor}</isolate> · {severity}",
+    "count": "{count, plural, other {조언 #건}}",
+    "advisors": "{count, plural, other {감독 #명}}"
   }
 }

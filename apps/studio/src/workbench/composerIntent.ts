@@ -4,6 +4,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import type { ExecutionView, RunProjection, SessionIntent } from '@corral/core';
+import { awaitsPerson } from '@corral/react';
 
 // How the composer sends (features/composer-flow.md "전송", "합류 대상"). Nothing running: every
 // key starts a new request. A run going: the send key joins the target execution (read at its
@@ -145,15 +146,8 @@ export function intentOf(
   return { intent: waiting ? 'queue' : 'next', delivery: null };
 }
 
-const WAITING_ON_PERSON = new Set(['approval', 'user']);
-
-/** An execution waiting on the person (an approval or a question); an instruction is read after. */
-export function awaitsPerson(execution: Pick<ExecutionView, 'status' | 'waitingOn'>): boolean {
-  return (
-    execution.status === 'waiting_approval' ||
-    WAITING_ON_PERSON.has(execution.waitingOn?.kind ?? '')
-  );
-}
+// An execution waiting on the person reads an instruction after the decision (@corral/react).
+export { awaitsPerson };
 
 /** The executions that can take an instruction now, in run order, with their role names. */
 function openExecutions(

@@ -222,6 +222,89 @@ export function advisorRunProjection(events = advisorRunEvents()): RunProjection
   };
 }
 
+/** One more advice, as the projection records it once admitted. */
+export interface AdviceDraft {
+  adviceId: string;
+  severity: 'nit' | 'concern' | 'blocker';
+  text: string;
+  /** How it goes; `preserve` keeps it on record for a target that had already ended. */
+  delivery?: 'next_request' | 'interrupt' | 'preserve';
+  /** Its directive's state; without one an admitted advice waits to be read. */
+  status?: RunProjection['directives'][string]['status'];
+  /** The request that carried it, once attached or delivered. */
+  modelCallId?: string;
+  target?: string;
+  observer?: string;
+  seq?: number;
+}
+
+/** The projection with more advice admitted, each with its directive unless it is kept. */
+export function withAdvice(projection: RunProjection, drafts: readonly AdviceDraft[]) {
+  const advice = { ...projection.advice };
+  const directives = { ...projection.directives };
+  for (const [index, draft] of drafts.entries()) {
+    const delivery =
+      draft.delivery ?? (draft.severity === 'blocker' ? 'interrupt' : 'next_request');
+    const target = draft.target ?? 'impl_1';
+    const observer = draft.observer ?? 'advisor_1';
+    const seq = draft.seq ?? 100 + index;
+    const directiveId = delivery === 'preserve' ? null : `dir_${draft.adviceId}`;
+    advice[draft.adviceId] = {
+      adviceId: draft.adviceId,
+      observerExecutionId: observer,
+      targetExecutionId: target,
+      severity: draft.severity,
+      delivery,
+      directiveId,
+      note: delivery === 'preserve' ? draft.text : null,
+      acceptedSeq: seq,
+    };
+    if (directiveId && delivery !== 'preserve')
+      directives[directiveId] = {
+        directiveId,
+        targetExecutionId: target,
+        text: draft.text,
+        origin: 'advice',
+        delivery,
+        status: draft.status ?? 'accepted',
+        commandId: null,
+        acceptedSeq: seq,
+        contextSnapshotId: null,
+        modelCallId: draft.modelCallId ?? null,
+        reason: null,
+        advice: {
+          adviceId: draft.adviceId,
+          severity: draft.severity,
+          observerExecutionId: observer,
+        },
+      };
+  }
+  return {
+    ...projection,
+    advice,
+    directives,
+    directiveOrder: [
+      ...projection.directiveOrder,
+      ...Object.keys(directives).filter((id) => !projection.directiveOrder.includes(id)),
+    ],
+  };
+}
+
+/** The run ended: its roles succeeded, and the advisor with them. */
+export function endedRun(projection: RunProjection): RunProjection {
+  return {
+    ...projection,
+    status: 'succeeded',
+    endedAt: '2026-11-13T00:01:00.000Z',
+    executions: Object.fromEntries(
+      Object.entries(projection.executions).map(([id, execution]) => [
+        id,
+        { ...execution, status: 'succeeded' as const, waitingOn: null, activity: null },
+      ]),
+    ),
+  };
+}
+
 export function advisorRunSession(options: AdvisorRunOptions = {}) {
   const events = advisorRunEvents(options);
   return sessionStore({

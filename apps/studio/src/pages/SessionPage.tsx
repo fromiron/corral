@@ -98,6 +98,8 @@ function WorkSessionPage() {
     const remembered = JSON.parse(viewKey);
     delete remembered.compose;
     delete remembered.respond;
+    // Arriving to read an advice is not a view to come back to.
+    delete remembered.advice;
     rememberView(remembered);
   }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
@@ -170,6 +172,11 @@ function WorkSessionPage() {
     revealPendingTray(tray, session.sessionId);
     setSearch({ panel: undefined, respond: undefined }, { replace: true });
   }, [respondRequested, tray]);
+  // A link to read an advice brings the conversation, where its run's row holds it, to the front.
+  const adviceRequested = search.advice;
+  useEffect(() => {
+    if (adviceRequested) dock.current?.openContext('chat');
+  }, [adviceRequested]);
   const currentTarget = useRef({
     hostId: services.workspaceId,
     projectId: session.projectId,
