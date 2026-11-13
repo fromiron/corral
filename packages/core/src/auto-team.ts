@@ -28,7 +28,11 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
-import { ADVISOR_COLLABORATION_TOOLS, ADVISOR_WORK_TOOLS } from './advisor/tools.ts';
+import {
+  ADVISOR_COLLABORATION_TOOLS,
+  ADVISOR_WORK_TOOLS,
+  advisorRoleIds,
+} from './advisor/tools.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import type { CorralRecord } from './repository/index.ts';
@@ -412,11 +416,16 @@ export function autoRoster(input: Omit<AutoDefinitionInput, 'template'>): Conver
 /** Corral: a saved Corral's roles as delegates; its graph becomes guidance. */
 export function corralRoster(corral: CorralDefinition): ConversationRoster {
   const label = (id: string) => corral.nodes.find((node) => node.id === id)?.label ?? id;
+  const advisors = advisorRoleIds(corral);
   const flow = corral.controlEdges
     .map((edge) => `${label(edge.source)} → ${label(edge.target)}`)
     .join('; ');
   return {
-    roles: corral.roles.map((role) => delegateRole(role, `team_${role.id}`)),
+    // The conversation borrows roles, not the flow: the team's advisors have nothing of theirs to
+    // watch there, and their roles are no one's delegate.
+    roles: corral.roles
+      .filter((role) => !advisors.has(role.id))
+      .map((role) => delegateRole(role, `team_${role.id}`)),
     ...(flow ? { guidance: `${corral.name}: ${flow}.` } : {}),
   };
 }

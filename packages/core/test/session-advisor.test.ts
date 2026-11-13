@@ -153,40 +153,98 @@ describe('the conversation definition with the session advisor', () => {
     expect(advisorOf(without).role).not.toHaveProperty('harness');
   });
 
-  it('watches the lead of a conversation that borrows a saved team, whose own advisor stays', async () => {
+  /**
+   * A saved team with an advisor as the team editor makes it (its role lists `advise`), and a
+   * role an observer and a working step share.
+   */
+  function advisedTeam() {
     const corral = linearCorral(['writer', 'editor']);
-    corral.roles.push({
-      id: 'checker',
-      name: 'Checker',
+    const reader = (id: string, collaboration: ('advise' | 'read_artifact')[]) => ({
+      id,
+      name: id,
       prompt: 'Watch the writer.',
       modelProfile: 'model-c',
-      allowedWorkTools: ['read_file'],
-      allowedCollaborationTools: [],
-      outputContract: 'notes',
+      allowedWorkTools: ['read_file' as const],
+      allowedCollaborationTools: collaboration,
+      outputContract: 'notes' as const,
     });
+    corral.roles.push(reader('checker', ['read_artifact', 'advise']), reader('shared', []));
+    for (const [id, roleId] of [
+      ['checker', 'checker'],
+      ['second_look', 'shared'],
+    ] as const) {
+      corral.nodes.push({
+        id,
+        type: 'agent',
+        label: id,
+        roleId,
+        invocation: 'observer',
+        outputName: 'notes',
+      });
+      corral.capabilityLinks.push({
+        id: `watch_${id}`,
+        kind: 'advise',
+        sourceNodeId: id,
+        targetNodeId: 'writer',
+      });
+    }
+    // The shared role also does work as a callable step the writer may delegate to.
     corral.nodes.push({
-      id: 'checker',
+      id: 'lookup',
       type: 'agent',
-      label: 'Checker',
-      roleId: 'checker',
-      invocation: 'observer',
+      label: 'lookup',
+      roleId: 'shared',
+      invocation: 'callable',
+      inputBindings: [],
       outputName: 'notes',
     });
     corral.capabilityLinks.push({
-      id: 'watch_writer',
-      kind: 'advise',
-      sourceNodeId: 'checker',
-      targetNodeId: 'writer',
+      id: 'writer_lookup',
+      kind: 'delegate',
+      sourceNodeId: 'writer',
+      targetNodeId: 'lookup',
     });
+    return corral;
+  }
+
+  it('leaves a saved team’s advisor roles out of the conversation’s roster', async () => {
+    const corral = advisedTeam();
+    const definition = await started({ team: { corralId: 'corral_saved' } }, {}, corral);
+    const ids = definition.roles.map((role) => role.id);
+    // Its writer and editor are delegates; neither advisor role is, nor the role an advisor runs
+    // that a step also uses (the same rule as the team editor's role import).
+    expect(ids).toContain('team_writer_role');
+    expect(ids).toContain('team_editor_role');
+    expect(ids).not.toContain('team_checker');
+    expect(ids).not.toContain('team_shared');
+    expect(definition.roles.flatMap((role) => role.allowedCollaborationTools)).not.toContain(
+      'advise',
+    );
+    const called = definition.capabilityLinks
+      .filter((l) => l.kind === 'delegate')
+      .map((l) => l.targetNodeId);
+    expect(called).not.toContain('team_checker');
+    expect(called).not.toContain('team_shared');
+    expect(advisorOf(definition).node).toBeUndefined();
+    const compiled = compileDefinition(definition);
+    expect(compiled.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(compiled.ok).toBe(true);
+  });
+
+  it('with the session advisor on, that one advisor watches the lead of a saved team’s conversation', async () => {
+    const corral = advisedTeam();
     const without = await started({ team: { corralId: 'corral_saved' } }, {}, corral);
     const definition = await started(
       { team: { corralId: 'corral_saved' } },
       { sessionAdvisor: ON },
       corral,
     );
-    // The session advisor is added on top of what the team made of the conversation.
     expect(definition.roles.slice(0, -1)).toEqual(without.roles);
     expect(definition.nodes.slice(0, -1)).toEqual(without.nodes);
+    const observers = definition.nodes.filter(
+      (n) => n.type === 'agent' && n.invocation === 'observer',
+    );
+    expect(observers.map((n) => n.id)).toEqual(['session_advisor']);
     expect(advisorOf(definition).link?.targetNodeId).toBe(definition.entryNodeId);
     expect(compileDefinition(definition).ok).toBe(true);
   });

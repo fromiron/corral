@@ -1,4 +1,4 @@
-import type { AgentRole, CollaborationTool, WorkTool } from '@corral/contracts';
+import type { AgentRole, CollaborationTool, CorralNode, WorkTool } from '@corral/contracts';
 
 // The advisor's tools are the Coordinator's (docs/specs/features/advisor.md, 계약): the read tools
 // its role picked from this list, reading what the watched roles wrote, and `advise`.
@@ -34,4 +34,23 @@ export function advisorMayUse(role: AgentRole, tool: string): boolean {
     ((ADVISOR_WORK_TOOLS as readonly string[]).includes(tool) &&
       (role.allowedWorkTools as readonly string[]).includes(tool))
   );
+}
+
+/**
+ * The roles a team's advisors run: those of its observer nodes, and any role that lists `advise`.
+ * They are no one's delegate. The team editor's role import (`importableRoles` in
+ * `packages/react/src/team-editor/commands.ts`) leaves out the same roles; keep the two alike.
+ */
+export function advisorRoleIds(definition: {
+  nodes: readonly CorralNode[];
+  roles: readonly AgentRole[];
+}): Set<string> {
+  return new Set([
+    ...definition.nodes.flatMap((node) =>
+      node.type === 'agent' && node.invocation === 'observer' ? [node.roleId] : [],
+    ),
+    ...definition.roles
+      .filter((role) => role.allowedCollaborationTools.includes('advise'))
+      .map((role) => role.id),
+  ]);
 }
