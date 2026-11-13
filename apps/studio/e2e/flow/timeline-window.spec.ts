@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { fauxAssistantMessage } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { expect, type Harness, test } from '../server/harness.ts';
-import { newConversation } from '../workbench.ts';
+import { newConversation, requestBox } from '../workbench.ts';
 import { waitForStill } from './probe.ts';
 
 // The windowed timeline under a reader (docs/specs/features/composer-flow.md, "튐 없는 본문"
@@ -197,6 +198,212 @@ for (const count of [30, 300]) {
     const again = await settle();
     expect(again.top).toBeLessThanOrEqual(1);
     expect(again.shown).toContain(0);
+    // With Ctrl as well, the same.
+    await page.keyboard.press('Control+End');
+    const end2 = await settle();
+    expect(end2.gap).toBeLessThanOrEqual(1);
+    await page.keyboard.press('Control+Home');
+    const top2 = await settle();
+    expect(top2.top).toBeLessThanOrEqual(1);
+    expect(top2.shown).toContain(0);
     expect(corral.errors).toEqual([]);
   });
 }
+
+/** A reply far taller than the view, as a run shows it once its record has loaded. */
+const TALL_REPLY = (sentences: number) =>
+  [
+    '## What I found',
+    '',
+    'The slow path is the session lookup, which runs once per row instead of once per request.',
+    '',
+    '1. **Latency** grows with the number of rows on the page.',
+    '2. The cache is never warm, because each lookup uses a fresh key.',
+    '',
+    '```ts',
+    'export async function loadSession(id: string) {',
+    '  return cache.get(id) ?? (await db.sessions.findUnique({ where: { id } }));',
+    '}',
+    '```',
+    '',
+    '| Step | Before | After |',
+    '| --- | --- | --- |',
+    '| Lookup | 240 ms | 12 ms |',
+    '',
+    'The reply keeps growing while it streams in, one sentence after another. '.repeat(sentences),
+  ].join('\n');
+
+/**
+ * Counts what the page writes to the timeline's offset and how often its mounted rows change,
+ * frame by frame, and keeps the smallest distance to the end each frame showed.
+ */
+const record = (page: Page) =>
+  timeline(page).evaluate((box) => {
+    const own = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      'scrollTop',
+    ) as PropertyDescriptor;
+    const state = { writes: 0, sets: new Set<string>(), minGap: Number.POSITIVE_INFINITY };
+    (window as unknown as { __timeline: typeof state }).__timeline = state;
+    Object.defineProperty(box, 'scrollTop', {
+      configurable: true,
+      get() {
+        return own.get?.call(this);
+      },
+      set(value: number) {
+        const before = own.get?.call(this) as number;
+        own.set?.call(this, value);
+        if (Math.abs((own.get?.call(this) as number) - before) > 0.01) state.writes += 1;
+      },
+    });
+    const frame = () => {
+      state.sets.add(
+        [...box.querySelectorAll<HTMLElement>('[data-chat-item]')]
+          .map((row) => row.dataset.index)
+          .join(','),
+      );
+      state.minGap = Math.min(state.minGap, box.scrollHeight - box.scrollTop - box.clientHeight);
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+
+/** Starts a new count, and returns the one before it. */
+const recorded = (page: Page) =>
+  page.evaluate(() => {
+    const state = (
+      window as unknown as {
+        __timeline: { writes: number; sets: Set<string>; minGap: number };
+      }
+    ).__timeline;
+    const out = { writes: state.writes, sets: state.sets.size, minGap: state.minGap };
+    state.writes = 0;
+    state.sets = new Set();
+    state.minGap = Number.POSITIVE_INFINITY;
+    return out;
+  });
+
+/**
+ * Wheels up by 300 `count` times, `wait` apart: each wheel takes the reader 300 further from the
+ * end, the rows they read move by that alone, and no frame between two wheels shows the view
+ * pulled back toward the end. Rows growing above move the offset and the height together, so
+ * the distance to the end and the rows on screen say how far the reader went, not the offset.
+ * While a reply streams, the end itself moves away as well.
+ */
+async function wheelUpFromEnd(page: Page, count: number, wait: number, streaming: boolean) {
+  await timeline(page).hover({ position: { x: 16, y: 200 } });
+  const start = await place(page);
+  await recorded(page);
+  let was = start;
+  for (let step = 1; step <= count; step += 1) {
+    await page.mouse.wheel(0, -300);
+    await page.waitForTimeout(wait);
+    const now = await place(page);
+    const frames = await recorded(page);
+    const label = `wheel ${step}`;
+    const away = now.gap - start.gap;
+    // While a reply streams, the end moves away as well: at least the wheels' distance.
+    if (streaming)
+      expect.soft(now.gap, `${label}: distance to the end`).toBeGreaterThan(300 * step - 1);
+    else
+      expect
+        .soft(Math.abs(away - 300 * step), `${label}: distance to the end`)
+        .toBeLessThanOrEqual(1);
+    // Before the first wheel a streaming reply is still followed, so its rows were moving up
+    // with the end until the wheel landed.
+    if (!(streaming && step === 1))
+      expect
+        .soft(Math.abs(moved(was, now) + 300), `${label}: the rows read`)
+        .toBeLessThanOrEqual(1);
+    expect.soft(frames.minGap, `${label}: the nearest the end came`).toBeGreaterThan(was.gap - 2);
+    await expect.soft(latest(page), `${label}: Jump to latest`).toBeVisible();
+    was = now;
+  }
+  return was;
+}
+
+// Runs whose replies are taller than the view: each run row draws one line until its record
+// has loaded, then grows (docs/specs/chat-widgets-contract.md SCROLL-02: reading earlier
+// messages is never pulled back to the end).
+test.describe('tall runs above the end', () => {
+  test.use({ live: true, codexLogin: true, streamTokensPerSecond: 120 });
+
+  test('wheeling up over runs taller than the view leaves the end, still and while a reply streams', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(300_000);
+    await open(page, corral, 60);
+    const runs = () => [...corral.server.coordinator.listRuns()];
+    const finished = (count: number) =>
+      expect
+        .poll(
+          () =>
+            runs().length === count &&
+            runs().every(
+              (run) =>
+                corral.server.coordinator.getSnapshot(run.runId).projection.status === 'succeeded',
+            ),
+          { timeout: 180_000, intervals: [100] },
+        )
+        .toBe(true);
+    for (let index = 1; index <= 8; index += 1) {
+      corral.fake?.setResponses([fauxAssistantMessage(TALL_REPLY(40))]);
+      await requestBox(page).fill(`Tall reply ${index}`);
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      await finished(index);
+      await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+    }
+    const tallest = await timeline(page)
+      .locator('[data-chat-item]')
+      .last()
+      .evaluate((row) => row.getBoundingClientRect().height);
+    expect(tallest).toBeGreaterThan((await place(page)).visible);
+
+    // Still: reloaded at the end, every run's record loads again as its row mounts.
+    await page.reload();
+    await expect(timeline(page)).toContainText('Tall reply 8');
+    await waitForStill(page);
+    expect((await place(page)).gap).toBeLessThanOrEqual(1);
+    await record(page);
+    const read = await wheelUpFromEnd(page, 10, 300, false);
+    expect(read.gap).toBeGreaterThanOrEqual(2_998);
+    // Staying there: nothing writes the offset and no row mounts or leaves.
+    await recorded(page);
+    await page.waitForTimeout(3_000);
+    const still = await recorded(page);
+    expect(still.writes).toBe(0);
+    expect(still.sets).toBe(1);
+    expect(Math.abs((await place(page)).top - read.top)).toBeLessThanOrEqual(1);
+    await expect(latest(page)).toBeVisible();
+
+    // While a reply streams below, after a reload.
+    await latest(page).click();
+    await page.reload();
+    await expect(timeline(page)).toContainText('Tall reply 8');
+    await waitForStill(page);
+    corral.fake?.setResponses([fauxAssistantMessage(TALL_REPLY(400))]);
+    await requestBox(page).fill('Explain again while I read above');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.getByTestId('live-text')).toBeVisible({ timeout: 60_000 });
+    await record(page);
+    const streaming = await wheelUpFromEnd(page, 6, 120, true);
+    // Still streaming after the wheels: a reply ending would change the rows below the reader.
+    const running = () =>
+      runs().filter(
+        (run) => corral.server.coordinator.getSnapshot(run.runId).projection.status === 'running',
+      );
+    expect(running()).toHaveLength(1);
+    await recorded(page);
+    await page.waitForTimeout(3_000);
+    const reading = await recorded(page);
+    // The reply was still streaming the whole time, and the reader was left where they were.
+    expect(running()).toHaveLength(1);
+    expect(reading.writes).toBe(0);
+    expect(reading.sets).toBe(1);
+    expect(Math.abs((await place(page)).top - streaming.top)).toBeLessThanOrEqual(1);
+    await expect(latest(page)).toBeVisible();
+    await finished(9);
+    expect(corral.errors).toEqual([]);
+  });
+});

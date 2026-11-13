@@ -90,9 +90,9 @@ export function holdPointer(held: { current: boolean }) {
 }
 
 /**
- * The row at the top of the view, its offset, and the scroll position it was read at: a
- * reader's place. Read before the list has mounted the rows for a new position, no row is in
- * view and there is no place to hold yet.
+ * The row at the top of the view, its offset on screen, where it starts in the content, and the
+ * scroll position it was read at: a reader's place. Read before the list has mounted the rows
+ * for a new position, no row is in view and there is no place to hold yet.
  */
 function readPlace(box: HTMLElement) {
   const top = box.getBoundingClientRect().top;
@@ -101,11 +101,8 @@ function readPlace(box: HTMLElement) {
   );
   if (!row?.dataset.chatItem || row.getBoundingClientRect().top >= top + box.clientHeight)
     return null;
-  return {
-    id: row.dataset.chatItem,
-    offset: row.getBoundingClientRect().top - top,
-    top: box.scrollTop,
-  };
+  const offset = row.getBoundingClientRect().top - top;
+  return { id: row.dataset.chatItem, offset, top: box.scrollTop, start: offset + box.scrollTop };
 }
 
 /** A row's height until it is measured. */
@@ -240,37 +237,68 @@ export function ChatView({
     position.current = () => {
       if (box.hidden) return;
       const { items, rows } = current.current;
+      // A mounted row's new height reaches the list in the task that changed it, not later in
+      // its resize observer. The browser's scroll anchoring for the same growth moves the offset
+      // first; the list reading that scroll with the row's old height would place its window
+      // too low, take the grown row out above it, and the history would shrink under the reader
+      // (a run row drawn as one line until its record loads, then a reply taller than the view).
+      const placed = new Map(rows.getVirtualItems().map((item) => [item.index, item.size]));
+      for (const row of body.querySelectorAll<HTMLElement>('[data-chat-item]')) {
+        const index = Number(row.dataset.index);
+        const height = row.getBoundingClientRect().height;
+        const size = placed.get(index);
+        if (height > 0 && size !== undefined && height !== size) {
+          sizes.current.set(row.dataset.chatItem ?? '', height);
+          rows.resizeItem(index, height);
+        }
+      }
+      const mounted = (id: string) =>
+        // Only the mounted rows are looked at, so this costs the window, not the history.
+        [...body.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+          (row) => row.dataset.chatItem === id,
+        );
       const reading = readingAnchor.current;
-      // While reading, the place is read again when the person or the browser moved the view
-      // since it was read: a key or a wheel animating over frames, a focused row scrolled into
-      // view. Rows mounting for that move are seen here before its scroll event, and the move
-      // stands. A scroll event read before the list mounted the rows in view left no place;
-      // the rows are there now.
-      if (
-        !follow.current &&
-        restoreAnchor.current === null &&
-        restoreTop.current === null &&
-        (!reading || Math.abs(box.scrollTop - reading.top) >= 0.5)
-      )
-        readingAnchor.current = readPlace(box);
+      // While reading, the offset moving since the place was read is either a scroll or the
+      // content above the reader changing. A scroll (a key or a wheel animating over frames, a
+      // focused row scrolled into view) leaves the reader's row where it starts in the content:
+      // that move stands, and the place is read again where it is now. Content above changing
+      // moves where the row starts, and the offset with it only if the browser's scroll
+      // anchoring held the row (a change in the list's padding stops it, and a shorter history
+      // cuts the offset at its end): the row is put back where it was on screen. A scroll event
+      // read before the list mounted the rows in view left no place; the rows are there now.
+      // A restored offset not yet reached is not a reader's place; a restored row is held
+      // by its own anchor below, ahead of any place read here.
+      if (!follow.current && restoreTop.current === null) {
+        const row = reading && mounted(reading.id);
+        const start = row
+          ? row.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop
+          : null;
+        if (
+          !reading ||
+          (box.scrollTop !== reading.top &&
+            (start === null || Math.abs(start - reading.start) < 0.5))
+        )
+          readingAnchor.current = readPlace(box);
+      }
       const anchor = restoreAnchor.current ?? (!follow.current ? readingAnchor.current : null);
       if (anchor && items.some((item) => item.id === anchor.id)) {
-        // Only the mounted rows are looked at, so this costs the window, not the history.
-        const row = [...body.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
-          (row) => row.dataset.chatItem === anchor.id,
-        );
+        const row = mounted(anchor.id);
         if (row) {
           const shift =
             row.getBoundingClientRect().top - box.getBoundingClientRect().top - anchor.offset;
-          // A write, even of the same offset, would stop a scroll the browser is animating.
-          if (Math.abs(shift) >= 0.5) box.scrollTop += shift;
+          // A write, even of the same offset, stops a scroll the browser is animating. A reader's
+          // own scroll goes on; a restored or linked row is held until the person moves up.
+          if (anchor === restoreAnchor.current || Math.abs(shift) >= 0.5) box.scrollTop += shift;
           restoreTop.current = null;
         } else
           rows.scrollToIndex(
             items.findIndex((item) => item.id === anchor.id),
             { align: 'start' },
           );
-        if (anchor === readingAnchor.current) readingAnchor.current.top = box.scrollTop;
+        if (anchor === readingAnchor.current) {
+          readingAnchor.current.top = box.scrollTop;
+          readingAnchor.current.start = anchor.offset + box.scrollTop;
+        }
       } else if (restoreTop.current !== null) {
         box.scrollTop = restoreTop.current;
         if (box.scrollHeight - box.clientHeight >= restoreTop.current) restoreTop.current = null;
@@ -529,9 +557,11 @@ export function ChatView({
         onKeyDown={(event) => {
           const box = timeline.current;
           if (!box) return;
-          // On the timeline itself, Home and End go to the first row and to the end: rows not
-          // yet measured would leave the browser's own scroll short of either.
-          const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+          // On the timeline itself, Home and End (with Ctrl or Cmd as well) go to the first row
+          // and to the end. The browser's own scroll for them animates to an offset that the
+          // scroll anchoring for rows measured on the way carries along, short of either.
+          // Shift and Alt keep their own meanings.
+          const plain = !(event.altKey || event.shiftKey);
           if (event.target === event.currentTarget && plain && event.key === 'End') {
             event.preventDefault();
             followEnd();

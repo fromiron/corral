@@ -1033,13 +1033,21 @@ async function mountLong(count: number, content?: (index: number) => React.React
         rows.reduce((sum, row) => sum + Number.parseFloat(row.style.marginTop || '0'), 0),
     };
   };
-  const key = (target: Element, key: string) =>
-    act(async () => {
-      target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key }));
+  /** Presses a key on `target`; says whether the view kept the browser from acting on it. */
+  const key = async (target: Element, key: string, modifiers: KeyboardEventInit = {}) => {
+    let prevented = false;
+    await act(async () => {
+      prevented = !target.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key, ...modifiers }),
+      );
     });
+    return prevented;
+  };
+  /** Row `index` grows by `by` more: every row after it sits that much lower. */
   const grow = (index: number, by: number) => {
+    if (grown.by !== 0 && grown.index !== index) throw new Error('One row grows per fixture');
     grown.index = index;
-    grown.by = by;
+    grown.by += by;
     chat.metrics.height += by;
   };
   // Assigned onto the fixture, so its scroll position stays a live getter.
@@ -1078,6 +1086,17 @@ it('a focused row kept mounted away from the window holds the rows between them 
   expect(back.mounted).toContain(77);
   expect(back.mounted).toContain(199);
   expect(back.space).toBe((200 - back.mounted.length) * 260);
+  // The space held above a kept row is not part of that row's size: measured with it, the
+  // row would carry it into the history once it leaves the window.
+  const mountedRows = [...chat.container.querySelectorAll('[data-chat-item]')];
+  await act(async () => {
+    for (const callback of [...resizeCallbacks])
+      callback(mountedRows.map((target) => ({ target })));
+  });
+  await act(async () => reading.blur());
+  const left = chat.held();
+  expect(left.mounted).not.toContain(77);
+  expect(left.space).toBe((200 - left.mounted.length) * 260);
 });
 
 it('a row above the reader changing size is left to the browser, not corrected by the list', async () => {
@@ -1099,6 +1118,28 @@ it('a row above the reader changing size is left to the browser, not corrected b
     for (const callback of [...resizeCallbacks]) callback([{ target: row }]);
   });
   expect(chat.top).toBe(5_000);
+});
+
+it('a mounted row’s new height reaches the list in the change that made it, before its resize is observed', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(200);
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
+  });
+  await chat.scroll(5_000);
+  const row = chat.container.querySelector<HTMLElement>('[data-chat-item="turn-16"]');
+  if (!row) throw new Error('Row above the view missing');
+  // The row's content grows by 140 (a run's record loaded); no resize observer has run yet.
+  row.getBoundingClientRect = () =>
+    ({ top: -700, bottom: -300, height: 400, left: 0, right: 480, width: 480 }) as DOMRect;
+  await act(async () => {
+    row.firstElementChild?.setAttribute('class', 'loaded');
+  });
+  // Read far below, the row leaves the window: the space held for it is its new height.
+  await chat.scroll(30_000);
+  const { mounted, space } = chat.held();
+  expect(mounted).not.toContain(16);
+  expect(space).toBe((200 - mounted.length) * 260 + 140);
 });
 
 it('a scroll that moved on since the reader’s place was read is not pulled back to it', async () => {
@@ -1134,6 +1175,43 @@ it('a scroll that moved on since the reader’s place was read is not pulled bac
   });
   await chat.resize();
   expect(writes).toBe(0);
+  // Less than half a pixel is not drawn: the view writes nothing for it. A whole pixel more is.
+  chat.grow(50, 0.3);
+  await chat.resize();
+  expect(writes).toBe(0);
+  expect(chat.top).toBe(14_632);
+  chat.grow(50, 0.7);
+  await chat.resize();
+  expect(writes).toBe(1);
+  expect(chat.top).toBe(14_633);
+  // However little the view moved since the place was read, it is not pulled back.
+  chat.top = 14_630;
+  await chat.resize();
+  expect(chat.top).toBe(14_630);
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
+});
+
+it('a history cut short above the reader puts the reader’s row back, rather than following the end', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60);
+  await act(async () => {
+    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
+  });
+  await chat.scroll(15_000);
+  await chat.scroll(15_000);
+  // A row above the reader comes back shorter than the list held for it, in a change that also
+  // moves the list's padding, so the browser does not anchor: the history is 900 shorter and
+  // the offset is cut at its new end.
+  chat.grow(50, -900);
+  chat.top = chat.end();
+  await chat.resize();
+  expect(chat.top).toBe(14_100);
+  await act(async () => {
+    chat.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  chat.metrics.height += 300;
+  await chat.resize();
+  expect(chat.top).toBe(14_100);
   expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
 });
 
@@ -1142,15 +1220,17 @@ for (const count of [30, 300]) {
     sessionStorage.clear();
     const chat = await mountLong(count);
     expect(chat.top).toBe(chat.end());
-    await chat.key(chat.box, 'Home');
+    // The view moves itself; the browser's own scroll for the key does not run as well.
+    expect(await chat.key(chat.box, 'Home')).toBe(true);
     expect(chat.top).toBe(0);
+    // Left the end in the same task, before the scroll's event.
+    expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
     await chat.scroll(0);
     expect(chat.held().mounted[0]).toBe(0);
-    expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
     // Rows mounting at the top do not move the reader off the first row.
     await chat.resize();
     expect(chat.top).toBe(0);
-    await chat.key(chat.box, 'End');
+    expect(await chat.key(chat.box, 'End')).toBe(true);
     expect(chat.top).toBe(chat.end());
     // At the end, End follows it: the end growing stays in view.
     chat.metrics.height += 400;
@@ -1169,14 +1249,89 @@ it('Home and End from a control inside a row are that control’s keys', async (
   );
   if (!button) throw new Error('Row action missing');
   const at = chat.top;
-  await chat.key(button, 'Home');
+  expect(await chat.key(button, 'Home')).toBe(false);
   expect(chat.top).toBe(at);
+  // Focused, the control's row stays mounted while the person reads far above it.
+  await act(async () => button.focus());
   await act(async () => {
     chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
   });
   await chat.scroll(1_000);
-  await chat.key(button, 'End');
+  expect(button.isConnected).toBe(true);
+  expect(await chat.key(button, 'End')).toBe(false);
   expect(chat.top).toBe(1_000);
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
+});
+
+it('Ctrl or Cmd with Home and End go to the first row and the end; Shift and Alt are the browser’s', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(30);
+  for (const modifiers of [{ shiftKey: true }, { altKey: true }]) {
+    expect(await chat.key(chat.box, 'Home', modifiers)).toBe(false);
+    expect(chat.top).toBe(chat.end());
+  }
+  expect(await chat.key(chat.box, 'Home', { ctrlKey: true })).toBe(true);
+  expect(chat.top).toBe(0);
+  for (const modifiers of [{ shiftKey: true }, { altKey: true }]) {
+    expect(await chat.key(chat.box, 'End', modifiers)).toBe(false);
+    expect(chat.top).toBe(0);
+  }
+  expect(await chat.key(chat.box, 'End', { metaKey: true })).toBe(true);
+  expect(chat.top).toBe(chat.end());
+  await chat.key(chat.box, 'Home', { metaKey: true });
+  expect(chat.top).toBe(0);
+  await chat.key(chat.box, 'End', { ctrlKey: true });
+  expect(chat.top).toBe(chat.end());
+});
+
+it('a restored row is held against a move down until the person moves up', async () => {
+  sessionStorage.clear();
+  sessionStorage.setItem(
+    'corral:chat-scroll:session-follow',
+    JSON.stringify({ top: 5_000, follow: false, anchor: { id: 'turn-30', offset: 0 } }),
+  );
+  const chat = await mountLong(60);
+  // The list goes to the row first, then the row is placed once it is mounted.
+  await chat.scroll(chat.top);
+  await chat.resize();
+  const held = 24 + 30 * 260;
+  expect(chat.top).toBe(held);
+  // A downward key: the browser's scroll is put back, and every placing writes the offset,
+  // which stops the key's animation instead of letting it run on a frame at a time.
+  let writes = 0;
+  Object.defineProperty(chat.box, 'scrollTop', {
+    configurable: true,
+    get: () => chat.top,
+    set: (value: number) => {
+      writes += 1;
+      chat.top = value;
+    },
+  });
+  await chat.key(chat.box, 'PageDown');
+  chat.top = held + 200;
+  await chat.resize();
+  expect(chat.top).toBe(held);
+  writes = 0;
+  await chat.resize();
+  expect(writes).toBeGreaterThan(0);
+  expect(chat.top).toBe(held);
+  // Moving up ends the hold.
+  await chat.key(chat.box, 'PageUp');
+  await chat.scroll(held - 300);
+  await chat.resize();
+  expect(chat.top).toBe(held - 300);
+});
+
+it('a restored offset waits for the history to be tall enough, without reading a place first', async () => {
+  sessionStorage.clear();
+  sessionStorage.setItem(
+    'corral:chat-scroll:session-follow',
+    JSON.stringify({ top: 5_000, follow: false }),
+  );
+  // Mounted while the history is still 800 high; then it reaches its full height.
+  const chat = await mountLong(60);
+  expect(chat.top).toBe(5_000);
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
 });
 
 it('marks every timeline row with its item’s identity', async () => {
