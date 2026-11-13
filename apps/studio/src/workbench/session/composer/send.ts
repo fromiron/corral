@@ -395,6 +395,7 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         refusal: commandError ?? null,
         commandId,
         ...(auto ? { auto } : {}),
+        ...(input.references.length ? { references: input.references } : {}),
         ...(attachments.length ? { attachments } : {}),
         ...(images.length ? { images } : {}),
         ...(request ? { start: entryStart(request) } : {}),
@@ -415,7 +416,10 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         intent,
         text: body,
         state: 'queued',
+        // Started later, it carries what a new request sent now would (session-queue.ts).
+        ...(input.references.length ? { references: input.references } : {}),
         ...(attachments.length ? { attachments } : {}),
+        ...(images.length ? { images } : {}),
         ...(permissionMode ? { permissionMode } : {}),
         start: queuedStart(deps, body, permissionMode),
       });
@@ -502,8 +506,8 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
       return outcome;
     }
     clearPending(deps.commands);
-    // Text attachments ride every send; images only a new request (features/composer-flow.md).
-    deps.clearDraft(input.revision, intent === 'explain', intent !== 'next');
+    // Text attachments ride every send; images a new or a next request (features/composer-flow.md).
+    deps.clearDraft(input.revision, intent === 'explain', intent !== 'next' && intent !== 'queue');
     await deps.invalidate();
     deps.onChange();
     outcome.sent = true;

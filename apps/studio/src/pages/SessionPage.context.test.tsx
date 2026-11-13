@@ -367,7 +367,7 @@ it('exposes the demo model picker as simulation without pretending a model is co
   expect(document.querySelector('[role="switch"]')).toBeNull();
 });
 
-it('queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
+it('queues a captured source with the draft images, consumes both, and starts that snapshot without consuming a later draft', async () => {
   const sessionId = 'queue_capture';
   writeComposerDraft(sessionId, {
     text: 'Keep my typed request',
@@ -397,10 +397,12 @@ it('queues a captured source, consumes its draft attachment, and starts that sna
     state: 'queued',
     text: 'Keep my typed request',
     attachments: [captured],
+    // A next request carries its images (features/composer-flow.md "합류 대상").
+    images: [image],
   });
-  expect(saved).not.toHaveProperty('images');
   expect(f.startAuto).not.toHaveBeenCalled();
-  expect(readComposerDraft(sessionId)).toMatchObject({ text: '', images: [image] });
+  expect(readComposerDraft(sessionId)).toMatchObject({ text: '' });
+  expect(readComposerDraft(sessionId).images).toBeUndefined();
   expect(readComposerDraft(sessionId).attachments).toBeUndefined();
 
   await f.render(null, [{ ...queuedEntry(captured), ...saved }]);
@@ -417,7 +419,7 @@ it('queues a captured source, consumes its draft attachment, and starts that sna
   expect(f.startAuto).toHaveBeenCalledWith(
     expect.objectContaining({
       sessionId,
-      references: [captured],
+      references: [captured, image],
       brief: 'Keep my typed request',
       team: { corralId: 'team' },
     }),
@@ -428,7 +430,8 @@ it('queues a captured source, consumes its draft attachment, and starts that sna
     'queued',
     expect.objectContaining({ state: 'started', runId: 'started' }),
   );
-  expect(readComposerDraft(sessionId)).toMatchObject({ attachments: [later], images: [image] });
+  expect(readComposerDraft(sessionId)).toMatchObject({ attachments: [later] });
+  expect(readComposerDraft(sessionId).images).toBeUndefined();
 });
 
 it('retries an uncertain queued snapshot with the same command identity and includes provenance in changed request identity', async () => {
@@ -750,6 +753,7 @@ it.each(['cancelled', 'interrupted', 'failed'] as const)(
       intent: 'next' as const,
       state: 'started' as const,
       runId: 'cancelled',
+      references: [{ kind: 'folder' as const, path: 'docs' }],
       images: [image],
       permissionMode: 'ask' as const,
     };
@@ -764,13 +768,14 @@ it.each(['cancelled', 'interrupted', 'failed'] as const)(
     expect(f.startAuto).toHaveBeenCalledOnce();
     expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
       brief: entry.text,
-      references: [captured, image],
+      references: [{ kind: 'folder', path: 'docs' }, captured, image],
     });
     expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
       sessionId,
       expect.objectContaining({
         intent: 'next',
         text: entry.text,
+        references: [{ kind: 'folder', path: 'docs' }],
         attachments: [captured],
         images: [image],
         runId: 'started',
