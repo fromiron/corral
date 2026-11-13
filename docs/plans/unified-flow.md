@@ -12,9 +12,9 @@
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
 | 백본 | B1–B13 | 진행 중(B13만 남음) |
-| 화면 | K1, U1–U14 | 진행 중(K1·U1·U8·U10 병합) |
+| 화면 | K1, U1–U14 | 진행 중(K1·U1–U4·U8·U10 병합) |
 | 회의 | M1–M4 | 진행 중(M1·M2 병합) |
-| 감독 | A1–A9 | 진행 중(A1 병합) |
+| 감독 | A1–A9 | 진행 중(A1–A3 병합) |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
@@ -442,17 +442,17 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 네 번째 리뷰 중(`flow/u2-timeline-frame-2`) |
-| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 리뷰 통과(`flow/u4-pending-tray`, U3 브랜치 위). U2·U3가 병합된 뒤 병합 |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 완료 |
+| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 완료 |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 완료 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 디자인 검수 통과, 코드 리뷰 수정 중(`flow/u5-send-model`) |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
-| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 대기 |
-| U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 대기 |
+| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 구현 중(`flow/u11-reply-selection`) |
+| U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 구현 중(`flow/u12-inbox-response`) |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
 | U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
 | M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 완료 |
@@ -460,9 +460,9 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 대기 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
 | A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 완료 |
-| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 리뷰 중(`flow/a2-advisor-compile`) |
-| A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 대기 |
-| A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 대기 |
+| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 완료 |
+| A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 완료 |
+| A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 리뷰 중(`flow/a4-advisor-delta`) |
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 대기 |
 | A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 대기 |
 | A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 대기 |
@@ -690,9 +690,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 완료 체크: 규칙마다 반례 테스트 하나씩, observer만 있는 정의, observer의 포트 행, 참조 팀 안의 observer.
 
 ### A3 조언 문지기와 전달 채널
-- 대상: 새 `C/advisor/guard.ts`, `C/advisor/channel.ts`, 테스트.
-- 구현: 둘 다 순수 함수다. `admit(state, { severity, note })`는 소문자·NFKC·글자와 숫자 밖은 공백으로 정규화한 뒤, 빈 것과 빈말 목록(stop, done, ok, lgtm, looks good, continue, no issue continue와 한국어 대응)은 `noise`, 이미 본 키이고 이전 심각도가 같거나 높으면 `duplicate`, 한 번의 검토에서 차단이 아닌 조언이 3개를 넘으면 `over_budget`로 돌려준다. 이력은 감독 실행 단위마다 512개까지다. `resolveChannel({ severity, target })`는 대상이 작업 중이면 nit는 `aside`, concern은 `steer`, blocker는 `interrupt`(대상 어댑터가 못 하면 `steer`), 대상이 사람을 기다리면 그대로 두고 결정 뒤에 전달, 대상이 종료면 nit는 억제(`target_terminal`), 나머지는 `preserve`다.
-- 완료 체크: 정규화 표 테스트("Stop.", "*stop*", "  STOP " 가 같은 키), 중복·심각도 상승 통과, 채널 표 전부.
+- 대상: `C/advisor/guard.ts`, `C/advisor/channel.ts`, 테스트.
+- 구현(병합됨): 둘 다 순수 함수다. `admit(state, { severity, note })`는 NFKC·소문자·글자와 숫자 밖은 공백으로 정규화한 뒤, 빈 글과 빈말 구절만 이어진 글(`ADVICE_FILLER_PHRASES`의 구절로 남김없이 나뉘는 글)은 `noise`, 이미 접수한 키이고 그때 심각도가 같거나 높으면 `duplicate`, 한 번의 검토에서 중단 권고가 아닌 조언이 3개를 넘으면 `over_budget`를 돌려준다. 접수만 상태를 바꾼다. 이력은 512개까지다. `beginReview(state)`가 검토마다 셈을 0으로 돌린다. `resolveDelivery({ severity, target: { terminal, interruptible } })`는 [명세가 정한 차이](#명세가-정한-차이)의 A1·A3 줄대로 `next_request`·`interrupt`·`preserve` 또는 `target_terminal`을 돌려준다.
 
 ### A4 검토 입력 작성기
 - 대상: 새 `C/advisor/delta.ts`, 테스트. 읽는 곳: `C/projection.ts`(`modelCalls` 243행, `toolCalls` 245행, `responseRef` 92행), 응답 산출물(`response_<id>`).
@@ -808,6 +807,10 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U7 (U5가 남긴 것).** 대상 목록은 `composer/useRunState.ts`의 `useSteerTargets`, "여기에 합류"는 `composer/useIntent.ts`의 `chooseTarget(id)`, 자동 시작은 `composer/useSessionSettings.ts`의 `autoStart`·`updateAutoStart`다. 브라우저 데모 모드에는 서버 대기열이 없어 자동 시작 스위치가 듣지 않는다.
 - **U7 (U4가 남긴 것).** `usePendingTray().waiting`(기다리는 수)과 `visible`을 활동 바가 읽는다. 트레이가 측정되기 전에는 "화면 밖"으로 보지 않는다.
 - **U13 (U4·U5가 남긴 것).** Run에 본문이 아직 없을 때 실행 행 머리와 트레이 카드 사이가 약 100px 빈다(U3의 행 자리 예약). 도구 줄의 폴더 안내("에이전트가 파일을 읽거나 바꿀 수 없습니다")는 늘 떠 있는 설명 글이다. 이미지가 붙은 다음 요청을 서버가 시작할 때 이미지가 실리지 않는다(명세는 실린다고 한다).
+
+- **A5 (A2·A3가 남긴 것).** 감독의 문은 컴파일 옵션 `CompileOptions.advisors`(`refuse`가 기본, `plan`이면 `plan.advisors`를 가진 plan)다. A5는 감독 실행을 만드는 같은 커밋에서 기본값을 바꾼다(`compiler/index.ts`의 `refuseAdvisorsUntilTheyRun`). 대상이 끝난 뒤의 참고(`target_terminal`)는 문지기의 이력과 예산을 차지하지 않는다: `admit`이 돌려준 상태는 `resolveDelivery`가 버리지 않을 때만 반영한다. 문지기 상태는 조언의 정규화한 글을 키로 가지므로 이벤트만으로는 다시 만들 수 없다(이벤트는 글을 싣지 않는다). 감독 실행 단위와 함께 메모리에 둔다.
+- **A7 (A2가 정한 진단).** 감독의 컴파일 진단은 `ADVISOR_OUTSIDE_FLOW`, `ADVISOR_UNWATCHED`(감독 노드), `ADVISOR_ADVISE_SOURCE`·`ADVISOR_ADVISE_TARGET`·`ADVISOR_ADVISE_QUESTIONS`(연결), `ADVISOR_TOOLS`, `ADVISE_TOOL_ADVISOR_ONLY`, `ADVISOR_NOT_A_STEP`, 그리고 문 `ADVISOR_NOT_SUPPORTED`다. 편집기 문구 카탈로그는 `{message}`와 `{node}`만 받아 걸린 도구나 입력의 이름을 말하지 못한다.
+- **U2 (네 번째 리뷰가 남긴 것).** 통합 브랜치에도 있던 것이라 병합을 막지 않았다. (1) 스트리밍 중 끝에서의 첫 휠이 가끔 먹지 않는다(대기하던 scroll 이벤트가 `gap < 1`로 따라가기를 다시 켠다, `ChatView.tsx`). (2) 실행이 끝나 스트리밍 행이 줄어들 때 끝에서 약 1,350px 안쪽을 읽던 사람은 끝으로 끌려간다. (3) 링크·복원된 행에서 아래 키가 40–151px 샜다가 다음 콘텐츠 변화 때 돌아온다. (4) 끝에서 Shift+Space는 끝을 떠나지 못한다. (5) Home·End(Ctrl·Cmd 포함)가 첫 행과 끝에 닿는다는 문장을 가진 명세가 없다. 터치·스크롤바 드래그·WebKit은 재지 못했다.
 
 ### V2 최종 장면
 - 대상: `apps/studio/e2e/flow/{idle,multi-agent,join-interrupt,awaiting,citation,sidebar,meeting}.spec.ts`.
