@@ -158,8 +158,7 @@ export function SendMenu({
 /**
  * Where an instruction goes, on the left of the tool line: the target role, which opens the
  * list of executions that can take an instruction now; while a run goes and none can, the one
- * line saying so. Nothing while no run goes; while the run's record is being read, its place
- * stays empty.
+ * line saying so. Nothing while no run goes, nor while the run's record is being read.
  */
 export function TargetChip({
   situation,
@@ -185,14 +184,15 @@ export function TargetChip({
 }) {
   const tc = useTranslations('Composer');
   if (situation === 'idle') return null;
-  // The reason keeps the room before the folder notice does, and gives way before the keys.
-  const reasonRoom =
-    'min-w-0 truncate px-1 text-caption text-muted-foreground sm:min-w-12 sm:max-w-max sm:grow-[100] sm:basis-0';
-  if (loading)
-    return <span aria-hidden="true" data-slot="composer-target-pending" className={reasonRoom} />;
+  // Nothing to say yet, and no room taken from the folder notice, which keeps its width.
+  if (loading) return <span aria-hidden="true" data-slot="composer-target-pending" />;
   if (situation === 'noTarget' || !target)
+    // The reason keeps the room before the folder notice does, and gives way before the keys.
     return (
-      <span title={tc('targetNone')} className={reasonRoom}>
+      <span
+        title={tc('targetNone')}
+        className="min-w-0 truncate px-1 text-caption text-muted-foreground sm:min-w-12 sm:max-w-max sm:grow-[100] sm:basis-0"
+      >
         {tc('targetNone')}
       </span>
     );

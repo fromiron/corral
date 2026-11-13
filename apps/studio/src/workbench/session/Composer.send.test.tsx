@@ -675,6 +675,22 @@ describe('while the run’s record is read', () => {
     expect(f.container.querySelector('[data-slot="composer-target-pending"]')).not.toBeNull();
   });
 
+  it('shows no request settings: what a send is is not known yet', async () => {
+    const f = await mount({ runState: another });
+    const settings = () => [
+      f.container.querySelector('[aria-label="Team"]'),
+      f.container.querySelector(`[aria-label="${messages.Composer.permissionMode.label}"]`),
+    ];
+    expect(settings()).toEqual([null, null]);
+    // The send button keeps its place.
+    expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    // A next request, the send key's fallback, does show them once nothing can take a join.
+    await act(async () =>
+      f.store.setState({ runId: 'run_live', projection: projection({ exec_writer: 'succeeded' }) }),
+    );
+    expect(settings().every(Boolean)).toBe(true);
+  });
+
   it('the send key sends nothing, and nothing is sent once it is read', async () => {
     const f = await mount({ runState: another });
     await f.type('Keep going');

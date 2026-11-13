@@ -553,7 +553,8 @@ export function Composer({
             onChoose={chooseTarget}
             onClose={backToInput}
           />
-          {(intent === 'next' || intent === 'queue') && !blocked ? (
+          {/* While the run's record is read, what a send is is not known: no request settings. */}
+          {(intent === 'next' || intent === 'queue') && !blocked && !loading ? (
             <TeamChoice
               projectId={session.projectId}
               team={team}
@@ -569,7 +570,7 @@ export function Composer({
           ) : null}
           {/* The request's settings, then the keys, right before voice and Send. */}
           <span className="ml-auto flex min-w-0 items-center gap-1.5">
-            <RequestTools only="settings" {...requestTools} />
+            {loading ? null : <RequestTools only="settings" {...requestTools} />}
             <KeyHint
               keys={sendKeys}
               situation={situation}
