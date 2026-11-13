@@ -753,6 +753,7 @@ it.each(['cancelled', 'interrupted', 'failed'] as const)(
       intent: 'next' as const,
       state: 'started' as const,
       runId: 'cancelled',
+      references: [{ kind: 'folder' as const, path: 'docs' }],
       images: [image],
       permissionMode: 'ask' as const,
     };
@@ -767,13 +768,14 @@ it.each(['cancelled', 'interrupted', 'failed'] as const)(
     expect(f.startAuto).toHaveBeenCalledOnce();
     expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
       brief: entry.text,
-      references: [captured, image],
+      references: [{ kind: 'folder', path: 'docs' }, captured, image],
     });
     expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
       sessionId,
       expect.objectContaining({
         intent: 'next',
         text: entry.text,
+        references: [{ kind: 'folder', path: 'docs' }],
         attachments: [captured],
         images: [image],
         runId: 'started',

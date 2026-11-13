@@ -2503,6 +2503,7 @@
       "steer": "Send as an instruction"
     },
     "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
+    "tooManyItems": "A request carries up to {max} references, text attachments and images in all. Remove {over} before sending.",
     "referenceGone": "(no longer exists)",
     "models": {
       "title": "Models of this team",

@@ -1,12 +1,19 @@
-import type { TextAttachment } from '@corral/contracts';
-import { type ImageAttachment, ImageAttachments, PermissionMode } from '@corral/contracts';
-import type { CorralSummary, SessionEntry, WorkSession } from '@corral/core';
+import type { RunReference, TextAttachment } from '@corral/contracts';
+import {
+  type ImageAttachment,
+  ImageAttachments,
+  PermissionMode,
+  RunReferences,
+} from '@corral/contracts';
+import type { CorralSummary, RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { useServices } from '../../../services.tsx';
 import type { IntentLock, SendChoice } from '../../composerIntent.ts';
 import {
   type MentionItem,
+  type MentionNames,
   mentionToken,
   pickedReferences,
   restoredMentions,
@@ -23,9 +30,24 @@ import { COMPOSER_DRAFT_SENT, type ComposerDraft, writeComposerDraft } from '../
 // The composer's draft: its text, intent lock, references and attachments, kept in the
 // session's stored draft and filled by captures, "edit the request again" and a sent draft.
 
+/** What a request brings back into the box: the same from every way back. */
+export type TakenBackRequest = Pick<
+  SessionEntry,
+  'text' | 'permissionMode' | 'attachments' | 'images' | 'references'
+>;
+
+/** References a request may bring back: none of its attachments, and a valid start list. */
+const validReferences = (value: unknown): value is RunReference[] =>
+  Array.isArray(value) &&
+  value.every(
+    (reference) => reference?.kind !== 'text_attachment' && reference?.kind !== 'image_attachment',
+  ) &&
+  RunReferences.safeParse(value).success;
+
 export function useComposerDraft({
   session,
   team,
+  runs = [],
   restored,
   busy,
   input,
@@ -34,6 +56,8 @@ export function useComposerDraft({
 }: {
   session: WorkSession;
   team: CorralSummary | null;
+  /** The session's runs in list order; a run's `@` name is its number among them. */
+  runs?: readonly RunSummary[];
   /** The stored draft read when the composer mounted. */
   restored: ComposerDraft;
   busy: boolean;
@@ -63,6 +87,56 @@ export function useComposerDraft({
   );
   const [picked, setPicked] = useState<MentionItem[]>(restored.references);
   const [missing, setMissing] = useState<Set<string>>(new Set());
+  const tw = useTranslations('Workbench');
+  // The team's role names, as the `@` menu names roles; null while they are read.
+  const [roleNames, setRoleNames] = useState<Map<string, string> | null>(team ? null : new Map());
+  const teamKey = team ? `${team.corralId}:${team.definitionRevision}` : '';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the team is read again when its key changes
+  useEffect(() => {
+    if (!team) {
+      setRoleNames(new Map());
+      return;
+    }
+    let live = true;
+    setRoleNames(null);
+    void repository.get(team.corralId).then(
+      (record) => {
+        if (live)
+          setRoleNames(new Map(record?.definition.roles.map((role) => [role.id, role.name]) ?? []));
+      },
+      () => {
+        if (live) setRoleNames(new Map());
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [teamKey]);
+  const names: MentionNames = {
+    run: (runId) => {
+      const number = runs.findIndex((run) => run.runId === runId) + 1;
+      return number ? tw('runNumber', { number }) : null;
+    },
+    role: (roleId) => roleNames?.get(roleId) ?? null,
+  };
+  // Chips of a request taken back before the role names were read, bound once they are.
+  const waitingChips = useRef<{ text: string; references: RunReference[] } | null>(null);
+  const restoreChips = (value: string, references: RunReference[]) => {
+    const items = restoredMentions(value, references, names);
+    setPicked(items);
+    waitingChips.current =
+      roleNames === null && references.some((reference) => reference.kind === 'role')
+        ? { text: value, references }
+        : null;
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bound again only when the names arrive
+  useEffect(() => {
+    const waiting = waitingChips.current;
+    if (!roleNames || !waiting) return;
+    waitingChips.current = null;
+    const items = restoredMentions(waiting.text, waiting.references, names);
+    setPicked((list) => [...items, ...list.filter((item) => !items.some((x) => x.id === item.id))]);
+  }, [roleNames]);
 
   /** A new set of attachment pickers: nothing is loading any more. */
   const resetAttachments = () => {
@@ -185,17 +259,7 @@ export function useComposerDraft({
   editRequested.current = onEditRequest;
   useEffect(() => {
     const take = (event: Event) => {
-      const value = (
-        event as CustomEvent<
-          | string
-          | {
-              text: string;
-              permissionMode?: PermissionMode;
-              attachments?: TextAttachment[];
-              images?: ImageAttachment[];
-            }
-        >
-      ).detail;
+      const value = (event as CustomEvent<string | TakenBackRequest>).detail;
       if (
         typeof value !== 'string' &&
         (typeof value !== 'object' ||
@@ -204,16 +268,16 @@ export function useComposerDraft({
           (value.permissionMode !== undefined &&
             !PermissionMode.safeParse(value.permissionMode).success) ||
           (value.attachments !== undefined && !validTextAttachments(value.attachments)) ||
-          (value.images !== undefined && !ImageAttachments.safeParse(value.images).success))
+          (value.images !== undefined && !ImageAttachments.safeParse(value.images).success) ||
+          (value.references !== undefined && !validReferences(value.references)))
       )
         return;
-      setText(typeof value === 'string' ? value : value.text);
-      setPermissionMode(typeof value === 'string' ? undefined : value.permissionMode);
+      const request = typeof value === 'string' ? { text: value } : value;
       setAttachmentEpoch((epoch) => epoch + 1);
       setAttachmentsBusy(false);
       setImagesBusy(false);
-      setAttachments(typeof value === 'string' ? [] : (value.attachments ?? []));
-      setImages(typeof value === 'string' ? [] : (value.images ?? []));
+      setText(request.text);
+      restoreItems.current(request);
       setLock(null);
       editRequested.current();
       requestAnimationFrame(() => input.current?.focus());
@@ -229,14 +293,25 @@ export function useComposerDraft({
     return revision;
   };
 
+  /**
+   * What every way back into the box brings with the text (features/composer-flow.md "대기
+   * 요청과 넘겨받기"): its permission mode, text attachments, images, and its references as chips
+   * on their own tokens. The text itself is written by the caller.
+   */
+  const restore = (request: TakenBackRequest) => {
+    setPermissionMode(request.permissionMode);
+    setAttachments(request.attachments ?? []);
+    setImages(request.images ?? []);
+    restoreChips(request.text, request.references ?? []);
+  };
+  const restoreItems = useRef(restore);
+  restoreItems.current = restore;
+
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const takeBack = (entry: SessionEntry) => {
     resetAttachments();
     setText(entry.text);
-    setPermissionMode(entry.permissionMode);
-    setAttachments(entry.attachments ?? []);
-    setImages(entry.images ?? []);
-    setPicked(restoredMentions(entry.text, entry.references ?? []));
+    restore(entry);
     // Sent again, it is a next request: it waits while a run is going, else it starts. The send
     // key sends it as one, never as a join that would drop its permission mode and images.
     setChosen('queue');
@@ -254,6 +329,7 @@ export function useComposerDraft({
 
   return {
     takeBack,
+    restore,
     references,
     chips,
     missingChips,

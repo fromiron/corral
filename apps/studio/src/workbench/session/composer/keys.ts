@@ -9,14 +9,11 @@ export function useComposerKeys({
   entries,
   write,
 }: {
-  draft: Pick<
-    ComposerDraftState,
-    'text' | 'resetAttachments' | 'setAttachments' | 'setPermissionMode' | 'setImages'
-  >;
+  draft: Pick<ComposerDraftState, 'text' | 'resetAttachments' | 'restore'>;
   entries: SessionEntry[];
   write: (value: string) => void;
 }) {
-  const { text, resetAttachments, setAttachments, setPermissionMode, setImages } = draft;
+  const { text, resetAttachments, restore } = draft;
   const [recall, setRecall] = useState(-1);
   // Earlier requests, newest first, for ↑ in an empty box.
   const history = entries
@@ -38,12 +35,12 @@ export function useComposerKeys({
       event.preventDefault();
       setRecall(next);
       resetAttachments();
-      write(next === -1 ? '' : (history[next] ?? ''));
+      const value = next === -1 ? '' : (history[next] ?? '');
+      write(value);
+      // A recalled request comes back as every way back into the box brings it.
       const recalledEntry =
         next === -1 ? undefined : entries.findLast((entry) => entry.text === history[next]);
-      setAttachments(recalledEntry?.attachments ?? []);
-      setPermissionMode(recalledEntry?.permissionMode);
-      setImages(recalledEntry?.images ?? []);
+      restore(recalledEntry ?? { text: value });
     }
   };
   /** Typing leaves the recalled request. */

@@ -850,8 +850,14 @@ export function describeCorralRepositoryContract(
           { images: [image, image] },
           { references: [{ kind: 'file', path: '../outside' }] },
           { references: [{ kind: 'nothing', path: 'x' }] },
-          // Attachments ride in their own fields, never as references.
+          // Attachments ride in their own fields, never as references, even when the start
+          // list they would make is valid.
           { references: [image] },
+          { images: undefined, references: [image] },
+          {
+            images: undefined,
+            references: [createTextAttachment('notes.txt', 'text/plain', 'a note')],
+          },
           // A start takes 20 references in all, attachments and images included.
           {
             references: Array.from({ length: 20 }, (_, n) => ({

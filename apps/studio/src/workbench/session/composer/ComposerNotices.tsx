@@ -14,6 +14,7 @@ import { RefusalHelp } from '../../RefusalHelp.tsx';
 import { TerminalWriterNotice } from '../../TerminalWriterNotice.tsx';
 import { TextAttachmentPicker } from '../../TextAttachments.tsx';
 import type { RoleModel } from '../../useModels.ts';
+import { START_ITEMS_MAX, startItemsOver } from './availability.ts';
 import type { Refusal } from './send.ts';
 import type { ComposerDraftState } from './useComposerDraft.ts';
 
@@ -90,6 +91,7 @@ export function ComposerNotices({
     | 'setAttachments'
     | 'setAttachmentsBusy'
     | 'attachmentsBusy'
+    | 'references'
   >;
   imageFiles: RefObject<HTMLInputElement | null>;
   textFiles: RefObject<HTMLInputElement | null>;
@@ -100,6 +102,7 @@ export function ComposerNotices({
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
   const { attachmentEpoch, images, attachments, attachmentsBusy } = draft;
+  const overLimit = startItemsOver(intent, draft);
   return (
     <>
       {intent !== 'steer' ? <TerminalWriterNotice sessionId={sessionId} /> : null}
@@ -161,6 +164,11 @@ export function ComposerNotices({
           onRetry={onRetry}
         />
       ) : null}
+      {overLimit > 0 ? (
+        <p role="alert" data-testid="start-items-limit" className="text-caption text-danger">
+          {tc('tooManyItems', { max: START_ITEMS_MAX, over: overLimit })}
+        </p>
+      ) : null}
       {missingChipCount ? (
         <p role="alert" className="text-caption text-danger">
           {tc('missingReferences', { count: missingChipCount })}
@@ -196,7 +204,8 @@ export function ComposerNotices({
       <ImageAttachmentPicker
         key={`images:${attachmentEpoch}`}
         inputRef={imageFiles}
-        enabled={intent === 'next'}
+        // Images can be added while a run goes: a next request takes them, a join leaves them
+        // in the box (features/composer-flow.md "합류 대상").
         sessionId={sessionId}
         value={images}
         onChange={draft.setImages}

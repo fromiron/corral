@@ -226,6 +226,7 @@ function SessionComposer({
   const draft = useComposerDraft({
     session,
     team,
+    runs,
     restored,
     busy,
     input,
@@ -534,7 +535,7 @@ function SessionComposer({
         <AttachMenu
           onAddReference={() => insertMentionTrigger(input.current, text, write)}
           serverMode={mode === 'server'}
-          imagesDisabled={attachBusy || intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
+          imagesDisabled={attachBusy || images.length >= IMAGE_MAX_COUNT}
           textDisabled={attachBusy || !textAttachable}
           onAttachImages={() => imageFiles.current?.click()}
           onAttachText={() => textFiles.current?.click()}
@@ -604,6 +605,7 @@ function SessionComposer({
       <PreRun session={session} team={team} isAuto={isAuto} runMode={runMode} intent={intent} />
       <ComposerQueue
         queued={queued}
+        imageUrl={(imageId) => services.workspaces?.imageUrl(session.sessionId, imageId) ?? ''}
         autoStart={autoStart}
         // Auto start is the server's; the browser demo has none, so it has no such setting.
         autoStartShown={services.mode !== 'browser'}

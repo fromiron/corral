@@ -7,8 +7,23 @@ import {
   Switch,
   useQueueCardHeight,
 } from '@corral/react/design-kit';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+
+// A queued image's bytes, read once per address while the page is open, so the queue redrawing
+// never reads them again. A read that fails stays the file glyph.
+const imageBytes = new Map<string, Promise<Blob | null>>();
+const readImage = (url: string) => {
+  let read = imageBytes.get(url);
+  if (!read) {
+    read = fetch(url, { credentials: 'include' }).then(
+      (response) => (response.ok ? response.blob() : null),
+      () => null,
+    );
+    imageBytes.set(url, read);
+  }
+  return read;
+};
 
 /**
  * Saved requests for the next run, stacked in the kit QueuedStack above the input: start one now,
@@ -26,8 +41,11 @@ export function ComposerQueue({
   onStart,
   onEdit,
   onRemove,
+  imageUrl,
 }: {
   queued: SessionEntry[];
+  /** Where a saved image of this session is read; none or empty in a browser demo. */
+  imageUrl?: (imageId: string) => string;
   /** Start the next saved request when a run of this session ends. */
   autoStart: boolean;
   /** A server starts saved requests, so the switch is there. */
@@ -42,6 +60,24 @@ export function ComposerQueue({
   const cardHeight = useQueueCardHeight();
   const stack = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | null>(null);
+  // The images read so far, by address; until then a tile is the file glyph at the same size.
+  const [read, setRead] = useState<ReadonlyMap<string, Blob>>(new Map());
+  const urlOf = (imageId: string) => imageUrl?.(imageId) || null;
+  const urls = queued.flatMap((entry) =>
+    (entry.images ?? []).flatMap((item) => urlOf(item.imageId) ?? []),
+  );
+  const wanted = urls.join('\u0000');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read again only when the addresses change
+  useEffect(() => {
+    let live = true;
+    for (const url of urls)
+      void readImage(url).then((blob) => {
+        if (live && blob) setRead((done) => (done.has(url) ? done : new Map(done).set(url, blob)));
+      });
+    return () => {
+      live = false;
+    };
+  }, [wanted]);
   // Text attachments and images travel with the request; the card shows them as file tiles.
   const identity = queued
     .map((entry) =>
@@ -49,7 +85,9 @@ export function ComposerQueue({
         entry.entryId,
         entry.text,
         ...(entry.attachments ?? []).map((item) => item.sha256),
-        ...(entry.images ?? []).map((item) => item.imageId),
+        ...(entry.images ?? []).map(
+          (item) => `${item.imageId}:${read.has(urlOf(item.imageId) ?? '')}`,
+        ),
       ].join('\u0000'),
     )
     .join('\u0001');
@@ -63,8 +101,13 @@ export function ComposerQueue({
           ...(entry.attachments ?? []).map(
             (item) => new File([item.text], item.name, { type: item.mime }),
           ),
-          // Only the name is here, not the bytes: a typeless file is the file glyph.
-          ...(entry.images ?? []).map((item) => new File([], item.name)),
+          // The preview a sent message shows; a typeless file is the glyph until it is read.
+          ...(entry.images ?? []).map((item) => {
+            const blob = read.get(urlOf(item.imageId) ?? '');
+            return blob
+              ? new File([blob], item.name, { type: item.mime })
+              : new File([], item.name);
+          }),
         ],
       })),
     [identity],

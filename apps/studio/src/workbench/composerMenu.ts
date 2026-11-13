@@ -78,8 +78,14 @@ export function selectMention(item: MentionItem, picked: readonly MentionItem[])
   if (existing) return existing;
   if (item.kind !== 'result' && !picked.some((other) => mentionToken(other) === mentionToken(item)))
     return item;
-  let number = 1;
-  while (picked.some((other) => mentionToken(other) === `@result:${number}`)) number++;
+  // A number is never given again while a chip has a higher one: the numbers follow the order
+  // the chips were picked, which a restored request reads them back in.
+  const number =
+    1 +
+    Math.max(
+      0,
+      ...picked.map((other) => Number(/^@result:(\d+)$/.exec(mentionToken(other))?.[1] ?? 0)),
+    );
   return { ...item, token: `@result:${number}` };
 }
 
@@ -120,89 +126,86 @@ export function pickedReferences(text: string, picked: readonly MentionItem[]): 
   return out;
 }
 
-// A token as the text holds it: `@` and a quoted label with an optional line range, or a word.
-const TOKEN_IN_TEXT = /(^|\s)(@(?:"(?:[^"\\]|\\.)*"(?::L\d+(?:-L\d+)?)?|[^\s"]\S*))(?=\s|$)/g;
-const RESULT_TOKEN = /^@result:(\d+)$/;
+const RESULT_NUMBER = /(?:^|\s)@result:(\d+)(?=\s|$)/g;
+
+/** The names a run and a role go by in the text, as the `@` menu gives them. */
+export interface MentionNames {
+  run(runId: string): string | null;
+  role(roleId: string): string | null;
+}
 
 /**
  * The chips of a saved request's references, taken back into the box with its text. A saved
- * request keeps the references, not the chips, so each is bound again to a token its text holds:
- * a file or folder to its own path token, a result to a `@result:n` token in the order they were
- * numbered, and a run or role to the next token left. A reference whose token is not in the text
- * any more is not restored; it would not be sent either.
+ * request keeps the references, not the chips, so each is bound again to its own token: a file
+ * or folder by its path, a run by its name, a role by its name. A result, and a reference whose
+ * own token an earlier one already holds, takes the `@result:n` tokens in ascending numbers, in
+ * the order the references were saved: the numbers are given in the order the chips were
+ * picked and never reused, so they follow that order. A token no reference owns stays text, and
+ * a reference whose token is not in the text is not restored; it would not be sent either.
  */
-export function restoredMentions(text: string, references: readonly RunReference[]): MentionItem[] {
-  const tokens = [...text.matchAll(TOKEN_IN_TEXT)].map((match) => match[2] ?? '');
-  const used = new Set<number>();
-  const take = (fits: (token: string) => boolean) => {
-    const index = tokens.findIndex((token, n) => !used.has(n) && fits(token));
-    if (index < 0) return null;
-    used.add(index);
-    return tokens[index] ?? null;
-  };
-  const own = (reference: RunReference) =>
-    reference.kind === 'file' || reference.kind === 'folder'
-      ? mentionToken({
-          kind: reference.kind,
-          label: reference.path,
-          ...(reference.kind === 'file' && reference.lines ? { lines: reference.lines } : {}),
-        })
-      : null;
-  const bound = new Map<number, string>();
-  references.forEach((reference, n) => {
-    const token = own(reference);
-    const found = token ? take((value) => value === token) : null;
-    if (found) bound.set(n, found);
-  });
-  const results = tokens
-    .filter((token) => RESULT_TOKEN.test(token))
-    .sort((a, b) => Number(RESULT_TOKEN.exec(a)?.[1]) - Number(RESULT_TOKEN.exec(b)?.[1]));
-  references.forEach((reference, n) => {
-    if (reference.kind !== 'result') return;
-    const next = results.find((token) => !used.has(tokens.indexOf(token)));
-    if (!next) return;
-    used.add(tokens.indexOf(next));
-    bound.set(n, next);
-  });
-  references.forEach((reference, n) => {
-    if (
-      bound.has(n) ||
-      reference.kind === 'text_attachment' ||
-      reference.kind === 'image_attachment'
-    )
-      return;
-    const found = take((token) => !RESULT_TOKEN.test(token));
-    if (found) bound.set(n, found);
-  });
-  const items: MentionItem[] = [];
-  references.forEach((reference, n) => {
-    const token = bound.get(n);
-    if (!token || reference.kind === 'text_attachment' || reference.kind === 'image_attachment')
-      return;
+export function restoredMentions(
+  text: string,
+  references: readonly RunReference[],
+  names: MentionNames,
+): MentionItem[] {
+  const own = (reference: RunReference): MentionItem | null => {
     const id = `${reference.kind}:${JSON.stringify(reference)}`;
-    if (token === own(reference) && (reference.kind === 'file' || reference.kind === 'folder')) {
-      items.push({
+    if (reference.kind === 'file')
+      return {
         id,
-        kind: reference.kind,
+        kind: 'file',
         label: reference.path,
-        ...(reference.kind === 'file' && reference.lines ? { lines: reference.lines } : {}),
+        ...(reference.lines ? { lines: reference.lines } : {}),
         reference,
-      });
+      };
+    if (reference.kind === 'folder')
+      return { id, kind: 'folder', label: reference.path, reference };
+    const label =
+      reference.kind === 'run'
+        ? names.run(reference.runId)
+        : reference.kind === 'role'
+          ? names.role(reference.roleId)
+          : null;
+    return label && (reference.kind === 'run' || reference.kind === 'role')
+      ? { id, kind: reference.kind, label, reference }
+      : null;
+  };
+  const present = (token: string) => mentionPattern(token).test(text);
+  const used = new Set<string>();
+  const items: (MentionItem | null)[] = references.map(() => null);
+  const taken = new Set<number>();
+  references.forEach((reference, n) => {
+    const item = own(reference);
+    if (!item) return;
+    const token = mentionToken(item);
+    if (!present(token)) return;
+    if (used.has(token)) {
+      taken.add(n);
       return;
     }
-    const body = token.slice(1);
-    let label = body;
-    if (body.startsWith('"'))
-      try {
-        label = JSON.parse(body) as string;
-      } catch {
-        label = body;
-      }
-    const item: MentionItem = { id, kind: reference.kind, label, reference };
-    // A token the label does not make again (a result's number) is kept as it is.
-    items.push(mentionToken(item) === token ? item : { ...item, label: '', token });
+    used.add(token);
+    items[n] = item;
   });
-  return items;
+  const numbers = [...new Set([...text.matchAll(RESULT_NUMBER)].map((match) => Number(match[1])))]
+    .sort((a, b) => a - b)
+    .map((number) => `@result:${number}`)
+    .filter((token) => !used.has(token));
+  references.forEach((reference, n) => {
+    if (items[n] || (reference.kind !== 'result' && !taken.has(n))) return;
+    const token = numbers.shift();
+    if (!token) return;
+    const item = own(reference);
+    items[n] = item
+      ? { ...item, token }
+      : {
+          id: `${reference.kind}:${JSON.stringify(reference)}`,
+          kind: 'result',
+          label: '',
+          reference,
+          token,
+        };
+  });
+  return items.filter((item): item is MentionItem => item !== null);
 }
 
 /** Fixed window coordinates for the composer menu. */
