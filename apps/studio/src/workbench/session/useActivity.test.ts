@@ -12,7 +12,6 @@ const role = (id: string, name: string, activity: string | null = null): Activit
   presence: executionPresence({ status: 'active' }),
   activity,
   startedAt: '2026-11-13T00:00:00.000Z',
-  endedAt: null,
 });
 
 const team = [

@@ -6180,7 +6180,7 @@
   },
   "Activity": {
     "details": "Activity details",
-    "panel": "Activity",
+    "bar": "Activity",
     "roles": "Roles",
     "view": "View",
     "viewRole": "View {name}",

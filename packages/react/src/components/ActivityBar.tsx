@@ -1,5 +1,15 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { type KeyboardEvent, type ReactElement, type ReactNode, useId, useRef } from 'react';
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useControllable } from '../design-kit/hooks/use-controllable.ts';
 import { Check } from '../design-kit/icons.ts';
@@ -47,8 +57,13 @@ export interface ActivityBarLine {
   endedAt?: number;
   /** The line speaks of something that went wrong. */
   warning?: boolean;
-  /** One waiting approval, decided on the line by its buttons; `action` (View) opens its card. */
+  /**
+   * One waiting approval, decided on the line by its buttons; `action` (View) opens its card.
+   * The buttons show only while `text` is on the line whole beside them: cut, the line offers View
+   * alone.
+   */
   approval?: {
+    /** All of what it allows: the buttons' names for assistive technology. */
     subject: string;
     approveLabel: string;
     denyLabel: string;
@@ -65,7 +80,8 @@ export interface ActivityBarRole {
   name: string;
   glyph: AgentStatus | null;
   tone: PresenceTone;
-  state: ActivityState;
+  /** None for a state that has no words: the row says only the name. */
+  state?: ActivityState;
   /** The state in words; false where its row on screen says it (the name stays for AT). */
   stateShown: boolean;
   activity?: string;
@@ -80,6 +96,8 @@ export interface ActivityBarRole {
 export interface ActivityBarControls {
   paused: boolean;
   disabled?: boolean;
+  /** Stop alone; `disabled` when not given. A pausing run can still be stopped. */
+  stopDisabled?: boolean;
   onPause?: () => void;
   onResume?: () => void;
   onStop?: () => void;
@@ -149,10 +167,38 @@ function LineWords({ line }: { line: ActivityBarLine }) {
       {line.state && line.text ? <MetaDot /> : null}
       {line.text ? (
         // Cut at its end; the whole of it is on the card the line's View goes to.
-        <span className="min-w-0 truncate">{line.text}</span>
+        <span data-activity-text="" className={cn('min-w-0 truncate', line.approval && 'flex-1')}>
+          <span>{line.text}</span>
+        </span>
       ) : null}
     </>
   );
+}
+
+/**
+ * Whether the line's words are whole beside its decision buttons. Shown, the words must fit the
+ * room they have; hidden, the room less the buttons they would bring back. Judged with the
+ * buttons in place either way, so they never come and go with their own width.
+ */
+export function decisionsFit({
+  shown,
+  room,
+  words,
+  buttons,
+  gap,
+}: {
+  /** The buttons are on the line now. */
+  shown: boolean;
+  /** The words' box width. */
+  room: number;
+  /** The words' whole width. */
+  words: number;
+  /** The decision buttons' width. */
+  buttons: number;
+  /** The space between the line's parts. */
+  gap: number;
+}) {
+  return words <= (shown ? room : room - buttons - gap);
 }
 
 function StateWords({ state }: { state: ActivityState }) {
@@ -185,6 +231,38 @@ export function ActivityBar({
   const foldable = Boolean(line && (roles.length || plan || context || controls));
   const open = foldable && openState;
   const back = () => toggle.current?.focus();
+  const row = useRef<HTMLDivElement>(null);
+  const measure = useRef<HTMLSpanElement>(null);
+  const approval = line?.approval;
+  const decisionKey = approval
+    ? [line?.text, approval.denyLabel, approval.approveLabel].join('\n')
+    : null;
+  // The decision buttons, while the words say in full what they decide.
+  const [fits, setFits] = useState(false);
+  const judge = useCallback(() => {
+    const words = [...(row.current?.querySelectorAll<HTMLElement>('[data-activity-text]') ?? [])]
+      .filter((element) => element.textContent === line?.text)
+      .at(-1);
+    if (!decisionKey || !words || !row.current) {
+      setFits(false);
+      return;
+    }
+    const buttons = measure.current?.offsetWidth ?? 0;
+    const gap = Number.parseFloat(getComputedStyle(row.current).columnGap) || 0;
+    // The words' own width, from the run of text inside the box that cuts them.
+    const whole = words.firstElementChild?.getBoundingClientRect().width ?? 0;
+    const room = words.getBoundingClientRect().width;
+    setFits((shown) => decisionsFit({ shown, room, words: whole, buttons, gap }));
+  }, [decisionKey, line?.text]);
+  useLayoutEffect(() => {
+    judge();
+    const element = row.current;
+    if (!decisionKey || !element || typeof ResizeObserver === 'undefined') return;
+    // Again whenever the width changes.
+    const observer = new ResizeObserver(() => judge());
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [decisionKey, judge]);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.key !== 'Escape' || !open) return;
     event.preventDefault();
@@ -192,9 +270,24 @@ export function ActivityBar({
     setOpen(false);
   };
   const words = line ? [line.state?.text, line.text].filter(Boolean).join(' · ') : '';
+  // New words are pressable only once they are fully in: until then a press meant for what was
+  // there does not decide what came.
+  const [entered, setEntered] = useState(words);
+  const current = useRef(words);
+  current.current = words;
+  // Should the animation never report its end (a hidden tab), the words count as in after it.
+  useEffect(() => {
+    if (entered === words) return;
+    const timer = setTimeout(() => setEntered(words), 1000);
+    return () => clearTimeout(timer);
+  }, [entered, words]);
+  const settled = reduce || entered === words;
+  const decide = Boolean(approval && fits);
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: Escape here folds the panel; its toggle and controls own activation.
+    // biome-ignore lint/a11y/useSemanticElements: the run's status line and its controls, named as one group; not a form's fieldset.
     <div
+      role="group"
+      aria-label={t('bar')}
       data-activity-bar=""
       data-state={line?.glyph ?? 'none'}
       data-tone={line?.tone}
@@ -203,7 +296,7 @@ export function ActivityBar({
     >
       {/* The line comes first in the document, so focus reaches it before the panel it opens
           above itself. One height, whatever it says. */}
-      <div className="group/activity relative flex h-8 min-w-0 items-center gap-2 px-3">
+      <div ref={row} className="group/activity relative flex h-8 min-w-0 items-center gap-2 px-3">
         {line ? (
           <>
             <span
@@ -215,19 +308,31 @@ export function ActivityBar({
               <Mark glyph={line.glyph} tone={line.tone} />
               {/* The words crossfade when they change, and swap at once with reduced motion;
                   the clock and counts tick in place. */}
-              <span className="relative flex min-w-0 items-center overflow-hidden">
+              <span
+                className={cn(
+                  'relative flex min-w-0 items-center overflow-hidden',
+                  // With decisions, the words take the room left, so it can be measured.
+                  approval && 'flex-1',
+                )}
+              >
                 {reduce ? (
-                  <span key={words} className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    key={words}
+                    className={cn('flex min-w-0 items-center gap-1.5', approval && 'flex-1')}
+                  >
                     <LineWords line={line} />
                   </span>
                 ) : (
                   <AnimatePresence mode="popLayout" initial={false}>
                     <motion.span
                       key={words}
-                      className="flex min-w-0 items-center gap-1.5"
+                      className={cn('flex min-w-0 items-center gap-1.5', approval && 'flex-1')}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0, transition: spring.moderate }}
                       exit={{ opacity: 0, y: -6, transition: spring.moderate.exit }}
+                      onAnimationComplete={() => {
+                        if (current.current === words) setEntered(words);
+                      }}
                     >
                       <LineWords line={line} />
                     </motion.span>
@@ -253,12 +358,28 @@ export function ActivityBar({
                 {line.action.label}
               </Button>
             ) : null}
-            {line.approval ? (
+            {approval ? (
+              // The buttons' width, measured where nothing sees or reaches it.
+              <span
+                ref={measure}
+                aria-hidden
+                inert
+                className="pointer-events-none invisible absolute top-0 left-0 flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Button size="compact" variant="tertiary" tabIndex={-1}>
+                  {approval.denyLabel}
+                </Button>
+                <Button size="compact" variant="primary" tabIndex={-1}>
+                  {approval.approveLabel}
+                </Button>
+              </span>
+            ) : null}
+            {decide && line.approval ? (
               <span className="relative z-10 flex shrink-0 items-center gap-1.5">
                 <Button
                   size="compact"
                   variant="tertiary"
-                  disabled={line.approval.disabled}
+                  disabled={line.approval.disabled || !settled}
                   aria-label={`${line.approval.denyLabel} · ${line.approval.subject}`}
                   onClick={() => {
                     line.approval?.onDeny();
@@ -270,7 +391,7 @@ export function ActivityBar({
                 <Button
                   size="compact"
                   variant="primary"
-                  disabled={line.approval.disabled}
+                  disabled={line.approval.disabled || !settled}
                   aria-label={`${line.approval.approveLabel} · ${line.approval.subject}`}
                   onClick={() => {
                     line.approval?.onApprove();
@@ -306,7 +427,7 @@ export function ActivityBar({
       <Collapse id={panelId} open={open} hideWhenClosed>
         <section
           ref={panel}
-          aria-label={t('panel')}
+          aria-label={t('details')}
           className="flex max-h-[min(24rem,45dvh)] flex-col gap-3 overflow-y-auto overscroll-contain border-b border-border/60 px-2.5 pt-2.5 pb-3"
         >
           {roles.length ? (
@@ -334,7 +455,7 @@ function RoleRow({ role }: { role: ActivityBarRole }) {
       <span className="shrink-0" style={{ fontVariationSettings: fontWeights.semibold }}>
         {role.name}
       </span>
-      {role.stateShown ? (
+      {!role.state ? null : role.stateShown ? (
         <span className="shrink-0 text-muted-foreground">
           <StateWords state={role.state} />
         </span>
@@ -414,7 +535,7 @@ function Controls({ controls }: { controls: ActivityBarControls }) {
         <Button
           size="compact"
           variant="ghost-destructive"
-          disabled={controls.disabled}
+          disabled={controls.stopDisabled ?? controls.disabled}
           onClick={controls.onStop}
         >
           {t('stop')}

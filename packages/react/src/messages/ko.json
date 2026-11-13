@@ -6180,7 +6180,7 @@
   },
   "Activity": {
     "details": "활동 상세",
-    "panel": "활동",
+    "bar": "활동",
     "roles": "역할",
     "view": "보기",
     "viewRole": "{name} 보기",

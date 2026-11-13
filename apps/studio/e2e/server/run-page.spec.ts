@@ -543,7 +543,7 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
 });
 
-test('the activity bar names an approval only once its card is off screen, and decides it there, even in a narrow window', async ({
+test('the activity bar names an approval only once its card is off screen, and leaves a person’s decision to its card, even in a narrow window', async ({
   page,
   corral,
 }) => {
@@ -559,30 +559,30 @@ test('the activity bar names an approval only once its card is off screen, and d
   const bar = activityBar(page);
   await expect(bar).toHaveAttribute('data-run', 'awaiting_user');
   await expect(bar).not.toHaveAttribute('data-line', 'waiting');
-  await expect(bar.getByRole('button', { name: 'Continue with this version' })).toHaveCount(0);
-  // Scrolled away, the bar says what waits and decides it with the same two buttons.
+  await expect(bar.getByRole('button', { name: /^Continue with this version/ })).toHaveCount(0);
+  // Scrolled away, the bar says what waits. A person's decision is more than its line can say,
+  // so the line offers View alone (composer-flow.md "활동 바").
   // The person scrolls up, as with the wheel: the conversation stops following its end.
   await page.getByTestId('chat-timeline').hover({ position: { x: 16, y: 120 } });
   for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
   await expect(tray).not.toBeInViewport();
   await expect(bar).toHaveAttribute('data-line', 'waiting');
   await expect(bar).toContainText('Your decision');
-  const approve = bar.getByRole('button', { name: 'Continue with this version' });
-  await expect(approve).toBeVisible();
-  await expect(bar.getByRole('button', { name: 'Reject and stop' })).toBeVisible();
+  await expect(bar.getByRole('button', { name: /^Continue with this version/ })).toHaveCount(0);
+  await expect(bar.getByRole('button', { name: /^Reject and stop/ })).toHaveCount(0);
   // Enter on the bar's toggle opens its panel; it decides nothing.
   await bar.locator('[data-activity-toggle]').press('Enter');
   await expect(bar.locator('[data-activity-toggle]')).toHaveAttribute('aria-expanded', 'true');
-  expect(
-    Object.values(corral.server.coordinator.getSnapshot(started.runId).projection.approvals).map(
-      (approval) => approval.status,
-    ),
-  ).toEqual(['pending']);
   await page.keyboard.press('Escape');
   const [decided] = Object.values(
     corral.server.coordinator.getSnapshot(started.runId).projection.approvals,
   );
   if (!decided) throw new Error('The approval is missing');
+  expect(decided.status).toBe('pending');
+  // View brings the card back, where it is decided.
+  await bar.getByRole('button', { name: 'View', exact: true }).click();
+  const approve = card.getByRole('button', { name: 'Continue with this version' });
+  await expect(approve).toBeInViewport();
   await approve.click();
   await expect
     .poll(

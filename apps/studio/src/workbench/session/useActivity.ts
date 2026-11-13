@@ -30,15 +30,15 @@ import { useSessionConnection } from './SessionConnection.tsx';
 // running run and its roles, what waits on the person, what the conversation already shows, and
 // the link to the server. The bar itself (`ActivityBar`) only draws what this decides.
 
-/** A role of the run: one current execution. */
+/** A role of the run: one current execution still open. */
 export interface ActivityRole {
   id: string;
+  /** Its step's name; beside another open one of that name, its place too, as the send menu says. */
   name: string;
   presence: Presence;
   /** What it does now, named as the work log names it; null when no exact step is known. */
   activity: string | null;
   startedAt: string | null;
-  endedAt: string | null;
 }
 
 /** The first request waiting on the person. */
@@ -48,7 +48,10 @@ export type WaitingItem =
       approvalId: string;
       /** What it waits for, in words. */
       subject: string;
-      /** Decided by an approve or a deny alone: no route to pick, no limit to weigh. */
+      /**
+       * Decided on the line: the line says all an approve allows (a call with its whole one-line
+       * subject, a paused step by its name). Anything else is decided on its card.
+       */
       decidable?: boolean;
       executionId?: string;
     }
@@ -222,7 +225,7 @@ function executionTimes(events: readonly RunEvent[]) {
  * What a role is doing, in words (features/presence.md "세부"): its presence detail (waiting for
  * agents, for a reply, watching) or the call it runs with what that call works on, as the work log
  * names it. A bare tool name says nothing, and a call waiting on its approval card is the card's
- * to tell, so neither is an activity.
+ * to tell, so neither is an activity. Only open executions are roles: ended rounds do not pile up.
  */
 function rolesOf(
   projection: RunProjection,
@@ -242,8 +245,15 @@ function rolesOf(
       approval.status === 'pending' && approval.tool ? [approval.tool.toolCallId] : [],
     ),
   );
-  return currentAgentExecutions(projection).map((execution) => {
-    const node = definition?.nodes.find((item) => item.id === execution.nodeId);
+  const open = currentAgentExecutions(projection).filter(
+    (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+  );
+  const nameOf = (execution: (typeof open)[number]) =>
+    definition?.nodes.find((item) => item.id === execution.nodeId)?.label ?? execution.nodeId;
+  return open.map((execution) => {
+    const name = nameOf(execution);
+    // Told apart as the send menu tells them: by their place in the run.
+    const shared = open.filter((other) => nameOf(other) === name).length > 1;
     const running = toolRows(
       calls
         .filter((call) => call.executionId === execution.executionId)
@@ -256,39 +266,45 @@ function rolesOf(
     )
       .filter((row) => row.tone === 'running')
       .at(-1);
-    const time = times.get(execution.executionId);
-    const ended = TERMINAL_EXECUTION_STATUSES.has(execution.status);
     const presence = executionPresence({ status: execution.status });
     const target =
       running && !awaited.has(running.id) ? toolTarget(args.get(running.id) ?? {}) : null;
-    const activity = ended
-      ? null
-      : presence.detailKey
-        ? detailText(presence.detailKey)
-        : running && target
-          ? `${toolName(running.name)} · ${target}`
-          : null;
+    const activity = presence.detailKey
+      ? detailText(presence.detailKey)
+      : running && target
+        ? `${toolName(running.name)} · ${target}`
+        : null;
     return {
       id: execution.executionId,
-      name: node?.label ?? execution.nodeId,
+      name: shared
+        ? `${name} · #${projection.executionOrder.indexOf(execution.executionId) + 1}`
+        : name,
       presence,
       activity,
-      startedAt: time?.first ?? null,
-      endedAt: ended ? (time?.last ?? null) : null,
+      startedAt: times.get(execution.executionId)?.first ?? null,
     };
   });
 }
 
-/** How many of the running run's current executions are still open. */
-export function useActiveExecutionCount(runId: string | null) {
+/** How many of the running run's current executions are still open; null until its record is read. */
+export function useActiveExecutionCount(runId: string | null): number | null {
   const { runFor } = useServices();
   const store = runId ? runFor(runId) : EMPTY_STORE;
   return useStore(store, (state) =>
-    runId && state.projection?.runId === runId
+    runId && state.runId === runId && state.projection?.runId === runId
       ? currentAgentExecutions(state.projection).filter(
           (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
         ).length
-      : 0,
+      : null,
+  );
+}
+
+/** A command to the run is being sent and has no receipt yet. */
+export function useCommandSending(runId: string | null) {
+  const { runFor } = useServices();
+  const store = runId ? runFor(runId) : EMPTY_STORE;
+  return useStore(store, (state) =>
+    Boolean(runId && state.runId === runId && (state.pendingCommandIds?.length ?? 0) > 0),
   );
 }
 
@@ -298,6 +314,8 @@ export interface Activity {
   /** The running run's store, when one runs. */
   store: RunSessionStore | null;
   projection: RunProjection | null;
+  /** A command to the running run is being sent and has no receipt yet. */
+  sending: boolean;
   /** The presented run's widgets: its plan, changes and context. */
   model: ChatWidgetModel | null;
   retry: (() => void) | null;
@@ -308,10 +326,13 @@ export function useActivity({
   ownActive,
   target,
   anchor,
+  open = false,
 }: {
   ownActive: RunSummary | null;
   target: string | null;
   anchor: RefObject<HTMLElement | null>;
+  /** The panel is open: its role rows say their roles' states. */
+  open?: boolean;
 }): Activity {
   const { runFor } = useServices();
   const tt = useTranslations('Turn');
@@ -333,6 +354,7 @@ export function useActivity({
       definition: value.definition,
       events: value.events,
       failed: Boolean(value.streamError || (runId && value.missingRunId === runId)),
+      sending: (value.pendingCommandIds?.length ?? 0) > 0,
     })),
   );
   const projection =
@@ -391,6 +413,11 @@ export function useActivity({
     if (first.kind === 'approval') {
       const { approval } = first;
       const named = approval.tool ? projection?.toolCalls[approval.tool.toolCallId] : undefined;
+      // A paused step by its name; its id is never said.
+      const step =
+        approval.kind === 'breakpoint' && approval.nodeId
+          ? state.definition?.nodes.find((node) => node.id === approval.nodeId)?.label
+          : undefined;
       const what = call
         ? call.text
         : approval.tool
@@ -403,18 +430,24 @@ export function useActivity({
                     ? 'checkHeading'
                     : 'toolHeading',
               )
-          : ta(`kind.${approval.kind}`, { step: approval.nodeId ?? '' });
+          : approval.kind === 'breakpoint'
+            ? step
+              ? ta('kind.breakpoint', { step })
+              : tw('actionApproval')
+            : ta(`kind.${approval.kind}`, { step: '' });
       const who = roleName(approval.tool?.executionId);
       return {
         kind: 'approval',
         approvalId: approval.approvalId,
         subject: who ? `${who}: ${what}` : what,
-        // Decided on the line only when the line says what it allows: a call with what it works
-        // on, or a step's own approval. Anything else is decided on its card.
-        decidable:
-          approval.kind !== 'route' &&
-          !approval.limit &&
-          (approval.tool ? Boolean(call?.subject) : true),
+        // Decided on the line only when the line says all an approve allows: a call with its
+        // whole one-line subject, or a paused step by its name. A final output, a check, a
+        // person's decision, a route and a limit are decided on their cards.
+        decidable: approval.limit
+          ? false
+          : approval.tool
+            ? approval.tool.purpose === 'tool' && Boolean(call?.whole)
+            : approval.kind === 'breakpoint' && Boolean(step),
         ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
       };
     }
@@ -469,11 +502,21 @@ export function useActivity({
         ? () => void store.getState().open(runId)
         : (model?.retryRead ?? null)
       : null;
+  // Open, the panel's role rows say their roles' states, so the line does not say them again. The
+  // rows themselves still go by what the conversation shows.
+  const shown = useMemo(
+    () =>
+      open && roles.length
+        ? new Set([...visible, ...roles.map((role) => `execution:${role.id}`)])
+        : visible,
+    [open, visible, roles],
+  );
   return {
     input,
-    line: closedLine(input),
+    line: closedLine(shown === visible ? input : { ...input, visible: shown }),
     store,
     projection,
+    sending: Boolean(runId && state.runId === runId && state.sending),
     model,
     retry,
   };

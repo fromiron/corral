@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
+
+import type { Receipt } from '@corral/contracts';
 import {
   emptyProjection,
   type RunProjection,
   type RunSummary,
   toolPermissionPlan,
 } from '@corral/core';
-import type { RunSessionStore } from '@corral/react';
+import type { RunSessionState, RunSessionStore } from '@corral/react';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -149,8 +151,9 @@ const runs: RunSummary[] = [
 async function mainArea(
   projection = waitingOnApproval(),
   artifactTexts: Record<string, string> = {},
+  more: Partial<RunSessionState> = {},
 ) {
-  fixture.store = sessionStore({ runId: 'run_team', projection, artifactTexts });
+  fixture.store = sessionStore({ runId: 'run_team', projection, artifactTexts, ...more });
   fixture.model = waitingModel();
   const container = document.createElement('div');
   document.body.append(container);
@@ -292,32 +295,182 @@ it.each([
   // Native buttons in the tab order; the decline is always available.
   for (const button of buttons) expect(button.tabIndex).toBe(0);
   expect(buttons.some((button) => !button.disabled)).toBe(true);
-  // The composer adds no notice beside it.
-  expect(container.querySelector('[data-testid="action-required"]')).toBeNull();
+  // The composer adds no notice beside it: its line names no request and offers no decision.
+  expect(bar(container)?.dataset.line).toBe('summary');
+  expect(decisions(container)).toEqual([]);
 });
 
-it('says what waits and decides it from the activity bar once the card is off screen', async () => {
+/** The decision buttons on the activity bar's line, by what they say in full. */
+const decisions = (container: HTMLElement) =>
+  [...(bar(container)?.querySelectorAll('button') ?? [])].flatMap((button) => {
+    const label = button.getAttribute('aria-label') ?? '';
+    return label.includes(' · ') ? [label] : [];
+  });
+// Only what a person can reach: nothing inert (a closed panel, the buttons' measuring copy).
+const lineButton = (container: HTMLElement, words: string) =>
+  [...(bar(container)?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent === words && !button.closest('[inert]'),
+  );
+
+// The line decides only what it says in full: a call it names whole, a step it names. Anything
+// else is decided on its card, which View opens.
+it.each([
+  ['decision', { kind: 'user_action' }, messages.Approvals.kind.user_action],
+  ['final output', { kind: 'final_output' }, messages.Approvals.kind.final_output],
+  ['check verdict', { kind: 'check' }, messages.Approvals.kind.check],
+  [
+    'run limit',
+    { kind: 'user_action', limit: { kind: 'loop_iterations', used: 3, max: 3 } },
+    messages.Approvals.kind.user_action,
+  ],
+  [
+    'route',
+    {
+      kind: 'route',
+      routes: [
+        { id: 'route_a', label: 'Publish' },
+        { id: 'route_b', label: 'Revise' },
+      ],
+    },
+    messages.Approvals.kind.route,
+  ],
+  ['language server change', { kind: 'check', tool: tool('lsp') }, messages.Approvals.lspHeading],
+  ['check command', { kind: 'check', tool: tool('check') }, messages.Approvals.checkHeading],
+] as const)(
+  'says a waiting %s off screen and leaves it to its card: View only',
+  async (_name, approval, words) => {
+    const projection = waitingOnApproval();
+    projection.approvals.approval_1 = {
+      ...projection.approvals.approval_1,
+      ...approval,
+    } as RunProjection['approvals'][string];
+    const container = await mainArea(projection);
+    // The tray scrolled away; the run row with it.
+    await viewport.scroll(() => false);
+    const line = bar(container);
+    expect(line?.dataset.line).toBe('waiting');
+    const text = visibleText(line as HTMLElement);
+    if (!('limit' in approval)) expect(text).toContain(words);
+    // The run row is off screen too, so the bar says the state, once.
+    expect(count(text, /Waiting for you(?!r)/g)).toBe(1);
+    expect(lineButton(container, messages.Activity.view)).toBeDefined();
+    expect(decisions(container)).toEqual([]);
+  },
+);
+
+it('says no state on the waiting line while the run row on screen says it', async () => {
   const container = await mainArea();
+  // The tray is off screen; the run row's state is still on it.
+  await viewport.scroll((element) => element.matches('[data-presence-label]'));
+  const line = bar(container);
+  expect(line?.dataset.line).toBe('waiting');
+  expect(visibleText(line as HTMLElement)).not.toMatch(/Waiting for you(?!r)/);
+});
+
+it('names a paused step by its name, not its id, and decides it there', async () => {
+  const projection = waitingOnApproval();
+  projection.approvals.approval_1 = {
+    ...projection.approvals.approval_1,
+    kind: 'breakpoint',
+    nodeId: 'step_draft',
+  } as RunProjection['approvals'][string];
+  const definition = {
+    nodes: [{ id: 'step_draft', label: 'Draft' }],
+  } as unknown as RunSessionState['definition'];
+  const container = await mainArea(projection, {}, { definition });
+  await viewport.scroll(() => false);
+  const text = visibleText(bar(container) as HTMLElement);
+  const paused = messages.Approvals.kind.breakpoint.replace('{step}', 'Draft');
+  expect(text).toContain(paused);
+  expect(text).not.toContain('step_draft');
+  expect(decisions(container)).toEqual([
+    `${messages.Approvals.rejectAs.breakpoint} · ${paused}`,
+    `${messages.Approvals.approveAs.breakpoint} · ${paused}`,
+  ]);
+});
+
+it('leaves a paused step it cannot name to its card', async () => {
+  const projection = waitingOnApproval();
+  projection.approvals.approval_1 = {
+    ...projection.approvals.approval_1,
+    kind: 'breakpoint',
+    nodeId: 'step_draft',
+  } as RunProjection['approvals'][string];
+  const container = await mainArea(projection);
+  await viewport.scroll(() => false);
+  expect(visibleText(bar(container) as HTMLElement)).not.toContain('step_draft');
+  expect(decisions(container)).toEqual([]);
+});
+
+// A waiting command, as its card reads it from its body.
+const commandPlan = (text: string) =>
+  toolPermissionPlan(
+    { snapshotHash: 'c'.repeat(64), policyRevision: 1 },
+    {
+      name: 'run_command',
+      source: 'corral',
+      schemaHash: 'd'.repeat(64),
+      exposure: 'direct',
+      sideEffect: 'external',
+    },
+    {
+      operationId: 'command_1',
+      hostId: 'local',
+      sessionId: 'session_team',
+      workspaceBindingId: 'binding_1',
+      worktreeId: 'worktree_1',
+      rootIdentity: 'a'.repeat(64),
+      tree: 'b'.repeat(40),
+      shellId: 'bash',
+      command: text,
+      executable: 'bash',
+      argv: ['-lc', text],
+      cwd: '.',
+      environmentHash: 'c'.repeat(64),
+      timeoutMs: 120000,
+      mode: 'foreground',
+      launchFingerprint: 'e'.repeat(64),
+      fingerprint: 'd'.repeat(64),
+      request: { command: text },
+    },
+  );
+const command = commandPlan('echo tray-ok');
+
+/** A waiting call (`call_1` unless named), its approval naming the plan's fingerprint. */
+function waitingOnCommand(plan = command, id = 'approval_1', call = 'call_1', body = 'body_1') {
+  const projection = waitingOnApproval();
+  delete projection.approvals.approval_1;
+  projection.approvals[id] = {
+    ...waitingOnApproval().approvals.approval_1,
+    approvalId: id,
+    tool: { ...tool('tool'), toolCallId: call, bodyRef: body, fingerprint: plan.fingerprint },
+  } as RunProjection['approvals'][string];
+  return projection;
+}
+
+const called = `${messages.Turn.tool.run_command} · echo tray-ok`;
+
+it('names a waiting call off screen as its card does, and decides it there with View beside', async () => {
+  const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
   const resolve = vi.spyOn(
     fixture.store?.getState() as ReturnType<RunSessionStore['getState']>,
     'resolveApproval',
   );
-  // The tray scrolled away; the run row with it.
+  const card = container.querySelector('[data-testid="approval-approval_1"]');
+  expect(card?.textContent).toContain('echo tray-ok');
   await viewport.scroll(() => false);
   const line = bar(container);
   expect(line?.dataset.line).toBe('waiting');
-  const text = visibleText(line as HTMLElement);
-  expect(text).toContain(messages.Approvals.kind.user_action);
-  // The run row is off screen too, so the bar says the state, once.
-  expect(count(text, /Waiting for you(?!r)/g)).toBe(1);
-  const approve = [...(line?.querySelectorAll('button') ?? [])].find(
-    (button) => button.textContent === messages.Approvals.approveAs.user_action,
-  );
-  const deny = [...(line?.querySelectorAll('button') ?? [])].find(
-    (button) => button.textContent === messages.Approvals.rejectAs.user_action,
-  );
-  expect(approve).toBeDefined();
-  expect(deny).toBeDefined();
+  // The card's own words for the call: its tool, then what it runs.
+  expect(visibleText(line as HTMLElement)).toContain(called);
+  expect(lineButton(container, messages.Activity.view)).toBeDefined();
+  // Each decision names in full what it decides.
+  expect(decisions(container)).toEqual([
+    `${messages.Approvals.rejectTool} · ${called}`,
+    `${messages.Approvals.approveTool} · ${called}`,
+  ]);
+  // Never shown whole as a tooltip: the whole is on the card View opens.
+  expect(line?.querySelector('[title*="echo"]')).toBeNull();
   // Enter and Escape on the bar decide nothing: only the buttons do.
   const toggle = line?.querySelector<HTMLElement>('[data-activity-toggle]');
   for (const key of ['Enter', 'Escape'])
@@ -325,85 +478,142 @@ it('says what waits and decides it from the activity bar once the card is off sc
       toggle?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
     });
   expect(resolve).not.toHaveBeenCalled();
-  await act(async () => approve?.click());
+  await act(async () => lineButton(container, messages.Approvals.approveTool)?.click());
   expect(resolve).toHaveBeenCalledExactlyOnceWith('approval_1', 'approve');
   // Back on screen, the card says it again and the bar lets it go.
   await viewport.scroll(() => true);
   expect(bar(container)?.dataset.line).toBe('summary');
 });
 
-// A waiting command, as its card reads it from its body.
-const command = toolPermissionPlan(
-  { snapshotHash: 'c'.repeat(64), policyRevision: 1 },
-  {
-    name: 'run_command',
-    source: 'corral',
-    schemaHash: 'd'.repeat(64),
-    exposure: 'direct',
-    sideEffect: 'external',
-  },
-  {
-    operationId: 'command_1',
-    hostId: 'local',
-    sessionId: 'session_team',
-    workspaceBindingId: 'binding_1',
-    worktreeId: 'worktree_1',
-    rootIdentity: 'a'.repeat(64),
-    tree: 'b'.repeat(40),
-    shellId: 'bash',
-    command: 'echo tray-ok',
-    executable: 'bash',
-    argv: ['-lc', 'echo tray-ok'],
-    cwd: '.',
-    environmentHash: 'c'.repeat(64),
-    timeoutMs: 120000,
-    mode: 'foreground',
-    launchFingerprint: 'e'.repeat(64),
-    fingerprint: 'd'.repeat(64),
-    request: { command: 'echo tray-ok' },
-  },
-);
-
-function waitingOnCommand() {
-  const projection = waitingOnApproval();
-  projection.approvals.approval_1 = {
-    ...projection.approvals.approval_1,
-    tool: { ...tool('tool'), fingerprint: command.fingerprint },
-  } as RunProjection['approvals'][string];
-  return projection;
-}
-
-it('names a waiting call off screen as its card does, and decides it there with View beside', async () => {
+it('denies with Deny', async () => {
   const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
-  const card = container.querySelector('[data-testid="approval-approval_1"]');
-  expect(card?.textContent).toContain('echo tray-ok');
+  const resolve = vi.spyOn(
+    fixture.store?.getState() as ReturnType<RunSessionStore['getState']>,
+    'resolveApproval',
+  );
   await viewport.scroll(() => false);
-  const line = bar(container);
-  expect(line?.dataset.line).toBe('waiting');
-  // The card's own words for the call: its tool, then what it runs.
-  expect(visibleText(line as HTMLElement)).toContain(
-    `${messages.Turn.tool.run_command} · echo tray-ok`,
+  await act(async () => lineButton(container, messages.Approvals.rejectTool)?.click());
+  expect(resolve).toHaveBeenCalledExactlyOnceWith('approval_1', 'reject');
+});
+
+it('sends one decision however fast it is pressed, and takes none while it is sent', async () => {
+  const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
+  let answer: (receipt: Receipt) => void = () => {};
+  const resolve = vi
+    .spyOn(fixture.store?.getState() as ReturnType<RunSessionStore['getState']>, 'resolveApproval')
+    .mockImplementation(() => new Promise<Receipt>((done) => (answer = done)));
+  await viewport.scroll(() => false);
+  const approve = lineButton(container, messages.Approvals.approveTool);
+  const deny = lineButton(container, messages.Approvals.rejectTool);
+  // Two presses before the page draws again.
+  await act(async () => {
+    approve?.click();
+    deny?.click();
+  });
+  expect(resolve).toHaveBeenCalledTimes(1);
+  expect(lineButton(container, messages.Approvals.approveTool)?.disabled).toBe(true);
+  expect(lineButton(container, messages.Approvals.rejectTool)?.disabled).toBe(true);
+  await act(async () => lineButton(container, messages.Approvals.rejectTool)?.click());
+  expect(resolve).toHaveBeenCalledTimes(1);
+  await act(async () => answer({} as Receipt));
+});
+
+it('says a decision the run refused, as its card does, and leaves only View', async () => {
+  const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
+  vi.spyOn(
+    fixture.store?.getState() as ReturnType<RunSessionStore['getState']>,
+    'resolveApproval',
+  ).mockResolvedValue({ error: { message: 'The request changed' } } as Receipt);
+  await viewport.scroll(() => false);
+  await act(async () => lineButton(container, messages.Approvals.approveTool)?.click());
+  const line = bar(container) as HTMLElement;
+  expect(visibleText(line)).toContain(
+    messages.Approvals.refused.replace('{message}', 'The request changed'),
   );
-  const names = [...(line?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
-  expect(names).toEqual(
-    expect.arrayContaining([
-      messages.Activity.view,
-      messages.Approvals.rejectTool,
-      messages.Approvals.approveTool,
-    ]),
+  expect(decisions(container)).toEqual([]);
+  expect(lineButton(container, messages.Activity.view)).toBeDefined();
+});
+
+it.each([
+  ['of several lines', 'echo one\necho two'],
+  ['longer than its line', `echo ${'x'.repeat(90)}`],
+])('leaves a command %s to its card: View only', async (_name, text) => {
+  const plan = commandPlan(text);
+  const container = await mainArea(waitingOnCommand(plan), { body_1: JSON.stringify(plan) });
+  await viewport.scroll(() => false);
+  expect(bar(container)?.dataset.line).toBe('waiting');
+  expect(lineButton(container, messages.Activity.view)).toBeDefined();
+  expect(decisions(container)).toEqual([]);
+});
+
+it('leaves a call with nothing to name but its tool to its card', async () => {
+  const plan = toolPermissionPlan(
+    { snapshotHash: 'c'.repeat(64), policyRevision: 1 },
+    {
+      name: 'mcp_lookup',
+      source: 'mcp',
+      schemaHash: 'd'.repeat(64),
+      exposure: 'direct',
+      sideEffect: 'external',
+    },
+    { query: 'weather' },
   );
-  // Cut at its end, never shown whole as a tooltip: the whole is on the card View opens.
-  expect(line?.querySelector('[title*="echo"]')).toBeNull();
+  const container = await mainArea(waitingOnCommand(plan), { body_1: JSON.stringify(plan) });
+  await viewport.scroll(() => false);
+  expect(bar(container)?.dataset.line).toBe('waiting');
+  expect(decisions(container)).toEqual([]);
 });
 
 it('leaves a waiting call it cannot name to its card: View only', async () => {
-  // The body is not read yet (or no longer matches): nothing says what would be allowed.
+  // The body is not read yet: nothing says what would be allowed.
   const container = await mainArea(waitingOnCommand());
   await viewport.scroll(() => false);
   const line = bar(container);
   expect(line?.dataset.line).toBe('waiting');
-  const names = [...(line?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
-  expect(names).toContain(messages.Activity.view);
-  expect(names).not.toContain(messages.Approvals.approveTool);
-  expect(names).not.toContain(messages.Approvals.rejectTool);
+  expect(lineButton(container, messages.Activity.view)).toBeDefined();
+  expect(decisions(container)).toEqual([]);
+});
+
+it('does not name a call by a body made for another call', async () => {
+  // The body read is a plan for another command: its fingerprint is not the approval's.
+  const other = commandPlan('rm -rf build');
+  const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(other) });
+  await viewport.scroll(() => false);
+  expect(visibleText(bar(container) as HTMLElement)).not.toContain('rm -rf build');
+  expect(decisions(container)).toEqual([]);
+});
+
+it('takes no press for a while when the next approval comes to the same place', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const second = commandPlan('echo second');
+    const container = await mainArea(waitingOnCommand(), {
+      body_1: JSON.stringify(command),
+      body_2: JSON.stringify(second),
+    });
+    const resolve = vi.spyOn(
+      fixture.store?.getState() as ReturnType<RunSessionStore['getState']>,
+      'resolveApproval',
+    );
+    await viewport.scroll(() => false);
+    await act(async () => lineButton(container, messages.Approvals.approveTool)?.click());
+    expect(resolve).toHaveBeenCalledExactlyOnceWith('approval_1', 'approve');
+    // The first is decided; the next waits where it was.
+    const next = waitingOnCommand(second, 'approval_2', 'call_2', 'body_2');
+    await act(async () => fixture.store?.setState({ projection: next }));
+    await viewport.scroll(() => false);
+    expect(visibleText(bar(container) as HTMLElement)).toContain('echo second');
+    const approve = () => lineButton(container, messages.Approvals.approveTool);
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => approve()?.click());
+    expect(resolve).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(599));
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(approve()?.disabled).toBe(false);
+    await act(async () => approve()?.click());
+    expect(resolve).toHaveBeenLastCalledWith('approval_2', 'approve');
+  } finally {
+    vi.useRealTimers();
+  }
 });

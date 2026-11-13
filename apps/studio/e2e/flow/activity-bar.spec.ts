@@ -33,7 +33,10 @@ import {
 // fixed areas within their bound and nothing on screen moving as a run starts and ends; (②) a
 // team's roles, none named on the bar while its row is on screen, and the join target chosen
 // from the bar; (④) an approval scrolled off screen, said and decided once, from the bar, never
-// by Enter. Every scene checks that no state name is on screen twice. Responses are scripted.
+// by Enter; (⑤) the press that sent never stops the run Stop then stands for; (⑥) a call decided
+// on the line only while the line says it whole, at every width, and the next call in its place
+// not decided by the press meant for the last. Every scene checks that no state name is on screen
+// twice. Responses are scripted.
 
 const OUT = join(import.meta.dirname, '..', '..', 'test-results', 'flow');
 const RESULTS = join(OUT, 'activity-bar.json');
@@ -265,7 +268,10 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
   const children = hold();
   corral.fake?.setResponses(teamResponses(children.opened) as never);
   try {
-    await teamSession(page, corral);
+    const sessionId = await teamSession(page, corral);
+    // Earlier requests above, so the run's rows can leave the screen.
+    await earlierRequests(page, sessionId, 20);
+    await page.reload();
     await requestBox(page).fill('Find why login is slow and fix it.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(runGoing(page)).toBeVisible({ timeout: 30_000 });
@@ -322,6 +328,47 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
       'Join target',
     );
     await expect(requestBox(page)).toBeFocused();
+
+    // The rows scrolled far away, the panel open: what its rows say, the line does not say again.
+    const timeline = page.getByTestId('chat-timeline');
+    await timeline.hover({ position: { x: 16, y: 120 } });
+    for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
+    await waitForStill(page);
+    await expect(
+      page.locator(`[data-presence-label="run:${run()?.runId}"]`).first(),
+    ).not.toBeInViewport();
+    await openActivity(page);
+    await waitForStill(page);
+    const open = (await countVisibleLabels(page)).labels;
+    record('panel-open-away', open);
+    for (const [label, count] of Object.entries(open))
+      expect.soft(count, `${label} on screen ${count} times`).toBe(1);
+    await noDuplicates(page, 'panel open, rows away');
+
+    // View brings the role's row back from outside the conversation's window, with the focus,
+    // and leaves the run record closed.
+    await activityBar(page)
+      .getByRole('button', { name: `View ${other.name}`, exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const active = document.activeElement;
+          const row = active?.closest('[data-chat-part^="role:"], [data-chat-item]');
+          if (!row?.closest('[data-testid="chat-timeline"]')) return active?.tagName ?? null;
+          const box = row.getBoundingClientRect();
+          return box.bottom > 0 && box.top < innerHeight ? 'row' : 'row off screen';
+        }),
+      )
+      .toBe('row');
+    expect(new URL(page.url()).searchParams.get('panel')).not.toBe('run');
+    record('view-from-away', {
+      focus: await page.evaluate(
+        () =>
+          document.activeElement?.closest('[data-chat-part]')?.getAttribute('data-chat-part') ??
+          null,
+      ),
+    });
     expect(corral.errors).toEqual([]);
   } finally {
     children.open();
@@ -341,32 +388,8 @@ test('④ an approval scrolled off screen is said and decided once, from the bar
     fauxAssistantMessage('Done.'),
     fauxAssistantMessage('Done.'),
   ]);
-  const original = mkdtempSync(join(tmpdir(), 'corral-activity-'));
-  const git = (...args: string[]) =>
-    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args], { cwd: original });
-  git('init', '-q');
-  writeFileSync(join(original, 'README.md'), '# Activity\n');
-  git('add', '.');
-  git('commit', '-q', '-m', 'source');
+  const session = await commandSession(page, corral);
   try {
-    await corral.open('/');
-    const folder = await openFolderSettings(page);
-    await folder.getByLabel('Folder path on this computer').fill(original);
-    await folder.getByRole('button', { name: 'Link folder' }).click();
-    await folder.getByRole('switch', { name: /Trust this repository/ }).click();
-    await closeSettings(page);
-    await newConversation(page);
-    const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
-    await panelTab(page, 'Files');
-    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-    await page
-      .getByRole('region', { name: 'Working copy' })
-      .getByRole('button', { name: /Make a working copy from/ })
-      .click();
-    await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
-    await panelTab(page, 'Conversation');
-    await earlierRequests(page, sessionId, 20);
-    await page.reload();
     await requestBox(page).fill('Check the folder.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     const tray = page.locator('[data-pending-tray]');
@@ -417,6 +440,241 @@ test('④ an approval scrolled off screen is said and decided once, from the bar
     await noDuplicates(page, 'after the decision');
     expect(corral.errors).toEqual([]);
   } finally {
-    await rm(original, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await session.cleanup();
+  }
+});
+
+/** The scripted conversation of ⑤: one finished run, then a second one held. */
+async function heldRun(page: Page, corral: Harness) {
+  const reply = hold();
+  corral.fake?.setResponses([
+    fauxAssistantMessage('A first short answer.'),
+    async () => {
+      reply.reach();
+      await reply.opened;
+      return fauxAssistantMessage('Second answer.');
+    },
+    fauxAssistantMessage('Third answer.'),
+    fauxAssistantMessage('Fourth answer.'),
+  ]);
+  await corral.open('/projects/default');
+  await newConversation(page);
+  await requestBox(page).fill('First request');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByTestId('chat-result')).toBeVisible({ timeout: 30_000 });
+  await expect(runGoing(page)).toHaveCount(0);
+  await requestBox(page).fill('Second request');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await reply.reached;
+  await expect(runGoing(page)).toBeVisible();
+  await waitForStill(page);
+  return reply;
+}
+
+test('⑤ the press that sent, and the next on the same place, do not stop the run', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(150_000);
+  const reply = await heldRun(page, corral);
+  const statuses = () => corral.server.coordinator.listRuns().map((run) => run.status);
+  try {
+    const stop = page.getByTestId('composer-stop');
+    await expect(stop).toBeVisible();
+    // A join sent with a double click: the second click lands where Stop now is.
+    await requestBox(page).fill('Keep it short.');
+    const send = page.getByRole('button', { name: 'Send', exact: true });
+    const box = await send.boundingBox();
+    if (!box) throw new Error('Send is missing');
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.dblclick(x, y);
+    await expect(stop).toBeVisible();
+    // And once more, a moment later, on the same place.
+    await page.waitForTimeout(250);
+    await page.mouse.click(x, y);
+    const held = { disabled: await stop.isDisabled(), statuses: statuses() };
+    await page.waitForTimeout(300);
+    record('send-then-stop', { held, after: statuses() });
+    expect(held.disabled).toBe(true);
+    expect(statuses().filter((status) => /cancel/.test(status))).toEqual([]);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Then it is Stop again, pressable.
+    await expect(stop).toBeEnabled({ timeout: 2_000 });
+    expect(corral.errors).toEqual([]);
+  } finally {
+    reply.open();
+  }
+});
+
+/** A conversation whose agent may run commands in a working copy, with history to scroll. */
+async function commandSession(page: Page, corral: Harness) {
+  const original = mkdtempSync(join(tmpdir(), 'corral-activity-'));
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', ...args], { cwd: original });
+  git('init', '-q');
+  writeFileSync(join(original, 'README.md'), '# Activity\n');
+  git('add', '.');
+  git('commit', '-q', '-m', 'source');
+  await corral.open('/');
+  const folder = await openFolderSettings(page);
+  await folder.getByLabel('Folder path on this computer').fill(original);
+  await folder.getByRole('button', { name: 'Link folder' }).click();
+  await folder.getByRole('switch', { name: /Trust this repository/ }).click();
+  await closeSettings(page);
+  await newConversation(page);
+  const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
+  await panelTab(page, 'Files');
+  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Working copy' })
+    .getByRole('button', { name: /Make a working copy from/ })
+    .click();
+  await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
+  await panelTab(page, 'Conversation');
+  await earlierRequests(page, sessionId, 20);
+  await page.reload();
+  return {
+    sessionId,
+    cleanup: () => rm(original, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+  };
+}
+
+/** The closed line's words and buttons: where each sits and whether the words are cut. */
+function lineParts(page: Page) {
+  return page.evaluate(() => {
+    const line = document.querySelector('[data-testid="activity-bar"] [data-activity-bar] > div');
+    if (!line) return null;
+    const right = line.getBoundingClientRect().right;
+    const words = line.querySelector<HTMLElement>('[data-activity-text]');
+    return {
+      text: words?.textContent ?? null,
+      cut: words ? words.scrollWidth > words.clientWidth : null,
+      decisions: [...line.querySelectorAll('button')]
+        .filter((button) => !button.closest('[inert]'))
+        .flatMap((button) => {
+          const name = button.getAttribute('aria-label') ?? '';
+          return / · /.test(name) ? [name] : [];
+        }),
+      inside: [...line.querySelectorAll('button')]
+        .filter((button) => !button.closest('[inert]'))
+        .every((button) => button.getBoundingClientRect().right <= right + 1),
+    };
+  });
+}
+
+test('⑥ the line decides a call only while it says it whole; the next call in its place waits', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(240_000);
+  const asked = { second: false, third: false };
+  corral.fake?.setResponses([
+    fauxAssistantMessage([fauxToolCall('run_command', { command: 'echo tray-ok' })], {
+      stopReason: 'toolUse',
+    }),
+    // The session's title, and the run after each command, in whichever order they are asked.
+    ...Array.from({ length: 8 }, () => (context: { messages: { role: string }[] }) => {
+      const results = context.messages.filter((message) => message.role === 'toolResult').length;
+      if (results === 1 && !asked.second) {
+        asked.second = true;
+        return fauxAssistantMessage([fauxToolCall('run_command', { command: 'echo second' })], {
+          stopReason: 'toolUse',
+        });
+      }
+      if (results === 2 && !asked.third) {
+        asked.third = true;
+        return fauxAssistantMessage(
+          [fauxToolCall('run_command', { command: 'echo one\necho two' })],
+          { stopReason: 'toolUse' },
+        );
+      }
+      return fauxAssistantMessage('Done.');
+    }),
+  ] as never);
+  const session = await commandSession(page, corral);
+  try {
+    await requestBox(page).fill('Check the folder.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    const tray = page.locator('[data-pending-tray]');
+    await expect(tray.locator('[data-testid^="approval-"]')).toHaveCount(1, { timeout: 30_000 });
+    await waitForStill(page);
+    const bar = activityBar(page);
+    const timeline = page.getByTestId('chat-timeline');
+    const scrollUp = async () => {
+      await timeline.hover({ position: { x: 16, y: 120 } });
+      for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
+      await waitForStill(page);
+    };
+    await scrollUp();
+    await expect(bar).toHaveAttribute('data-line', 'waiting');
+    // At every width the buttons come only with the whole call beside them.
+    const widths: Record<number, unknown> = {};
+    for (const width of [1280, 600, 390, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await waitForStill(page);
+      if ((await bar.getAttribute('data-line')) !== 'waiting') await scrollUp();
+      const parts = await lineParts(page);
+      widths[width] = parts;
+      expect(parts?.text).toContain('echo tray-ok');
+      if (parts?.decisions.length) {
+        expect.soft(parts.cut, `${width}: decided with its words cut`).toBe(false);
+        expect.soft(parts.inside, `${width}: a button outside the line`).toBe(true);
+      }
+      await expect(
+        activityLine(page).getByRole('button', { name: 'View', exact: true }),
+      ).toBeVisible();
+    }
+    record('fit', widths);
+    // Wide, the whole call fits beside its buttons, named in full.
+    const approve = activityLine(page).getByRole('button', {
+      name: 'Allow once · Run · echo tray-ok',
+      exact: true,
+    });
+    await expect(approve).toBeVisible();
+    const pending = () => {
+      const run = corral.server.coordinator.listRuns()[0];
+      return run
+        ? Object.values(corral.server.coordinator.getSnapshot(run.runId).projection.approvals)
+            .filter((approval) => approval.status === 'pending')
+            .map((approval) => approval.approvalId)
+        : [];
+    };
+    const spot = await approve.boundingBox();
+    if (!spot) throw new Error('Allow once is missing');
+    const first = pending();
+    await page.mouse.click(spot.x + spot.width / 2, spot.y + spot.height / 2);
+    // The next call comes to the same place; the same place pressed again does not decide it.
+    await expect(activityLine(page)).toContainText('echo second', { timeout: 30_000 });
+    const next = activityLine(page).getByRole('button', {
+      name: 'Allow once · Run · echo second',
+      exact: true,
+    });
+    const arrived = { disabled: await next.isDisabled(), box: await next.boundingBox() };
+    await page.mouse.click(spot.x + spot.width / 2, spot.y + spot.height / 2);
+    await page.waitForTimeout(200);
+    const waiting = pending();
+    record('next-in-place', { first, arrived, waiting, spot });
+    expect(arrived.disabled).toBe(true);
+    expect(waiting).toHaveLength(1);
+    expect(waiting).not.toEqual(first);
+    // A moment later it is decided by a press.
+    await expect(next).toBeEnabled({ timeout: 2_000 });
+    await next.click();
+    // A command of two lines is more than the line can say: View alone, and its card decides.
+    await expect(activityLine(page)).toContainText('echo one', { timeout: 30_000 });
+    await waitForStill(page);
+    const multi = await lineParts(page);
+    record('multi-line', multi);
+    expect(multi?.decisions).toEqual([]);
+    await activityLine(page).getByRole('button', { name: 'View', exact: true }).click();
+    const card = tray.locator('[data-testid^="approval-"]');
+    await expect(card).toContainText('echo two');
+    await card.getByRole('button', { name: 'Allow once', exact: true }).click();
+    await expect.poll(pending, { timeout: 30_000 }).toEqual([]);
+    await expect(bar).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
+    expect(corral.errors).toEqual([]);
+  } finally {
+    await session.cleanup();
   }
 });

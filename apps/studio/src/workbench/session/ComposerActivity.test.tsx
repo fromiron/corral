@@ -78,6 +78,8 @@ beforeEach(() => {
   );
   viewport = stubViewport();
   Element.prototype.getAnimations ??= () => [];
+  // jsdom lays nothing out: a row brought into view only says so.
+  Element.prototype.scrollIntoView = () => {};
   fixture.store = null;
 });
 afterEach(() => {
@@ -193,12 +195,36 @@ async function mount(
     ownActive = null,
     rowShown = false,
     lost = false,
-  }: { ownActive?: RunSummary | null; rowShown?: boolean; lost?: boolean } = {},
+    timeline = null,
+    onViewRun,
+    revealRun,
+    target = null,
+    targets = [],
+    floating = false,
+  }: {
+    /** The composer floats over the timeline's bottom edge. */
+    floating?: boolean;
+    ownActive?: RunSummary | null;
+    /** The join target, and the executions that take an instruction now. */
+    target?: string | null;
+    targets?: { id: string }[];
+    rowShown?: boolean;
+    lost?: boolean;
+    /** More of the conversation: role rows, a run's item. */
+    timeline?: ReactNode;
+    onViewRun?: (runId: string) => void;
+    revealRun?: (runId: string | null) => boolean;
+  } = {},
 ) {
   fixture.model = initial;
   const tray = createPendingTrayStore();
   const respond = vi.fn();
   const retry = vi.fn();
+  const onJoin = vi.fn();
+  const onStop = vi.fn();
+  const onPause = vi.fn();
+  const onResume = vi.fn();
+  let conversation: ReactNode = timeline;
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -222,18 +248,24 @@ async function mount(
                       </span>
                     </div>
                   ) : null}
+                  {conversation}
                 </div>
-                <div data-testid="chat-composer">
+                <div
+                  data-testid="chat-composer"
+                  {...(floating ? { 'data-composer-surface': 'floating' } : {})}
+                >
                   <ComposerActivity
                     sessionId="session_plan"
                     ownActive={ownActive}
-                    target={null}
-                    targets={[]}
-                    onJoin={vi.fn()}
-                    onStop={vi.fn()}
-                    onPause={vi.fn()}
-                    onResume={vi.fn()}
+                    target={target}
+                    targets={targets as never}
+                    onJoin={onJoin}
+                    onStop={onStop}
+                    onPause={onPause}
+                    onResume={onResume}
                     viewingOther={false}
+                    {...(onViewRun ? { onViewRun } : {})}
+                    {...(revealRun ? { revealRun } : {})}
                   />
                   <div data-testid="input-surface">
                     <textarea aria-label="Request" />
@@ -252,12 +284,23 @@ async function mount(
     tray,
     respond,
     retry,
+    onJoin,
+    onStop,
+    onPause,
+    onResume,
     bar,
     /** The closed line: the bar without its panel. */
     line: () => bar()?.querySelector<HTMLElement>('[data-activity-bar] > div'),
     toggle: () => bar()?.querySelector<HTMLButtonElement>('[data-activity-toggle]'),
-    panel: () => bar()?.querySelector<HTMLElement>('section[aria-label="Activity"]'),
+    panel: () => bar()?.querySelector<HTMLElement>('section[aria-label="Activity details"]'),
     rows: () => container.querySelectorAll('[data-plan-item]'),
+    /** Paints again with the same model, as a store change would. */
+    repaint: () => paint(lost),
+    /** The conversation's rows change: rows mount or leave. */
+    setTimeline: (next: ReactNode) => {
+      conversation = next;
+      return paint(lost);
+    },
     update: async (next: ChatWidgetModel, connectionLost = lost) => {
       fixture.model = next;
       await paint(connectionLost);
@@ -784,4 +827,403 @@ it('keeps its one line with no run, saying nothing', async () => {
   expect(visibleText(view.line())).toBe('');
   expect(view.toggle()).toBeNull();
   expect(view.line()?.textContent).not.toContain('Overview');
+});
+
+/** A running run whose executions are given by id: node and status, in run order. */
+function teamProjection(executions: Record<string, { node: string; status: string }>) {
+  const projection = runningProjection();
+  projection.executionOrder = Object.keys(executions);
+  projection.executions = {};
+  projection.toolCalls = {};
+  for (const [id, { node, status }] of Object.entries(executions))
+    projection.executions[id] = {
+      executionId: id,
+      nodeId: node,
+      taskId: `task_${id}`,
+      status,
+      attemptNo: 1,
+      modelCallIds: [],
+    } as unknown as RunProjection['executions'][string];
+  return projection;
+}
+
+const live = () => model({ live: true }, { runStatus: 'running' });
+
+it('names the bar itself: one group, "Activity"', async () => {
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const view = await mount(live(), { ownActive: ownRun });
+  const group = view.bar()?.querySelector('[role="group"]');
+  expect(group?.getAttribute('aria-label')).toBe(messages.Activity.bar);
+  // The panel it opens has its own name.
+  expect(view.panel()).not.toBeNull();
+});
+
+it('does not say again on the line what an open panel row says', async () => {
+  // One assistant at work, its run row scrolled away: the line says it works.
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({ exec_plan: { node: 'assistant', status: 'active' } }),
+  });
+  const view = await mount(live(), { ownActive: ownRun });
+  const said = () =>
+    view.line()?.querySelectorAll('[data-presence-label="execution:exec_plan"]').length ?? 0;
+  expect(said()).toBe(1);
+  // Open, its row in the panel says it: the line does not.
+  await act(async () => view.toggle()?.click());
+  const row = view.panel()?.querySelector('[data-activity-role="exec_plan"]');
+  expect(row?.querySelectorAll('[data-presence-label="execution:exec_plan"]')).toHaveLength(1);
+  expect(said()).toBe(0);
+  // Folded again, the line says it again.
+  await act(async () => view.toggle()?.click());
+  expect(said()).toBe(1);
+});
+
+it('tells executions of one role apart as the send menu does, and lists only live ones', async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_w1: { node: 'writer', status: 'succeeded' },
+      exec_w2: { node: 'writer', status: 'active' },
+      exec_w3: { node: 'writer', status: 'active' },
+    }),
+  });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  const rows = [...(view.panel()?.querySelectorAll('[data-activity-role]') ?? [])];
+  // The ended round is not a row.
+  expect(rows.map((row) => row.getAttribute('data-activity-role'))).toEqual([
+    'exec_lead',
+    'exec_w2',
+    'exec_w3',
+  ]);
+  const name = (id: string) => view.panel()?.querySelector(`[data-activity-role="${id}"]`);
+  expect(name('exec_w2')?.textContent).toContain('writer · #3');
+  expect(name('exec_w3')?.textContent).toContain('writer · #4');
+  expect(name('exec_lead')?.textContent).not.toContain('#');
+  // The buttons say which one.
+  const views = [...(name('exec_w3')?.querySelectorAll('button') ?? [])].map((button) =>
+    button.getAttribute('aria-label'),
+  );
+  expect(views).toContain('View writer · #4');
+});
+
+it('says no state words for a state it does not know, only the name', async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_odd: { node: 'odd', status: 'not_a_status' },
+    }),
+  });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  const text = view.bar()?.textContent ?? '';
+  expect(text).toContain('odd');
+  expect(text).not.toContain('Presence.');
+  expect(text).not.toContain('undefined');
+});
+
+it("brings a role's row into the conversation's window and gives it focus, not the run record", async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_child: { node: 'researcher', status: 'active' },
+    }),
+  });
+  const onViewRun = vi.fn();
+  const asked: (string | null)[] = [];
+  // The conversation's window has no row for the role until its run's item is brought in.
+  const revealRun = vi.fn((runId: string | null) => {
+    asked.push(runId);
+    if (runId)
+      setTimeout(() => {
+        const row = document.createElement('div');
+        row.dataset.chatPart = 'role:exec_child';
+        row.innerHTML = '<button type="button">researcher</button>';
+        document.querySelector('[data-testid="chat-timeline"]')?.append(row);
+      }, 30);
+    return true;
+  });
+  const view = await mount(live(), { ownActive: ownRun, onViewRun, revealRun });
+  await act(async () => view.toggle()?.click());
+  const show = view
+    .panel()
+    ?.querySelector<HTMLButtonElement>('[data-activity-role="exec_child"] button');
+  await act(async () => show?.click());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+  expect(asked).toEqual(['run_plan', null]);
+  expect(onViewRun).not.toHaveBeenCalled();
+  expect(document.activeElement?.closest('[data-chat-part="role:exec_child"]')).not.toBeNull();
+});
+
+it('opens the run record only for a role the conversation has no row for', async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_child: { node: 'researcher', status: 'active' },
+    }),
+  });
+  const onViewRun = vi.fn();
+  const view = await mount(live(), { ownActive: ownRun, onViewRun, revealRun: () => false });
+  await act(async () => view.toggle()?.click());
+  await act(async () =>
+    view
+      .panel()
+      ?.querySelector<HTMLButtonElement>('[data-activity-role="exec_child"] button')
+      ?.click(),
+  );
+  expect(onViewRun).toHaveBeenCalledExactlyOnceWith('run_plan');
+});
+
+/** The panel's run controls, by their words. */
+const control = (view: { panel: () => HTMLElement | null | undefined }, words: string) =>
+  [
+    ...(view.panel()?.querySelectorAll<HTMLButtonElement>('[aria-label="Run controls"] button') ??
+      []),
+  ].find((button) => button.textContent === words);
+
+it.each([
+  ['running', { pause: true, resume: null, stop: true }],
+  ['paused', { pause: null, resume: true, stop: true }],
+  // Pausing: Stop can still be pressed; Pause waits for the pause.
+  ['pausing', { pause: false, resume: null, stop: true }],
+  ['cancelling', { pause: false, resume: null, stop: false }],
+] as const)(
+  'offers the run controls a %s run takes, pressable as it allows',
+  async (status, want) => {
+    const projection = runningProjection();
+    projection.status = status;
+    fixture.store = sessionStore({ runId: 'run_plan', projection });
+    const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+    await act(async () => view.toggle()?.click());
+    const state = (button: HTMLButtonElement | undefined) => (button ? !button.disabled : null);
+    expect({
+      pause: state(control(view, messages.Activity.pause)),
+      resume: state(control(view, messages.Activity.resume)),
+      stop: state(control(view, messages.Activity.stop)),
+    }).toEqual(want);
+    // Each says what it does.
+    await act(async () => control(view, messages.Activity.pause)?.click());
+    await act(async () => control(view, messages.Activity.resume)?.click());
+    expect(view.onPause).toHaveBeenCalledTimes(want.pause ? 1 : 0);
+    expect(view.onResume).toHaveBeenCalledTimes(want.resume ? 1 : 0);
+  },
+);
+
+it('takes no second run command while one is being sent', async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: runningProjection(),
+    pendingCommandIds: ['cmd_1'],
+  });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  expect(control(view, messages.Activity.pause)?.disabled).toBe(true);
+  expect(control(view, messages.Activity.stop)?.disabled).toBe(true);
+  await act(async () => fixture.store?.setState({ pendingCommandIds: [] }));
+  expect(control(view, messages.Activity.stop)?.disabled).toBe(false);
+});
+
+it('marks the join target and offers Join only to an execution that takes an instruction', async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_writer: { node: 'writer', status: 'active' },
+      exec_review: { node: 'review', status: 'active' },
+    }),
+  });
+  const view = await mount(live(), {
+    ownActive: ownRun,
+    rowShown: true,
+    target: 'exec_writer',
+    targets: [{ id: 'exec_lead' }, { id: 'exec_writer' }],
+  });
+  await act(async () => view.toggle()?.click());
+  const row = (id: string) => view.panel()?.querySelector(`[data-activity-role="${id}"]`);
+  expect(row('exec_writer')?.textContent).toContain(messages.Activity.joinTarget);
+  expect(row('exec_lead')?.textContent).not.toContain(messages.Activity.joinTarget);
+  const join = (id: string) =>
+    [...(row(id)?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent === messages.Activity.join,
+    );
+  // The target needs no Join; the reviewer takes no instruction now.
+  expect(join('exec_writer')).toBeUndefined();
+  expect(join('exec_review')).toBeUndefined();
+  await act(async () => join('exec_lead')?.click());
+  expect(view.onJoin).toHaveBeenCalledExactlyOnceWith('exec_lead');
+});
+
+it("says a role's activity alone on the line, not its state beside it", async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: runningProjection(),
+    events: [readRequested],
+  });
+  // The run row is off screen: the role's line has the activity, which says it works.
+  const view = await mount(live(), { ownActive: ownRun });
+  const text = visibleText(view.line());
+  expect(text).toContain(`${messages.Turn.tool.read_file} · src/session.ts`);
+  expect(text).not.toContain(messages.Presence.state.working);
+});
+
+it("does not repeat a role's state in its panel row while the role's own row says it", async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_child: { node: 'researcher', status: 'active' },
+    }),
+  });
+  const view = await mount(live(), {
+    ownActive: ownRun,
+    rowShown: true,
+    timeline: (
+      <div data-chat-part="role:exec_child">
+        <span data-presence-label="execution:exec_child">{messages.Presence.state.working}</span>
+      </div>
+    ),
+  });
+  await act(async () => view.toggle()?.click());
+  const row = view.panel()?.querySelector('[data-activity-role="exec_child"]');
+  expect(visibleText(row)).not.toContain(messages.Presence.state.working);
+  // Still named for a screen reader.
+  expect(row?.textContent).toContain(messages.Presence.state.working);
+});
+
+it('says which ended run it is only of an ended run', async () => {
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const view = await mount(
+    model({ live: true, viewed: { latest: true, number: 1, total: 1 } }, { runStatus: 'running' }),
+    { ownActive: ownRun },
+  );
+  expect(visibleText(view.line())).not.toContain(messages.Widgets.lastRun);
+});
+
+it('follows what the conversation shows: rows that mount, rows that leave, never under the composer', async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({ exec_plan: { node: 'assistant', status: 'active' } }),
+  });
+  const options: (IntersectionObserverInit | undefined)[] = [];
+  const Base = globalThis.IntersectionObserver;
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class extends Base {
+      constructor(callback: IntersectionObserverCallback, init?: IntersectionObserverInit) {
+        super(callback, init);
+        options.push(init);
+      }
+    },
+  );
+  const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get() {
+      return (this as HTMLElement).dataset.composerSurface === 'floating' ? 96 : 0;
+    },
+  });
+  const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
+  try {
+    const view = await mount(live(), { ownActive: ownRun, floating: true });
+    // The floating composer's height is left out at the timeline's bottom edge.
+    expect(options.at(-1)?.rootMargin).toBe('0px 0px -96px 0px');
+    const said = () =>
+      view.line()?.querySelectorAll('[data-presence-label="execution:exec_plan"]').length ?? 0;
+    expect(said()).toBe(1);
+    // Its row mounts on screen: the line lets the state go.
+    await view.setTimeline(
+      <div data-chat-part="role:exec_plan">
+        <span data-presence-label="execution:exec_plan">{messages.Presence.state.working}</span>
+      </div>,
+    );
+    expect(said()).toBe(0);
+    // The row leaves the conversation: the line says it again.
+    await view.setTimeline(null);
+    expect(said()).toBe(1);
+    // Leaving, the bar stops watching.
+    act(() => {
+      for (const dispose of cleanup.splice(0)) dispose();
+    });
+    expect(disconnect).toHaveBeenCalled();
+  } finally {
+    if (height) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', height);
+    disconnect.mockRestore();
+  }
+});
+
+it("goes to a role's own row on screen and opens nothing", async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_child: { node: 'researcher', status: 'active' },
+    }),
+  });
+  const onViewRun = vi.fn();
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this);
+  };
+  const view = await mount(live(), {
+    ownActive: ownRun,
+    rowShown: true,
+    onViewRun,
+    revealRun: () => false,
+    timeline: (
+      <div data-chat-part="role:exec_child">
+        <button type="button">researcher</button>
+      </div>
+    ),
+  });
+  await act(async () => view.toggle()?.click());
+  await act(async () =>
+    view
+      .panel()
+      ?.querySelector<HTMLButtonElement>('[data-activity-role="exec_child"] button')
+      ?.click(),
+  );
+  expect(scrolled.map((element) => element.getAttribute('data-chat-part'))).toEqual([
+    'role:exec_child',
+  ]);
+  expect(onViewRun).not.toHaveBeenCalled();
+  expect(document.activeElement?.closest('[data-chat-part="role:exec_child"]')).not.toBeNull();
+});
+
+it("does not take the run's row for a helper whose own row is not in the window", async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_other: { node: 'writer', status: 'active' },
+      exec_child: { node: 'researcher', status: 'active' },
+    }),
+  });
+  const onViewRun = vi.fn();
+  const scrolled: Element[] = [];
+  Element.prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this);
+  };
+  const view = await mount(live(), {
+    ownActive: ownRun,
+    rowShown: true,
+    onViewRun,
+    revealRun: () => false,
+    // The conversation draws its roles' rows; this one's is not among them.
+    timeline: <div data-chat-part="role:exec_other">writer</div>,
+  });
+  await act(async () => view.toggle()?.click());
+  await act(async () =>
+    view
+      .panel()
+      ?.querySelector<HTMLButtonElement>('[data-activity-role="exec_child"] button')
+      ?.click(),
+  );
+  expect(scrolled).toEqual([]);
+  expect(onViewRun).toHaveBeenCalledExactlyOnceWith('run_plan');
 });

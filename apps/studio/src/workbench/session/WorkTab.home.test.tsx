@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { SessionEntry, WorkSession } from '@corral/core';
+import type { RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { act, createContext } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -14,23 +14,30 @@ type ComposerProps = {
   onWorkFolder?: () => void;
   onFolderAction?: () => void;
   folderAccess?: string;
+  runControlsOwnConfirmation?: boolean;
+  revealRun?: (runId: string | null) => boolean;
 };
 const fixture = vi.hoisted(() => ({
   composer: [] as ComposerProps[],
   connection: [] as (SessionConnection | null)[],
   workspaces: null as object | null,
   access: 'unknown' as 'unknown' | 'unlinked' | 'copy',
+  search: {} as Record<string, unknown>,
 }));
-vi.mock('../../services.tsx', () => ({
-  useServices: () => ({
-    runFor: () => ({ getState: () => ({ open: async () => {} }) }),
-    sessionFor: () => ({ getState: () => ({ open: async () => {} }) }),
-    retainRun: () => () => {},
-    workspaces: fixture.workspaces,
-  }),
-}));
+vi.mock('../../services.tsx', async () => {
+  const { sessionStore } = await import('../../../../../packages/react/src/stories/fixtures.tsx');
+  const store = sessionStore();
+  return {
+    useServices: () => ({
+      runFor: () => store,
+      sessionFor: () => store,
+      retainRun: () => () => {},
+      workspaces: fixture.workspaces,
+    }),
+  };
+});
 vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
-vi.mock('../../router.tsx', () => ({ sessionRoute: { useSearch: () => ({}) } }));
+vi.mock('../../router.tsx', () => ({ sessionRoute: { useSearch: () => fixture.search } }));
 vi.mock('../MeetingHandoff.tsx', () => ({ MeetingHandoffLinks: () => null }));
 vi.mock('../WorkFolderNotice.tsx', () => ({ useFolderAccess: () => fixture.access }));
 vi.mock('./SessionEntries.tsx', () => ({
@@ -66,6 +73,7 @@ beforeEach(() => {
   fixture.connection = [];
   fixture.workspaces = null;
   fixture.access = 'unknown';
+  fixture.search = {};
 });
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
@@ -88,7 +96,20 @@ const session = (entries: SessionEntry[] = []): WorkSession => ({
   entries,
 });
 
-async function show(value: WorkSession) {
+async function show(
+  value: WorkSession,
+  {
+    runs = [],
+    active = null,
+    selectedRunId = null,
+    onPlace,
+  }: {
+    runs?: RunSummary[];
+    active?: RunSummary | null;
+    selectedRunId?: string | null;
+    onPlace?: (message: string | undefined) => void;
+  } = {},
+) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -103,14 +124,15 @@ async function show(value: WorkSession) {
           session={value}
           team={null}
           corrals={[]}
-          runs={[]}
-          active={null}
+          runs={runs}
+          active={active}
           liveRunId={null}
-          selectedRunId={null}
+          selectedRunId={selectedRunId}
           onChange={() => {}}
           reference={null}
           onReferenceUsed={() => {}}
           onPanel={() => {}}
+          {...(onPlace ? { onPlace } : {})}
         />
       </IntlProvider>,
     ),
@@ -224,4 +246,63 @@ it('the session chat leaves a lost connection to the composer’s activity bar, 
   expect(seen?.lost).toBe(true);
   seen?.retry();
   expect(retry).toHaveBeenCalledOnce();
+});
+
+const run = (runId: string): RunSummary => ({
+  runId,
+  status: 'running',
+  corralId: 'team',
+  projectId: 'project',
+  sessionId: 'session_home',
+  startedAt: '2026-11-09T00:00:00Z',
+});
+const asked = (runId: string): SessionEntry => ({
+  entryId: `entry_${runId}`,
+  intent: 'next',
+  text: `Request of ${runId}`,
+  state: 'started',
+  createdAt: '2026-11-09T00:00:00Z',
+  runId,
+  executionId: null,
+  detail: null,
+});
+
+it.each([
+  ['the run view shows the running run', { panel: 'run' }, 'run_live', true],
+  ['the run view shows another run', { panel: 'run' }, 'run_old', false],
+  ['no run view is open', {}, 'run_live', false],
+] as const)(
+  'leaves Stop’s confirmation to the run view only while %s',
+  async (_name, search, selected, owns) => {
+    fixture.search = search;
+    await show(session([asked('run_live')]), {
+      runs: [run('run_old'), run('run_live')],
+      active: run('run_live'),
+      selectedRunId: selected,
+    });
+    expect(fixture.composer.at(-1)?.runControlsOwnConfirmation).toBe(owns);
+  },
+);
+
+it("brings a run's item into the conversation's window: its request, or the run itself", async () => {
+  const onPlace = vi.fn();
+  await show(session([asked('run_asked')]), {
+    runs: [run('run_asked'), run('run_loose')],
+    active: run('run_asked'),
+    onPlace,
+  });
+  const reveal = fixture.composer.at(-1)?.revealRun;
+  // The request that started it.
+  expect(reveal?.('run_asked')).toBe(true);
+  expect(onPlace).toHaveBeenLastCalledWith('entry_run_asked');
+  // A run no request names is its own item.
+  expect(reveal?.('run_loose')).toBe(true);
+  expect(onPlace).toHaveBeenLastCalledWith('run_loose');
+  // The conversation has no item for a run of another session.
+  onPlace.mockClear();
+  expect(reveal?.('run_elsewhere')).toBe(false);
+  expect(onPlace).not.toHaveBeenCalled();
+  // Done: the place is let go, so the next View goes there again.
+  reveal?.(null);
+  expect(onPlace).toHaveBeenLastCalledWith(undefined);
 });

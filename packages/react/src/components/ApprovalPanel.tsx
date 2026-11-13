@@ -52,16 +52,23 @@ export function waitingToolPlan(text: string | undefined, fingerprint: string) {
 
 /**
  * A call in one line, as its card and the activity bar name it: its tool, then its main subject
- * (the command it runs or the file it touches) when it has one.
+ * (the command it runs or the file it touches) when it has one. `whole` says the subject is all of
+ * it: one line, not cut.
  */
 export function callLine(plan: ToolPermissionPlan, toolLabel: (name: string) => string) {
-  const subject = callSubject(plan);
+  const found = callSubject(plan);
+  const subject = found?.text ?? null;
   const tool = toolLabel(plan.descriptor.name);
-  return { tool, subject, text: subject ? `${tool} · ${subject}` : tool };
+  return {
+    tool,
+    subject,
+    whole: Boolean(found?.whole),
+    text: subject ? `${tool} · ${subject}` : tool,
+  };
 }
 
 /** One line of a call's main subject: the command it runs or the file it touches. */
-function callSubject(plan: ToolPermissionPlan): string | null {
+function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean } | null {
   if (plan.descriptor.source !== 'corral') return null;
   const args = plan.arguments as Record<string, unknown>;
   const request = args.request as Record<string, unknown> | undefined;
@@ -72,7 +79,9 @@ function callSubject(plan: ToolPermissionPlan): string | null {
   if (typeof text !== 'string' || !text.trim()) return null;
   const lines = text.trim().split('\n');
   const first = lines[0]?.trim() ?? '';
-  return first.length > 80 || lines.length > 1 ? `${first.slice(0, 79)}…` : first;
+  return first.length > 80 || lines.length > 1
+    ? { text: `${first.slice(0, 79)}…`, whole: false }
+    : { text: first, whole: true };
 }
 
 /**

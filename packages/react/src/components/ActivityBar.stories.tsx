@@ -113,7 +113,7 @@ export const Idle: Story = {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await userEvent.keyboard('{Enter}');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    const panel = canvas.getByRole('region', { name: 'Activity' });
+    const panel = canvas.getByRole('region', { name: 'Activity details' });
     await waitFor(() => expect(panel).toBeVisible());
     // Once it has opened, the panel is above the line it opens from.
     await waitFor(() =>
@@ -181,7 +181,7 @@ export const ThreeRoles: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    const panel = canvas.getByRole('region', { name: 'Activity' });
+    const panel = canvas.getByRole('region', { name: 'Activity details' });
     await waitFor(() => expect(panel).toBeVisible());
     // Joining a role is a button on its row, reached by keyboard; the target says it is one.
     const join = within(panel).getByRole('button', { name: 'Join Researcher' });
@@ -238,6 +238,44 @@ export const AwaitingResponse: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Allow once · Run command' }));
     await expect(approve).toHaveBeenCalledOnce();
     await expect(toggle).toHaveFocus();
+    await settled(canvasElement);
+  },
+};
+
+/**
+ * The same request on a narrow line, its command too long to show whole beside the buttons: the
+ * line offers View alone, and the whole command is on the card View opens.
+ */
+export const AwaitingResponseCut: Story = {
+  args: {
+    line: {
+      glyph: 'waiting',
+      tone: 'warning',
+      text: 'Run · pnpm --filter @corral/studio exec playwright test --config playwright.flow.config.ts',
+      approval: {
+        subject:
+          'Run · pnpm --filter @corral/studio exec playwright test --config playwright.flow.config.ts',
+        approveLabel: 'Allow once',
+        denyLabel: 'Deny',
+        onApprove: fn(),
+        onDeny: fn(),
+      },
+      action: { label: 'View', onClick: fn() },
+    },
+    roles: team,
+  },
+  decorators: [
+    (Story) => (
+      <div className="w-[390px]">
+        <Story />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole('button', { name: 'View' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: /^Allow once/ })).toBeNull();
+    await expect(canvas.queryByRole('button', { name: /^Deny/ })).toBeNull();
     await settled(canvasElement);
   },
 };

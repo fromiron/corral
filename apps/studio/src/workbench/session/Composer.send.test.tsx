@@ -125,6 +125,8 @@ type RunState = {
   streamError: string | null;
   missingRunId: string | null;
   open: (runId: string) => Promise<void>;
+  pendingCommandIds: string[];
+  sendCommand: (command: Record<string, unknown>) => Promise<unknown>;
 };
 
 async function mount({
@@ -166,6 +168,25 @@ async function mount({
     },
   );
   changePreferences({ sendKey: sendKey ?? 'enter' });
+  // The run's command path, as the run store keeps it: an id, the command pending until its
+  // receipt, then the transport.
+  let issued = 0;
+  const storeSend = vi.fn(async (command: Record<string, unknown>) => {
+    const commandId = `cmd_run_${++issued}`;
+    store.setState({ pendingCommandIds: [...store.getState().pendingCommandIds, commandId] });
+    try {
+      return await sendCommand({
+        ...command,
+        schemaVersion: '0.1',
+        commandId,
+        runId: store.getState().runId,
+      });
+    } finally {
+      store.setState({
+        pendingCommandIds: store.getState().pendingCommandIds.filter((id) => id !== commandId),
+      });
+    }
+  });
   const store: StoreApi<RunState> = createStore<RunState>(() => ({
     runId: 'run_live',
     projection: projection(executions),
@@ -174,9 +195,11 @@ async function mount({
     missingRunId: null,
     events: [],
     open: vi.fn(async () => {}),
+    pendingCommandIds: [],
+    sendCommand: storeSend,
     ...runState,
   }));
-  const sendCommand = vi.fn(async (command: { commandId: string }) => ({
+  const sendCommand = vi.fn(async (command: { commandId: string } & Record<string, unknown>) => ({
     commandId: command.commandId,
     runId: 'run_live',
     status: 'queued',
@@ -296,6 +319,7 @@ async function mount({
     container,
     store,
     sendCommand,
+    storeSend,
     repository,
     startAuto,
     render,
@@ -1113,6 +1137,134 @@ describe('Stop in Send’s place', () => {
     const f = await mount({ active: null });
     expect(stop(f.container)).toBeNull();
     expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+  });
+
+  it('takes Send’s place while only spaces are written', async () => {
+    const f = await mount();
+    await f.type('   ');
+    expect(stop(f.container)).not.toBeNull();
+    expect(f.container.querySelector('button[aria-label="Send"]')).toBeNull();
+  });
+
+  it('counts only executions still open: one working beside one done stops at once', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'succeeded' } });
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('asks first while it is not known yet how many executions work', async () => {
+    const f = await mount({
+      runState: {
+        runId: 'run_other',
+        projection: projection({ exec_other: 'active' }, 'run_other'),
+      },
+    });
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(0);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      messages.Reins.cancelRun,
+    );
+  });
+
+  it('cannot be pressed while the run is being cancelled', async () => {
+    const f = await mount({ active: { ...running, status: 'cancelling' } });
+    expect(stop(f.container)?.disabled).toBe(true);
+  });
+
+  it('goes by the run’s command path and sends one cancel however often it is pressed', async () => {
+    const f = await mount();
+    let release = () => {};
+    f.sendCommand.mockImplementationOnce(
+      (command: { commandId: string }) =>
+        new Promise((done) => {
+          release = () =>
+            done({ commandId: command.commandId, runId: 'run_live', status: 'accepted' } as never);
+        }),
+    );
+    // Two presses before the page draws again, and one after.
+    await act(async () => {
+      stop(f.container)?.click();
+      stop(f.container)?.click();
+    });
+    expect(stop(f.container)?.disabled).toBe(true);
+    await act(async () => stop(f.container)?.click());
+    expect(f.storeSend).toHaveBeenCalledTimes(1);
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    await act(async () => release());
+    expect(stop(f.container)?.disabled).toBe(false);
+  });
+
+  it.each([
+    ['a click', 'click'],
+    ['the send key', 'key'],
+  ] as const)(
+    'is not pressed by the press that sent with %s: it waits a moment',
+    async (_name, how) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const f = await mount();
+        await f.type('Keep it short');
+        if (how === 'key') await f.press();
+        else
+          await act(async () =>
+            f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.click(),
+          );
+        expect(steerPayload(f.sendCommand)).toMatchObject({ delivery: 'next_request' });
+        // Stop is in Send's place at once, but the same place pressed again does not stop.
+        expect(stop(f.container)?.disabled).toBe(true);
+        await act(async () => stop(f.container)?.click());
+        expect(cancels(f.sendCommand)).toHaveLength(0);
+        await act(async () => vi.advanceTimersByTime(599));
+        expect(stop(f.container)?.disabled).toBe(true);
+        await act(async () => vi.advanceTimersByTime(1));
+        expect(stop(f.container)?.disabled).toBe(false);
+        await act(async () => stop(f.container)?.click());
+        expect(cancels(f.sendCommand)).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+});
+
+// composer-flow.md "활동 바": the open bar's roles take the join target, and its run controls
+// send by the run's command path.
+describe('the activity bar', () => {
+  const openBar = async (container: HTMLElement) =>
+    act(async () => container.querySelector<HTMLButtonElement>('[data-activity-toggle]')?.click());
+  const barButton = (container: HTMLElement, words: string, within = '[data-activity-bar]') =>
+    [...container.querySelectorAll<HTMLButtonElement>(`${within} button`)].find(
+      (button) => button.textContent === words,
+    );
+  const commands = (sendCommand: ReturnType<typeof vi.fn>, type: string) =>
+    sendCommand.mock.calls.filter(([command]) => (command as { type?: string }).type === type);
+
+  it('pauses with Pause and resumes with Resume, through the run’s command path', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    await act(async () => barButton(f.container, messages.Activity.pause)?.click());
+    expect(commands(f.sendCommand, 'pause')).toHaveLength(1);
+    expect(commands(f.sendCommand, 'resume')).toHaveLength(0);
+    await act(async () =>
+      f.store.setState({ projection: projection({ exec_writer: 'active' }, 'run_live', 'paused') }),
+    );
+    await act(async () => barButton(f.container, messages.Activity.resume)?.click());
+    expect(commands(f.sendCommand, 'resume')).toHaveLength(1);
+    expect(commands(f.sendCommand, 'pause')).toHaveLength(1);
+    expect(f.storeSend).toHaveBeenCalledTimes(2);
+  });
+
+  it('joins from a role row: the target moves there, the box takes the focus, the row says so', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await openBar(f.container);
+    const row = () => '[data-activity-role="exec_review"]';
+    await act(async () => barButton(f.container, messages.Activity.join, row())?.click());
+    expect(document.activeElement).toBe(f.box());
+    expect(f.container.querySelector(row())?.textContent).toContain(messages.Activity.joinTarget);
+    await f.type('Check the tests');
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ targetExecutionId: 'exec_review' });
   });
 });
 

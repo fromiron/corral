@@ -11,36 +11,35 @@ import type { SendChoice } from '../../composerIntent.ts';
 type Say = (key: string, values?: Record<string, string | number>) => string;
 
 export interface RunCommandDeps {
-  services: Pick<StudioServices, 'transport'>;
+  services: Pick<StudioServices, 'transport' | 'runFor'>;
   newId: () => string;
   setError: (message: string | null) => void;
   onChange: () => void;
 }
 
-/** Pauses, resumes or cancels the session's run. */
+/**
+ * Pauses, resumes or cancels the session's run by the run's own command path, as the run record's
+ * controls do (features/composer-flow.md "활동 바"): one command at a time, its receipt kept, and
+ * a lost response checked again under its first id, never sent again as a new command.
+ */
 export async function runCommand(
   deps: RunCommandDeps,
   type: 'pause' | 'resume' | 'cancel',
   runId: string | undefined,
 ) {
   if (!runId) return;
-  const receipt = await deps.services.transport
+  const store = deps.services.runFor(runId);
+  // A press while a command is being sent is not another command.
+  if ((store.getState().pendingCommandIds?.length ?? 0) > 0) return;
+  if (store.getState().runId !== runId) await store.getState().open(runId);
+  // The record could not be read: there is no run here to send to.
+  if (store.getState().runId !== runId) return;
+  const receipt = await store
+    .getState()
     .sendCommand(
       type === 'cancel'
-        ? {
-            schemaVersion: '0.1',
-            commandId: deps.newId(),
-            runId,
-            type,
-            payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' },
-          }
-        : {
-            schemaVersion: '0.1',
-            commandId: deps.newId(),
-            runId,
-            type,
-            payload: { scope: 'run' },
-          },
+        ? { type, payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' } }
+        : { type, payload: { scope: 'run' } },
     )
     .catch((failure: unknown) => ({
       error: { message: failure instanceof Error ? failure.message : String(failure) },

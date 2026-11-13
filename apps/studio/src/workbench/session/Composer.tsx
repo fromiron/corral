@@ -60,7 +60,8 @@ import { useComposerIntent } from './composer/useIntent.ts';
 import { useLatestResult, useSteerTargets } from './composer/useRunState.ts';
 import { useSessionSettings } from './composer/useSessionSettings.ts';
 import { useVoiceTranscript } from './composer/voice.ts';
-import { useActiveExecutionCount } from './useActivity.ts';
+import { useSettledAppearance } from './settle.ts';
+import { useActiveExecutionCount, useCommandSending } from './useActivity.ts';
 
 /**
  * The composer (features/composer-flow.md "화면 틀"): one component for a conversation and a
@@ -82,6 +83,7 @@ function SessionComposer({
   active,
   selectedRunId,
   onViewRun,
+  revealRun,
   queued,
   onChange,
   onSent,
@@ -100,6 +102,8 @@ function SessionComposer({
   active: RunSummary | null;
   selectedRunId: string | null;
   onViewRun?: (runId: string) => void;
+  /** Brings a run's item into the conversation's window (`null` lets it go); false without one. */
+  revealRun?: (runId: string | null) => boolean;
   queued: SessionEntry[];
   onChange: () => void;
   /** The person sent. The conversation follows the end again. */
@@ -355,13 +359,19 @@ function SessionComposer({
     setConfirmStop(ownActive !== null);
   };
   const runDeps = { services, newId: newCommandId, setError, onChange };
-  // Stop asks first only while two or more executions work: one stop then ends them all.
+  // Stop asks first while two or more executions work, or while how many is not known yet: one
+  // stop then ends them all.
   const activeExecutions = useActiveExecutionCount(going?.runId ?? null);
   const stopRun = () => {
     if (!ownActive) return;
-    if (activeExecutions >= 2) setConfirmStop(true);
+    if (activeExecutions === null || activeExecutions >= 2) setConfirmStop(true);
     else void runCommand(runDeps, 'cancel', ownActive.runId);
   };
+  // A run command on its way: Stop waits for its receipt, as the run record's controls do.
+  const commandSending = useCommandSending(going?.runId ?? null);
+  // Stop comes to Send's place once a send clears the box and the run goes: the press that sent,
+  // or the next one on the same place, does not stop it.
+  const stopSettled = useSettledAppearance(Boolean(going) && !text.trim());
   const queue = useQueuedRequests({
     deps: {
       ...startDeps,
@@ -588,6 +598,7 @@ function SessionComposer({
           onPause={() => void runCommand(runDeps, 'pause', ownActive?.runId)}
           onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
           onViewRun={onViewRun}
+          {...(revealRun ? { revealRun } : {})}
           request={
             ownActive
               ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)
@@ -634,7 +645,11 @@ function SessionComposer({
       }
       stop={
         going
-          ? { label: tActivity('stop'), disabled: going.status === 'cancelling', onStop: stopRun }
+          ? {
+              label: tActivity('stop'),
+              disabled: going.status === 'cancelling' || commandSending || !stopSettled,
+              onStop: stopRun,
+            }
           : null
       }
     />

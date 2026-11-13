@@ -33,6 +33,7 @@ export function WorkTab({
   reference,
   onReferenceUsed,
   onPanel,
+  onPlace,
 }: {
   session: WorkSession;
   team: CorralSummary | null;
@@ -45,6 +46,11 @@ export function WorkTab({
   reference: FileReference | null;
   onReferenceUsed: () => void;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
+  /**
+   * Moves the conversation to an item (its `message`), loading it when it is outside the window;
+   * `undefined` lets the place go. Nothing else on the page changes.
+   */
+  onPlace?: (message: string | undefined) => void;
 }) {
   const t = useTranslations('Sessions');
   const { runFor, sessionFor, retainRun, workspaces } = useServices();
@@ -142,6 +148,17 @@ export function WorkTab({
             active={active}
             selectedRunId={selectedRunId}
             onViewRun={(run) => onPanel('run', { run })}
+            revealRun={(run) => {
+              if (!onPlace) return false;
+              // The conversation's own place for it: the request that started it, else the run.
+              const item = run
+                ? (session.entries.find((entry) => entry.runId === run)?.entryId ??
+                  loose.find((summary) => summary.runId === run)?.runId)
+                : undefined;
+              if (run && !item) return false;
+              onPlace(item);
+              return true;
+            }}
             queued={queued}
             onChange={onChange}
             onSent={() => setSent((count) => count + 1)}

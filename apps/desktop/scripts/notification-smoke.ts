@@ -56,7 +56,10 @@ try {
     .getByRole('combobox', { name: 'Request', exact: true })
     .fill('Make a short review fixture.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 30000 });
+  // The decision waits as its card in the conversation's needed-now tray.
+  await expect(page.locator('[data-pending-tray] [data-approval]').first()).toBeVisible({
+    timeout: 30000,
+  });
   // The bridge payload is deliberately generic: no session title, request or result text.
   const target = await page.evaluate(async (session) => {
     const response = await fetch('/api/v1/projects/default/inbox');

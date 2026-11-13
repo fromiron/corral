@@ -7,7 +7,7 @@ import {
   type Presence,
 } from '@corral/react';
 import { MetaDot } from '@corral/react/design-kit';
-import { type RefObject, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SteerTarget } from '../composerIntent.ts';
 import {
@@ -23,6 +23,7 @@ import {
 } from '../widgets/ChatWidgets.tsx';
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { revealPendingTray, useRespondInConversation, useTrayStore } from './pendingTrayState.ts';
+import { useSettled } from './settle.ts';
 import { type ActivityRole, roleSeen, useActivity } from './useActivity.ts';
 
 const toMs = (value: string | null | undefined) => (value ? Date.parse(value) : undefined);
@@ -42,6 +43,7 @@ export function ComposerActivity({
   onPause,
   onResume,
   onViewRun,
+  revealRun,
   request,
   viewingOther,
 }: {
@@ -56,8 +58,13 @@ export function ComposerActivity({
   onStop: () => void;
   onPause: () => void;
   onResume: () => void;
-  /** Opens a run's record, for a role whose row is not in the conversation. */
+  /** Opens a run's record, for a role the conversation has no row for. */
   onViewRun?: (runId: string) => void;
+  /**
+   * Brings the run's item into the conversation's window when it is outside it; false when the
+   * conversation has no item for that run. `null` lets the place go once the row is reached.
+   */
+  revealRun?: (runId: string | null) => boolean;
   /** The request that started the running run. */
   request?: string;
   /** Another run than the running one is presented. */
@@ -71,16 +78,19 @@ export function ComposerActivity({
   const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [deciding, setDeciding] = useState(false);
-  const activity = useActivity({ ownActive, target: target || null, anchor });
+  // Read at the press itself: two presses before the page draws again send one decision.
+  const decidingNow = useRef(false);
+  // A decision sent from the line and refused: the line says so and leaves the card to answer.
+  const [refused, setRefused] = useState<{ approvalId: string; message: string } | null>(null);
+  const activity = useActivity({ ownActive, target: target || null, anchor, open });
   const { input, line, model, store, projection } = activity;
   const tray = useTrayStore();
   const respond = useRespondInConversation();
   const run = input.run;
-  const word = (presence: Presence) => tp(presence.labelKey);
-  const stateOf = (presence: Presence, of: ActivityTarget) => ({
-    text: word(presence),
-    target: of,
-  });
+  // A state with no words of its own (one this page does not know) is left unsaid.
+  const stateOf = (presence: Presence, of: ActivityTarget) =>
+    tp.has(presence.labelKey) ? { text: tp(presence.labelKey), target: of } : undefined;
+  const reveal = useReveal(anchor, run, onViewRun, revealRun);
   const many = (run?.roles ?? 0) > 1;
   const showTray = () => (respond ? respond() : revealPendingTray(tray, sessionId));
 
@@ -142,30 +152,41 @@ export function ComposerActivity({
         ? t('roleActivity', { name: named, activity: doing })
         : doing
       : (named ?? undefined);
+    const state =
+      stateShown && !doing && !others ? stateOf(role.presence, `execution:${role.id}`) : undefined;
     return {
       glyph: role.presence.glyph,
       tone: role.presence.tone,
-      ...(stateShown && !doing && !others
-        ? { state: stateOf(role.presence, `execution:${role.id}`) }
-        : {}),
+      ...(state ? { state } : {}),
       ...(text
         ? { text: others ? `${t('rolesWorking', { count: others + 1 })} · ${text}` : text }
         : {}),
       parts,
       startedAt: toMs(role.startedAt),
-      endedAt: toMs(role.endedAt),
     };
   };
 
   const decide = (approvalId: string, decision: 'approve' | 'reject') => {
-    if (!store || deciding) return;
+    if (!store || decidingNow.current) return;
+    decidingNow.current = true;
     setDeciding(true);
     void store
       .getState()
       .resolveApproval(approvalId, decision)
+      .then((receipt) => {
+        if (receipt?.error) setRefused({ approvalId, message: receipt.error.message });
+      })
+      // Unconfirmed: the run's store keeps the command and checks it again, never as a new one.
       .catch(() => undefined)
-      .finally(() => setDeciding(false));
+      .finally(() => {
+        decidingNow.current = false;
+        setDeciding(false);
+      });
   };
+  // The approval on the line; one that takes another's place waits a moment before a press.
+  const lineApproval =
+    line.kind === 'waiting' && line.item?.kind === 'approval' ? line.item.approvalId : null;
+  const settled = useSettled(lineApproval);
 
   const closed = ((): ActivityBarLine | null => {
     switch (line.kind) {
@@ -181,16 +202,29 @@ export function ComposerActivity({
         };
       case 'waiting': {
         const item = line.item;
+        const refusal =
+          item?.kind === 'approval' && refused?.approvalId === item.approvalId ? refused : null;
         const approval =
-          item?.kind === 'approval' && item.decidable && projection?.approvals[item.approvalId];
+          item?.kind === 'approval' &&
+          item.decidable &&
+          !refusal &&
+          projection?.approvals[item.approvalId];
         const tool = approval ? approval.tool : undefined;
+        const state =
+          run && !input.visible.has(`run:${run.runId}`)
+            ? stateOf(run.presence, `run:${run.runId}`)
+            : undefined;
         return {
           glyph: 'waiting',
           tone: 'warning',
-          ...(run && !input.visible.has(`run:${run.runId}`)
-            ? { state: stateOf(run.presence, `run:${run.runId}`) }
-            : {}),
-          text: item ? item.subject : t('waiting', { count: line.count }),
+          ...(state ? { state } : {}),
+          // A refused decision says so, as its card does; the card answers it again.
+          ...(refusal ? { warning: true } : {}),
+          text: refusal
+            ? ta('refused', { message: refusal.message })
+            : item
+              ? item.subject
+              : t('waiting', { count: line.count }),
           ...(approval
             ? {
                 approval: {
@@ -199,7 +233,7 @@ export function ComposerActivity({
                   denyLabel: tool ? ta('rejectTool') : ta(`rejectAs.${approval.kind}`),
                   onApprove: () => decide(approval.approvalId, 'approve'),
                   onDeny: () => decide(approval.approvalId, 'reject'),
-                  disabled: deciding,
+                  disabled: deciding || !settled,
                 },
               }
             : {}),
@@ -214,10 +248,11 @@ export function ComposerActivity({
       case 'summary': {
         if (!run) return null;
         const attention = unansweredAttention(model);
+        const state = line.stateShown ? stateOf(run.presence, `run:${run.runId}`) : undefined;
         return {
           glyph: run.presence.glyph,
           tone: run.presence.tone,
-          ...(line.stateShown ? { state: stateOf(run.presence, `run:${run.runId}`) } : {}),
+          ...(state ? { state } : {}),
           ...(attention && model ? { text: actionLabel(model, tw), warning: true } : {}),
           parts,
           ...(attention && model
@@ -237,25 +272,28 @@ export function ComposerActivity({
   })();
 
   const steerable = new Set(targets.map((item) => item.id));
-  const show = (role: ActivityRole) => () => scrollToRole(anchor, role.id, run, onViewRun);
   const roles: ActivityBarRole[] =
     run?.live && input.roles.length
-      ? input.roles.map((role) => ({
-          id: role.id,
-          name: role.name,
-          glyph: role.presence.glyph,
-          tone: role.presence.tone,
-          state: stateOf(role.presence, `execution:${role.id}`),
-          stateShown: !roleSeen(input, role),
-          ...(role.activity ? { activity: role.activity } : {}),
-          startedAt: toMs(role.startedAt),
-          endedAt: toMs(role.endedAt),
-          target: role.id === target,
-          onShow: show(role),
-          ...(steerable.has(role.id) ? { onJoin: () => onJoin(role.id) } : {}),
-        }))
+      ? input.roles.map((role) => {
+          const state = stateOf(role.presence, `execution:${role.id}`);
+          return {
+            id: role.id,
+            name: role.name,
+            glyph: role.presence.glyph,
+            tone: role.presence.tone,
+            ...(state ? { state } : {}),
+            stateShown: !roleSeen(input, role),
+            ...(role.activity ? { activity: role.activity } : {}),
+            startedAt: toMs(role.startedAt),
+            target: role.id === target,
+            onShow: () => reveal(role.id),
+            ...(steerable.has(role.id) ? { onJoin: () => onJoin(role.id) } : {}),
+          };
+        })
       : [];
   const status = projection?.status;
+  // One command at a time, as the run record's controls send them.
+  const sending = activity.sending;
   return (
     <div
       ref={anchor}
@@ -274,7 +312,9 @@ export function ComposerActivity({
           ownActive && projection
             ? {
                 paused: status === 'paused',
-                disabled: status === 'cancelling' || status === 'pausing',
+                disabled: status === 'cancelling' || status === 'pausing' || sending,
+                // A pausing run can still be stopped.
+                stopDisabled: status === 'cancelling' || sending,
                 onPause,
                 onResume,
                 onStop,
@@ -311,24 +351,91 @@ export function ComposerActivity({
   );
 }
 
-/** To the role's row in the conversation; a role the conversation does not show opens its run. */
-function scrollToRole(
-  anchor: RefObject<HTMLElement | null>,
+const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** A role's row in the conversation's window: its own, else the run's row where that speaks for it. */
+function roleRow(
+  view: Element | null | undefined,
   executionId: string,
-  run: { runId: string; lead: string | null } | null,
-  onViewRun?: (runId: string) => void,
+  run: { runId: string; lead: string | null },
 ) {
-  const view = anchor.current?.closest('[data-chat-view]');
-  const row =
+  return (
     view?.querySelector(`[data-chat-part="${CSS.escape(`role:${executionId}`)}"]`) ??
-    (run && (executionId === run.lead || !view?.querySelector('[data-chat-part^="role:"]'))
+    (executionId === run.lead || !view?.querySelector('[data-chat-part^="role:"]')
       ? view
           ?.querySelector(`[data-presence-label="${CSS.escape(`run:${run.runId}`)}"]`)
           ?.closest('[data-chat-item]')
-      : null);
-  if (row) {
-    row.scrollIntoView({ block: 'nearest' });
-    return;
+      : null) ??
+    null
+  );
+}
+
+/** Scrolls the row into view and gives it the focus: its first control, else the row itself. */
+function goTo(row: Element) {
+  row.scrollIntoView({ block: 'nearest' });
+  const control = row.matches(FOCUSABLE) ? row : row.querySelector(FOCUSABLE);
+  if (control instanceof HTMLElement) control.focus({ preventScroll: true });
+  else if (row instanceof HTMLElement) {
+    row.tabIndex = -1;
+    row.focus({ preventScroll: true });
   }
-  if (run) onViewRun?.(run.runId);
+}
+
+const REVEAL_POLL_MS = 50;
+const REVEAL_TRIES = 60;
+
+/**
+ * "View" on a role row (features/composer-flow.md "활동 바"): to the role's row in the
+ * conversation, with focus. A row outside the conversation's window is brought in first, by
+ * bringing in its run's item; only a role the conversation has no row for opens its run's record.
+ */
+function useReveal(
+  anchor: RefObject<HTMLElement | null>,
+  run: { runId: string; lead: string | null } | null,
+  onViewRun?: (runId: string) => void,
+  revealRun?: (runId: string | null) => boolean,
+) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  return (executionId: string) => {
+    if (!run) return;
+    if (timer.current) clearTimeout(timer.current);
+    // The conversation's rows, not the composer's own words about them.
+    const view = anchor.current
+      ?.closest('[data-chat-view]')
+      ?.querySelector('[data-testid="chat-timeline"]');
+    const row = roleRow(view, executionId, run);
+    if (row) {
+      goTo(row);
+      return;
+    }
+    const runLabel = `[data-presence-label="${CSS.escape(`run:${run.runId}`)}"]`;
+    // The run's item is in the window with no row for the role, or the conversation has no item
+    // for the run: the run's record shows the role.
+    if (view?.querySelector(runLabel) || !revealRun?.(run.runId)) {
+      onViewRun?.(run.runId);
+      return;
+    }
+    let tries = 0;
+    const look = () => {
+      timer.current = null;
+      const found = roleRow(view, executionId, run);
+      // The run's item came in without the role's row, or never came.
+      const without = Boolean(view?.querySelector(runLabel)) && tries > 6;
+      tries += 1;
+      if (found || without || tries >= REVEAL_TRIES) {
+        revealRun(null);
+        if (found) goTo(found);
+        else onViewRun?.(run.runId);
+        return;
+      }
+      timer.current = setTimeout(look, REVEAL_POLL_MS);
+    };
+    timer.current = setTimeout(look, REVEAL_POLL_MS);
+  };
 }

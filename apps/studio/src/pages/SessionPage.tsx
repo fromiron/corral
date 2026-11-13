@@ -269,6 +269,8 @@ function WorkSessionPage() {
           reference={reference}
           onReferenceUsed={() => setReference(null)}
           onPanel={(value, run) => showPanel({ panel: value, ...run })}
+          // The conversation's place only: no history entry, no other view.
+          onPlace={(message) => setSearch({ message }, { replace: true })}
         />
       );
     if (view === 'changes' || view === 'git') {
