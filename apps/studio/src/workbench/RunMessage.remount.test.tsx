@@ -307,6 +307,44 @@ it('interrupted words, never released, are in the first render of a return at an
   expect(again.now().text).toContain(INTERRUPTED);
 });
 
+/** A run that went on after an interrupt cut its first response, and ended. */
+function cutThenEnded(): RunProjection {
+  const value = emptyProjection('run');
+  value.status = 'succeeded';
+  value.executionOrder = ['lead'];
+  value.modelCalls.cut = {
+    modelCallId: 'cut',
+    executionId: 'lead',
+    finished: true,
+    responseRef: null,
+    interrupted: true,
+  } as unknown as RunProjection['modelCalls'][string];
+  return value;
+}
+
+// The words an interrupt cut are never a released body (workbench.md, 대화 본문과 중단된 출력):
+// read from the snapshot's partial outputs, they stay in every render while the session's
+// metadata moves on (the next run succeeding), with the row mounted all along.
+it('words an interrupt cut stay in every render as the metadata moves on under a mounted row', async () => {
+  const row = await mount({ version: 'v1' });
+  const stream = { cut: { text: INTERRUPTED, next: 1, broken: false, partial: true } };
+  await act(async () => fixture.read?.resolve(view(cutThenEnded(), { streams: stream })));
+  const stopped = () => row.container.querySelector('[data-testid="stopped-text"]');
+  expect(stopped()?.textContent).toContain(INTERRUPTED);
+  const from = row.frames.length;
+  await row.render('v2');
+  // The metadata read for the new version: the cut call still has no recorded response.
+  await act(async () => fixture.snapshots.at(-1)?.resolve({ projection: cutThenEnded(), seq: 9 }));
+  expect(stopped()?.textContent).toContain(INTERRUPTED);
+  expect(row.frames.slice(from).every((frame) => frame.text.includes(INTERRUPTED))).toBe(true);
+  // Away and back at the new version: the same words, from the first render.
+  await row.unmount();
+  const again = await mount({ version: 'v2' });
+  expect(again.first()?.text).toContain(INTERRUPTED);
+  await act(async () => fixture.read?.resolve(view(cutThenEnded(), { streams: stream })));
+  expect(again.frames.every((frame) => frame.text.includes(INTERRUPTED))).toBe(true);
+});
+
 it('a body still readable keeps the row at its height until its text is in', async () => {
   await shownThenAway('first_success');
   const again = await mount({ version: 'second_success' });
