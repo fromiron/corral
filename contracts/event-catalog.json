@@ -105,6 +105,11 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "loop.escalated",
+    "requiredContent": "loopNodeId,iterationId,reason,policy,nodeIds",
+    "status": "implemented"
+  },
+  {
     "type": "approval.requested",
     "requiredContent": "approvalId,kind,subjectVersions,criteriaVersion",
     "status": "payload_schema_to_implement"

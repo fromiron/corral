@@ -740,6 +740,80 @@
                 "minimum": 1,
                 "maximum": 9007199254740991
               },
+              "limitPolicy": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "exhaust"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "raise_reasoning"
+                      },
+                      "level": {
+                        "type": "string",
+                        "enum": [
+                          "off",
+                          "minimal",
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh",
+                          "max"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "level"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "upper_model"
+                      },
+                      "modelProfile": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "modelProfile"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "unlimited"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
               "stallDetection": {
                 "type": "boolean"
               },
@@ -831,8 +905,7 @@
             "required": [
               "id",
               "label",
-              "type",
-              "maxIterations"
+              "type"
             ],
             "additionalProperties": false
           },

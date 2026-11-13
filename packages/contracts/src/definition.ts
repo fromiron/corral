@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ImageAttachments } from './attachments.ts';
 import { ContentHash, HarnessBindingRef, HarnessResourceRef } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
-import { ReasoningPolicy } from './reasoning.ts';
+import { ReasoningLevel, ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
 
 // Canonical definition of a Corral. Where nodes are drawn is derived from it, never stored.
@@ -167,10 +167,25 @@ export const DecisionNode = z.discriminatedUnion('mode', [
 export type DecisionNode = z.infer<typeof DecisionNode>;
 export type DecisionNodeMode = DecisionNode['mode'];
 
+/**
+ * What a Loop does when a round that asks to repeat reaches its cap or stalls: end, raise its
+ * Agents' reasoning or switch them to an upper model for more rounds, or have no cap at all
+ * (docs/specs/features/team-graph.md, "루프 실행"). Absent is `exhaust`.
+ */
+export const LoopLimitPolicy = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('exhaust') }),
+  z.strictObject({ kind: z.literal('raise_reasoning'), level: ReasoningLevel }),
+  z.strictObject({ kind: z.literal('upper_model'), modelProfile: Identifier }),
+  z.strictObject({ kind: z.literal('unlimited') }),
+]);
+export type LoopLimitPolicy = z.infer<typeof LoopLimitPolicy>;
+
 export const LoopNode = z.strictObject({
   ...nodeBase,
   type: z.literal('loop'),
-  maxIterations: z.int().min(1),
+  /** Absent only with the `unlimited` policy (a compiler rule). */
+  maxIterations: z.int().min(1).optional(),
+  limitPolicy: LoopLimitPolicy.optional(),
   stallDetection: z.boolean().optional(),
   reviewRecipe: ReviewRecipeRevision.optional(),
 });
