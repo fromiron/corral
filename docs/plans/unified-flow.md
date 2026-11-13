@@ -725,9 +725,16 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 완료 체크: `packages/core/test/advisor.test.ts`(스크립트 어댑터, 가짜 응답만): 간격에서 검토 예약, 검토 중 6개가 한 번으로 합쳐짐, 두 실행 단위의 검토가 차례로 돎, 압축 호출은 세지 않음, 우려가 다음 요청의 지시로 전달됨(`origin: 'advice'`), 중단 권고가 끊고 전달됨과 못 끊는 대상의 낮춤, 빈말·중복·예산의 사유가 receipt로 돌아감, 끝난 대상의 참고는 버려지고 우려는 `note`와 함께 보존됨, 읽히기 전에 끝난 조언이 inbox에 나옴, 검토당 요청 상한, 마지막 검토 동안 Run이 끝나지 않음, 취소·일시정지가 감독에 닿음, 감독 실패가 Run 결과를 바꾸지 않음, 사용량이 감독 실행 단위에 기록됨, 재전송, 현재 시도가 아닌 명령 거절, 조언 지시는 넘겨받지 않음, 사람의 HTTP `submit_advice` 거절, 문이 없어진 뒤 참조 팀의 감독이 실제로 돎.
 
 ### A6 `advise` 도구와 검토 요청 전달
-- 대상: `P/worker-tools.ts`, `P/worker.ts`, `P/sdk-worker.ts`, 테스트.
-- 구현: 협업 도구 `advise(severity, note, target?)`가 `submit_advice`를 부르고 결과(접수 또는 억제 사유)를 도구 결과로 돌려준다. 쉬고 있는 감독 worker는 검토 요청 메시지를 받아 한 번의 검토를 돌고 다시 쉰다(질문에 답하고 대기를 잇는 `parentQuestions` 흐름이 본보기). 지시가 모델에 실릴 때 `origin: advice`는 `<advisory severity="…" from="역할 이름">…</advisory>`로 감싼다.
-- 완료 체크: `packages/adapter-pi/test/`에 도구 호출과 결과, 검토 뒤 다시 대기, 감싼 표현.
+- 명세: `features/advisor.md`("계약"의 도구와 검토 줄), `features/reins.md`.
+- 대상: `P/worker-tools.ts`, `P/worker.ts`, `P/sdk-worker.ts`, 테스트. Coordinator와 계약은 A5가 정한 그대로 쓴다.
+- A5가 정한 인터페이스:
+  - assignment가 `{ kind: 'advisor', watches }`이면 그 worker는 감독이다. 작업 방식(harness) 없이 시작되고, 도구는 Coordinator가 주는 것(역할이 고른 읽기 도구, `read_artifact`, `advise`)뿐이다.
+  - 검토는 `host.nextReview()`가 주는 `AdvisorReviewRequest { reviewId, targetExecutionId, text, maxRequests }` 하나씩이다. `text`가 그 검토의 사용자 메시지다. `null`을 받으면 성공으로 끝낸다. 그 전에 끝나면 감독은 실패로 기록된다.
+  - 검토 밖의 모델 요청은 Coordinator가 거절한다(`prepareModelRequest`). `handle.endReview(reviewId)`를 받으면 그 검토의 요청을 멈추고 `nextReview()`로 돌아간다. 무시하면 다음 요청이 거절돼 감독이 실패한다.
+  - `advise` 도구의 인자는 `severity`와 `note`뿐이다. 대상과 명령 ID는 Coordinator가 정한다(도구 호출 ID에서. 같은 도구 호출의 재전송은 처음 결과). 결과는 `advice.outcome`이 `admitted`(전달 방식 포함)이거나 `suppressed`(이유 포함)다. 버려진 조언은 오류가 아니다(`ok: true`, `status: 'rejected'`).
+  - 조언이 대상에게 실릴 때의 머리말("Advice from this run's advisor, not from the person …")과 다듬기는 A5가 넣었다. 여기서 다시 감싸지 않는다.
+- 구현: 감독 worker의 한 살이를 만든다: 시작 → `nextReview()` → 그 글로 한 턴(도구 호출 포함, 요청 상한까지) → 다시 `nextReview()` → `null`이면 끝. 검토 사이에는 대화 맥락을 잇는다(같은 감독이 앞 검토에서 본 것을 기억한다). 압축은 다른 worker와 같은 규칙을 따른다. `advise`의 결과를 모델에 돌려줄 때 버려진 이유를 사실대로 적는다. 일시정지·재개·취소는 다른 worker와 같다. 두 worker 형식(`worker.ts`, `sdk-worker.ts`) 모두.
+- 완료 체크: `packages/adapter-pi/test/`에 검토 두 번을 도는 감독(두 번째가 앞 검토를 기억), `null`에서 성공 종료, `endReview` 뒤 요청 멈춤, `advise` 호출과 두 결과, 모르는 인자 거절, 검토 중 취소. 스크립트 모델만 쓴다. Coordinator와 실제 worker를 잇는 통합 테스트 하나(감독이 우려를 내고 대상의 다음 요청에 실린다).
 
 ### A7 팀 편집기의 감독 노드
 - 명세: `features/team-graph.md`, `features/canvas.md`.
@@ -737,14 +744,22 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 완료 체크: 편집기 테스트: 감독 노드 추가·연결·저장·다시 열기, 컴파일 오류 표시. 스토리 하나.
 
 ### A8 조언 표시
-- 대상: `W/RunMessage.tsx`(작업 과정), `R/components/ActivityBar.tsx`(역할 행), `W/inbox.ts`, `S/pages/InboxPage.tsx`, `R/run/flow.ts`(관계·판단 기록).
+- 명세: `features/advisor.md`("보이는 곳"), `features/inbox.md`의 `advice`, `features/execution-monitor.md`.
+- 대상: `W/RunMessage.tsx`와 `ExecutionTranscript.tsx`(작업 과정의 `kind: 'advice'`, 지금 아무것도 그리지 않는다), `R/components/ActivityBar.tsx`(역할 행), `W/inbox.ts`, `S/pages/InboxPage.tsx`, `R/run/flow.ts`·`RunText`(관계·판단 기록), `ExecutionSteering`, `RequestCard.tsx`, `RunPage.tsx`.
 - 킷: `AgentStatusLabel`, `KitBadge`, `Collapse`.
-- 구현: 전달된 조언은 지켜보던 역할의 작업 과정 안에 한 줄(감독 · 심각도 · 첫 줄 · 전달 상태)로 보인다. 억제된 조언은 대화에 보이지 않고 실행 기록의 관계·판단 기록에만 남는다. 활동 바를 펼친 곳에 감독 행(지켜보는 중 · 조언 n). `preserve` 조언은 확인 필요의 검토 묶음과 그 실행 행의 꼬리 줄에 보인다.
-- 완료 체크: 세 표시의 테스트, 억제된 조언이 대화에 없음, 장면 ②에서 감독 행이 보임.
+- A5가 준 것: `ExecutionView.advisor`, `DirectiveView.advice`(심각도와 감독 이름), `projection.advice[adviceId]`·`suppressedAdvice[]`, 검토 사이의 `waitingOn.reasonCode: 'advisor_between_reviews'`, inbox 항목 `{ kind: 'advice', sessionId, sessionTitle, runId, executionId, severity, detail }`(첫 줄 120자), `POST /api/v1/runs/:runId/executions/:executionId/opened`(그 실행 행을 열어 봤음. inbox에서 빠진다).
+- 구현:
+  - 전달된 조언은 지켜보던 역할의 작업 과정 안에 한 줄(감독 이름 · 심각도 이름 · 첫 줄 · 전달 상태)로 보인다. 펼치면 전문. 전달 상태는 사용자 메시지 메타 줄(U6)과 같은 문구를 쓴다.
+  - 버려진 조언은 대화에 보이지 않고 실행 기록의 관계·판단 기록에만 남는다(`RunText`에 `advice.admitted`·`advice.suppressed` 문장. `directive.accepted` 문장은 출처가 조언이면 "Your instruction"이라 하지 않는다).
+  - 활동 바를 펼친 곳에 감독 행: 지켜보는 중 또는 검토 중, 전달된 조언 수. 감독은 합류 대상이 아니다(행에 "여기에 합류"가 없다).
+  - 보존된 조언과 읽히기 전에 대상이 끝난 우려·중단 권고는 그 실행 행의 꼬리 줄과 확인 필요의 검토 묶음에 보인다. 실행 행을 펼치거나 inbox에서 열면 `opened`를 보낸다.
+  - `ExecutionSteering`의 지시 목록은 조언을 사람의 지시와 구별해 보인다. `RequestCard.tsx`와 `RunPage.tsx`의 `invocation !== 'callable'` 셈에서 감독을 뺀다. 감독 실행 단위는 실행 트리에서 흐름 밖의 것으로 보인다.
+  - 심각도는 색만으로 구분하지 않고 이름을 함께 쓴다. 조언의 글은 모델이 쓴 것이다: 원시 HTML을 실행하지 않는다.
+- 완료 체크: 세 표시의 테스트, 버려진 조언이 대화에 없음, `opened` 뒤 inbox에서 빠짐, 장면 ②에서 감독 행이 보임, 상태 이름이 한 화면에 한 번.
 
 ### A9 대화의 감독 설정
 - 대상: 세션 설정 저장부, 대화 실행의 정의를 만드는 곳(`C/`의 대화 에이전트 정의 생성부), 컴포저 도구 줄의 메뉴.
-- 구현: 세션 설정 `advisor: { modelProfile } | null`. 켜면 대화 실행의 정의에 감독 노드와 `advise` 연결을 더한다. 새 요청부터 적용하고 진행 중인 실행의 snapshot은 바꾸지 않는다. 도구 줄의 팀 메뉴 옆에서 켜고 끈다.
+- 구현: 세션 설정 `advisor: { modelProfile } | null`. 켜면 대화 실행의 정의에 감독 노드와 `advise` 연결을 더한다. 새 요청부터 적용하고 진행 중인 실행의 snapshot은 바꾸지 않는다. 도구 줄의 팀 메뉴 옆에서 켜고 끈다. 감독 역할은 내장 검토 원칙을 프롬프트로 갖고, 세션 역할의 작업 방식과 `answer: 'final_reply'`를 복사하지 않는다. 역할 이름은 짧게 고정한다(머리말에 실린다). 감독은 대기 실행 단위 한 자리를 흐름 끝까지 차지한다.
 - 완료 체크: 설정이 다음 실행의 정의에 반영됨, 진행 중 실행은 그대로, 끄면 사라짐.
 
 ### 명세가 정한 차이
