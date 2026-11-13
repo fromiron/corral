@@ -151,10 +151,17 @@ test('role and secretary selection survive reopening without more calls', async 
   await expect(conversation.getByRole('article')).toHaveCount(3);
   await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Builder');
   await page.screenshot({ path: test.info().outputPath('meeting-room-narrow.png') });
-  const secretary = page.getByRole('button', { name: '@Secretary', exact: true });
+  // The recipients are the tool line's badge; the keyboard alone opens it and ticks the secretary.
+  await page.getByRole('button', { name: 'Recipients: Auto', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  const secretary = page.getByRole('menuitemcheckbox', { name: 'Secretary', exact: true });
   await secretary.focus();
   await page.keyboard.press('Space');
-  await expect(secretary).toHaveAttribute('aria-pressed', 'true');
+  await expect(secretary).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('button', { name: 'Recipients: Secretary', exact: true }),
+  ).toBeVisible();
   await send(page, 'Record the remaining disagreement');
   await finishReplies(page, id, 2);
   await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Secretary');
@@ -500,17 +507,18 @@ test('unsent meeting drafts survive navigation, reload and closing their tab', a
   const meetingUrl = page.url();
   const box = page.getByRole('textbox', { name: 'Meeting message', exact: true });
   await box.fill('Meeting draft with exact punctuation!');
-  await page.getByRole('button', { name: '@Participant 2', exact: true }).click();
+  await page.getByRole('button', { name: 'Recipients: Auto', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Participant 2', exact: true }).click();
+  await page.keyboard.press('Escape');
   await page.goto(workUrl);
   await expect(requestBox(page)).toHaveValue('Keep the work draft too');
   await page.goto(meetingUrl);
   await expect(box).toHaveValue('Meeting draft with exact punctuation!');
   await page.reload();
   await expect(box).toHaveValue('Meeting draft with exact punctuation!');
-  await expect(page.getByRole('button', { name: '@Participant 2', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(
+    page.getByRole('button', { name: 'Recipients: Participant 2', exact: true }),
+  ).toBeVisible();
   const second = await page.context().newPage();
   await second.goto(meetingUrl);
   await second

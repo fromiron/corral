@@ -265,6 +265,47 @@ async function mount(
       setter.call(box, text);
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
+  /** The tool line's target badge, which in a meeting chooses the recipients. */
+  const recipients = (scope: ParentNode = container) =>
+    scope.querySelector<HTMLElement>('[data-slot="composer-target"]');
+  const recipientItem = (label: string) =>
+    [
+      ...document.body.querySelectorAll<HTMLElement>(
+        '[role="menuitemradio"], [role="menuitemcheckbox"]',
+      ),
+    ].find((entry) => entry.getAttribute('aria-label') === label);
+  /** Picks a recipient in the badge's menu, opening it first if it is closed. */
+  const chooseRecipient = async (label: string, scope: ParentNode = container) => {
+    if (!document.body.querySelector('[role="menu"]'))
+      await act(async () => recipients(scope)?.click());
+    let item: HTMLElement | undefined;
+    await vi.waitFor(() => {
+      item = recipientItem(label);
+      expect(item).toBeDefined();
+    });
+    await act(async () => item?.click());
+  };
+  const closeMenu = async () => {
+    const menu = document.body.querySelector('[role="menu"]');
+    if (!menu) return;
+    await act(async () => {
+      menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await vi.waitFor(() => expect(document.body.querySelector('[role="menu"]')).toBeNull());
+  };
+  /** Presses a key in the box; whether the page took it. */
+  const press = async (init: KeyboardEventInit) => {
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    await act(async () => {
+      box.dispatchEvent(event);
+    });
+    return event.defaultPrevented;
+  };
   /** Opens the composer's add menu and chooses Attach evidence. */
   const openEvidence = async () => {
     await act(async () => button('attachmentActions')?.click());
@@ -283,6 +324,11 @@ async function mount(
     button,
     box,
     type,
+    recipients,
+    recipientItem,
+    chooseRecipient,
+    closeMenu,
+    press,
     openEvidence,
     resize: (next: { narrow: boolean }) =>
       act(async () => {
@@ -308,12 +354,14 @@ it('shows each answer in participant order and sends a conversational follow-up 
   expect(f.container.textContent).toContain('status.failed');
   expect(f.container.textContent).toContain('provider unavailable');
   expect(f.container.textContent).not.toContain('usageUnknown');
-  await act(async () => f.button('@Builder')?.click());
-  expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('true');
+  await f.chooseRecipient('Builder');
+  expect(f.recipientItem('Builder')?.getAttribute('aria-checked')).toBe('true');
   // The secretary is called on its own.
-  await act(async () => f.button('@secretary')?.click());
-  expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('false');
-  await act(async () => f.button('@Builder')?.click());
+  await f.chooseRecipient('secretary');
+  expect(f.recipientItem('Builder')?.getAttribute('aria-checked')).toBe('false');
+  await f.chooseRecipient('Builder');
+  expect(f.recipientItem('secretary')?.getAttribute('aria-checked')).toBe('false');
+  await f.closeMenu();
   await f.type('What would it cost?');
   await act(async () => f.button('send')?.click());
   expect(f.meetings.send).toHaveBeenCalledExactlyOnceWith(
@@ -526,15 +574,12 @@ it('active replies and a legacy draft never block new messages; editing preserve
   const queuedBox = f.container.querySelector<HTMLTextAreaElement>(
     'textarea[aria-label="queued"]',
   )!;
-  const queuedButton = (label: string) =>
-    [
-      ...queuedBox
-        .closest('[data-slot="textarea-control"]')!
-        .parentElement!.querySelectorAll('button'),
-    ].find((item) => item.textContent?.trim() === label);
-  expect(queuedButton('@Architect')).toBeDefined();
-  await act(async () => queuedButton('@Architect')?.click());
-  await act(async () => queuedButton('@Builder')?.click());
+  // The waiting message chooses its recipients with the same badge as the composer.
+  const queuedEditor = queuedBox.closest('[data-slot="textarea-control"]')!.parentElement!;
+  expect(f.recipients(queuedEditor)?.textContent).toContain('Architect');
+  await f.chooseRecipient('Architect', queuedEditor);
+  await f.chooseRecipient('Builder', queuedEditor);
+  await f.closeMenu();
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
       queuedBox,
@@ -594,7 +639,9 @@ it('starts with a compact composer; evidence is attached from its add menu and s
     'the composer',
   );
   const chosen = () => composer.querySelector('[aria-label="evidenceSelected"]');
-  expect(f.box.rows).toBe(2);
+  // The conversation's composer, at its height: one row until the text grows.
+  expect(composer.querySelector('[data-slot="composer-shell"]')).not.toBeNull();
+  expect(f.box.rows).toBe(1);
   // The picker is not laid out in the composer; the add menu opens it.
   expect(f.button('attachEvidence')).toBeUndefined();
   expect(composer.querySelector('details')).toBeNull();
@@ -804,7 +851,8 @@ it('an unparsed secretary answer stays available for recovery', async () => {
 it('keeps the meeting draft across navigation and remounts, isolated from other sessions', async () => {
   const f = await mount(view());
   await f.type('Keep this exact meeting draft.');
-  await act(async () => f.button('@Builder')?.click());
+  await f.chooseRecipient('Builder');
+  await f.closeMenu();
   await f.openEvidence();
   await act(async () => f.button('attachEvidence')?.click());
   await f.hide();
@@ -814,15 +862,21 @@ it('keeps the meeting draft across navigation and remounts, isolated from other 
   await other.hide();
   await f.show();
   expect(f.container.querySelector('textarea')?.value).toBe('Keep this exact meeting draft.');
-  expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('true');
+  expect(f.recipients()?.textContent).toBe('Builder');
   expect(f.container.querySelector('[aria-label="evidenceSelected"]')?.textContent).toContain(
     'brief.txt',
   );
   await act(async () => f.button('clearDraft')?.click());
   expect(f.container.querySelector('textarea')?.value).toBe('');
+  expect(f.recipients()?.textContent).toBe('recipients.auto');
   await f.hide();
   await f.show();
   expect(f.container.querySelector('textarea')?.value).toBe('');
+  // No one is a choice kept with the draft, like the names.
+  await f.chooseRecipient('recipients.none');
+  await f.hide();
+  await f.show();
+  expect(f.recipients()?.textContent).toBe('recipients.none');
 });
 
 it('clears only a successfully sent draft and preserves edits made while sending', async () => {
@@ -924,12 +978,119 @@ it('uses the chosen send key and preserves IME confirmation keys', async () => {
   await f.type('Send on Command Enter');
   expect(await press({ metaKey: true })).toBe(true);
   expect(f.meetings.send).toHaveBeenCalledTimes(2);
+  // The interrupt key and Alt+Enter send to the meeting too.
+  await f.type('Send on Command Shift Enter');
+  expect(await press({ metaKey: true, shiftKey: true })).toBe(true);
+  await f.type('Send on Alt Enter');
+  expect(await press({ altKey: true })).toBe(true);
+  expect(f.meetings.send).toHaveBeenCalledTimes(4);
   preferences.setState({ sendKey: 'enter' });
   await f.type('Keep shift Enter as a newline');
   expect(await press({ shiftKey: true })).toBe(false);
-  expect(await press({ altKey: true })).toBe(false);
   expect(await press({})).toBe(true);
+  expect(f.meetings.send).toHaveBeenCalledTimes(5);
+});
+
+it('every send key sends to the meeting, Alt+Enter too, and an IME composition never does', async () => {
+  const f = await mount(view());
+  const sent = () => f.meetings.send.mock.calls.map((call) => (call[1] as { text: string }).text);
+  await f.type('Enter sends');
+  expect(await f.press({})).toBe(true);
+  await f.type('The interrupt key sends');
+  expect(await f.press({ ctrlKey: true })).toBe(true);
+  await f.type('Alt Enter sends');
+  expect(await f.press({ altKey: true })).toBe(true);
+  expect(sent()).toEqual(['Enter sends', 'The interrupt key sends', 'Alt Enter sends']);
+  for (const request of f.meetings.send.mock.calls.map((call) => call[1]))
+    expect(request).toMatchObject({ kind: 'message' });
+  // A composition's confirming keys, by flag or Safari's keyCode, send nothing.
+  await f.type('한글');
+  for (const init of [
+    { isComposing: true },
+    { keyCode: 229 },
+    { ctrlKey: true, isComposing: true },
+    { altKey: true, isComposing: true },
+  ])
+    await f.press(init);
+  await act(async () => {
+    f.box.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+  });
+  await f.press({});
+  await act(async () => {
+    f.box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+  });
   expect(f.meetings.send).toHaveBeenCalledTimes(3);
+  expect(f.box.value).toBe('한글');
+  // One meaning, said once: the key hint names the send key alone, and the send menu has no
+  // other send to offer.
+  const keys = [...f.container.querySelectorAll('[data-slot="composer-key"]')];
+  expect(keys).toHaveLength(1);
+  expect(keys[0]?.textContent).toContain('keyHint.meeting');
+  expect(
+    f.container.querySelector('[data-slot="composer-send-menu"]')?.hasAttribute('disabled'),
+  ).toBe(true);
+  expect(f.button('send')?.getAttribute('aria-description')).toBe('sendAs.meeting');
+  // A meeting has no `/` command or `@` reference menu: its box is a plain text box, and
+  // `/반론` or `@name` is text the meeting reads.
+  expect(f.box.getAttribute('role')).toBeNull();
+  expect(f.box.hasAttribute('aria-autocomplete')).toBe(false);
+});
+
+it('the recipients badge sends to whoever the meeting picks, the chosen, or no one', async () => {
+  const three = {
+    ...config,
+    participants: [
+      ...config.participants,
+      { participantId: 'p3', name: 'Critic', prompt: 'Risks.', modelProfile: 'model-a' },
+    ],
+  };
+  const f = await mount(view({ config: three }));
+  const last = () => f.meetings.send.mock.calls.at(-1)?.[1] as MeetingRoundRequest;
+  const sendNow = async (text: string) => {
+    await f.type(text);
+    await act(async () => f.button('send')?.click());
+  };
+  // Auto: no recipients in the request; the meeting picks who answers.
+  expect(f.recipients()?.textContent).toBe('recipients.auto');
+  await sendNow('Who should answer?');
+  expect(last()).not.toHaveProperty('mentions');
+  expect(last()).not.toHaveProperty('recipients');
+  // One participant, read on the badge by name.
+  await f.chooseRecipient('Builder');
+  await f.closeMenu();
+  expect(f.recipients()?.textContent).toBe('Builder');
+  await sendNow('Builder only');
+  expect(last()).toMatchObject({ mentions: ['p2'] });
+  expect(last()).not.toHaveProperty('recipients');
+  // A sent message's recipients go with it: the next one is the meeting's pick again.
+  expect(f.recipients()?.textContent).toBe('recipients.auto');
+  // Several: the names, and the count once they no longer read at a glance.
+  await f.chooseRecipient('Builder');
+  await f.chooseRecipient('Architect');
+  await f.closeMenu();
+  expect(f.recipients()?.textContent).toBe('Builder, Architect');
+  await f.chooseRecipient('Critic');
+  await f.closeMenu();
+  expect(f.recipients()?.textContent).toBe('recipients.count');
+  await sendNow('All three of you');
+  expect(last()).toMatchObject({ mentions: ['p2', 'p1', 'p3'] });
+  // No one: the message is posted and nobody is asked to reply.
+  await f.chooseRecipient('recipients.none');
+  // Picked at once: the menu closes.
+  await vi.waitFor(() => expect(document.body.querySelector('[role="menu"]')).toBeNull());
+  expect(f.recipients()?.textContent).toBe('recipients.none');
+  await sendNow('Just noting this');
+  expect(last()).toMatchObject({ kind: 'message', text: 'Just noting this', recipients: 'none' });
+  expect(last()).not.toHaveProperty('mentions');
+  // Choosing someone leaves No one, and Auto clears the names.
+  await f.chooseRecipient('recipients.none');
+  await f.chooseRecipient('Critic');
+  expect(f.recipientItem('recipients.none')?.getAttribute('aria-checked')).toBe('false');
+  await f.chooseRecipient('recipients.auto');
+  expect(f.recipients()?.textContent).toBe('recipients.auto');
+  await sendNow('Back to auto');
+  expect(last()).not.toHaveProperty('mentions');
+  expect(last()).not.toHaveProperty('recipients');
 });
 
 it('restores an archived meeting from its notice or registered command without changing its draft', async () => {
@@ -1008,7 +1169,8 @@ it('widening the records hides the conversation but keeps the composer and a dec
 it('the records panel opens and closes from the toolbar, keeping the draft, and stays open per meeting', async () => {
   const f = await mount(view({ minutes: [minutesWithCandidate] }));
   await f.type('Unsent while reading');
-  await act(async () => f.button('@Builder')?.click());
+  await f.chooseRecipient('Builder');
+  await f.closeMenu();
   const toggle = must(f.button('records'), 'the records toggle');
   expect(toggle.closest('[data-testid="chat-composer"]')).toBeNull();
   expect(toggle.getAttribute('aria-pressed')).toBe('false');
@@ -1021,7 +1183,7 @@ it('the records panel opens and closes from the toolbar, keeping the draft, and 
   expect(timeline()?.hidden).toBe(false);
   expect(f.box.isConnected).toBe(true);
   expect(f.box.value).toBe('Unsent while reading');
-  expect(f.button('@Builder')?.getAttribute('aria-pressed')).toBe('true');
+  expect(f.recipients()?.textContent).toBe('Builder');
   // Its open state belongs to this meeting.
   await f.hide();
   await f.show();

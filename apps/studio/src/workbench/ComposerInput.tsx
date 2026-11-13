@@ -52,6 +52,7 @@ export function ComposerInput({
   placeholder,
   label,
   textareaProps,
+  menus = true,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -69,6 +70,11 @@ export function ComposerInput({
   label: string;
   /** InputMessage owns field appearance, focus feedback and measured height. */
   textareaProps?: InputMessageInputProps;
+  /**
+   * Whether `/` and `@` open the command and reference menu. Without it the box is a plain text
+   * box: `/` and `@` are text, and the send keys always send.
+   */
+  menus?: boolean;
 }) {
   const t = useTranslations('Composer');
   const listId = useId();
@@ -79,7 +85,8 @@ export function ComposerInput({
   const [mentions, setMentions] = useState<{ query: string; items: MentionItem[] } | null>(null);
   // An IME composition owns every key until it ends, whether or not a key says so itself.
   const composing = useRef(false);
-  const trigger: Trigger | null = !focused || dismissed === value ? null : triggerAt(value, caret);
+  const trigger: Trigger | null =
+    !menus || !focused || dismissed === value ? null : triggerAt(value, caret);
   const query = trigger?.query ?? null;
   const kind = trigger?.kind ?? null;
 
@@ -277,11 +284,15 @@ export function ComposerInput({
         {...textareaProps}
         ref={inputRef}
         aria-label={label}
-        role="combobox"
-        aria-expanded={open}
-        aria-autocomplete="list"
-        aria-controls={open ? listId : undefined}
-        aria-activedescendant={open && rows.length ? `${listId}-${selected}` : undefined}
+        {...(menus
+          ? {
+              role: 'combobox',
+              'aria-expanded': open,
+              'aria-autocomplete': 'list' as const,
+              'aria-controls': open ? listId : undefined,
+              'aria-activedescendant': open && rows.length ? `${listId}-${selected}` : undefined,
+            }
+          : {})}
         value={value}
         placeholder={placeholder}
         rows={1}
