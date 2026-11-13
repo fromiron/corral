@@ -1,11 +1,15 @@
 import {
+  type AdvisorReview,
   type AgentNode,
+  advisorReview,
   type CapabilityLink,
+  type CollaborationTool,
   type ControlEdge,
   CorralDefinition,
   type CorralNode,
   type DecisionNodeMode,
   type DecisionRule,
+  isWorkAgent,
   type JoinNode,
   type LoopLimitPolicy,
   type LoopNode,
@@ -80,6 +84,11 @@ export type DiagnosticCode =
   | 'REVIEW_WITHOUT_CRITERIA'
   | 'UNKNOWN_MODEL_PROFILE'
   | 'SPAWNS_CAPPED'
+  | 'ADVISOR_OUTSIDE_FLOW'
+  | 'ADVISOR_ADVISE_LINK'
+  | 'ADVISOR_TOOLS'
+  | 'ADVISE_TOOL_ADVISOR_ONLY'
+  | 'ADVISOR_NOT_A_STEP'
   | 'ADVISOR_NOT_SUPPORTED';
 
 export interface Diagnostic {
@@ -171,6 +180,16 @@ export interface BoxPlan {
   members: string[];
 }
 
+/** An advisor: outside the run order, it watches the Agents its `advise` links point to. */
+export interface AdvisorPlan {
+  nodeId: string;
+  roleId: string;
+  /** Its own review settings, or the defaults. */
+  review: AdvisorReview;
+  /** The watched Agent nodes, in link order. */
+  watches: string[];
+}
+
 export interface ReferencePlan {
   corralId: string;
   definitionRevision: number;
@@ -197,6 +216,8 @@ export interface CompiledPlan {
       replyToChildren?: boolean;
     }
   >;
+  /** Advisors by node id (features/advisor.md). They are never in `order` or `steps`. */
+  advisors: Record<string, AdvisorPlan>;
   summary: {
     scheduledAgents: number;
     callableAgents: number;
@@ -234,10 +255,10 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
 
   const context = new Context(definition);
   checkIdentity(context);
-  checkAdvisorsNotSupported(context);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkContainment(context);
   if (context.hasErrors()) return fail(context.diagnostics);
+  checkAdvisors(context);
   checkReferences(context, options, [...teams, definition.sourceTeam?.corralId ?? definition.id]);
   checkStructure(context);
   // Problems that make graph analysis meaningless stop here; the rest are reported together.
@@ -250,6 +271,7 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
   checkReviewRecipes(context);
   checkLoopLimits(context, options);
   checkModelProfiles(context, options);
+  refuseAdvisorsUntilTheyRun(context);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkSpawnCap(context);
 
@@ -266,25 +288,91 @@ const BLOCKING = new Set<DiagnosticCode>([
   'CALLABLE_IN_CONTROL_FLOW',
   'BOX_BOUNDARY',
   'ENTRY_INVALID',
+  'ADVISOR_OUTSIDE_FLOW',
+  'ADVISOR_NOT_A_STEP',
 ]);
 
-/**
- * Advisor nodes and `advise` links are in the contract, but their compile rules
- * (features/team-graph.md, "구조 규칙" 11) are not built yet: they are refused here, before any
- * other check, so neither ever reaches the run order.
- */
-function checkAdvisorsNotSupported(c: Context) {
-  for (const node of c.definition.nodes)
-    if (node.type === 'agent' && node.invocation === 'observer')
-      c.error('ADVISOR_NOT_SUPPORTED', 'advisor nodes cannot run yet', { nodeId: node.id });
-  for (const link of c.definition.capabilityLinks)
-    if (link.kind === 'advise')
-      c.error('ADVISOR_NOT_SUPPORTED', 'advise links cannot run yet', { linkId: link.id });
+const ADVISOR_WORK_TOOLS: readonly WorkTool[] = [
+  'search',
+  'read_document',
+  'list_files',
+  'read_file',
+];
+const ADVISOR_COLLABORATION_TOOLS: readonly CollaborationTool[] = ['read_artifact', 'advise'];
+
+/** Advisors (features/team-graph.md, "구조 규칙" 11), one code per line of the rule. */
+function checkAdvisors(c: Context) {
+  const { definition } = c;
+  const links = definition.capabilityLinks;
+  for (const node of definition.nodes) {
+    if (node.type !== 'agent') continue;
+    const at = { nodeId: node.id };
+    const role = c.roleOf(node.id);
+    if (node.invocation !== 'observer') {
+      if (role?.allowedCollaborationTools.includes('advise'))
+        c.error('ADVISE_TOOL_ADVISOR_ONLY', 'only an advisor role may give advice', at);
+      continue;
+    }
+    if (node.parentId)
+      c.error('ADVISOR_OUTSIDE_FLOW', 'an advisor stays outside every Loop and Team', at);
+    if (!links.some((link) => link.kind === 'advise' && link.sourceNodeId === node.id))
+      c.error('ADVISOR_ADVISE_LINK', 'connect this advisor to an agent it watches', at);
+    const tools = [
+      ...(role?.allowedWorkTools.filter((tool) => !ADVISOR_WORK_TOOLS.includes(tool)) ?? []),
+      ...(role?.allowedCollaborationTools.filter(
+        (tool) => !ADVISOR_COLLABORATION_TOOLS.includes(tool),
+      ) ?? []),
+    ];
+    if (tools.length > 0)
+      c.error(
+        'ADVISOR_TOOLS',
+        `an advisor only reads; its role may not use ${tools.join(', ')}`,
+        at,
+      );
+    if (definition.entryNodeId === node.id)
+      c.error('ADVISOR_NOT_A_STEP', 'the flow cannot start at an advisor', at);
+  }
+  for (const edge of definition.controlEdges)
+    if (c.isObserver(edge.source) || c.isObserver(edge.target))
+      c.error('ADVISOR_OUTSIDE_FLOW', 'an advisor is not a step of the flow', { edgeId: edge.id });
+  for (const link of links) {
+    const at = { linkId: link.id };
+    if (link.kind !== 'advise') {
+      if (c.isObserver(link.sourceNodeId) || c.isObserver(link.targetNodeId))
+        c.error('ADVISOR_OUTSIDE_FLOW', 'an advisor neither calls nor is called', at);
+      continue;
+    }
+    if (!c.isObserver(link.sourceNodeId))
+      c.error('ADVISOR_ADVISE_LINK', 'advice comes from an advisor', at);
+    if (!isWorkAgent(c.nodes.get(link.targetNodeId)))
+      c.error('ADVISOR_ADVISE_LINK', 'an advisor watches a scheduled or callable agent', at);
+  }
+  for (const node of definition.nodes) {
+    if (!('inputBindings' in node)) continue;
+    for (const binding of node.inputBindings ?? [])
+      if (
+        binding.kind === 'task_output' &&
+        binding.sourceNodeId &&
+        c.isObserver(binding.sourceNodeId)
+      )
+        c.error(
+          'ADVISOR_NOT_A_STEP',
+          `input "${binding.name}" reads an advisor, which has no output`,
+          {
+            nodeId: node.id,
+          },
+        );
+  }
 }
 
-/** Agent input bindings; an advisor takes none. */
-function agentBindings(node: AgentNode) {
-  return node.invocation === 'observer' ? [] : node.inputBindings;
+/**
+ * The door until advisors run (features/advisor.md): a definition with an advisor that passes
+ * every rule is still refused, so no Run goes on without the advisor it was drawn with.
+ */
+function refuseAdvisorsUntilTheyRun(c: Context) {
+  for (const node of c.definition.nodes)
+    if (c.isObserver(node.id))
+      c.error('ADVISOR_NOT_SUPPORTED', 'advisors cannot run yet', { nodeId: node.id });
 }
 
 function checkReviewRecipes(c: Context) {
@@ -295,7 +383,7 @@ function checkReviewRecipes(c: Context) {
     const preparation = recipe.preparationNodeId ? c.nodes.get(recipe.preparationNodeId) : null;
     const members = c.definition.nodes.filter((node) => node.parentId === loop.id);
     const reviewer = members.find(
-      (node) => node.type === 'agent' && node.roleId === recipe.evaluatorRoleId,
+      (node) => isWorkAgent(node) && node.roleId === recipe.evaluatorRoleId,
     );
     const decision = members.find((node) => node.type === 'decision' && node.mode === 'review');
     const edge = (from: string, port: string, to: string, targetPort = 'in') =>
@@ -323,7 +411,7 @@ function checkReviewRecipes(c: Context) {
       candidate?.type !== 'agent' ||
       candidate.parentId !== loop.id ||
       candidate.invocation !== 'scheduled' ||
-      reviewer?.type !== 'agent' ||
+      !isWorkAgent(reviewer) ||
       reviewer.id === candidate.id ||
       c.roleOf(reviewer.id)?.outputContract !== 'review' ||
       decision?.type !== 'decision' ||
@@ -332,10 +420,10 @@ function checkReviewRecipes(c: Context) {
       !edge(reviewer.id, 'out', decision.id) ||
       !edge(decision.id, 'pass', loop.id, 'exit') ||
       !edge(decision.id, 'revise', loop.id, 'repeat') ||
-      !agentBindings(reviewer).some(
+      !reviewer.inputBindings.some(
         (binding) => binding.kind === 'task_output' && binding.sourceNodeId === candidate.id,
       ) ||
-      !agentBindings(reviewer).some(
+      !reviewer.inputBindings.some(
         (binding) => binding.kind === 'run_input' && binding.name === 'criteria',
       ) ||
       decision.inputBindings[0]?.sourceNodeId !== reviewer.id
@@ -382,8 +470,8 @@ function checkLoopLimits(c: Context, options: CompileOptions) {
 function checkReviewerCriteria(c: Context) {
   const contracts = new Map(c.definition.roles.map((r) => [r.id, r.outputContract]));
   for (const node of c.definition.nodes) {
-    if (node.type !== 'agent' || contracts.get(node.roleId) !== 'review') continue;
-    if (agentBindings(node).some((b) => b.kind === 'run_input' && b.name === 'criteria')) continue;
+    if (!isWorkAgent(node) || contracts.get(node.roleId) !== 'review') continue;
+    if (node.inputBindings.some((b) => b.kind === 'run_input' && b.name === 'criteria')) continue;
     c.warn(
       'REVIEW_WITHOUT_CRITERIA',
       'this reviewer does not receive the criteria; add the run input "criteria"',
@@ -452,6 +540,11 @@ class Context {
   isCallable(nodeId: string): boolean {
     const node = this.nodes.get(nodeId);
     return node?.type === 'agent' && node.invocation === 'callable';
+  }
+
+  isObserver(nodeId: string): boolean {
+    const node = this.nodes.get(nodeId);
+    return node?.type === 'agent' && node.invocation === 'observer';
   }
 
   roleOf(nodeId: string) {
@@ -661,6 +754,8 @@ function checkStructure(c: Context) {
     const source = c.nodes.get(edge.source) as CorralNode;
     const target = c.nodes.get(edge.target) as CorralNode;
     const at = { edgeId: edge.id };
+    // An advisor's connection is reported by checkAdvisors.
+    if (c.isObserver(edge.source) || c.isObserver(edge.target)) continue;
     if (c.isCallable(edge.source) || c.isCallable(edge.target)) {
       c.error(
         'CALLABLE_IN_CONTROL_FLOW',
@@ -770,7 +865,8 @@ function checkStructure(c: Context) {
     (entry?.type === 'agent' && entry.invocation === 'scheduled') ||
     entry?.type === 'loop' ||
     entry?.type === 'team';
-  if (!startable || entry?.parentId) {
+  // An advisor at the start is reported by checkAdvisors.
+  if ((!startable || entry?.parentId) && !c.isObserver(definition.entryNodeId)) {
     c.error(
       'ENTRY_INVALID',
       'the flow starts at a scheduled agent, a Loop or a Team outside any box',
@@ -859,7 +955,12 @@ function analyzeGraph(c: Context): Graph | null {
   const reached = new Set<string>();
   for (const vertex of state.keys()) reached.add(nodeOfVertex(vertex));
 
+  // An advisor is not isolated when it watches someone (features/team-graph.md, "구조 규칙" 10).
+  const watching = new Set(
+    definition.capabilityLinks.flatMap((l) => (l.kind === 'advise' ? [l.sourceNodeId] : [])),
+  );
   for (const node of definition.nodes) {
+    if (c.isObserver(node.id) && watching.has(node.id)) continue;
     if (!c.isCallable(node.id) && !reached.has(node.id)) {
       c.error('UNREACHABLE', 'the flow from the entry never reaches this node', {
         nodeId: node.id,
@@ -901,8 +1002,9 @@ function analyzeGraph(c: Context): Graph | null {
 
   checkParallel(c, ordered, adjacency);
 
-  // Capability reachability: minimum delegation depth and the longest static chain.
-  const links = definition.capabilityLinks;
+  // Capability reachability: minimum delegation depth and the longest static chain. Advice is
+  // not a call.
+  const links = definition.capabilityLinks.filter((link) => link.kind !== 'advise');
   const callableDepth = new Map<string, number>();
   const queue: (readonly [string, number])[] = definition.nodes
     .filter((n) => n.type === 'agent' && n.invocation === 'scheduled' && reached.has(n.id))
@@ -1083,15 +1185,16 @@ function checkParallel(
 
 // ── capabilities, bindings, profiles ─────────────────────────────────────────
 
-const TOOL_FOR: Record<CapabilityLink['kind'], 'spawn_subagents' | 'ask' | 'advise'> = {
+const TOOL_FOR: Record<Exclude<CapabilityLink['kind'], 'advise'>, 'spawn_subagents' | 'ask'> = {
   delegate: 'spawn_subagents',
   question: 'ask',
-  advise: 'advise',
 };
 
 function checkCapabilities(c: Context, graph: Graph) {
   const limit = c.definition.limits.maxDelegationDepth;
   for (const link of c.definition.capabilityLinks) {
+    // Advise links are checked by checkAdvisors; a call to or from an advisor stops before here.
+    if (link.kind === 'advise') continue;
     const source = c.nodes.get(link.sourceNodeId);
     if (source?.type !== 'agent' || !c.isCallable(link.targetNodeId)) {
       c.error('CAPABILITY_TARGET', 'calls go from an agent to a callable agent', {
@@ -1283,8 +1386,7 @@ function lower(c: Context, graph: Graph): CompiledPlan {
     };
     switch (node.type) {
       case 'agent':
-        if (node.invocation === 'observer')
-          throw new Error('advisor nodes are refused before lowering');
+        if (node.invocation === 'observer') break;
         steps[id] = {
           ...base,
           kind: 'agent',
@@ -1362,7 +1464,7 @@ function lower(c: Context, graph: Graph): CompiledPlan {
 
   const callables: CompiledPlan['callables'] = {};
   for (const link of definition.capabilityLinks) {
-    if (link.kind === 'advise') throw new Error('advise links are refused before lowering');
+    if (link.kind === 'advise') continue;
     const entry = callables[link.sourceNodeId] ?? { delegate: [], question: [] };
     entry[link.kind].push(link.targetNodeId);
     callables[link.sourceNodeId] = entry;
@@ -1385,6 +1487,7 @@ function lower(c: Context, graph: Graph): CompiledPlan {
     boxes,
     references: Object.fromEntries(c.references),
     callables,
+    advisors: advisorPlans(definition),
     summary: {
       scheduledAgents: agents.filter((a) => a.invocation === 'scheduled').length,
       callableAgents: agents.filter((a) => a.invocation === 'callable').length,
@@ -1396,4 +1499,22 @@ function lower(c: Context, graph: Graph): CompiledPlan {
       maxStaticDepth: graph.maxStaticDepth,
     },
   };
+}
+
+/** The advisors of a definition that passed the advisor rules, by node id. */
+export function advisorPlans(definition: CorralDefinition): Record<string, AdvisorPlan> {
+  const advisors: Record<string, AdvisorPlan> = {};
+  for (const node of definition.nodes) {
+    if (node.type !== 'agent' || node.invocation !== 'observer') continue;
+    const watches = definition.capabilityLinks.flatMap((link) =>
+      link.kind === 'advise' && link.sourceNodeId === node.id ? [link.targetNodeId] : [],
+    );
+    advisors[node.id] = {
+      nodeId: node.id,
+      roleId: node.roleId,
+      review: advisorReview(node),
+      watches: [...new Set(watches)],
+    };
+  }
+  return advisors;
 }

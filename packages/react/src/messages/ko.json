@@ -260,6 +260,11 @@
   "Validation": {
     "codes": {
       "ADVISOR_NOT_SUPPORTED": "감독은 아직 실행할 수 없습니다.",
+      "ADVISOR_OUTSIDE_FLOW": "감독은 흐름 밖에 둡니다. 연결, 루프·팀 안, 위임·질문 연결을 가질 수 없습니다.",
+      "ADVISOR_ADVISE_LINK": "감독은 에이전트를 하나 이상 지켜보고, 에이전트를 지켜보는 것은 감독뿐입니다.",
+      "ADVISOR_TOOLS": "감독은 읽기만 합니다. 검색, 문서·파일 목록·파일 읽기와 버전 읽기, 조언만 쓸 수 있습니다.",
+      "ADVISE_TOOL_ADVISOR_ONLY": "조언은 감독만 할 수 있습니다. 이 에이전트의 역할에서 조언을 빼세요.",
+      "ADVISOR_NOT_A_STEP": "감독은 단계가 아닙니다. 흐름이 감독에서 시작할 수 없고, 어떤 입력도 감독을 읽을 수 없습니다.",
       "BINDING_SOURCE": "입력이 그 값을 줄 수 없는 단계에서 읽습니다: {message}",
       "BOX_BOUNDARY": "이 연결은 포트가 아닌 곳으로 상자 경계를 넘습니다.",
       "BOX_PARENT": "이 노드는 그 상자 안에 둘 수 없습니다.",

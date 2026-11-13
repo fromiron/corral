@@ -260,6 +260,11 @@
   "Validation": {
     "codes": {
       "ADVISOR_NOT_SUPPORTED": "Advisors cannot run yet.",
+      "ADVISOR_OUTSIDE_FLOW": "An advisor stays outside the flow: no connections, no Loop or Team, and no delegating or asking.",
+      "ADVISOR_ADVISE_LINK": "An advisor watches at least one agent, and only an advisor can watch an agent.",
+      "ADVISOR_TOOLS": "An advisor only reads: search, documents, file lists and files, plus reading versions and giving advice.",
+      "ADVISE_TOOL_ADVISOR_ONLY": "Only an advisor can give advice. Remove advise from this agent’s role.",
+      "ADVISOR_NOT_A_STEP": "An advisor is not a step: the flow cannot start at one, and no input can read one.",
       "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
       "BOX_BOUNDARY": "This connection crosses a box boundary outside its ports.",
       "BOX_PARENT": "This node cannot sit in that box.",
