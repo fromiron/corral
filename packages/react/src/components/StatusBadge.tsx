@@ -1,35 +1,29 @@
-import type { ExecutionStatus, RunStatus } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
-import { AgentStatusBadge, KitBadge } from '../design-kit/index.ts';
-import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
+import { KitBadge } from '../design-kit/index.ts';
 
-// Status is never conveyed by colour alone: every badge has a dot and text.
+// Status is never conveyed by colour alone: every badge has a dot and text. These are the words of
+// Tasks, instruction delivery, receipts and questions; a Run's or execution's state is its
+// presence (PresenceBadge, docs/specs/features/presence.md).
 
 type Tone = 'neutral' | 'active' | 'success' | 'warning' | 'danger';
 
 const TONE: Record<string, Tone> = {
+  // A check's or a terminal's, never a Run's.
   running: 'active',
-  active: 'active',
   in_progress: 'active',
   attached_to_request: 'active',
-  validating: 'active',
-  succeeded: 'success',
   completed: 'success',
   delivered: 'success',
   submitted: 'success',
   failed: 'danger',
   rejected: 'danger',
-  interrupted: 'danger',
   cancelled: 'warning',
   expired: 'warning',
   not_delivered: 'warning',
   delivery_unknown: 'warning',
-  awaiting_user: 'warning',
   open: 'active',
   answered: 'success',
   timed_out: 'warning',
-  waiting_children: 'active',
-  waiting_message: 'active',
 };
 
 const DOT: Record<Tone, string> = {
@@ -72,24 +66,5 @@ export function StatusBadge({ status }: { status: string }) {
     <KitBadge variant="dot" color={COLOR[statusTone(status)]} data-status={status}>
       {label}
     </KitBadge>
-  );
-}
-
-/**
- * A run or execution status in the kit's agent language: its glyph and colour come from the six
- * kit states, while the word stays Corral's exact status.
- */
-export function AgentStatusText({
-  status,
-  kind,
-}: { kind: 'run'; status: RunStatus } | { kind: 'execution'; status: ExecutionStatus }) {
-  const t = useTranslations('Status');
-  const label = t.has(status) ? t(status) : status;
-  return (
-    <AgentStatusBadge
-      status={kind === 'run' ? runAgentStatus(status) : executionAgentStatus(status)}
-      label={label}
-      data-status={status}
-    />
   );
 }

@@ -93,7 +93,7 @@ test('a saved-team conversation keeps its team name and revision after later edi
   await page.keyboard.press('Escape');
   await requestBox(page).fill('Describe the writing task');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByTestId('chat-timeline')).toContainText('Succeeded');
+  await expect(page.getByTestId('chat-timeline')).toContainText('Completed');
   const runs = await call(page, '/runs', undefined, 'GET');
   const run = runs.find(
     (entry: { sessionId: string }) => entry.sessionId === made.session.sessionId,

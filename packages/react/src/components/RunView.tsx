@@ -27,16 +27,17 @@ import {
 import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
 import { executionWatching } from '../run/presence.ts';
+import { projectionPresence } from '../run/projectionPresence.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { requestOpen } from '../run/transcript.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
+import { PresenceBadge, usePresenceWord } from './PresenceBadge.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
 import { LoopEscalationText, RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
-import { StatusBadge } from './StatusBadge.tsx';
 import { UsageInspector } from './UsageInspector.tsx';
 
 /** Run status, executions and output, from committed events only. Needs no editor. */
@@ -100,7 +101,10 @@ export function RunView({
           <div className="flex items-center gap-2 text-caption">
             <span className="text-muted-foreground">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">
-              <StatusBadge status={projection.status} />
+              <PresenceBadge
+                presence={projectionPresence(projection)}
+                target={`run:${projection.runId}`}
+              />
             </span>
           </div>
           {projection.statusReason ? (
@@ -317,7 +321,7 @@ export function ExecutionTree({
   const loopText = useTranslations('RunLoop');
   const outcomeText = useTranslations('Canvas.nodeStatus.loopOutcome');
   const LoopIcon = useIcon('rotate-ccw');
-  const status = useTranslations('Status');
+  const status = usePresenceWord();
   const presenceText = useTranslations('Presence');
   const adviceText = useTranslations('Advice');
   const projection = useRunDisplay(session, (s) => s.projection);
@@ -392,7 +396,7 @@ export function ExecutionTree({
       );
     }),
   );
-  const statusLabel = (value: string) => (status.has(value) ? status(value) : value);
+  const statusLabel = status;
   const labelOf = nameOf;
   const childrenOf = new Map<string | null, string[]>();
   const addChild = (parent: string | null, id: string) => {

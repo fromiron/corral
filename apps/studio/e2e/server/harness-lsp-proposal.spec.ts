@@ -124,7 +124,7 @@ test('reviews immutable LSP changes and applies them explicitly to the session c
     const needsYou = page.locator('[data-pending-tray]');
     await expect(needsYou).toBeFocused();
     await needsYou.getByRole('button', { name: 'Run this query once', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
     const before = await page.evaluate(
       async (id) =>
         (await (await fetch(`/api/v1/sessions/${id}/worktree/file?path=main.ts`)).json()).content

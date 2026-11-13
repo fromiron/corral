@@ -139,7 +139,7 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
       return { runId: started.runId };
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
     expect(fixture.mcpCalls).toBe(1);
     await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);
     await page.getByRole('button', { name: /^Local docs/ }).click();

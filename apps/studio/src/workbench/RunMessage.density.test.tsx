@@ -295,16 +295,17 @@ it('changes only display density while keeping results, the decision and the fai
   if (!process) throw new Error('turn process missing');
   expect(process.tagName).not.toBe('DETAILS');
   const trigger = () => process.querySelector<HTMLButtonElement>('button[aria-expanded]');
-  // The head names the role and the run's state; the detailed density opens the log.
+  // The head names the role and the run's state, which its open decision makes a wait for the
+  // person (presence.md); the detailed density opens the log.
   expect(trigger()?.textContent).toContain('writer');
-  expect(trigger()?.textContent).toContain(messages.Status.running);
+  expect(trigger()?.textContent).toContain(messages.Presence.state.awaiting_user);
   expect(trigger()?.getAttribute('aria-expanded')).toBe('true');
   // Only the running delegate is an active row; the failed lead is not animated as live work.
   const active = [...process.querySelectorAll('.turn-process-row .shimmer-text')].map(
     (node) => node.textContent,
   );
   expect(active).toEqual(['writer…']);
-  expect(process.textContent).toContain('Active');
+  expect(process.textContent).toContain(messages.Presence.state.working);
   // Raw transcripts stay in the run pane beside the conversation.
   expect(f.container.querySelector('[data-testid="density-transcript"]')).toBeNull();
   await act(async () => trigger()?.click());
@@ -466,7 +467,7 @@ it('the turn process sits above the reply, closed while working and still closed
   expect(toggle()?.textContent).toContain('1 step');
   expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
   expect(f.container.querySelector('[data-presence-label="run:run_density"]')?.textContent).toBe(
-    messages.Status.running,
+    messages.Presence.state.awaiting_user,
   );
 });
 

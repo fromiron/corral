@@ -12,12 +12,14 @@ import {
   stepResultIds,
 } from '@corral/core';
 import {
-  AgentStatusText,
   ArtifactViewer,
   ExecutionTranscript,
   ExecutionTree,
+  executionViewPresence,
   FailureNotice,
+  PresenceBadge,
   primaryWorkPlan,
+  projectionPresence,
   QuestionsPanel,
   RecipeStatusPanel,
   ReinsPanel,
@@ -30,7 +32,6 @@ import {
   RunResults,
   type RunSessionStore,
   SettingsPatchPanel,
-  StatusBadge,
   TaskBoard,
   Timeline,
   UsageInspector,
@@ -241,7 +242,7 @@ function RunWorkspace({
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
-  const status = useTranslations('Status');
+  const tp = useTranslations('Presence');
   const harness = useTranslations('Harness');
   const { execution, artifact, result } = search;
   const resultOpen = search.view === 'results' || result !== undefined;
@@ -828,7 +829,7 @@ function RunWorkspace({
               // The response area's state is the header's status: its heading stays unseen, and
               // the close sits on the area's first row instead of a row of its own.
               <h2 className="sr-only">
-                {pending > 0 ? status('awaiting_user') : harness('extensionNotice')}
+                {pending > 0 ? tp('state.awaiting_user') : harness('extensionNotice')}
               </h2>
             ) : (
               <div className="flex items-center justify-between gap-2">
@@ -1067,15 +1068,19 @@ function RunHeader({
 }) {
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
-  const status = useTranslations('Status');
+  const tp = useTranslations('Presence');
   const projection = useRunDisplay(session, (s) => s.projection);
+  const events = useRunDisplay(session, (s) => s.events);
   const recipeStopped = useStore(session, (s) =>
     s.events.some((event) => event.type === 'recipe.stopped'),
   );
   if (!projection) return null;
+  // The run's state, as every screen says it (docs/specs/features/presence.md): every open
+  // request once, by the order the record holds them.
+  const presence = projectionPresence(projection, events);
   // A failed run says why beside its state, in Run info's words, and leads to what failed. With
   // one agent, "{agent} failed" only restates the state chip, so it is left out.
-  const failed = projection.status === 'failed';
+  const failed = presence.kind === 'failed';
   const failedExecution = failed ? failedExecutionId(projection) : null;
   // A run its review recipe stopped says why in the recipe's panel, with the rounds it judged;
   // the reason is not said again beside the state.
@@ -1131,11 +1136,11 @@ function RunHeader({
                 data-testid="run-respond"
                 onClick={onRespond}
               >
-                {status.has(projection.status) ? status(projection.status) : projection.status} ·{' '}
-                {m('respond', { count: waiting })}
+                <span data-presence-label={`run:${projection.runId}`}>{tp(presence.labelKey)}</span>{' '}
+                · {m('respond', { count: waiting })}
               </Button>
             ) : (
-              <AgentStatusText kind="run" status={projection.status} />
+              <PresenceBadge presence={presence} target={`run:${projection.runId}`} />
             )}
           </span>
           <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
@@ -1215,10 +1220,16 @@ function RunFacts({
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
+  const kinds = executions.map((e) => ({ e, presence: executionViewPresence(e) }));
   const working = [
-    ...new Set(executions.filter((e) => e.status === 'active').map((e) => labelOf(e.nodeId))),
+    ...new Set(
+      kinds
+        .filter(({ presence }) => presence.kind === 'working' && !presence.detail)
+        .map(({ e }) => labelOf(e.nodeId)),
+    ),
   ];
-  const waiting = executions.filter((e) => e.status.startsWith('waiting_')).length;
+  const waiting = kinds.filter(({ presence }) => presence.detail || presence.need).length;
+  const runKind = projectionPresence(projection).kind;
   const tasks = Object.values(projection.tasks);
   const calls = Object.values(projection.toolCalls);
   const requests = Object.values(projection.modelCalls);
@@ -1290,18 +1301,18 @@ function RunFacts({
   ];
   // What is still moving; an ended run keeps only requests whose end was never confirmed.
   const progress = [
-    projection.status === 'cancelling' ? (
+    runKind === 'stopping' ? (
       <span key="working">{t('cancelling')}</span>
     ) : ended ? null : working.length ? (
       <span key="working">{t('working', { labels: working.join(', ') })}</span>
-    ) : inFlight || waiting || projection.status === 'paused' ? null : (
+    ) : inFlight || waiting || runKind === 'paused' ? null : (
       <span key="working">{t('starting')}</span>
     ),
     waiting ? <span key="waiting">{t('waitingExecutions', { count: waiting })}</span> : null,
     ...loops.map((text) => <span key={text}>{text}</span>),
     inFlight ? (
       <span key="requests">
-        {t(ended || projection.status === 'cancelling' ? 'unconfirmedRequests' : 'requests', {
+        {t(ended || runKind === 'stopping' ? 'unconfirmedRequests' : 'requests', {
           count: inFlight,
         })}
       </span>
@@ -1704,7 +1715,7 @@ function NodeExecutions({
                     <ExecutionIdentity projection={projection} executionId={id} />
                   </div>
                 </div>
-                <StatusBadge status={e.status} />
+                <PresenceBadge presence={executionViewPresence(e)} target={`execution:${id}`} />
               </div>
               <div className="flex flex-wrap gap-1">
                 <Button

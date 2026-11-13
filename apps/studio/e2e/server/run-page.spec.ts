@@ -72,7 +72,7 @@ async function finishedRun(
   await corral.open(`/runs/${runId}`);
   // A session's run opens in that session's run history.
   await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}\\?.*run=${runId}`));
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
   return `/runs/${runId}`;
@@ -483,7 +483,7 @@ test('a long multiline request keeps graph, events and run information reachable
     { ...started, request },
   );
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   const monitor = page.getByTestId('run-monitor');
   const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
   const graphTab = views.getByRole('tab', { name: 'Graph', exact: true });
@@ -535,7 +535,7 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(
     page.getByTestId('run-monitor').getByRole('slider', { name: 'View point' }),
   ).toHaveCount(0);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByRole('alert')).toContainText('exec_9999 is not part of this run');
   const side = page.getByTestId('run-side');
   await expect(side.getByRole('button', { name: 'Reins', exact: true })).toHaveCount(0);
@@ -753,7 +753,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
     .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
     .toBe('succeeded');
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}&atSeq=1`);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page).not.toHaveURL(/[?&]atSeq=/);
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await panelTab(page, 'Conversation');

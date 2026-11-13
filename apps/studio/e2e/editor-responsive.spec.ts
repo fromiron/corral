@@ -61,7 +61,7 @@ test('test-run approvals stay inside the run panel at 768px', async ({ page }) =
   const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
 });
 
 test("at 768px the test run takes the editor's place and gives it back as it was", async ({

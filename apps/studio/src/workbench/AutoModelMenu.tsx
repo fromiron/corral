@@ -13,6 +13,7 @@ export function AutoModelMenu({
   open,
   onOpenChange,
   onChange,
+  missingName,
 }: {
   value: AutoModelChoice;
   profiles: ProfileInfo[];
@@ -21,6 +22,8 @@ export function AutoModelMenu({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (value: AutoModelChoice) => void;
+  /** What a profile no longer listed is called; by default its id. */
+  missingName?: string;
 }) {
   const t = useTranslations('Sessions'),
     tq = useTranslations('Reasoning'),
@@ -35,7 +38,11 @@ export function AutoModelMenu({
         : tq(value.reasoning?.mode ?? 'legacy');
   const visibleEffort = showReasoning && value.reasoning ? effort : null;
   const fixedLevel = value.reasoning?.mode === 'fixed' ? value.reasoning.level : null;
-  const description = [tc('nextRequest'), profile?.label ?? value.modelProfile, visibleEffort]
+  const description = [
+    tc('nextRequest'),
+    profile?.label ?? missingName ?? value.modelProfile,
+    visibleEffort,
+  ]
     .filter(Boolean)
     .join(' · ');
   const levels: ModelPickerChoice[] = (profile?.reasoningCapabilities?.levels ?? []).map(
@@ -81,7 +88,7 @@ export function AutoModelMenu({
   if (!profile)
     models.unshift({
       id: value.modelProfile,
-      name: value.modelProfile,
+      name: missingName ?? value.modelProfile,
       description: tc('modelPicker.missing'),
       disabled: true,
     });

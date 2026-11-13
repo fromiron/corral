@@ -1,6 +1,7 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
-import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { ExecutionStatus, RunStatus } from '@corral/contracts';
 import { canReadArtifactBody, type RunProjection, usageTotals } from '@corral/core';
+import { executionPresence, type PresenceKind, runPresence } from '@corral/react';
 
 export function availableResultLinks(
   projection: RunProjection | null,
@@ -29,6 +30,28 @@ export function fileChangeCount(calls: readonly { name: string; phase?: string }
   return calls.filter((call) => FILE_WRITES.has(call.name) && call.phase === 'finished').length;
 }
 
+/** A Run's presence kind from a bare status, or null when the status is not a Run's. */
+function runKind(status: string | null | undefined): PresenceKind | null {
+  const parsed = RunStatus.safeParse(status);
+  return parsed.success ? runPresence({ status: parsed.data }, [], []).kind : null;
+}
+
+/** An execution's presence kind from a bare status, or null when it is not an execution's. */
+function executionKind(status: string): PresenceKind | null {
+  const parsed = ExecutionStatus.safeParse(status);
+  return parsed.success ? executionPresence({ status: parsed.data }).kind : null;
+}
+
+const ENDED_KINDS = new Set<PresenceKind>(['succeeded', 'failed', 'interrupted', 'cancelled']);
+
+/** An execution working on its own: not waiting on agents or a reply. */
+function isActive(status: string) {
+  const parsed = ExecutionStatus.safeParse(status);
+  if (!parsed.success) return false;
+  const presence = executionPresence({ status: parsed.data });
+  return presence.kind === 'working' && !presence.detail;
+}
+
 /** Shell services can change files after the launch tool has already finished. */
 export function fileChangeSignals(
   calls: readonly { name: string; phase?: string }[],
@@ -42,7 +65,7 @@ export function fileChangeSignals(
     ).length,
     poll:
       live &&
-      status === 'running' &&
+      runKind(status) === 'working' &&
       calls.some(
         (call) =>
           call.name === 'run_command' && (call.phase === 'running' || call.phase === 'finished'),
@@ -111,8 +134,6 @@ export type PlanBodyView =
       planFinished: boolean;
     };
 
-const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
-
 export function planBodyStatus(input: {
   ref: PlanRef;
   parsed: PlanBody | null;
@@ -142,13 +163,13 @@ export function planBodyStatus(input: {
   ) {
     return { state: 'stale-criteria', plan: parsed, completed, total };
   }
-  const runStatus = input.runStatus ?? 'running';
+  const runEnded = ENDED_KINDS.has(runKind(input.runStatus) ?? 'working');
   return {
     state: 'ready',
     plan: parsed,
     completed,
     total,
-    runFinished: TERMINAL.has(runStatus),
+    runFinished: runEnded,
     planFinished: total > 0 && completed === total,
   };
 }
@@ -242,7 +263,7 @@ export function selectPresentedPlan(input: {
   const hasPlan = (execution: ExecutionFact) =>
     choices.some((choice) => choice.key === execution.executionId);
   const liveExecution =
-    liveExecutions.find((execution) => execution.status === 'active' && hasPlan(execution)) ??
+    liveExecutions.find((execution) => isActive(execution.status) && hasPlan(execution)) ??
     liveExecutions.find(hasPlan);
   const liveChoice = liveExecution
     ? choices.find((choice) => choice.key === liveExecution.executionId)
@@ -447,10 +468,8 @@ export function actionRequired(input: {
   unclearCauses?: UnclearCause[];
   runStatus?: string;
 }) {
-  const failed = Math.max(
-    input.failedEffects,
-    input.runStatus === 'failed' || input.runStatus === 'interrupted' ? 1 : 0,
-  );
+  const kind = runKind(input.runStatus);
+  const failed = Math.max(input.failedEffects, kind === 'failed' || kind === 'interrupted' ? 1 : 0);
   // What a person must answer (chat-widgets-contract §6.3): approvals, questions and results
   // whose outcome is unknown. A failed step is told, but it is not an item to answer or count.
   const answers = [
@@ -462,7 +481,7 @@ export function actionRequired(input: {
     visible: answers.length > 0 || failed > 0,
     needsUser: input.pendingApprovals + input.pendingQuestions > 0,
     hasFailure: failed + input.unclearEffects > 0,
-    completedWithFailures: input.runStatus === 'succeeded' && failed > 0,
+    completedWithFailures: kind === 'succeeded' && failed > 0,
     count: input.pendingApprovals + input.pendingQuestions + input.unclearEffects,
     summary:
       answers.length === 0
@@ -588,21 +607,22 @@ export function currentAgentExecutions(projection: RunProjection | null) {
   });
 }
 
+/** Waiting kinds of an execution not working on its own: before it starts, or held. */
+const WAITING_KINDS = new Set<PresenceKind>(['starting', 'awaiting_user', 'pausing', 'paused']);
+
 export function agentActivity(executions: ExecutionFact[]) {
-  const waitingStatuses = new Set([
-    'queued',
-    'ready',
-    'waiting_children',
-    'waiting_message',
-    'waiting_approval',
-    'pausing',
-    'paused',
-  ]);
-  const working = executions.filter((execution) => execution.status === 'active').length;
-  const waiting = executions.filter(
-    (execution) => !execution.ended && waitingStatuses.has(execution.status),
+  const working = executions.filter((execution) => isActive(execution.status)).length;
+  const waiting = executions.filter((execution) => {
+    if (execution.ended) return false;
+    const parsed = ExecutionStatus.safeParse(execution.status);
+    if (!parsed.success) return false;
+    const presence = executionPresence({ status: parsed.data });
+    // Working with a detail waits on agents or a reply.
+    return WAITING_KINDS.has(presence.kind) || Boolean(presence.detail);
+  }).length;
+  const failed = executions.filter(
+    (execution) => executionKind(execution.status) === 'failed',
   ).length;
-  const failed = executions.filter((execution) => execution.status === 'failed').length;
   return executions.length > 1 || working > 0 || waiting > 0 || failed > 0
     ? { total: executions.length, working, waiting, failed }
     : null;
@@ -657,7 +677,10 @@ export function failedToolExecutionId(
  */
 export function failedExecutionId(projection: RunProjection | null): string | null {
   const failed = projection?.executionOrder
-    .filter((id) => projection.executions[id]?.status === 'failed')
+    .filter((id) => {
+      const execution = projection.executions[id];
+      return execution ? executionPresence(execution).kind === 'failed' : false;
+    })
     .at(-1);
   return failed ?? failedToolExecutionId(projection);
 }
@@ -864,6 +887,15 @@ export function changesPresentation(input: {
   };
 }
 
+/** The activity line's word for a held or stopped run, by its presence kind. */
+const HELD_TEXT = {
+  paused: 'paused',
+  pausing: 'pausing',
+  stopping: 'cancelling',
+  cancelled: 'cancelled',
+  interrupted: 'interrupted',
+} as const;
+
 export function activityLine(input: {
   runStatus: string;
   startedAt: string | null;
@@ -875,18 +907,16 @@ export function activityLine(input: {
   failed: boolean;
   needsUser: boolean;
 }) {
-  const terminal = ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(input.runStatus);
+  const kind = runKind(input.runStatus);
+  const terminal = kind !== null && ENDED_KINDS.has(kind);
   const end = input.endedAt ?? (!terminal ? input.now : null);
   const elapsedMs = input.startedAt && end ? Date.parse(end) - Date.parse(input.startedAt) : null;
   const frozen = Boolean(input.endedAt) || terminal;
   let text = 'working';
-  if (['created', 'validating'].includes(input.runStatus)) text = 'starting';
+  if (kind === 'starting') text = 'starting';
   else if (input.needsUser && !terminal) text = 'user';
-  else if (input.failed || input.runStatus === 'failed') text = 'failed';
-  else if (
-    ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(input.runStatus)
-  )
-    text = input.runStatus;
+  else if (input.failed || kind === 'failed') text = 'failed';
+  else if (kind && kind in HELD_TEXT) text = HELD_TEXT[kind as keyof typeof HELD_TEXT];
   else if (!terminal && !input.planVisible && input.planTitle) text = input.planTitle;
   else if (!terminal && input.toolName && !(input.planVisible && input.planTitle))
     text = input.toolName;
@@ -925,5 +955,6 @@ export function composerShowsRunStatus(input: {
   readState: 'empty' | 'loading' | 'ready' | 'error';
 }): boolean {
   if (input.readState === 'error') return true;
-  return input.runStatus !== null && (TERMINAL_RUN_STATUSES as Set<string>).has(input.runStatus);
+  const kind = runKind(input.runStatus);
+  return kind !== null && ENDED_KINDS.has(kind);
 }

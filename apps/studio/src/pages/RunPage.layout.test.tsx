@@ -1583,7 +1583,7 @@ it('pending decisions stay reachable and replace the inspector rather than stack
 
 it('normalizes an old cursor URL and follows current state without replaying or disabling controls', async () => {
   const { container, run, navigations } = await mount('inline_team', null, { atSeq: 0 });
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Succeeded');
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Completed');
   expect(container.querySelector('fieldset[disabled]')).toBeNull();
   expect(container.querySelector('[data-testid="history-mode"]')).toBeNull();
   expect(navigations.at(-1)).toEqual({ patch: { atSeq: undefined }, options: { replace: true } });
@@ -1610,7 +1610,7 @@ it('normalizes an old cursor URL and follows current state without replaying or 
       });
   });
   expect(fixture.replays).toBe(replays);
-  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Running');
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toBe('Working');
   expect(run.getState().projection).toBe(live);
   expect(container.querySelector('fieldset[disabled]')).toBeNull();
   expect(container.querySelector('[aria-label="View time"]')).toBeNull();
@@ -1923,7 +1923,7 @@ it('turns the waiting status into the one way to respond', async () => {
   // With the response area on screen, the header's state names the wait and no longer responds.
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
   expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
-    messages.Status.awaiting_user,
+    messages.Presence.state.awaiting_user,
   );
   await waitFor(run, 0);
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
@@ -1979,7 +1979,7 @@ it('offers Respond once when the record opens with its response area beside the 
   // The header says the run waits, once, without a second Respond.
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
   expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
-    messages.Status.awaiting_user,
+    messages.Presence.state.awaiting_user,
   );
 });
 
@@ -2056,11 +2056,11 @@ it('opens the response area once when a new decision arrives and the side is fre
   // The header's status already says it: the panel's heading keeps the state's name for the
   // outline but shows no title of its own.
   const heading = side(container)?.querySelector('h2');
-  expect(heading?.textContent).toBe(messages.Status.awaiting_user);
+  expect(heading?.textContent).toBe(messages.Presence.state.awaiting_user);
   expect(heading?.classList.contains('sr-only')).toBe(true);
   expect(
     side(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
-  ).toBe(messages.Status.awaiting_user);
+  ).toBe(messages.Presence.state.awaiting_user);
   expect(document.activeElement).toBe(focused);
   // Closed by the person: the same decision does not bring it back.
   await act(async () =>
@@ -2493,4 +2493,34 @@ it('reads run usage only in Run info › Usage, split by agent', async () => {
       !element.closest('[role="tabpanel"][data-value="usage"], [data-run-usage]'),
   );
   expect(shown).toEqual([]);
+});
+
+// presence.md: each place that says a state in words carries the target it speaks of.
+it('labels the header’s state, the way to respond, and each execution by their targets', async () => {
+  const { container, run } = await mount('inline_team', null, {});
+  const runId = run.getState().projection?.runId;
+  expect(runId).toBeTruthy();
+  const status = container.querySelector('[data-testid="run-status"] [data-presence-label]');
+  expect(status?.getAttribute('data-presence-label')).toBe(`run:${runId}`);
+  await populateGraph(run, [graphExecution('first', 'worker'), graphExecution('second', 'worker')]);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  for (const id of ['first', 'second'])
+    expect(
+      preview
+        ?.querySelector(`[data-execution-id="${id}"] [data-presence-label]`)
+        ?.getAttribute('data-presence-label'),
+    ).toBe(`execution:${id}`);
+});
+
+it('names the state on the way to respond by the run it is', async () => {
+  fixture.pending = 1;
+  const { container, run } = await mount('inline_team', null, {});
+  const runId = run.getState().projection?.runId;
+  const label = container.querySelector('[data-testid="run-respond"] [data-presence-label]');
+  expect(label?.getAttribute('data-presence-label')).toBe(`run:${runId}`);
+  // Said once: the header has no badge of its own beside the way to respond.
+  expect(container.querySelectorAll(`[data-presence-label="run:${runId}"]`)).toHaveLength(1);
 });

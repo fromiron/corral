@@ -1209,3 +1209,144 @@ test('⑩ open, the work plan keeps its height as its steps go from waiting to w
   await expect(activityBar(page)).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
   expect(corral.errors).toEqual([]);
 });
+
+type LineFrame = {
+  at: number;
+  line: string | null;
+  label: string | null;
+  text: string;
+  /** Where the newest run row's label stands in the conversation's view, and how far the view is from its end. */
+  row?: string;
+  gap?: number;
+};
+
+/** Every frame from now on: the closed line's kind, the state it writes for an unseen row, and its words. */
+function watchClosedLine(page: Page) {
+  return page.evaluate(() => {
+    const w = window as unknown as { lineFrames: LineFrame[]; lineStart: number };
+    w.lineFrames = [];
+    w.lineStart = performance.now();
+    const tick = () => {
+      const bar = document.querySelector('[data-testid="activity-bar"]');
+      const row = bar?.querySelector('[data-activity-bar] > div');
+      const frame = {
+        at: Math.round(performance.now() - w.lineStart),
+        line: bar?.getAttribute('data-line') ?? null,
+        label:
+          row?.querySelector('[data-presence-label]')?.getAttribute('data-presence-label') ?? null,
+        text: ((row as HTMLElement | null)?.innerText ?? '').replace(/\n/g, ' | ').slice(0, 120),
+        ...(() => {
+          const timeline = document.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+          const label = [...(timeline?.querySelectorAll('[data-presence-label^="run:"]') ?? [])].at(
+            -1,
+          );
+          const view = timeline?.getBoundingClientRect();
+          const box = label?.getBoundingClientRect();
+          const place =
+            !label || !view || !box
+              ? 'none'
+              : box.top >= view.bottom
+                ? 'below'
+                : box.bottom <= view.top
+                  ? 'above'
+                  : 'in';
+          const gap = timeline
+            ? Math.round(timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight)
+            : -1;
+          return { row: place, gap };
+        })(),
+      };
+      const last = w.lineFrames.at(-1);
+      if (
+        !last ||
+        last.line !== frame.line ||
+        last.label !== frame.label ||
+        last.text !== frame.text ||
+        last.row !== frame.row
+      )
+        w.lineFrames.push(frame);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+const closedLineFrames = (page: Page) =>
+  page.evaluate(() => (window as unknown as { lineFrames: LineFrame[] }).lineFrames.slice());
+
+for (const cpu of [1, 4])
+  test(`⑪ following the end, the line never points at a row or card that came in view${cpu > 1 ? `, ${cpu}× slower` : ''}`, async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    const working = hold();
+    corral.fake?.setResponses([
+      async () => {
+        working.reach();
+        await working.opened;
+        return fauxAssistantMessage([fauxToolCall('run_command', { command: 'echo tray-ok' })], {
+          stopReason: 'toolUse',
+        });
+      },
+      fauxAssistantMessage('Done.'),
+      fauxAssistantMessage('Done.'),
+      fauxAssistantMessage('Done.'),
+    ] as never);
+    const session = await commandSession(page, corral);
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await waitForStill(page);
+      const pending = () => {
+        const run = corral.server.coordinator.listRuns()[0];
+        return run
+          ? Object.values(corral.server.coordinator.getSnapshot(run.runId).projection.approvals)
+              .filter((approval) => approval.status === 'pending')
+              .map((approval) => approval.approvalId)
+          : [];
+      };
+      if (cpu > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpu });
+      // (a) A request sent at the followed end: its run row and its working role come in view.
+      await watchClosedLine(page);
+      await requestBox(page).fill('Check the folder.');
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      await working.reached;
+      await expect(
+        page.locator('[data-chat-item] [data-presence-label^="run:"]').last(),
+      ).toBeInViewport({
+        timeout: 30_000,
+      });
+      await page.waitForTimeout(1_500);
+      const arriving = await closedLineFrames(page);
+      // (b) The role's call waits on an approval: its card comes at the followed end, in view.
+      await watchClosedLine(page);
+      working.open();
+      const card = page.locator('[data-pending-tray] [data-testid^="approval-"]');
+      await expect(card).toBeInViewport({ timeout: 30_000 });
+      await page.waitForTimeout(1_500);
+      const carded = await closedLineFrames(page);
+      record(`arrival${cpu > 1 ? `-cpu${cpu}` : ''}`, { arriving, carded });
+      // Its own file too: the scenes of other workers write the shared record.
+      writeFileSync(
+        join(
+          OUT,
+          `activity-bar-arrival${cpu > 1 ? `-cpu${cpu}` : ''}-${test.info().repeatEachIndex}.json`,
+        ),
+        `${JSON.stringify({ arriving, carded }, null, 2)}\n`,
+      );
+      // Whatever came was in view: never a role named as off screen, never a run or role state
+      // written for a row the person sees, never the waiting line for a card in view.
+      const pointing = (frames: LineFrame[]) =>
+        frames.filter((frame) => frame.line === 'role' || frame.line === 'waiting' || frame.label);
+      expect(pointing(arriving), 'a row in view pointed at').toEqual([]);
+      expect(pointing(carded), 'a card in view pointed at').toEqual([]);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await card.getByRole('button', { name: 'Allow once', exact: true }).click();
+      await expect.poll(pending, { timeout: 30_000 }).toEqual([]);
+      await expect(activityBar(page)).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
+      expect(corral.errors).toEqual([]);
+    } finally {
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => undefined);
+      await session.cleanup();
+    }
+  });

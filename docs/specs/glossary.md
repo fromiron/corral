@@ -13,7 +13,7 @@
 | 한 프로젝트의 기본 작업 방식 | Project default work style / 프로젝트 기본 작업 방식 | `project-defaults`, scope `project` | Default work style(한정사 없이) |
 | 작업 방식이 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → 팀 역할 → 이번 실행 | `ScopeLadder` | 3단 설명 |
 | 실행 결과물 | Results / 결과 | 패널 `artifacts`, 슬래시 `/results` | Artifacts |
-| 실행이 쓰는 격리 사본 | Session working copy / 세션 작업 사본 | `worktree`, scope `session` | 세션 복사본, 작업 복사본 |
+| 실행이 쓰는 격리 사본 | Conversation working copy / 세션 작업 사본 | `worktree`, scope `session` | 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
 | 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
@@ -23,7 +23,7 @@
 | 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 대화 안내, 실행 기록 머리, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
 | 다시 쓰는 팀·템플릿·리소스 모음 | Library / 라이브러리 | `/library`, `features/library.md` | 자료실 |
 | 예약 실행 화면 | Automation / 자동화 | `/schedules`, `ScheduledPage` | 스케줄러 |
-| 프로젝트 세션 탭의 상태별 배치 | Needs attention / 확인 필요, Review / 검토, In progress / 진행 중, No run yet / 실행 전, Completed / 완료, Cancelled / 취소됨, Empty session / 빈 세션 | `sessionGroups` | Task status, To do, In review, Done |
+| 프로젝트 세션 탭의 상태별 배치 | Needs attention / 확인 필요, Review / 검토, In progress / 진행 중, No run yet / 실행 전, Completed / 완료, Cancelled / 취소됨, Empty conversation / 빈 세션 | `sessionGroups` | Task status, To do, In review, Done |
 | 세션의 일이 끝났다고 볼 조건 목록 | Completion criteria / 완료 기준 | `WorkSession.criteria`, run input `criteria` | Definition of done, 체크리스트, 기준 충족 |
 | 샘플 데이터로 보이는 미구현 흐름 | Feature preview / 기능 미리보기 | `/preview`, `feature-preview` | 데모(시뮬레이션 실행과 구분) |
 | 프로젝트의 원본 폴더·작업 사본 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
@@ -65,6 +65,5 @@
 
 ## 남은 불일치
 
-- EN 화면은 같은 개념을 "conversation"과 "session"으로 섞어 쓴다(예: Filter conversations / Rename session). 한쪽으로 맞추는 일괄 변경은 별도 작업이다.
-- 화면 문구에 "pane"과 "panel"이 섞여 있다(예: Close pane / Show the panel). "panel"은 옆·아래 영역 전체를 가리키는 곳에 남아 있다.
+- EN 화면은 작업 단위를 "conversation"으로만 부른다. "session"은 다른 뜻(로그인 세션, 언어 지원 세션, 터미널 프로세스의 세션)에만 남는다. KO 화면은 같은 개념을 "세션"과 "대화"로 섞어 쓴다. 한쪽으로 맞추는 일괄 변경은 별도 작업이다.
 - 실행 상태 어휘가 `RunStatus`·`Status`·`RunPage`·`RunReasons` 네임스페이스에 나뉘어 있다.

@@ -1,22 +1,19 @@
-import {
-  type CorralDefinition,
-  type ExecutionStatus,
-  type RunEvent,
-  TERMINAL_EXECUTION_STATUSES,
-  TERMINAL_RUN_STATUSES,
-} from '@corral/contracts';
+import type { CorralDefinition, ExecutionStatus, RunEvent } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
 import {
   ExecutionToolRows,
-  executionAgentStatus,
   executionIntervals,
+  executionPresence,
   executionToolEntries,
-  runAgentStatus,
+  executionViewPresence,
+  type Presence,
+  PresenceLabel,
+  presenceTextClass,
+  projectionPresence,
 } from '@corral/react';
 import {
   AgentCard,
   AgentStatusIcon,
-  AgentStatusLabel,
   AgentSteeringPlan,
   cn,
   fontWeights,
@@ -42,9 +39,15 @@ function useIntervals(events: readonly RunEvent[]) {
   );
 }
 
-function useStatusText() {
-  const status = useTranslations('Status');
-  return (value: string) => (status.has(value) ? status(value) : value);
+const ENDED = new Set<Presence['kind']>(['succeeded', 'failed', 'interrupted', 'cancelled']);
+
+/** The Run's glyph, in its tone's colour: the shape alone says the state (presence.md). */
+function RunGlyph({ presence }: { presence: Presence }) {
+  return presence.glyph ? (
+    <span className={cn('inline-flex shrink-0', presenceTextClass(presence.tone))}>
+      <AgentStatusIcon status={presence.glyph} size={12} colored={false} />
+    </span>
+  ) : null;
 }
 
 /**
@@ -60,12 +63,13 @@ export function RunPlanCard({
 }) {
   const tw = useTranslations('Widgets');
   if (!plan?.items.length) return null;
-  const live = !TERMINAL_RUN_STATUSES.has(projection.status);
+  const presence = projectionPresence(projection);
+  const live = !ENDED.has(presence.kind);
   const done = plan.items.filter((item) => item.status === 'completed').length;
   return (
     <AgentCard data-testid="run-plan-card" className="grid gap-2 p-4">
       <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
-        <AgentStatusIcon status={runAgentStatus(projection.status)} size={12} />
+        <RunGlyph presence={presence} />
         <span>{tw('planHeading')}</span>
         <span className="ml-auto tabular-nums">
           {tw('planCount', { done, total: plan.items.length })}
@@ -131,7 +135,7 @@ export function RunPlanStrip({
           size={14}
           className={cn('shrink-0 transition-transform', open && 'rotate-90')}
         />
-        <AgentStatusIcon status={runAgentStatus(projection.status)} size={12} />
+        <RunGlyph presence={projectionPresence(projection)} />
         <span className="shrink-0 text-foreground">
           {several ? tm('planCount', { count: planCount }) : tw('planHeading')}
         </span>
@@ -168,10 +172,10 @@ export function RunActivity({
   onOpenArtifact?: (artifactVersionId: string) => void;
 }) {
   const t = useTranslations('RunMonitor');
-  const statusText = useStatusText();
+  const tp = useTranslations('Presence');
   const tools = useMemo(() => executionToolEntries(events as RunEvent[]), [events]);
   const durations = useIntervals(events);
-  const runEnded = TERMINAL_RUN_STATUSES.has(projection.status);
+  const runEnded = ENDED.has(projectionPresence(projection).kind);
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   return (
     <section data-testid="run-activity" aria-label={t('activity')} className="grid gap-4">
@@ -218,9 +222,9 @@ export function RunActivity({
                   .join(' · ')}
               </span>
               <span className="ml-auto inline-flex shrink-0 items-center gap-2">
-                <AgentStatusLabel
-                  status={executionAgentStatus(execution.status)}
-                  label={statusText(execution.status)}
+                <PresenceLabel
+                  presence={executionViewPresence(execution)}
+                  target={`execution:${execution.executionId}`}
                 />
                 {elapsed !== undefined ? (
                   <span className="text-caption text-muted-foreground tabular-nums">
@@ -234,7 +238,7 @@ export function RunActivity({
                 <ExecutionToolRows
                   tools={own}
                   {...(onOpenArtifact ? { onOpenArtifact } : {})}
-                  {...toolState(execution.status, runEnded, statusText)}
+                  {...toolState(execution.status, runEnded, (presence) => tp(presence.labelKey))}
                 />
               </div>
             ) : null}
@@ -252,13 +256,15 @@ export function RunActivity({
 function toolState(
   status: ExecutionStatus,
   runEnded: boolean,
-  statusText: (value: string) => string,
+  name: (presence: Presence) => string,
 ): { activityState?: { status: 'waiting' | 'stopped'; label: string } } {
-  if (status === 'active' && !runEnded) return {};
+  const presence = executionPresence({ status });
+  // Working on its own (no detail): its calls are running.
+  if (presence.kind === 'working' && !presence.detail && !runEnded) return {};
   return {
     activityState: {
-      status: runEnded || TERMINAL_EXECUTION_STATUSES.has(status) ? 'stopped' : 'waiting',
-      label: statusText(status),
+      status: runEnded || ENDED.has(presence.kind) ? 'stopped' : 'waiting',
+      label: name(presence),
     },
   };
 }

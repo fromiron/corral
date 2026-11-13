@@ -159,9 +159,9 @@ test('role and secretary selection survive reopening without more calls', async 
   await page.keyboard.press('Space');
   await expect(secretary).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('Escape');
-  // Narrow, the chosen read as a count, so the badge keeps its width.
+  // Narrow, the chosen read as a count, so the badge keeps its width; its name says who.
   await expect(
-    page.getByRole('button', { name: 'Recipients: 1 person', exact: true }),
+    page.getByRole('button', { name: 'Recipients (1 person): Secretary', exact: true }),
   ).toBeVisible();
   // Escape gave the focus back to the box.
   await expect(page.getByRole('textbox', { name: 'Meeting message', exact: true })).toBeFocused();
@@ -330,7 +330,11 @@ test.describe('active meeting', () => {
       .getByRole('textbox', { name: 'Meeting message', exact: true })
       .fill('Still able to type');
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Stop answering', exact: true }).click();
+    // Something is written: Send keeps its place, and Stop is the activity bar's.
+    await expect(page.getByRole('button', { name: 'Stop answering', exact: true })).toHaveCount(0);
+    const activity = page.getByTestId('activity-bar');
+    await activity.getByRole('button', { name: 'Activity details', exact: true }).click();
+    await activity.getByRole('button', { name: 'Stop', exact: true }).click();
     replies.open();
     await expect
       .poll(async () => (await meeting(page, id)).rounds.every((round) => !round.active))

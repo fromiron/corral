@@ -1,6 +1,6 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { DirectiveView, RunSummary, SessionEntry } from '@corral/core';
-import { CopyTextButton, MessageBody, StatusBadge } from '@corral/react';
+import { CopyTextButton, MessageBody, PresenceBadge, runPresence } from '@corral/react';
 import {
   Button,
   KitChatMessage,
@@ -319,7 +319,7 @@ export function RunCard({
           line above the composer is where a finished run's status shows. A run no request
           names (started elsewhere) is a turn like any other. */}
       <span className="sr-only">
-        <StatusBadge status={run.status} />
+        <PresenceBadge presence={runPresence(run, [], [])} />
       </span>
       <RunMessage
         runId={run.runId}

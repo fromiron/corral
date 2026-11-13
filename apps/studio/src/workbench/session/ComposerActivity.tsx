@@ -329,23 +329,29 @@ export function ComposerActivity({
   // targets. It takes no instruction, and its View opens its execution in the run's record.
   if (run?.live)
     for (const advisor of input.advisors ?? []) {
-      const words =
+      // Its state by the presence's name, as every row's; watching or reviewing beside it.
+      const state = stateOf(advisor.presence, `execution:${advisor.id}`);
+      const doing =
         advisor.review === 'watching'
           ? tp('detail.watching')
           : advisor.review === 'reviewing'
             ? t('reviewing')
-            : tp.has(advisor.presence.labelKey)
-              ? tp(advisor.presence.labelKey)
-              : null;
+            : null;
+      const activity = [
+        doing,
+        advisor.delivered ? t('adviceDelivered', { count: advisor.delivered }) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       roles.push({
         id: advisor.id,
         name: advisor.name,
         ...advisorMark(advisor),
-        ...(words ? { state: { text: words, target: `execution:${advisor.id}` } } : {}),
+        ...(state ? { state } : {}),
         stateShown: true,
-        ...(advisor.delivered
-          ? { activity: t('adviceDelivered', { count: advisor.delivered }) }
-          : {}),
+        // What it does is said beside its state, so the state is not written again.
+        working: Boolean(doing),
+        ...(activity ? { activity } : {}),
         startedAt: toMs(advisor.startedAt),
         target: false,
         ...(onViewRun ? { onShow: () => onViewRun(run.runId, advisor.id) } : {}),

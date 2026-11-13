@@ -44,7 +44,7 @@ test('another team never inherits the previous run', async ({ page, corral }) =>
   await corral.open('/');
   await importTeam(page, 'team-a');
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await importTeam(page, 'team-b');
   await expect(page.getByTestId('run-status')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open execution page' })).toHaveCount(0);
@@ -113,7 +113,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
     oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }),
   ).toContainText('High');
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByTestId('reasoning-summary').first()).toContainText('high');
   const run = corral.server.coordinator.listRuns()[0];
   expect(

@@ -545,23 +545,10 @@
     "retry": "Try again"
   },
   "Status": {
-    "created": "Starting…",
-    "validating": "Validating",
     "running": "Running",
-    "pausing": "Pausing",
-    "paused": "Paused",
-    "awaiting_user": "Waiting for you",
-    "cancelling": "Cancelling",
-    "succeeded": "Succeeded",
     "failed": "Failed",
     "cancelled": "Cancelled",
-    "interrupted": "Interrupted",
     "queued": "Queued",
-    "ready": "Ready",
-    "active": "Active",
-    "waiting_children": "Waiting for sub-agents",
-    "waiting_message": "Waiting for an answer",
-    "waiting_approval": "Waiting for approval",
     "accepted": "Accepted",
     "attached_to_request": "Attached to request",
     "delivered": "Delivered",
@@ -2466,6 +2453,20 @@
     "homeTitle": "What should we work on?"
   },
   "Composer": {
+    "advisor": {
+      "name": "Advisor",
+      "on": "On · {model}",
+      "off": "Off",
+      "failed": "Not saved. {message}",
+      "conflict": "It was changed elsewhere. This is the saved setting.",
+      "lost": "The save was not confirmed. This is the conversation’s setting now.",
+      "unknown": "Not confirmed",
+      "unconfirmed": "The save could not be confirmed.",
+      "recheck": "Check again",
+      "unconfirmedSend": "Whether the advisor is on could not be checked, so nothing was sent.",
+      "unavailable": "Unavailable model",
+      "onOnly": "On"
+    },
     "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
     "viewActiveRun": "View active run",
     "destination": {
@@ -2680,6 +2681,7 @@
   "Refusal": {
     "signin": "The team's model is not connected. Sign in under Settings › Models, or send it with simulated agents.",
     "profile": "The team uses a model profile that is not set up here. Check the model settings or the team's roles.",
+    "advisor": "The advisor’s model could not be prepared.",
     "busy": "Another run is working right now. Queue this request to start it afterwards.",
     "limit": "The request is over this installation's limits (for example, referenced results are too large).",
     "reference": "Something this request refers to no longer exists. Remove that reference and send again.",
@@ -2695,6 +2697,7 @@
     "openTerminal": "Open terminal controls",
     "image": "This model has no confirmed image input support. Remove the image or choose a model that supports images.",
     "capability": "This operation needs a capability that is unavailable in the current environment. Check the diagnostics before trying again.",
+    "chooseAdvisor": "Change or turn off",
     "chooseImageModel": "Choose an image model"
   },
   "Harness": {
@@ -3900,7 +3903,7 @@
     "selectedRunUnordered": "Selected run",
     "rail": "This run",
     "agentsHeading": "Agents",
-    "agents": "{total} agents, {working} working",
+    "agents": "{total} agents{working, plural, =0 {} other {, # working}}",
     "changesHeading": "Changes",
     "activityHeading": "Recent activity",
     "resultsHeading": "Results",
@@ -5306,14 +5309,10 @@
     "summarise": "Ask secretary for a plan",
     "summaryRequest": "Please organise our conversation into meeting minutes and an implementation plan based on the conclusions we have reached. Keep unresolved questions separate from agreed work.",
     "queued": "Waiting message",
-    "queuedHint": "Sent when the current answers finish.",
-    "queuedIdle": "Send this message to continue the conversation.",
     "sendQueued": "Send now",
-    "dropQueued": "Remove",
     "empty": "Bring up a topic",
     "loadFailed": "Could not load the meeting.",
     "retry": "Reload",
-    "editQueued": "Edit queued message",
     "saveQueued": "Save changes",
     "roundStopped": "You stopped the replies. Answers already received remain in the conversation.",
     "modelUnavailable": "Not connected",
@@ -5344,7 +5343,60 @@
       "auto": "Auto",
       "none": "No one",
       "count": "{count, plural, one {# person} other {# people}}",
-      "label": "Recipients: {name}"
+      "label": "Recipients: {name}",
+      "labelNamed": "Recipients ({shown}): {names}"
+    },
+    "meta": {
+      "auto": "Auto",
+      "noReply": "No reply",
+      "skipped": "Skipped"
+    },
+    "selection": {
+      "open": "{label}: how the recipients were chosen",
+      "title": "How the recipients were chosen",
+      "ranking": "Fit for this message",
+      "picked": "Answers",
+      "method": {
+        "explicit": "You chose the recipients.",
+        "mention": "They were called with an @mention.",
+        "address": "The message addressed them by name.",
+        "selector": "The meeting’s selector picked who answers.",
+        "fallback": "The meeting could not score this message, so it picked another way.",
+        "none": "Nobody was asked to reply."
+      },
+      "reason": {
+        "composer_recipients": "You chose the recipients in the composer.",
+        "rebuttal": "You asked the previous round’s participants for a rebuttal.",
+        "saved_recipients": "It went to the recipients saved with the message.",
+        "mention": "You called them with an @mention.",
+        "participant_mention": "Another participant called them with an @mention.",
+        "addressed": "The message addressed them by name.",
+        "top_score": "The meeting’s selector found them the best fit for this message.",
+        "continuity": "They were answering just before, so they carry on.",
+        "no_reply_needed": "The meeting’s selector judged that this message needs no reply.",
+        "reply_target": "The meeting could not score this message, so the participant it replies to answers.",
+        "recent_speaker": "The meeting could not score this message, so the most recent speaker answers.",
+        "rotation": "The meeting could not score this message, so the next participant in turn answers.",
+        "nobody_available": "The meeting could not score this message, and no participant was free to answer.",
+        "analysis_off": "Meeting analysis is off, so every participant allowed to answer does.",
+        "no_recipients": "You sent it to no one."
+      }
+    },
+    "hold": {
+      "heading": "Replies paused",
+      "title": "The participants have been mentioning each other, one reply after another.",
+      "region": "Continue the replies",
+      "continue": "Continue",
+      "continued": "Continued",
+      "refused": "Not continued: {message}"
+    },
+    "continued": "You continued the replies here.",
+    "activity": {
+      "waiting": "{count} waiting to speak",
+      "replies": "{count, plural, one {# reply} other {# replies}}",
+      "failed": "{count} failed",
+      "waitingTurns": "Waiting to speak · {count} turns",
+      "moreTurns": "then {count, plural, one {# more turn} other {# more turns}}"
     }
   },
   "MeetingsDecisions": {
@@ -6201,7 +6253,9 @@
     "detail": {
       "waiting_agents": "Waiting for agents",
       "waiting_reply": "Waiting for a reply",
-      "watching": "Watching"
+      "watching": "Watching",
+      "round_limit": "Round limit reached",
+      "rounds_stalled": "Rounds stalled"
     }
   },
   "Advice": {

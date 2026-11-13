@@ -436,5 +436,5 @@ it('shows a run whose last review was stopped as done: no partial result, no ret
   expect(text).not.toContain(messages.Sessions.retryRequest);
   expect(text).not.toMatch(/partial/i);
   expect(text).not.toContain(messages.Status.cancelled);
-  expect(part(f.container, 'head')?.textContent).toContain(messages.Status.succeeded);
+  expect(part(f.container, 'head')?.textContent).toContain(messages.Presence.state.succeeded);
 });

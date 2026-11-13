@@ -218,7 +218,7 @@ it('draws a waiting approval in the needed-now tray under no heading of its own'
   expect(container.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
   const state = container.querySelectorAll('[data-presence-label="run:run_chat"]');
   expect(state).toHaveLength(1);
-  expect(state[0]?.textContent).toBe(messages.Status.awaiting_user);
+  expect(state[0]?.textContent).toBe(messages.Presence.state.awaiting_user);
   const rest = container.cloneNode(true) as HTMLElement;
   for (const node of rest.querySelectorAll('[data-presence-label]')) node.remove();
   expect(visibleLines(rest)).not.toContain(messages.Approvals.heading);

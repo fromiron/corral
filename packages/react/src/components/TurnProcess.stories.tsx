@@ -335,7 +335,7 @@ export const ToolsAndDelegates: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/^Researcher/)).toBeVisible());
-    await expect(canvas.getByText('Active')).toBeVisible();
+    await expect(canvas.getByText('Working')).toBeVisible();
     await expect(canvas.getByText('Source notes')).toBeVisible();
     const details = canvas.getByRole('button', { name: /^Details of Read/ });
     await userEvent.click(details);

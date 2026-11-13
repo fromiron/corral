@@ -247,7 +247,7 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
     return started.runId as string;
   }, definition);
   await corral.open(`/runs/${runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 15_000 });
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);
 }

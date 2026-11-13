@@ -1422,7 +1422,9 @@ it('says the advisor reviews and how many advice reached their targets; none on 
   const row = advisorRow(view);
   expect(row?.textContent).toContain(messages.Activity.reviewing);
   expect(row?.textContent).toContain('2 pieces of advice delivered');
-  expect(row?.textContent).not.toContain(messages.Presence.state.working);
+  // Its state is the presence's name, as every row's; on screen the review says it, not twice.
+  expect(visibleText(row)).not.toContain(messages.Presence.state.working);
+  expect(row?.querySelector('.sr-only')?.textContent).toBe(messages.Presence.state.working);
 });
 
 it('counts neither on the line nor among the roles working: one role with its advisor is said alone', async () => {
@@ -1592,6 +1594,8 @@ it('keeps a watching advisor’s mark still, by its shape; only a review turns i
   expect(mark('exec_rev')?.getAttribute('class')).not.toContain('animate-spin');
   expect(mark('exec_rev')?.innerHTML).not.toBe(mark('exec_test')?.innerHTML);
   expect(mark('exec_test')?.getAttribute('class')).toContain('animate-spin');
+  // Watching is said beside the state, in the presence's word for it.
+  expect(visibleText(advisorRow(view, 'exec_rev'))).toContain(messages.Presence.detail.watching);
   // Once every role has ended, the line about the last review turns only while it reviews.
   const watchingLast = advisedRun(
     {

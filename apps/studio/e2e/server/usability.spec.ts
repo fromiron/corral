@@ -359,7 +359,7 @@ test('UX-015-04 older results remain reachable after ten runs', async ({ page, c
     // request box's description.
     await expect(
       timeline(page).getByRole('region', { name: `Run #${index + 1}`, exact: true }),
-    ).toContainText('Succeeded');
+    ).toContainText('Completed');
     await expect(request(page)).toHaveAccessibleDescription(
       'Send to: new run in this session · next request',
     );
@@ -418,6 +418,6 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   const final = tray.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
-  await expect(timeline(page).getByText('Succeeded').first()).toBeVisible();
+  await expect(timeline(page).getByText('Completed').first()).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

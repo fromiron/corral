@@ -47,7 +47,7 @@ async function show(dismiss = vi.fn()) {
 it('tells of a finished scheduled run away from Automation', async () => {
   fixture.pathname = '/projects/alpha';
   const dismiss = await show();
-  expect(container.textContent).toContain('Scheduled run: Succeeded');
+  expect(container.textContent).toContain('Scheduled run: Completed');
   expect(dismiss).not.toHaveBeenCalled();
 });
 

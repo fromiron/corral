@@ -5,7 +5,12 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import { executionAgentStatus, executionIntervals, executionToolEntries } from '@corral/react';
+import {
+  executionAgentStatus,
+  executionIntervals,
+  executionToolEntries,
+  usePresenceWord,
+} from '@corral/react';
 import {
   AgentLanes,
   type AgentLanesLabels,
@@ -85,7 +90,7 @@ export function RunTimeChart(props: TimeChartProps) {
 function AgentTimeline({ events, projection, definition, selected, onSelect }: TimeChartProps) {
   const t = useTranslations('RunMonitor');
   const lanesText = useTranslations('RunMonitor.lanes');
-  const status = useTranslations('Status');
+  const status = usePresenceWord();
   const format = useFormatter();
   const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
   // Waiting for the person or paused, the run records nothing new: its axis stops at the last
@@ -149,7 +154,7 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
           const used = [...new Set((tools.get(row.executionId) ?? []).map((tool) => tool.name))];
           const marks = toolMarks(used).slice(0, 3);
           const state = executionAgentStatus(row.status);
-          const statusLabel = status.has(row.status) ? status(row.status) : row.status;
+          const statusLabel = status(row.status);
           const open = live && !TERMINAL_EXECUTION_STATUSES.has(row.status);
           return {
             id: row.executionId,

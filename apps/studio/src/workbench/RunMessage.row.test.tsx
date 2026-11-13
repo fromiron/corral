@@ -207,6 +207,18 @@ it('keeps the same parts from before the record is read to the working run', asy
   expect(part(f.container, 'head')?.textContent).toContain('Run #1');
 });
 
+it('marks its head as the run’s place before its record is read, once, as after', async () => {
+  // The row is on screen from the moment it comes: the activity bar must not say the run's state
+  // for it while its words load.
+  const f = await show(null);
+  const label = () => f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
+  expect(label()).toHaveLength(1);
+  expect(part(f.container, 'head')?.contains(label()[0] ?? null)).toBe(true);
+  await f.set(running());
+  expect(label()).toHaveLength(1);
+  expect(part(f.container, 'head')?.contains(label()[0] ?? null)).toBe(true);
+});
+
 it('the head and tail say nothing to assistive tech on their own', async () => {
   const f = await show(running());
   expect(part(f.container, 'head')?.getAttribute('aria-live')).toBe('off');
@@ -291,7 +303,7 @@ const logName = (...values: string[]) =>
 it('names the head button by its role, state, steps and log, never by its ticking time', async () => {
   const f = await show(running());
   expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
-    logName('writer', messages.Status.running, '1 step'),
+    logName('writer', messages.Presence.state.working, '1 step'),
   );
   expect(toggle(f.container)?.textContent).toMatch(/\d+s/);
   await f.set(failed(running()));
@@ -303,25 +315,28 @@ it('names the head button by its role, state, steps and log, never by its tickin
 // docs/specs/chat-widgets-contract.md §6.3: a failed step is told outside the fold, to assistive
 // tech as well, before the log is opened.
 it.each([
-  ['succeeded', (p: RunProjection) => answered(p)],
-  ['paused', (p: RunProjection) => ({ ...p, status: 'paused' as const })],
-  ['running', (p: RunProjection) => p],
-])('a %s turn with a failed step names the failure on its head button', async (status, as) => {
-  const projection = running();
-  projection.toolCalls.broken = {
-    toolCallId: 'broken',
-    executionId: 'lead',
-    name: 'run_command',
-    status: 'requested',
-    phase: 'failed',
-    reason: 'exit 1',
-  };
-  const f = await show(as(projection));
-  expect(part(f.container, 'head')?.textContent).toContain('1 failed');
-  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
-    logName('writer', messages.Status[status as 'running'], '2 steps', '1 failed'),
-  );
-});
+  ['succeeded', 'succeeded', (p: RunProjection) => answered(p)],
+  ['paused', 'paused', (p: RunProjection) => ({ ...p, status: 'paused' as const })],
+  ['running', 'working', (p: RunProjection) => p],
+] as const)(
+  'a %s turn with a failed step names the failure on its head button',
+  async (_status, kind, as) => {
+    const projection = running();
+    projection.toolCalls.broken = {
+      toolCallId: 'broken',
+      executionId: 'lead',
+      name: 'run_command',
+      status: 'requested',
+      phase: 'failed',
+      reason: 'exit 1',
+    };
+    const f = await show(as(projection));
+    expect(part(f.container, 'head')?.textContent).toContain('1 failed');
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+      logName('writer', messages.Presence.state[kind], '2 steps', '1 failed'),
+    );
+  },
+);
 
 it('a turn with no failed step has no failure in its head button’s name', async () => {
   const f = await show(answered(running()));
@@ -676,7 +691,7 @@ it('waits for the reply with the kit mark alone, and names the step in progress'
   );
   expect(pending()).not.toBeNull();
   expect(visibleWords()).toContain(messages.Turn.tool.read_file);
-  expect(pending()?.textContent).not.toContain(messages.Status.running);
+  expect(pending()?.textContent).not.toContain(messages.Presence.state.working);
   // The first words take its place.
   await act(async () =>
     fixture.store?.setState({
@@ -926,4 +941,116 @@ it('a process the person opened stays open when its row mounts again', async () 
   for (const dispose of cleanup.splice(0)) act(dispose);
   const third = await show(running());
   expect(toggle(third.container)?.getAttribute('aria-expanded')).toBe('false');
+});
+
+// A review loop that runs out of rounds goes on with its last candidate; the run then ends
+// completed, and its head says why in the state's place (presence.md, composer-flow.md rule 3).
+const round = (no: number, outcome: RunProjection['iterations'][string]['outcome']) => ({
+  iterationId: `round_${no}`,
+  loopNodeId: 'review',
+  parentIterationId: null,
+  no,
+  criteriaVersionId: 'criteria',
+  outcome,
+});
+const loopEnded = (projection: RunProjection, outcome: 'cap_reached' | 'stalled' | 'pass') => ({
+  ...answered(projection),
+  loopIterations: { review: ['round_1', 'round_2'] },
+  iterations: { round_1: round(1, 'revise'), round_2: round(2, outcome) },
+});
+const done = messages.Presence.state.succeeded;
+const detail = messages.Presence.detail;
+
+it.each([
+  ['cap_reached', detail.round_limit],
+  ['stalled', detail.rounds_stalled],
+  ['pass', null],
+] as const)(
+  'a run whose review loop ended by %s says so beside its head state and in the head’s name',
+  async (outcome, beside) => {
+    const first = running();
+    const f = await show(first);
+    const head = part(f.container, 'head');
+    await f.set(loopEnded(first, outcome));
+    expect(part(f.container, 'head')).toBe(head);
+    expect(parts(f.container)).toEqual(['head', 'body', 'tail']);
+    const labels = f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
+    expect(labels).toHaveLength(1);
+    expect(head?.contains(labels[0] ?? null)).toBe(true);
+    // The label holds the state's name alone; the detail stands beside it.
+    expect(labels[0]?.textContent).toBe(done);
+    const said = beside ? `${done} · ${beside}` : done;
+    expect(head?.textContent).toContain(said);
+    if (!beside) expect(head?.textContent).not.toMatch(/Round limit|Rounds stalled/);
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(logName('writer', said, '1 step'));
+  },
+);
+
+it('a failed run says nothing of the loop that ran out', async () => {
+  const first = running();
+  const f = await show(first);
+  await f.set({ ...loopEnded(first, 'cap_reached'), ...failed(first), status: 'failed' });
+  expect(part(f.container, 'head')?.textContent).not.toContain(detail.round_limit);
+  expect(toggle(f.container)?.getAttribute('aria-label')).not.toContain(detail.round_limit);
+});
+
+// A role's row names its state once by its execution, with what it waits for beside it.
+it.each([
+  ['waiting_children', false, detail.waiting_agents],
+  ['waiting_message', false, detail.waiting_reply],
+] as const)(
+  'a role that is %s (advisor: %s) says so beside its state',
+  async (status, advisor, said) => {
+    const projection = running();
+    projection.executions.helper = execution('helper', {
+      status,
+      ...(advisor ? { advisor: true as const } : {}),
+    });
+    projection.executionOrder = ['lead', 'helper'];
+    const f = await show(projection);
+    const label = f.container.querySelector('[data-presence-label="execution:helper"]');
+    expect(label?.textContent).toBe(messages.Presence.state.working);
+    expect(part(f.container, 'role:helper')?.textContent).toContain(
+      `${messages.Presence.state.working} · ${said}`,
+    );
+  },
+);
+
+// An advisor watching is no role of the turn (features/advisor.md 보이는 곳): its row, with
+// "Watching" beside its state, is the activity bar's (ComposerActivity.test.tsx).
+it('a watching advisor has no role row in the run row', async () => {
+  const projection = running();
+  projection.executions.helper = execution('helper', {
+    status: 'waiting_message',
+    advisor: true as const,
+  });
+  projection.executionOrder = ['lead', 'helper'];
+  const f = await show(projection);
+  expect(part(f.container, 'role:helper')).toBeNull();
+  expect(f.container.querySelector('[data-presence-label="execution:helper"]')).toBeNull();
+});
+
+it.each([
+  ['failed', (p: RunProjection) => failed(p), 'text-danger'],
+  ['paused', (p: RunProjection) => ({ ...p, status: 'paused' as const }), 'text-warning'],
+  ['succeeded', (p: RunProjection) => answered(p), null],
+] as const)('a %s head state takes its tone’s colour', async (_name, as, colour) => {
+  const f = await show(as(running()));
+  const word = f.container.querySelector(`[data-presence-label="run:${RUN}"]`);
+  if (colour) expect(word?.classList.contains(colour)).toBe(true);
+  else expect(word?.className ?? '').not.toMatch(/text-(danger|warning|success)/);
+});
+
+it('the log names the lead’s failure by its execution while the run goes on', async () => {
+  const projection = running();
+  projection.executions.lead = execution('lead', { status: 'failed', error: 'Broke' });
+  projection.executions.helper = execution('helper');
+  projection.executionOrder = ['lead', 'helper'];
+  const f = await show(projection);
+  await act(async () => toggle(f.container)?.click());
+  const team = f.container.querySelector('[data-testid="team-activity"]');
+  expect(team).not.toBeNull();
+  const label = team?.querySelector('[data-presence-label]');
+  expect(label?.getAttribute('data-presence-label')).toBe('execution:lead');
+  expect(f.container.querySelectorAll('[data-presence-label="execution:lead"]')).toHaveLength(1);
 });

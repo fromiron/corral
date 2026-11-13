@@ -918,7 +918,7 @@ for (const [choice, label, command] of [
     expect(
       [...(detail()?.querySelectorAll('h1, h2, h3, h4') ?? [])].map((h) => h.textContent),
     ).toEqual(['Fix login']);
-    expect(detail()?.textContent).not.toContain(en.Status.awaiting_user);
+    expect(detail()?.textContent).not.toContain(en.Presence.state.awaiting_user);
     const buttonsOf = () => [...(card?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
     await press(buttonsOf().find((button) => button.textContent === label));
     // One command, sent at once; both answers wait for its receipt and the item stays.

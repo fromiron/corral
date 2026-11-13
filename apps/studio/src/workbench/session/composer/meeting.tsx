@@ -18,15 +18,15 @@ import {
   DialogPanel,
   DialogPopup,
   DialogTitle,
-  fontWeights,
   Menu,
   MenuItem,
   MenuPopup,
   MenuTrigger,
+  type QueuedMessage as QueuedCard,
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { FileText, ListChecks, Plus, Square, X } from '@corral/react/icons';
+import { FileText, ListChecks, Plus, X } from '@corral/react/icons';
 import {
   type Ref,
   useEffect,
@@ -41,6 +41,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { newCommandId } from '../../../sessionActions.ts';
 import { ComposerSurface } from '../../ComposerSurface.tsx';
+import { MeetingActivity } from '../../MeetingActivity.tsx';
 import { MeetingEvidencePicker } from '../../MeetingEvidence.tsx';
 import { usePreferences } from '../../preferences.ts';
 import {
@@ -49,7 +50,8 @@ import {
   readComposerDraft,
   writeComposerDraft,
 } from '../../sessionDraft.ts';
-import { TextAttachmentList } from '../../TextAttachments.tsx';
+import { QueueLine } from '../ComposerQueue.tsx';
+import { useSettledAppearance } from '../settle.ts';
 import { ComposerCard, type SendTarget } from './ComposerCard.tsx';
 import { backToInput, menuOpenChange } from './focus.ts';
 import { RecipientChip, type Recipients } from './SendControls.tsx';
@@ -58,7 +60,8 @@ import { RecipientChip, type Recipients } from './SendControls.tsx';
 // sends to the meeting, and the badge in the target's place chooses the recipients — whoever
 // the meeting picks, the chosen participants, or no one (posted, nobody asked to reply;
 // workbench.md "회의"). Of the conversation's tools a meeting keeps what it supports: evidence
-// from the add menu, the waiting message, Stop and the secretary's plan beside Send. `/` and
+// from the add menu, the waiting message, Stop in Send's place and the activity bar, and the
+// secretary's plan beside Send. `/` and
 // `@` are text here; `@name` in the text is a mention the meeting reads.
 
 /** An answer that is not a reply. */
@@ -81,7 +84,8 @@ export interface MeetingComposerProps {
   view: MeetingView;
   mode: 'mock' | 'live';
   error: string;
-  onStop?: (() => void) | undefined;
+  /** Stops the replies running and waiting; absent while nothing runs. */
+  onStop?: (() => Promise<unknown> | undefined) | undefined;
   send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
   /** The person sent. The conversation follows the end again. */
   onSent?: () => void;
@@ -255,6 +259,26 @@ export function MeetingSend({
   const requestPlan = () =>
     void dispatch({ kind: 'message', text: t('summaryRequest'), mentions: [SECRETARY_ID] });
   const held = sending || attachmentLoading;
+  // One stop at a time: pressed again while it is on its way, it sends nothing.
+  const [stopping, setStopping] = useState(false);
+  const stoppingNow = useRef(false);
+  const stop = onStop
+    ? () => {
+        if (stoppingNow.current) return;
+        stoppingNow.current = true;
+        setStopping(true);
+        const pressed = document.activeElement;
+        void Promise.resolve(onStop()).finally(() => {
+          stoppingNow.current = false;
+          setStopping(false);
+          // Stopped: the focus goes to the message box, unless the person moved it meanwhile.
+          const now = document.activeElement;
+          if (!now || now === document.body || now === pressed) input.current?.focus();
+        });
+      }
+    : undefined;
+  // Stop that just took Send's place is not pressed by a second press meant for Send.
+  const stopSettled = useSettledAppearance(Boolean(stop) && !text.trim());
   const toInput = () => backToInput(input);
   const meeting: SendTarget = {
     badge: (
@@ -283,30 +307,6 @@ export function MeetingSend({
   };
   return (
     <ComposerSurface.Shell>
-      {view.queued ? (
-        <div
-          role="status"
-          className="mb-2 flex flex-col gap-1 rounded-lg fill-control p-2 text-caption"
-        >
-          <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('queued')}</span>
-          <QueuedMessage
-            key={view.queued.commandId}
-            queued={view.queued}
-            config={view.config}
-            projectId={projectId}
-            edit={editQueued}
-          />
-          <span className="text-muted-foreground">
-            {active ? t('queuedHint') : t('queuedIdle')}
-          </span>
-          <div className="flex gap-2">
-            {active ? null : <Button onClick={() => void sendQueued()}>{t('sendQueued')}</Button>}
-            <Button variant="tertiary" onClick={() => void dropQueued()}>
-              {t('dropQueued')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
       <ComposerCard
         label={t('message')}
         placeholder={t('placeholder')}
@@ -320,6 +320,33 @@ export function MeetingSend({
         sendLabel={t('send')}
         target={meeting}
         menus={null}
+        // One raised surface, as a conversation's: the activity bar, the waiting message, the input.
+        activity={
+          <MeetingActivity
+            view={view}
+            name={(id) => nameOf(view.config, id, t('secretary'))}
+            onStop={stop}
+            stopping={stopping}
+          />
+        }
+        above={
+          view.queued ? (
+            <QueuedMessage
+              key={view.queued.commandId}
+              queued={view.queued}
+              config={view.config}
+              projectId={projectId}
+              active={active}
+              edit={editQueued}
+              send={() => void sendQueued()}
+              drop={() => void dropQueued()}
+            />
+          ) : null
+        }
+        // While nothing is written and replies run, Send's place stops them, as a conversation's.
+        stop={
+          stop ? { label: t('stopRound'), disabled: stopping || !stopSettled, onStop: stop } : null
+        }
         notices={
           summaryFailed || attachments.length ? (
             <>
@@ -357,59 +384,30 @@ export function MeetingSend({
             </MenuPopup>
           </Menu>
         }
-        // Stop and the secretary's plan come before the keys, as a conversation's request
-        // settings do: the key hint stays right beside Send.
-        // Narrow, both are icons with their names, and Stop's place is kept while nothing answers.
+        // The secretary's plan comes before the keys, as a conversation's request settings do:
+        // the key hint stays right beside Send. Narrow, it is an icon with its name.
         settings={
           compact ? (
-            <>
-              {onStop ? (
-                <Tooltip content={t('stopRound')}>
-                  <Button
-                    size="icon-compact"
-                    variant="tertiary"
-                    aria-label={t('stopRound')}
-                    onClick={onStop}
-                  >
-                    <Square aria-hidden />
-                  </Button>
-                </Tooltip>
-              ) : (
-                <span
-                  aria-hidden="true"
-                  data-slot="meeting-stop-place"
-                  className="size-7 shrink-0"
-                />
-              )}
-              <Tooltip content={t('summarise')}>
-                <Button
-                  size="icon-compact"
-                  variant="ghost"
-                  aria-label={t('summarise')}
-                  disabled={held || view.rounds.length === 0}
-                  onClick={requestPlan}
-                >
-                  <ListChecks aria-hidden />
-                </Button>
-              </Tooltip>
-            </>
-          ) : (
-            <>
-              {onStop ? (
-                <Button size="compact" variant="tertiary" onClick={onStop}>
-                  <Square size={12} aria-hidden />
-                  {t('stopRound')}
-                </Button>
-              ) : null}
+            <Tooltip content={t('summarise')}>
               <Button
-                size="compact"
+                size="icon-compact"
                 variant="ghost"
+                aria-label={t('summarise')}
                 disabled={held || view.rounds.length === 0}
                 onClick={requestPlan}
               >
-                {t('summarise')}
+                <ListChecks aria-hidden />
               </Button>
-            </>
+            </Tooltip>
+          ) : (
+            <Button
+              size="compact"
+              variant="ghost"
+              disabled={held || view.rounds.length === 0}
+              onClick={requestPlan}
+            >
+              {t('summarise')}
+            </Button>
           )
         }
       />
@@ -488,27 +486,103 @@ function EvidenceChips({
   );
 }
 
-/** A message an earlier version left waiting: edited and sent as it was. */
+/**
+ * A message an earlier version left waiting, in the conversation's queue line: sent now while
+ * nothing answers, edited in place (keeping its command), or removed.
+ */
 function QueuedMessage({
   queued,
   config,
   projectId,
+  active,
   edit,
+  send,
+  drop,
+}: {
+  queued: QueuedMeetingMessage;
+  config: MeetingConfig;
+  projectId: string;
+  active: boolean;
+  edit(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
+  send(): void;
+  drop(): void;
+}) {
+  const t = useTranslations('Meetings');
+  const [editing, setEditing] = useState(false);
+  const identity = [
+    queued.commandId,
+    queued.text,
+    ...(queued.attachments ?? []).map((item) => item.sha256),
+  ].join('\u0000');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rebuilt only when the message changes
+  const items = useMemo<QueuedCard[]>(
+    () => [
+      {
+        id: queued.commandId,
+        text: queued.text,
+        files: (queued.attachments ?? []).map(
+          (item) => new File([item.text], item.name, { type: item.mime }),
+        ),
+      },
+    ],
+    [identity],
+  );
+  if (editing)
+    return (
+      <QueuedMessageEditor
+        queued={queued}
+        config={config}
+        projectId={projectId}
+        edit={edit}
+        onDone={() => setEditing(false)}
+      />
+    );
+  const names = queued.mentions.map((id) => nameOf(config, id, t('secretary'))).join(', ');
+  return (
+    <QueueLine
+      items={items}
+      onEdit={() => setEditing(true)}
+      onRemove={drop}
+      renderActions={() => (
+        <>
+          {names ? (
+            <span className="min-w-0 truncate text-caption text-muted-foreground" title={names}>
+              {t('to', { names })}
+            </span>
+          ) : null}
+          {active ? null : (
+            <Button variant="ghost" onClick={send}>
+              {t('sendQueued')}
+            </Button>
+          )}
+        </>
+      )}
+    />
+  );
+}
+
+/** The waiting message, edited where it stands: its recipients, words and evidence. */
+function QueuedMessageEditor({
+  queued,
+  config,
+  projectId,
+  edit,
+  onDone,
 }: {
   queued: QueuedMeetingMessage;
   config: MeetingConfig;
   projectId: string;
   edit(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
+  onDone(): void;
 }) {
   const t = useTranslations('Meetings');
   const [text, setText] = useState(queued.text);
   const [mentions, setMentions] = useState(queued.mentions);
   const [attachments, setAttachments] = useState(queued.attachments ?? []);
   const [attachmentLoading, setAttachmentLoading] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  return editing ? (
-    <div className="flex flex-col gap-2">
+  return (
+    <div className="mx-auto mb-2 flex w-full max-w-(--chat-content-max-width) flex-col gap-2 rounded-lg fill-control p-2">
       {/* The same recipients as the composer's; a waiting message has no No one. */}
       <div className="flex">
         <RecipientChip
@@ -548,7 +622,7 @@ function QueuedMessage({
                 mentions,
                 ...(attachments.length || queued.attachments ? { attachments } : {}),
               });
-              if (result?.ok) setEditing(false);
+              if (result?.ok) onDone();
             } finally {
               setSaving(false);
             }
@@ -556,35 +630,10 @@ function QueuedMessage({
         >
           {t('saveQueued')}
         </Button>
-        <Button variant="tertiary" disabled={saving} onClick={() => setEditing(false)}>
+        <Button variant="tertiary" disabled={saving} onClick={onDone}>
           {t('cancel')}
         </Button>
       </div>
     </div>
-  ) : (
-    <>
-      <p className="whitespace-pre-wrap wrap-anywhere">{queued.text}</p>
-      {queued.mentions.length ? (
-        <p>
-          {t('to', {
-            names: queued.mentions.map((id) => nameOf(config, id, t('secretary'))).join(', '),
-          })}
-        </p>
-      ) : null}
-      {queued.attachments?.length ? <TextAttachmentList attachments={queued.attachments} /> : null}
-      <div>
-        <Button
-          variant="tertiary"
-          onClick={() => {
-            setText(queued.text);
-            setMentions(queued.mentions);
-            setAttachments(queued.attachments ?? []);
-            setEditing(true);
-          }}
-        >
-          {t('editQueued')}
-        </Button>
-      </div>
-    </>
   );
 }

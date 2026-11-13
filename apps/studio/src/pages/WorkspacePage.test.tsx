@@ -775,7 +775,7 @@ it('says on each row only what its group does not', async () => {
   const oneRun = '1 run';
   // Needs attention: why it is there. A session without a run never says it is empty.
   expect(row('A')?.textContent).toMatch(
-    rowText('Answer the question', messages.Status.awaiting_user, oneRun),
+    rowText('Answer the question', messages.Presence.state.awaiting_user, oneRun),
   );
   expect(row('F')?.textContent).toMatch(
     rowText('Fix the upload', messages.Inbox.kind.uncertain_write),
@@ -880,7 +880,12 @@ it('says Checks passed first on a row whose latest check passed with nothing wri
   );
   // Ahead of what the group puts on the row.
   expect(rowOf(container, 'A')?.textContent).toMatch(
-    rowText('Answer the question', fact.checks_passed, messages.Status.awaiting_user, '1 run'),
+    rowText(
+      'Answer the question',
+      fact.checks_passed,
+      messages.Presence.state.awaiting_user,
+      '1 run',
+    ),
   );
 });
 

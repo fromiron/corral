@@ -317,6 +317,11 @@ export function RecipientChip({
       : compact || chosen.length > NAMES_SHOWN
         ? t('recipients.count', { count: chosen.length })
         : chosen.map(name).join(', ');
+  // A count still names whom it counts for assistive tech, after the words it shows.
+  const label =
+    typeof value !== 'string' && (compact || chosen.length > NAMES_SHOWN)
+      ? t('recipients.labelNamed', { shown, names: chosen.map(name).join(', ') })
+      : t('recipients.label', { name: shown });
   const tick = (id: string) => {
     const next = chosen.includes(id)
       ? chosen.filter((item) => item !== id)
@@ -330,7 +335,7 @@ export function RecipientChip({
       id={id}
       data-slot="composer-target"
       disabled={disabled}
-      aria-label={t('recipients.label', { name: shown })}
+      aria-label={label}
       className={BADGE_TRIGGER}
     >
       <TargetBadge label={shown} choosable />

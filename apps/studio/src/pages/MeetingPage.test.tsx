@@ -3,7 +3,7 @@ import type { MeetingRoundRequest, MeetingView } from '@corral/contracts';
 import { createTextAttachment, type WorkSession } from '@corral/core';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const translate = vi.hoisted(() => (key: string) => key);
 const services = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -51,7 +51,8 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: any) => <a href="#run">{children}</a>,
   useRouter: () => ({ invalidate: async () => {} }),
 }));
-vi.mock('@corral/react', () => ({
+vi.mock('@corral/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@corral/react')>()),
   SafeMarkdown: ({ text }: any) => <p>{text}</p>,
   FailureNotice: ({ message }: any) => <p data-testid="provider-failure">{message}</p>,
   CopyTextButton: ({ text }: any) => (
@@ -383,7 +384,7 @@ it('shows each answer in participant order and sends a conversational follow-up 
   );
 });
 
-it('a participant waiting for its turn is shown without a failed response or Run link', async () => {
+it('a participant waiting for its turn has no row in the timeline: the activity bar says it', async () => {
   const current = view();
   current.rounds[0]!.active = true;
   current.rounds[0]!.answers[0] = answer('p1', 'running');
@@ -394,10 +395,13 @@ it('a participant waiting for its turn is shown without a failed response or Run
     usage: null,
   };
   const f = await mount(current);
-  const waiting = f.container.querySelector('article[aria-label="Builder"]')!;
-  expect(waiting.textContent).toContain('status.waiting');
-  expect(waiting.querySelector('.text-danger')).toBeNull();
-  expect(waiting.querySelector('a')).toBeNull();
+  expect(f.container.querySelector('article[aria-label="Builder"]')).toBeNull();
+  expect(f.container.querySelector('[data-chat-item="round_1:p2"]')).toBeNull();
+  // The running answer's row is there; the bar counts the one waiting.
+  expect(f.container.querySelector('article[aria-label="Architect"]')).not.toBeNull();
+  expect(f.container.querySelector('[data-activity-bar]')?.textContent).toContain(
+    'activity.waiting',
+  );
 });
 
 it('exposes individual chat messages without a work panel or round controls', async () => {
@@ -540,7 +544,10 @@ it('a running round can be stopped and a waiting message is shown, sendable only
   expect(f.container.textContent).toContain('next question');
   await act(async () => f.button('stopRound')?.click());
   expect(f.meetings.stop).toHaveBeenCalledWith('session_1', 'round_1');
-  await act(async () => f.button('dropQueued')?.click());
+  // The conversation's queue line: the waiting message is a card of the kit's queue stack.
+  expect(f.button('removeQueuedMessage')).toBeDefined();
+  expect(f.button('editQueuedMessage')).toBeDefined();
+  await act(async () => f.button('removeQueuedMessage')?.click());
   expect(f.meetings.dropQueued).toHaveBeenCalledWith('session_1');
 });
 
@@ -575,8 +582,8 @@ it('active replies and a legacy draft never block new messages; editing preserve
   await act(async () => f.button('send')?.click());
   expect(f.meetings.send).toHaveBeenCalledTimes(2);
   await f.type('Keep my next draft');
-  expect(f.button('editQueued')).toBeDefined();
-  await act(async () => f.button('editQueued')?.click());
+  expect(f.button('editQueuedMessage')).toBeDefined();
+  await act(async () => f.button('editQueuedMessage')?.click());
   const queuedBox = f.container.querySelector<HTMLTextAreaElement>(
     'textarea[aria-label="queued"]',
   )!;
@@ -710,6 +717,18 @@ it('names the reviewed minutes once, where the secretary posted them, and not in
   expect(f.button('summarise')?.closest('[data-testid="chat-composer"]')).toBe(composer);
 });
 
+// features/advisor.md "두는 곳" (대화): the advisor is a conversation's setting; a meeting's composer
+// draws no advisor control.
+it('draws no advisor control in the meeting composer', async () => {
+  const f = await mount(view());
+  const composer = must(
+    f.container.querySelector<HTMLElement>('[data-testid="chat-composer"]'),
+    'the composer',
+  );
+  expect(composer.querySelector('[data-slot="composer-shell"]')).not.toBeNull();
+  expect(document.querySelector('[data-slot="composer-advisor"]')).toBeNull();
+});
+
 it('reads an answer as prose under its participant, and the person’s message as a sent bubble', async () => {
   const f = await mount(view());
   const architect = must(
@@ -744,13 +763,16 @@ it('a late refresh cannot replace a newer round view', async () => {
   f.meetings.view.mockResolvedValueOnce(
     view({ revision: 3, rounds: [{ ...view().rounds[0]!, message: 'Latest question' }] }),
   );
+  // Stop, from Send's place while nothing is written: the meeting is read after it, slowly.
   await act(async () => {
     f.button('stopRound')?.click();
   });
-  await act(async () => f.button('stopRound')?.click());
-  expect(f.container.textContent).toContain('Latest question');
+  // A message sent meanwhile reads it again, and that answer comes first.
+  await f.type('Latest question');
+  await act(async () => f.button('send')?.click());
+  expect(f.container.querySelector('[data-chat-item]')?.textContent).toContain('Latest question');
   await act(async () => finish(current));
-  expect(f.container.textContent).toContain('Latest question');
+  expect(f.container.querySelector('[data-chat-item]')?.textContent).toContain('Latest question');
 });
 
 it('slow polling waits for the pending response before requesting another', async () => {
@@ -1343,12 +1365,9 @@ it('clicking a participant puts an @mention at the caret without sending', async
   expect(f.meetings.send).not.toHaveBeenCalled();
 });
 
-it('the participant row shows who is answering, waiting, failed or idle', async () => {
+it('the participant row names everyone and says nothing of answering, waiting or failing', async () => {
   const idle = await mount(view());
-  expect(participant('p1')?.dataset.state).toBe('idle');
-  expect(participant('p2')?.dataset.state).toBe('failed');
-  expect(participant('p2')?.textContent).toContain('status.failed');
-  expect(participant('secretary')?.dataset.state).toBe('idle');
+  expect(participant('p2')?.textContent).not.toContain('status.failed');
   await idle.hide();
   await mount(
     view({
@@ -1364,28 +1383,10 @@ it('the participant row shows who is answering, waiting, failed or idle', async 
       ],
     }),
   );
-  expect(participant('p1')?.dataset.state).toBe('answering');
-  expect(participant('p1')?.textContent).toContain('status.running');
-  expect(participant('p2')?.dataset.state).toBe('waiting');
-  expect(participant('p2')?.textContent).toContain('status.waiting');
-});
-
-it('a participant who answers after a failure is no longer shown as failed', async () => {
-  await mount(
-    view({
-      rounds: [
-        { ...firstRound(), order: 0, answers: [{ ...answer('p2', 'failed'), order: 1 }] },
-        {
-          ...firstRound(),
-          roundId: 'round_2',
-          commandId: 'c2',
-          order: 2,
-          answers: [{ ...answer('p2', 'answered'), order: 3 }],
-        },
-      ],
-    }),
-  );
-  expect(participant('p2')?.dataset.state).toBe('idle');
+  for (const id of ['p1', 'p2', 'secretary']) {
+    expect(participant(id)?.textContent, id).not.toMatch(/status\./);
+    expect(participant(id)?.hasAttribute('data-state'), id).toBe(false);
+  }
 });
 
 it('Stop ends the answering and waiting turns through the meeting command while Send stays available', async () => {
@@ -1406,10 +1407,102 @@ it('Stop ends the answering and waiting turns through the meeting command while 
   );
   await f.type('One more thing');
   expect(f.button('send')?.hasAttribute('disabled')).toBe(false);
-  await act(async () => f.button('stopRound')?.click());
+  // Something is written: Send keeps its place, and Stop is the activity bar's.
+  expect(f.button('stopRound')).toBeUndefined();
+  await act(async () => f.button('details')?.click());
+  let finish: (value: { ok: boolean; outcome: string }) => void = () => {};
+  f.meetings.stop.mockImplementationOnce(
+    () =>
+      new Promise<{ ok: boolean; outcome: string }>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => f.button('stop')?.click());
+  // On its way: not sent again.
+  expect(f.button('stop')?.hasAttribute('disabled')).toBe(true);
+  await act(async () => f.button('stop')?.click());
+  await act(async () => finish({ ok: true, outcome: 'updated' }));
   expect(f.meetings.stop).toHaveBeenCalledExactlyOnceWith('session_1', 'round_1');
   expect(f.meetings.send).not.toHaveBeenCalled();
   expect(f.box.value).toBe('One more thing');
+});
+
+describe('Stop that just took Send’s place', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const stopPlace = (f: { container: HTMLElement }) =>
+    f.container.querySelector<HTMLButtonElement>('[data-testid="composer-stop"]');
+
+  for (const reduced of [false, true])
+    it(`is not pressed by a press meant for Send for 0.6 s${reduced ? ', reduced motion' : ''}`, async () => {
+      const f = await mount(view());
+      if (reduced) {
+        const media = window.matchMedia;
+        vi.stubGlobal('matchMedia', (query: string) =>
+          query.includes('prefers-reduced-motion')
+            ? { matches: true, media: query, addEventListener() {}, removeEventListener() {} }
+            : media(query),
+        );
+      }
+      // Sent: the meeting now answers, so Send's place, with nothing written, is Stop.
+      f.meetings.view.mockResolvedValue(
+        view({ rounds: [{ ...firstRound(), active: true, answers: [answer('p1', 'running')] }] }),
+      );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await f.type('Ship it today?');
+      await act(async () => f.button('send')?.click());
+      await act(async () => {});
+      const place = must(stopPlace(f), 'Stop in Send’s place');
+      // The second press of a double click, and presses a moment later: nothing stops.
+      for (const wait of [0, 300, 150, 100]) {
+        await act(async () => vi.advanceTimersByTime(wait));
+        expect(stopPlace(f)?.disabled).toBe(true);
+        await act(async () => stopPlace(f)?.click());
+      }
+      expect(f.meetings.stop).not.toHaveBeenCalled();
+      // From 0.6 s on, Stop.
+      await act(async () => vi.advanceTimersByTime(60));
+      expect(place.isConnected && stopPlace(f)?.disabled).toBe(false);
+      await act(async () => stopPlace(f)?.click());
+      expect(f.meetings.stop).toHaveBeenCalledExactlyOnceWith('session_1', 'round_1');
+    });
+
+  it('while a stop is on its way, is not pressable', async () => {
+    const f = await mount(
+      view({ rounds: [{ ...firstRound(), active: true, answers: [answer('p1', 'running')] }] }),
+    );
+    let finish: (value: { ok: boolean; outcome: string }) => void = () => {};
+    f.meetings.stop.mockImplementationOnce(
+      () =>
+        new Promise<{ ok: boolean; outcome: string }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await act(async () => stopPlace(f)?.click());
+    expect(stopPlace(f)?.disabled).toBe(true);
+    await act(async () => finish({ ok: true, outcome: 'updated' }));
+  });
+
+  it('once stopped, the focus goes to the message box, from Send’s place or the bar', async () => {
+    const answering = view({
+      rounds: [{ ...firstRound(), active: true, answers: [answer('p1', 'running')] }],
+    });
+    const f = await mount(answering);
+    // Pressed by keys: the browser keeps the focus on it until it leaves or is disabled.
+    const place = must(stopPlace(f), 'Stop in Send’s place');
+    place.focus();
+    await act(async () => place.click());
+    await act(async () => {});
+    expect(document.activeElement).toBe(f.box);
+    // The bar's Stop.
+    await act(async () => f.button('details')?.click());
+    const bar = must(f.button('stop'), 'the bar’s Stop');
+    bar.focus();
+    await act(async () => bar.click());
+    await act(async () => {});
+    expect(document.activeElement).toBe(f.box);
+  });
 });
 
 it('renames and pins a meeting with a revision read just before the change', async () => {
@@ -1516,7 +1609,7 @@ it('a waiting message is edited for Auto or names, never for no one', async () =
       rebuttal: null,
     }),
   );
-  await act(async () => f.button('editQueued')?.click());
+  await act(async () => f.button('editQueuedMessage')?.click());
   const editor = must(
     f.container
       .querySelector<HTMLTextAreaElement>('textarea[aria-label="queued"]')
@@ -1639,9 +1732,8 @@ it('a send follows the end of the conversation again, and Stop is offered only w
 
 it('on a narrow tool line the tools keep one width whatever the meeting is doing', async () => {
   const idle = await mount(view(), {}, { compact: true });
-  // Nobody answers: Stop's place is kept, empty. The plan request is an icon with its name.
+  // Nobody answers: no Stop. The plan request is an icon with its name.
   expect(idle.button('stopRound')).toBeUndefined();
-  expect(idle.container.querySelector('[data-slot="meeting-stop-place"]')).not.toBeNull();
   const plan = must(idle.button('summarise'), 'the plan request');
   expect(plan.textContent?.trim()).toBe('');
   // A chosen name reads as a count there, so the badge does not grow with names.
@@ -1649,6 +1741,8 @@ it('on a narrow tool line the tools keep one width whatever the meeting is doing
   await idle.closeMenu();
   expect(idle.recipients()?.textContent).toContain('recipients.count');
   expect(idle.recipients()?.textContent).not.toContain('Builder');
+  // Its name says whom, not only how many.
+  expect(idle.recipients()?.getAttribute('aria-label')).toBe('recipients.labelNamed');
   expect(idle.recipients()?.closest('[data-slot="composer-target-place"]')).not.toBeNull();
   await idle.hide();
   const answering = await mount(
@@ -1656,9 +1750,9 @@ it('on a narrow tool line the tools keep one width whatever the meeting is doing
     {},
     { compact: true },
   );
+  // Stop takes Send's place, as a conversation's: nothing on the tool line changes width.
   const stop = must(answering.button('stopRound'), 'Stop');
-  expect(stop.textContent?.trim()).toBe('');
-  expect(answering.container.querySelector('[data-slot="meeting-stop-place"]')).toBeNull();
+  expect(stop.getAttribute('data-testid')).toBe('composer-stop');
   await act(async () => stop.click());
   expect(answering.meetings.stop).toHaveBeenCalledWith('session_1', 'round_1');
 });
@@ -1697,4 +1791,23 @@ it('a recipients menu opened again before the focus comes back stays open, and t
   expect(taken).toBe(false);
   expect(document.activeElement).not.toBe(f.box);
   await f.closeMenu();
+});
+
+it('an earlier version’s waiting message stands in the conversation’s queue line, sent now only when idle', async () => {
+  const waiting = {
+    commandId: 'queued_1',
+    mode: 'mock' as const,
+    text: 'Left over',
+    mentions: ['p2'],
+  };
+  const idle = await mount(view({ queued: waiting, rebuttal: null }));
+  const card = must(idle.button('editQueuedMessage')?.closest('section'), 'the queue line');
+  expect(card.getAttribute('aria-label')).toBe('queueHeading');
+  expect(card.textContent).toContain('Left over');
+  // Whom it is for, on its card; and no line of explanation under it.
+  expect(card.textContent).toContain('to');
+  expect(idle.container.textContent).not.toContain('queuedHint');
+  expect(idle.container.textContent).not.toContain('queuedIdle');
+  await act(async () => idle.button('sendQueued')?.click());
+  expect(idle.meetings.sendQueued).toHaveBeenCalledWith('session_1');
 });

@@ -1,6 +1,6 @@
 import type { RunEvent } from '@corral/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpSseTransport, openSession } from '../src/index.ts';
+import { HttpSseTransport, MeetingsApi, openSession } from '../src/index.ts';
 
 const event = (runSeq: number): RunEvent => ({
   schemaVersion: '0.1',
@@ -173,5 +173,40 @@ describe('HTTP boundaries and replay', () => {
     expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(10000);
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a held meeting chain', () => {
+  it('continues with the command it was given, and a refusal says why', async () => {
+    const requests: { path: string; method: string; body: unknown }[] = [];
+    let refuse = false;
+    const fetcher: typeof fetch = async (input, init) => {
+      const path = String(input);
+      if (path.endsWith('/session')) return Response.json({ ok: true, csrfToken: 'csrf-test' });
+      requests.push({
+        path,
+        method: init?.method ?? 'GET',
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return refuse
+        ? Response.json(
+            { error: { code: 'RUN_ALREADY_ACTIVE', message: 'A reply is starting.' } },
+            { status: 409 },
+          )
+        : Response.json({ ok: true, outcome: 'started', roundId: 'round_9' });
+    };
+    const meetings = new MeetingsApi({ baseUrl: 'http://localhost', fetch: fetcher });
+    await expect(meetings.continueChain('session 1', { commandId: 'continue_1' })).resolves.toEqual(
+      { ok: true, outcome: 'started', roundId: 'round_9' },
+    );
+    expect(requests.at(-1)).toEqual({
+      path: 'http://localhost/api/v1/sessions/session%201/meeting/continue',
+      method: 'POST',
+      body: { commandId: 'continue_1' },
+    });
+    refuse = true;
+    await expect(meetings.continueChain('session 1', { commandId: 'continue_1' })).resolves.toEqual(
+      { ok: false, error: 'busy', message: 'A reply is starting.' },
+    );
   });
 });
