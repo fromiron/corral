@@ -170,4 +170,33 @@ describe('RunView execution tree', () => {
     renderView();
     expect(screen.getByTestId('run-status')).toHaveTextContent('Running');
   });
+
+  it('a run a rejection is stopping says the person rejected, not that they asked to cancel', () => {
+    const team = definition();
+    const reasonOf = (statusReason: string) => {
+      const session = sessionStore({
+        runId: 'run_view',
+        definition: team,
+        projection: { ...projection(), status: 'cancelling', statusReason },
+      });
+      const view = render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <RunView session={session} onSteer={vi.fn()} />
+        </IntlProvider>,
+      );
+      const text = view.container.textContent ?? '';
+      view.unmount();
+      return text;
+    };
+    const rejected = reasonOf('rejected: writer');
+    expect(rejected).toContain(
+      messages.RunReasons.rejected.replace(
+        '{node}',
+        team.nodes.find((node) => node.id === 'writer')?.label ?? 'writer',
+      ),
+    );
+    expect(rejected).not.toContain(messages.RunReasons.cancel_requested);
+    // The person's own cancel still says so.
+    expect(reasonOf('cancel_requested')).toContain(messages.RunReasons.cancel_requested);
+  });
 });

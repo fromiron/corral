@@ -775,6 +775,8 @@ describe('allow for this run', () => {
     await vi.waitFor(() =>
       expect(s.coordinator.getSnapshot(runId).projection.status).toBe('cancelling'),
     );
+    // While the branch stops, the run already gives the rejection as its reason.
+    expect(s.coordinator.getSnapshot(runId).projection.statusReason).toBe('rejected: gate');
     release.open();
     await call.outcome.catch(() => null);
     await vi.waitFor(() =>
@@ -828,6 +830,11 @@ function endedClean(events: readonly RunEvent[], projection: RunProjection) {
       (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
     ),
   ).toEqual([]);
+  // The rejection is the reason, for the stop it asked for and for the end.
+  expect(projection.statusReason).toBe('rejected: gate');
+  expect(
+    events.flatMap((event) => (event.type === 'cancel.requested' ? [event.payload.reason] : [])),
+  ).toEqual(['rejected: gate']);
 }
 
 describe('allow for this run on a command', () => {

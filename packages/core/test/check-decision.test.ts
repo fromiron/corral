@@ -391,9 +391,17 @@ describe('check decision', () => {
     expect((stopping.nodeExecutions.a ?? []).map((id) => stopping.executions[id]?.status)).toEqual([
       'cancelling',
     ]);
+    // While it stops the branch, and after, the run gives the rejection as its reason.
+    expect(stopping.statusReason).toBe('rejected: check');
+    expect(
+      s.store
+        .readEvents(runId, 0)
+        .flatMap((e) => (e.type === 'cancel.requested' ? [e.payload.reason] : [])),
+    ).toEqual(['rejected: check']);
     gate.open();
     const final = await waitForProjection(s.transport, runId, finished);
     expect(final.status).toBe('cancelled');
+    expect(final.statusReason).toBe('rejected: check');
     expect(Object.values(final.executions).map((e) => e.status)).not.toContain('active');
     const events = s.store.readEvents(runId, 0);
     const end = events.findIndex(

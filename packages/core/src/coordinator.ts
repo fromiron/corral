@@ -2795,8 +2795,11 @@ export class Coordinator {
         payload: { scope, fenceSeq: run.projection.lastSeq + 1, reason: command.payload.reason },
       },
     ];
+    // A cancel a rejection asked for gives the rejection as the reason; the person did not cancel.
     if (scope.kind === 'run')
-      drafts.push(runState(run.projection.status, 'cancelling', 'cancel_requested'));
+      drafts.push(
+        runState(run.projection.status, 'cancelling', run.endReason ?? 'cancel_requested'),
+      );
     else if (
       target &&
       run.projection.tasks[target.taskId]?.status !== 'completed' &&
@@ -3409,14 +3412,14 @@ export class Coordinator {
   /**
    * The runtime's closing of every approval still waiting when the run ends, whatever its kind:
    * drafts for the commit that ends it (api-contract, "구현에서 정한 검토·승인 규칙"). An approval
-   * already closed is not pending and is left alone. The caller wakes the waiters once, after it.
+   * already closed is not pending and is left alone; a tool or check approval has closed on its
+   * own path by then, as every caller stops the live executions first or has none.
    */
   private runEndClosings(run: LiveRun, reason: 'cancelled' | 'execution_ended'): EventDraft[] {
     return Object.values(run.projection.approvals)
       .filter((approval) => approval.status === 'pending')
       .map((approval) => ({
         type: 'approval.resolved',
-        ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
         payload: {
           approvalId: approval.approvalId,
           decision: 'reject',
@@ -6751,7 +6754,6 @@ export class Coordinator {
       ...this.closeRounds(run),
       runState(status, to, reason),
     ]);
-    this.wakeApprovalWaiters(run);
   }
 
   /** Run-owned services outlive a tool call, but never a pause or confirmed Run ending. */
