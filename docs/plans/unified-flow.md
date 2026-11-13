@@ -446,12 +446,12 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 완료 |
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 완료 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 완료 |
-| U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
+| U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 구현 중(`flow/u6-meta-line`, U11 브랜치 위) |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 코드 리뷰 revise, 수정 중(`flow/u7-activity-bar`): 보낸 직후의 중지, 바의 승인 조건, 다음 승인의 같은 자리, 상태 이름 중복, "보기"의 이동, 실행 조작의 명령 경로 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
-| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 코드 리뷰 revise, 수정 중(`flow/u11-reply-selection`): 마우스 선택, 답변을 누른 뒤의 키, 복귀 뒤 고정 풀기, 보관 스키마, 인용 글 |
+| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 수정 끝(`flow/u11-reply-selection` @3ecd6e2d), 델타 확인 중 |
 | U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 완료 |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
 | U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
@@ -464,10 +464,10 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 완료 |
 | A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 완료 |
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 완료 |
-| A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 구현 끝, 리뷰 중(`flow/a6-advisor-worker`) |
+| A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 리뷰 revise, 수정 중(`flow/a6-advisor-worker`): 이미지가 든 Run에서의 감독 시작, 검토당 상한의 범위와 셈, 검토 사이의 압축 |
 | A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 완료 |
 | A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 대기 |
-| A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 계약·코어·서버 구현 끝, 리뷰 중(`flow/a9-session-advisor`). 화면(도구 줄의 켜고 끄기)은 U7 뒤 |
+| A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 계약·코어·서버 리뷰 revise, 수정 중(`flow/a9-session-advisor`): 감독의 읽기 범위, 예약 실행, 거절 문구. 화면(도구 줄의 켜고 끄기)은 U7 뒤 |
 | V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
 
 백본 신뢰 게이트: B2가 통과하기 전에는 U5·U6·A5를 병합하지 않는다. 지금 테스트가 하나도 없는 경로(실행이 돌지 않을 때 버려지는 지시, 승인·질문 대기 중의 지시, 대기열 자동 시작, 관찰자 연결, 조각이 나온 뒤 끊긴 스트림) 위에 화면을 얹지 않기 위해서다.
