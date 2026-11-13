@@ -15,9 +15,15 @@ export interface RunCommandDeps {
   newId: () => string;
   setError: (message: string | null) => void;
   onChange: () => void;
-  /** The run a command could not be sent to (its record unread), or null once one is tried again. */
-  onNotSent?: (runId: string | null) => void;
+  /**
+   * What became of a run command just pressed: no failure once it is pressed (and when it is
+   * received), else a refusal or a lost answer.
+   */
+  onResult: (runId: string, failure: RunCommandFailure | null) => void;
 }
+
+/** A run command the run refused, with its reason, or one whose answer never came. */
+export type RunCommandFailure = { kind: 'refused'; message: string } | { kind: 'unconfirmed' };
 
 /**
  * Pauses, resumes or cancels the session's run by the run's own command path, as the run record's
@@ -33,13 +39,10 @@ export async function runCommand(
   const store = deps.services.runFor(runId);
   // A press while a command is being sent is not another command.
   if ((store.getState().pendingCommandIds?.length ?? 0) > 0) return;
-  deps.onNotSent?.(null);
+  deps.onResult(runId, null);
+  // The store is this run's own: opening it names the run before its record is read.
   if (store.getState().runId !== runId) await store.getState().open(runId);
-  // The record could not be read: nothing is sent, and the activity bar says so.
-  if (store.getState().runId !== runId) {
-    deps.onNotSent?.(runId);
-    return;
-  }
+  // A lost answer is kept by the store and checked again under its first id on the next press.
   const receipt = await store
     .getState()
     .sendCommand(
@@ -47,16 +50,22 @@ export async function runCommand(
         ? { type, payload: { scope: { kind: 'run' }, reason: 'User cancelled the run' } }
         : { type, payload: { scope: 'run' } },
     )
-    .catch((failure: unknown) => ({
-      error: { message: failure instanceof Error ? failure.message : String(failure) },
-    }));
-  if (receipt.error) deps.setError(receipt.error.message);
+    .catch(() => null);
+  const failure: RunCommandFailure | null = !receipt
+    ? { kind: 'unconfirmed' }
+    : receipt.error
+      ? { kind: 'refused', message: receipt.error.message }
+      : null;
+  deps.onResult(runId, failure);
   deps.onChange();
 }
 
 /** Compacts the context of the run's open execution, or says why it cannot now. */
 export async function compactContext(
-  deps: Omit<RunCommandDeps, 'onChange'> & { ownActive: RunSummary | null; tStatus: Say },
+  deps: Omit<RunCommandDeps, 'onChange' | 'onResult'> & {
+    ownActive: RunSummary | null;
+    tStatus: Say;
+  },
 ) {
   const { ownActive, tStatus, setError } = deps;
   if (!ownActive) {

@@ -298,6 +298,100 @@ export const AwaitingResponseCut: Story = {
   },
 };
 
+/** The line with its run's state coming in beside the words, as when the run's row scrolls away. */
+function StateComes(props: ActivityBarProps) {
+  const [state, setState] = useState(false);
+  const line = props.line && {
+    ...props.line,
+    ...(state ? { state: { text: 'Waiting for you', target: 'run:run_story' as const } } : {}),
+  };
+  return (
+    <>
+      <Card {...props} line={line} />
+      <button type="button" onClick={() => setState((shown) => !shown)}>
+        Run row scrolls
+      </button>
+    </>
+  );
+}
+
+const comes = { approve: fn(), deny: fn() };
+
+/**
+ * The request whole beside its buttons, then the run's state comes in beside the words and cuts
+ * them: the buttons leave at once, with nothing changed in the row's width, and come back once the
+ * words are whole again.
+ */
+export const AwaitingResponseStateComes: Story = {
+  render: (args) => <StateComes {...args} />,
+  args: {
+    line: {
+      glyph: 'waiting',
+      tone: 'warning',
+      text: 'Run · npm test',
+      approval: {
+        subject: 'Run · npm test',
+        approveLabel: 'Allow once',
+        denyLabel: 'Deny',
+        onApprove: comes.approve,
+        onDeny: comes.deny,
+      },
+    },
+    roles: team,
+  },
+  decorators: [
+    (Story) => (
+      <div className="w-[380px]">
+        <Story />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const words = () => canvasElement.querySelector<HTMLElement>('[data-activity-text]');
+    const cut = () => {
+      const box = words();
+      const inner = box?.firstElementChild?.getBoundingClientRect().width ?? 0;
+      return inner > (box?.getBoundingClientRect().width ?? 0) + 0.5;
+    };
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: 'Allow once · Run · npm test' })).toBeVisible(),
+    );
+    await expect(cut()).toBe(false);
+    await userEvent.click(canvas.getByRole('button', { name: 'Run row scrolls' }));
+    await waitFor(() => expect(canvasElement.textContent).toContain('Waiting for you'));
+    // Cut beside its buttons, the call is no longer decided on the line.
+    await waitFor(() => expect(canvas.queryByRole('button', { name: /^Allow once/ })).toBeNull());
+    await expect(canvas.queryByRole('button', { name: /^Deny/ })).toBeNull();
+    // Whole again, they come back.
+    await userEvent.click(canvas.getByRole('button', { name: 'Run row scrolls' }));
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: 'Allow once · Run · npm test' })).toBeVisible(),
+    );
+    await expect(comes.approve).not.toHaveBeenCalled();
+    // A key held down repeats; its repeats press nothing on the bar (a real held key is pressed in
+    // the flow's scene ④).
+    for (const target of [
+      canvas.getByRole('button', { name: 'Allow once · Run · npm test' }),
+      canvas.getByRole('button', { name: 'Activity details' }),
+    ])
+      for (const key of ['Enter', ' ']) {
+        const held = new KeyboardEvent('keydown', {
+          key,
+          repeat: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        target.dispatchEvent(held);
+        await expect(held.defaultPrevented).toBe(true);
+        const first = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        target.dispatchEvent(first);
+        await expect(first.defaultPrevented).toBe(false);
+      }
+    await settled(canvasElement);
+  },
+};
+
 const retry = fn();
 
 /** The connection is lost: the line says so, with its one way back. */

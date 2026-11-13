@@ -186,10 +186,18 @@ export function ComposerActivity({
         setDeciding(false);
       });
   };
-  // The approval on the line; one that takes another's place waits a moment before a press.
+  // The approval on the line. One that takes another's place waits a moment before a press,
+  // counted from when its buttons appear, and so does the View that comes there before them; the
+  // first approval on the line is taken at once, as nothing else was pressed in its place.
   const lineApproval =
     line.kind === 'waiting' && line.item?.kind === 'approval' ? line.item.approvalId : null;
-  const settled = useSettled(lineApproval);
+  const [decisionsShown, setDecisionsShown] = useState(false);
+  const [firstApproval, setFirstApproval] = useState<string | null>(null);
+  if (lineApproval && firstApproval === null) setFirstApproval(lineApproval);
+  const held = !useSettled(
+    lineApproval ? `${lineApproval}:${decisionsShown ? 'decide' : 'view'}` : null,
+  );
+  const settled = !held || lineApproval === (firstApproval ?? lineApproval);
 
   const closed = ((): ActivityBarLine | null => {
     switch (line.kind) {
@@ -241,7 +249,7 @@ export function ComposerActivity({
               }
             : {}),
           // The whole request is on its card.
-          action: { label: t('view'), onClick: showTray },
+          action: { label: t('view'), onClick: showTray, disabled: !settled },
         };
       }
       case 'role':
@@ -375,6 +383,7 @@ export function ComposerActivity({
         }
         open={open}
         onOpenChange={setOpen}
+        onDecisionsChange={setDecisionsShown}
       />
     </div>
   );

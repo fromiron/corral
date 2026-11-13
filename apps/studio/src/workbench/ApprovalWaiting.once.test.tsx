@@ -534,6 +534,44 @@ it('says a decision the run refused, as its card does, and leaves only View', as
   expect(lineButton(container, messages.Activity.view)).toBeDefined();
 });
 
+it('leaves the next approval its own buttons after a refusal of the one before', async () => {
+  const second = commandPlan('echo second');
+  const container = await mainArea(waitingOnCommand(), {
+    body_1: JSON.stringify(command),
+    body_2: JSON.stringify(second),
+  });
+  const store = fixture.store as RunSessionStore;
+  vi.spyOn(store.getState(), 'resolveApproval').mockResolvedValue({
+    error: { message: 'The request changed' },
+  } as Receipt);
+  await viewport.scroll(() => false);
+  await act(async () => lineButton(container, messages.Approvals.approveTool)?.click());
+  expect(decisions(container)).toEqual([]);
+  const next = waitingOnCommand(second, 'approval_2', 'call_2', 'body_2');
+  await act(async () => store.setState({ projection: next }));
+  await viewport.scroll(() => false);
+  expect(decisions(container)).toEqual([
+    `${messages.Approvals.rejectTool} · ${messages.Turn.tool.run_command} · echo second`,
+    `${messages.Approvals.approveTool} · ${messages.Turn.tool.run_command} · echo second`,
+  ]);
+});
+
+it('does not call a decision whose answer was lost a refusal: the line still decides it', async () => {
+  const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
+  const resolve = vi
+    .spyOn(fixture.store?.getState() as ReturnType<RunSessionStore['getState']>, 'resolveApproval')
+    .mockRejectedValue(new Error('Failed to fetch'));
+  await viewport.scroll(() => false);
+  await act(async () => lineButton(container, messages.Approvals.approveTool)?.click());
+  const words = visibleText(bar(container) as HTMLElement);
+  expect(words).not.toContain(messages.Approvals.refused.replace('{message}', ''));
+  expect(words).not.toContain('Failed to fetch');
+  // The store keeps the command and checks it again under its first id on the next press.
+  expect(lineButton(container, messages.Approvals.approveTool)?.disabled).toBe(false);
+  await act(async () => lineButton(container, messages.Approvals.approveTool)?.click());
+  expect(resolve).toHaveBeenCalledTimes(2);
+});
+
 it.each([
   ['of several lines', 'echo one\necho two'],
   ['longer than its line', `echo ${'x'.repeat(90)}`],
@@ -616,4 +654,53 @@ it('takes no press for a while when the next approval comes to the same place', 
   } finally {
     vi.useRealTimers();
   }
+});
+
+it('holds the next approval from when its buttons appear, and the View that comes first', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const second = commandPlan('echo second');
+    const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
+    const store = fixture.store as RunSessionStore;
+    const resolve = vi.spyOn(store.getState(), 'resolveApproval');
+    await viewport.scroll(() => false);
+    await act(async () => lineButton(container, messages.Approvals.approveTool)?.click());
+    // The next comes before its body is read: its line has View alone, in the same place.
+    const next = waitingOnCommand(second, 'approval_2', 'call_2', 'body_2');
+    await act(async () => store.setState({ projection: next }));
+    await viewport.scroll(() => false);
+    const view = () => lineButton(container, messages.Activity.view);
+    const approve = () => lineButton(container, messages.Approvals.approveTool);
+    expect(approve()).toBeUndefined();
+    expect(view()?.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(600));
+    expect(view()?.disabled).toBe(false);
+    // The body comes late: its buttons wait from when they appear, not from when the line changed.
+    await act(async () => vi.advanceTimersByTime(300));
+    await act(async () =>
+      store.setState({
+        artifactTexts: { ...store.getState().artifactTexts, body_2: JSON.stringify(second) },
+      }),
+    );
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => approve()?.click());
+    expect(resolve).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(599));
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(approve()?.disabled).toBe(false);
+    await act(async () => approve()?.click());
+    expect(resolve).toHaveBeenLastCalledWith('approval_2', 'approve');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('takes the first approval at once, whether its body comes with it or after', async () => {
+  const container = await mainArea(waitingOnCommand());
+  const store = fixture.store as RunSessionStore;
+  await viewport.scroll(() => false);
+  expect(lineButton(container, messages.Activity.view)?.disabled).toBe(false);
+  await act(async () => store.setState({ artifactTexts: { body_1: JSON.stringify(command) } }));
+  expect(lineButton(container, messages.Approvals.approveTool)?.disabled).toBe(false);
 });

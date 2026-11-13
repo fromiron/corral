@@ -39,7 +39,12 @@ import {
   TeamChoice,
   WorkFolderEntry,
 } from './composer/ComposerTools.tsx';
-import { compactContext, composerCommands, runCommand } from './composer/commands.ts';
+import {
+  compactContext,
+  composerCommands,
+  type RunCommandFailure,
+  runCommand,
+} from './composer/commands.ts';
 import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs.tsx';
 import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
@@ -129,6 +134,7 @@ function SessionComposer({
   const tr = useTranslations('Reins');
   const tStatus = useTranslations('RunStatus');
   const tActivity = useTranslations('Activity');
+  const tApprovals = useTranslations('Approvals');
   const services = useServices();
   const { mode, live } = services;
   const prefs = usePreferences();
@@ -358,9 +364,24 @@ function SessionComposer({
   const requestStop = () => {
     setConfirmStop(ownActive !== null);
   };
-  // A run command that could not be sent: the activity bar's line says so until the next try.
-  const [notSent, setNotSent] = useState<string | null>(null);
-  const runDeps = { services, newId: newCommandId, setError, onChange, onNotSent: setNotSent };
+  // A run command the run refused or whose answer was lost: the activity bar's line says so, where
+  // it says a refused decision, until the next press. Without the run's line, the composer does.
+  const [commandFailed, setCommandFailed] = useState<{ runId: string; text: string } | null>(null);
+  const runDeps = {
+    services,
+    newId: newCommandId,
+    setError,
+    onChange,
+    onResult: (runId: string, failure: RunCommandFailure | null) => {
+      const text = !failure
+        ? null
+        : failure.kind === 'refused'
+          ? tApprovals('refused', { message: failure.message })
+          : tActivity('commandUnconfirmed');
+      if (text && going?.runId !== runId) setError(text);
+      else setCommandFailed(text ? { runId, text } : null);
+    },
+  };
   // Stop asks first while two or more executions work, or while how many is not known yet: one
   // stop then ends them all.
   const activeExecutions = useActiveExecutionCount(going?.runId ?? null);
@@ -601,7 +622,7 @@ function SessionComposer({
           onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
           onViewRun={onViewRun}
           {...(revealRun ? { revealRun } : {})}
-          notice={going && notSent === going.runId ? tActivity('notSent') : null}
+          notice={going && commandFailed?.runId === going.runId ? commandFailed.text : null}
           request={
             ownActive
               ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)

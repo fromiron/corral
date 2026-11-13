@@ -755,10 +755,14 @@ export function ChatView({
           {items.length ? (
             // The window: the mounted rows in flow, the rest held as the list's padding. A row's
             // size counts in the layout as soon as it changes, so the end and the composer's
-            // space move together in one frame; the browser keeps a reader's row in place.
+            // space move together in one frame; the browser keeps a reader's row in place. The
+            // padding and the rows' margins never transition: reduced motion gives every property
+            // a near-zero transition, which lands a changed window a frame late, and following the
+            // end then reads the old height and moves the window back, frame after frame.
             <ol
               aria-label={t('conversation')}
               data-chat-window
+              className="transition-none"
               style={{ paddingTop: windowed.before, paddingBottom: windowed.after }}
             >
               {windowed.rows.map(({ index, start }, at) => {
@@ -779,7 +783,7 @@ export function ChatView({
                     aria-current={item.id === messageId ? 'location' : undefined}
                     // Its own block, so the row's margins belong to its measured size.
                     className={cn(
-                      'flow-root',
+                      'flow-root transition-none',
                       item.id === messageId && 'rounded-lg ring-2 ring-focus-ring',
                     )}
                     ref={rows.measureElement}

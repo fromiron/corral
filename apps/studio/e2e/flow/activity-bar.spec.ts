@@ -456,7 +456,18 @@ test('④ an approval scrolled off screen is said and decided once, from the bar
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(toggle).toBeFocused();
     expect(pending()).toBe(1);
-    await approve.click();
+    // Enter held down on Allow once: one decision, and its repeats press nothing after it, not
+    // the toggle the focus goes back to.
+    await approve.focus();
+    const held: (string | null)[] = [];
+    for (let repeat = 0; repeat < 12; repeat += 1) {
+      await page.keyboard.down('Enter');
+      await page.waitForTimeout(40);
+      held.push(await toggle.getAttribute('aria-expanded'));
+    }
+    await page.keyboard.up('Enter');
+    record('enter-held', held);
+    expect(held.filter((expanded) => expanded !== 'false')).toEqual([]);
     await expect.poll(pending).toBe(0);
     // The run goes on to its end; read from above, the bar says so.
     await expect(bar).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
@@ -572,6 +583,7 @@ function lineParts(page: Page) {
     const right = line.getBoundingClientRect().right;
     const words = line.querySelector<HTMLElement>('[data-activity-text]');
     return {
+      state: line.querySelector('[data-presence-label]')?.textContent ?? null,
       text: words?.textContent ?? null,
       cut: words ? words.scrollWidth > words.clientWidth : null,
       decisions: [...line.querySelectorAll('button')]
@@ -702,3 +714,114 @@ test('⑥ the line decides a call only while it says it whole; the next call in 
     await session.cleanup();
   }
 });
+
+/** The command of ⑦: whole beside the buttons at 1280, cut once the run's state comes in. */
+const BUILD = 'npm run build --workspace=apps/studio';
+
+for (const reduced of [false, true])
+  test(`⑦ scrolled up a notch at a time, the buttons leave as the call is cut and come back${reduced ? ', reduced motion' : ''}`, async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
+    corral.fake?.setResponses([
+      fauxAssistantMessage([fauxToolCall('run_command', { command: BUILD })], {
+        stopReason: 'toolUse',
+      }),
+      fauxAssistantMessage('Done.'),
+      fauxAssistantMessage('Done.'),
+      fauxAssistantMessage('Done.'),
+    ]);
+    const session = await commandSession(page, corral);
+    try {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await requestBox(page).fill('Check the folder.');
+      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      const tray = page.locator('[data-pending-tray]');
+      await expect(tray.locator('[data-testid^="approval-"]')).toHaveCount(1, { timeout: 30_000 });
+      // The conversation's end, a card waiting in it, comes to rest.
+      await waitForStill(page);
+      const bar = activityBar(page);
+      const timeline = page.getByTestId('chat-timeline');
+      await timeline.hover({ position: { x: 16, y: 120 } });
+      const pending = () => {
+        const run = corral.server.coordinator.listRuns()[0];
+        return run
+          ? Object.values(corral.server.coordinator.getSnapshot(run.runId).projection.approvals)
+              .filter((approval) => approval.status === 'pending')
+              .map((approval) => approval.approvalId)
+          : [];
+      };
+      const allow = `Allow once · Run · ${BUILD}`;
+      // From the end, a notch at a time: the card leaves first, then the run's row, whose state
+      // then comes to the line beside the words.
+      const upToState = async (name: string) => {
+        await timeline.evaluate((node) => {
+          node.scrollTop = node.scrollHeight;
+        });
+        await waitForStill(page, { stillMs: 600 });
+        await timeline.hover({ position: { x: 16, y: 120 } });
+        const steps: unknown[] = [];
+        let spot: { x: number; y: number } | null = null;
+        for (let step = 0; step < 60; step += 1) {
+          await page.mouse.wheel(0, -100);
+          await page.waitForTimeout(250);
+          if ((await bar.getAttribute('data-line')) !== 'waiting') continue;
+          const parts = await lineParts(page);
+          steps.push({ step, ...parts });
+          record(name, steps);
+          // Never a decision beside words it cuts.
+          if (parts?.decisions.length) expect.soft(parts.cut, `step ${step}: cut`).toBe(false);
+          const button = activityLine(page).getByRole('button', { name: allow, exact: true });
+          if (!spot && !parts?.state && (await button.count())) {
+            const box = await button.boundingBox();
+            if (box) spot = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          }
+          if (parts?.state) return spot;
+        }
+        throw new Error('The run row never left');
+      };
+      const spot = await upToState(`step-by-step${reduced ? '-reduced' : ''}`);
+      if (!spot) throw new Error('The whole call never had its buttons');
+      await waitForStill(page, { stillMs: 600 });
+      // The state beside it leaves the call less room than it needs beside the buttons: View
+      // alone, the words whole in the room the buttons left.
+      const cut = await lineParts(page);
+      expect(cut?.state).toBeTruthy();
+      expect(cut?.decisions).toEqual([]);
+      expect(cut?.cut).toBe(false);
+      await expect(
+        activityLine(page).getByRole('button', { name: 'View', exact: true }),
+      ).toBeVisible();
+      // Pressed where Allow once was, nothing is decided.
+      const before = pending();
+      await page.mouse.click(spot.x, spot.y);
+      await page.waitForTimeout(300);
+      expect(pending()).toEqual(before);
+      if ((await bar.locator('[data-activity-toggle]').getAttribute('aria-expanded')) === 'true')
+        await page.keyboard.press('Escape');
+      // Up again to where the state cuts the call, then down in finer notches: the run's row
+      // comes back before the card does, the words are whole beside the buttons, and they return.
+      await upToState(`again${reduced ? '-reduced' : ''}`);
+      await waitForStill(page, { stillMs: 600 });
+      let back = false;
+      const down: unknown[] = [];
+      for (let step = 0; step < 40 && !back; step += 1) {
+        await page.mouse.wheel(0, 20);
+        await page.waitForTimeout(250);
+        const parts = await lineParts(page);
+        down.push({ step, line: await bar.getAttribute('data-line'), ...parts });
+        record(`back-down${reduced ? '-reduced' : ''}`, down);
+        if ((await bar.getAttribute('data-line')) !== 'waiting') break;
+        if (parts?.decisions.length) expect.soft(parts.cut, 'back down: cut').toBe(false);
+        back = !parts?.state && !parts?.cut && Boolean(parts?.decisions.length);
+      }
+      expect(back, 'whole again, the buttons came back').toBe(true);
+      await activityLine(page).getByRole('button', { name: allow, exact: true }).click();
+      await expect.poll(pending, { timeout: 30_000 }).toEqual([]);
+      expect(corral.errors).toEqual([]);
+    } finally {
+      await session.cleanup();
+    }
+  });

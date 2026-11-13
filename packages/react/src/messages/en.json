@@ -6205,6 +6205,6 @@
     "recordLost": "Run record unavailable",
     "retry": "Retry",
     "controls": "Run controls",
-    "notSent": "Not sent: run record unavailable"
+    "commandUnconfirmed": "Not confirmed: press again to check"
   }
 }

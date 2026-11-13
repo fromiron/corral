@@ -72,7 +72,7 @@ export interface ActivityBarLine {
     disabled?: boolean;
   };
   /** One action after the words: View, Retry, Review failed steps (a link, `render`). */
-  action?: { label: string; onClick?: () => void; render?: ReactElement };
+  action?: { label: string; onClick?: () => void; render?: ReactElement; disabled?: boolean };
 }
 
 export interface ActivityBarRole {
@@ -126,6 +126,8 @@ export interface ActivityBarProps {
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Whether the line's decision buttons are on it now: they come and go with the words' room. */
+  onDecisionsChange?: (shown: boolean) => void;
   className?: string;
 }
 
@@ -235,6 +237,7 @@ export function ActivityBar({
   open: openProp,
   defaultOpen = false,
   onOpenChange,
+  onDecisionsChange,
   className,
 }: ActivityBarProps) {
   const t = useTranslations('Activity');
@@ -269,6 +272,7 @@ export function ActivityBar({
     const room = words.getBoundingClientRect().width;
     setFits((shown) => decisionsFit({ shown, room, words: whole, buttons, gap }));
   }, [decisionKey, line?.text]);
+  const watching = useRef<ResizeObserver | null>(null);
   useLayoutEffect(() => {
     judge();
     const element = row.current;
@@ -276,8 +280,23 @@ export function ActivityBar({
     // Again whenever the width changes.
     const observer = new ResizeObserver(() => judge());
     observer.observe(element);
-    return () => observer.disconnect();
+    watching.current = observer;
+    return () => {
+      observer.disconnect();
+      watching.current = null;
+    };
   }, [decisionKey, judge]);
+  // And whenever the words' box or the words in it change size with the row's width the same: a
+  // word coming in beside them, a font swapping in, a style that settles a frame late (reduced
+  // motion's near-zero transitions). Each new box is watched as it comes.
+  useLayoutEffect(() => {
+    const observer = watching.current;
+    if (!observer) return;
+    for (const words of row.current?.querySelectorAll('[data-activity-text]') ?? []) {
+      observer.observe(words);
+      if (words.firstElementChild) observer.observe(words.firstElementChild);
+    }
+  });
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.key !== 'Escape' || !open) return;
     event.preventDefault();
@@ -298,6 +317,16 @@ export function ActivityBar({
   }, [entered, words]);
   const settled = reduce || entered === words;
   const decide = Boolean(approval && fits);
+  // Told before the page is drawn, so a host that holds new buttons holds them from their first
+  // frame.
+  const told = useRef(onDecisionsChange);
+  told.current = onDecisionsChange;
+  useLayoutEffect(() => told.current?.(decide), [decide]);
+  // A key held down repeats: its repeats press nothing on the bar, neither the button it went
+  // down on nor the one the focus moves to after it.
+  const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.repeat && (event.key === 'Enter' || event.key === ' ')) event.preventDefault();
+  };
   return (
     // biome-ignore lint/a11y/useSemanticElements: the run's status line and its controls, named as one group; not a form's fieldset.
     <div
@@ -308,6 +337,7 @@ export function ActivityBar({
       data-tone={line?.tone}
       className={cn('flex min-w-0 flex-col-reverse', className)}
       onKeyDown={onKeyDown}
+      onKeyDownCapture={onKeyDownCapture}
     >
       {/* The line comes first in the document, so focus reaches it before the panel it opens
           above itself. One height, whatever it says. */}
@@ -367,6 +397,7 @@ export function ActivityBar({
                 size="compact"
                 variant="tertiary"
                 className="relative z-10 shrink-0"
+                disabled={line.action.disabled}
                 onClick={line.action.onClick}
                 {...(line.action.render ? { render: line.action.render } : {})}
               >

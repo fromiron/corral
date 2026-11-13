@@ -52,8 +52,9 @@ export function waitingToolPlan(text: string | undefined, fingerprint: string) {
 
 /**
  * A call in one line, as its card and the activity bar name it: its tool, then its main subject
- * (the command it runs or the file it touches) when it has one. `whole` says the subject is all of
- * it: one line, not cut.
+ * (the command it runs, the file it touches, or where a file moves from and to) when it has one.
+ * `whole` says the line holds every argument of the call, on one line and not cut: only then may
+ * the line decide it (features/composer-flow.md "활동 바").
  */
 export function callLine(plan: ToolPermissionPlan, toolLabel: (name: string) => string) {
   const found = callSubject(plan);
@@ -67,21 +68,54 @@ export function callLine(plan: ToolPermissionPlan, toolLabel: (name: string) => 
   };
 }
 
-/** One line of a call's main subject: the command it runs or the file it touches. */
+const SUBJECT_MAX = 80;
+
+/**
+ * The call's main subject in one line, and whether the line holds all its arguments. Judged by
+ * the arguments, not by the tool's name: one the line does not write (a write's content, an
+ * edit's changes, a new argument of any tool) leaves the call to its card.
+ */
 function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean } | null {
   if (plan.descriptor.source !== 'corral') return null;
-  const args = plan.arguments as Record<string, unknown>;
-  const request = args.request as Record<string, unknown> | undefined;
-  const text =
-    plan.descriptor.name === 'run_command'
-      ? [args.command, request?.command].find((value) => typeof value === 'string')
-      : [args.path, args.from].find((value) => typeof value === 'string');
-  if (typeof text !== 'string' || !text.trim()) return null;
-  const lines = text.trim().split('\n');
-  const first = lines[0]?.trim() ?? '';
-  return first.length > 80 || lines.length > 1
-    ? { text: `${first.slice(0, 79)}…`, whole: false }
-    : { text: first, whole: true };
+  const command = plan.descriptor.name === 'run_command';
+  const args = command
+    ? commandArguments(plan.arguments)
+    : (plan.arguments as Record<string, unknown>);
+  const said = command
+    ? ['command']
+    : typeof args.from === 'string' && typeof args.to === 'string'
+      ? ['from', 'to']
+      : ['path'];
+  const parts = said.map((key) => args[key]);
+  if (!parts.every((part): part is string => typeof part === 'string' && Boolean(part.trim())))
+    return null;
+  const oneLine = parts.every((part) => !part.trim().includes('\n'));
+  const text = parts.map((part) => part.trim().split('\n')[0]?.trim() ?? '').join(' → ');
+  if (text.length > SUBJECT_MAX || !oneLine)
+    return { text: `${text.slice(0, SUBJECT_MAX - 1)}…`, whole: false };
+  return { text, whole: Object.keys(args).every((key) => said.includes(key)) };
+}
+
+/**
+ * A command's own arguments. Its plan is the server's resolution (identity, hashes, argv, shell,
+ * timeout) of the agent's arguments, `request`, and the request is what the line must hold. Left
+ * out of it, the shell and the timeout are the session's defaults the server fills in; the working
+ * copy's root (`.`) and the foreground are the defaults the request may also name, so they count
+ * as not given. Any other folder or mode, asked for or resolved, is an argument the line lacks.
+ */
+function commandArguments(plan: Record<string, unknown>): Record<string, unknown> {
+  const request =
+    plan.request && typeof plan.request === 'object'
+      ? (plan.request as Record<string, unknown>)
+      : plan;
+  const own: Record<string, unknown> = { ...request };
+  if (own.cwd === '.') delete own.cwd;
+  if (own.mode === 'foreground') delete own.mode;
+  if (request !== plan) {
+    if (plan.cwd !== undefined && plan.cwd !== '.') own.cwd = plan.cwd;
+    if (plan.mode !== undefined && plan.mode !== 'foreground') own.mode = plan.mode;
+  }
+  return own;
 }
 
 /**

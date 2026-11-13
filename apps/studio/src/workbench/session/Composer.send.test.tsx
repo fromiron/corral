@@ -1110,6 +1110,13 @@ describe('Stop in Send’s place', () => {
     container.querySelector<HTMLButtonElement>('[data-testid="composer-stop"]');
   const cancels = (sendCommand: ReturnType<typeof vi.fn>) =>
     sendCommand.mock.calls.filter(([command]) => (command as { type?: string }).type === 'cancel');
+  // The line's words now, not those fading out after a change.
+  const line = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-activity-bar] > div [data-activity-text]')].at(-1);
+  const confirmButton = () =>
+    [...(document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent === messages.Reins.confirmCancelRun,
+    );
 
   it('stops a run with one working execution at once', async () => {
     const f = await mount();
@@ -1167,23 +1174,47 @@ describe('Stop in Send’s place', () => {
     );
   });
 
-  it('says on the activity bar when it could not be sent, and can be pressed again', async () => {
-    // The run's record is not read and cannot be: there is no run here to send to.
+  it('opens the run’s record before it sends to it', async () => {
     const f = await mount({
       runState: {
         runId: 'run_other',
         projection: projection({ exec_other: 'active' }, 'run_other'),
       },
     });
+    const open = vi.fn(async (runId: string) => {
+      f.store.setState({ runId, projection: projection({ exec_writer: 'active' }) });
+    });
+    f.store.setState({ open } as never);
     await act(async () => stop(f.container)?.click());
-    const dialog = document.querySelector('[role="dialog"]');
-    const confirm = [...(dialog?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
-      (button) => button.textContent === messages.Reins.confirmCancelRun,
+    await act(async () => confirmButton()?.click());
+    expect(open).toHaveBeenCalledWith('run_live');
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    expect(open.mock.invocationCallOrder[0]).toBeLessThan(
+      f.storeSend.mock.invocationCallOrder[0] ?? 0,
     );
-    await act(async () => confirm?.click());
-    expect(cancels(f.sendCommand)).toHaveLength(0);
-    const line = f.container.querySelector('[data-activity-bar] > div');
-    expect(line?.textContent).toContain(messages.Activity.notSent);
+  });
+
+  it('says on the bar a run command the run refused, where a refusal is said, and can be pressed again', async () => {
+    const f = await mount();
+    f.sendCommand.mockResolvedValueOnce({ error: { message: 'The run changed' } } as never);
+    await act(async () => stop(f.container)?.click());
+    const refused = messages.Approvals.refused.replace('{message}', 'The run changed');
+    expect(line(f.container)?.textContent).toContain(refused);
+    // Said once, on the line, not again under the input.
+    expect(f.container.textContent?.split(refused).length).toBe(2);
+    expect(stop(f.container)?.disabled).toBe(false);
+    // Pressed again, it is sent again and the line lets the refusal go.
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(2);
+    expect(line(f.container)?.textContent ?? '').not.toContain(refused);
+  });
+
+  it('says on the bar a run command whose answer was lost, in its own words', async () => {
+    const f = await mount();
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await act(async () => stop(f.container)?.click());
+    expect(line(f.container)?.textContent).toContain(messages.Activity.commandUnconfirmed);
+    expect(f.container.textContent).not.toContain('Failed to fetch');
     expect(stop(f.container)?.disabled).toBe(false);
   });
 
