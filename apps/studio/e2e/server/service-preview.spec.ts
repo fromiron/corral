@@ -11,6 +11,7 @@ import {
   openFolderSettings,
   panelTab,
   requestBox,
+  stopRun,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -157,14 +158,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       ]),
     );
     await page.screenshot({ path: testInfo.outputPath('service-preview.png') });
-    await page
-      .getByRole('region', { name: 'Active run controls', exact: true })
-      .getByRole('button', { name: 'Cancel whole run', exact: true })
-      .click();
-    await page
-      .getByRole('dialog', { name: 'Cancel whole run', exact: true })
-      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-      .click();
+    await stopRun(page);
     await expect
       .poll(async () => (await page.request.get(`${prefix}/processes/${operationId}`)).json(), {
         timeout: 30000,

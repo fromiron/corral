@@ -6214,5 +6214,26 @@
     "from": "<isolate>{advisor}</isolate> · {severity}",
     "count": "{count, plural, other {조언 #건}}",
     "advisors": "{count, plural, other {감독 #명}}"
+  },
+  "Activity": {
+    "details": "활동 상세",
+    "bar": "활동",
+    "roles": "역할",
+    "view": "보기",
+    "viewRole": "{name} 보기",
+    "join": "여기에 합류",
+    "joinRole": "{name}에 합류",
+    "joinTarget": "합류 대상",
+    "pause": "일시정지",
+    "resume": "재개",
+    "stop": "중지",
+    "waiting": "{count}건 대기",
+    "rolesWorking": "역할 {count} 작업 중",
+    "roleActivity": "{name}: {activity}",
+    "connectionLost": "연결 끊김",
+    "recordLost": "실행 기록을 읽지 못함",
+    "retry": "다시 시도",
+    "controls": "실행 조작",
+    "commandUnconfirmed": "확인되지 않음: 다시 눌러 확인"
   }
 }

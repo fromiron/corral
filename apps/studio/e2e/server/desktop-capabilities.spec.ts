@@ -25,6 +25,7 @@ import {
   WORKER_ENTRY,
 } from '../../../../packages/adapter-pi/src/index.ts';
 import {
+  activityBar,
   closeSettings,
   openConversationDetails,
   openFolderSettings,
@@ -33,6 +34,7 @@ import {
   panelTab,
   requestBox,
   selectSessionTeam,
+  stopRun,
 } from '../workbench.ts';
 import { watchErrors } from './harness.ts';
 
@@ -451,14 +453,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     };
     expect(owned.every((child) => alive(child.pid))).toBe(true);
     if (cancelScope === 'run') {
-      await page
-        .getByRole('region', { name: 'Active run controls', exact: true })
-        .getByRole('button', { name: 'Cancel whole run', exact: true })
-        .click();
-      await page
-        .getByRole('dialog', { name: 'Cancel whole run', exact: true })
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+      await stopRun(page);
     } else {
       await panelTab(page, 'Tasks & preview');
       const commands = page.getByTestId('worktree-command-panel');
@@ -483,7 +478,11 @@ for (const cancelScope of ['run', 'command'] as const) {
         body: JSON.stringify(current(capability).projection, null, 2),
         contentType: 'application/json',
       });
-    await expect(page.getByTestId('action-required')).not.toBeVisible();
+    // Nothing is left to answer or to look into: the activity bar has no warning link.
+    await expect(activityBar(page)).not.toHaveAttribute('data-line', 'waiting');
+    await expect(
+      activityBar(page).getByRole('link', { name: /Review failed steps|Open the run/ }),
+    ).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(commands).toBeVisible();
     await expect
@@ -623,14 +622,7 @@ test('a session writer and another session’s writer keep separate controls', a
   const c = findRun('C');
   expect(c?.sessionId).not.toBe(first.sessionId);
   // Cancelling the other session's writer leaves this session's writer waiting.
-  await page
-    .getByRole('region', { name: 'Active run controls', exact: true })
-    .getByRole('button', { name: 'Cancel whole run', exact: true })
-    .click();
-  await page
-    .getByRole('dialog', { name: 'Cancel whole run', exact: true })
-    .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-    .click();
+  await stopRun(page);
   await expect.poll(() => status('C'), { timeout: 30000 }).toBe('cancelled');
   expect(status('A')).toBe('awaiting_user');
   await page.goto(`${capability.server.url}/sessions/${first.sessionId}?run=${a}`);

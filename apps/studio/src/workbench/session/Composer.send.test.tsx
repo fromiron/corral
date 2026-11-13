@@ -125,6 +125,8 @@ type RunState = {
   streamError: string | null;
   missingRunId: string | null;
   open: (runId: string) => Promise<void>;
+  pendingCommandIds: string[];
+  sendCommand: (command: Record<string, unknown>) => Promise<unknown>;
 };
 
 async function mount({
@@ -166,16 +168,38 @@ async function mount({
     },
   );
   changePreferences({ sendKey: sendKey ?? 'enter' });
+  // The run's command path, as the run store keeps it: an id, the command pending until its
+  // receipt, then the transport.
+  let issued = 0;
+  const storeSend = vi.fn(async (command: Record<string, unknown>) => {
+    const commandId = `cmd_run_${++issued}`;
+    store.setState({ pendingCommandIds: [...store.getState().pendingCommandIds, commandId] });
+    try {
+      return await sendCommand({
+        ...command,
+        schemaVersion: '0.1',
+        commandId,
+        runId: store.getState().runId,
+      });
+    } finally {
+      store.setState({
+        pendingCommandIds: store.getState().pendingCommandIds.filter((id) => id !== commandId),
+      });
+    }
+  });
   const store: StoreApi<RunState> = createStore<RunState>(() => ({
     runId: 'run_live',
     projection: projection(executions),
     definition: definition(),
     streamError: null,
     missingRunId: null,
+    events: [],
     open: vi.fn(async () => {}),
+    pendingCommandIds: [],
+    sendCommand: storeSend,
     ...runState,
   }));
-  const sendCommand = vi.fn(async (command: { commandId: string }) => ({
+  const sendCommand = vi.fn(async (command: { commandId: string } & Record<string, unknown>) => ({
     commandId: command.commandId,
     runId: 'run_live',
     status: 'queued',
@@ -295,6 +319,7 @@ async function mount({
     container,
     store,
     sendCommand,
+    storeSend,
     repository,
     startAuto,
     render,
@@ -537,9 +562,16 @@ describe('the key line', () => {
 
   it('keeps the send button named Send and describes the send', async () => {
     const f = await mount();
+    // With nothing written while the run goes, Stop takes Send's place (composer-flow.md "활동 바").
+    expect(f.container.querySelector('button[aria-label="Send"]')).toBeNull();
+    expect(
+      f.container.querySelector(`button[aria-label="${messages.Activity.stop}"]`),
+    ).not.toBeNull();
+    await f.type('Keep going');
     const send = f.container.querySelector('button[aria-label="Send"]');
     expect(send).not.toBeNull();
     expect(send?.getAttribute('aria-description')).toContain(messages.Composer.sendAs.join);
+    expect(f.container.querySelector('[data-testid="composer-stop"]')).toBeNull();
   });
 });
 
@@ -648,7 +680,10 @@ describe('a queued request taken back to edit', () => {
 describe('auto start', () => {
   it('has no switch in the browser demo, which has no server to start a saved request', async () => {
     const f = await mount({ queued: [saved], mode: 'browser' });
-    expect(f.container.querySelector('section')?.textContent).toContain(saved.text);
+    expect(
+      f.container.querySelector(`section[aria-label="${messages.Sessions.queueHeading}"]`)
+        ?.textContent,
+    ).toContain(saved.text);
     expect(f.container.querySelector('[role="switch"]')).toBeNull();
   });
 
@@ -689,8 +724,11 @@ describe('while the run’s record is read', () => {
       f.container.querySelector(`[aria-label="${messages.Composer.permissionMode.label}"]`),
     ];
     expect(settings()).toEqual([null, null]);
-    // The send button keeps its place.
+    // Send's place keeps its button: Stop while nothing is written, Send once something is.
+    expect(f.container.querySelector('[data-testid="composer-stop"]')).not.toBeNull();
+    await f.type('Keep going');
     expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    expect(settings()).toEqual([null, null]);
     // A next request, the send key's fallback, does show them once nothing can take a join.
     await act(async () =>
       f.store.setState({ runId: 'run_live', projection: projection({ exec_writer: 'succeeded' }) }),
@@ -1065,6 +1103,315 @@ describe('the composer', () => {
   );
 });
 
+// composer-flow.md "활동 바": with nothing written while the run goes, Send's place is Stop, which
+// asks first only while two or more executions work.
+describe('Stop in Send’s place', () => {
+  const stop = (container: HTMLElement) =>
+    container.querySelector<HTMLButtonElement>('[data-testid="composer-stop"]');
+  const cancels = (sendCommand: ReturnType<typeof vi.fn>) =>
+    sendCommand.mock.calls.filter(([command]) => (command as { type?: string }).type === 'cancel');
+  // The line's words now, not those fading out after a change.
+  const line = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-activity-bar] > div [data-activity-text]')].at(-1);
+  const confirmButton = () =>
+    [...(document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent === messages.Reins.confirmCancelRun,
+    );
+
+  it('stops a run with one working execution at once', async () => {
+    const f = await mount();
+    expect(stop(f.container)?.getAttribute('aria-label')).toBe(messages.Activity.stop);
+    // What a send would do is not read out on Stop.
+    expect(stop(f.container)?.hasAttribute('aria-description')).toBe(false);
+    // Only Send's place: the send menu keeps its own beside it.
+    expect(f.container.querySelector('[data-slot="composer-send-menu"]')).not.toBeNull();
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    expect(cancels(f.sendCommand)[0]?.[0]).toMatchObject({ runId: 'run_live', type: 'cancel' });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('asks first while two executions work, and sends nothing until confirmed', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(0);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      messages.Reins.cancelRun,
+    );
+  });
+
+  it('is not there while nothing runs', async () => {
+    const f = await mount({ active: null });
+    expect(stop(f.container)).toBeNull();
+    expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+  });
+
+  it('takes Send’s place while only spaces are written', async () => {
+    const f = await mount();
+    await f.type('   ');
+    expect(stop(f.container)).not.toBeNull();
+    expect(f.container.querySelector('button[aria-label="Send"]')).toBeNull();
+  });
+
+  it('counts only executions still open: one working beside one done stops at once', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'succeeded' } });
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('asks first while it is not known yet how many executions work', async () => {
+    const f = await mount({
+      runState: {
+        runId: 'run_other',
+        projection: projection({ exec_other: 'active' }, 'run_other'),
+      },
+    });
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(0);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      messages.Reins.cancelRun,
+    );
+  });
+
+  it('opens the run’s record before it sends to it', async () => {
+    const f = await mount({
+      runState: {
+        runId: 'run_other',
+        projection: projection({ exec_other: 'active' }, 'run_other'),
+      },
+    });
+    const open = vi.fn(async (runId: string) => {
+      f.store.setState({ runId, projection: projection({ exec_writer: 'active' }) });
+    });
+    f.store.setState({ open } as never);
+    await act(async () => stop(f.container)?.click());
+    await act(async () => confirmButton()?.click());
+    expect(open).toHaveBeenCalledWith('run_live');
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    expect(open.mock.invocationCallOrder[0]).toBeLessThan(
+      f.storeSend.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('says on the bar a run command the run refused, where a refusal is said, and can be pressed again', async () => {
+    const f = await mount();
+    f.sendCommand.mockResolvedValueOnce({ error: { message: 'The run changed' } } as never);
+    await act(async () => stop(f.container)?.click());
+    const refused = messages.Approvals.refused.replace('{message}', 'The run changed');
+    expect(line(f.container)?.textContent).toContain(refused);
+    // Said once, on the line, not again under the input.
+    expect(f.container.textContent?.split(refused).length).toBe(2);
+    expect(stop(f.container)?.disabled).toBe(false);
+    // Pressed again, it is sent again and the line lets the refusal go as it is pressed, before
+    // the answer comes.
+    let answer = () => {};
+    f.sendCommand.mockImplementationOnce(
+      (command: { commandId: string }) =>
+        new Promise((done) => {
+          answer = () =>
+            done({ commandId: command.commandId, runId: 'run_live', status: 'accepted' } as never);
+        }),
+    );
+    await act(async () => stop(f.container)?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(2);
+    expect(line(f.container)?.textContent ?? '').not.toContain(refused);
+    await act(async () => answer());
+    expect(line(f.container)?.textContent ?? '').not.toContain(refused);
+  });
+
+  it('says on the bar a run command whose answer was lost, in its own words', async () => {
+    const f = await mount();
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await act(async () => stop(f.container)?.click());
+    expect(line(f.container)?.textContent).toContain(messages.Activity.commandUnconfirmed);
+    expect(f.container.textContent).not.toContain('Failed to fetch');
+    expect(stop(f.container)?.disabled).toBe(false);
+  });
+
+  it('lets a lost answer go once the run’s state says the command reached it', async () => {
+    const f = await mount();
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await act(async () => stop(f.container)?.click());
+    expect(line(f.container)?.textContent).toContain(messages.Activity.commandUnconfirmed);
+    // The run is being cancelled after all: Stop cannot be pressed, and nothing asks for it.
+    await f.render({ ...running, status: 'cancelling' });
+    expect(stop(f.container)?.disabled).toBe(true);
+    expect(line(f.container)?.textContent ?? '').not.toContain(
+      messages.Activity.commandUnconfirmed,
+    );
+  });
+
+  it('lets a lost answer go with its run: nothing says it under the input', async () => {
+    const f = await mount();
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await act(async () => stop(f.container)?.click());
+    expect(line(f.container)?.textContent).toContain(messages.Activity.commandUnconfirmed);
+    await f.render(null);
+    expect(f.container.textContent).not.toContain(messages.Activity.commandUnconfirmed);
+    expect(
+      [...f.container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent),
+    ).toEqual(expect.not.arrayContaining([expect.stringMatching(/./)]));
+  });
+
+  it('lets a lost answer go when its run ended before the answer was lost', async () => {
+    const f = await mount();
+    let lose = () => {};
+    f.sendCommand.mockImplementationOnce(
+      () =>
+        new Promise((_done, fail) => {
+          lose = () => fail(new Error('Failed to fetch'));
+        }),
+    );
+    await act(async () => stop(f.container)?.click());
+    await f.render(null);
+    await act(async () => lose());
+    expect(f.container.textContent).not.toContain(messages.Activity.commandUnconfirmed);
+    expect(
+      [...f.container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent),
+    ).toEqual(expect.not.arrayContaining([expect.stringMatching(/./)]));
+  });
+
+  it('says nothing under the input of a lost answer for a run its record says ended', async () => {
+    const f = await mount();
+    // Its record says it ended before the run list does: /pause still goes to it.
+    await act(async () =>
+      f.store.setState({
+        projection: projection({ exec_writer: 'succeeded' }, 'run_live', 'succeeded'),
+      }),
+    );
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await f.type('/pause');
+    const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+      node.textContent?.includes('/pause'),
+    );
+    expect(option, document.body.textContent ?? '').toBeDefined();
+    await act(async () => {
+      option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(f.sendCommand.mock.calls.map(([command]) => command.type)).toEqual(['pause']);
+    expect(f.container.textContent).not.toContain(messages.Activity.commandUnconfirmed);
+    expect(
+      [...f.container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent),
+    ).toEqual(expect.not.arrayContaining([expect.stringMatching(/./)]));
+  });
+
+  it('says a refusal under the input once its run is no longer going', async () => {
+    const f = await mount();
+    f.sendCommand.mockResolvedValueOnce({ error: { message: 'The run changed' } } as never);
+    await act(async () => stop(f.container)?.click());
+    const refused = messages.Approvals.refused.replace('{message}', 'The run changed');
+    expect(line(f.container)?.textContent).toContain(refused);
+    await f.render(null);
+    // Said once, by the composer, not lost with the run's line.
+    expect(f.container.textContent?.split(refused).length).toBe(2);
+    expect(line(f.container)?.textContent ?? '').not.toContain(refused);
+  });
+
+  it('cannot be pressed while the run is being cancelled', async () => {
+    const f = await mount({ active: { ...running, status: 'cancelling' } });
+    expect(stop(f.container)?.disabled).toBe(true);
+  });
+
+  it('goes by the run’s command path and sends one cancel however often it is pressed', async () => {
+    const f = await mount();
+    let release = () => {};
+    f.sendCommand.mockImplementationOnce(
+      (command: { commandId: string }) =>
+        new Promise((done) => {
+          release = () =>
+            done({ commandId: command.commandId, runId: 'run_live', status: 'accepted' } as never);
+        }),
+    );
+    // Two presses before the page draws again, and one after.
+    await act(async () => {
+      stop(f.container)?.click();
+      stop(f.container)?.click();
+    });
+    expect(stop(f.container)?.disabled).toBe(true);
+    await act(async () => stop(f.container)?.click());
+    expect(f.storeSend).toHaveBeenCalledTimes(1);
+    expect(cancels(f.sendCommand)).toHaveLength(1);
+    await act(async () => release());
+    expect(stop(f.container)?.disabled).toBe(false);
+  });
+
+  it.each([
+    ['a click', 'click'],
+    ['the send key', 'key'],
+  ] as const)(
+    'is not pressed by the press that sent with %s: it waits a moment',
+    async (_name, how) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const f = await mount();
+        await f.type('Keep it short');
+        if (how === 'key') await f.press();
+        else
+          await act(async () =>
+            f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.click(),
+          );
+        expect(steerPayload(f.sendCommand)).toMatchObject({ delivery: 'next_request' });
+        // Stop is in Send's place at once, but the same place pressed again does not stop.
+        expect(stop(f.container)?.disabled).toBe(true);
+        await act(async () => stop(f.container)?.click());
+        expect(cancels(f.sendCommand)).toHaveLength(0);
+        await act(async () => vi.advanceTimersByTime(599));
+        expect(stop(f.container)?.disabled).toBe(true);
+        await act(async () => vi.advanceTimersByTime(1));
+        expect(stop(f.container)?.disabled).toBe(false);
+        await act(async () => stop(f.container)?.click());
+        expect(cancels(f.sendCommand)).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+});
+
+// composer-flow.md "활동 바": the open bar's roles take the join target, and its run controls
+// send by the run's command path.
+describe('the activity bar', () => {
+  const openBar = async (container: HTMLElement) =>
+    act(async () => container.querySelector<HTMLButtonElement>('[data-activity-toggle]')?.click());
+  const barButton = (container: HTMLElement, words: string, within = '[data-activity-bar]') =>
+    [...container.querySelectorAll<HTMLButtonElement>(`${within} button`)].find(
+      (button) => button.textContent === words,
+    );
+  const commands = (sendCommand: ReturnType<typeof vi.fn>, type: string) =>
+    sendCommand.mock.calls.filter(([command]) => (command as { type?: string }).type === type);
+
+  it('pauses with Pause and resumes with Resume, through the run’s command path', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    await act(async () => barButton(f.container, messages.Activity.pause)?.click());
+    expect(commands(f.sendCommand, 'pause')).toHaveLength(1);
+    expect(commands(f.sendCommand, 'resume')).toHaveLength(0);
+    await act(async () =>
+      f.store.setState({ projection: projection({ exec_writer: 'active' }, 'run_live', 'paused') }),
+    );
+    await act(async () => barButton(f.container, messages.Activity.resume)?.click());
+    expect(commands(f.sendCommand, 'resume')).toHaveLength(1);
+    expect(commands(f.sendCommand, 'pause')).toHaveLength(1);
+    expect(f.storeSend).toHaveBeenCalledTimes(2);
+  });
+
+  it('joins from a role row: the target moves there, the box takes the focus, the row says so', async () => {
+    const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    await openBar(f.container);
+    const row = () => '[data-activity-role="exec_review"]';
+    const join = barButton(f.container, messages.Activity.join, row());
+    // Pressed with the focus on it, as a click or a key gives it.
+    join?.focus();
+    await act(async () => join?.click());
+    expect(document.activeElement).toBe(f.box());
+    expect(f.container.querySelector(row())?.textContent).toContain(messages.Activity.joinTarget);
+    await f.type('Check the tests');
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ targetExecutionId: 'exec_review' });
+  });
+});
+
 // features/composer-flow.md "합류 대상": images and references ride a new request and a next
 // request; a join or an interrupt leaves them in the box with one line.
 const IMAGE: ImageAttachment = {
@@ -1227,6 +1574,8 @@ describe('what a next request carries', () => {
 
 it('the tool line keeps the folder notice before where a send goes, and voice right before Send', async () => {
   const f = await mount({ folderAccess: 'copy' });
+  // Written, so Send holds its place (while a run goes and nothing is written, Stop does).
+  await f.type('Look at session.ts');
   const line = [
     ...f.container.querySelectorAll<HTMLElement>(
       '[data-testid="folder-access"], [data-slot="composer-target"], button',

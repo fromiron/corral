@@ -15,6 +15,10 @@ import {
 } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
+/** The activity bar while its line tells of a waiting request. */
+const waitingLine = (page: Page) =>
+  page.locator('[data-testid="activity-bar"][data-line="waiting"]');
+
 // Scene ④ (docs/plans/unified-flow.md §4.4): a run waits on an approval and then a question, and
 // both are answered in the conversation's needed-now tray (composer-flow.md "지금 필요한 것").
 // The items already in the timeline hold their place within 1px while a card arrives and while
@@ -394,10 +398,10 @@ test('a question out of view is told above the composer, and Respond brings its 
   const form = tray(page).getByRole('form', { name: 'Waiting for you' });
   await expect(form).toHaveCount(1, { timeout: 30_000 });
   await expect(tray(page)).not.toBeInViewport();
-  // Out of view: the notice above the composer says what waits.
-  const notice = page.getByTestId('action-required');
+  // Out of view: the composer's activity bar says what waits.
+  const notice = waitingLine(page);
   await expect(notice).toContainText('Which format should I use?');
-  await notice.getByRole('button', { name: 'Respond', exact: true }).click();
+  await notice.getByRole('button', { name: 'View', exact: true }).click();
   await expect(tray(page)).toBeFocused();
   await expect(tray(page)).toBeInViewport();
   // In view, the card says it; the notice does not say it again.
@@ -428,7 +432,7 @@ const sampleComposer = () => {
     const height = composer ? composer.getBoundingClientRect().height : null;
     const box = composer?.querySelector('textarea')?.getBoundingClientRect().height ?? 0;
     frames.push({
-      notice: Boolean(document.querySelector('[data-testid="action-required"]')),
+      notice: Boolean(document.querySelector('[data-testid="activity-bar"][data-line="waiting"]')),
       height,
       around: height ? height - box : null,
       tray: Boolean(document.querySelector('[data-pending-tray]')),
@@ -498,7 +502,7 @@ test('a question arriving at the followed end, or there on load, brings no notic
   expect(new Set(withTray.map((frame) => frame.height)).size).toBe(1);
   const settled = withTray.at(-1)?.height ?? 0;
   expect(Math.max(...loading.map((frame) => frame.height ?? 0))).toBe(settled);
-  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  await expect(waitingLine(page)).toHaveCount(0);
 
   await form.getByRole('textbox', { name: 'Your answer' }).fill('A table');
   await form.getByRole('button', { name: 'Send answer' }).click();
@@ -559,7 +563,7 @@ test('coming back to a conversation whose question is in view brings no notice a
         Math.max(...frames.map((frame) => frame.height ?? 0)),
         `${name}: composer height`,
       ).toBe(height);
-      await expect(page.getByTestId('action-required')).toHaveCount(0);
+      await expect(waitingLine(page)).toHaveCount(0);
     };
 
     // The run record in front, then back by the Conversation tab.

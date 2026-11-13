@@ -116,6 +116,7 @@ async function mount(running: RunSummary | null, snapshot = projection()) {
     definition: linearCorral(['writer']),
     streamError: null,
     missingRunId: null,
+    events: [],
     open: async () => {},
   }));
   fixture.services = {

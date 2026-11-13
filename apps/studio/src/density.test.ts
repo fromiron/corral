@@ -101,6 +101,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/session/Composer.tsx',
     'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
     'apps/studio/src/workbench/session/composer/ComposerTools.tsx',
+    'apps/studio/src/workbench/session/composer/ComposerCard.tsx',
     'apps/studio/src/workbench/session/composer/dialogs.tsx',
     'apps/studio/src/workbench/session/ComposerQueue.tsx',
     'apps/studio/src/workbench/session/ComposerStatus.tsx',

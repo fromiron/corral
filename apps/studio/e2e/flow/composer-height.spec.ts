@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { expect, test } from '../server/harness.ts';
-import { newConversation, requestBox } from '../workbench.ts';
+import { newConversation, requestBox, runGoing } from '../workbench.ts';
 import { createProbe, measureChrome, type ShiftResult, waitForStill } from './probe.ts';
 
 // The composer's height changes (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 1):
@@ -193,7 +193,7 @@ for (const scene of [
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => status(0), { timeout: 30_000 }).toBe('succeeded');
       await expect(page.getByTestId('chat-result')).toBeVisible();
-      await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+      await expect(runGoing(page)).toHaveCount(0);
       await waitForStill(page);
       const items = await page.locator('[data-chat-item]').count();
       expect(items).toBeGreaterThan(0);
@@ -216,7 +216,7 @@ for (const scene of [
           await page.getByRole('button', { name: 'Send', exact: true }).click();
           await expect.poll(() => runs().length).toBe(2);
           await reply.reached;
-          await expect(page.getByRole('region', { name: 'Active run controls' })).toBeVisible();
+          await expect(runGoing(page)).toBeVisible();
         }),
         'end',
       );
@@ -234,7 +234,7 @@ for (const scene of [
           finish.open();
           await expect.poll(() => status(1), { timeout: 30_000 }).toBe('succeeded');
           await expect(page.getByTestId('live-text')).toHaveCount(0);
-          await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+          await expect(runGoing(page)).toHaveCount(0);
         }),
         'end',
       );

@@ -1,6 +1,15 @@
 export { type DiffLine, diffLines } from './artifacts/diff.ts';
 export { AdviceSummary, AdviceText } from './components/AdviceLine.tsx';
-export { ApprovalPanel } from './components/ApprovalPanel.tsx';
+export {
+  ActivityBar,
+  type ActivityBarControls,
+  type ActivityBarLine,
+  type ActivityBarProps,
+  type ActivityBarRole,
+  type ActivityState,
+  type ActivityTarget,
+} from './components/ActivityBar.tsx';
+export { ApprovalPanel, callLine, waitingToolPlan } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
 export { CommandReceipts } from './components/CommandReceipts.tsx';
@@ -171,6 +180,7 @@ export {
   buildTurnProcess,
   type ProcessRow,
   type TurnProcess,
+  toolTarget,
   turnSummary,
 } from './run/turn-process.ts';
 export { type AgentUsage, usageByAgent } from './run/usage-by-agent.ts';

@@ -1,4 +1,4 @@
-import { requestBox } from '../workbench.ts';
+import { requestBox, stopRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -61,15 +61,7 @@ test.describe('incomplete response', () => {
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     const partial = page.getByTestId('live-text');
     await expect(partial.locator('strong')).toHaveText('Saved partial reply');
-    await page
-      .getByRole('region', { name: 'Active run controls', exact: true })
-      .getByRole('button', { name: 'Cancel whole run', exact: true })
-      .click();
-    const dialog = page.getByRole('dialog');
-    if (await dialog.isVisible())
-      await dialog
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+    await stopRun(page);
     await expect(partial).toContainText('Incomplete response');
     const runId = corral.server.coordinator.listRuns()[0]?.runId;
     if (!runId) throw new Error('Missing conversation run');

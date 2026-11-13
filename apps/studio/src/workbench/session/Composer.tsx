@@ -25,8 +25,7 @@ import { clearSentComposerDraft, readComposerDraft } from '../sessionDraft.ts';
 import { useMentionSearch } from '../useMentionSearch.ts';
 import { useModelProfiles, useTeamRoles } from '../useModels.ts';
 import type { FolderAccess } from '../WorkFolderNotice.tsx';
-import { ComposerDock, ComposerPlan } from '../widgets/ChatWidgets.tsx';
-import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
+import { ComposerActivity } from './ComposerActivity.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 import { composerAvailability } from './composer/availability.ts';
@@ -40,7 +39,12 @@ import {
   TeamChoice,
   WorkFolderEntry,
 } from './composer/ComposerTools.tsx';
-import { compactContext, composerCommands, runCommand } from './composer/commands.ts';
+import {
+  compactContext,
+  composerCommands,
+  type RunCommandFailure,
+  runCommand,
+} from './composer/commands.ts';
 import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs.tsx';
 import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
@@ -61,6 +65,8 @@ import { useComposerIntent } from './composer/useIntent.ts';
 import { useLatestResult, useSteerTargets } from './composer/useRunState.ts';
 import { useSessionSettings } from './composer/useSessionSettings.ts';
 import { useVoiceTranscript } from './composer/voice.ts';
+import { useSettledAppearance } from './settle.ts';
+import { useActiveExecutionCount, useCommandSending } from './useActivity.ts';
 
 /**
  * The composer (features/composer-flow.md "화면 틀"): one component for a conversation and a
@@ -82,6 +88,7 @@ function SessionComposer({
   active,
   selectedRunId,
   onViewRun,
+  revealRun,
   queued,
   onChange,
   onSent,
@@ -100,6 +107,8 @@ function SessionComposer({
   active: RunSummary | null;
   selectedRunId: string | null;
   onViewRun?: (runId: string) => void;
+  /** Brings a run's item into the conversation's window (`null` lets it go); false without one. */
+  revealRun?: (runId: string | null) => boolean;
   queued: SessionEntry[];
   onChange: () => void;
   /** The person sent. The conversation follows the end again. */
@@ -121,11 +130,11 @@ function SessionComposer({
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
   const format = useFormatter();
-  // The Todo the one-line status expands, inside the input surface.
-  const planRegion = useId();
   const destinationId = useId();
   const tr = useTranslations('Reins');
   const tStatus = useTranslations('RunStatus');
+  const tActivity = useTranslations('Activity');
+  const tApprovals = useTranslations('Approvals');
   const services = useServices();
   const { mode, live } = services;
   const prefs = usePreferences();
@@ -182,8 +191,6 @@ function SessionComposer({
     'none',
   );
   const roles = useTeamRoles(team);
-  // A plan can move between the steering shell and the next-request surface at settlement.
-  const [planAllKey, setPlanAllKey] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (session.entries.length === 0) input.current?.focus();
@@ -357,7 +364,61 @@ function SessionComposer({
   const requestStop = () => {
     setConfirmStop(ownActive !== null);
   };
-  const runDeps = { services, newId: newCommandId, setError, onChange };
+  // A run command the run refused or whose answer was lost: the activity bar's line says so, where
+  // it says a refused decision, until the next press. A lost answer goes once the run changes state
+  // or ends: whatever it was, the run has moved on. The refusal of a run no longer going is said
+  // once, under the input.
+  const [commandFailed, setCommandFailed] = useState<{
+    runId: string;
+    text: string;
+    /** A lost answer, and the run's state when it was pressed. */
+    lost: boolean;
+    status: string | undefined;
+  } | null>(null);
+  const runDeps = {
+    services,
+    newId: newCommandId,
+    setError,
+    onChange,
+    onResult: (runId: string, failure: RunCommandFailure | null) => {
+      const text = !failure
+        ? null
+        : failure.kind === 'refused'
+          ? tApprovals('refused', { message: failure.message })
+          : tActivity('commandUnconfirmed');
+      if (text && going?.runId !== runId) {
+        if (failure?.kind === 'refused') setError(text);
+        setCommandFailed(null);
+      } else
+        setCommandFailed(
+          text && failure
+            ? { runId, text, lost: failure.kind === 'unconfirmed', status: going?.status }
+            : null,
+        );
+    },
+  };
+  // The run moves on: a lost answer goes with the state it was pressed in; the refusal of a run no
+  // longer going is said under the input, as another run's is.
+  useEffect(() => {
+    if (!commandFailed) return;
+    if (going?.runId !== commandFailed.runId) {
+      if (!commandFailed.lost) setError(commandFailed.text);
+      setCommandFailed(null);
+    } else if (commandFailed.lost && going.status !== commandFailed.status) setCommandFailed(null);
+  }, [going, commandFailed]);
+  // Stop asks first while two or more executions work, or while how many is not known yet: one
+  // stop then ends them all.
+  const activeExecutions = useActiveExecutionCount(going?.runId ?? null);
+  const stopRun = () => {
+    if (!ownActive) return;
+    if (activeExecutions === null || activeExecutions >= 2) setConfirmStop(true);
+    else void runCommand(runDeps, 'cancel', ownActive.runId);
+  };
+  // A run command on its way: Stop waits for its receipt, as the run record's controls do.
+  const commandSending = useCommandSending(going?.runId ?? null);
+  // Stop comes to Send's place once a send clears the box and the run goes: the press that sent,
+  // or the next one on the same place, does not stop it.
+  const stopSettled = useSettledAppearance(Boolean(going) && !text.trim());
   const queue = useQueuedRequests({
     deps: {
       ...startDeps,
@@ -568,52 +629,87 @@ function SessionComposer({
       }
       settings={loading ? null : <RequestTools only="settings" {...requestTools} />}
       end={<RequestTools only="voice" {...requestTools} />}
+      // One raised surface the column's width: the activity bar, what waits to start, the
+      // notes for the next request, and the input with its tool line.
+      activity={
+        <ComposerActivity
+          sessionId={session.sessionId}
+          ownActive={going}
+          target={going ? steerTarget || null : null}
+          targets={targets}
+          onJoin={(id) => {
+            chooseTarget(id);
+            input.current?.focus();
+          }}
+          onStop={stopRun}
+          onPause={() => void runCommand(runDeps, 'pause', ownActive?.runId)}
+          onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
+          onViewRun={onViewRun}
+          {...(revealRun ? { revealRun } : {})}
+          notice={
+            going &&
+            commandFailed?.runId === going.runId &&
+            !(commandFailed.lost && commandFailed.status !== going.status)
+              ? commandFailed.text
+              : null
+          }
+          request={
+            ownActive
+              ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)
+              : undefined
+          }
+          viewingOther={Boolean(viewingOtherRun)}
+        />
+      }
+      above={
+        <>
+          {/* The next request's own notes, only while there are any: the pre-run auto choice, the
+            result a question is about, what this send does not carry. */}
+          <div
+            data-slot="composer-notes"
+            className="flex min-w-0 flex-nowrap items-center gap-1 px-1.5 empty:hidden"
+          >
+            <ComposerHeader
+              choosingAuto={choosingAuto}
+              onCancelAuto={cancelAuto}
+              intent={intent}
+              about={latest?.label ?? null}
+            />
+            {heldForNew.length ? (
+              <span role="status" className="min-w-0 truncate px-2 text-caption text-warning">
+                {tc('heldForNew', {
+                  items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
+                })}
+              </span>
+            ) : null}
+          </div>
+          <PreRun session={session} team={team} isAuto={isAuto} runMode={runMode} intent={intent} />
+          <ComposerQueue
+            queued={queued}
+            autoStart={autoStart}
+            // Auto start is the server's; the browser demo has none, so it has no such setting.
+            autoStartShown={services.mode !== 'browser'}
+            onAutoStartChange={(value) => void updateAutoStart(value)}
+            startDisabled={Boolean(active) || busy || savedRequestUnavailable}
+            onStart={(entry) => void queue.start(entry)}
+            onEdit={(entry) => void queue.edit(entry)}
+            onRemove={(entry) => void queue.remove(entry)}
+          />
+        </>
+      }
+      stop={
+        going
+          ? {
+              label: tActivity('stop'),
+              disabled: going.status === 'cancelling' || commandSending || !stopSettled,
+              onStop: stopRun,
+            }
+          : null
+      }
     />
   );
   return (
     <ComposerSurface.Shell>
-      {/* One line above the input: intent, an ended run, plan, changes, activity, held items,
-          Overview; the Todo it expands sits directly under it. */}
-      <ComposerDock
-        planId={planRegion}
-        plan={
-          <ComposerPlan
-            id={planRegion}
-            showAllKey={planAllKey}
-            onShowAllKeyChange={setPlanAllKey}
-          />
-        }
-        lead={
-          <ComposerHeader
-            choosingAuto={choosingAuto}
-            onCancelAuto={cancelAuto}
-            intent={intent}
-            about={latest?.label ?? null}
-          />
-        }
-        note={
-          heldForNew.length ? (
-            <span role="status" className="min-w-0 truncate px-2 text-caption text-warning">
-              {tc('heldForNew', {
-                items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
-              })}
-            </span>
-          ) : null
-        }
-        summary={<OverviewAccess />}
-      />
-      <PreRun session={session} team={team} isAuto={isAuto} runMode={runMode} intent={intent} />
-      <ComposerQueue
-        queued={queued}
-        autoStart={autoStart}
-        // Auto start is the server's; the browser demo has none, so it has no such setting.
-        autoStartShown={services.mode !== 'browser'}
-        onAutoStartChange={(value) => void updateAutoStart(value)}
-        startDisabled={Boolean(active) || busy || savedRequestUnavailable}
-        onStart={(entry) => void queue.start(entry)}
-        onEdit={(entry) => void queue.edit(entry)}
-        onRemove={(entry) => void queue.remove(entry)}
-      />
       {compose}
       {home && corrals.length > 0 ? (
         <StartSuggestions
