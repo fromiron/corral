@@ -104,9 +104,8 @@ export function useSessionSettings({
   };
 
   // The conversation's advisor (features/advisor.md "두는 곳" 대화): shown as the session's record
-  // says, never before a save confirms it. While it saves, the composer is held: the ref stops a
-  // second press or a send in the same moment, and busy holds Send and the other settings on the
-  // screen. A conflict or a lost answer reads the session again and shows what it says; nothing is
+  // says, never before a save confirms it. While it saves, the composer is busy: Send, a second
+  // press and the other settings wait for its answer. A conflict or a lost answer reads the session again and shows what it says; nothing is
   // sent again by itself. When that read fails too, the setting is not known: the screen says only
   // that, and a request first reads the session (a later read from anywhere also settles it).
   const tc = useTranslations('Composer');
@@ -148,16 +147,16 @@ export function useSessionSettings({
       setAdvisorProblem(tc('advisor.unconfirmed'));
     }
   };
-  /** Holds the composer while `work` runs. */
-  const holding = async <T>(work: () => Promise<T>, otherwise: T): Promise<T> => {
-    if (autoSaving.current) return otherwise;
-    autoSaving.current = true;
+  /**
+   * Holds the composer while `work` runs. Busy is the one hold: it disables the switch, the model
+   * menu, Check again and Send until the answer, so nothing presses twice.
+   */
+  const holding = async <T>(work: () => Promise<T>): Promise<T> => {
     setBusy(true);
     setAdvisorSaving(true);
     try {
       return await work();
     } finally {
-      autoSaving.current = false;
       if (mounted.current) {
         setBusy(false);
         setAdvisorSaving(false);
@@ -166,7 +165,6 @@ export function useSessionSettings({
   };
 
   const updateAdvisor = async (next: SessionAdvisor | null) => {
-    if (busy) return;
     await holding(async () => {
       setAdvisorProblem(null);
       const result = await repository
@@ -189,7 +187,7 @@ export function useSessionSettings({
         await router.invalidate();
       } else if (result.error === 'revision_conflict') await settle(tc('advisor.conflict'));
       else setAdvisorProblem(tc('advisor.failed', { message: result.message }));
-    }, undefined);
+    });
   };
 
   /** Reads the session again while the setting is unknown; whether it is known now. */
@@ -200,7 +198,7 @@ export function useSessionSettings({
       setAdvisorProblem(known ? null : tc('advisor.unconfirmed'));
       if (known) await router.invalidate();
       return known;
-    }, false);
+    });
 
   return {
     autoChoice,

@@ -104,10 +104,7 @@ export function AdvisorControl({
           {on ? <LiveDot live={false} className="absolute top-1 right-1" /> : null}
           {/* Not known: a mark of its own shape, not a colour of the on or off one. */}
           {unknown ? (
-            <span
-              aria-hidden="true"
-              className="absolute top-0 right-0.5 text-micro font-semibold text-warning"
-            >
+            <span aria-hidden="true" className="absolute top-0 right-0.5 text-micro text-warning">
               ?
             </span>
           ) : null}
