@@ -12,8 +12,8 @@
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
 | 백본 | B1–B13 | 완료 |
-| 화면 | K1, U1–U14 | 진행 중(K1·U1–U8·U10–U12 병합) |
-| 회의 | M1–M4 | 진행 중(M1–M3 병합) |
+| 화면 | K1, U1–U14 | 진행 중(K1·U1–U12 병합) |
+| 회의 | M1–M4 | 완료 |
 | 감독 | A1–A9 | 진행 중(A1–A7·A9 병합) |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
 
@@ -449,7 +449,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 완료 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 완료(병합). 후속 U7c(화면 안에 새로 뜬 행을 닫힌 줄이 몇 프레임 가리키는 깜박임) 진행 중(`flow/u7c-label-arrival`) |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
-| U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 진행 중(`flow/u9-presence-widgets`, U7 브랜치에서 가름) |
+| U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 완료(병합) |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
 | U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 완료(후속 수정 셋은 같은 브랜치에서: Tab으로 나간 포커스, 상자 안의 End, 인용 글 끝의 줄바꿈) |
 | U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 완료 |
@@ -458,7 +458,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 완료 |
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 완료 |
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 완료 |
-| M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 1단계(선택 표식, 계속 카드, 대기 초안 블록, 배지 이름) 디자인 검수 통과, 코드 리뷰의 수정 끝. 2단계(회의 활동 바, 시작하지 않은 답변의 행 없애기, 머리 참가자 줄) 진행 중(`flow/m4-meeting-selection`, U7 브랜치를 받음). 끝에 한 번에 리뷰한다 |
+| M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 완료(병합) |
 | A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 완료 |
 | A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 완료 |
 | A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 완료 |
@@ -646,11 +646,13 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 대상: `W/session/composer/send.ts`의 `explain` 분기와 `packages/client/src`의 `startExplain`(다른 호출자가 없을 때만), `W/RunStatusCards.tsx`(273–315행의 압축), `S/pages/SessionPage.context.test.tsx`(411–434행).
 - 구현: 쓰이지 않는 `explain` 경로를 지운다. 서버 라우트는 다른 호출자(CLI 등)를 확인하고, 있으면 남긴다. 압축은 `/compact`와 활동 바의 컨텍스트 상세만 남긴다.
 - 완료 체크: 지운 식별자 참조 0(`pnpm typecheck`), 관련 테스트 갱신 통과.
+- U9·M4·A8 리뷰가 넘긴 것: 작업 과정의 역할 행이 세부를 말할 때 활동 바의 대상 줄이 같은 세부를 되풀이한다("Writer: Waiting for agents"가 두 번). 실행 기록 Workflow 탭의 머리 배지와 흐름 맨 위 카드가 같은 Run의 상태를 두 번 쓰고 target이 없어 측정기가 세지 못한다. 같은 탭의 "3 running". 앱에 마운트되지 않는 `RunActivity`. `ChatWidgets.tsx`(Todo 상자)와 `RunPage.tsx`에 남은 상태 값 직접 비교. `ExecutionSteering`의 `running` 직접 판정.
 
 ### U14 영문 문구 정리
 - 대상: `R/messages/en.json`, [용어집](../specs/glossary.md).
 - 구현: 화면의 session을 conversation으로, panel을 pane으로 맞춘다(옆·아래 영역 전체를 가리키는 곳 포함). 코드·URL 이름은 그대로다. `edit-copy` 스킬을 따른다.
 - 완료 체크: en.json의 값에 대소문자 무시 `session`·`panel`이 용어집이 허용한 곳에만 남음, 문구를 단언하는 테스트 갱신 통과.
+- 함께 맞출 것(U9·M4·A8 리뷰에서): `Canvas.nodeStatus.*`·`Run.waiting.*`·`RunPage.cancelling`·이벤트 탭 `runState`에 남은 상태 낱말("Waiting for an answer"와 "Waiting for a reply", "Cancelling owned work"와 "Stopping", "Run is now succeeded"), "1 agents", 회의 중지 줄("You stopped the replies. Answers already received remain in the conversation.")과 선택 이유 문장, 조언 줄의 영어 문구. 한국어 쪽도 같은 낱말이 갈린 곳은 함께 맞춘다.
 
 ### M1 회의 점수·정책 분리, 선택 기록, 무응답
 - 명세: `features/local-intelligence.md` 63–75행 수정분(D12).
@@ -829,6 +831,8 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **A9b (정한 것과 남긴 것).** 감독은 도구 줄에서 팀 메뉴 옆의 아이콘 버튼으로 켜고 끈다(누르면 스위치와 모델 고르기가 든 popover). 저장은 `updateSession` 하나이고 세션 기록이 기준이다. 저장하는 동안의 전송은 보내지 않는다(모델을 바꾸는 중과 같다). 답을 받지 못한 저장은 "확인되지 않음"으로 남아 "다시 확인"을 두고, 전송은 먼저 세션을 다시 읽는다. 켜면 그 대화의 지금 모델을 쓴다. 쓸 수 없게 된 모델은 프로필 ID 대신 "쓸 수 없는 모델"이라고 쓴다. 감독 모델 때문에 거절된 요청은 메타 줄이 "감독 모델 고르기"를 둔다. 남긴 것: 브라우저 데모 모드의 감독 실행은 context가 넘어가는 것까지만 확인했다. 저장하는 동안 컴포저 전체가 흐려진다. 거절은 메타 줄과 컴포저 두 곳에서 말한다(U13).
 - **U6 (정한 것과 남긴 것).** 메타 줄은 킷 메시지의 시각·동작 줄과 한 줄을 쓴다(시각과 동작은 호버·포커스에서, 상태는 늘 보인다). 시작된 요청은 실행 번호를 실행 행에 맡긴다. 줄의 버튼은 조용한 작은 버튼이고, 대화의 사용자 메시지는 위치 애니메이션을 쓰지 않는다(`layout={false}`). 넘겨받았는지는 세션의 기록만 말한다: 화면에 넘겨받기 규칙의 사본을 두지 않고, 보고 있는 동안 읽히지 못하고 끝난 지시는 세션을 한 번 다시 읽을 때까지 앞의 말을 지킨다. 넘겨받은 요청은 대화에 한 번 그린다(보낸 자리 바로 아래면 실행 행만, 아니면 자기 메시지. 자기 메시지는 보낸 자리가 대화에 있으면 넘겨받았음을 되풀이하지 않는다). 끝난 Run의 기록은 그려진 행의 것만, 한 번에 넷까지 읽고 줄이 읽는 필드만 간직한다. 끝났는지 모르는 Run(Run 목록을 읽기 전)은 끝난 것으로 읽지 않고, 읽지 못한 기록은 행이 그려져 있는 동안 1·2·4·8·16초 뒤 다시 묻는다. "다시 보내기"는 글과 지시의 텍스트 첨부를 새 요청으로 보낸다. **남긴 것**: "다시 보내기"를 누른 뒤에도 옛 메시지의 줄은 "전달되지 않음 · 다시 보내기" 그대로다(다시 보낸 요청과 옛 지시를 잇는 기록이 없다). 세션 읽기가 서버의 넘겨받기 저장보다 먼저 닿으면 "전달되지 않음"이 다음 읽기까지 스칠 수 있다. 세션을 열면 처음 그려지는 여덟 행의 Run도 읽는다. 기록 캐시는 앱이 떠 있는 동안 본 Run마다 작은 항목 하나씩 자란다. 넘겨받아 기다리는 상태와 둘이 넘겨받힌 화면은 브라우저 캡처가 없다(단위·배선 테스트). 거절된 넘겨받은 요청으로 가는 `?message=`는 확인하지 못했다. `session-reentry.spec.ts:4`(server)는 컴포저의 폴더 칩 이름을 찾지 못해 실패한다(U6와 무관, 기준 커밋에서는 확인하지 못함).
 - **U7 (정한 것과 남긴 것).** 줄에서 승인을 결정하는 것은 대상이 한 줄에 온전히 보일 때뿐이다. 오른쪽에서 왼쪽으로 쓰는 글자, 보이지 않거나 빈칸·상자로 그려지는 글자, 보통 공백이 아닌 공백, 앞뒤에 공백이 있는 경로가 있으면 "보기"만 온다. 명령은 끝의 LF(와 그 사이 공백)만 세지 않는다. 줄의 0.6초는 `session/settle.ts`의 `useLineHold` 한 곳이 정한다: 다른 승인으로 바뀐 뒤, "보기"가 그려진 자리에 버튼이 온 뒤, 세는 중에 다시 온 것. 버튼을 그린 프레임부터 세고 움직임 줄이기와 무관하다. effect가 정리됐다 다시 붙어도(개발 빌드의 StrictMode, 숨겼다 보이는 트리) 다시 센다. 유실된 실행 명령의 알림은 Run의 상태가 바뀌거나 Run이 끝나면 떠나고, 끝난 Run의 거절만 입력 아래로 간다(`Composer.tsx`가 렌더 중에 한 곳에서 정한다). 펼친 곳의 작업 계획은 같은 계획의 다음 revision을 읽는 동안 앞 것을 그대로 둔다(높이가 흔들리지 않는다). 서버는 닫힐 때 승인 타이머를 지우지 않는다: 흐름 장면은 승인·질문을 남기고 끝나지 않는다. 남긴 것: 모양이 같은 다른 글자(homoglyph)는 가리지 않는다. 배경 탭에서의 0.6초, 건수 줄에서 한 건으로 바뀌는 길의 브라우저 장면은 없다. StrictMode 동작은 단위 테스트로만 확인했다. `ExecutionSteering`은 아직 `running`을 직접 판정한다(U13).
+- **U9 (정한 것과 남긴 것).** 완료된 Run이 Loop의 마지막 후보에서 이어졌다는 것은 표시 상태의 세부(`round_limit`·`rounds_stalled`)이고 `runPresence`가 정한다(`projectionPresence`가 Loop마다 마지막 회차의 결과를 넘긴다). `data-presence-label` 요소는 상태 이름만 담고 세부는 그 옆에 온다. 접근 이름에는 세부가 들고, 활동 바와 알림은 상태 이름만 말한다. 알림은 머리 줄과 같은 presence를 받아 표시 상태가 바뀔 때만 난다. 작업 과정의 역할 행은 세부를 옆에 쓴다("작업 중 · 하위 에이전트 대기"). 감독의 `waiting_message`는 "지켜보는 중"이다(`executionViewPresence`). 열린 요청의 순서는 이벤트의 `runSeq`다. 개요의 에이전트 행은 킷 표식과 접근 이름만 쓰고 수 요약은 0인 항목을 뺀다. `PresenceBadge`와 `usePresenceWord`는 쓰이는 모든 자리에서 세부를 함께 보인다. 남긴 것: 이벤트 기록이 없는 자리(`RunActivity`, `RunView`, `RunFacts`, 세션의 sr-only 배지, 예약, 실행 목록)는 열린 승인만 알고 질문·확장 요청을 모른다. 390px 이하에서는 머리 줄의 역할 이름이 0폭이 되고 상태 글자가 잘린다. 실행 기록 Workflow 탭의 `ExecutionTree`·`RunFlowView`에는 target이 없고 "3 running"이 남았다(U13). 남은 낱말은 U14가 맞춘다.
+- **M4 (정한 것과 남긴 것).** 메타 줄은 받는 이를 한 번 말한다: 사람이 고른 수신자와 @멘션은 이름, 자동으로 고른 묶음은 "자동"(누르면 고른 방법과 이유 한 문장, 선택기를 썼으면 점수 순 목록), 아무도 답하지 않으면 "답변 없음", 받는 이가 있었지만 답변이 하나도 시작하지 못했으면(생략됐거나 시작 전에 중지됐다) "생략됨". 계속 카드는 "지금 필요한 것" 자리에 "계속" 하나로 오고, 연쇄가 다시 걸릴 때마다 새 카드와 새 명령이다. 답을 확인하지 못한 계속은 회의를 한 번 다시 읽는다. 답한 뒤의 초점은 입력으로 간다. 회의 컴포저의 활동 바는 화면 밖의 계속 대기, 화면 밖에서 답변 중인 참가자, 쉬는 때의 요약 순으로 말하고 기다리는 수는 사람 수다. 타임라인의 순서와 "시작한 답변인가"는 `workbench/meetingTimeline.ts` 한 곳이 정한다: 시작하지 않은 답변은 행이 없고, 한 번의 중지는 그때의 끝에 한 줄이다. 중지한 뒤 아직 끝나지 않은 답변은 "중지하는 중"이다. 중지는 보내기 자리에만 있고 0.6초 보류를 대화와 같이 쓴다. 머리의 참가자 줄은 누구인지만 쓴다. 남긴 것: 명단에 없는 참가자는 ID로 보인다. 서버의 영어 거절 글과 "Failed to fetch"가 원문 그대로 보인다. 새로 고치면 경과가 0부터 다시 센다. 회의 바에는 `announcements`가 없다. 펼쳐 둔 바는 다음 답변이 시작할 때 다시 열린다. 답변이 멈추는 동안 보내기 자리의 중지를 한 번 더 누를 수 있다(서버는 효과 없이 받는다). 중지 줄의 문구는 U14가 줄인다.
 - **U13 (이번에 함께 지울 것).** 제품에서 쓰이지 않는 `RunFlowView`와 `flow.ts`의 그 경로, 낡은 `compact-run`을 쓰는 `notification-smoke.ts`, `composerShowsRunStatus`, `DockTopBar`의 실행 조작(활동 바가 맡았다), 컴포저의 폴더 힌트. 거절된 새 요청은 메시지의 메타 줄과 컴포저의 거절 상자가 같은 이유와 같은 동작을 두 번 말한다: 메시지가 대화에 그려져 있으면 컴포저의 상자는 그리지 않는다(명세 문장을 먼저 넣는다). `firstLine`이 react와 서버 `review.ts`에 따로 있다. 흐름 장면은 승인·질문을 남긴 채 끝나지 않는다(서버를 프로세스 안에서 여닫는 테스트에서 5분 제한 타이머가 닫힌 DB에 써 다른 테스트를 떨어뜨린다. 서버가 닫힐 때 타이머를 지우지는 않는다).
 - **U11 (정한 것과 남긴 것).** 툴바는 한 답변 안의 선택이면 어떻게 골랐든 뜬다(끌기, 두 번·세 번 클릭, 키. 선택의 끝이 본문 바로 밖이어도 그 답변의 것이다). 인용 글은 복사했을 때의 글(`selection.toString()`)이고 오프셋은 본문 글(`data-copy-skip` 제외)로 센다. 코드 블록의 머리(언어 표시·복사 버튼)는 `select-none`과 `data-copy-skip`이다. 대화 키는 타임라인 안의 어디서든 듣는다(글상자·메뉴·대화상자·툴바는 제 키를 갖는다). 잡아 둔 행은 `ChatView`의 `letGo()` 한 곳에서 놓는다: 휠·터치(어느 방향이든)·스크롤바·움직이는 키·최신으로 버튼. 배치 변화만으로는 놓지 않는다. `placeChatRow(sessionId, id, offset)`는 `{following, held()}`를 돌려주고 `followChatEnd(sessionId)`가 끝 추적을 다시 켠다(U7의 "보기"와 A8이 쓴다). 인용 단축키만 Alt 단독 조합을 갖고(`vault/service.ts`의 `AltChord`), 브라우저가 쓰는 Alt 글자(B·D·E·F·H·S·T·V, 웹은 숫자도)는 설정이 거절한다. 남긴 것: 툴바가 첫 줄 선택에서 실행 머리 줄이나 코드 블록 머리를 가린다, 찾을 수 있는 칩도 `aria-haspopup`을 단다, 툴바는 Tab 순서에 없다(단축키로 쓴다), 못 찾음 상태는 메모리에만 있다, Firefox·WebKit·터치는 확인하지 않았다.
 - **A6 (정한 것과 남긴 것).** 프레임은 `next_review {requestId}` → `review {requestId, review|null}` → `end_review {reviewId}`다. 감독의 start 프레임에는 Run의 이미지·앞선 대화·이어받은 맥락이 없다. `maxRequestsPerReview`는 계약에서 1–64다. 상한은 permit이 나간 요청만 센다(재시도 포함. 낡음으로 되돌린 준비와 `purpose: 'compaction'`은 세지 않는다). 상한에 닿으면 Coordinator가 `endReview`를 먼저 보내고 거절하며 worker는 끝난 검토의 거절을 실패로 치지 않는다. 압축된 컨텍스트는 다음 검토의 시작 상태다. 감독이 받는 자기 이름은 조언 머리와 같은 다듬은 이름이다. 감독은 core worker로만 돈다. 남긴 것: 검토 입력은 감싸지 않은 원문이다(방어는 머리말 한 줄), 압축 요약에 "이미 낸 조언" 자리가 없다, 압축이 요약해 없앤 지시가 다음 요청에 다시 붙는다(일반 실행 단위도 같다), compaction 목적 요청을 시작된 압축과 묶어 보지 않는다(worker 신뢰), 이어받은 Run에서의 감독은 돌려 보지 않았다.
