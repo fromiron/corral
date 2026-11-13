@@ -1231,6 +1231,7 @@
     "loopEscalated": "{loop}: {policy, select, raise_reasoning {추론 수준을 올려 더 돎} upper_model {{model}(으)로 바꿔 더 돎} other {바꿔 더 돎}}",
     "approvalRequested": "{kind, select, user_action {사용자 결정} final_output {최종 출력 승인} check {검사 결정} route {갈 길 결정} other {사용자 결정}}을 기다리는 중",
     "approvalResolved": "{decision, select, approve {승인함} reject {반려함} other {결정함}}",
+    "approvalClosed": "결정 없이 닫힘",
     "directiveAccepted": "{node}에 대한 지시 접수",
     "directiveAttached": "지시가 요청에 첨부됨",
     "directiveDispatched": "지시를 보냄",

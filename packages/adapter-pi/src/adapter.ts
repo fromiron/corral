@@ -659,6 +659,7 @@ class WorkerExecution {
             usage: frame.usage,
             ...(frame.rawUsage ? { rawUsage: frame.rawUsage } : {}),
             ...(frame.interrupted ? { interrupted: true as const } : {}),
+            ...(frame.failed ? { failed: true as const } : {}),
           })
           .catch(() => {});
         return;

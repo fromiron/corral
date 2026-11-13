@@ -2882,12 +2882,11 @@ export class Coordinator {
         q.wake({ questionId, outcome: 'cancelled' });
       }
     if (scope.kind === 'run') {
-      // The no-progress pause closes with the run, before the cancellation is confirmed.
-      const closings = this.storageError ? [] : this.noProgressClosings(run);
+      // Every approval still waiting closes with the run, before the cancellation is confirmed.
+      const closings = this.storageError ? [] : this.runEndClosings(run, 'cancelled');
       if (closings.length && !TERMINAL_RUN_STATUSES.has(run.projection.status))
         this.commit(run, closings);
-      for (const resolve of run.approvals.values()) resolve('reject');
-      run.approvals.clear();
+      this.wakeApprovalWaiters(run);
     }
     this.wake(run);
     const ids = [...affected];
@@ -3385,9 +3384,10 @@ export class Coordinator {
       return refuse({ code: 'TARGET_TERMINAL', message: 'the scope is cancelling' });
     const directiveId = this.ids.next('directive');
     const handle = run.handles.get(executionId);
-    // An interrupt the target's adapter cannot take is lowered to the next request.
+    // An interrupt is lowered to the next request when the target's adapter cannot take one, or
+    // when its worker has not been handed over yet, so whether it can is unknown.
     const delivery =
-      command.payload.delivery === 'interrupt' && handle && !handle.interrupt
+      command.payload.delivery === 'interrupt' && !handle?.interrupt
         ? 'next_request'
         : command.payload.delivery;
     this.commit(
@@ -3427,7 +3427,7 @@ export class Coordinator {
         );
       },
     );
-    const delivered: DeliveredDirective = {
+    const directive: DeliveredDirective = {
       directiveId,
       text: directiveWithAttachments(command.payload.text, attachments),
       origin: 'user',
@@ -3435,44 +3435,38 @@ export class Coordinator {
     // Only a working target has a response to cut; one waiting on the person, or not started
     // yet, takes the directive with its first request after, as any directive.
     if (delivery === 'interrupt' && handle?.interrupt && execution.status === 'active')
-      handle.interrupt(delivered);
-    else handle?.pushDirective?.(delivered);
+      handle.interrupt(directive);
+    else handle?.pushDirective?.(directive);
     const stored = this.store.getCommand(runId, command.commandId);
     if (!stored) throw new Error(`command ${command.commandId} was not recorded`);
     return this.currentReceipt(stored);
   }
 
-  /** Open no-progress approvals: the run's limit pause, a `user_action` with a limit. */
-  private openNoProgressApprovals(run: LiveRun): ApprovalView[] {
-    return Object.values(run.projection.approvals).filter(
-      (approval) =>
-        approval.status === 'pending' &&
-        !approval.tool &&
-        approval.kind === 'user_action' &&
-        approval.limit !== undefined,
-    );
-  }
-
   /**
-   * The runtime's rejection of each no-progress approval of a run that ends, for the commit that
-   * ends it; whoever waits on one is told no.
+   * The runtime's closing of every approval still waiting when the run ends, whatever its kind:
+   * drafts for the commit that ends it (api-contract, "구현에서 정한 검토·승인 규칙"). An approval
+   * already closed is not pending and is left alone. The caller wakes the waiters once, after it.
    */
-  private noProgressClosings(run: LiveRun): EventDraft[] {
-    return this.openNoProgressApprovals(run).map((approval) => {
-      const resume = run.approvals.get(approval.approvalId);
-      run.approvals.delete(approval.approvalId);
-      resume?.('reject');
-      return {
+  private runEndClosings(run: LiveRun, reason: 'cancelled' | 'execution_ended'): EventDraft[] {
+    return Object.values(run.projection.approvals)
+      .filter((approval) => approval.status === 'pending')
+      .map((approval) => ({
         type: 'approval.resolved',
+        ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
         payload: {
           approvalId: approval.approvalId,
           decision: 'reject',
           actor: RUNTIME.id,
           subjectVersionIds: approval.subjectVersionIds,
-          reason: 'cancelled',
+          reason,
         },
-      };
-    });
+      }));
+  }
+
+  /** Tells every waiter on an approval no, once; each reads it after the closing commits. */
+  private wakeApprovalWaiters(run: LiveRun) {
+    for (const resolve of run.approvals.values()) resolve('reject');
+    run.approvals.clear();
   }
 
   /** A steer receipt follows its directive: queued until a request carries it. */
@@ -4170,10 +4164,10 @@ export class Coordinator {
       q.wake({ questionId, outcome: 'cancelled' });
     }
     run.questions.clear();
-    // The no-progress pause closes with the run, in the same commit that ends it.
-    drafts.push(...this.noProgressClosings(run));
-    for (const resolve of run.approvals.values()) resolve('reject');
-    run.approvals.clear();
+    // Every approval still waiting closes in the commit that ends the run, before its end. A run
+    // failing as its cancellation goes unconfirmed closed its approvals at the cancel request.
+    drafts.push(...this.runEndClosings(run, 'execution_ended'));
+    this.wakeApprovalWaiters(run);
     this.wake(run);
     try {
       this.commit(run, [...drafts, ...this.closeRounds(run), runState(status, 'failed', reason)]);
@@ -5844,13 +5838,16 @@ export class Coordinator {
       return;
     }
     // The output and the run's success are one fact: readers never see one without the other.
+    // An approval still waiting (a stopped child's, say) closes in the same commit.
     this.commit(run, [
+      ...this.runEndClosings(run, 'execution_ended'),
       {
         type: 'output.finalized',
         payload: { nodeId: output.id, artifactVersionIds: versions, approvalId },
       },
       runState('running', 'succeeded', 'output_finalized'),
     ]);
+    this.wakeApprovalWaiters(run);
   }
 
   // ── reviews and approvals ───────────────────────────────────
@@ -6877,7 +6874,12 @@ export class Coordinator {
       );
       return;
     }
-    this.commit(run, [...this.closeRounds(run), runState(status, to, reason)]);
+    this.commit(run, [
+      ...this.runEndClosings(run, 'cancelled'),
+      ...this.closeRounds(run),
+      runState(status, to, reason),
+    ]);
+    this.wakeApprovalWaiters(run);
   }
 
   /** Run-owned services outlive a tool call, but never a pause or confirmed Run ending. */
@@ -9026,7 +9028,11 @@ export class Coordinator {
           ) ||
           TERMINAL_RUN_STATUSES.has(run.projection.status) ||
           run.projection.tasks[input.taskId]?.activeExecutionId !== executionId;
-        const responseRef = late ? null : `response_${observation.modelCallId}`;
+        // Only a whole response is a confirmed one; a cut or failed call's text stays partial output.
+        const responseRef =
+          late || observation.interrupted || observation.failed
+            ? null
+            : `response_${observation.modelCallId}`;
         const normalizedUsage = {
           inputTokens: observation.usage.inputTokens,
           outputTokens: observation.usage.outputTokens,
