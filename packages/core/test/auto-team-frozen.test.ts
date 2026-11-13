@@ -88,10 +88,17 @@ describe('auto mode is frozen while drafts widen', () => {
             const loopEdges = definition.controlEdges.filter((e) => e.source === 'review_loop');
             const next = loopEdges.filter((e) => e.sourcePort === 'next').map((e) => e.target);
             const exhausted = loopEdges.filter((e) => e.sourcePort === 'exhausted');
-            expect(
-              exhausted.map((e) => e.target),
-              key,
-            ).toEqual(template === 'single' ? [] : next);
+            expect(exhausted, key).toEqual(
+              template === 'single'
+                ? []
+                : next.map((target) => ({
+                    id: 'e7',
+                    source: 'review_loop',
+                    sourcePort: 'exhausted',
+                    target,
+                    targetPort: 'in',
+                  })),
+            );
             const recordedShape = {
               ...definition,
               controlEdges: definition.controlEdges.filter((e) => !exhausted.includes(e)),

@@ -6466,10 +6466,15 @@ export class Coordinator {
    * change its Agents instead, once per entry; nobody is asked.
    */
   private async loopCheck(run: LiveRun, loopId: string, no: number): Promise<LoopStop | null> {
+    const asked = run.rounds.get(loopId);
     // Between rounds a cancel or pause must get in, even when a round waits on nothing: let the
     // host run its queued work once (a macrotask, no real waiting), then check the boundary.
     await (this.timers.turn ? this.timers.turn() : hostTurn());
     await this.boundary(run);
+    // Meanwhile an `any` Join may have stopped this branch and closed its round: it leaves
+    // nothing more, by recipe, limit policy or exhaustion, and the runner drops the answer.
+    const round = run.rounds.get(loopId);
+    if (!asked || round?.no !== no || round.iterationId !== asked.iterationId) return null;
     const loop = run.plan.loops[loopId];
     if (!loop) throw new Error(`plan has no Loop ${loopId}`);
     // Stall detection compares every round with the one before, the cap round included.
@@ -6517,19 +6522,31 @@ export class Coordinator {
     return found && no !== undefined ? { ...found, no } : undefined;
   }
 
-  /** What the open Loops around an Agent raised for it: the latest of each kind wins. */
+  /**
+   * What the open Loops around an Agent raised for it: per item, the innermost open Loop's raise
+   * wins. That is also the latest, since an outer Loop raises only once its inner Loops are left.
+   */
   private raisedFor(
     run: LiveRun,
     nodeId: string,
   ): { modelProfile?: string; level?: ReasoningLevel } {
+    const within = (inner: string, outer: string) => {
+      for (
+        let box = run.plan.boxes[inner]?.parentId ?? null;
+        box;
+        box = run.plan.boxes[box]?.parentId ?? null
+      )
+        if (box === outer) return true;
+      return false;
+    };
     let model: LoopEscalationView | undefined;
     let reasoning: LoopEscalationView | undefined;
     for (const [loopId, loop] of Object.entries(run.plan.loops)) {
       if (!loop.agents.includes(nodeId)) continue;
       const escalation = this.escalationOf(run, loopId);
       if (!escalation?.nodeIds.includes(nodeId)) continue;
-      const latest = escalation.policy === 'upper_model' ? model : reasoning;
-      if (latest && latest.runSeq > escalation.runSeq) continue;
+      const held = escalation.policy === 'upper_model' ? model : reasoning;
+      if (held && !within(loopId, held.loopNodeId)) continue;
       if (escalation.policy === 'upper_model') model = escalation;
       else reasoning = escalation;
     }

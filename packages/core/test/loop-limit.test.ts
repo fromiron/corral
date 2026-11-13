@@ -202,6 +202,8 @@ function runtime(
     /** Model profiles whose workers run in Linux isolation. */
     isolated?: string[];
     harness?: EffectiveHarnessSnapshot;
+    /** The host's turn between rounds: the FakeClock's by default; null for a Scheduler without one. */
+    turn?: (() => Promise<void>) | null;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -210,7 +212,13 @@ function runtime(
   const store = options.store ?? new InMemoryRunStore();
   const coordinator = new Coordinator({
     clock,
-    timers: clock,
+    timers:
+      options.turn === undefined
+        ? clock
+        : {
+            after: (ms: number, fn: () => void) => clock.after(ms, fn),
+            ...(options.turn ? { turn: options.turn } : {}),
+          },
     store,
     ids: new SequentialIdFactory(options.ids),
     ...(options.ids ? { sessionId: `backend_${options.ids}` } : {}),
@@ -1419,28 +1427,35 @@ describe('a Loop whose rounds wait on nothing', () => {
     expect(rounds(final, 'spin').at(-1)?.[1]).toBe('pass');
   });
 
-  it('is stopped by a cancel sent while it spins', async () => {
-    const spin = spinning(() => false);
-    const held = new Gate();
-    const s = runtime({
-      decisions: spin.decisions,
-      agents: {
-        beforeReply: async (_turn, input) => {
-          if (input.nodeId === 'slow') await held.wait();
+  it.each([
+    ['its Scheduler turn', undefined],
+    ['the host macrotask, for a Scheduler without a turn', null],
+  ] as const)(
+    'is stopped by a cancel sent while it spins, yielding with %s',
+    async (_name, turn) => {
+      const spin = spinning(() => false);
+      const held = new Gate();
+      const s = runtime({
+        turn,
+        decisions: spin.decisions,
+        agents: {
+          beforeReply: async (_turn, input) => {
+            if (input.nodeId === 'slow') await held.wait();
+          },
         },
-      },
-    });
-    const { runId } = await start(s.transport, definition());
-    hostTimeout(() => {
-      cancelRun(s.coordinator, runId);
-      // The held worker then sees its cancel and stops.
-      held.open();
-    }, 1);
-    const final = await waitForProjection(s.transport, runId, terminal);
-    expect(spin.state.overflow).toBe(false);
-    expect(final.status).toBe('cancelled');
-    expect(rounds(final, 'spin').at(-1)?.[1]).toBe('cancelled');
-  });
+      });
+      const { runId } = await start(s.transport, definition());
+      hostTimeout(() => {
+        cancelRun(s.coordinator, runId);
+        // The held worker then sees its cancel and stops.
+        held.open();
+      }, 1);
+      const final = await waitForProjection(s.transport, runId, terminal);
+      expect(spin.state.overflow).toBe(false);
+      expect(final.status).toBe('cancelled');
+      expect(rounds(final, 'spin').at(-1)?.[1]).toBe('cancelled');
+    },
+  );
 
   it('holds at a pause sent while it spins, and goes on after resume', async () => {
     let resumedAt: number | null = null;
@@ -1473,6 +1488,114 @@ describe('a Loop whose rounds wait on nothing', () => {
     expect(spin.state.overflow).toBe(false);
     expect(final.status).toBe('succeeded');
     expect(spin.state.rounds).toBeGreaterThanOrEqual(held + 3);
+  });
+});
+
+describe('a Loop round that waits at its turn', () => {
+  const settle = async (done: () => boolean) => {
+    const until = Date.now() + 2_000;
+    while (!done() && Date.now() < until) await new Promise<void>((r) => hostTimeout(r, 1));
+  };
+
+  // pre -> [ Loop [ write -> review -> decide ] | quick ] -> Join (any) -> after -> Output.
+  // The Loop has no exhausted path; quick finishes inside the Loop's first turn and wins.
+  const racing = (loopExtra: Doc) =>
+    team(
+      [
+        writer('pre'),
+        writer('quick'),
+        loop('loop', loopExtra),
+        writer('write', 'loop'),
+        reviewer('review', 'write', 'loop'),
+        decision('decide', 'review', 'loop'),
+        { id: 'join', type: 'join', label: 'join', policy: 'any' },
+        writer('after'),
+        output('after'),
+      ],
+      [
+        edge('pre', 'out', 'quick'),
+        edge('pre', 'out', 'loop', 'enter'),
+        edge('loop', 'body', 'write'),
+        edge('write', 'out', 'review'),
+        edge('review', 'out', 'decide'),
+        edge('decide', 'pass', 'loop', 'exit'),
+        edge('decide', 'revise', 'loop', 'repeat'),
+        edge('loop', 'next', 'join'),
+        edge('quick', 'out', 'join'),
+        edge('join', 'out', 'after'),
+        edge('after', 'out', 'output'),
+      ],
+      undefined,
+      'pre',
+    );
+
+  it.each([
+    [
+      'its limit policy',
+      policy({ kind: 'upper_model', modelProfile: 'model-u' }, { maxIterations: 1 }),
+    ],
+    ['its exhaustion', { maxIterations: 1 }],
+  ])('a Loop that loses an any Join during its turn leaves nothing by %s', async (_name, extra) => {
+    const quick = new Gate();
+    // The winner's next step stays running until the turn is over, so the run is still live.
+    const after = new Gate();
+    let runId = '';
+    let s!: ReturnType<typeof runtime>;
+    s = runtime({
+      agents: {
+        beforeReply: async (_turn, input) => {
+          if (input.nodeId === 'quick') await quick.wait();
+          if (input.nodeId === 'after') await after.wait();
+        },
+      },
+      turn: async () => {
+        quick.open();
+        await settle(() =>
+          s.store.readEvents(runId, 0).some((event) => event.type === 'workflow.joined'),
+        );
+        hostTimeout(() => after.open(), 20);
+      },
+    });
+    let events: RunEvent[] = [];
+    ({ runId, events } = await start(s.transport, racing(extra)));
+    const final = await waitForProjection(s.transport, runId, terminal);
+    expect(final.status).toBe('succeeded');
+    expect(final.nodeExecutions.after).toHaveLength(1);
+    expect(rounds(final, 'loop')).toEqual([[1, 'cancelled']]);
+    const joined = events.findIndex((event) => event.type === 'workflow.joined');
+    expect(joined).toBeGreaterThan(0);
+    expect(
+      events
+        .slice(joined + 1)
+        .filter((event) => (event.payload as { loopNodeId?: string }).loopNodeId === 'loop'),
+    ).toEqual([]);
+    expect(escalations(events)).toEqual([]);
+  });
+
+  it('stops at a pause sent between rounds before it checks the round limit', async () => {
+    let runId = '';
+    let s!: ReturnType<typeof runtime>;
+    s = runtime({
+      turn: async () => {
+        const p = s.store.getRun(runId)?.projection;
+        if (p?.status === 'running')
+          expect(control(s.coordinator, runId, 'pause', p.controlRevision).status).not.toBe(
+            'rejected',
+          );
+      },
+    });
+    ({ runId } = await start(s.transport, reviewed({ maxIterations: 1 }, { fallback: false })));
+    const waiting = await waitForProjection(s.transport, runId, (p) => p.status === 'paused');
+    await settle(() => false);
+    const held = (await s.transport.getSnapshot(runId)).projection;
+    // Paused at the cap round's turn: the round is still open and the run has not failed.
+    expect(held.status).toBe('paused');
+    expect(rounds(held, 'loop')).toEqual([[1, null]]);
+    expect(control(s.coordinator, runId, 'resume', waiting.controlRevision).status).not.toBe(
+      'rejected',
+    );
+    const final = await waitForProjection(s.transport, runId, terminal);
+    expect(final.statusReason).toBe('loop_exhausted: loop cap_reached');
   });
 });
 

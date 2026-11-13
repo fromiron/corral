@@ -588,15 +588,15 @@
       },
       "implement-review": {
         "name": "Implement and review",
-        "body": "Makes the change, then fixes it until the review passes, for up to two rounds."
+        "body": "Makes the change, then fixes it until the review passes, for up to two rounds, then goes on with the last change."
       },
       "plan-implement-review": {
         "name": "Plan, implement and review",
-        "body": "Plans the change first, then implements it until the review passes, for up to two rounds."
+        "body": "Plans the change first, then implements it until the review passes, for up to two rounds, then goes on with the last change."
       },
       "bug-fix": {
         "name": "Bug fix",
-        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds."
+        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds, then goes on with the last fix."
       },
       "parallel-review": {
         "name": "Parallel code review",
