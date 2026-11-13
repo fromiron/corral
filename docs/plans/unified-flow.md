@@ -435,16 +435,16 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
-| B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 구현 중(`flow/b12-reject-stops-branches`) |
+| B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 완료 |
 | B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 리뷰 수정 중(`flow/b11-loop-limit`) |
 | B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 수정 중(`flow/u2-timeline-frame-2`, 자라는 실행 행에서 끝으로 되돌아감) |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 네 번째 리뷰 중(`flow/u2-timeline-frame-2`) |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 구현 중(`flow/u4-pending-tray`, U3 브랜치 위) |
-| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 디자인 검수 통과, 코드 리뷰 중(`flow/u4-pending-tray`, U3 브랜치 위) |
+| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 구현 중(`flow/u5-send-model`) |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
@@ -767,6 +767,8 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U8 (리뷰에서 정한 것).** 끝난 것으로 한 번 보인 실행은 진행 중으로 되돌아가지 않는다(캐시된 옛 목록이 먼저 그려져도). 세션·실행을 고르는 메뉴의 행도 사이드바 행처럼 표식과 접근 이름만 쓴다. 색은 톤이 정하고 킷 표식(`AgentStatusIcon`)은 모양만 쓴다. 터미널 확인 알림 글자는 상태 이름이 아니라 그대로 둔다.
 - **U9 (U8이 남긴 것).** `W/Sidebar.tsx`의 예약 실행 결과 알림(105, 179행 근처)이 아직 `Status` 네임스페이스의 Run 상태 낱말을 쓴다. U9가 `Presence` 문구로 바꾼다. 배지·점의 색은 톤에서만 온다(`presenceDot`과 같은 대응).
 - **U3 (행의 모양).** 머리 줄이 곧 작업 과정을 여닫는 줄이다: 여닫는 표식 · 역할 · 상태 · 경과 · 과정의 셈, 오른쪽 끝에 실행 번호. "작업 과정" 이름표 줄을 따로 두지 않는다(§4.4 그림의 두 줄을 한 줄로 합친다). 대화에서 작업 과정은 기본이 닫힘이고 밀도가 `detailed`이거나 사람이 누를 때만 열린다. 실행이 시작되거나 끝난다고 저절로 여닫지 않는다(열린 과정이 본문 위에서 자라면 본문이 밀린다). 실패한 도구·실행 단위는 셈 끝의 "실패 n"이 알리고 내용은 과정 안에 있다. 끝맺지 못한 턴의 이유·실패 글·`endActions`는 본문의 맨 끝 블록 하나다(배너 면 없음). 꼬리 줄은 값이 있는 것만 쓰고 줄표를 쓰지 않는다. 답이 하나면 그 답의 아이콘 동작(복사·결과 열기)이 꼬리 줄 안에 온다(답 아래 줄을 하나 더 두지 않는다).
+- **U4 (디자인 검수에서 정한 것).** 질문·확장 요청 카드는 승인 카드와 같은 카드 문법을 쓴다(`packages/react/src/components/RequestCard.tsx`: 아이콘 + 제목, 그 아래 누가 기다리는지, 본문, 오른쪽 정렬 버튼의 아래 줄). 색 깔린 면과 강조색 테두리는 쓰지 않는다. 답한 질문도 한 줄("Answered: …")로 접힌다. 컴포저의 질문 알림은 트레이가 화면에 보이지 않을 때만 뜬다(U7이 활동 바로 옮길 때까지). 역할 이름은 역할이 둘 이상인 Run이나 기다리는 Run이 둘 이상일 때만 카드에 보인다.
+- **U13 (U4가 남긴 것).** 질문 카드 머리의 실행 ID 복사 버튼은 무엇을 복사하는지 드러나지 않는다(아이콘만 있다). 진단용 식별자는 접힌 상세에 둔다는 규칙(`chat-widgets-contract.md`)에 맞춰 옮기거나 뺀다. 확장 요청에는 접힌 한 줄이 없다.
 - **U4 (U3가 남긴 것).** U3는 `ApprovalPanel`을 없애지 않고 행의 세 구역 밖, 꼬리 줄 다음으로 옮겨 둔다(통합 브랜치에서 승인이 끊기지 않게). U4가 그것을 `RunMessage`에서 빼고 타임라인 끝의 `PendingTray`로 옮긴다.
 - **U7 (면은 하나).** 컴포저의 올라온 면은 열 너비의 `Elevated` 카드 하나다. 활동 바, 칩, 입력, 도구 줄이 그 카드 안에 있고 입력 상자는 자기 테두리를 갖지 않는다. 세션 누계 줄은 카드 아래에 온다. U2가 만든 컴포저 구역 자체는 면이 아니다(배경과 같은 바탕, 위쪽으로 짧게 옅어지는 가림뿐이다).
 - **U2 (리뷰에서 정한 것).** 타임라인은 항목 수와 무관하게 가상화 한 방식이다(마운트된 행은 흐름 안, 창 밖은 목록의 위·아래 padding). 가상화를 없앤 첫 구현은 200개 이상에서 쓸 수 없게 느려 되돌렸다. 컴포저 구역은 면이 아니다: 페이지 바탕(`--chat-floor`)과 위쪽 가림(`data-composer-fade`)뿐이다.
@@ -779,7 +781,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 판정은 그 지시가 속한 Run이 취소됐는지로 한다(세션의 마지막 Run이 아니다). 그 지시를 가진 Run을 찾지 못하면 특권은 그대로다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
 - **A1 (B5·B9가 남긴 것).** 지시 기록의 출처(`directive.accepted.origin`, `DirectiveView.origin`)는 B9가 타입 있는 필수 필드로 넣었다(`user`·`advice`). A1은 `advice` 지시를 만드는 쪽만 더하고, 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다. 모델에 실리는 머리말(`ADVICE_DIRECTIVE_PREFIX`)은 `packages/adapter-pi/src/worker-tools.ts`에 있다.
 - **B9 (리뷰에서 정한 것).** 끝난 Run의 승인은 종류별로 따로 닫지 않고 한 규칙으로 닫는다: Run이 끝나면(성공·실패·취소) 기다리던 승인을 모두 런타임이 닫는다(`api-contract.md` "구현에서 정한 검토·승인 규칙"). 무진전 승인만 닫던 것, 기준 패치로 다시 물은 무진전 승인이 남던 것, 성공이나 승인 거절로 끝난 Run에 주인 없는 승인이 남던 것이 이 규칙에 든다. 남기는 한계: 실행 단위 하나만 취소돼 기다리는 쪽이 없어진 무진전 승인은 Run이 끝날 때까지 열려 있다(다음 시도가 같은 승인에 합류할 수 있어 닫지 않는다). `origin` 없는 옛 `directive.accepted`가 저장된 Run은 화면의 이벤트 스트림이 멈춘다(개발 중이라 옮기지 않는다. 옛 데이터를 지울지는 사용자가 정한다).
-- **B12 (B9 리뷰가 찾은 기존 문제).** 사람이 승인을 거절해 Run이 끝날 때(`endRun`) 살아 있는 다른 갈래를 멈추지 않았다. 취소된 Run에 실행이 `active`로 남고 종료 상태 뒤에 `execution.state_changed`가 붙을 수 있었다. 명세(`api-contract.md` "거절한 …는 Run을 취소로 끝낸다")에 멈추는 규칙을 적고 B9 빌더가 `flow/b12-reject-stops-branches`에서 고친다.
+- **B12 (정한 것과 남긴 것).** 사람의 거절로 끝나는 Run은 살아 있는 갈래가 있으면 Run 범위 취소 경로를 타고(중단점 거절과 같은 길), 멈추는 동안과 끝난 뒤의 상태 이유는 거절 사유다. 살아 있는 갈래가 없으면 전과 같이 한 커밋으로 끝난다. 남기는 것: 런타임이 낸 취소도 `cancel.requested`에 사람 actor로 남는다(중단점·타임아웃 취소와 같은 기존 관례). 멈추는 중에 호스트가 재시작되면 Run은 `interrupted`로 끝나고 거절 사유는 `cancel.requested`의 reason에만 남는다. Run이 `cancelling`일 때 사람이 실행 하나를 취소하면 Run 상태가 `awaiting_user`로 되돌아갔다가 `cancelled`가 된다(전부터).
 - **A1·A6 (B9 리뷰가 남긴 것).** `advice` 지시를 만드는 태스크가 함께 고친다: `packages/adapter-pi/src/call-snapshot.ts`의 `isRequest`가 조언 머리말을 지시로 알아보게 하고(지금은 조언이 마지막 user 메시지면 판정 입력의 현재 요청이 조언 문장이 된다), `corral_state`의 `directives` 목록과 판정 입력의 적용 지시에 출처를 싣고, `packages/react/src/run/transcript.ts`와 `apps/server/src/session-search.ts`가 조언을 사람의 말로 보이지 않게 한다.
 - **U6 (B9가 남긴 것).** 대화 기록·지시 목록(`ExecutionSteering.tsx`)·기록 내보내기(`transcript.ts`)·세션 검색은 지시를 출처 표시 없이 사람의 지시처럼 보인다. 감독(A 작업)이 `advice` 지시를 만들기 시작하면 U6·A7이 `origin`이 `user`가 아닌 지시를 사람의 메시지로 그리지 않게 한다.
 - **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
