@@ -62,3 +62,16 @@ it('keeps the named theme when the imported theme is the same as now', async () 
   await importTheme('dark');
   expect(preferences.getState()).toMatchObject({ theme: 'dark', palette: 'builtin:monokai' });
 });
+
+it('carries the reply quote key, Alt alone, in the export and through an import', async () => {
+  values.set('corral:shortcuts:v1:web', JSON.stringify({ 'reply.quote': { alt: true, key: 'e' } }));
+  const current = portablePreferences('en');
+  expect(current.shortcuts).toEqual({ 'reply.quote': { alt: true, key: 'e' } });
+  const target: PortableApplication = {
+    ...current,
+    shortcuts: { 'reply.quote': { alt: true, key: 'w' }, help: { mod: true, key: '/' } },
+  };
+  const readback = await applyPortablePreferences(target, await revision(current), 'en', () => {});
+  expect(readback.shortcuts).toEqual(target.shortcuts);
+  expect(JSON.parse(values.get('corral:shortcuts:v1:web') ?? '{}')).toEqual(target.shortcuts);
+});

@@ -25,7 +25,8 @@ export type ShortcutId =
   | 'settings'
   | 'nav.back'
   | 'nav.forward'
-  | 'run.stop';
+  | 'run.stop'
+  | 'reply.quote';
 
 export interface Shortcut {
   id: ShortcutId;
@@ -47,6 +48,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'nav.back', chord: { mod: true, key: '[' } },
   { id: 'nav.forward', chord: { mod: true, key: ']' } },
   { id: 'run.stop', chord: { mod: true, key: '.' } },
+  // Quotes the passage chosen in a reply (reply-citation.md); with no such passage it does nothing.
+  { id: 'reply.quote', chord: { alt: true, key: 'q' } },
 ];
 
 /** Keys that work only inside one place (composer, editor); listed in help, not bound here. */

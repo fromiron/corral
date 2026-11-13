@@ -18,6 +18,7 @@ import { MessageBranch } from '../MessageBranch.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { editRequest, RESEND_REQUEST, RefusalHelp } from '../RefusalHelp.tsx';
+import { SentQuotes } from '../ReplySelection.tsx';
 import { RunChanges } from '../RunChanges.tsx';
 import { RunMessage } from '../RunMessage.tsx';
 import { isScheduledRequest } from '../scheduledRuns.ts';
@@ -148,7 +149,12 @@ export function EntryCard({
         >
           <MessageBody text={entry.text} copy={false} />
           {entry.attachments?.length ? (
-            <TextAttachmentList attachments={entry.attachments} />
+            <SentQuotes attachments={entry.attachments} owner={entry.entryId} />
+          ) : null}
+          {entry.attachments?.some((item) => item.provenance?.kind !== 'reply') ? (
+            <TextAttachmentList
+              attachments={entry.attachments.filter((item) => item.provenance?.kind !== 'reply')}
+            />
           ) : null}
           {entry.images?.length ? (
             <ImageAttachmentList sessionId={sessionId} images={entry.images} />

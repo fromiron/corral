@@ -51,3 +51,34 @@ it('keeps a long assistant code block complete for code copy', async () => {
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(source));
   expect(view.container.querySelector('pre code')?.textContent).toBe(source);
 });
+
+it('draws a reply again in the same code block, table and link, so a passage chosen in them stays', () => {
+  const text = [
+    '```ts',
+    'const answer = 42;',
+    '```',
+    '',
+    '| Name | Value |',
+    '| --- | --- |',
+    '| alpha | one |',
+    '',
+    'A [link](https://example.com) here.',
+  ].join('\n');
+  const view = show(<SafeMarkdown text={text} size="chat" />);
+  const drawn = ['pre', 'table', 'a'].map((tag) => view.container.querySelector(tag));
+  expect(drawn.every(Boolean)).toBe(true);
+  view.rerender(
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <SafeMarkdown text={text} size="chat" />
+    </IntlProvider>,
+  );
+  expect(['pre', 'table', 'a'].map((tag) => view.container.querySelector(tag))).toEqual(drawn);
+  expect(drawn.every((node) => node?.isConnected)).toBe(true);
+});
+
+it('leaves a code block’s language and copy button out of what a copy over it takes', () => {
+  const view = show(<SafeMarkdown text={'```ts\nconst answer = 42;\n```'} />);
+  const header = view.getByRole('button', { name: 'Copy code' }).closest('[data-copy-skip]');
+  expect(header?.className).toContain('select-none');
+  expect(header?.contains(view.container.querySelector('pre'))).toBe(false);
+});

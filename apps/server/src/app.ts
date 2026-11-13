@@ -83,11 +83,13 @@ import {
   parseWorkspaceConfig,
   planRun,
   type SaveResult,
+  SessionAdvisor,
   SessionEntryAuto,
   SessionEntryStart,
   type SessionResult,
   ToolRefusal,
   unreadAdvice,
+  type WorkSession,
 } from '@corral/core';
 import {
   BundleBusyError,
@@ -360,6 +362,7 @@ const UpdateSession = z.strictObject({
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
   autoStart: z.boolean().optional(),
+  advisor: SessionAdvisor.nullable().optional(),
   expectedRevision: z.int().min(1),
 });
 const EntryRefusal = CommandError.extend({ message: z.string().min(1).max(2000) });
@@ -1960,6 +1963,7 @@ async function createCorralServer(
     id: () => `schedule_${crypto.randomUUID().replaceAll('-', '')}`,
     repository: corrals,
     // a scheduled request is admitted like a typed one: with the session's current criteria.
+    // It runs without the session's advisor (features/advisor.md, 두는 곳 › 대화).
     start: async (request, signal) => {
       const sessionCriteria = request.sessionId
         ? (await corrals.getSession(request.sessionId))?.criteria
@@ -2039,6 +2043,7 @@ async function createCorralServer(
     const resend = coordinator.hasStartCommand(body.commandId);
     // A resend returns its first start, so the session is read for a new admission only.
     let sessionCriteria: string[] | undefined;
+    let sessionAdvisor: WorkSession['advisor'];
     if (!resend) {
       const session = await corrals.getSession(body.sessionId);
       if (!session) return { ok: false, code: 'TARGET_NOT_FOUND', message: 'no such session' };
@@ -2049,6 +2054,7 @@ async function createCorralServer(
           message: 'A meeting starts answers through its rounds only.',
         };
       sessionCriteria = session.criteria;
+      sessionAdvisor = session.advisor;
     }
     const work = autoStarter.start(
       {
@@ -2070,6 +2076,7 @@ async function createCorralServer(
         fileTools: false,
         signal,
         ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+        ...(sessionAdvisor ? { sessionAdvisor } : {}),
       },
     );
     if (!autoRequests.has(body.commandId)) {

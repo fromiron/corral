@@ -326,3 +326,10 @@
   background: color-mix(in srgb, var(--warning) 16%, transparent);
   border-left: 2px solid var(--warning);
 }
+
+/* A sent quote's passage, marked for a moment where it leads back to (ReplySelection.tsx). */
+::highlight(corral-quote) {
+  background-color: var(--selected);
+  text-decoration: underline;
+  text-decoration-color: var(--focus-ring);
+}

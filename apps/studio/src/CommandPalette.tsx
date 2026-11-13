@@ -835,6 +835,7 @@ const LABEL: Record<ShortcutId, string> = {
   'nav.back': 'navBack',
   'nav.forward': 'navForward',
   'run.stop': 'runStop',
+  'reply.quote': 'replyQuote',
 };
 
 /** Every shortcut that works here, from the one table the key handler uses. */
@@ -889,7 +890,7 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
     }
   };
   const { sendKey } = usePreferences();
-  const sessionIds = new Set(['session.new', 'session.jump', 'run.stop']);
+  const sessionIds = new Set(['session.new', 'session.jump', 'run.stop', 'reply.quote']);
   const commands = (session: boolean): [string, string, ShortcutId?][] =>
     SHORTCUTS.flatMap((s) => {
       const keys = shortcutLabel(s.id);

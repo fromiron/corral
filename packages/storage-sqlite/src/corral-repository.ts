@@ -113,26 +113,26 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       sessions: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
            updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json, criteria_json,
-           auto_start
+           auto_start, advisor_json
            FROM work_sessions WHERE project_id = ?`,
       ),
       session: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
            updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json, criteria_json,
-           auto_start
+           auto_start, advisor_json
            FROM work_sessions WHERE id = ?`,
       ),
       upsertSession: db.prepare(
         `INSERT INTO work_sessions (id, project_id, corral_id, title, objective, pinned, revision,
            created_at, updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json,
-           criteria_json, auto_start)
+           criteria_json, auto_start, advisor_json)
          VALUES (@sessionId, @projectId, @corralId, @title, @objective, @pinned, @revision,
            @createdAt, @updatedAt, @archivedAt, @entries, @auto, @autoTitle, @meetingJson,
-           @criteriaJson, @autoStartFlag)
+           @criteriaJson, @autoStartFlag, @advisorJson)
          ON CONFLICT (id) DO UPDATE SET corral_id = excluded.corral_id, title = excluded.title,
            auto_json = excluded.auto_json, auto_title = excluded.auto_title,
            meeting_json = excluded.meeting_json, criteria_json = excluded.criteria_json,
-           auto_start = excluded.auto_start,
+           auto_start = excluded.auto_start, advisor_json = excluded.advisor_json,
            objective = excluded.objective, pinned = excluded.pinned,
            revision = excluded.revision, updated_at = excluded.updated_at,
            archived_at = excluded.archived_at, entries_json = excluded.entries_json`,
@@ -350,6 +350,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       meetingJson: s.meeting ? JSON.stringify(s.meeting) : null,
       criteriaJson: JSON.stringify(s.criteria ?? []),
       autoStartFlag: s.autoStart === false ? 0 : 1,
+      advisorJson: s.advisor ? JSON.stringify(s.advisor) : null,
     });
     return result;
   }
@@ -454,6 +455,7 @@ interface SessionRow {
   meeting_json: string | null;
   criteria_json: string;
   auto_start: number;
+  advisor_json: string | null;
 }
 
 function sessionFromRow(row: SessionRow): WorkSession {
@@ -471,6 +473,7 @@ function sessionFromRow(row: SessionRow): WorkSession {
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
     autoStart: row.auto_start !== 0,
+    advisor: row.advisor_json === null ? null : readJson(row.advisor_json, row.id),
     entries: readJson(row.entries_json, row.id),
     auto: row.auto_json === null ? null : readJson(row.auto_json, row.id),
     ...(row.meeting_json === null ? {} : { meeting: readJson(row.meeting_json, row.id) }),

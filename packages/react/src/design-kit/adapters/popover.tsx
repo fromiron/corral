@@ -21,6 +21,8 @@ function PopoverPopup({
   sideOffset = 6,
   alignOffset,
   collisionAvoidance,
+  collisionBoundary,
+  collisionPadding,
   keepMounted = false,
   anchor,
   ...props
@@ -32,6 +34,8 @@ function PopoverPopup({
   sideOffset?: Primitive.Positioner.Props['sideOffset'];
   alignOffset?: Primitive.Positioner.Props['alignOffset'];
   collisionAvoidance?: Primitive.Positioner.Props['collisionAvoidance'];
+  collisionBoundary?: Primitive.Positioner.Props['collisionBoundary'];
+  collisionPadding?: Primitive.Positioner.Props['collisionPadding'];
   anchor?: Primitive.Positioner.Props['anchor'];
   keepMounted?: boolean;
 }) {
@@ -45,6 +49,8 @@ function PopoverPopup({
         alignOffset={alignOffset}
         anchor={anchor}
         collisionAvoidance={collisionAvoidance}
+        {...(collisionBoundary === undefined ? {} : { collisionBoundary })}
+        {...(collisionPadding === undefined ? {} : { collisionPadding })}
         className="z-50 max-w-(--available-width)"
         data-slot="popover-positioner"
       >

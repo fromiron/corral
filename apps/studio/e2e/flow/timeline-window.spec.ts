@@ -1,10 +1,21 @@
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { createTextAttachment } from '@corral/core';
 import { fauxAssistantMessage } from '@corral/server/testing';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, type Harness, test } from '../server/harness.ts';
 import { newConversation, requestBox, runGoing } from '../workbench.ts';
 import { waitForStill } from './probe.ts';
+import {
+  conversation,
+  FIRST,
+  requests,
+  runStates,
+  SECOND,
+  sendEntry,
+  sendQuote,
+  sentChip,
+} from './replies.ts';
 
 // The windowed timeline under a reader (docs/specs/features/composer-flow.md, "튐 없는 본문"
 // rules 5 and 6; docs/specs/chat-widgets-contract.md SCROLL-02 and SCROLL-03): a focused row
@@ -404,6 +415,373 @@ test.describe('tall runs above the end', () => {
     expect(Math.abs((await place(page)).top - streaming.top)).toBeLessThanOrEqual(1);
     await expect(latest(page)).toBeVisible();
     await finished(9);
+    expect(corral.errors).toEqual([]);
+  });
+});
+
+// A reply's words clicked, a sent quote led back to, a linked message opened: the conversation's
+// keys reach where they say with focus in a reply, and a row the conversation put in place holds
+// through layout alone, letting go at the person's first move either way
+// (docs/specs/features/reply-citation.md).
+
+const settle = async (page: Page) => {
+  await page.waitForTimeout(500);
+  await waitForStill(page);
+  return place(page);
+};
+
+/** Where a sent quote's return put the passage: its first line's offset from the view's top. */
+const passageTop = (page: Page) =>
+  timeline(page).evaluate((box) => {
+    const range = document.getSelection()?.getRangeAt(0);
+    const line = [...(range?.getClientRects() ?? [])].find((r) => r.width > 0 && r.height > 0);
+    return line ? line.top - box.getBoundingClientRect().top : null;
+  });
+
+/**
+ * Tab from where focus is, step by step, until it takes the focus out of the view: while each
+ * Tab keeps it in view the held row stays within 1px, and every focus lands in view, above the
+ * composer.
+ */
+async function tabOut(page: Page, row: Locator, label: string) {
+  const index = String(await row.getAttribute('data-index'));
+  let left = false;
+  for (let step = 1; step <= 16 && !left; step += 1) {
+    const before = await place(page);
+    // Where each control in the conversation stood before the key.
+    await timeline(page).evaluate((box) => {
+      (window as unknown as { __stood: Map<Element, DOMRect> }).__stood = new Map(
+        [...box.querySelectorAll<HTMLElement>('*')]
+          .filter((node) => node.tabIndex >= 0)
+          .map((node) => [node, node.getBoundingClientRect()]),
+      );
+    });
+    await page.keyboard.press('Tab');
+    const after = await settle(page);
+    const focus = await timeline(page).evaluate((box) => {
+      const node = document.activeElement;
+      if (!node || node === box || !box.contains(node)) return null;
+      const edge = box.getBoundingClientRect();
+      const face = document.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+      const floor = face ? face.getBoundingClientRect().top : edge.bottom;
+      const shown = (rect: DOMRect) => rect.top >= edge.top - 1 && rect.bottom <= floor + 1;
+      const stood = (window as unknown as { __stood: Map<Element, DOMRect> }).__stood.get(node);
+      const now = node.getBoundingClientRect();
+      return {
+        was: stood ? shown(stood) : false,
+        now: shown(now),
+        where: `${node.tagName} ${node.getAttribute('aria-label') ?? ''} at ${Math.round(now.top - edge.top)}–${Math.round(now.bottom - edge.top)}, was ${stood ? Math.round(stood.top - edge.top) : '-'}, view ${Math.round(floor - edge.top)}`,
+      };
+    });
+    if (!focus) continue;
+    expect(focus.now, `${label}: Tab ${step} shows the focus (${focus.where})`).toBe(true);
+    if (focus.was)
+      expect(
+        Math.abs((after.offsets[index] ?? Number.NaN) - (before.offsets[index] ?? Number.NaN)),
+        `${label}: Tab ${step} within the view`,
+      ).toBeLessThanOrEqual(1);
+    else left = true;
+  }
+  expect(left, `${label}: Tab took the focus out of the view`).toBe(true);
+}
+
+test.describe('a reply’s words, and rows held in place', () => {
+  test.use({ live: true, codexLogin: true });
+
+  test('keys after a click on a reply’s words reach where they say', async ({ page, corral }) => {
+    test.setTimeout(180_000);
+    corral.fake?.setResponses([fauxAssistantMessage(`${FIRST}\n\n${SECOND}`)]);
+    // A long history above the reply, which the first keys cross before its rows are measured.
+    await conversation(page, corral, 2, { before: 60 });
+    const body = page.locator('[data-reply-body]');
+    const click = async () => {
+      await page.reload();
+      await expect(timeline(page)).toContainText('Later request 2.');
+      await expect(body).toBeVisible();
+      await waitForStill(page);
+      await body
+        .locator('p')
+        .first()
+        .click({ position: { x: 20, y: 6 } });
+      return settle(page);
+    };
+    await click();
+    await page.keyboard.press('Control+Home');
+    const top = await settle(page);
+    expect(top.top, 'Ctrl+Home').toBeLessThanOrEqual(1);
+    expect(top.shown).toContain(0);
+    await expect(latest(page)).toBeVisible();
+    await page.keyboard.press('PageDown');
+    const down = await settle(page);
+    expect(moved(top, down), 'PageDown').toBeGreaterThanOrEqual(down.visible * 0.85);
+    expect(moved(top, down), 'PageDown').toBeLessThanOrEqual(down.visible);
+    await page.keyboard.press('End');
+    const end = await settle(page);
+    expect(end.gap, 'End').toBeLessThanOrEqual(1);
+    await expect(latest(page)).toHaveCount(0);
+    await click();
+    await page.keyboard.press('Home');
+    const top2 = await settle(page);
+    expect(top2.top, 'Home').toBeLessThanOrEqual(1);
+    expect(top2.shown).toContain(0);
+    await page.keyboard.press('Control+End');
+    const end2 = await settle(page);
+    expect(end2.gap, 'Ctrl+End').toBeLessThanOrEqual(1);
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('a row a sent quote’s return holds lets go at the person’s first move, down as well as up', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    corral.fake?.setResponses([fauxAssistantMessage(`${FIRST}\n\n${SECOND}`)]);
+    const reply = await conversation(page, corral, 48);
+    await sendQuote(page, reply, 'quick brown', reply.drawn.indexOf('quick brown'));
+    const lead = async () => {
+      await page.reload();
+      // From the end, wherever the last step left the reader.
+      await expect(page.locator('[data-chat-item]').first()).toBeVisible();
+      await waitForStill(page);
+      if (await latest(page).isVisible()) await latest(page).click();
+      const chip = sentChip(page);
+      await expect(chip).toBeVisible();
+      await waitForStill(page);
+      await chip.click();
+      await expect(page.locator('[data-reply-body]')).toBeFocused();
+      return settle(page);
+    };
+    // A wheel down moves the conversation by the wheel, and it stays moved.
+    let was = await lead();
+    await timeline(page).hover({ position: { x: 16, y: 200 } });
+    await page.mouse.wheel(0, 300);
+    let now = await settle(page);
+    expect(moved(was, now), 'wheel down').toBeGreaterThan(290);
+    await page.waitForTimeout(800);
+    expect(moved(now, await place(page)), 'wheel down, a while later').toBe(0);
+    // Keys down, with focus where the return left it.
+    for (const [key, least] of [
+      ['PageDown', (at: { visible: number }) => at.visible * 0.85],
+      ['ArrowDown', () => 20],
+    ] as const) {
+      was = await lead();
+      await page.keyboard.press(key);
+      now = await settle(page);
+      expect(moved(was, now), key).toBeGreaterThanOrEqual(least(now));
+      await page.waitForTimeout(800);
+      expect(moved(now, await place(page)), `${key}, a while later`).toBe(0);
+    }
+    // End goes to the end and follows it again.
+    await lead();
+    await page.keyboard.press('End');
+    expect((await settle(page)).gap, 'End').toBeLessThanOrEqual(1);
+    await expect(latest(page)).toHaveCount(0);
+    await requests(page, reply.sessionId, 1, 'Arrived request');
+    await expect(timeline(page)).toContainText('Arrived request 1.');
+    expect((await settle(page)).gap, 'End, then a request arrives').toBeLessThanOrEqual(1);
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('a linked message’s row lets go at the person’s first move, down as well as up', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    await corral.open('/');
+    await newConversation(page);
+    await expect(page).toHaveURL(/\/sessions\/session_/);
+    const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
+    await requests(page, sessionId, 48);
+    await expect(timeline(page)).toContainText('Later request 48.');
+    const id = await page.evaluate(async (sessionId) => {
+      const session = await (await fetch(`/api/v1/sessions/${sessionId}`)).json();
+      return (session.entries as { entryId: string; text: string }[]).find((entry) =>
+        entry.text.startsWith('Later request 30.'),
+      )?.entryId;
+    }, sessionId);
+    expect(id).toBeTruthy();
+    const row = page.locator(`[data-chat-item="${id}"]`);
+    const link = new URL(page.url());
+    link.searchParams.set('message', id as string);
+    const lead = async () => {
+      await page.evaluate(() => sessionStorage.clear());
+      await page.goto(link.href);
+      await expect(row).toBeVisible();
+      const at = await settle(page);
+      expect(at.offsets[String(await row.getAttribute('data-index'))]).toBeLessThanOrEqual(1);
+      return at;
+    };
+    let was = await lead();
+    await timeline(page).hover({ position: { x: 16, y: 200 } });
+    await page.mouse.wheel(0, 300);
+    let now = await settle(page);
+    expect(moved(was, now), 'wheel down').toBeGreaterThan(290);
+    for (const [key, least] of [
+      ['PageDown', (at: { visible: number }) => at.visible * 0.85],
+      ['ArrowDown', () => 20],
+    ] as const) {
+      was = await lead();
+      await timeline(page).focus();
+      await page.keyboard.press(key);
+      now = await settle(page);
+      expect(moved(was, now), key).toBeGreaterThanOrEqual(least(now));
+    }
+    await lead();
+    await timeline(page).focus();
+    await page.keyboard.press('End');
+    expect((await settle(page)).gap, 'End').toBeLessThanOrEqual(1);
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('Tab from a held row keeps it while the focus stays in view, and the conversation follows the focus out of it', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    corral.fake?.setResponses([fauxAssistantMessage(`${FIRST}\n\n${SECOND}`)]);
+    const reply = await conversation(page, corral, 48);
+    await sendQuote(page, reply, 'quick brown', reply.drawn.indexOf('quick brown'));
+    // A sent quote led back to: focus on the reply's words.
+    await page.reload();
+    await expect(page.locator('[data-chat-item]').first()).toBeVisible();
+    await waitForStill(page);
+    if (await latest(page).isVisible()) await latest(page).click();
+    const chip = sentChip(page);
+    await expect(chip).toBeVisible();
+    await waitForStill(page);
+    await chip.click();
+    const body = page.locator('[data-reply-body]');
+    await expect(body).toBeFocused();
+    await settle(page);
+    await tabOut(page, page.locator('[data-chat-item]').filter({ has: body }), 'a quote’s return');
+    // A linked message, its words clicked.
+    const id = await page.evaluate(async (sessionId) => {
+      const session = await (await fetch(`/api/v1/sessions/${sessionId}`)).json();
+      return (session.entries as { entryId: string; text: string }[]).find((entry) =>
+        entry.text.startsWith('Later request 20.'),
+      )?.entryId;
+    }, reply.sessionId);
+    expect(id).toBeTruthy();
+    const link = new URL(page.url());
+    link.searchParams.set('message', id as string);
+    await page.evaluate(() => sessionStorage.clear());
+    await page.goto(link.href);
+    const row = page.locator(`[data-chat-item="${id}"]`);
+    await expect(row).toBeVisible();
+    const at = await settle(page);
+    expect(at.offsets[String(await row.getAttribute('data-index'))]).toBeLessThanOrEqual(1);
+    await row.getByText('Later request 20.').click({ position: { x: 10, y: 6 } });
+    expect(moved(at, await settle(page)), 'a click on the words').toBe(0);
+    await tabOut(page, row, 'a linked message');
+    expect(corral.errors).toEqual([]);
+  });
+
+  test('Home and End in a sent file’s box move the box; beside it they move the conversation', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(180_000);
+    await corral.open('/');
+    await newConversation(page);
+    await expect(page).toHaveURL(/\/sessions\/session_/);
+    const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
+    await requests(page, sessionId, 20);
+    const notes = Array.from({ length: 80 }, (_, index) => `Line ${index + 1} of the notes`);
+    await sendEntry(page, sessionId, 'Notes attached', [
+      createTextAttachment('notes.txt', 'text/plain', notes.join('\n')),
+    ]);
+    const row = page.locator('[data-chat-item]').filter({ hasText: 'Notes attached' });
+    await expect(row).toBeVisible();
+    await waitForStill(page);
+    await row.locator('summary').click();
+    const file = row.locator('pre');
+    await expect(file).toBeVisible();
+    await waitForStill(page);
+    const box = () =>
+      file.evaluate((node) => ({
+        top: node.scrollTop,
+        end: node.scrollHeight - node.clientHeight,
+      }));
+    expect((await box()).end, 'the file scrolls on its own').toBeGreaterThan(100);
+    await file.focus();
+    await expect(file).toBeFocused();
+    for (const [key, top] of [
+      ['End', (at: { end: number }) => at.end],
+      ['Home', () => 0],
+      ['Control+End', (at: { end: number }) => at.end],
+    ] as const) {
+      const was = await settle(page);
+      await page.keyboard.press(key);
+      await expect
+        .poll(async () => {
+          const at = await box();
+          return Math.abs(at.top - top(at));
+        }, key)
+        .toBeLessThanOrEqual(1);
+      expect(moved(was, await settle(page)), `${key}: the conversation`).toBe(0);
+    }
+    // The same keys from the row's own control move the conversation.
+    await row.locator('summary').focus();
+    await page.keyboard.press('Home');
+    expect((await settle(page)).top, 'Home beside the file').toBeLessThanOrEqual(1);
+    await page.keyboard.press('End');
+    expect((await settle(page)).gap, 'End beside the file').toBeLessThanOrEqual(1);
+    expect(corral.errors).toEqual([]);
+  });
+});
+
+test.describe('a held row while a request runs', () => {
+  test.use({ live: true, codexLogin: true, streamTokensPerSecond: 120 });
+
+  test('a row a sent quote’s return holds stays put without the person, as a request arrives, streams and ends', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(180_000);
+    const LONG = Array.from(
+      { length: 24 },
+      (_, index) =>
+        `Paragraph ${index + 1} of the streamed reply, long enough to wrap over a second line of the column.`,
+    ).join('\n\n');
+    corral.fake?.setResponses([
+      fauxAssistantMessage(`${FIRST}\n\n${SECOND}`),
+      fauxAssistantMessage(LONG),
+    ]);
+    const reply = await conversation(page, corral, 30);
+    await sendQuote(page, reply, 'quick brown', reply.drawn.indexOf('quick brown'));
+    await page.reload();
+    const chip = sentChip(page);
+    await expect(chip).toBeVisible();
+    await waitForStill(page);
+    // A request sent, its reply streaming; then the chip pressed, and nothing more.
+    await requestBox(page).fill('Stream a long reply');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.getByTestId('live-text')).toBeVisible();
+    await chip.click();
+    const body = page.locator(`[data-reply-body][data-run-id="${reply.runId}"]`);
+    await expect(body).toBeFocused();
+    await page.waitForTimeout(600);
+    const at = await passageTop(page);
+    expect(at).not.toBeNull();
+    const seen: number[] = [];
+    let streamed = false;
+    for (let step = 0; step < 150; step += 1) {
+      seen.push((await passageTop(page)) ?? Number.NaN);
+      const states = runStates(corral);
+      if (states === 'succeeded,running') streamed = true;
+      if (states === 'succeeded,succeeded') break;
+      await page.waitForTimeout(200);
+    }
+    expect(streamed, 'the request ran').toBe(true);
+    await page.waitForTimeout(1500);
+    await waitForStill(page);
+    seen.push((await passageTop(page)) ?? Number.NaN);
+    // A request that arrives from elsewhere after the run.
+    await requests(page, reply.sessionId, 1, 'Arrived request');
+    await page.waitForTimeout(1500);
+    seen.push((await passageTop(page)) ?? Number.NaN);
+    const furthest = Math.max(...seen.map((top) => Math.abs(top - (at as number))));
+    expect(furthest, 'the passage line').toBeLessThanOrEqual(1);
     expect(corral.errors).toEqual([]);
   });
 });

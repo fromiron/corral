@@ -2,11 +2,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { ChatView } from './ChatView.tsx';
+import { ChatView, followChatEnd, type PlacedRow, placeChatRow } from './ChatView.tsx';
 import { SessionConnectionContext } from './session/SessionConnection.tsx';
 
 const resizeCallbacks = new Set<(entries?: unknown) => void>();
@@ -1240,7 +1241,7 @@ for (const count of [30, 300]) {
   });
 }
 
-it('Home and End from a control inside a row are that control’s keys', async () => {
+it('Home and End from a control or a reply’s words in a row move the conversation, focus staying there', async () => {
   sessionStorage.clear();
   const chat = await mountLong(30, (index) => <button type="button">Copy {index}</button>);
   await chat.scroll(chat.end());
@@ -1248,19 +1249,51 @@ it('Home and End from a control inside a row are that control’s keys', async (
     '[data-chat-item="turn-29"] button',
   );
   if (!button) throw new Error('Row action missing');
-  const at = chat.top;
-  expect(await chat.key(button, 'Home')).toBe(false);
-  expect(chat.top).toBe(at);
-  // Focused, the control's row stays mounted while the person reads far above it.
   await act(async () => button.focus());
-  await act(async () => {
-    chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -900 }));
-  });
-  await chat.scroll(1_000);
+  expect(await chat.key(button, 'Home')).toBe(true);
+  expect(chat.top).toBe(0);
+  // Focused, the control's row stays mounted while the conversation is at its first row.
   expect(button.isConnected).toBe(true);
-  expect(await chat.key(button, 'End')).toBe(false);
-  expect(chat.top).toBe(1_000);
-  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull();
+  expect(document.activeElement).toBe(button);
+  expect(await chat.key(button, 'End', { ctrlKey: true })).toBe(true);
+  expect(chat.top).toBe(chat.end());
+  expect(chat.container.querySelector('[aria-label="Jump to latest"]')).toBeNull();
+});
+
+it('keys in a text box, a menu or a dialog in a row, or from a popup drawn elsewhere, are their own', async () => {
+  sessionStorage.clear();
+  const popup = document.createElement('div');
+  document.body.append(popup);
+  disposals.push(async () => popup.remove());
+  const chat = await mountLong(30, (index) =>
+    index === 29 ? (
+      <>
+        <input aria-label="Rename" />
+        <div role="menu">
+          <button type="button">Item</button>
+        </div>
+        <div role="dialog">
+          <button type="button">Close</button>
+        </div>
+        {createPortal(<button type="button">Popup action</button>, popup)}
+      </>
+    ) : (
+      <p>Turn {index}</p>
+    ),
+  );
+  await chat.scroll(chat.end());
+  const row = chat.container.querySelector('[data-chat-item="turn-29"]');
+  const own = [
+    row?.querySelector('input'),
+    row?.querySelector('[role="menu"] button'),
+    row?.querySelector('[role="dialog"] button'),
+    popup.querySelector('button'),
+  ];
+  for (const target of own) {
+    if (!target) throw new Error('Control missing');
+    expect(await chat.key(target, 'Home'), target.textContent ?? 'input').toBe(false);
+    expect(chat.top).toBe(chat.end());
+  }
 });
 
 it('Ctrl or Cmd with Home and End go to the first row and the end; Shift and Alt are the browser’s', async () => {
@@ -1284,7 +1317,7 @@ it('Ctrl or Cmd with Home and End go to the first row and the end; Shift and Alt
   expect(chat.top).toBe(chat.end());
 });
 
-it('a restored row is held against a move down until the person moves up', async () => {
+it('a restored row is held through layout, and lets go at the person’s first move, down as well', async () => {
   sessionStorage.clear();
   sessionStorage.setItem(
     'corral:chat-scroll:session-follow',
@@ -1296,8 +1329,7 @@ it('a restored row is held against a move down until the person moves up', async
   await chat.resize();
   const held = 24 + 30 * 260;
   expect(chat.top).toBe(held);
-  // A downward key: the browser's scroll is put back, and every placing writes the offset,
-  // which stops the key's animation instead of letting it run on a frame at a time.
+  // Layout alone moving the offset: the row is put back, and every placing writes the offset.
   let writes = 0;
   Object.defineProperty(chat.box, 'scrollTop', {
     configurable: true,
@@ -1307,7 +1339,6 @@ it('a restored row is held against a move down until the person moves up', async
       chat.top = value;
     },
   });
-  await chat.key(chat.box, 'PageDown');
   chat.top = held + 200;
   await chat.resize();
   expect(chat.top).toBe(held);
@@ -1315,12 +1346,288 @@ it('a restored row is held against a move down until the person moves up', async
   await chat.resize();
   expect(writes).toBeGreaterThan(0);
   expect(chat.top).toBe(held);
-  // Moving up ends the hold.
-  await chat.key(chat.box, 'PageUp');
-  await chat.scroll(held - 300);
+  // A key down: the browser's scroll stands.
+  await chat.key(chat.box, 'PageDown');
+  await chat.scroll(held + 200);
   await chat.resize();
-  expect(chat.top).toBe(held - 300);
+  expect(chat.top).toBe(held + 200);
 });
+
+it('a row placed at an offset by its link is held there, above the top, until the person moves', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60);
+  // A passage deep in a tall row: the row starts above the view.
+  let placed: PlacedRow | null = null;
+  await act(async () => {
+    placed = placeChatRow('session-follow', 'turn-30', -150);
+  });
+  // Placed at once, without waiting for the layout to change.
+  expect(chat.top).toBeLessThan(chat.end());
+  await chat.scroll(chat.top);
+  await chat.resize();
+  const held = 24 + 30 * 260 + 150;
+  expect(chat.top).toBe(held);
+  expect(placed).toMatchObject({ following: true });
+  expect((placed as PlacedRow | null)?.held()).toBe(true);
+  // Layout alone: still held. Another session's placing is not this one's.
+  chat.top = held + 200;
+  await chat.resize();
+  expect(chat.top).toBe(held);
+  expect(await act(async () => placeChatRow('elsewhere', 'turn-10', 0))).toBeNull();
+  await chat.resize();
+  expect(chat.top).toBe(held);
+  expect(placeChatRow('session-follow', 'turn-missing', 0)).toBeNull();
+  // A key down lets go.
+  await chat.key(chat.box, 'PageDown');
+  expect((placed as PlacedRow | null)?.held()).toBe(false);
+  await chat.scroll(held + 200);
+  await chat.resize();
+  expect(chat.top).toBe(held + 200);
+});
+
+for (const [move, act_] of [
+  [
+    'a wheel down',
+    (chat: Awaited<ReturnType<typeof mountLong>>) =>
+      chat.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 300 })),
+  ],
+  [
+    'a finger moving up',
+    (chat: Awaited<ReturnType<typeof mountLong>>) => {
+      const touch = (type: string, clientY: number) => {
+        const event = new Event(type, { bubbles: true });
+        Object.defineProperty(event, 'touches', { value: [{ clientY }] });
+        chat.box.dispatchEvent(event);
+      };
+      touch('touchstart', 400);
+      touch('touchmove', 100);
+    },
+  ],
+  [
+    'a press on the scrollbar',
+    (chat: Awaited<ReturnType<typeof mountLong>>) =>
+      chat.box.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 })),
+  ],
+  [
+    'an arrow down in a reply’s words',
+    (chat: Awaited<ReturnType<typeof mountLong>>) =>
+      chat.container
+        .querySelector('[data-chat-item="turn-30"] p')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' })),
+  ],
+] as const) {
+  it(`a linked row lets go at ${move}`, async () => {
+    sessionStorage.clear();
+    const chat = await mountLong(60);
+    let placed: PlacedRow | null = null;
+    await act(async () => {
+      placed = placeChatRow('session-follow', 'turn-30', 0);
+    });
+    await chat.scroll(chat.top);
+    await chat.resize();
+    const held = 24 + 30 * 260;
+    expect(chat.top).toBe(held);
+    await act(async () => act_(chat));
+    expect((placed as PlacedRow | null)?.held()).toBe(false);
+    await chat.scroll(held + 300);
+    await chat.resize();
+    expect(chat.top).toBe(held + 300);
+  });
+}
+
+it('End on a held row goes to the end and follows it; the end can be asked for from outside', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60);
+  await act(async () => {
+    placeChatRow('session-follow', 'turn-30', 0);
+  });
+  await chat.scroll(chat.top);
+  await chat.resize();
+  const reply = chat.container.querySelector('[data-chat-item="turn-30"] p');
+  if (!reply) throw new Error('Row missing');
+  expect(await chat.key(reply, 'End')).toBe(true);
+  expect(chat.top).toBe(chat.end());
+  chat.metrics.height += 500;
+  await chat.resize();
+  expect(chat.top).toBe(chat.end());
+  // Placed again, then asked to follow the end by the conversation's owner.
+  await act(async () => {
+    placeChatRow('session-follow', 'turn-30', 0);
+  });
+  await chat.scroll(chat.top);
+  await chat.resize();
+  expect(chat.top).toBeLessThan(chat.end());
+  await act(async () => followChatEnd('elsewhere'));
+  expect(chat.top).toBeLessThan(chat.end());
+  await act(async () => followChatEnd('session-follow'));
+  expect(chat.top).toBe(chat.end());
+});
+
+it('focus coming to a placed row while the end was followed keeps the row held, not the top row', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60, (index) => <button type="button">Passage {index}</button>);
+  // Placed 150 below the view's top: the row above it is the one at the top.
+  await act(async () => {
+    placeChatRow('session-follow', 'turn-30', 150);
+  });
+  await chat.scroll(chat.top);
+  await chat.resize();
+  const held = 24 + 30 * 260 - 150;
+  expect(chat.top).toBe(held);
+  // The passage takes focus, as a return to a quote gives it.
+  const passage = chat.container.querySelector<HTMLButtonElement>(
+    '[data-chat-item="turn-30"] button',
+  );
+  if (!passage) throw new Error('Passage missing');
+  await act(async () => passage.focus());
+  // The row between the top and the placed row grows: the placed row stays where it was put.
+  chat.grow(29, 100);
+  await chat.resize();
+  expect(chat.top).toBe(held + 100);
+});
+
+/**
+ * Tab moves the focus to `target`, drawn at `rect` on screen once focused; the browser may scroll
+ * to it (`scroll`) between the key and the focus, as Chromium does.
+ */
+async function tabTo(
+  target: HTMLElement,
+  rect: { top: number; bottom: number },
+  scroll?: () => void,
+) {
+  target.getBoundingClientRect = () =>
+    ({ ...rect, height: rect.bottom - rect.top, left: 0, right: 40, width: 40 }) as DOMRect;
+  await act(async () => {
+    (document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' }),
+    );
+    scroll?.();
+    target.focus();
+  });
+}
+
+for (const [hold, start] of [
+  ['a linked row', 'link'],
+  ['a restored row', 'restore'],
+] as const) {
+  for (const [where, rect, padding, scrolled] of [
+    ['below the view', { top: 520, bottom: 548 }, 0, 0],
+    ['behind the composer', { top: 150, bottom: 178 }, 80, 0],
+    ['below the view, scrolled to by the browser first', { top: 100, bottom: 128 }, 0, 420],
+  ] as const) {
+    it(`${hold} lets go when Tab takes the focus ${where}, and the browser bringing it in stands`, async () => {
+      sessionStorage.clear();
+      if (start === 'restore')
+        sessionStorage.setItem(
+          'corral:chat-scroll:session-follow',
+          JSON.stringify({ top: 5_000, follow: false, anchor: { id: 'turn-30', offset: 0 } }),
+        );
+      const chat = await mountLong(60, (index) => <button type="button">Copy {index}</button>);
+      chat.box.style.scrollPaddingBottom = `${padding}px`;
+      let placed: PlacedRow | null = null;
+      if (start === 'link')
+        await act(async () => {
+          placed = placeChatRow('session-follow', 'turn-30', 0);
+        });
+      await chat.scroll(chat.top);
+      await chat.resize();
+      const held = 24 + 30 * 260;
+      expect(chat.top).toBe(held);
+      const target = chat.container.querySelector<HTMLButtonElement>(
+        '[data-chat-item="turn-31"] button',
+      );
+      if (!target) throw new Error('Row action missing');
+      const brought = vi.fn();
+      target.scrollIntoView = brought;
+      await tabTo(target, rect, () => {
+        chat.top += scrolled;
+      });
+      if (placed) expect((placed as PlacedRow).held()).toBe(false);
+      // Brought into view above the composer, which a browser leaves to the page there.
+      expect(brought).toHaveBeenCalledWith({ block: 'nearest' });
+      // The browser scrolls the focus into view; layout after it does not put the row back.
+      await chat.scroll(held + 300);
+      await chat.resize();
+      expect(chat.top).toBe(held + 300);
+      expect(document.activeElement).toBe(target);
+    });
+  }
+}
+
+it('a held row stays held when Tab moves the focus within the view, or focus is given without a move', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60, (index) => <button type="button">Copy {index}</button>);
+  chat.box.style.scrollPaddingBottom = '80px';
+  let placed: PlacedRow | null = null;
+  await act(async () => {
+    placed = placeChatRow('session-follow', 'turn-30', 0);
+  });
+  await chat.scroll(chat.top);
+  await chat.resize();
+  const held = 24 + 30 * 260;
+  const own = chat.container.querySelector<HTMLButtonElement>('[data-chat-item="turn-30"] button');
+  const below = chat.container.querySelector<HTMLButtonElement>(
+    '[data-chat-item="turn-31"] button',
+  );
+  if (!own || !below) throw new Error('Row action missing');
+  const brought = vi.fn();
+  own.scrollIntoView = brought;
+  below.scrollIntoView = brought;
+  await tabTo(own, { top: 40, bottom: 68 });
+  expect((placed as PlacedRow | null)?.held()).toBe(true);
+  // Focus given by the page (a return to a quote), not moved by a key, out of view.
+  below.getBoundingClientRect = () => ({ top: 520, bottom: 548 }) as DOMRect;
+  await act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    below.focus();
+  });
+  expect((placed as PlacedRow | null)?.held()).toBe(true);
+  expect(brought).not.toHaveBeenCalled();
+  chat.top = held + 200;
+  await chat.resize();
+  expect(chat.top).toBe(held);
+});
+
+for (const key of ['End', 'Home'] as const) {
+  it(`${key} in a focused box that scrolls on its own is that box’s, the conversation staying`, async () => {
+    sessionStorage.clear();
+    const chat = await mountLong(60, (index) =>
+      index === 30 ? (
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroller the browser focuses
+        <div data-testid="nested" tabIndex={0} style={{ overflowY: 'auto' }}>
+          Streaming
+        </div>
+      ) : (
+        <p>Turn {index}</p>
+      ),
+    );
+    let placed: PlacedRow | null = null;
+    await act(async () => {
+      placed = placeChatRow('session-follow', 'turn-30', 0);
+    });
+    await chat.scroll(chat.top);
+    await chat.resize();
+    const held = 24 + 30 * 260;
+    const nested = chat.container.querySelector<HTMLElement>('[data-testid="nested"]');
+    if (!nested) throw new Error('Nested box missing');
+    // At either end of the box: the key still belongs to it.
+    Object.defineProperties(nested, {
+      scrollHeight: { configurable: true, value: 500 },
+      clientHeight: { configurable: true, value: 100 },
+      scrollTop: { configurable: true, value: key === 'End' ? 0 : 400 },
+    });
+    await act(async () => nested.focus());
+    expect(await chat.key(nested, key)).toBe(false);
+    expect(await chat.key(nested, key, { ctrlKey: true })).toBe(false);
+    expect(chat.top).toBe(held);
+    expect((placed as PlacedRow | null)?.held()).toBe(true);
+    // The same key from the reply’s words beside the box is the conversation’s.
+    const words = chat.container.querySelector('[data-chat-item="turn-29"] p');
+    if (!words) throw new Error('Row missing');
+    expect(await chat.key(words, key)).toBe(true);
+    expect(chat.top).toBe(key === 'End' ? chat.end() : 0);
+  });
+}
 
 it('a restored offset waits for the history to be tall enough, without reading a place first', async () => {
   sessionStorage.clear();

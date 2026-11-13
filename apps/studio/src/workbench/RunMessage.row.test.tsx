@@ -727,6 +727,67 @@ it('a turn that fails after showing words keeps those the store holds, and its e
   expect(kept?.compareDocumentPosition(end as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 });
 
+// reply-citation.md: a quote counts in the reply's drawn text, as the run and model call that
+// wrote it, while it streams, once it is the answer, and when it was cut off.
+const replyBody = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>('[data-reply-body]')].map((node) => ({
+    run: node.dataset.runId,
+    call: node.dataset.modelCallId,
+    text: node.textContent,
+  }));
+
+it('marks the reply being written, the answer and cut-off words as quotable text', async () => {
+  const projection = running();
+  const f = await show(projection);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: { call: { text: 'Words so far', next: 1, broken: false, completed: false } },
+    }),
+  );
+  expect(replyBody(f.container)).toEqual([{ run: RUN, call: 'call', text: 'Words so far' }]);
+  await f.set({ ...projection, status: 'cancelled', endedAt: '2026-11-13T00:00:05.000Z' });
+  // The note under cut-off words is not part of the reply.
+  expect(replyBody(f.container)).toEqual([{ run: RUN, call: 'call', text: 'Words so far' }]);
+  const done = answered(running());
+  const answer = done.artifacts.answer;
+  if (!answer) throw new Error('answer');
+  done.artifacts.answer = { ...answer, modelCallId: 'call' };
+  await f.set(done);
+  expect(replyBody(f.container)).toEqual([{ run: RUN, call: 'call', text: 'The answer body' }]);
+});
+
+it('marks the words an interrupt cut as quotable text of that call, apart from the answer', async () => {
+  const first = running();
+  first.modelCalls.cut = {
+    modelCallId: 'cut',
+    executionId: 'lead',
+    finished: true,
+    responseRef: null,
+    interrupted: true,
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        cut: { text: 'Words cut by the interrupt', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  expect(replyBody(f.container)).toEqual([
+    { run: RUN, call: 'cut', text: 'Words cut by the interrupt' },
+  ]);
+  const done = answered(first);
+  const answer = done.artifacts.answer;
+  if (!answer) throw new Error('answer');
+  done.artifacts.answer = { ...answer, modelCallId: 'next' };
+  await f.set(done);
+  // The note under the cut words is not part of them.
+  expect(replyBody(f.container)).toEqual([
+    { run: RUN, call: 'cut', text: 'Words cut by the interrupt' },
+    { run: RUN, call: 'next', text: 'The answer body' },
+  ]);
+});
+
 it('an interrupted output is marked as cut off under its words', async () => {
   const projection = running();
   const f = await show(projection);

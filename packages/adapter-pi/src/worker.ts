@@ -98,8 +98,19 @@ interface Flight {
 
 type Reply = Exclude<
   HostFrame,
-  StartFrame | { type: 'cancel' | 'directive' | 'interrupt' | 'compact' }
+  StartFrame | { type: 'cancel' | 'directive' | 'interrupt' | 'compact' | 'end_review' }
 >;
+
+/** The review an advisor is running a turn on, and the requests it made for it. */
+interface Review {
+  reviewId: string;
+  maxRequests: number;
+  requests: number;
+  /** The host ended it, or its requests are used up: no further request is made for it. */
+  ended: boolean;
+  /** Its last permitted request ended in an error: the advisor has failed, whether or not a retry was left. */
+  lastFailed: boolean;
+}
 
 export function runWorker(port: Channel, deps: WorkerDeps): void {
   let executionId: string | null = null;
@@ -119,6 +130,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   let unrecorded = false;
   // Interrupt directives that cut a response and still have to lead the next request.
   const interrupting = new Map<string, DeliveredDirective>();
+  // An advisor's current review; null outside one, when it makes no model request.
+  let review: Review | null = null;
 
   port.onFrame((raw) => {
     const parsed = HostFrame.safeParse(raw);
@@ -165,6 +178,13 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       inFlight.abort.abort();
       return;
     }
+    if (frame.type === 'end_review') {
+      // Only the review in progress ends; a late end for an earlier one does nothing.
+      if (!review || review.reviewId !== frame.reviewId || review.ended) return;
+      review.ended = true;
+      if (inFlight && !unrecorded) inFlight.abort.abort();
+      return;
+    }
     waiting.get(frame.requestId)?.(frame);
     waiting.delete(frame.requestId);
   });
@@ -173,6 +193,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   async function execute(start: StartFrame) {
     executionId = start.executionId;
     const head = { protocolVersion: PROTOCOL_VERSION, executionId: start.executionId };
+    const advisor = start.assignment.kind === 'advisor';
     const settle = (
       outcome: 'succeeded' | 'failed' | 'cancelled',
       error?: string,
@@ -282,6 +303,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }));
 
     let forceCompaction = false;
+    // A compaction completed for the request being prepared.
+    let rebased = false;
     let preparedMessages: AgentContext['messages'] = [];
     // The flight of the latest response; set when an interrupt cut it.
     let latest: Flight | null = null;
@@ -477,6 +500,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 modelCallIds: summaryCalls,
               },
             });
+            rebased = true;
           }
         } catch (error) {
           if (!owner) throw error;
@@ -528,7 +552,13 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         reply = await prepare();
       }
       unrecorded = false;
-      if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
+      if (reply.type !== 'permit' || cancelled) {
+        // A refused request was never made: its empty failure is neither observed nor a failed request.
+        if (review) permit = null;
+        throw new Error('the request was refused');
+      }
+      // Every permitted request of the review counts, a retry too, as the Coordinator counts it.
+      if (review) review.requests += 1;
       permit = {
         modelCallId: reply.modelCallId,
         apiKey: reply.apiKey,
@@ -571,6 +601,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           ],
         };
       preparedMessages = [...preparedContext.messages];
+      // An advisor's conversation goes on from review to review, so a compaction is where it now
+      // stands: the next review starts from the compacted context, and a later summary builds on
+      // this one (features/advisor.md, 계약). The response and its tool results follow it.
+      if (advisor && rebased && agent) agent.state.messages = [...preparedMessages];
+      rebased = false;
       return preparedContext === context ? undefined : { context: preparedContext };
     };
 
@@ -662,6 +697,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             return true;
           },
           beforeRetry: (message) => {
+            if (review) review.lastFailed = true;
             if (permit)
               port.send({
                 type: 'observe',
@@ -695,7 +731,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       },
       getApiKey: () => keyOf(permit?.apiKey),
       toolExecution: 'sequential',
-      finishTurn: () => (completionAccepted ? { action: 'end' } : undefined),
+      finishTurn: () =>
+        completionAccepted || (review && (review.ended || review.requests >= review.maxRequests))
+          ? { action: 'end' }
+          : undefined,
       prepareRequest: ({ context }) => prepareRequest(context),
       beforeToolCall: async ({ toolCall }) => {
         const args = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
@@ -748,6 +787,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           rawUsage,
           ...(cut ? { interrupted: true } : unfinished(message) ? { failed: true } : {}),
         });
+        if (review && !cut) review.lastFailed = unfinished(message);
         cutFlight = cut ? latest : null;
         // A response that ended on its own was not cut, whatever the abort asked.
         if (latest && !cut) latest.cut = false;
@@ -763,10 +803,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       [...(agent?.state.messages ?? [])]
         .reverse()
         .find((m): m is AssistantMessage => m.role === 'assistant');
-    try {
-      await agent.prompt(
-        userPrompt(start),
-        start.images?.map((image) => ({ type: 'image', data: image.data, mimeType: image.mime })),
+    const runner = agent;
+    const turn = async (prompt: string, images?: StartFrame['images']) => {
+      await runner.prompt(
+        prompt,
+        images?.map((image) => ({ type: 'image', data: image.data, mimeType: image.mime })),
       );
       // A response cut by an interrupt does not end the execution: the agent goes on from the
       // context the cut request actually sent (compaction, delivered directives and state
@@ -783,9 +824,9 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         interrupting.clear();
         if (!interrupted) break;
         const leading = [...directives.values()].filter(absent);
-        agent.state.messages = base;
+        runner.state.messages = base;
         // One message per directive, as the request preparation would add them.
-        await agent.prompt(
+        await runner.prompt(
           leading.map((d) => ({
             role: 'user' as const,
             content: directiveText(d),
@@ -793,6 +834,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           })),
         );
       }
+    };
+
+    if (advisor) {
+      await reviews();
+      return;
+    }
+    try {
+      await turn(userPrompt(start), start.images);
     } catch (error) {
       settle(cancelled ? 'cancelled' : 'failed', String(error));
       return;
@@ -811,5 +860,57 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     if (cancelled || last?.stopReason === 'aborted') settle('cancelled');
     else if (last?.stopReason === 'error') settle('failed', last.errorMessage ?? 'model error');
     else settle('succeeded', undefined, finalTextModelCallId);
+
+    /**
+     * An advisor's life (features/advisor.md): one review at a time from the host, one turn on its
+     * text within its request cap, the conversation kept from review to review, until the host
+     * says there is nothing more to review. It submits nothing.
+     */
+    async function reviews() {
+      for (;;) {
+        const next = await call({ type: 'next_review' });
+        if (cancelled) return settle('cancelled');
+        if (next.type !== 'review') return settle('failed', 'the next review was refused');
+        if (!next.review) break;
+        review = {
+          reviewId: next.review.reviewId,
+          maxRequests: next.review.maxRequests,
+          requests: 0,
+          ended: false,
+          lastFailed: false,
+        };
+        try {
+          await turn(next.review.text);
+        } catch (error) {
+          return settle(cancelled ? 'cancelled' : 'failed', String(error));
+        }
+        if (cancelled) return settle('cancelled');
+        const { ended, lastFailed } = review;
+        review = null;
+        const last = lastAssistant();
+        // Its last permitted request ended in an error: the advisor has failed, even when the cap
+        // left no retry (features/advisor.md). What the frames' order was does not matter.
+        if (lastFailed) return settle('failed', last?.errorMessage ?? 'model error');
+        if (ended) {
+          // A request refused for the ended review leaves an empty failure; it is not kept.
+          if (
+            runner.state.messages.at(-1) === last &&
+            last &&
+            unfinished(last) &&
+            !last.content.some(
+              (part) => part.type === 'toolCall' || (part.type === 'text' && part.text),
+            )
+          )
+            runner.state.messages = runner.state.messages.slice(0, -1);
+        } else if (last?.stopReason === 'error')
+          return settle('failed', last.errorMessage ?? 'model error');
+      }
+      if (pendingCompaction && !cancelled)
+        await call({
+          type: 'compaction_report',
+          report: { commandId: pendingCompaction, phase: 'skipped', modelCallIds: [] },
+        });
+      settle(cancelled ? 'cancelled' : 'succeeded');
+    }
   }
 }

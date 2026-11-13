@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-import { emptyProjection, type RunSummary, type SessionEntry } from '@corral/core';
+import {
+  createTextAttachment,
+  emptyProjection,
+  type RunSummary,
+  type SessionEntry,
+} from '@corral/core';
 import type { RunSessionStore } from '@corral/react';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -44,7 +49,16 @@ vi.mock('../../pages/Workbench.tsx', () => ({
 vi.mock('../../pages/GettingStarted.tsx', () => ({ markRunReviewed() {} }));
 vi.mock('../RunChanges.tsx', () => ({ RunChanges: () => null }));
 vi.mock('../ImageAttachments.tsx', () => ({ ImageAttachmentList: () => null }));
-vi.mock('../TextAttachments.tsx', () => ({ TextAttachmentList: () => null }));
+vi.mock('../TextAttachments.tsx', async (original) => ({
+  ...(await original<typeof import('../TextAttachments.tsx')>()),
+  TextAttachmentList: ({ attachments }: { attachments: { name: string }[] }) => (
+    <ul data-testid="text-attachments">
+      {attachments.map((item) => (
+        <li key={item.name}>{item.name}</li>
+      ))}
+    </ul>
+  ),
+}));
 vi.mock('../RefusalHelp.tsx', () => ({
   RESEND_REQUEST: 'corral:resend-request',
   RefusalHelp: ({ onEdit }: { onEdit?: () => void }) => {
@@ -334,4 +348,35 @@ it('a run no request names reads like any turn: its status is said once, by the 
   const card = container.querySelector('section');
   expect(card?.getAttribute('aria-label')).toBe('Run #2');
   expect(card?.textContent).not.toContain((runs[1] as RunSummary).runId);
+});
+
+it('a sent message shows its reply quotes as chips alone, and what each chip found is its own', async () => {
+  const quote = createTextAttachment('quote.txt', 'text/plain', 'quick brown', {
+    kind: 'reply',
+    runId: 'run_gone',
+    modelCallId: 'call_gone',
+    start: 4,
+    end: 15,
+    prefix: 'The ',
+    suffix: ' fox',
+  });
+  const notes = createTextAttachment('notes.txt', 'text/plain', 'Some notes');
+  const first = await show(entry({ entryId: 'entry_a', attachments: [quote, notes] }));
+  const second = await show(entry({ entryId: 'entry_b', attachments: [quote] }));
+  const chip = (view: typeof first) =>
+    [...view.container.querySelectorAll('button')].find((node) =>
+      node.getAttribute('aria-label')?.startsWith('Go to the quoted passage'),
+    );
+  // The quote once, as its chip; the other attachment in the list.
+  expect(
+    [...first.container.querySelectorAll('[data-testid="text-attachments"] li')].map(
+      (node) => node.textContent,
+    ),
+  ).toEqual(['notes.txt']);
+  expect(chip(first)).toBeDefined();
+  expect(second.container.querySelector('[data-testid="text-attachments"]')).toBeNull();
+  // Pressed in one message, its passage not found there: the other message's chip says nothing.
+  await act(async () => chip(first)?.click());
+  expect(chip(first)?.getAttribute('aria-describedby')).toBeTruthy();
+  expect(chip(second)?.getAttribute('aria-describedby')).toBeNull();
 });

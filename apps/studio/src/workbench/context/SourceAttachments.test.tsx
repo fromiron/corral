@@ -157,6 +157,9 @@ it('shows a reply quote as a chip in the chip row and keeps the other captures i
     expect(container.querySelectorAll('details')).toHaveLength(2);
     expect(container.textContent).toContain('quoted passage');
     expect(fixture.read).not.toHaveBeenCalledWith(expect.anything(), quote);
+    // The chip list is named, so its chips are read as the request's quotes.
+    const chips = container.querySelector('li')?.closest('ul');
+    expect(chips?.getAttribute('aria-label')).toBe('Composer.quotes');
     await act(async () => button('Context.removeCapture')[0]?.click());
     expect(onChange).toHaveBeenLastCalledWith([quote, last]);
     await act(async () => button('Composer.removeQuote')[0]?.click());

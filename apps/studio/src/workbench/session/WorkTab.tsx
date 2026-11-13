@@ -15,6 +15,7 @@ import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
+import { ReplySelection, runRow } from '../ReplySelection.tsx';
 import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
 import { PendingTray } from './PendingTray.tsx';
@@ -53,7 +54,7 @@ export function WorkTab({
   onPlace?: (message: string | undefined) => void;
 }) {
   const t = useTranslations('Sessions');
-  const { runFor, sessionFor, retainRun, workspaces } = useServices();
+  const { runFor, sessionFor, retainRun, workspaces, workspaceId } = useServices();
   const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
   const currentSearch = sessionRoute.useSearch();
@@ -83,8 +84,20 @@ export function WorkTab({
   );
   const folderAction =
     folderAccess === 'unlinked' || folderAccess === 'untrusted' || folderAccess === 'missing';
+  const rowOf = (runId: string) => runRow(session.entries, loose, runId);
   return (
     <RunChecks.Provider value={runChecks}>
+      {/* The conversation's one selection listener; its toolbar floats over the rows. */}
+      {workspaceId ? (
+        <ReplySelection
+          target={{
+            hostId: workspaceId,
+            projectId: session.projectId,
+            sessionId: session.sessionId,
+          }}
+          rowOf={rowOf}
+        />
+      ) : null}
       <ChatView
         centerEmpty
         key={session.sessionId}
