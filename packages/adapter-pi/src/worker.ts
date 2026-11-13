@@ -108,6 +108,8 @@ interface Review {
   requests: number;
   /** The host ended it, or its requests are used up: no further request is made for it. */
   ended: boolean;
+  /** Its last permitted request ended in an error: the advisor has failed, whether or not a retry was left. */
+  lastFailed: boolean;
 }
 
 export function runWorker(port: Channel, deps: WorkerDeps): void {
@@ -550,7 +552,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         reply = await prepare();
       }
       unrecorded = false;
-      if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
+      if (reply.type !== 'permit' || cancelled) {
+        // A refused request was never made: its empty failure is neither observed nor a failed request.
+        if (review) permit = null;
+        throw new Error('the request was refused');
+      }
       // Every permitted request of the review counts, a retry too, as the Coordinator counts it.
       if (review) review.requests += 1;
       permit = {
@@ -691,6 +697,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             return true;
           },
           beforeRetry: (message) => {
+            if (review) review.lastFailed = true;
             if (permit)
               port.send({
                 type: 'observe',
@@ -780,6 +787,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           rawUsage,
           ...(cut ? { interrupted: true } : unfinished(message) ? { failed: true } : {}),
         });
+        if (review && !cut) review.lastFailed = unfinished(message);
         cutFlight = cut ? latest : null;
         // A response that ended on its own was not cut, whatever the abort asked.
         if (latest && !cut) latest.cut = false;
@@ -869,6 +877,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           maxRequests: next.review.maxRequests,
           requests: 0,
           ended: false,
+          lastFailed: false,
         };
         try {
           await turn(next.review.text);
@@ -876,9 +885,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           return settle(cancelled ? 'cancelled' : 'failed', String(error));
         }
         if (cancelled) return settle('cancelled');
-        const ended = review.ended;
+        const { ended, lastFailed } = review;
         review = null;
         const last = lastAssistant();
+        // Its last permitted request ended in an error: the advisor has failed, even when the cap
+        // left no retry (features/advisor.md). What the frames' order was does not matter.
+        if (lastFailed) return settle('failed', last?.errorMessage ?? 'model error');
         if (ended) {
           // A request refused for the ended review leaves an empty failure; it is not kept.
           if (

@@ -830,6 +830,62 @@ describe('the advisor’s own record', () => {
     expect(advisor?.modelCallIds.length).toBe(2 * s.reviews.length);
   });
 
+  it('a retry counts toward the review’s cap; a compaction does not', async () => {
+    const record = (purpose: ModelRequestRecord['purpose']): ModelRequestRecord => ({
+      purpose,
+      runtime: 'pi-core',
+      contextHash: 'a'.repeat(64),
+      contextBytes: 100,
+      directiveIds: [],
+      sections: [],
+    });
+    const steps: string[] = [];
+    const s = setup({
+      live: true,
+      definition: advised({ interval: 1, maxRequestsPerReview: 2 }),
+      handle: (handle, input) =>
+        input.assignment.kind === 'advisor'
+          ? {
+              ...handle,
+              endReview: (reviewId) => {
+                steps.push(`end ${reviewId}`);
+                handle.endReview?.(reviewId);
+              },
+            }
+          : handle,
+      advisor: {
+        script: async (_input, host) => {
+          const review = await host.nextReview?.();
+          if (!review) return { outcome: 'succeeded' };
+          const failed = await host.prepareModelRequest(record('turn'));
+          await host.observe({
+            kind: 'model_completed',
+            modelCallId: failed.modelCallId,
+            text: '',
+            usage: { inputTokens: 10, outputTokens: 0 },
+            failed: true,
+          });
+          steps.push('turn');
+          await call(host, 'the summary', record('compaction'));
+          steps.push('compaction');
+          await call(host, 'the retry', record('retry'));
+          steps.push('retry');
+          await host.prepareModelRequest(record('turn')).then(
+            () => steps.push('a third request'),
+            () => steps.push('refused'),
+          );
+          while (await host.nextReview?.()) {}
+          return { outcome: 'succeeded' };
+        },
+      },
+    });
+    await s.ended();
+    expect(s.projection().status).toBe('succeeded');
+    // The failed turn and its retry are the review's two requests; the compaction is neither.
+    // The retry's observation used the last one and ended the review.
+    expect(steps.slice(0, 5)).toEqual(['turn', 'compaction', 'end rev_0001', 'retry', 'refused']);
+  });
+
   it('long reviews never bring the run to the no-progress pause', async () => {
     const s = setup({
       definition: advised({ interval: 1, maxRequestsPerReview: 8 }),

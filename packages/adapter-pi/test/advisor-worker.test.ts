@@ -433,7 +433,7 @@ describe('what the advisor is given', () => {
 });
 
 describe('a review that ends between attempts', () => {
-  it('a failed request is not retried once the host ended its review', async () => {
+  it('a failed request is not retried once the host ended its review, and the advisor has failed', async () => {
     const faux = createFauxCore({});
     faux.setResponses([
       fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'fetch failed' }),
@@ -466,7 +466,8 @@ describe('a review that ends between attempts', () => {
       credentials: async () => ACCESS_TOKEN,
     });
     handle = await adapter.start(advisorInput(), host);
-    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    // Its last request ended in an error with no retry left (features/advisor.md).
+    expect((await handle.waitForSettlement()).outcome).toBe('failed');
     expect(prepares).toBe(1);
   });
 });
@@ -785,6 +786,19 @@ describe('the advisor on the adapter', () => {
         turns: [{ request: 'EARLIER_REQUEST', answer: 'EARLIER_ANSWER' }],
         omittedTurns: 0,
       },
+      resumeContext: {
+        version: 1,
+        role: advisorInput().role,
+        criteria: 'Cite sources.',
+        protectedContext: { version: 1, text: 'Historical criteria.', hash: 'b'.repeat(64) },
+        context: {
+          version: 1,
+          piVersion: '1.3.0',
+          runtime: 'pi-core',
+          contextHash: 'a'.repeat(64),
+          context: { messages: [{ role: 'user', content: 'RESUMED_REQUEST', timestamp: 1 }] },
+        },
+      },
     } as unknown as AgentStartInput;
     const a = advisor([quiet(seen)], { reviews: [review(1), null], input });
     expect((await (await a.start()).waitForSettlement()).outcome).toBe('succeeded');
@@ -793,6 +807,7 @@ describe('the advisor on the adapter', () => {
     expect(Object.keys(start)).not.toContain('conversation');
     expect(Object.keys(start)).not.toContain('resumeContext');
     expect(said(seen[0])).not.toContain('EARLIER_REQUEST');
+    expect(said(seen[0])).not.toContain('RESUMED_REQUEST');
     expect(said(seen[0])).not.toContain(image.data);
   });
 });
