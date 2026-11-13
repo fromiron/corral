@@ -474,15 +474,9 @@ describe('team editor commands: patterns on the selection', () => {
   });
 });
 
-// Advisors (docs/specs/features/canvas.md rules 3, 4, 5 and 11; team-graph.md rule 11). Until
-// advisors run the compiler refuses every one with ADVISOR_NOT_SUPPORTED; that gate is left out
-// here, so these hold with it and without it.
+// Advisors (docs/specs/features/canvas.md rules 3, 4, 5 and 11; team-graph.md rule 11).
 const advisorCodes = (draft: EditorDraft) =>
-  codes(draft).filter(
-    (code) =>
-      (code.startsWith('ADVIS') || code.startsWith('SCHEMA')) &&
-      (code as string) !== 'ADVISOR_NOT_SUPPORTED',
-  );
+  codes(draft).filter((code) => code.startsWith('ADVIS') || code.startsWith('SCHEMA'));
 const advises = (draft: EditorDraft) =>
   draft.definition.capabilityLinks
     .map((l) => `${l.kind}:${l.sourceNodeId}>${l.targetNodeId}`)
