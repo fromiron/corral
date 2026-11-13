@@ -138,8 +138,9 @@ describe('the limit of a Loop', () => {
     await act(async () => fireEvent.click(limitSwitch()));
     expect(loop()).not.toHaveProperty('maxIterations');
     expect(loop().limitPolicy).toEqual({ kind: 'unlimited' });
-    expect(screen.queryByRole('spinbutton')).toBeNull();
-    expect(screen.queryByRole('tablist')).toBeNull();
+    // The count and the choices fold away and can no longer be reached.
+    expect(screen.getByRole('spinbutton').closest('[inert]')).not.toBeNull();
+    expect(screen.getByRole('tablist').closest('[inert]')).not.toBeNull();
     await act(async () => fireEvent.click(limitSwitch()));
     expect(loop().maxIterations).toBe(5);
     expect(loop().limitPolicy).toEqual({ kind: 'raise_reasoning', level: 'max' });

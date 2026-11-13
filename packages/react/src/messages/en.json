@@ -262,7 +262,7 @@
       "policy": {
         "exhaust": "End",
         "raise_reasoning": "Raise reasoning",
-        "upper_model": "Upper model"
+        "upper_model": "Switch model"
       },
       "level": "Level to raise to",
       "model": "Model to switch to",

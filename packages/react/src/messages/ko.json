@@ -262,7 +262,7 @@
       "policy": {
         "exhaust": "끝내기",
         "raise_reasoning": "추론 올리기",
-        "upper_model": "상위 모델"
+        "upper_model": "모델 바꾸기"
       },
       "level": "올릴 추론 수준",
       "model": "바꿀 모델",

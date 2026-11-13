@@ -16,6 +16,7 @@ import { ModelSelect, type ProfileChoice, profileChoices } from '../components/M
 import { ReasoningSelect } from '../components/ReasoningSelect.tsx';
 import {
   KitButton as Button,
+  Collapse,
   KitAccordion,
   KitAccordionContent,
   KitAccordionItem,
@@ -456,7 +457,14 @@ function LoopLimit({
           {t('recipeOnly')}
         </span>
       ) : null}
-      {unlimited ? null : (
+      {/* The kit's fold, as other rows that come and go with a choice; the margin keeps focus
+          rings outside its clip. */}
+      <Collapse
+        open={!unlimited}
+        hideWhenClosed
+        className="-m-1"
+        innerClassName="flex flex-col gap-2 p-1"
+      >
         <div className="flex items-center gap-2 text-body">
           <span aria-hidden="true">{t('upTo')}</span>
           <KitInputGroup className="w-16" {...session}>
@@ -476,8 +484,6 @@ function LoopLimit({
           </KitInputGroup>
           <span aria-hidden="true">{t('rounds', { count: node.maxIterations ?? 0 })}</span>
         </div>
-      )}
-      {unlimited ? null : (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body">
           <span id={`${id}-at`}>{t('atLimit')}</span>
           <Tabs value={choice} onValueChange={choose} size="compact">
@@ -497,7 +503,7 @@ function LoopLimit({
             </TabsList>
           </Tabs>
         </div>
-      )}
+      </Collapse>
       {policy?.kind === 'raise_reasoning' ? (
         <Select
           label={t('level')}

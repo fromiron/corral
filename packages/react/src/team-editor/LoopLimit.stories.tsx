@@ -52,6 +52,18 @@ function LoopSheet({ change }: { change: Record<string, unknown> }) {
 
 const text = messages.Inspector.loopLimit;
 
+/** "At the limit" and its three choices sit on one line inside the sheet's width. */
+async function choicesOnOneLine(canvasElement: HTMLElement, group: string, atLimit: string) {
+  const canvas = within(canvasElement);
+  const box = canvas.getByRole('group', { name: group }).getBoundingClientRect();
+  const list = canvas.getByRole('tablist', { name: atLimit }).getBoundingClientRect();
+  const label = canvas.getByText(atLimit).getBoundingClientRect();
+  await expect(list.right).toBeLessThanOrEqual(box.right);
+  const middle = (label.top + label.bottom) / 2;
+  await expect(middle).toBeGreaterThan(list.top);
+  await expect(middle).toBeLessThan(list.bottom);
+}
+
 const meta = {
   title: 'Team editor/Loop limit',
   component: LoopSheet,
@@ -69,6 +81,7 @@ export const Ends: Story = {
       'aria-selected',
       'true',
     );
+    await choicesOnOneLine(canvasElement, text.group, text.atLimit);
   },
 };
 
@@ -110,11 +123,8 @@ export const Korean: Story = {
     ),
   ],
   play: async ({ canvasElement }) => {
-    const group = within(canvasElement).getByRole('group', {
-      name: koMessages.Inspector.loopLimit.group,
-    });
-    // The sentence and its choices stay inside the sheet's width.
-    await expect(group.scrollWidth).toBeLessThanOrEqual(group.clientWidth);
+    const ko = koMessages.Inspector.loopLimit;
+    await choicesOnOneLine(canvasElement, ko.group, ko.atLimit);
   },
 };
 
