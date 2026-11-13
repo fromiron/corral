@@ -10,13 +10,15 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
 import { DockRunControls } from './DockRunControls.tsx';
 import { RunMessage } from './RunMessage.tsx';
+import { PendingTray } from './session/PendingTray.tsx';
 import { topbarLayout } from './topbarTier.ts';
 import { ComposerDock } from './widgets/ChatWidgets.tsx';
 import { actionRequired } from './widgets/selectors.ts';
 import type { ChatWidgetModel } from './widgets/useChatWidgets.tsx';
 
 // The main area of a session conversation whose team run waits on one approval: the top bar's
-// run pill, the run's turn with its approval card, and the notice line above the composer.
+// run pill, the run's turn, the needed-now tray at the timeline's end with the approval card, and
+// the notice line above the composer.
 
 const fixture = vi.hoisted(() => ({
   store: null as RunSessionStore | null,
@@ -157,6 +159,7 @@ async function mainArea(projection = waitingOnApproval()) {
           onOpenArtifact={vi.fn()}
           runLine={<button type="button">Run #1</button>}
         />
+        <PendingTray sessionId="session_team" runs={runs} onOpenArtifact={vi.fn()} />
         <ComposerDock />
       </IntlProvider>,
     ),
@@ -215,8 +218,10 @@ const tool = (purpose: 'tool' | 'lsp' | 'check') => ({
   ...(purpose === 'tool' ? {} : { effectId: 'effect_1', targetTree: 'b'.repeat(40) }),
 });
 
-// Every approval a run can wait on is decided in its turn's card, so the composer's notice may
-// leave for each: the card is drawn in the conversation, with native buttons the keyboard reaches.
+// Every approval a run can wait on is decided in the conversation's needed-now tray, so the
+// composer's notice may leave for each: the card is drawn in the conversation, outside the run's
+// turn, with native buttons the keyboard reaches. A continue-or-stop pause is the kit's decision
+// stack.
 it.each([
   ['final output', { kind: 'final_output' }],
   ['another round', { kind: 'loop_cap', loopStop: 'cap_reached' }],
@@ -244,8 +249,14 @@ it.each([
     ...approval,
   } as RunProjection['approvals'][string];
   const container = await mainArea(projection);
-  const card = container.querySelector('[data-testid="approval-approval_1"]');
+  const card =
+    approval.kind === 'loop_cap'
+      ? container.querySelector('[data-continue-decisions]')
+      : container.querySelector('[data-testid="approval-approval_1"]');
   expect(card).not.toBeNull();
+  expect(card?.closest('[data-pending-tray]')).not.toBeNull();
+  expect(card?.closest('[data-chat-part]')).toBeNull();
+  expect(container.querySelectorAll('[data-approval], [data-continue-decisions]')).toHaveLength(1);
   const buttons = [...(card?.querySelectorAll('button') ?? [])];
   expect(buttons.length).toBeGreaterThanOrEqual(2);
   // Native buttons in the tab order; the decline is always available.

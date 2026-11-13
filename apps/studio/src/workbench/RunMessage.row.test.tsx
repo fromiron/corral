@@ -606,7 +606,7 @@ it('an interrupted output’s copy sits in the tail', async () => {
   ).toBeNull();
 });
 
-it('keeps a waiting approval outside the row, after its tail', async () => {
+it('leaves a waiting approval out of the row: the needed-now tray draws and answers it', async () => {
   const projection = running();
   projection.status = 'awaiting_user';
   projection.approvals.approval = {
@@ -617,12 +617,19 @@ it('keeps a waiting approval outside the row, after its tail', async () => {
     status: 'pending',
   };
   const f = await show(projection);
-  const card = f.container.querySelector('[data-testid="approval-approval"]');
-  const tail = part(f.container, 'tail');
-  expect(card).not.toBeNull();
-  expect(tail?.compareDocumentPosition(card as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  for (const name of ['head', 'body', 'tail'])
-    expect(part(f.container, name)?.contains(card)).toBe(false);
+  // Neither in its three parts nor after them (composer-flow.md "튐 없는 본문" rule 2).
+  expect(f.container.querySelector('[data-approval], [data-testid^="approval-"]')).toBeNull();
+  const decisions = [...f.container.querySelectorAll('button')].filter((button) =>
+    [messages.Approvals.approveAs.user_action, messages.Approvals.rejectAs.user_action].includes(
+      button.textContent ?? '',
+    ),
+  );
+  expect(decisions).toHaveLength(0);
+  // The row is its three parts alone: nothing stands after the block that holds them.
+  const parts = part(f.container, 'body')?.parentElement;
+  expect(parts?.contains(part(f.container, 'head'))).toBe(true);
+  expect(parts?.contains(part(f.container, 'tail'))).toBe(true);
+  expect(parts?.parentElement?.children).toHaveLength(1);
 });
 
 it('waits for the reply with the kit mark alone, and names the step in progress', async () => {

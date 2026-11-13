@@ -123,11 +123,17 @@ export function ChatView({
   centerEmpty = false,
   expandedHeader = false,
   sent,
+  tray,
 }: {
   sessionId: string;
   messageId?: string | undefined;
   children?: ReactNode;
   items: { id: string; content: ReactNode }[];
+  /**
+   * What the conversation needs from the person now: after the last item, in the scrolling
+   * area, outside the list's window (composer-flow.md "지금 필요한 것").
+   */
+  tray?: ReactNode;
   composer: ReactNode;
   header?: ReactNode;
   /** Read a long header (meeting records) without displacing the composer. */
@@ -608,6 +614,7 @@ export function ChatView({
           ) : (
             children
           )}
+          {tray}
         </div>
       </section>
       <div

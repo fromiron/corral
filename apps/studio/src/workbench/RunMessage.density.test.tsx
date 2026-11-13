@@ -14,6 +14,7 @@ import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'j
 import { ChatDensityMenu, ChatView } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
 import { RunMessage } from './RunMessage.tsx';
+import { PendingTray } from './session/PendingTray.tsx';
 
 const fixture = vi.hoisted(() => ({ store: null as RunSessionStore | null, read: vi.fn() }));
 vi.mock('./useCorralChat.ts', () => ({
@@ -21,6 +22,10 @@ vi.mock('./useCorralChat.ts', () => ({
     fixture.read(runId, live, details);
     return { store: fixture.store, state: useStore(fixture.store as RunSessionStore) };
   },
+}));
+// The conversation's needed-now tray follows the same run.
+vi.mock('../services.tsx', () => ({
+  useServices: () => ({ runFor: () => fixture.store, retainRun: () => () => {} }),
 }));
 vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: (_key: string, initial: boolean) => useState(initial),
@@ -135,6 +140,8 @@ async function render(status: 'running' | 'succeeded' = 'running', locale: 'en' 
     events,
     streams: { call: { text: 'Currently drafting', next: 1, broken: false, completed: false } },
     artifactTexts: { result: 'Finished answer' },
+    // Already followed: the tray's open() keeps what the run shows.
+    open: async () => {},
   });
   const container = document.createElement('div');
   document.body.append(container);
@@ -156,6 +163,22 @@ async function render(status: 'running' | 'succeeded' = 'running', locale: 'en' 
         <ChatView
           sessionId="session"
           composer={<textarea aria-label="Draft" defaultValue="Keep this draft" />}
+          tray={
+            <PendingTray
+              sessionId="session"
+              runs={[
+                {
+                  runId: 'run_density',
+                  status,
+                  corralId: 'team',
+                  projectId: 'project',
+                  sessionId: 'session',
+                  startedAt: '2026-10-21T00:00:00Z',
+                },
+              ]}
+              onOpenArtifact={() => {}}
+            />
+          }
           items={[
             {
               id: 'entry',
@@ -245,6 +268,9 @@ it('changes only display density while keeping results, the decision and the fai
     const action = f.container.querySelector('[data-testid="approval-approval"]');
     expect(action).not.toBeNull();
     expect(action?.closest('details')).toBeNull();
+    // In the needed-now tray at the timeline's end, whatever the row shows.
+    expect(action?.closest('[data-pending-tray]')).not.toBeNull();
+    expect(action?.closest('[data-chat-item]')).toBeNull();
     expect(action?.textContent).toContain('Continue with this version');
     // The failed step is counted on the head in every density.
     expect(head()?.textContent).toContain('1 failed');
