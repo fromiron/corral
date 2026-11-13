@@ -1,16 +1,25 @@
+import type { AgentRole } from '@corral/contracts';
 import { compileDefinition } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import { connectCapability, type EditorDraft, emptyDraft } from '../src/editor/model.ts';
+import {
+  connectCapability,
+  type EditorDraft,
+  emptyDraft,
+  updateNode,
+} from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import {
   applyPattern,
   connectPorts,
   type EditResult,
+  importableRoles,
+  importRole,
   patchNode,
   placeStep,
   removeItems,
   type StepKind,
   setParent,
+  watchAgent,
   wrapIn,
 } from '../src/team-editor/commands.ts';
 
@@ -88,6 +97,7 @@ describe('team editor commands: adding steps', () => {
   it('creates every kind of step the editor offers as a node the contract accepts', () => {
     const kinds: StepKind[] = [
       'agent',
+      'observer',
       'review',
       'approval',
       'rule',
@@ -461,6 +471,365 @@ describe('team editor commands: patterns on the selection', () => {
     expect(refused(applyPattern(chain(3), 'parallel', ['agent_2', 'agent_3']))).toBe(
       'oneAgentOnly',
     );
+  });
+});
+
+// Advisors (docs/specs/features/canvas.md rules 3, 4, 5 and 11; team-graph.md rule 11). Until
+// advisors run the compiler refuses every one with ADVISOR_NOT_SUPPORTED; that gate is left out
+// here, so these hold with it and without it.
+const advisorCodes = (draft: EditorDraft) =>
+  codes(draft).filter(
+    (code) =>
+      (code.startsWith('ADVIS') || code.startsWith('SCHEMA')) && code !== 'ADVISOR_NOT_SUPPORTED',
+  );
+const advises = (draft: EditorDraft) =>
+  draft.definition.capabilityLinks
+    .map((l) => `${l.kind}:${l.sourceNodeId}>${l.targetNodeId}`)
+    .sort();
+const roleFor = (draft: EditorDraft, id: string) => {
+  const n = node(draft, id);
+  return n?.type === 'agent' ? draft.definition.roles.find((r) => r.id === n.roleId) : undefined;
+};
+const READ_TOOLS = ['search', 'read_document', 'list_files', 'read_file'];
+
+describe('team editor commands: advisors', () => {
+  it('adds an advisor that watches the selected agent and stays out of the flow', () => {
+    const draft = chain(2);
+    const { draft: next, nodeId } = ok(
+      placeStep(draft, 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const advisor = node(next, nodeId);
+    expect(advisor).toMatchObject({ type: 'agent', invocation: 'observer' });
+    expect(advisor?.parentId).toBeUndefined();
+    expect(wiring(next)).toEqual(wiring(draft));
+    expect(next.definition.entryNodeId).toBe('agent_1');
+    expect(advises(next)).toEqual([`advise:${nodeId}>agent_1`]);
+    const role = roleFor(next, nodeId);
+    expect(role?.allowedWorkTools.every((tool) => READ_TOOLS.includes(tool))).toBe(true);
+    expect([...(role?.allowedCollaborationTools ?? [])].sort()).toEqual([
+      'advise',
+      'read_artifact',
+    ]);
+    // Its own role: no other node runs it.
+    expect(
+      next.definition.nodes.filter((n) => n.type === 'agent' && n.roleId === role?.id),
+    ).toHaveLength(1);
+    expect(advisorCodes(next)).toEqual([]);
+  });
+
+  it('adds an advisor watching nobody when nothing is selected', () => {
+    const { draft, nodeId } = ok(placeStep(chain(2), 'observer', { kind: 'empty' }));
+    expect(node(draft, nodeId)).toMatchObject({ invocation: 'observer' });
+    expect(advises(draft)).toEqual([]);
+    expect(advisorCodes(draft)).toEqual(['ADVISOR_UNWATCHED']);
+  });
+
+  it('watches the agent it is dropped on, a callable one too, and nothing else', () => {
+    const callable = patchNode(chain(1), 'agent_1', { invocation: 'callable' });
+    const onCallable = ok(placeStep(callable, 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    expect(advises(onCallable.draft)).toEqual([`advise:${onCallable.nodeId}>agent_1`]);
+    const output = ok(placeStep(chain(1), 'output', { kind: 'after', nodeId: 'agent_1' }));
+    const onOutput = ok(
+      placeStep(output.draft, 'observer', { kind: 'after', nodeId: output.nodeId }),
+    );
+    expect(advises(onOutput.draft)).toEqual([]);
+    expect(wiring(onOutput.draft)).toEqual(wiring(output.draft));
+  });
+
+  it('is never inserted into the flow, on a connection or into a box', () => {
+    const draft = chain(2);
+    const edgeId = draft.definition.controlEdges[0]?.id as string;
+    const onEdge = ok(placeStep(draft, 'observer', { kind: 'edge', edgeId }));
+    expect(wiring(onEdge.draft)).toEqual(wiring(draft));
+    expect(advises(onEdge.draft)).toEqual([]);
+    const boxed = ok(wrapIn(draft, ['agent_2'], 'loop'));
+    const into = ok(placeStep(boxed.draft, 'observer', { kind: 'into', boxId: boxed.nodeId }));
+    expect(node(into.draft, into.nodeId)?.parentId).toBeUndefined();
+    expect(wiring(into.draft)).toEqual(wiring(boxed.draft));
+  });
+
+  it('adds and removes watched agents', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const advisor = added.nodeId;
+    const both = ok(watchAgent(added.draft, advisor, 'agent_2')).draft;
+    expect(advises(both)).toEqual([`advise:${advisor}>agent_1`, `advise:${advisor}>agent_2`]);
+    expect(refused(watchAgent(both, advisor, 'agent_2'))).toBe('duplicate');
+    const output = ok(placeStep(both, 'output', { kind: 'after', nodeId: 'agent_2' }));
+    expect(refused(watchAgent(output.draft, advisor, output.nodeId))).toBe('watchNeedsAgent');
+    const other = ok(placeStep(both, 'observer', { kind: 'empty' }));
+    expect(refused(watchAgent(other.draft, advisor, other.nodeId))).toBe('watchNeedsAgent');
+    expect(refused(watchAgent(both, 'agent_1', 'agent_2'))).toBe('watchNeedsAdvisor');
+    const link = both.definition.capabilityLinks.find((l) => l.targetNodeId === 'agent_1');
+    const one = removeItems(both, [link?.id as string]);
+    expect(advises(one)).toEqual([`advise:${advisor}>agent_2`]);
+    expect(advisorCodes(one)).toEqual([]);
+  });
+
+  it('never delegates or asks, and is never delegated to or asked', () => {
+    let draft = ok(placeStep(chain(1), 'agent', { kind: 'empty' })).draft;
+    draft = patchNode(draft, 'agent_2', { invocation: 'callable' });
+    const added = ok(placeStep(draft, 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    for (const kind of ['delegate', 'question'] as const) {
+      const from = connectCapability(added.draft, added.nodeId, 'agent_2', kind);
+      expect(from.ok ? 'accepted' : from.reason).toBe('sourceIsAdvisor');
+      const to = connectCapability(added.draft, 'agent_1', added.nodeId, kind);
+      expect(to.ok ? 'accepted' : to.reason).toBe('targetNotCallable');
+    }
+  });
+
+  it('stays out of boxes; in a mixed selection only the advisor stays outside', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const advisor = added.nodeId;
+    expect(refused(wrapIn(added.draft, [advisor], 'loop'))).toBe('advisorOutsideBoxes');
+    expect(refused(wrapIn(added.draft, [advisor], 'team'))).toBe('advisorOutsideBoxes');
+    const { draft, nodeId: loop } = ok(wrapIn(added.draft, ['agent_1', advisor], 'loop'));
+    expect(node(draft, 'agent_1')?.parentId).toBe(loop);
+    expect(node(draft, advisor)?.parentId).toBeUndefined();
+    expect(advises(draft)).toEqual([`advise:${advisor}>agent_1`]);
+    expect(refused(setParent(draft, advisor, loop))).toBe('advisorOutsideBoxes');
+    expect(advisorCodes(draft)).toEqual([]);
+    const pattern = ok(applyPattern(added.draft, 'reviewLoop', ['agent_1', advisor]));
+    expect(node(pattern.draft, advisor)?.parentId).toBeUndefined();
+    expect(refused(applyPattern(added.draft, 'reviewLoop', [advisor]))).toBe('advisorOutsideBoxes');
+  });
+
+  it('becomes an advisor in one undoable edit that takes it out of the flow', () => {
+    // agent_1 → Loop[agent_2] → agent_3; agent_2 retries, reads the brief and delegates to a
+    // helper; agent_3 runs the same role.
+    let draft = ok(wrapIn(chain(3), ['agent_2'], 'loop')).draft;
+    draft = ok(placeStep(draft, 'agent', { kind: 'empty' })).draft;
+    const helper = draft.definition.nodes.at(-1)?.id as string;
+    draft = patchNode(draft, helper, { invocation: 'callable' });
+    const linked = connectCapability(draft, 'agent_2', helper, 'delegate');
+    if (!linked.ok) throw new Error(linked.reason);
+    draft = patchNode(linked.draft, 'agent_2', { retry: { maxAttempts: 2 } });
+    const shared = roleFor(draft, 'agent_2');
+    draft = patchNode(draft, 'agent_3', { roleId: shared?.id });
+    const store = createEditorStore(draft);
+    store.getState().updateNode('agent_2', { invocation: 'observer' });
+    const next = store.getState().draft;
+    const advisor = node(next, 'agent_2');
+    expect(advisor).toMatchObject({ type: 'agent', invocation: 'observer' });
+    expect(advisor).not.toHaveProperty('inputBindings');
+    expect(advisor).not.toHaveProperty('retry');
+    expect(advisor).not.toHaveProperty('parentId');
+    expect(
+      next.definition.controlEdges.filter((e) => e.source === 'agent_2' || e.target === 'agent_2'),
+    ).toEqual([]);
+    expect(advises(next).filter((l) => l.includes('agent_2'))).toEqual([]);
+    // The advisor runs a copy with only advisor tools; agent_3 keeps the role it had.
+    const copy = roleFor(next, 'agent_2');
+    expect(copy?.id).not.toBe(shared?.id);
+    expect(copy?.prompt).toBe(shared?.prompt);
+    expect(copy?.allowedWorkTools.every((tool) => READ_TOOLS.includes(tool))).toBe(true);
+    expect([...(copy?.allowedCollaborationTools ?? [])].sort()).toEqual([
+      'advise',
+      'read_artifact',
+    ]);
+    expect(roleFor(next, 'agent_3')).toEqual(shared);
+    expect(advisorCodes(next)).not.toContain('ADVISOR_TOOLS');
+    expect(advisorCodes(next)).not.toContain('ADVISOR_OUTSIDE_FLOW');
+    store.getState().undo();
+    expect(store.getState().draft.definition).toEqual(draft.definition);
+  });
+
+  it('stops watching when it runs in the flow or when called, in one undoable edit', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    for (const invocation of ['scheduled', 'callable'] as const) {
+      const store = createEditorStore(added.draft);
+      store.getState().updateNode(added.nodeId, { invocation });
+      const next = store.getState().draft;
+      expect(node(next, added.nodeId)).toMatchObject({ invocation });
+      expect(advises(next)).toEqual([]);
+      expect(roleFor(next, added.nodeId)?.allowedCollaborationTools).not.toContain('advise');
+      expect(advisorCodes(next)).toEqual([]);
+      store.getState().undo();
+      expect(store.getState().draft.definition).toEqual(added.draft.definition);
+    }
+  });
+
+  it('keeps watching a callable agent that is put back in the flow', () => {
+    const callable = patchNode(chain(1), 'agent_1', { invocation: 'callable' });
+    const added = ok(placeStep(callable, 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const store = createEditorStore(added.draft);
+    store.getState().updateNode('agent_1', { invocation: 'scheduled' });
+    expect(advises(store.getState().draft)).toEqual([`advise:${added.nodeId}>agent_1`]);
+  });
+
+  it('stays, watching no one, when the agent it watched is deleted', () => {
+    const added = ok(placeStep(chain(3), 'observer', { kind: 'after', nodeId: 'agent_3' }));
+    const next = removeItems(added.draft, ['agent_3']);
+    expect(node(next, added.nodeId)).toBeDefined();
+    expect(advises(next)).toEqual([]);
+    expect(advisorCodes(next)).toEqual(['ADVISOR_UNWATCHED']);
+  });
+
+  it('takes no role copied from a working agent', () => {
+    const added = ok(placeStep(chain(1), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const role = roleFor(added.draft, 'agent_1') as AgentRole;
+    expect(refused(importRole(added.draft, role, [added.nodeId]) as EditResult)).toBe(
+      'roleNeedsAgent',
+    );
+  });
+
+  // Review round 2 (canvas.md rules 6 and 11).
+  it('copies no advisor role onto an agent, and lists none to copy', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const advisorRole = roleFor(added.draft, added.nodeId) as AgentRole;
+    expect(refused(importRole(added.draft, advisorRole, ['agent_2']) as EditResult)).toBe(
+      'advisorRole',
+    );
+    expect(refused(importRole(added.draft, advisorRole, []) as EditResult)).toBe('advisorRole');
+    expect(importableRoles(added.draft.definition).map((r) => r.id)).toEqual([
+      'agent_1_role',
+      'agent_2_role',
+    ]);
+    // A role an advisor runs is left out even when it lost its advise tool.
+    const stripped = updateNode(added.draft, added.nodeId, {});
+    const bare = {
+      ...stripped.definition,
+      roles: stripped.definition.roles.map((r) =>
+        r.id === advisorRole.id ? { ...r, allowedCollaborationTools: [] } : r,
+      ),
+    };
+    expect(importableRoles(bare).map((r) => r.id)).not.toContain(advisorRole.id);
+  });
+
+  it('gives a converted advisor the role shape of a new one, keeping prompt, model, reasoning and reads', () => {
+    let draft = updateNode(chain(2), 'agent_2', {
+      prompt: 'Check the facts.',
+      modelProfile: 'model-b',
+      reasoning: { mode: 'fixed', level: 'high' },
+      outputContract: 'review',
+      editingMode: 'hashline',
+      generateImage: true,
+      imageProfile: 'pictures',
+      harness: { profileId: 'design', revision: 1 },
+    });
+    draft = patchNode(draft, 'agent_2', {});
+    const role = roleFor(draft, 'agent_2') as AgentRole;
+    draft = {
+      ...draft,
+      definition: {
+        ...draft.definition,
+        roles: draft.definition.roles.map((r) =>
+          r.id === role.id
+            ? {
+                ...r,
+                allowedWorkTools: [...r.allowedWorkTools, 'read_file'],
+                answer: 'final_reply',
+              }
+            : r,
+        ),
+      },
+    };
+    const store = createEditorStore(draft);
+    store.getState().updateNode('agent_2', { invocation: 'observer' });
+    const converted = roleFor(store.getState().draft, 'agent_2') as AgentRole;
+    const fresh = roleFor(
+      ok(placeStep(chain(2), 'observer', { kind: 'empty' })).draft,
+      'advisor_1',
+    ) as AgentRole;
+    expect(Object.keys(converted).sort()).toEqual([...Object.keys(fresh), 'reasoning'].sort());
+    expect(converted).toMatchObject({
+      prompt: 'Check the facts.',
+      modelProfile: 'model-b',
+      reasoning: { mode: 'fixed', level: 'high' },
+      outputContract: fresh.outputContract,
+      allowedWorkTools: ['read_file'],
+      allowedCollaborationTools: fresh.allowedCollaborationTools,
+    });
+    store.getState().undo();
+    expect(store.getState().draft.definition).toEqual(draft.definition);
+  });
+
+  it('moves the start off an agent that becomes an advisor, as deleting it would', () => {
+    const draft = chain(3);
+    expect(draft.definition.entryNodeId).toBe('agent_1');
+    const converted = updateNode(draft, 'agent_1', { invocation: 'observer' });
+    expect(converted.definition.entryNodeId).toBe(
+      removeItems(draft, ['agent_1']).definition.entryNodeId,
+    );
+    expect(converted.definition.entryNodeId).toBe('agent_2');
+    // With nowhere else to start, the advisor is still not the start.
+    const alone = updateNode(chain(1), 'agent_1', { invocation: 'observer' });
+    expect(alone.definition.entryNodeId).not.toBe('agent_1');
+  });
+
+  it('takes no change an advisor sheet does not offer', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const before = roleFor(added.draft, added.nodeId);
+    const next = updateNode(added.draft, added.nodeId, {
+      teamPlanOwner: true,
+      fileTools: true,
+      runCommand: true,
+      generateImage: true,
+      previewFile: true,
+      outputContract: 'review',
+      editingMode: 'hashline',
+      imageProfile: 'pictures',
+    });
+    expect(roleFor(next, added.nodeId)).toEqual(before);
+    expect(next.definition.planOwnerRoleId).toBe(added.draft.definition.planOwnerRoleId);
+    expect(advisorCodes(next)).toEqual([]);
+    // What the sheet offers still applies.
+    const named = updateNode(added.draft, added.nodeId, { prompt: 'Look closer.' });
+    expect(roleFor(named, added.nodeId)?.prompt).toBe('Look closer.');
+  });
+
+  it('a split agent keeps its advisors: the copy is watched by the same ones', () => {
+    let draft = chain(3);
+    const first = ok(placeStep(draft, 'observer', { kind: 'after', nodeId: 'agent_2' }));
+    const second = ok(placeStep(first.draft, 'observer', { kind: 'after', nodeId: 'agent_2' }));
+    draft = second.draft;
+    const split = ok(applyPattern(draft, 'parallel', ['agent_2'])).draft;
+    const copy = split.definition.nodes.find((n) => n.label === 'Agent 2 copy')?.id as string;
+    expect(advises(split)).toEqual(
+      [
+        `advise:${first.nodeId}>agent_2`,
+        `advise:${first.nodeId}>${copy}`,
+        `advise:${second.nodeId}>agent_2`,
+        `advise:${second.nodeId}>${copy}`,
+      ].sort(),
+    );
+    expect(advisorCodes(split)).toEqual([]);
+  });
+
+  it('becoming an advisor drops the links into it too', () => {
+    let draft = ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft;
+    draft = patchNode(draft, 'agent_3', { invocation: 'callable' });
+    const linked = connectCapability(draft, 'agent_1', 'agent_3', 'delegate');
+    if (!linked.ok) throw new Error(linked.reason);
+    draft = ok(placeStep(linked.draft, 'observer', { kind: 'after', nodeId: 'agent_3' })).draft;
+    const next = updateNode(draft, 'agent_3', { invocation: 'observer' });
+    expect(next.definition.capabilityLinks.filter((l) => l.targetNodeId === 'agent_3')).toEqual([]);
+  });
+
+  it('back from an advisor, an agent reads the brief and gets a new agent’s tools', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const fresh = roleFor(chain(1), 'agent_1') as AgentRole;
+    const back = updateNode(added.draft, added.nodeId, { invocation: 'scheduled' });
+    const node = back.definition.nodes.find((n) => n.id === added.nodeId);
+    expect(node?.type === 'agent' && node.invocation !== 'observer' && node.inputBindings).toEqual([
+      { kind: 'run_input', name: 'brief' },
+    ]);
+    const role = roleFor(back, added.nodeId) as AgentRole;
+    for (const tool of fresh.allowedWorkTools) expect(role.allowedWorkTools).toContain(tool);
+    for (const tool of fresh.allowedCollaborationTools)
+      expect(role.allowedCollaborationTools).toContain(tool);
+  });
+
+  it('an agent that becomes an advisor gives up the team plan', () => {
+    const owner = updateNode(chain(2), 'agent_2', { teamPlanOwner: true });
+    expect(owner.definition.planOwnerRoleId).toBe('agent_2_role');
+    const advisor = updateNode(owner, 'agent_2', { invocation: 'observer' });
+    expect(advisor.definition.planOwnerRoleId).toBeUndefined();
+  });
+
+  it('changes read tools on an advisor only', () => {
+    const draft = chain(2);
+    const next = updateNode(draft, 'agent_1', { readTools: ['search'] });
+    expect(roleFor(next, 'agent_1')).toEqual(roleFor(draft, 'agent_1'));
   });
 });
 
