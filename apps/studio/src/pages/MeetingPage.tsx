@@ -38,6 +38,7 @@ import {
   useNarrowScreen,
 } from '../workbench/MeetingRecords.tsx';
 import { MeetingRoundStatus } from '../workbench/MeetingRoundStatus.tsx';
+import { answerLabel, HOLD_LABEL } from '../workbench/meetingActivity.ts';
 import { preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { TurnActions } from '../workbench/RunMessage.tsx';
@@ -56,28 +57,23 @@ import { useRemembered } from './Workbench.tsx';
 type RoundView = MeetingView['rounds'][number];
 type AnswerView = RoundView['answers'][number];
 
-/** Where an answer not yet started sits: after everything said, in the order of its round. */
-const WAITING = Number.MAX_SAFE_INTEGER;
-
-/** An answer's place in the timeline: when it spoke, or after its round's message. */
+/**
+ * An answer's place in the timeline: when it started speaking, or (kept before answers had a
+ * place of their own) after its round's message. One not started has no row: the activity bar
+ * says who waits, and the row comes at the end once the answer starts.
+ */
 const answerOrder = (round: RoundView, index: number, answer: AnswerView, n: number) =>
-  answer.order ?? (answer.status === 'waiting' ? WAITING : (round.order ?? index * 7) + n + 1);
+  answer.order ?? (round.order ?? index * 7) + n + 1;
 
 /** The command of the last continue of a held chain, if the meeting was ever continued. */
 const lastContinue = (view: MeetingView) =>
   view.rounds.findLast((round) => round.continued)?.commandId;
 
 /**
- * A continued round's line: just before its first answer. While that answer waits, the line
- * waits with it at the end, after the earlier rounds' waiting answers, so it never pushes them
- * down (the sort is stable, and the line comes first in its round).
+ * A continued round's line: where the person continued, after everything said by then. Its
+ * answers, and any that were still waiting, start later and come after it.
  */
-function continuedOrder(round: RoundView, index: number) {
-  const first = round.answers[0];
-  if (!first) return (round.order ?? index * 7) + 0.5;
-  const order = answerOrder(round, index, first, 0);
-  return order === WAITING ? WAITING : order - 0.5;
-}
+const continuedOrder = (round: RoundView, index: number) => (round.order ?? index * 7) + 0.5;
 
 /**
  * The meeting room: participants on top, the conversation, then the composer. The minutes,
@@ -247,24 +243,31 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                         content: <MeetingMessage round={round} config={view.config} />,
                       },
                     ]),
-                ...round.answers.map((answer, n) => ({
-                  id: `${round.roundId}:${answer.participantId}`,
-                  order: answerOrder(round, index, answer, n),
-                  content: (
-                    <AnswerCard
-                      answer={answer}
-                      name={nameOf(view.config, answer.participantId, t('secretary'))}
-                      onOpenMinutes={
-                        answer.participantId === SECRETARY_ID &&
-                        view.minutes?.some(
-                          (minutes) => minutes.roundId === round.roundId && minutes.document,
-                        )
-                          ? openRecords
-                          : undefined
-                      }
-                    />
-                  ),
-                })),
+                ...round.answers.flatMap((answer, n) =>
+                  answer.status === 'waiting'
+                    ? []
+                    : [
+                        {
+                          id: `${round.roundId}:${answer.participantId}`,
+                          order: answerOrder(round, index, answer, n),
+                          content: (
+                            <AnswerCard
+                              answer={answer}
+                              name={nameOf(view.config, answer.participantId, t('secretary'))}
+                              onOpenMinutes={
+                                answer.participantId === SECRETARY_ID &&
+                                view.minutes?.some(
+                                  (minutes) =>
+                                    minutes.roundId === round.roundId && minutes.document,
+                                )
+                                  ? openRecords
+                                  : undefined
+                              }
+                            />
+                          ),
+                        },
+                      ],
+                ),
                 ...(round.stoppedAt
                   ? [
                       {
@@ -288,7 +291,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
               view.hold ? (
                 // What the meeting needs from the person now: a held chain's continue card. The
                 // card names itself; this place adds no second name.
-                <div data-pending-tray className="pb-4">
+                <div data-pending-tray data-presence-label={HOLD_LABEL} className="pb-4">
                   <MeetingContinue
                     // A hold is where the chain stopped and the continue before it: held again
                     // at the same place after a continue, it is a new card with a new command.
@@ -311,7 +314,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                   mode,
                   error: error || loadError,
                   onStop: active
-                    ? () => void act(() => meetings.stop(sessionId, active.roundId))
+                    ? () => act(() => meetings.stop(sessionId, active.roundId))
                     : undefined,
                   onSent: () => setSent((count) => count + 1),
                   send: (request) => act(() => meetings.send(sessionId, request)),
@@ -608,6 +611,10 @@ function AnswerCard({
   return (
     <article
       aria-label={name}
+      // A running answer's row says who answers: the activity bar does not say it again.
+      data-presence-label={
+        answer.status === 'running' && answer.runId ? answerLabel(answer.runId) : undefined
+      }
       className="chat-turn turn-actions-scope flex min-w-0 flex-col gap-1.5 wrap-anywhere"
     >
       <header>

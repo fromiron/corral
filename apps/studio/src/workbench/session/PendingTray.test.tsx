@@ -805,6 +805,57 @@ it('asks continue or stop in the kit’s decision stack, confirming only from th
   expect(document.activeElement).toBe(container.querySelector('textarea'));
 });
 
+it('gives the focus back to a continue answer refused or not confirmed, unless it was moved', async () => {
+  const store = waitingRun('run_a', {
+    approvals: [decision('approval_limit', { limit: roundLimit })],
+  });
+  const settles: { resolve(value: Receipt): void; reject(error: Error): void }[] = [];
+  store.setState({
+    resolveApproval: vi.fn(
+      () =>
+        new Promise<Receipt>((resolve, reject) => {
+          settles.push({ resolve, reject });
+        }),
+    ),
+  });
+  const { container } = await show(['run_a']);
+  const stack = () => trayOf(container)?.querySelector('[data-continue-decisions]');
+  const go = () => buttons(stack(), messages.Approvals.limit.approve)[0];
+  // While the answer is on its way its buttons are disabled, and the browser drops the focus
+  // (jsdom keeps it on a disabled button: it goes through an element that then leaves).
+  const press = async () => {
+    go()?.focus();
+    await act(async () => go()?.click());
+    const passing = document.body.appendChild(document.createElement('button'));
+    passing.focus();
+    passing.remove();
+    expect(document.activeElement).toBe(document.body);
+  };
+  await press();
+  await act(async () =>
+    settles[0]?.resolve({
+      error: { code: 'CONFLICT', message: 'The loop already moved on.' },
+    } as unknown as Receipt),
+  );
+  await settleFrames();
+  expect(document.activeElement).toBe(go());
+  await press();
+  await act(async () => settles[1]?.reject(new Error('connection lost')));
+  await settleFrames();
+  expect(document.activeElement).toBe(go());
+  // Moved elsewhere while it was on its way: left there.
+  await press();
+  const elsewhere = container.querySelector<HTMLInputElement>('input[aria-label="Elsewhere"]');
+  elsewhere?.focus();
+  await act(async () =>
+    settles[2]?.resolve({
+      error: { code: 'CONFLICT', message: 'Again.' },
+    } as unknown as Receipt),
+  );
+  await settleFrames();
+  expect(document.activeElement).toBe(elsewhere);
+});
+
 it('shows the receipt’s confirmation while the request is still open', async () => {
   const store = waitingRun('run_a', {
     approvals: [decision('approval_limit', { limit: roundLimit })],

@@ -168,17 +168,9 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'attachmentActions'/ },
   {
     file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
-    near: /variant="tertiary" onClick=\{onStop\}/,
-  },
-  {
-    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
     near: /size="compact"\s+variant="ghost"/,
   },
-  // Narrow, Stop and the plan request are the kit composer's icon slot controls.
-  {
-    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
-    near: /aria-label=\{t\('stopRound'\)\}/,
-  },
+  // Narrow, the plan request is the kit composer's icon slot control.
   {
     file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
     near: /aria-label=\{t\('summarise'\)\}/,

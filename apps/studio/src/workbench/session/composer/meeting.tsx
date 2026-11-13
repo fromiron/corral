@@ -26,7 +26,7 @@ import {
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { FileText, ListChecks, Plus, Square, X } from '@corral/react/icons';
+import { FileText, ListChecks, Plus, X } from '@corral/react/icons';
 import {
   type Ref,
   useEffect,
@@ -41,6 +41,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { newCommandId } from '../../../sessionActions.ts';
 import { ComposerSurface } from '../../ComposerSurface.tsx';
+import { MeetingActivity } from '../../MeetingActivity.tsx';
 import { MeetingEvidencePicker } from '../../MeetingEvidence.tsx';
 import { usePreferences } from '../../preferences.ts';
 import {
@@ -58,7 +59,8 @@ import { RecipientChip, type Recipients } from './SendControls.tsx';
 // sends to the meeting, and the badge in the target's place chooses the recipients — whoever
 // the meeting picks, the chosen participants, or no one (posted, nobody asked to reply;
 // workbench.md "회의"). Of the conversation's tools a meeting keeps what it supports: evidence
-// from the add menu, the waiting message, Stop and the secretary's plan beside Send. `/` and
+// from the add menu, the waiting message, Stop in Send's place and the activity bar, and the
+// secretary's plan beside Send. `/` and
 // `@` are text here; `@name` in the text is a mention the meeting reads.
 
 /** An answer that is not a reply. */
@@ -81,7 +83,8 @@ export interface MeetingComposerProps {
   view: MeetingView;
   mode: 'mock' | 'live';
   error: string;
-  onStop?: (() => void) | undefined;
+  /** Stops the replies running and waiting; absent while nothing runs. */
+  onStop?: (() => Promise<unknown> | undefined) | undefined;
   send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
   /** The person sent. The conversation follows the end again. */
   onSent?: () => void;
@@ -255,6 +258,20 @@ export function MeetingSend({
   const requestPlan = () =>
     void dispatch({ kind: 'message', text: t('summaryRequest'), mentions: [SECRETARY_ID] });
   const held = sending || attachmentLoading;
+  // One stop at a time: pressed again while it is on its way, it sends nothing.
+  const [stopping, setStopping] = useState(false);
+  const stoppingNow = useRef(false);
+  const stop = onStop
+    ? () => {
+        if (stoppingNow.current) return;
+        stoppingNow.current = true;
+        setStopping(true);
+        void Promise.resolve(onStop()).finally(() => {
+          stoppingNow.current = false;
+          setStopping(false);
+        });
+      }
+    : undefined;
   const toInput = () => backToInput(input);
   const meeting: SendTarget = {
     badge: (
@@ -283,18 +300,6 @@ export function MeetingSend({
   };
   return (
     <ComposerSurface.Shell>
-      {view.queued ? (
-        <QueuedMessage
-          key={view.queued.commandId}
-          queued={view.queued}
-          config={view.config}
-          projectId={projectId}
-          active={active}
-          edit={editQueued}
-          send={() => void sendQueued()}
-          drop={() => void dropQueued()}
-        />
-      ) : null}
       <ComposerCard
         label={t('message')}
         placeholder={t('placeholder')}
@@ -308,6 +313,31 @@ export function MeetingSend({
         sendLabel={t('send')}
         target={meeting}
         menus={null}
+        // One raised surface, as a conversation's: the activity bar, the waiting message, the input.
+        activity={
+          <MeetingActivity
+            view={view}
+            name={(id) => nameOf(view.config, id, t('secretary'))}
+            onStop={stop}
+            stopping={stopping}
+          />
+        }
+        above={
+          view.queued ? (
+            <QueuedMessage
+              key={view.queued.commandId}
+              queued={view.queued}
+              config={view.config}
+              projectId={projectId}
+              active={active}
+              edit={editQueued}
+              send={() => void sendQueued()}
+              drop={() => void dropQueued()}
+            />
+          ) : null
+        }
+        // While nothing is written and replies run, Send's place stops them, as a conversation's.
+        stop={stop ? { label: t('stopRound'), disabled: stopping, onStop: stop } : null}
         notices={
           summaryFailed || attachments.length ? (
             <>
@@ -345,59 +375,30 @@ export function MeetingSend({
             </MenuPopup>
           </Menu>
         }
-        // Stop and the secretary's plan come before the keys, as a conversation's request
-        // settings do: the key hint stays right beside Send.
-        // Narrow, both are icons with their names, and Stop's place is kept while nothing answers.
+        // The secretary's plan comes before the keys, as a conversation's request settings do:
+        // the key hint stays right beside Send. Narrow, it is an icon with its name.
         settings={
           compact ? (
-            <>
-              {onStop ? (
-                <Tooltip content={t('stopRound')}>
-                  <Button
-                    size="icon-compact"
-                    variant="tertiary"
-                    aria-label={t('stopRound')}
-                    onClick={onStop}
-                  >
-                    <Square aria-hidden />
-                  </Button>
-                </Tooltip>
-              ) : (
-                <span
-                  aria-hidden="true"
-                  data-slot="meeting-stop-place"
-                  className="size-7 shrink-0"
-                />
-              )}
-              <Tooltip content={t('summarise')}>
-                <Button
-                  size="icon-compact"
-                  variant="ghost"
-                  aria-label={t('summarise')}
-                  disabled={held || view.rounds.length === 0}
-                  onClick={requestPlan}
-                >
-                  <ListChecks aria-hidden />
-                </Button>
-              </Tooltip>
-            </>
-          ) : (
-            <>
-              {onStop ? (
-                <Button size="compact" variant="tertiary" onClick={onStop}>
-                  <Square size={12} aria-hidden />
-                  {t('stopRound')}
-                </Button>
-              ) : null}
+            <Tooltip content={t('summarise')}>
               <Button
-                size="compact"
+                size="icon-compact"
                 variant="ghost"
+                aria-label={t('summarise')}
                 disabled={held || view.rounds.length === 0}
                 onClick={requestPlan}
               >
-                {t('summarise')}
+                <ListChecks aria-hidden />
               </Button>
-            </>
+            </Tooltip>
+          ) : (
+            <Button
+              size="compact"
+              variant="ghost"
+              disabled={held || view.rounds.length === 0}
+              onClick={requestPlan}
+            >
+              {t('summarise')}
+            </Button>
           )
         }
       />

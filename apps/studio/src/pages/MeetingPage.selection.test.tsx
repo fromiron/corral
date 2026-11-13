@@ -40,7 +40,8 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: any) => <a href="#run">{children}</a>,
   useRouter: () => ({ invalidate: async () => {} }),
 }));
-vi.mock('@corral/react', () => ({
+vi.mock('@corral/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@corral/react')>()),
   SafeMarkdown: ({ text }: any) => <p>{text}</p>,
   FailureNotice: ({ message }: any) => <p>{message}</p>,
   CopyTextButton: () => <button type="button" aria-label="copy" />,
@@ -447,12 +448,10 @@ describe('a held mention chain waits on the continue card', () => {
     expect(timeline?.lastElementChild).toBe(tray);
     expect(f.card()?.textContent).toContain(m.hold.title);
     expect(f.continueButton()?.disabled).toBe(false);
-    // Stopping the answer still running is the composer's, beside it.
+    // Stopping the answer still running is the composer's: Send's place, while nothing is written.
     expect(
-      [...f.container.querySelectorAll('button')].some(
-        (button) => button.textContent?.trim() === m.stopRound,
-      ),
-    ).toBe(true);
+      f.container.querySelector('[data-testid="composer-stop"]')?.getAttribute('aria-label'),
+    ).toBe(m.stopRound);
   });
 
   it('sends one command; a second press while it is on its way sends nothing', async () => {
@@ -547,19 +546,21 @@ describe('a held mention chain waits on the continue card', () => {
     expect(f.meetings.view.mock.calls.length).toBe(reads);
   });
 
-  it('confirmed: the card says Continued, its head says nothing more, and it has one name', async () => {
+  it('one name while it asks; confirmed, a single line that says Continued, with no card around it', async () => {
     const f = await mount(heldView());
-    // The meeting is read again and still holds at the same place (not yet gone on).
-    await act(async () => f.continueButton()?.click());
-    await vi.waitFor(() => expect(f.continueButton()).toBeUndefined());
-    expect(f.card()?.querySelector('[role="status"]')?.textContent).toBe(m.hold.continued);
-    expect(f.card()?.querySelector('header')?.textContent).toBe('');
     // The card names itself; the place it stands in adds no second name.
     expect(
       [...f.container.querySelectorAll('[aria-label]')].filter(
         (node) => node.getAttribute('aria-label') === m.hold.region,
       ),
     ).toHaveLength(1);
+    expect(f.card()?.querySelector('header')?.textContent).toBe(m.hold.heading);
+    // The meeting is read again and still holds at the same place (not yet gone on).
+    await act(async () => f.continueButton()?.click());
+    await vi.waitFor(() => expect(f.continueButton()).toBeUndefined());
+    expect(f.card()?.querySelector('[role="status"]')?.textContent).toBe(m.hold.continued);
+    expect(f.card()?.textContent).toBe(m.hold.continued);
+    expect(f.card()?.querySelector('header')).toBeNull();
   });
 
   it('held again at the same place after a continue: a new card with a new command', async () => {
@@ -734,7 +735,7 @@ describe('a held mention chain waits on the continue card', () => {
     expect(f.card()).toBeNull();
   });
 
-  it('a continued round still waiting comes after the answers that were already waiting', async () => {
+  it('an answer not started has no row; once started, its row comes at the end and nothing moves', async () => {
     const waiting = (participantId: string) => ({
       ...answered(participantId),
       runId: null,
@@ -745,63 +746,59 @@ describe('a held mention chain waits on the continue card', () => {
       [...f.container.querySelectorAll('[data-chat-item]')].map((node) =>
         node.getAttribute('data-chat-item'),
       );
-    const held = [
-      round('r1', { order: 0, answers: [{ ...answered('p2'), order: 1 }] }),
+    const r1 = round('r1', { order: 0, answers: [{ ...answered('p2'), order: 1 }] });
+    const r2 = (answers: Round['answers']) =>
       round('r2', {
         kind: 'mention',
         message: null,
         order: 2,
         active: true,
         participantIds: ['p1', 'p3'],
-        answers: [{ ...answered('p1'), order: 3 }, waiting('p3')],
-      }),
-    ];
-    const f = await mount(view(held));
+        answers,
+      });
+    const f = await mount(view([r1, r2([{ ...answered('p1'), order: 3 }, waiting('p3')])]));
     const before = order(f);
-    expect(before.at(-1)).toBe('r2:p3');
-    // Continued: the new round's line and answer go after the waiting answer, which stays.
+    // The waiting answer is not in the timeline.
+    expect(before).toEqual(['r1:message', 'r1:p2', 'r2:p1']);
+    // Continued: the line stands where the person continued, after what was said by then.
+    const r3 = (answers: Round['answers']) =>
+      round('r3', {
+        kind: 'mention',
+        message: null,
+        order: 4,
+        active: true,
+        continued: true,
+        participantIds: ['p2'],
+        answers,
+      });
+    await f.refresh(
+      view([r1, r2([{ ...answered('p1'), order: 3 }, waiting('p3')]), r3([waiting('p2')])]),
+    );
+    expect(order(f)).toEqual([...before, 'r3:continued']);
+    // The answer that was waiting starts: its row comes at the end, the rest stay as they were.
     await f.refresh(
       view([
-        ...held,
-        round('r3', {
-          kind: 'mention',
-          message: null,
-          order: 4,
-          active: true,
-          continued: true,
-          participantIds: ['p2'],
-          answers: [waiting('p2')],
-        }),
+        r1,
+        r2([
+          { ...answered('p1'), order: 3 },
+          { ...running('p3'), order: 5 },
+        ]),
+        r3([waiting('p2')]),
       ]),
     );
-    expect(order(f)).toEqual([...before, 'r3:continued', 'r3:p2']);
-    // Its answer starts: the line stays just before it.
+    expect(order(f)).toEqual([...before, 'r3:continued', 'r2:p3']);
+    // Then the continued round's own answer, after it.
     await f.refresh(
       view([
-        ...held.slice(0, 1),
-        round('r2', {
-          kind: 'mention',
-          message: null,
-          order: 2,
-          active: true,
-          participantIds: ['p1', 'p3'],
-          answers: [
-            { ...answered('p1'), order: 3 },
-            { ...answered('p3'), order: 5 },
-          ],
-        }),
-        round('r3', {
-          kind: 'mention',
-          message: null,
-          order: 4,
-          active: true,
-          continued: true,
-          participantIds: ['p2'],
-          answers: [{ ...running('p2'), order: 6 }],
-        }),
+        r1,
+        r2([
+          { ...answered('p1'), order: 3 },
+          { ...answered('p3'), order: 5 },
+        ]),
+        r3([{ ...running('p2'), order: 6 }]),
       ]),
     );
-    expect(order(f)).toEqual([...before, 'r3:continued', 'r3:p2']);
+    expect(order(f)).toEqual([...before, 'r3:continued', 'r2:p3', 'r3:p2']);
   });
 });
 
@@ -818,4 +815,194 @@ it('on a narrow tool line the recipients read as a count, and are named for assi
   const badge = f.container.querySelector('[data-slot="composer-target"]');
   expect(badge?.textContent).toContain('2 people');
   expect(badge?.getAttribute('aria-label')).toBe('Recipients (2 people): Builder, Architect');
+});
+
+describe('the meeting’s activity bar', () => {
+  const ma = m.activity;
+  const activity = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="activity-bar"]');
+  const line = (container: HTMLElement) =>
+    activity(container)?.querySelector<HTMLElement>('[data-activity-bar] > div') ?? null;
+  // The line's words as they are now: words leaving after a change carry no mark.
+  const said = (container: HTMLElement) =>
+    [...(line(container)?.querySelectorAll('[data-activity-text], [data-presence-label]') ?? [])]
+      .map((node) => node.textContent)
+      .join(' ');
+  const waiting = (participantId: string) => ({
+    ...answered(participantId),
+    runId: null,
+    status: 'waiting' as const,
+    text: null,
+  });
+  // Everything in the timeline on screen, as an observer reports it.
+  const allInView = () =>
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        private readonly report: IntersectionObserverCallback;
+        constructor(report: IntersectionObserverCallback) {
+          this.report = report;
+        }
+        observe(target: Element) {
+          queueMicrotask(() =>
+            this.report(
+              [{ target, isIntersecting: true, intersectionRect: { height: 10 } } as never],
+              this as never,
+            ),
+          );
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  const open = async (f: { container: HTMLElement }) => {
+    const toggle = activity(f.container)?.querySelector<HTMLButtonElement>(
+      '[data-activity-toggle]',
+    );
+    await act(async () => toggle?.click());
+  };
+  const going = () =>
+    view([
+      round('r1', {
+        participantIds: ['p2', 'p1', 'p3'],
+        active: true,
+        answers: [running('p2'), waiting('p1'), waiting('p3')],
+      }),
+      round('r2', {
+        kind: 'mention',
+        message: null,
+        participantIds: ['p3'],
+        active: true,
+        answers: [waiting('p3')],
+      }),
+    ]);
+  const viewButton = (container: HTMLElement) =>
+    [...(line(container)?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent === messages.Activity.view,
+    );
+
+  it('an answer out of view: who answers, with View, and how many wait', async () => {
+    const f = await mount(going());
+    const words = line(f.container)?.textContent ?? '';
+    expect(words).toContain(m.status.running);
+    expect(words).toContain('Builder');
+    expect(words).toContain(ma.waiting.replace('{count}', '2'));
+    expect(viewButton(f.container)).toBeDefined();
+  });
+
+  it('an answer whose row is on screen is not named again', async () => {
+    allInView();
+    const f = await mount(going());
+    await vi.waitFor(() => expect(activity(f.container)?.getAttribute('data-line')).toBe('busy'));
+    expect(said(f.container)).not.toContain('Builder');
+    expect(said(f.container)).not.toContain(m.status.running);
+    expect(line(f.container)?.textContent).toContain(ma.waiting.replace('{count}', '2'));
+  });
+
+  it('open: one row each, the waits counted once per participant, and the line says neither', async () => {
+    const f = await mount(going());
+    await open(f);
+    const rows = [...(activity(f.container)?.querySelectorAll('[data-activity-role]') ?? [])];
+    expect(rows.map((row) => row.getAttribute('data-activity-role'))).toEqual(['p2', 'p1', 'p3']);
+    expect(rows[2]?.textContent).toContain(ma.waitingTurns.replace('{count}', '2'));
+    expect(rows[1]?.textContent).toContain(m.status.waiting);
+    // Only the one answering can be viewed.
+    expect(rows[0]?.querySelector('button')).not.toBeNull();
+    expect(rows[1]?.querySelector('button')).toBeNull();
+    expect(said(f.container)).not.toContain('Builder');
+    expect(line(f.container)?.textContent).not.toContain(ma.waiting.replace('{count}', '2'));
+    // Stop, and no join, no pause.
+    const panel = activity(f.container)?.textContent ?? '';
+    expect(panel).toContain(messages.Activity.stop);
+    expect(panel).not.toContain(messages.Activity.join);
+    expect(panel).not.toContain(messages.Activity.pause);
+  });
+
+  it('the secretary has its row by name', async () => {
+    const f = await mount(
+      view([
+        round('r1', {
+          kind: 'secretary',
+          participantIds: [SECRETARY_ID],
+          active: true,
+          answers: [running(SECRETARY_ID)],
+        }),
+      ]),
+    );
+    await open(f);
+    expect(
+      activity(f.container)?.querySelector(`[data-activity-role="${SECRETARY_ID}"]`)?.textContent,
+    ).toContain(m.secretary);
+  });
+
+  it('a hold out of view comes first; View goes to the card', async () => {
+    const f = await mount(
+      view([round('r1', { answers: [answered('p2')] })], {
+        hold: { kind: 'chain', after: 'r1' },
+      }),
+    );
+    expect(activity(f.container)?.getAttribute('data-line')).toBe('hold');
+    expect(line(f.container)?.textContent).toContain(m.hold.heading);
+    Element.prototype.scrollIntoView ??= () => {};
+    await act(async () => viewButton(f.container)?.click());
+    expect(document.activeElement).toBe(f.continueButton());
+  });
+
+  it('a hold on screen with nothing running: at rest', async () => {
+    allInView();
+    const f = await mount(
+      view([round('r1', { answers: [answered('p2')] })], {
+        hold: { kind: 'chain', after: 'r1' },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(activity(f.container)?.getAttribute('data-line')).toBe('summary'),
+    );
+    expect(said(f.container)).not.toContain(m.hold.heading);
+    expect(said(f.container)).toContain('1 reply');
+  });
+
+  it('at rest: the last replies and failures, never the No reply of a message for no one', async () => {
+    const f = await mount(
+      view([
+        round('r1', {
+          participantIds: ['p1', 'p2'],
+          answers: [answered('p1'), { ...answered('p2'), status: 'failed', text: null }],
+        }),
+        round('r2', {
+          participantIds: [],
+          answers: [],
+          ...select({ strategy: 'none', reason: 'no_recipients' }),
+        }),
+      ]),
+    );
+    const words = line(f.container)?.textContent ?? '';
+    expect(words).toContain('1 reply');
+    expect(words).toContain(ma.failed.replace('{count}', '1'));
+    expect(words).not.toContain(m.meta.noReply);
+  });
+
+  it('a round whose answers all failed: its failures alone', async () => {
+    const f = await mount(
+      view([
+        round('r1', {
+          participantIds: ['p1', 'p2'],
+          answers: [
+            { ...answered('p1'), status: 'failed', text: null },
+            { ...answered('p2'), status: 'failed', text: null },
+          ],
+        }),
+      ]),
+    );
+    const words = line(f.container)?.textContent ?? '';
+    expect(words).toContain(ma.failed.replace('{count}', '2'));
+    expect(words).not.toContain('reply');
+  });
+
+  it('an empty meeting: the line is there, the same height, saying nothing', async () => {
+    const f = await mount(view([]));
+    expect(activity(f.container)?.getAttribute('data-line')).toBe('none');
+    expect(line(f.container)?.textContent).toBe('');
+    expect(line(f.container)?.className).toContain('h-8');
+  });
 });

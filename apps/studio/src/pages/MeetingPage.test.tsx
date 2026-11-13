@@ -51,7 +51,8 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: any) => <a href="#run">{children}</a>,
   useRouter: () => ({ invalidate: async () => {} }),
 }));
-vi.mock('@corral/react', () => ({
+vi.mock('@corral/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@corral/react')>()),
   SafeMarkdown: ({ text }: any) => <p>{text}</p>,
   FailureNotice: ({ message }: any) => <p data-testid="provider-failure">{message}</p>,
   CopyTextButton: ({ text }: any) => (
@@ -383,7 +384,7 @@ it('shows each answer in participant order and sends a conversational follow-up 
   );
 });
 
-it('a participant waiting for its turn is shown without a failed response or Run link', async () => {
+it('a participant waiting for its turn has no row in the timeline: the activity bar says it', async () => {
   const current = view();
   current.rounds[0]!.active = true;
   current.rounds[0]!.answers[0] = answer('p1', 'running');
@@ -394,10 +395,13 @@ it('a participant waiting for its turn is shown without a failed response or Run
     usage: null,
   };
   const f = await mount(current);
-  const waiting = f.container.querySelector('article[aria-label="Builder"]')!;
-  expect(waiting.textContent).toContain('status.waiting');
-  expect(waiting.querySelector('.text-danger')).toBeNull();
-  expect(waiting.querySelector('a')).toBeNull();
+  expect(f.container.querySelector('article[aria-label="Builder"]')).toBeNull();
+  expect(f.container.querySelector('[data-chat-item="round_1:p2"]')).toBeNull();
+  // The running answer's row is there; the bar counts the one waiting.
+  expect(f.container.querySelector('article[aria-label="Architect"]')).not.toBeNull();
+  expect(f.container.querySelector('[data-activity-bar]')?.textContent).toContain(
+    'activity.waiting',
+  );
 });
 
 it('exposes individual chat messages without a work panel or round controls', async () => {
@@ -747,13 +751,16 @@ it('a late refresh cannot replace a newer round view', async () => {
   f.meetings.view.mockResolvedValueOnce(
     view({ revision: 3, rounds: [{ ...view().rounds[0]!, message: 'Latest question' }] }),
   );
+  // Stop, from Send's place while nothing is written: the meeting is read after it, slowly.
   await act(async () => {
     f.button('stopRound')?.click();
   });
-  await act(async () => f.button('stopRound')?.click());
-  expect(f.container.textContent).toContain('Latest question');
+  // A message sent meanwhile reads it again, and that answer comes first.
+  await f.type('Latest question');
+  await act(async () => f.button('send')?.click());
+  expect(f.container.querySelector('[data-chat-item]')?.textContent).toContain('Latest question');
   await act(async () => finish(current));
-  expect(f.container.textContent).toContain('Latest question');
+  expect(f.container.querySelector('[data-chat-item]')?.textContent).toContain('Latest question');
 });
 
 it('slow polling waits for the pending response before requesting another', async () => {
@@ -1346,12 +1353,9 @@ it('clicking a participant puts an @mention at the caret without sending', async
   expect(f.meetings.send).not.toHaveBeenCalled();
 });
 
-it('the participant row shows who is answering, waiting, failed or idle', async () => {
+it('the participant row names everyone and says nothing of answering, waiting or failing', async () => {
   const idle = await mount(view());
-  expect(participant('p1')?.dataset.state).toBe('idle');
-  expect(participant('p2')?.dataset.state).toBe('failed');
-  expect(participant('p2')?.textContent).toContain('status.failed');
-  expect(participant('secretary')?.dataset.state).toBe('idle');
+  expect(participant('p2')?.textContent).not.toContain('status.failed');
   await idle.hide();
   await mount(
     view({
@@ -1367,28 +1371,10 @@ it('the participant row shows who is answering, waiting, failed or idle', async 
       ],
     }),
   );
-  expect(participant('p1')?.dataset.state).toBe('answering');
-  expect(participant('p1')?.textContent).toContain('status.running');
-  expect(participant('p2')?.dataset.state).toBe('waiting');
-  expect(participant('p2')?.textContent).toContain('status.waiting');
-});
-
-it('a participant who answers after a failure is no longer shown as failed', async () => {
-  await mount(
-    view({
-      rounds: [
-        { ...firstRound(), order: 0, answers: [{ ...answer('p2', 'failed'), order: 1 }] },
-        {
-          ...firstRound(),
-          roundId: 'round_2',
-          commandId: 'c2',
-          order: 2,
-          answers: [{ ...answer('p2', 'answered'), order: 3 }],
-        },
-      ],
-    }),
-  );
-  expect(participant('p2')?.dataset.state).toBe('idle');
+  for (const id of ['p1', 'p2', 'secretary']) {
+    expect(participant(id)?.textContent, id).not.toMatch(/status\./);
+    expect(participant(id)?.hasAttribute('data-state'), id).toBe(false);
+  }
 });
 
 it('Stop ends the answering and waiting turns through the meeting command while Send stays available', async () => {
@@ -1409,7 +1395,21 @@ it('Stop ends the answering and waiting turns through the meeting command while 
   );
   await f.type('One more thing');
   expect(f.button('send')?.hasAttribute('disabled')).toBe(false);
-  await act(async () => f.button('stopRound')?.click());
+  // Something is written: Send keeps its place, and Stop is the activity bar's.
+  expect(f.button('stopRound')).toBeUndefined();
+  await act(async () => f.button('details')?.click());
+  let finish: (value: { ok: boolean; outcome: string }) => void = () => {};
+  f.meetings.stop.mockImplementationOnce(
+    () =>
+      new Promise<{ ok: boolean; outcome: string }>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => f.button('stop')?.click());
+  // On its way: not sent again.
+  expect(f.button('stop')?.hasAttribute('disabled')).toBe(true);
+  await act(async () => f.button('stop')?.click());
+  await act(async () => finish({ ok: true, outcome: 'updated' }));
   expect(f.meetings.stop).toHaveBeenCalledExactlyOnceWith('session_1', 'round_1');
   expect(f.meetings.send).not.toHaveBeenCalled();
   expect(f.box.value).toBe('One more thing');
@@ -1642,9 +1642,8 @@ it('a send follows the end of the conversation again, and Stop is offered only w
 
 it('on a narrow tool line the tools keep one width whatever the meeting is doing', async () => {
   const idle = await mount(view(), {}, { compact: true });
-  // Nobody answers: Stop's place is kept, empty. The plan request is an icon with its name.
+  // Nobody answers: no Stop. The plan request is an icon with its name.
   expect(idle.button('stopRound')).toBeUndefined();
-  expect(idle.container.querySelector('[data-slot="meeting-stop-place"]')).not.toBeNull();
   const plan = must(idle.button('summarise'), 'the plan request');
   expect(plan.textContent?.trim()).toBe('');
   // A chosen name reads as a count there, so the badge does not grow with names.
@@ -1661,9 +1660,9 @@ it('on a narrow tool line the tools keep one width whatever the meeting is doing
     {},
     { compact: true },
   );
+  // Stop takes Send's place, as a conversation's: nothing on the tool line changes width.
   const stop = must(answering.button('stopRound'), 'Stop');
-  expect(stop.textContent?.trim()).toBe('');
-  expect(answering.container.querySelector('[data-slot="meeting-stop-place"]')).toBeNull();
+  expect(stop.getAttribute('data-testid')).toBe('composer-stop');
   await act(async () => stop.click());
   expect(answering.meetings.stop).toHaveBeenCalledWith('session_1', 'round_1');
 });

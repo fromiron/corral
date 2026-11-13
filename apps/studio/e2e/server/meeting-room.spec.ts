@@ -330,7 +330,11 @@ test.describe('active meeting', () => {
       .getByRole('textbox', { name: 'Meeting message', exact: true })
       .fill('Still able to type');
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Stop answering', exact: true }).click();
+    // Something is written: Send keeps its place, and Stop is the activity bar's.
+    await expect(page.getByRole('button', { name: 'Stop answering', exact: true })).toHaveCount(0);
+    const activity = page.getByTestId('activity-bar');
+    await activity.getByRole('button', { name: 'Activity details', exact: true }).click();
+    await activity.getByRole('button', { name: 'Stop', exact: true }).click();
     replies.open();
     await expect
       .poll(async () => (await meeting(page, id)).rounds.every((round) => !round.active))

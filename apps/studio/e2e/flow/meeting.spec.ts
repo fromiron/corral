@@ -74,6 +74,41 @@ async function trackInputEdges(page: Page) {
     });
 }
 
+/**
+ * Watches from now until the returned call: the items already on screen move at most 1px, the
+ * input not at all, and the activity bar keeps its height (features/composer-flow.md "활동 바").
+ */
+async function watch(page: Page, name: string) {
+  const probe = createProbe(page, probeOptions);
+  await probe.start(name);
+  await page.evaluate(() => {
+    const samples = { heights: [] as number[], running: true };
+    (window as unknown as { __barHeights: typeof samples }).__barHeights = samples;
+    const sample = () => {
+      const bar = document.querySelector('[data-testid="activity-bar"]');
+      if (bar) samples.heights.push(bar.getBoundingClientRect().height);
+      if (samples.running) requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  return async () => {
+    await waitForStill(page);
+    const result = await probe.stop();
+    const bar = await page.evaluate(() => {
+      const samples = (
+        window as unknown as { __barHeights: { heights: number[]; running: boolean } }
+      ).__barHeights;
+      samples.running = false;
+      return samples.heights.length
+        ? Math.max(...samples.heights) - Math.min(...samples.heights)
+        : null;
+    });
+    expectStill(result);
+    expect(bar, `${name}: activity bar height`).toBe(0);
+    return result;
+  };
+}
+
 const ANSWER = `${'Launch on Tuesday: the rollout checklist is done and support is staffed. '.repeat(14)}That is my pick.`;
 
 test.describe('a meeting in the conversation frame', () => {
@@ -138,8 +173,7 @@ test.describe('a meeting in the conversation frame', () => {
     // A message for whoever the meeting picks: the pick answers as it streams, and only the pick.
     await box.fill('Which day should we launch?');
     await waitForStill(page);
-    let probe = createProbe(page, probeOptions);
-    await probe.start('meeting-auto');
+    let done = await watch(page, 'meeting-auto');
     await box.press('Enter');
     await expect(box).toHaveValue('');
     const answer = timeline.getByRole('article', { name: picked.name });
@@ -151,7 +185,7 @@ test.describe('a meeting in the conversation frame', () => {
       .toBe('answered');
     await expect(answer).toContainText('That is my pick.');
     await waitForStill(page);
-    expectStill(await probe.stop());
+    await done();
     const asked = must((await meeting(page, id)).rounds[1], 'the answered round');
     expect(asked.participantIds).toEqual([picked.participantId]);
     expect(asked.selection).toMatchObject({ strategy: 'selector', reason: 'top_score' });
@@ -166,8 +200,7 @@ test.describe('a meeting in the conversation frame', () => {
     });
     await expect(auto).toHaveCount(1);
     await waitForStill(page);
-    probe = createProbe(page, probeOptions);
-    await probe.start('meeting-how-chosen');
+    done = await watch(page, 'meeting-how-chosen');
     await auto.click();
     const how = page.getByRole('dialog', { name: 'How the recipients were chosen', exact: true });
     await expect(how).toContainText('the best fit for this message');
@@ -180,14 +213,13 @@ test.describe('a meeting in the conversation frame', () => {
     await expect(how).toHaveCount(0);
     await expect(auto).toBeFocused();
     await waitForStill(page);
-    expectStill(await probe.stop());
+    await done();
 
     // No one again, after the answer, with Alt+Enter: every key sends to the meeting.
-    probe = createProbe(page, probeOptions);
-    await probe.start('meeting-none');
+    done = await watch(page, 'meeting-none');
     await forNoOne('Noting the launch date for the release notes', 'Alt+Enter');
     await waitForStill(page);
-    expectStill(await probe.stop());
+    await done();
     const noted = must((await meeting(page, id)).rounds[2], 'the second posted round');
     expect(noted.participantIds).toEqual([]);
     expect(noted.answers).toEqual([]);
@@ -247,15 +279,14 @@ test.describe('a meeting in the conversation frame', () => {
     // The chain runs and is held; the card arrives at the end, and nothing on screen moves.
     await box.fill('Which day should we launch?');
     await waitForStill(page);
-    let probe = createProbe(page, probeOptions);
-    await probe.start('meeting-hold-arrives');
+    let done = await watch(page, 'meeting-hold-arrives');
     await box.press('Enter');
     await expect(box).toHaveValue('');
     const card = tray.locator('[data-meeting-hold]');
     await expect(card).toBeVisible({ timeout: 120_000 });
     await expect.poll(() => gated, { timeout: 60_000 }).toBe(true);
     await waitForStill(page);
-    expectStill(await probe.stop());
+    await done();
     await expect(tray).toHaveCount(1);
     const atTheEnd = await page.evaluate(() => {
       const element = document.querySelector('[data-pending-tray]');
@@ -282,14 +313,13 @@ test.describe('a meeting in the conversation frame', () => {
     await expect(press).toBeEnabled();
 
     // Continued: the card folds and leaves, the focus goes to the box, and nothing moves.
-    probe = createProbe(page, probeOptions);
-    await probe.start('meeting-hold-folds');
+    done = await watch(page, 'meeting-hold-folds');
     continued = true;
     await press.click();
     await expect(tray).toHaveCount(0, { timeout: 30_000 });
     await expect(box).toBeFocused();
     await waitForStill(page);
-    expectStill(await probe.stop());
+    await done();
     open();
     await expect
       .poll(
@@ -316,6 +346,87 @@ test.describe('a meeting in the conversation frame', () => {
       await waitForStill(page);
     }
     await expect(line).toHaveCount(1);
+    expect(corral.errors).toEqual([]);
+  });
+
+  // Read from above while the chain goes on: an answer that starts gets its row at the end (none
+  // stood there for it while it waited), and the reader's rows stay where they are on screen.
+  test('answers starting while the person reads above leave their place', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    let id = '';
+    let mention = '';
+    let requests = 0;
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    let reach!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      reach = resolve;
+    });
+    corral.fake?.setResponses(
+      Array.from({ length: 120 }, () => async () => {
+        requests += 1;
+        // The fourth answer waits until the person has scrolled up.
+        if (requests === 4) {
+          reach();
+          await opened;
+        }
+        if ((await meeting(page, id)).hold) return fauxAssistantMessage('Agreed.');
+        return fauxAssistantMessage(`${mention} ${ANSWER}`);
+      }),
+    );
+    await corral.open('/projects/default');
+    await page.getByRole('button', { name: 'New meeting', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Create a meeting' });
+    await dialog.getByLabel('Meeting name', { exact: true }).fill('Launch day');
+    await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
+    await expect(page).toHaveURL(/\/sessions\/session_/);
+    id = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+    const { config } = await meeting(page, id);
+    mention = config.participants.map((person) => `@${person.participantId}`).join(' ');
+    const composer = page.getByTestId('chat-composer');
+    const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+    const timeline = page.getByTestId('chat-timeline');
+
+    await box.fill('Which day should we launch?');
+    await box.press('Enter');
+    await reached;
+    await waitForStill(page);
+    // Read from above: the wheel takes the conversation well away from its end.
+    await timeline.hover({ position: { x: 16, y: 200 } });
+    for (let step = 0; step < 6; step += 1) await page.mouse.wheel(0, -500);
+    await waitForStill(page);
+    const gap = () =>
+      timeline.evaluate((element) => {
+        const scroller = element.matches('[data-slot="scroll-area-viewport"]')
+          ? element
+          : (element.closest('[data-slot="scroll-area-viewport"]') ?? element);
+        return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      });
+    expect(await gap()).toBeGreaterThan(400);
+
+    const done = await watch(page, 'meeting-answers-start-reading');
+    open();
+    await expect(page.locator('[data-meeting-hold]')).toHaveCount(1, { timeout: 120_000 });
+    await expect
+      .poll(
+        async () =>
+          (await meeting(page, id)).rounds.every((round) =>
+            round.answers.every((item) => item.status === 'answered'),
+          ),
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    const result = await done();
+    // Where the reader is, nothing moved, on screen or in the conversation.
+    expect(result.maxViewportShiftPx ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+    expect(requests).toBeGreaterThan(4);
+    // The card is out of view: the activity bar says it and goes to it.
+    await expect(page.getByTestId('activity-bar')).toHaveAttribute('data-line', 'hold');
     expect(corral.errors).toEqual([]);
   });
 

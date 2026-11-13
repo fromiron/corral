@@ -5376,7 +5376,14 @@
       "continued": "계속함",
       "refused": "계속하지 못함: {message}"
     },
-    "continued": "여기서 답변을 계속했습니다."
+    "continued": "여기서 답변을 계속했습니다.",
+    "activity": {
+      "waiting": "{count}명 발언 대기",
+      "replies": "답변 {count}개",
+      "failed": "실패 {count}개",
+      "waitingTurns": "발언 대기 · {count}번",
+      "moreTurns": "이어서 {count}번 더"
+    }
   },
   "MeetingsDecisions": {
     "decisionLabel": "결정 v{number} · {goal}",

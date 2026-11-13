@@ -1,6 +1,6 @@
 import type { MeetingHold } from '@corral/contracts';
 import type { MeetingResult } from '@corral/core';
-import { DecisionInbox } from '@corral/react/design-kit';
+import { AgentStatusLabel, DecisionInbox } from '@corral/react/design-kit';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { newCommandId } from '../sessionActions.ts';
@@ -112,6 +112,13 @@ export function MeetingContinue({
     handoff.current = null;
     if (owned) setRefocus((count) => count + 1);
   };
+  if (continued)
+    // Answered: one line with the answer, no card around it, until the meeting is read again.
+    return (
+      <div ref={box} data-meeting-hold className="flex min-h-8 items-center px-1">
+        <AgentStatusLabel role="status" status="done" label={t('hold.continued')} />
+      </div>
+    );
   return (
     <div ref={box} data-meeting-hold>
       <DecisionInbox
@@ -123,13 +130,11 @@ export function MeetingContinue({
             ...(refused ? { detail: refused } : {}),
             primary: { label: t('hold.continue'), doneLabel: t('hold.continued') },
             pending,
-            ...(continued ? { resolution: t('hold.continued') } : {}),
           },
         ]}
         optimistic={false}
         onDecide={() => void decide()}
-        // Answered, the card's head says nothing more: its answer says it.
-        heading={(open) => (open ? t('hold.heading') : '')}
+        heading={() => t('hold.heading')}
         emptyLabel=""
         labels={{ region: t('hold.region') }}
       />

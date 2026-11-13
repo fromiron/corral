@@ -5376,7 +5376,14 @@
       "continued": "Continued",
       "refused": "Not continued: {message}"
     },
-    "continued": "You continued the replies here."
+    "continued": "You continued the replies here.",
+    "activity": {
+      "waiting": "{count} waiting to speak",
+      "replies": "{count, plural, one {# reply} other {# replies}}",
+      "failed": "{count} failed",
+      "waitingTurns": "Waiting to speak · {count} turns",
+      "moreTurns": "then {count, plural, one {# more turn} other {# more turns}}"
+    }
   },
   "MeetingsDecisions": {
     "decisionLabel": "Decision v{number} · {goal}",
