@@ -144,6 +144,12 @@ interface InputMessageProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onChan
   leftSlot?: InputMessageSlot;
   /** Bottom-right actions, before the send button. Same shape as leftSlot. */
   rightSlot?: InputMessageSlot;
+  /**
+   * `single` keeps the toolbar on one line, as the source kit does, from the `sm` width up: the
+   * right actions keep their size and the left slot gives way (its items truncate or clip).
+   * Narrower, it wraps like `wrap`, the default.
+   */
+  toolbar?: 'wrap' | 'single';
   /** Disables the textarea, send button, and drag-and-drop. */
   disabled?: boolean;
   /** Minimum visible rows before the textarea grows. */
@@ -431,6 +437,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
       placeholder = 'Ask me anything…',
       leftSlot,
       rightSlot,
+      toolbar = 'wrap',
       disabled,
       minRows = 1,
       maxRows = 8,
@@ -1163,6 +1170,7 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           <div
             className={cn(
               'flex flex-wrap items-center justify-between',
+              toolbar === 'single' && 'sm:flex-nowrap',
               // Compact scales every button in the row (slots are
               // consumer-authored) down to 24px. The model chip keeps 24px as its least
               // height: a name it cannot fit takes another line instead of being cut.
@@ -1171,8 +1179,20 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
                 : 'gap-2',
             )}
           >
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">{leftContent}</div>
-            <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
+            <div
+              className={cn(
+                'flex min-w-0 flex-wrap items-center gap-1.5',
+                toolbar === 'single' && 'sm:flex-1 sm:flex-nowrap sm:overflow-x-clip',
+              )}
+            >
+              {leftContent}
+            </div>
+            <div
+              className={cn(
+                'ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5',
+                toolbar === 'single' && 'sm:shrink-0 sm:flex-nowrap',
+              )}
+            >
               {rightContent}
               {renderAction ? renderAction(action) : action}
             </div>
