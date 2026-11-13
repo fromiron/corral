@@ -449,6 +449,33 @@ describe('seeing it', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it('tells again when a new advice comes to the row whose words are shown (the server lists it again)', () => {
+    const send = vi.fn(async () => {});
+    const store = session(unread);
+    render(
+      wrap(
+        <AdviceSeenProvider send={send}>
+          <ExecutionTranscript session={store} executionId="impl_1" adviceOpen />
+        </AdviceSeenProvider>,
+      ),
+    );
+    intersect(true);
+    expect(send).toHaveBeenCalledTimes(1);
+    // The last review leaves another at the same row after it was opened.
+    act(() =>
+      store.setState({
+        projection: endedRun(
+          withAdvice(base, [
+            { adviceId: 'a_late', severity: 'concern', text: 'Late concern.', status: 'expired' },
+            { adviceId: 'a_last', severity: 'blocker', text: 'Last blocker.', status: 'expired' },
+          ]),
+        ),
+      }),
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenLastCalledWith('run_advisor', 'impl_1');
+  });
+
   it('tells again the next time it is shown when telling failed', async () => {
     const send = vi.fn(async () => {
       throw new Error('offline');

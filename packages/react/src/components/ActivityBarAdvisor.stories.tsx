@@ -89,7 +89,10 @@ export const Watching: Story = {
     line: { glyph: 'running', tone: 'active', text: 'Edit file · src/session.ts' },
     roles: [
       lead('Implementer', 'Edit file · src/session.ts'),
+      // Watching makes no model request: its mark is still, a dot, not the spinner.
       advisor({
+        glyph: 'queued',
+        tone: 'neutral',
         state: { text: 'Watching', target: 'execution:exec_advisor' },
         activity: '1 piece of advice delivered',
       }),
@@ -100,6 +103,7 @@ export const Watching: Story = {
     const row = canvasElement.querySelector('[data-activity-role="exec_advisor"]') as HTMLElement;
     // No Join: an advisor takes no instruction.
     await expect(within(row).queryByRole('button', { name: /Join/ })).toBeNull();
+    await expect(row.querySelector('svg')?.getAttribute('class')).not.toContain('animate-spin');
     await settled(canvasElement);
   },
 };

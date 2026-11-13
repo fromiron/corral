@@ -1586,6 +1586,37 @@ it('gives each of a team’s advisors its own row, name and count', async () => 
   expect(visibleText(view.line())).not.toContain('roles working');
 });
 
+it('keeps a watching advisor’s mark still, by its shape; only a review turns it', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_rev: { node: 'reviewer', status: 'waiting_message', advisor: true },
+      exec_test: { node: 'tester', status: 'active', advisor: true },
+    },
+    [...reviewer, { id: 'tester', label: 'Tester', advisor: true }],
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  const mark = (id: string) => advisorRow(view, id)?.querySelector('svg');
+  // Watching uses no model request: no spinner, and a mark of its own shape.
+  expect(mark('exec_rev')?.getAttribute('class')).not.toContain('animate-spin');
+  expect(mark('exec_rev')?.innerHTML).not.toBe(mark('exec_test')?.innerHTML);
+  expect(mark('exec_test')?.getAttribute('class')).toContain('animate-spin');
+  // Once every role has ended, the line about the last review turns only while it reviews.
+  const watchingLast = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_rev: { node: 'reviewer', status: 'waiting_message', advisor: true },
+    },
+    reviewer,
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', ...watchingLast });
+  const last = await mount(live(), { ownActive: ownRun, rowShown: true });
+  expect(last.bar()?.dataset.line).toBe('advisor');
+  expect(last.line()?.querySelector('svg')?.getAttribute('class')).not.toContain('animate-spin');
+});
+
 /** How many executions Stop counts, read as the composer reads it. */
 async function stopCount(projection: RunProjection) {
   fixture.store = sessionStore({ runId: 'run_plan', projection });

@@ -24,9 +24,18 @@ import {
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { revealPendingTray, useRespondInConversation, useTrayStore } from './pendingTrayState.ts';
 import { useHeldAfterView, useSettled } from './settle.ts';
-import { type ActivityRole, roleSeen, useActivity } from './useActivity.ts';
+import { type ActivityAdvisor, type ActivityRole, roleSeen, useActivity } from './useActivity.ts';
 
 const toMs = (value: string | null | undefined) => (value ? Date.parse(value) : undefined);
+
+/**
+ * An advisor's mark (features/advisor.md "보이는 곳"): still while it watches, since watching makes
+ * no model request, a resting dot whose shape is not the spinner's; it turns only while it reviews.
+ */
+const advisorMark = (advisor: ActivityAdvisor) =>
+  advisor.review === 'watching'
+    ? { glyph: 'queued' as const, tone: 'neutral' as const }
+    : { glyph: advisor.presence.glyph, tone: advisor.presence.tone };
 
 /**
  * The composer's activity bar, wired: what the session's run and its roles do, what waits on the
@@ -269,8 +278,7 @@ export function ComposerActivity({
       case 'advisor':
         // Why the next request has not started: the roles are done, the advisor reviews last.
         return {
-          glyph: line.advisor.presence.glyph,
-          tone: line.advisor.presence.tone,
+          ...advisorMark(line.advisor),
           text: t('finalReview', { name: line.advisor.name }),
           parts,
         };
@@ -338,8 +346,7 @@ export function ComposerActivity({
       roles.push({
         id: advisor.id,
         name: advisor.name,
-        glyph: advisor.presence.glyph,
-        tone: advisor.presence.tone,
+        ...advisorMark(advisor),
         ...(words ? { state: { text: words, target: `execution:${advisor.id}` } } : {}),
         stateShown: true,
         ...(advisor.delivered

@@ -259,6 +259,8 @@ test('advice lines change only their words, and late advice is written into the 
   };
   await openActivity(page);
   await expect(advisorRow).toContainText('Reviewing');
+  // Only a review turns its mark.
+  await expect(advisorRow.locator('svg').first()).toHaveClass(/animate-spin/);
   await expect(advisorRow.getByRole('button', { name: /^Join/ })).toHaveCount(0);
   await shots(page, 'advisor-reviewing');
   await fold();
@@ -301,6 +303,8 @@ test('advice lines change only their words, and late advice is written into the 
   expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
   // A review of the new work has nothing to add: the advisor watches again, its count kept.
   await expect(advisorRow).toContainText('Watching', { timeout: 30_000 });
+  // Watching makes no model request: its mark stands still.
+  await expect(advisorRow.locator('svg').first()).not.toHaveClass(/animate-spin/);
   await expect(advisorRow).toContainText('1 piece of advice delivered');
   await waitForStill(page);
   // The work plan in the panel redraws its step as the role moves from its call to its next
