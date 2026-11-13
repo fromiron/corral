@@ -75,6 +75,40 @@ function scrollingNested(target: EventTarget | null, timeline: HTMLElement) {
 }
 
 /**
+ * Home and End in a focused box that scrolls on its own (a capped reply, a sent file) move that
+ * box, from either of its ends, as the arrow keys do.
+ */
+function ownScroller(target: EventTarget | null, timeline: HTMLElement) {
+  let node = target instanceof Element ? target : null;
+  while (node && node !== timeline) {
+    if (node.scrollHeight - node.clientHeight > 1) {
+      const overflow = getComputedStyle(node).overflowY;
+      if (overflow === 'auto' || overflow === 'scroll') return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
+/**
+ * Whether `target` shows in the part of the timeline a focused row shows in, above the composer
+ * lying over its bottom, with the conversation `scrolled` back up by that much.
+ */
+function inView(target: Element, timeline: HTMLElement, scrolled = 0) {
+  const top = timeline.getBoundingClientRect().top;
+  const bottom =
+    top +
+    timeline.clientHeight -
+    (Number.parseFloat(getComputedStyle(timeline).scrollPaddingBottom) || 0);
+  const rect = target.getBoundingClientRect();
+  const from = rect.top + scrolled;
+  const to = rect.bottom + scrolled;
+  // Taller than the view, a target with a part in view is shown as far as it can be.
+  if (to - from > bottom - top) return to > top && from < bottom;
+  return from >= top - 1 && to <= bottom + 1;
+}
+
+/**
  * Marks a pointer as held until it is released anywhere, since a drag often ends outside the
  * box that was pressed.
  */
@@ -214,6 +248,24 @@ export function ChatView({
   const scrollbarPointer = useRef(false);
   // A pointer is down in the messages, so focus that follows is a click, not keyboard navigation.
   const contentPointer = useRef(false);
+  // The conversation's offset when the last key pressed anywhere was Tab, so focus that follows
+  // is the person moving it, not focus the page gives (a return to a quote) or a click. Null
+  // after any other key or a press.
+  const tabbedTop = useRef<number | null>(null);
+  useEffect(() => {
+    const pressed = (event: KeyboardEvent) => {
+      tabbedTop.current = event.key === 'Tab' ? (timeline.current?.scrollTop ?? null) : null;
+    };
+    const pointed = () => {
+      tabbedTop.current = null;
+    };
+    window.addEventListener('keydown', pressed, true);
+    window.addEventListener('pointerdown', pointed, true);
+    return () => {
+      window.removeEventListener('keydown', pressed, true);
+      window.removeEventListener('pointerdown', pointed, true);
+    };
+  }, []);
   const touchY = useRef<number | null>(null);
   const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
@@ -623,8 +675,18 @@ export function ChatView({
         }}
         onFocus={(event) => {
           const box = timeline.current;
-          if (!box || !follow.current || contentPointer.current) return;
-          if (event.target === event.currentTarget) return;
+          if (!box || contentPointer.current || event.target === event.currentTarget) return;
+          // Tab taking the focus out of view moves the conversation to it: the held row lets go,
+          // and the focus is brought above the composer. Where the focus stood is read at the
+          // offset the key was pressed at: the browser may have scrolled to it already, and
+          // leaves a focus behind the composer, inside the scrollport, where it is. Within the
+          // view, the row stays.
+          const pressedAt = tabbedTop.current;
+          if (pressedAt !== null && !inView(event.target, box, box.scrollTop - pressedAt)) {
+            letGo();
+            event.target.scrollIntoView?.({ block: 'nearest' });
+          }
+          if (!follow.current) return;
           // The offset within the content holds whether or not the browser has scrolled the
           // target into view yet. Following would pull a target above the end's view away.
           const offset =
@@ -652,6 +714,8 @@ export function ChatView({
         onKeyDown={(event) => {
           const box = timeline.current;
           if (!box || !conversationKey(event.target, box)) return;
+          if ((event.key === 'Home' || event.key === 'End') && ownScroller(event.target, box))
+            return;
           if (MOVING_KEYS.has(event.key) && !scrollingNested(event.target, box)) letGo();
           // Home and End (with Ctrl or Cmd as well) go to the first row and to the end, from
           // the timeline or from a reply's words in it. The browser's own scroll for them
