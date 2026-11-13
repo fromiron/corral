@@ -5,7 +5,12 @@ import { validTextAttachments } from '@corral/core';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useServices } from '../../../services.tsx';
 import type { IntentLock, SendChoice } from '../../composerIntent.ts';
-import { type MentionItem, mentionToken, pickedReferences } from '../../composerMenu.ts';
+import {
+  type MentionItem,
+  mentionToken,
+  pickedReferences,
+  restoredMentions,
+} from '../../composerMenu.ts';
 import {
   type AttachmentRequest,
   COMPOSER_ATTACH,
@@ -231,6 +236,7 @@ export function useComposerDraft({
     setPermissionMode(entry.permissionMode);
     setAttachments(entry.attachments ?? []);
     setImages(entry.images ?? []);
+    setPicked(restoredMentions(entry.text, entry.references ?? []));
     // Sent again, it is a next request: it waits while a run is going, else it starts. The send
     // key sends it as one, never as a join that would drop its permission mode and images.
     setChosen('queue');

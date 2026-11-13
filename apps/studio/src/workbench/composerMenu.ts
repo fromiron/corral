@@ -120,6 +120,91 @@ export function pickedReferences(text: string, picked: readonly MentionItem[]): 
   return out;
 }
 
+// A token as the text holds it: `@` and a quoted label with an optional line range, or a word.
+const TOKEN_IN_TEXT = /(^|\s)(@(?:"(?:[^"\\]|\\.)*"(?::L\d+(?:-L\d+)?)?|[^\s"]\S*))(?=\s|$)/g;
+const RESULT_TOKEN = /^@result:(\d+)$/;
+
+/**
+ * The chips of a saved request's references, taken back into the box with its text. A saved
+ * request keeps the references, not the chips, so each is bound again to a token its text holds:
+ * a file or folder to its own path token, a result to a `@result:n` token in the order they were
+ * numbered, and a run or role to the next token left. A reference whose token is not in the text
+ * any more is not restored; it would not be sent either.
+ */
+export function restoredMentions(text: string, references: readonly RunReference[]): MentionItem[] {
+  const tokens = [...text.matchAll(TOKEN_IN_TEXT)].map((match) => match[2] ?? '');
+  const used = new Set<number>();
+  const take = (fits: (token: string) => boolean) => {
+    const index = tokens.findIndex((token, n) => !used.has(n) && fits(token));
+    if (index < 0) return null;
+    used.add(index);
+    return tokens[index] ?? null;
+  };
+  const own = (reference: RunReference) =>
+    reference.kind === 'file' || reference.kind === 'folder'
+      ? mentionToken({
+          kind: reference.kind,
+          label: reference.path,
+          ...(reference.kind === 'file' && reference.lines ? { lines: reference.lines } : {}),
+        })
+      : null;
+  const bound = new Map<number, string>();
+  references.forEach((reference, n) => {
+    const token = own(reference);
+    const found = token ? take((value) => value === token) : null;
+    if (found) bound.set(n, found);
+  });
+  const results = tokens
+    .filter((token) => RESULT_TOKEN.test(token))
+    .sort((a, b) => Number(RESULT_TOKEN.exec(a)?.[1]) - Number(RESULT_TOKEN.exec(b)?.[1]));
+  references.forEach((reference, n) => {
+    if (reference.kind !== 'result') return;
+    const next = results.find((token) => !used.has(tokens.indexOf(token)));
+    if (!next) return;
+    used.add(tokens.indexOf(next));
+    bound.set(n, next);
+  });
+  references.forEach((reference, n) => {
+    if (
+      bound.has(n) ||
+      reference.kind === 'text_attachment' ||
+      reference.kind === 'image_attachment'
+    )
+      return;
+    const found = take((token) => !RESULT_TOKEN.test(token));
+    if (found) bound.set(n, found);
+  });
+  const items: MentionItem[] = [];
+  references.forEach((reference, n) => {
+    const token = bound.get(n);
+    if (!token || reference.kind === 'text_attachment' || reference.kind === 'image_attachment')
+      return;
+    const id = `${reference.kind}:${JSON.stringify(reference)}`;
+    if (token === own(reference) && (reference.kind === 'file' || reference.kind === 'folder')) {
+      items.push({
+        id,
+        kind: reference.kind,
+        label: reference.path,
+        ...(reference.kind === 'file' && reference.lines ? { lines: reference.lines } : {}),
+        reference,
+      });
+      return;
+    }
+    const body = token.slice(1);
+    let label = body;
+    if (body.startsWith('"'))
+      try {
+        label = JSON.parse(body) as string;
+      } catch {
+        label = body;
+      }
+    const item: MentionItem = { id, kind: reference.kind, label, reference };
+    // A token the label does not make again (a result's number) is kept as it is.
+    items.push(mentionToken(item) === token ? item : { ...item, label: '', token });
+  });
+  return items;
+}
+
 /** Fixed window coordinates for the composer menu. */
 export interface MenuPlacement {
   position: 'fixed';

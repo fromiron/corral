@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import type { TextAttachment } from '@corral/contracts';
+import type { ImageAttachment, RunReference, TextAttachment } from '@corral/contracts';
 import type { RunProjection, RunSummary, SessionEntry, WorkSession } from '@corral/core';
-import { createTextAttachment, emptyProjection } from '@corral/core';
+import { createTextAttachment, emptyProjection, queuedSessionCommandId } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -11,7 +11,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setCommands } from '../../commandRegistry.ts';
 import { changePreferences } from '../preferences.ts';
-import { writeComposerDraft } from '../sessionDraft.ts';
+import { readComposerDraft, writeComposerDraft } from '../sessionDraft.ts';
 import { Composer } from './Composer.tsx';
 import { menuSends } from './composer/SendControls.tsx';
 
@@ -469,9 +469,9 @@ describe('the target', () => {
   });
 
   it.each([
-    ['joins', running, {}, true],
-    // A saved next request carries no images: the server starts it without them.
-    ['saves a next request', running, { exec_writer: 'succeeded' }, true],
+    ['joins', running, { exec_writer: 'active' }, true],
+    // A saved next request carries its images: the server starts it with them.
+    ['saves a next request', running, { exec_writer: 'succeeded' }, false],
     ['starts a new request', null, {}, false],
   ] as const)(
     'says images apply to a new request only while the send key %s',
@@ -1027,8 +1027,9 @@ describe('the composer', () => {
   );
 
   it.each([
-    ['joins', running, {}, true],
-    ['saves a next request', running, { exec_writer: 'succeeded' }, true],
+    ['joins', running, { exec_writer: 'active' }, true],
+    // A saved next request carries its references: the server starts it with them.
+    ['saves a next request', running, { exec_writer: 'succeeded' }, false],
     ['starts a new request', null, {}, false],
   ] as const)(
     'says references apply to a new request only while the send key %s',
@@ -1053,6 +1054,167 @@ describe('the composer', () => {
       );
       const f = await mount({ active, executions });
       expect(f.container.textContent?.includes(held)).toBe(shown);
+    },
+  );
+});
+
+// features/composer-flow.md "합류 대상": images and references ride a new request and a next
+// request; a join or an interrupt leaves them in the box with one line.
+const IMAGE: ImageAttachment = {
+  kind: 'image_attachment',
+  imageId: 'img_0123456789abcdef',
+  name: 'screen.png',
+  mime: 'image/png',
+  bytes: 120,
+  sha256: 'a'.repeat(64),
+  width: 10,
+  height: 10,
+};
+const NOTE = createTextAttachment('notes.txt', 'text/plain', 'Keep it short.');
+const HELD = messages.Composer.heldForNew.split('{items}')[0] ?? '';
+const FILE_REF: RunReference = { kind: 'file', path: 'src/a.ts', lines: { start: 2, end: 4 } };
+const withReferences = () =>
+  writeComposerDraft('session', {
+    text: 'Look at @src/a.ts:L2-L4 here',
+    intent: null,
+    target: null,
+    targetLabel: null,
+    references: [
+      {
+        id: 'file:src/a.ts:2-4',
+        kind: 'file',
+        label: 'src/a.ts',
+        lines: { start: 2, end: 4 },
+        reference: FILE_REF,
+      },
+    ],
+    attachments: [NOTE],
+    images: [IMAGE],
+  });
+
+describe('what a next request carries', () => {
+  it('records its images and references with the request and clears them from the box', async () => {
+    withReferences();
+    const f = await mount({ executions: { exec_writer: 'succeeded' } });
+    expect(f.container.textContent).not.toContain(HELD);
+    await f.press();
+    expect(f.sendCommand).not.toHaveBeenCalled();
+    expect(lastEntry(f.repository)).toMatchObject({
+      intent: 'queue',
+      state: 'queued',
+      text: 'Look at @src/a.ts:L2-L4 here',
+      references: [FILE_REF],
+      attachments: [NOTE],
+      images: [IMAGE],
+    });
+    const left = readComposerDraft('session');
+    expect(left.images ?? []).toEqual([]);
+    expect(left.references).toEqual([]);
+    expect(left.attachments ?? []).toEqual([]);
+  });
+
+  it('a new request starts with them in the order a saved request starts with', async () => {
+    withReferences();
+    const f = await mount({ active: null });
+    await f.press();
+    expect(
+      (f.startAuto.mock.calls[0]?.[0] as { references?: unknown } | undefined)?.references,
+    ).toEqual([FILE_REF, NOTE, IMAGE]);
+    expect(lastEntry(f.repository)).toMatchObject({
+      intent: 'next',
+      references: [FILE_REF],
+      images: [IMAGE],
+    });
+  });
+
+  it('Start now starts a saved request with the body the server would send', async () => {
+    const entry: SessionEntry = {
+      ...saved,
+      text: 'Look at @src/a.ts:L2-L4 here',
+      references: [FILE_REF],
+      attachments: [NOTE],
+      images: [IMAGE],
+    };
+    const f = await mount({ active: null, queued: [entry] });
+    const start = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === messages.Sessions.startNow,
+    );
+    await act(async () => start?.click());
+    await act(async () => {});
+    expect(f.startAuto).toHaveBeenCalledTimes(1);
+    expect(f.startAuto.mock.calls[0]?.[0]).toEqual({
+      ...saved.start,
+      commandId: queuedSessionCommandId('session', entry),
+      sessionId: 'session',
+      brief: entry.text,
+      references: [FILE_REF, NOTE, IMAGE],
+    });
+  });
+
+  it('a join leaves the images in the box, says so, and sends only the text attachment', async () => {
+    withReferences();
+    const f = await mount();
+    expect(f.container.textContent).toContain(
+      messages.Composer.heldForNew.replace(
+        '{items}',
+        `${messages.Composer.held.references} and ${messages.Composer.held.images}`,
+      ),
+    );
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ attachments: [NOTE] });
+    expect(steerPayload(f.sendCommand)).not.toHaveProperty('images');
+    const recorded = lastEntry(f.repository);
+    expect(recorded).toMatchObject({ intent: 'steer' });
+    expect(recorded).not.toHaveProperty('images');
+    expect(recorded).not.toHaveProperty('references');
+    expect(readComposerDraft('session').images).toEqual([IMAGE]);
+  });
+
+  it.each([
+    ['a file range', 'Compare @src/a.ts:L2-L4 now', [FILE_REF]],
+    ['a folder', 'Read @docs/ first', [{ kind: 'folder', path: 'docs' }]],
+    [
+      'a result, a run and a role',
+      'Use @result:1 from @"Run #2" for @Writer please',
+      [
+        { kind: 'result', runId: 'run_old', artifactVersionId: 'art_1' },
+        { kind: 'run', runId: 'run_old' },
+        { kind: 'role', roleId: 'writer' },
+      ],
+    ],
+  ] as [string, string, RunReference[]][])(
+    'taken back to edit, comes back with its images and %s, and goes again the same',
+    async (_, text, references) => {
+      const entry: SessionEntry = {
+        ...saved,
+        text,
+        references,
+        attachments: [NOTE],
+        images: [IMAGE],
+      };
+      const f = await mount({ queued: [entry] });
+      const edit = [...f.container.querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) =>
+          button.getAttribute('aria-label') ===
+          messages.Sessions.editQueuedMessage.replace('{text}', text),
+      );
+      expect(edit).toBeDefined();
+      await act(async () => edit?.click());
+      expect(f.box().value).toBe(text);
+      const draft = readComposerDraft('session');
+      expect(draft.images).toEqual([IMAGE]);
+      expect(draft.references.map((item) => item.reference)).toEqual(references);
+      // Taken back as a next request, nothing is held for a new one.
+      expect(f.container.textContent).not.toContain(HELD);
+      await f.press();
+      expect(lastEntry(f.repository)).toMatchObject({
+        intent: 'queue',
+        text,
+        permissionMode: 'accept_edits',
+        references,
+        attachments: [NOTE],
+        images: [IMAGE],
+      });
     },
   );
 });

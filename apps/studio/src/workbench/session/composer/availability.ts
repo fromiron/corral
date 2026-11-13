@@ -90,10 +90,12 @@ export function composerAvailability({
     (intent === 'explain' && !hasLatest) ||
     (intent === 'steer' && !steerTarget);
   // Items this intent does not carry share one notice and one wording (#89). Text attachments
-  // ride every send (features/composer-flow.md "합류 대상").
+  // ride every send; references and images a new or a next request (features/composer-flow.md
+  // "합류 대상").
+  const forNewRun = intent === 'next' || intent === 'queue';
   const heldForNew = [
-    ...(chipCount && intent !== 'next' ? (['references'] as const) : []),
-    ...(imageCount > 0 && intent !== 'next' ? (['images'] as const) : []),
+    ...(chipCount && !forNewRun ? (['references'] as const) : []),
+    ...(imageCount > 0 && !forNewRun ? (['images'] as const) : []),
   ];
   return {
     notReady,

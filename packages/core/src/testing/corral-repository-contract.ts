@@ -771,24 +771,105 @@ export function describeCorralRepositoryContract(
               intent,
             }),
           ).toMatchObject({ ok: false });
+      });
+
+      it('a queued request keeps its images and references; a join, an interrupt or a question cannot', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Queued images' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const image = {
+          kind: 'image_attachment' as const,
+          imageId: 'image_fixture',
+          name: 'image.png',
+          mime: 'image/png' as const,
+          bytes: 1,
+          sha256: 'a'.repeat(64),
+          width: 1,
+          height: 1,
+        };
+        const references = [
+          { kind: 'file' as const, path: 'src/a.ts', lines: { start: 2, end: 4 } },
+          { kind: 'role' as const, roleId: 'writer' },
+        ];
+        const request = {
+          commandId: 'cmd_queue_image',
+          intent: 'queue' as const,
+          text: 'Look at this @src/a.ts:L2-L4',
+          state: 'queued' as const,
+          images: [image],
+          references,
+        };
+        const saved = await repo.addSessionEntry(id, request);
+        if (!saved.ok) throw new Error(saved.message);
+        expect(saved.session.entries[0]).toMatchObject({ images: [image], references });
+        expect((await repo.getSession(id))?.entries[0]).toMatchObject({
+          images: [image],
+          references,
+        });
+        // The same command with other images or references is another request.
+        expect(await repo.addSessionEntry(id, request)).toMatchObject({ ok: true });
         expect(
-          await repo.addSessionEntry(created.session.sessionId, {
-            ...request,
-            commandId: 'cmd_queue_image',
-            images: [
-              {
-                kind: 'image_attachment',
-                imageId: 'image_fixture',
-                name: 'image.png',
-                mime: 'image/png',
-                bytes: 1,
-                sha256: 'a'.repeat(64),
-                width: 1,
-                height: 1,
-              },
-            ],
-          }),
-        ).toMatchObject({ ok: false });
+          await repo.addSessionEntry(id, { ...request, references: references.slice(0, 1) }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        expect(await repo.addSessionEntry(id, { ...request, images: [] })).toMatchObject({
+          ok: false,
+          error: 'invalid',
+        });
+        // A new request keeps its references too.
+        const next = await repo.addSessionEntry(id, {
+          ...request,
+          commandId: 'cmd_next_image',
+          intent: 'next',
+          state: 'started',
+          runId: 'run_fixture',
+        });
+        expect(next.ok && next.session.entries[1]).toMatchObject({ images: [image], references });
+        for (const intent of ['steer', 'explain'] as const) {
+          expect(
+            await repo.addSessionEntry(id, {
+              commandId: `cmd_${intent}_image`,
+              intent,
+              text: 'Look',
+              state: 'sent',
+              images: [image],
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+          expect(
+            await repo.addSessionEntry(id, {
+              commandId: `cmd_${intent}_reference`,
+              intent,
+              text: 'Look',
+              state: 'sent',
+              references,
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        }
+        const refused = [
+          { images: [{ ...image, sha256: 'not a hash' }] },
+          { images: [image, image] },
+          { references: [{ kind: 'file', path: '../outside' }] },
+          { references: [{ kind: 'nothing', path: 'x' }] },
+          // Attachments ride in their own fields, never as references.
+          { references: [image] },
+          // A start takes 20 references in all, attachments and images included.
+          {
+            references: Array.from({ length: 20 }, (_, n) => ({
+              kind: 'file' as const,
+              path: `f${n}.ts`,
+            })),
+            images: [image],
+          },
+        ];
+        for (const [n, change] of refused.entries())
+          expect(
+            await repo.addSessionEntry(id, {
+              ...request,
+              commandId: `cmd_bad_${n}`,
+              ...(change as object),
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        expect((await repo.getSession(id))?.entries).toHaveLength(2);
       });
 
       it('a queued auto request keeps its routing explanation and reasoning when started', async () => {
