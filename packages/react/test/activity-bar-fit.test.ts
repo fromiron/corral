@@ -12,10 +12,36 @@ describe('decisionsFit', () => {
     expect(decisionsFit({ shown: true, room: 200, words: 201, buttons: 120, gap: 6 })).toBe(false);
   });
 
-  it('with the buttons hidden, brings them back only if the words would still fit beside them', () => {
-    expect(decisionsFit({ shown: false, room: 326, words: 200, buttons: 120, gap: 6 })).toBe(true);
-    // The words fit while the buttons are away, but not with them: still View only.
+  it('with the buttons hidden, brings them back only with a pixel to spare beside them', () => {
+    expect(decisionsFit({ shown: false, room: 327, words: 200, buttons: 120, gap: 6 })).toBe(true);
+    // The words would fit beside them, but with less than a pixel to spare: still View only.
+    expect(decisionsFit({ shown: false, room: 326.9, words: 200, buttons: 120, gap: 6 })).toBe(
+      false,
+    );
     expect(decisionsFit({ shown: false, room: 325, words: 200, buttons: 120, gap: 6 })).toBe(false);
+  });
+
+  it('gives one answer at its edge: the room its own answer leaves never turns it back', () => {
+    // The words' room with the buttons away, a fraction of a pixel at a time; with them, that
+    // room less the buttons and the gap, give or take half a pixel of the layout's rounding.
+    const words = 288.88;
+    const flips: string[] = [];
+    for (const buttons of [146, 146.296875, 146.7, 120.49])
+      for (const gap of [6, 8])
+        for (let base = words + buttons + gap - 3; base < words + buttons + gap + 3; base += 0.01)
+          for (const jitter of [-0.5, -0.2, 0, 0.2, 0.5])
+            for (const start of [false, true]) {
+              const room = (shown: boolean) => (shown ? base - buttons - gap + jitter : base);
+              let shown = start;
+              const answers: boolean[] = [];
+              for (let pass = 0; pass < 4; pass += 1) {
+                shown = decisionsFit({ shown, room: room(shown), words, buttons, gap });
+                answers.push(shown);
+              }
+              if (answers.some((answer) => answer !== answers[0]))
+                flips.push(`${buttons} ${gap} ${base.toFixed(2)} ${jitter} ${start}`);
+            }
+    expect(flips.slice(0, 5)).toEqual([]);
   });
 
   it('never offers them for words with no room at all', () => {
@@ -132,6 +158,38 @@ describe('callLine: decided on the line only when it holds every argument of the
     // A tool the line knows nothing of, and one from elsewhere, are never decided there.
     expect(line(call('lookup', { query: 'x' })).whole).toBe(false);
     expect(line(call('search', { path: 'a' }, 'mcp')).whole).toBe(false);
+  });
+
+  it.each([
+    ['a line feed', '\n'],
+    ['a carriage return', '\r'],
+    ['a carriage return and line feed', '\r\n'],
+    ['a next line', '\u0085'],
+    ['a line separator', '\u2028'],
+    ['a paragraph separator', '\u2029'],
+    ['a vertical tab', '\u000B'],
+    ['a form feed', '\u000C'],
+  ])('counts a command split by %s as several lines: View alone', (_name, separator) => {
+    for (const command of [`echo ok${separator}rm -rf build`, `echo ok${separator}`])
+      expect(line(resolved({ command })).whole).toBe(false);
+  });
+
+  it.each([
+    ['a right-to-left override', '\u202E'],
+    ['a left-to-right isolate', '\u2066'],
+    ['a zero-width space', '\u200B'],
+    ['a zero-width joiner', '\u200D'],
+    ['a byte order mark', '\uFEFF'],
+    ['a soft hyphen', '\u00AD'],
+    ['an escape', '\u001B'],
+    ['a null', '\u0000'],
+  ])('leaves a subject with %s to its card: the line cannot show all of it', (_name, hidden) => {
+    expect(line(resolved({ command: `echo ${hidden}ok` })).whole).toBe(false);
+    expect(line(call('delete_file', { path: `src/${hidden}index.ts` })).whole).toBe(false);
+  });
+
+  it('still decides a command with a tab in it', () => {
+    expect(line(resolved({ command: 'printf "a\tb"' })).whole).toBe(true);
   });
 
   it('cuts at 80: a subject of 80 is whole, one of 81 is not', () => {

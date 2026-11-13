@@ -190,9 +190,16 @@ function LineWords({ line }: { line: ActivityBarLine }) {
 }
 
 /**
+ * How much room past fitting the hidden buttons need to come back: more than the layout's
+ * rounding of fractional widths (half a pixel), so the room they leave once back never cuts the
+ * words again and the buttons do not flicker at the edge.
+ */
+const SPARE = 1;
+
+/**
  * Whether the line's words are whole beside its decision buttons. Shown, the words must fit the
- * room they have; hidden, the room less the buttons they would bring back. Judged with the
- * buttons in place either way, so they never come and go with their own width.
+ * room they have; hidden, the room less the buttons they would bring back, with a pixel to spare.
+ * Judged with the buttons in place either way, so they never come and go with their own width.
  */
 export function decisionsFit({
   shown,
@@ -212,7 +219,8 @@ export function decisionsFit({
   /** The space between the line's parts. */
   gap: number;
 }) {
-  return words <= (shown ? room : room - buttons - gap);
+  // Room is never less than none: words of no width (nothing laid out) are never cut.
+  return words <= (shown ? room : Math.max(0, room - buttons - gap - SPARE));
 }
 
 function StateWords({ state, said = true }: { state: ActivityState; said?: boolean }) {
@@ -265,7 +273,8 @@ export function ActivityBar({
       setFits(false);
       return;
     }
-    const buttons = measure.current?.offsetWidth ?? 0;
+    // In the same fractional pixels as the words and their box.
+    const buttons = measure.current?.getBoundingClientRect().width ?? 0;
     const gap = Number.parseFloat(getComputedStyle(row.current).columnGap) || 0;
     // The words' own width, from the run of text inside the box that cuts them.
     const whole = words.firstElementChild?.getBoundingClientRect().width ?? 0;

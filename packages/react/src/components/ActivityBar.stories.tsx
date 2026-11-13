@@ -301,15 +301,22 @@ export const AwaitingResponseCut: Story = {
 /** The line with its run's state coming in beside the words, as when the run's row scrolls away. */
 function StateComes(props: ActivityBarProps) {
   const [state, setState] = useState(false);
+  const [next, setNext] = useState(false);
+  const call = next ? 'Run · npm run lint' : 'Run · npm test';
   const line = props.line && {
     ...props.line,
     ...(state ? { state: { text: 'Waiting for you', target: 'run:run_story' as const } } : {}),
+    text: call,
+    ...(props.line.approval ? { approval: { ...props.line.approval, subject: call } } : {}),
   };
   return (
     <>
       <Card {...props} line={line} />
       <button type="button" onClick={() => setState((shown) => !shown)}>
         Run row scrolls
+      </button>
+      <button type="button" onClick={() => setNext(true)}>
+        Next call
       </button>
     </>
   );
@@ -369,10 +376,23 @@ export const AwaitingResponseStateComes: Story = {
       expect(canvas.getByRole('button', { name: 'Allow once · Run · npm test' })).toBeVisible(),
     );
     await expect(comes.approve).not.toHaveBeenCalled();
+    // Only the words now on the line are its words: those fading out are not measured.
+    await userEvent.click(canvas.getByRole('button', { name: 'Run row scrolls' }));
+    await expect(canvasElement.querySelectorAll('[data-activity-text]')).toHaveLength(1);
+    await waitFor(() => expect(canvas.queryByRole('button', { name: /^Allow once/ })).toBeNull());
+    await userEvent.click(canvas.getByRole('button', { name: 'Run row scrolls' }));
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: 'Allow once · Run · npm test' })).toBeEnabled(),
+    );
+    // The next call's words come in: its buttons take no press until they are in.
+    await userEvent.click(canvas.getByRole('button', { name: 'Next call' }));
+    const next = canvas.getByRole('button', { name: 'Allow once · Run · npm run lint' });
+    await expect(next).toBeDisabled();
+    await waitFor(() => expect(next).toBeEnabled());
     // A key held down repeats; its repeats press nothing on the bar (a real held key is pressed in
     // the flow's scene ④).
     for (const target of [
-      canvas.getByRole('button', { name: 'Allow once · Run · npm test' }),
+      canvas.getByRole('button', { name: 'Allow once · Run · npm run lint' }),
       canvas.getByRole('button', { name: 'Activity details' }),
     ])
       for (const key of ['Enter', ' ']) {

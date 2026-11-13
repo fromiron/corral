@@ -825,3 +825,113 @@ for (const reduced of [false, true])
       await session.cleanup();
     }
   });
+
+/** How often the line's decision buttons come or go while it is watched for `ms`. */
+function flips(page: Page, ms: number) {
+  return page.evaluate(
+    (wait) =>
+      new Promise<number>((resolve) => {
+        const line = document.querySelector(
+          '[data-testid="activity-bar"] [data-activity-bar] > div',
+        );
+        if (!line) return resolve(-1);
+        const count = () =>
+          [...line.querySelectorAll('button')].filter(
+            (button) =>
+              !button.closest('[inert]') && / · /.test(button.getAttribute('aria-label') ?? ''),
+          ).length;
+        let last = count();
+        let changes = 0;
+        const observer = new MutationObserver(() => {
+          const now = count();
+          if (now !== last) changes += 1;
+          last = now;
+        });
+        observer.observe(line, { childList: true, subtree: true });
+        setTimeout(() => {
+          observer.disconnect();
+          resolve(changes);
+        }, wait);
+      }),
+    ms,
+  );
+}
+
+test('⑧ at the edge of fitting, a twentieth of a pixel at a time, the buttons settle and stay', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(240_000);
+  corral.fake?.setResponses([
+    fauxAssistantMessage([fauxToolCall('run_command', { command: BUILD })], {
+      stopReason: 'toolUse',
+    }),
+    fauxAssistantMessage('Done.'),
+    fauxAssistantMessage('Done.'),
+    fauxAssistantMessage('Done.'),
+  ]);
+  const session = await commandSession(page, corral);
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // Letters a fiftieth of a pixel wider: the words and the buttons measure in fractions, as on
+    // a scaled display.
+    await page.evaluate(() => {
+      document.documentElement.style.letterSpacing = '0.02px';
+    });
+    await requestBox(page).fill('Check the folder.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    const tray = page.locator('[data-pending-tray]');
+    await expect(tray.locator('[data-testid^="approval-"]')).toHaveCount(1, { timeout: 30_000 });
+    await waitForStill(page);
+    const bar = activityBar(page);
+    const timeline = page.getByTestId('chat-timeline');
+    await timeline.hover({ position: { x: 16, y: 120 } });
+    // The card off screen, the run's row still on it: the call whole beside its buttons.
+    for (let step = 0; step < 40; step += 1) {
+      await page.mouse.wheel(0, -100);
+      await page.waitForTimeout(250);
+      if ((await bar.getAttribute('data-line')) === 'waiting') break;
+    }
+    await waitForStill(page, { stillMs: 600 });
+    const shown = async () => ((await lineParts(page))?.decisions.length ?? 0) > 0;
+    expect(await shown()).toBe(true);
+    // The line narrowed from its right end, a pixel at a time, to where the buttons leave.
+    const pad = (px: number) =>
+      page.evaluate((value) => {
+        const row = document.querySelector<HTMLElement>(
+          '[data-testid="activity-bar"] [data-activity-bar] > div',
+        );
+        if (row) row.style.paddingRight = `${value}px`;
+      }, px);
+    let edge = 0;
+    for (let px = 12; px < 300 && !edge; px += 1) {
+      await pad(px);
+      await page.waitForTimeout(40);
+      if (!(await shown())) edge = px;
+    }
+    expect(edge, 'the buttons leave somewhere').toBeGreaterThan(0);
+    // Across the edge both ways, a twentieth of a pixel at a time, watched three seconds in all.
+    const scan: { px: number; flips: number; shown: boolean }[] = [];
+    const across = [
+      ...Array.from({ length: 30 }, (_, i) => edge - 1.5 + i * 0.05),
+      ...Array.from({ length: 30 }, (_, i) => edge + 0.5 - i * 0.05),
+    ];
+    for (const px of across) {
+      await pad(px);
+      // The first frame at a new width may answer anew; after it, nothing changes.
+      await page.evaluate(
+        () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+      );
+      scan.push({
+        px: Math.round(px * 100) / 100,
+        flips: await flips(page, 50),
+        shown: await shown(),
+      });
+    }
+    record('edge', { edge, scan });
+    expect(scan.filter((step) => step.flips > 0)).toEqual([]);
+    expect(corral.errors).toEqual([]);
+  } finally {
+    await session.cleanup();
+  }
+});

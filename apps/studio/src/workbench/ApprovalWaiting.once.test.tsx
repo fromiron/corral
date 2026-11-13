@@ -534,6 +534,38 @@ it('says a decision the run refused, as its card does, and leaves only View', as
   expect(lineButton(container, messages.Activity.view)).toBeDefined();
 });
 
+it('keeps the decisions on the line with the panel open, where a role row writes its state', async () => {
+  // The writer waits on its call; its row in the open panel says so, and the line does not say
+  // it again, but still decides the call.
+  const projection = waitingOnCommand();
+  projection.executionOrder = ['exec_lead', 'exec_writer'];
+  for (const [id, node, status] of [
+    ['exec_lead', 'lead', 'waiting_children'],
+    ['exec_writer', 'writer', 'waiting_approval'],
+  ] as const)
+    projection.executions[id] = {
+      executionId: id,
+      nodeId: node,
+      taskId: `task_${id}`,
+      status,
+      attemptNo: 1,
+      modelCallIds: [],
+    } as unknown as RunProjection['executions'][string];
+  const container = await mainArea(projection, { body_1: JSON.stringify(command) });
+  await viewport.scroll(() => false);
+  expect(decisions(container)).toHaveLength(2);
+  const toggle = bar(container)?.querySelector<HTMLElement>('[data-activity-toggle]');
+  await act(async () => toggle?.click());
+  expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+  // The state is the row's alone now.
+  const line = bar(container)?.querySelector('[data-activity-bar] > div') as HTMLElement;
+  expect(visibleText(line)).not.toContain(messages.Presence.state.awaiting_user);
+  expect(decisions(container)).toEqual([
+    `${messages.Approvals.rejectTool} · writer: ${called}`,
+    `${messages.Approvals.approveTool} · writer: ${called}`,
+  ]);
+});
+
 it('leaves the next approval its own buttons after a refusal of the one before', async () => {
   const second = commandPlan('echo second');
   const container = await mainArea(waitingOnCommand(), {
@@ -696,11 +728,39 @@ it('holds the next approval from when its buttons appear, and the View that come
   }
 });
 
-it('takes the first approval at once, whether its body comes with it or after', async () => {
-  const container = await mainArea(waitingOnCommand());
-  const store = fixture.store as RunSessionStore;
-  await viewport.scroll(() => false);
-  expect(lineButton(container, messages.Activity.view)?.disabled).toBe(false);
-  await act(async () => store.setState({ artifactTexts: { body_1: JSON.stringify(command) } }));
-  expect(lineButton(container, messages.Approvals.approveTool)?.disabled).toBe(false);
+it('takes the first approval at once when it is drawn with its buttons', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
+    await viewport.scroll(() => false);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(lineButton(container, messages.Approvals.approveTool)?.disabled).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('holds the first approval too when its buttons come late where View was, by the clock', async () => {
+  // These tests run with reduced motion: the hold is the clock's, not an animation's.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const container = await mainArea(waitingOnCommand());
+    const store = fixture.store as RunSessionStore;
+    const resolve = vi.spyOn(store.getState(), 'resolveApproval');
+    await viewport.scroll(() => false);
+    // View alone first: nothing was there before it, so it takes a press.
+    await act(async () => vi.advanceTimersByTime(900));
+    expect(lineButton(container, messages.Activity.view)?.disabled).toBe(false);
+    await act(async () => store.setState({ artifactTexts: { body_1: JSON.stringify(command) } }));
+    const approve = () => lineButton(container, messages.Approvals.approveTool);
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => approve()?.click());
+    expect(resolve).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(599));
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(approve()?.disabled).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });

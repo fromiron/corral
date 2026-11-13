@@ -1229,6 +1229,31 @@ describe('Stop in Send’s place', () => {
     expect(stop(f.container)?.disabled).toBe(false);
   });
 
+  it('lets a lost answer go once the run’s state says the command reached it', async () => {
+    const f = await mount();
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await act(async () => stop(f.container)?.click());
+    expect(line(f.container)?.textContent).toContain(messages.Activity.commandUnconfirmed);
+    // The run is being cancelled after all: Stop cannot be pressed, and nothing asks for it.
+    await f.render({ ...running, status: 'cancelling' });
+    expect(stop(f.container)?.disabled).toBe(true);
+    expect(line(f.container)?.textContent ?? '').not.toContain(
+      messages.Activity.commandUnconfirmed,
+    );
+  });
+
+  it('says a refusal under the input once its run is no longer going', async () => {
+    const f = await mount();
+    f.sendCommand.mockResolvedValueOnce({ error: { message: 'The run changed' } } as never);
+    await act(async () => stop(f.container)?.click());
+    const refused = messages.Approvals.refused.replace('{message}', 'The run changed');
+    expect(line(f.container)?.textContent).toContain(refused);
+    await f.render(null);
+    // Said once, by the composer, not lost with the run's line.
+    expect(f.container.textContent?.split(refused).length).toBe(2);
+    expect(line(f.container)?.textContent ?? '').not.toContain(refused);
+  });
+
   it('cannot be pressed while the run is being cancelled', async () => {
     const f = await mount({ active: { ...running, status: 'cancelling' } });
     expect(stop(f.container)?.disabled).toBe(true);

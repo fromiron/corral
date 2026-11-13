@@ -69,6 +69,13 @@ export function callLine(plan: ToolPermissionPlan, toolLabel: (name: string) => 
 }
 
 const SUBJECT_MAX = 80;
+/** Every character that ends a line, whatever its kind: a subject with one is several lines. */
+const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
+/**
+ * Characters a line draws as nothing or reorders (controls but a tab, format characters such as
+ * direction overrides and zero-width ones): with one, the line cannot say all of its subject.
+ */
+const UNSEEN = /[^\P{Cc}\t]|\p{Cf}/u;
 
 /**
  * The call's main subject in one line, and whether the line holds all its arguments. Judged by
@@ -89,16 +96,23 @@ function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean }
   const parts = said.map((key) => args[key]);
   if (!parts.every((part): part is string => typeof part === 'string' && Boolean(part.trim())))
     return null;
-  const oneLine = parts.every((part) => !part.trim().includes('\n'));
-  const text = parts.map((part) => part.trim().split('\n')[0]?.trim() ?? '').join(' → ');
+  const oneLine = parts.every((part) => !LINE_BREAK.test(part));
+  const text = parts.map((part) => part.trim().split(LINE_BREAK)[0]?.trim() ?? '').join(' → ');
   if (text.length > SUBJECT_MAX || !oneLine)
     return { text: `${text.slice(0, SUBJECT_MAX - 1)}…`, whole: false };
-  return { text, whole: Object.keys(args).every((key) => said.includes(key)) };
+  return {
+    text,
+    whole:
+      parts.every((part) => !UNSEEN.test(part)) &&
+      Object.keys(args).every((key) => said.includes(key)),
+  };
 }
 
 /**
  * A command's own arguments. Its plan is the server's resolution (identity, hashes, argv, shell,
- * timeout) of the agent's arguments, `request`, and the request is what the line must hold. Left
+ * timeout) of the agent's arguments, `request`, and the request is what the line must hold (the
+ * server writes the plan's `command` from `request.command`, so the line and the card, which reads
+ * the plan's, show the same command). Left
  * out of it, the shell and the timeout are the session's defaults the server fills in; the working
  * copy's root (`.`) and the foreground are the defaults the request may also name, so they count
  * as not given. Any other folder or mode, asked for or resolved, is an argument the line lacks.
