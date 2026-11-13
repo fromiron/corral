@@ -5,6 +5,7 @@ import type {
   VaultPreview,
   VaultStatus,
 } from '@corral/client';
+import type { CorralNode } from '@corral/contracts';
 import { ModelSelect, profileChoices } from '@corral/react';
 import {
   Button,
@@ -28,6 +29,15 @@ import { SettingsLayout } from './SettingsPage.tsx';
 
 type Choice = { value: string; label: string };
 const inputClass = 'min-w-0';
+
+/** Who may take imported subagents: only an agent in the flow delegates; callable agents and
+ * advisors do not (team-graph.md structure rule 11). */
+export function subagentParents(nodes: readonly CorralNode[]): Choice[] {
+  return nodes
+    .filter((node) => node.type === 'agent' && node.invocation === 'scheduled')
+    .map((node) => ({ value: node.id, label: node.label }));
+}
+
 export function VaultSettingsPage() {
   const t = useTranslations('Vault');
   const tc = useTranslations('Composer');
@@ -124,11 +134,7 @@ export function VaultSettingsPage() {
         setSessions(
           sessions.map((session) => ({ value: session.sessionId, label: session.title })),
         );
-        setParents(
-          team?.definition.nodes
-            .filter((node) => node.type === 'agent' && node.invocation !== 'callable')
-            .map((node) => ({ value: node.id, label: node.label })) ?? [],
-        );
+        setParents(team ? subagentParents(team.definition.nodes) : []);
       })
       .catch(() => {
         if (!cancelled) setError(t('loadFailed'));

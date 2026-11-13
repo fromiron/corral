@@ -1,10 +1,17 @@
-import type { AgentRole } from '@corral/contracts';
+import { type AgentRole, CorralDefinition } from '@corral/contracts';
+import { definitionHash } from '@corral/core';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { StudioStoresProvider } from '../src/context.tsx';
-import { type EditorDraft, emptyDraft, updateNode } from '../src/editor/model.ts';
+import {
+  type EditorDraft,
+  emptyDraft,
+  exportDefinition,
+  importDefinition,
+  updateNode,
+} from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import koMessages from '../src/messages/ko.json' with { type: 'json' };
@@ -15,6 +22,7 @@ import {
   patchNode,
   placeStep,
   type TeamReference,
+  watchAgent,
   wrapIn,
 } from '../src/team-editor/commands.ts';
 import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
@@ -261,6 +269,276 @@ describe('team editor', () => {
     expect(nodes.find((n) => n.id === 'agent_1')?.parentId).toBe(loop?.id);
     expect(nodes.some((n) => n.type === 'decision' && n.mode === 'review')).toBe(true);
     expect(nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(false);
+  });
+});
+
+// Advisors in the editor (docs/specs/features/canvas.md rules 3, 4, 5 and 11). The compiler's
+// ADVISOR_NOT_SUPPORTED gate may or may not be there; nothing here depends on it.
+describe('team editor: advisors', () => {
+  const advisorIn = (draft: EditorDraft) =>
+    draft.definition.nodes.find((n) => n.type === 'agent' && n.invocation === 'observer');
+  const watchedBy = (draft: EditorDraft, advisor: string) =>
+    draft.definition.capabilityLinks
+      .filter((l) => l.kind === 'advise' && l.sourceNodeId === advisor)
+      .map((l) => l.targetNodeId)
+      .sort();
+  const addAdvisor = () =>
+    act(async () =>
+      fireEvent.click(
+        within(screen.getByRole('toolbar', { name: messages.TeamEditor.palette })).getByRole(
+          'button',
+          { name: `Add ${messages.TeamEditor.kinds.observer}` },
+        ),
+      ),
+    );
+
+  it('watches A from above the flow, adds B in its sheet, and keeps out of a Loop (canvas.feature)', async () => {
+    const draft = chain(2);
+    const editor = renderEditor(draft);
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    await addAdvisor();
+    const advisor = advisorIn(editor.getState().draft);
+    if (!advisor) throw new Error('no advisor was added');
+    expect(watchedBy(editor.getState().draft, advisor.id)).toEqual(['agent_1']);
+    // No control ports, and the run order is what it was.
+    expect(document.querySelector(`[data-port^="${advisor.id}:"]`)).toBeNull();
+    expect(editor.getState().draft.definition.controlEdges).toEqual(draft.definition.controlEdges);
+    const top = (id: string) =>
+      Number(/translate\([^,]+,\s*(-?[\d.]+)px\)/.exec(canvasNode(id).style.transform)?.[1]);
+    expect(top(advisor.id)).toBeLessThan(top('agent_1'));
+    await choose(messages.Inspector.addWatched, 'Agent 2');
+    expect(watchedBy(editor.getState().draft, advisor.id)).toEqual(['agent_1', 'agent_2']);
+    // Drawn dash-dot: neither the solid control line nor the dashed call link.
+    const drawn = [...document.querySelectorAll('[data-team-canvas] [data-edge^="link_"]')].map(
+      (g) => g.querySelectorAll('path')[1]?.getAttribute('stroke-dasharray'),
+    );
+    expect(drawn).toHaveLength(2);
+    for (const dashes of drawn) expect(dashes?.split(' ').length).toBe(4);
+    const control = document.querySelector('[data-team-canvas] [data-edge^="edge_"]');
+    expect(control?.querySelectorAll('path')[1]?.getAttribute('stroke-dasharray')).toBeNull();
+    await act(async () => fireEvent.click(canvasNode('agent_1'), { shiftKey: true }));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: messages.TeamEditor.wrapLoop })),
+    );
+    const { nodes } = editor.getState().draft.definition;
+    const loop = nodes.find((n) => n.type === 'loop');
+    expect(nodes.find((n) => n.id === 'agent_1')?.parentId).toBe(loop?.id);
+    expect(nodes.find((n) => n.id === advisor.id)?.parentId).toBeUndefined();
+  });
+
+  it('saves and reopens an advisor the schema accepts with the same hash', async () => {
+    const editor = renderEditor(chain(2));
+    await act(async () => fireEvent.click(canvasNode('agent_2')));
+    await addAdvisor();
+    const saved = exportDefinition(editor.getState().draft);
+    const parsed = CorralDefinition.safeParse(JSON.parse(saved));
+    expect(parsed.success).toBe(true);
+    const reopened = importDefinition(saved);
+    if (!reopened.ok) throw new Error(reopened.errors.join('\n'));
+    expect(definitionHash(reopened.draft.definition)).toBe(
+      definitionHash(editor.getState().draft.definition),
+    );
+    cleanup();
+    renderEditor(reopened.draft);
+    const advisor = advisorIn(reopened.draft);
+    expect(canvasNode(advisor?.id ?? '')).toBeTruthy();
+    // The line carries no name: it is the only link of its kind.
+    expect(screen.queryAllByText(messages.TeamEditor.links.advise)).toEqual([]);
+    expect(document.querySelector('[data-edge="link_1"] title')?.textContent).toBe(
+      'Advisor watches Agent 2',
+    );
+  });
+
+  it('shows what is wrong with an advisor on its card, in its sheet and in the outline', async () => {
+    const { draft, nodeId } = ok(placeStep(chain(2), 'observer', { kind: 'empty' }));
+    renderEditor(draft);
+    const text = messages.Validation.codes.ADVISOR_UNWATCHED.replace('{node}', 'Advisor');
+    expect(canvasNode(nodeId).querySelector('[data-problem]')?.getAttribute('title')).toContain(
+      text,
+    );
+    const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });
+    expect(
+      within(outline)
+        .getByRole('button', { name: /^Advisor/ })
+        .querySelector('.text-destructive, .text-warning'),
+    ).toBeTruthy();
+    // Listed, but after the flow: it is not a step of it.
+    const rows = within(outline)
+      .getAllByRole('button', { pressed: false })
+      .map((b) => b.textContent);
+    expect(
+      rows.filter((r) => r === 'Agent 1' || r === 'Agent 2' || r?.startsWith('Advisor')),
+    ).toEqual(['Agent 1', 'Agent 2', expect.stringMatching(/^Advisor/)]);
+    await act(async () => fireEvent.click(canvasNode(nodeId)));
+    const sheet = screen.getByRole('complementary', { name: messages.TeamEditor.inspector });
+    expect(
+      within(sheet).getByRole('region', { name: messages.TeamEditor.issues }).textContent,
+    ).toContain(text);
+  });
+
+  it('settles the advisor sheet: reads, watches and a review interval, but no inputs, output, calls or retry', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(1), 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const editor = renderEditor(
+      patchNode(draft, nodeId, { review: { interval: 3, maxRequestsPerReview: 12 } }),
+    );
+    await act(async () => fireEvent.click(canvasNode(nodeId)));
+    const sheet = screen.getByRole('complementary', { name: messages.TeamEditor.inspector });
+    const inSheet = within(sheet);
+    expect(inSheet.queryByRole('group', { name: messages.Inspector.inputs })).toBeNull();
+    expect(inSheet.queryByRole('group', { name: messages.Inspector.calls })).toBeNull();
+    expect(inSheet.queryByText(messages.Inspector.contract)).toBeNull();
+    expect(inSheet.queryByText(messages.Inspector.advanced)).toBeNull();
+    expect(inSheet.queryByText(messages.TeamEditor.fields.retry)).toBeNull();
+    expect(inSheet.queryByRole('switch', { name: messages.Inspector.fileTools })).toBeNull();
+    expect(inSheet.getByRole('radio', { name: messages.Inspector.observer })).toBeTruthy();
+    for (const tool of Object.values(messages.Inspector.readTool))
+      expect(inSheet.getByRole('checkbox', { name: tool })).toBeTruthy();
+    expect(inSheet.getByRole('button', { name: 'Stop watching Agent 1' })).toBeTruthy();
+    await act(async () =>
+      fireEvent.change(inSheet.getByRole('spinbutton', { name: messages.Inspector.reviewField }), {
+        target: { value: '5' },
+      }),
+    );
+    const advisor = editor.getState().draft.definition.nodes.find((n) => n.id === nodeId);
+    expect(advisor).toMatchObject({ review: { interval: 5, maxRequestsPerReview: 12 } });
+    await act(async () =>
+      fireEvent.click(inSheet.getByRole('checkbox', { name: messages.Inspector.readTool.search })),
+    );
+    const role = editor
+      .getState()
+      .draft.definition.roles.find((r) => advisor?.type === 'agent' && r.id === advisor.roleId);
+    expect(role?.allowedWorkTools).not.toContain('search');
+    await act(async () =>
+      fireEvent.click(inSheet.getByRole('button', { name: 'Stop watching Agent 1' })),
+    );
+    expect(editor.getState().draft.definition.capabilityLinks).toEqual([]);
+  });
+
+  it('names the advisor card with its kind and draws its links behind the cards', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_2' }));
+    renderEditor(patchNode(added.draft, added.nodeId, { label: 'Fact checker' }));
+    const card = canvasNode(added.nodeId);
+    // Its kind is said on its own, not only inside the prompt or a problem.
+    expect(within(card).getByText(messages.TeamEditor.kinds.observer)).toBeTruthy();
+    const lines = document.querySelector('[data-team-canvas] svg') as Element;
+    // Later siblings paint over earlier ones: the lines come before every card.
+    for (const id of [added.nodeId, 'agent_1', 'agent_2'])
+      expect(lines.compareDocumentPosition(canvasNode(id)) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+  });
+
+  it('shows no Start on an advisor even when a draft names it the start', () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    renderEditor({
+      ...added.draft,
+      definition: { ...added.draft.definition, entryNodeId: added.nodeId },
+    });
+    expect(canvasNode(added.nodeId).textContent).not.toContain(messages.TeamEditor.start);
+  });
+
+  it('moves focus to the next chip, then to the add list, as watched agents are removed', async () => {
+    let { draft, nodeId } = ok(
+      placeStep(chain(3), 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    for (const agent of ['agent_2', 'agent_3']) {
+      const linked = watchAgent(draft, nodeId, agent);
+      if (!linked.ok) throw new Error(linked.reason);
+      draft = linked.draft;
+    }
+    renderEditor(draft);
+    await act(async () => fireEvent.click(canvasNode(nodeId)));
+    const chip = (name: string) => screen.getByRole('button', { name: `Stop watching ${name}` });
+    chip('Agent 2').focus();
+    await act(async () => fireEvent.click(chip('Agent 2')));
+    expect(document.activeElement).toBe(chip('Agent 3'));
+    const add = () => screen.getByRole('combobox', { name: messages.Inspector.addWatched });
+    await act(async () => fireEvent.click(chip('Agent 3')));
+    expect(document.activeElement).toBe(add());
+    chip('Agent 1').focus();
+    await act(async () => fireEvent.click(chip('Agent 1')));
+    expect(document.activeElement).toBe(add());
+  });
+
+  it('keeps the review interval a whole number of at least one', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const editor = renderEditor(draft);
+    await act(async () => fireEvent.click(canvasNode(nodeId)));
+    const field = screen.getByRole('spinbutton', { name: messages.Inspector.reviewField });
+    for (const value of ['0', '-2', '1.5']) {
+      await act(async () => fireEvent.change(field, { target: { value } }));
+      expect(
+        editor.getState().draft.definition.nodes.find((n) => n.id === nodeId),
+      ).not.toHaveProperty('review');
+    }
+  });
+
+  it('lists only agents in the flow and callable agents to watch', async () => {
+    let draft = ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft;
+    draft = patchNode(draft, 'agent_3', { invocation: 'callable', label: 'Helper' });
+    draft = ok(placeStep(draft, 'output', { kind: 'after', nodeId: 'agent_2' })).draft;
+    draft = ok(placeStep(draft, 'review', { kind: 'after', nodeId: 'agent_1' })).draft;
+    draft = ok(placeStep(draft, 'observer', { kind: 'empty' })).draft;
+    const { draft: withAdvisor, nodeId } = ok(placeStep(draft, 'observer', { kind: 'empty' }));
+    renderEditor(withAdvisor);
+    await act(async () => fireEvent.click(canvasNode(nodeId)));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('combobox', { name: messages.Inspector.addWatched })),
+    );
+    expect(
+      screen
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+        .sort(),
+    ).toEqual(['Agent 1', 'Agent 2', 'Helper'].sort());
+  });
+
+  it('shows no work style settings and no role import on an advisor sheet', async () => {
+    const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    const editor = createEditorStore(added.draft);
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <StudioStoresProvider editor={editor} session={sessionStore()}>
+          <TeamEditor editor={editor} roleSettings={() => <p>Work style here</p>} />
+        </StudioStoresProvider>
+      </IntlProvider>,
+    );
+    await act(async () => fireEvent.click(canvasNode('agent_1')));
+    expect(screen.getByText('Work style here')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Import role…' })).toBeTruthy();
+    await act(async () => fireEvent.click(canvasNode(added.nodeId)));
+    expect(screen.queryByText('Work style here')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Import role…' })).toBeNull();
+  });
+
+  it('adds an advisor from ⌘K watching a selected callable agent, not in the flow’s place', async () => {
+    const draft = patchNode(ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft, 'agent_3', {
+      invocation: 'callable',
+    });
+    const editor = renderEditor(draft);
+    await act(async () => fireEvent.click(canvasNode('agent_3')));
+    await act(async () => fireEvent.keyDown(canvasNode('agent_3'), { key: 'k', ctrlKey: true }));
+    const option = screen.getByRole('option', { name: /Add Advisor/ });
+    expect(option.textContent).toContain('watching Agent 3');
+    await act(async () => fireEvent.click(option));
+    const advisor = advisorIn(editor.getState().draft);
+    expect(watchedBy(editor.getState().draft, advisor?.id ?? '')).toEqual(['agent_3']);
+  });
+
+  it('turns an agent into an advisor from its sheet', async () => {
+    const editor = renderEditor(chain(2));
+    await act(async () => fireEvent.click(canvasNode('agent_2')));
+    await act(async () =>
+      fireEvent.click(screen.getByRole('radio', { name: messages.Inspector.observer })),
+    );
+    const node = editor.getState().draft.definition.nodes.find((n) => n.id === 'agent_2');
+    expect(node).toMatchObject({ invocation: 'observer' });
+    expect(editor.getState().draft.definition.controlEdges).toEqual([]);
+    expect(screen.queryByRole('group', { name: messages.Inspector.inputs })).toBeNull();
   });
 });
 
