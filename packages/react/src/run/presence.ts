@@ -21,7 +21,12 @@ const KINDS = [
 ] as const;
 export type PresenceKind = (typeof KINDS)[number];
 export type PresenceNeed = 'approval' | 'question' | 'continue';
-export type PresenceDetail = 'waiting_agents' | 'waiting_reply' | 'watching';
+export type PresenceDetail =
+  | 'waiting_agents'
+  | 'waiting_reply'
+  | 'watching'
+  | 'round_limit'
+  | 'rounds_stalled';
 export type PresenceTone = 'neutral' | 'active' | 'success' | 'warning' | 'danger';
 export type PresenceGroup = 'attention' | 'running' | 'completed' | 'cancelled' | 'ready' | 'empty';
 
@@ -42,6 +47,20 @@ export interface PresenceRequest {
   /** Smaller is older. */
   order: number;
 }
+
+/** How a Loop's round ended (the `loop.iteration_finished` outcome). */
+export type LoopOutcome =
+  | 'pass'
+  | 'revise'
+  | 'inconclusive'
+  | 'cap_reached'
+  | 'stalled'
+  | 'cancelled';
+
+const OUT_OF_ROUNDS: Partial<Record<LoopOutcome, PresenceDetail>> = {
+  cap_reached: 'round_limit',
+  stalled: 'rounds_stalled',
+};
 
 export const PRESENCE_EXIT_GRACE_MS = 2_000;
 
@@ -127,6 +146,8 @@ export function runPresence(
   run: { status: RunStatus },
   executions: readonly { status: ExecutionStatus }[],
   pending: readonly PresenceRequest[],
+  /** Each Loop's last finished round's outcome, in the order the Loops started. */
+  loops: readonly (LoopOutcome | null)[] = [],
 ): Presence {
   if (!TERMINAL_RUN_STATUSES.has(run.status)) {
     const earliest = pending.reduce<PresenceRequest | undefined>(
@@ -138,7 +159,12 @@ export function runPresence(
       // With nothing open, the Run waits on whether to restart a cancelled required task.
       return presence('awaiting_user', earliest?.kind ?? (approvalWaits ? 'approval' : 'continue'));
   }
-  return presence(RUN_KIND[run.status]);
+  const kind = RUN_KIND[run.status];
+  // A completed Run that went on from a Loop's last candidate says why: the first Loop to start
+  // whose last round ran out. A Run that ended any other way says nothing of its Loops.
+  const ranOut =
+    kind === 'succeeded' ? loops.find((outcome) => outcome && OUT_OF_ROUNDS[outcome]) : null;
+  return presence(kind, undefined, ranOut ? OUT_OF_ROUNDS[ranOut] : undefined);
 }
 
 /** The latest run's state, or `ready`/`empty` for a session without one. */

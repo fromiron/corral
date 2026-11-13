@@ -1,24 +1,25 @@
-import { statusPresence } from '@corral/react';
+import type { Presence } from '@corral/react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 /**
  * Announce observed transitions, never the completed run merely opened from history. A change is
- * one of the run's presence (docs/specs/features/presence.md), said in its words: a status that
- * moves without changing what every screen shows is not announced.
+ * one of the shown state (docs/specs/features/presence.md), the same presence the run row's head
+ * shows, said by its name alone: a status value or a detail that moves without changing the
+ * shown state is not announced.
  */
 export function RunStatusAnnouncement({
   runId,
-  status,
+  presence,
   ready,
 }: {
   runId: string;
-  status: string | null;
+  presence: Presence | null;
   ready: boolean;
 }) {
   const t = useTranslations('Widgets');
   const tp = useTranslations('Presence');
-  const labelKey = (status && statusPresence(status)?.labelKey) || null;
+  const labelKey = presence?.labelKey ?? null;
   const previous = useRef<{ runId: string; labelKey: string | null } | null>(null);
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => {

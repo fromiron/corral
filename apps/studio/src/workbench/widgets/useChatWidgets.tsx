@@ -7,6 +7,8 @@ import {
 } from '@corral/core';
 import {
   estimateRunCost,
+  type Presence,
+  projectionPresence,
   type RunCostEstimate,
   type RunSessionState,
   type RunSessionStore,
@@ -58,6 +60,8 @@ import {
 export interface ChatWidgetModel {
   sessionId: string;
   runId: string | null;
+  /** The presented run's shown state: the one its row's head shows (presence.md). */
+  presence?: Presence | null;
   runNumber: number | null;
   live: boolean;
   /** The finished run on screen and its place among the session's runs. */
@@ -551,6 +555,7 @@ function useChatWidgetState(
   return {
     sessionId,
     runId: presentationRunId,
+    presence: projection ? projectionPresence(projection, view?.events ?? []) : null,
     live,
     runNumber: presentationRunId ? runIds.indexOf(presentationRunId) + 1 || null : null,
     viewed: viewedRun({ runIds, presentationRunId, live }),

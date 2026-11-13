@@ -7,7 +7,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
-import { ContextDetail } from './ChatWidgets.tsx';
+import { AgentsDetail, ContextDetail } from './ChatWidgets.tsx';
 import { OverviewPopover, OverviewWidgets } from './OverviewWidgets.tsx';
 import { actionRequired, usageSummary } from './selectors.ts';
 import type { ChatWidgetModel } from './useChatWidgets.tsx';
@@ -709,3 +709,28 @@ it('the context detail says why and does not compact without a running execution
   ).toBe(false);
   expect(request).not.toHaveBeenCalled();
 });
+
+// presence.md: the overview's counts leave out what is zero, in both languages.
+it.each([
+  ['en', { total: 6, working: 1, waiting: 0, failed: 0 }, '6 agents, 1 working', /0 /],
+  [
+    'en',
+    { total: 3, working: 0, waiting: 2, failed: 1 },
+    '3 agents · 2 waiting · 1 failed',
+    /0 working/,
+  ],
+  ['ko', { total: 6, working: 1, waiting: 0, failed: 0 }, '에이전트 6 · 작업 중 1', /대기|실패/],
+  ['ko', { total: 3, working: 0, waiting: 0, failed: 1 }, '에이전트 3 · 실패 1', /작업 중|대기/],
+] as const)(
+  'the agents detail counts in %s only what is not zero',
+  async (locale, agents, said, absent) => {
+    const container = await render(
+      model({ chips: ['agents'], agents, agentRows: [] }),
+      (value) => <AgentsDetail model={value} />,
+      locale,
+    );
+    const counts = container.querySelector('p')?.textContent ?? '';
+    expect(counts).toBe(said);
+    expect(counts).not.toMatch(absent);
+  },
+);

@@ -131,7 +131,11 @@ export {
   sessionPresence,
   settle,
 } from './run/presence.ts';
-export { projectionPresence, statusPresence } from './run/projectionPresence.ts';
+export {
+  executionViewPresence,
+  projectionPresence,
+  statusPresence,
+} from './run/projectionPresence.ts';
 export { createRunRecovery, type RecoveryStorage, type RunRecovery } from './run/recovery.ts';
 export {
   type ResultGroup,

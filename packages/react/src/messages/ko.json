@@ -6177,7 +6177,9 @@
     "detail": {
       "waiting_agents": "하위 에이전트 대기",
       "waiting_reply": "답 대기",
-      "watching": "지켜보는 중"
+      "watching": "지켜보는 중",
+      "round_limit": "회차 한도 도달",
+      "rounds_stalled": "회차 정체"
     }
   },
   "Activity": {

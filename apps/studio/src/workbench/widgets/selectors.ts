@@ -52,21 +52,6 @@ function isActive(status: string) {
   return presence.kind === 'working' && !presence.detail;
 }
 
-/**
- * How a review loop that ran out of rounds ended the Run: the outcome of its last round when that
- * round reached the limit or stalled. The Run then ended on the loop's last candidate.
- */
-export function exhaustedLoop(
-  projection: Pick<RunProjection, 'loopIterations' | 'iterations'>,
-): 'cap_reached' | 'stalled' | null {
-  for (const rounds of Object.values(projection.loopIterations)) {
-    const last = rounds.at(-1);
-    const outcome = last ? projection.iterations[last]?.outcome : null;
-    if (outcome === 'cap_reached' || outcome === 'stalled') return outcome;
-  }
-  return null;
-}
-
 /** Shell services can change files after the launch tool has already finished. */
 export function fileChangeSignals(
   calls: readonly { name: string; phase?: string }[],

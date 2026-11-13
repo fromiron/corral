@@ -2457,3 +2457,33 @@ it('reads run usage only in Run info › Usage, split by agent', async () => {
   );
   expect(shown).toEqual([]);
 });
+
+// presence.md: each place that says a state in words carries the target it speaks of.
+it('labels the header’s state, the way to respond, and each execution by their targets', async () => {
+  const { container, run } = await mount('inline_team', null, {});
+  const runId = run.getState().projection?.runId;
+  expect(runId).toBeTruthy();
+  const status = container.querySelector('[data-testid="run-status"] [data-presence-label]');
+  expect(status?.getAttribute('data-presence-label')).toBe(`run:${runId}`);
+  await populateGraph(run, [graphExecution('first', 'worker'), graphExecution('second', 'worker')]);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+  );
+  const preview = container.querySelector('[data-testid="node-preview"]');
+  for (const id of ['first', 'second'])
+    expect(
+      preview
+        ?.querySelector(`[data-execution-id="${id}"] [data-presence-label]`)
+        ?.getAttribute('data-presence-label'),
+    ).toBe(`execution:${id}`);
+});
+
+it('names the state on the way to respond by the run it is', async () => {
+  fixture.pending = 1;
+  const { container, run } = await mount('inline_team', null, {});
+  const runId = run.getState().projection?.runId;
+  const label = container.querySelector('[data-testid="run-respond"] [data-presence-label]');
+  expect(label?.getAttribute('data-presence-label')).toBe(`run:${runId}`);
+  // Said once: the header has no badge of its own beside the way to respond.
+  expect(container.querySelectorAll(`[data-presence-label="run:${runId}"]`)).toHaveLength(1);
+});

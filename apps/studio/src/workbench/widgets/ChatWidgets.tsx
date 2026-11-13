@@ -495,7 +495,7 @@ export function ActivityAnnouncements({ model }: { model: ChatWidgetModel | null
       </p>
       <RunStatusAnnouncement
         runId={model.runId}
-        status={model.plan.runStatus}
+        presence={model.presence ?? null}
         ready={model.readState === 'ready'}
       />
     </>

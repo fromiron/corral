@@ -5,6 +5,7 @@ import {
   executionIntervals,
   executionPresence,
   executionToolEntries,
+  executionViewPresence,
   type Presence,
   PresenceLabel,
   presenceTextClass,
@@ -222,7 +223,7 @@ export function RunActivity({
               </span>
               <span className="ml-auto inline-flex shrink-0 items-center gap-2">
                 <PresenceLabel
-                  presence={executionPresence(execution)}
+                  presence={executionViewPresence(execution)}
                   target={`execution:${execution.executionId}`}
                 />
                 {elapsed !== undefined ? (

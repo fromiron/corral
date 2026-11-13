@@ -70,6 +70,10 @@ export function PresenceBadge({
           </span>
         ) : null}
         <span data-presence-label={target}>{t(presence.labelKey)}</span>
+        {/* A detail is said beside the state, never as its name (presence.md). */}
+        {presence.detailKey ? (
+          <span data-presence-detail>{`· ${t(presence.detailKey)}`}</span>
+        ) : null}
       </span>
     </KitBadge>
   );

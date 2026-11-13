@@ -15,7 +15,7 @@ import {
   ArtifactViewer,
   ExecutionTranscript,
   ExecutionTree,
-  executionPresence,
+  executionViewPresence,
   FailureNotice,
   PresenceBadge,
   primaryWorkPlan,
@@ -1070,13 +1070,14 @@ function RunHeader({
   const m = useTranslations('RunMonitor');
   const tp = useTranslations('Presence');
   const projection = useRunDisplay(session, (s) => s.projection);
+  const events = useRunDisplay(session, (s) => s.events);
   const recipeStopped = useStore(session, (s) =>
     s.events.some((event) => event.type === 'recipe.stopped'),
   );
   if (!projection) return null;
-  // The run's state, as every screen says it (docs/specs/features/presence.md). What waits for
-  // the person beyond the projection's own approvals is known only by its count here.
-  const presence = projectionPresence(projection, waiting > 0 ? ['question'] : []);
+  // The run's state, as every screen says it (docs/specs/features/presence.md): every open
+  // request once, by the order the record holds them.
+  const presence = projectionPresence(projection, events);
   // A failed run says why beside its state, in Run info's words, and leads to what failed. With
   // one agent, "{agent} failed" only restates the state chip, so it is left out.
   const failed = presence.kind === 'failed';
@@ -1215,7 +1216,7 @@ function RunFacts({
   const labelOf = (nodeId: string) =>
     definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
-  const kinds = executions.map((e) => ({ e, presence: executionPresence(e) }));
+  const kinds = executions.map((e) => ({ e, presence: executionViewPresence(e) }));
   const working = [
     ...new Set(
       kinds
@@ -1710,7 +1711,7 @@ function NodeExecutions({
                     <ExecutionIdentity projection={projection} executionId={id} />
                   </div>
                 </div>
-                <PresenceBadge presence={executionPresence(e)} target={`execution:${id}`} />
+                <PresenceBadge presence={executionViewPresence(e)} target={`execution:${id}`} />
               </div>
               <div className="flex flex-wrap gap-1">
                 <Button

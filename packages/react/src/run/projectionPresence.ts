@@ -1,28 +1,37 @@
-import { ExecutionStatus, RunStatus } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
-import { executionPresence, type Presence, type PresenceRequest, runPresence } from './presence.ts';
+import { ExecutionStatus, type RunEvent, RunStatus } from '@corral/contracts';
+import { type ExecutionView, pendingInteractions, type RunProjection } from '@corral/core';
+import {
+  executionPresence,
+  type LoopOutcome,
+  type Presence,
+  type PresenceRequest,
+  runPresence,
+} from './presence.ts';
 
 /**
- * A Run's presence from its projection: its own state, its executions, and what waits on the
- * person there. Open approvals are the projection's; a person's questions and extension requests
- * are known only from the event log, so a caller that has them passes their kinds in order.
- * A limit's approval asks whether to continue; any other approval asks for an approval.
+ * A Run's presence from what the screen already holds (docs/specs/features/presence.md): its
+ * own state, its executions as their views, what waits on the person there, and each Loop's last
+ * finished round.
+ *
+ * What waits is known in full only from the event log: with `events`, every open request counts
+ * once, named by the kind of the one that came first (by the record's sequence). Without them,
+ * only the projection's open approvals are known, in the order they were requested.
  */
 export function projectionPresence(
-  projection: Pick<RunProjection, 'status' | 'executions' | 'approvals'>,
-  requests: readonly ('question' | 'approval')[] = [],
+  projection: RunProjection,
+  events?: readonly RunEvent[],
 ): Presence {
-  const approvals = Object.values(projection.approvals).filter(
-    (approval) => approval.status === 'pending',
+  return runPresence(
+    projection,
+    Object.values(projection.executions),
+    events ? openRequests(projection, events) : projectionApprovals(projection),
+    loopEnds(projection),
   );
-  const pending: PresenceRequest[] = [
-    ...approvals.map((approval, order) => ({
-      kind: approval.limit ? ('continue' as const) : ('approval' as const),
-      order,
-    })),
-    ...requests.map((kind, index) => ({ kind, order: approvals.length + index })),
-  ];
-  return runPresence(projection, Object.values(projection.executions), pending);
+}
+
+/** An execution's presence from its view: an advisor waiting for a message is watching. */
+export function executionViewPresence(execution: Pick<ExecutionView, 'status' | 'advisor'>) {
+  return executionPresence({ status: execution.status, observer: execution.advisor === true });
 }
 
 /**
@@ -35,4 +44,47 @@ export function statusPresence(status: string): Presence | null {
   if (execution.success) return executionPresence({ status: execution.data });
   const run = RunStatus.safeParse(status);
   return run.success ? runPresence({ status: run.data }, [], []) : null;
+}
+
+type ApprovalView = RunProjection['approvals'][string];
+
+/** A limit's approval asks whether to continue; any other approval asks for an approval. */
+const approvalNeed = (approval: ApprovalView) =>
+  approval.limit ? ('continue' as const) : ('approval' as const);
+
+function projectionApprovals(projection: RunProjection): PresenceRequest[] {
+  return Object.values(projection.approvals)
+    .filter((approval) => approval.status === 'pending')
+    .map((approval, order) => ({ kind: approvalNeed(approval), order }));
+}
+
+function openRequests(projection: RunProjection, events: readonly RunEvent[]): PresenceRequest[] {
+  const requestedAt = new Map<string, number>();
+  for (const event of events)
+    if (event.type === 'approval.requested')
+      requestedAt.set(event.payload.approvalId, event.runSeq);
+  return pendingInteractions(events, projection).map((item, index) =>
+    item.kind === 'approval'
+      ? {
+          kind: approvalNeed(item.approval),
+          // An approval whose request is not in the loaded log keeps its place among the others.
+          order: requestedAt.get(item.approval.approvalId) ?? index,
+        }
+      : { kind: 'question' as const, order: item.event.runSeq },
+  );
+}
+
+/** Each Loop's last finished round's outcome, the Loops in the order they started. */
+function loopEnds(projection: Pick<RunProjection, 'loopIterations' | 'iterations'>) {
+  const started = Object.keys(projection.iterations);
+  return Object.values(projection.loopIterations)
+    .filter((rounds) => rounds.length > 0)
+    .sort((a, b) => started.indexOf(a[0] as string) - started.indexOf(b[0] as string))
+    .map((rounds): LoopOutcome | null => {
+      for (let index = rounds.length - 1; index >= 0; index -= 1) {
+        const outcome = projection.iterations[rounds[index] as string]?.outcome;
+        if (outcome) return outcome;
+      }
+      return null;
+    });
 }

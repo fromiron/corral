@@ -5,7 +5,7 @@ import {
   buildTurnProcess,
   CopyTextButton,
   ExecutionTranscript,
-  executionPresence,
+  executionViewPresence,
   FailureNotice,
   GeneratedImage,
   MessageBody,
@@ -60,7 +60,7 @@ import { ReplyBody } from './ReplySelection.tsx';
 import { RunHead, RunRow, RunTail, TurnEnd } from './RunRow.tsx';
 import { TurnProcess, useStepName } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
-import { exhaustedLoop, fileChangeCount, toolRows } from './widgets/selectors.ts';
+import { fileChangeCount, toolRows } from './widgets/selectors.ts';
 
 /** An execution that ended without its work: failed or cancelled. */
 const ENDED_SHORT = new Set<PresenceKind>(['failed', 'cancelled']);
@@ -157,7 +157,6 @@ export function RunMessage({
   const tw = useTranslations('Widgets');
   const tm = useTranslations('MessageBody');
   const tp = useTranslations('Presence');
-  const loopText = useTranslations('Canvas.nodeStatus.loopOutcome');
   const tturn = useTranslations('Turn');
   const stepName = useStepName();
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
@@ -324,11 +323,9 @@ export function RunMessage({
     );
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
   if (working && !watched) setWatched(true);
-  // The run's state, as every screen says it (docs/specs/features/presence.md).
-  const presence = projectionPresence(
-    projection,
-    interactions.map(() => 'question' as const),
-  );
+  // The run's state, as every screen says it (docs/specs/features/presence.md): every open
+  // request once, by the order the record holds them.
+  const presence = projectionPresence(projection, state.events);
   // In a conversation the process opens only by the detailed density or by the person; the
   // run starting or ending neither opens nor folds it.
   const processOpen = chosen ?? chatDensity === 'detailed';
@@ -342,7 +339,7 @@ export function RunMessage({
   const summary = agentSummary(busy.map((execution) => execution.status));
   // Failures and cancellations stay in view. An ordinary success folds them.
   const exposed = executions.filter((execution) =>
-    ENDED_SHORT.has(executionPresence(execution).kind),
+    ENDED_SHORT.has(executionViewPresence(execution).kind),
   );
   const name = (executionId: string) => {
     const execution = projection.executions[executionId];
@@ -490,7 +487,7 @@ export function RunMessage({
         {name(execution.executionId)}
       </Link>
       <PresenceBadge
-        presence={executionPresence(execution)}
+        presence={executionViewPresence(execution)}
         target={sessionId ? `execution:${execution.executionId}` : undefined}
       />
       {execution.modelCallIds.at(-1) ? (
@@ -509,7 +506,7 @@ export function RunMessage({
       {execution.error ? (
         <FailureNotice
           message={execution.error}
-          cancelled={executionPresence(execution).kind === 'cancelled'}
+          cancelled={executionViewPresence(execution).kind === 'cancelled'}
         />
       ) : null}
     </li>
@@ -580,25 +577,29 @@ export function RunMessage({
       attention.filter((row) => row.tone === 'failed' || row.tone === 'cancelled').length +
       exposed.filter((execution) => execution.executionId !== lead).length;
     const leadExecution = lead ? projection.executions[lead] : undefined;
-    // A review loop that ran out of rounds ended on its last candidate: the head says so beside
-    // the state, so the row tells it without its log open.
-    const exhausted = presence.kind === 'succeeded' ? exhaustedLoop(projection) : null;
+    // The state's name alone is the run's label; its detail (a loop that ran out of rounds
+    // before the run completed) stands beside it, so the row tells it without its log open.
     const status = (
-      <span
-        data-presence-label={`run:${runId}`}
-        data-presence={presence.kind}
-        className={
-          // A working run's word shimmers as the kit's work does; reduced motion stills it.
-          // Otherwise a state that needs a look takes its tone's colour.
-          presence.tone === 'active'
-            ? 'shimmer-text'
-            : presence.tone === 'danger' || presence.tone === 'warning'
-              ? presenceTextClass(presence.tone)
-              : undefined
-        }
-      >
-        {exhausted ? `${tp(presence.labelKey)} · ${loopText(exhausted)}` : tp(presence.labelKey)}
-      </span>
+      <>
+        <span
+          data-presence-label={`run:${runId}`}
+          data-presence={presence.kind}
+          className={
+            // A working run's word shimmers as the kit's work does; reduced motion stills it.
+            // Otherwise a state that needs a look takes its tone's colour.
+            presence.tone === 'active'
+              ? 'shimmer-text'
+              : presence.tone === 'danger' || presence.tone === 'warning'
+                ? presenceTextClass(presence.tone)
+                : undefined
+          }
+        >
+          {tp(presence.labelKey)}
+        </span>
+        {presence.detailKey ? (
+          <span data-presence-detail>{` · ${tp(presence.detailKey)}`}</span>
+        ) : null}
+      </>
     );
     const liveWords = writing && chatDensity !== 'results' ? writing : undefined;
     // The store may let a finished reply's words go before its answer is read: the words it
@@ -803,7 +804,7 @@ export function RunMessage({
               endFailure?.error ? (
                 <FailureNotice
                   message={endFailure.error}
-                  cancelled={executionPresence(endFailure).kind === 'cancelled'}
+                  cancelled={executionViewPresence(endFailure).kind === 'cancelled'}
                 />
               ) : null
             }
@@ -883,22 +884,22 @@ export function RunMessage({
                     label={name(id)}
                     status={
                       // Working on its own, not waiting on others (no detail).
-                      executionPresence(execution).kind === 'working' &&
-                      !executionPresence(execution).detail
+                      executionViewPresence(execution).kind === 'working' &&
+                      !executionViewPresence(execution).detail
                         ? 'active'
                         : 'complete'
                     }
                     icon={
-                      executionPresence(execution).kind === 'succeeded'
+                      executionViewPresence(execution).kind === 'succeeded'
                         ? 'check'
-                        : ENDED_SHORT.has(executionPresence(execution).kind)
+                        : ENDED_SHORT.has(executionViewPresence(execution).kind)
                           ? 'x'
                           : 'dot'
                     }
                     isLast={index === projection.executionOrder.length - 1}
                   >
                     <span className="flex flex-wrap items-center gap-2 text-caption">
-                      <PresenceBadge presence={executionPresence(execution)} />
+                      <PresenceBadge presence={executionViewPresence(execution)} />
                       {call ? (
                         <ReasoningSummary
                           call={projection.modelCalls[call]!}

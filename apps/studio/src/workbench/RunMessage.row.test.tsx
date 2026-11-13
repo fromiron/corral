@@ -947,15 +947,15 @@ const loopEnded = (projection: RunProjection, outcome: 'cap_reached' | 'stalled'
   iterations: { round_1: round(1, 'revise'), round_2: round(2, outcome) },
 });
 const done = messages.Presence.state.succeeded;
-const loopOutcome = messages.Canvas.nodeStatus.loopOutcome;
+const detail = messages.Presence.detail;
 
 it.each([
-  ['cap_reached', `${done} · ${loopOutcome.cap_reached}`],
-  ['stalled', `${done} · ${loopOutcome.stalled}`],
-  ['pass', done],
+  ['cap_reached', detail.round_limit],
+  ['stalled', detail.rounds_stalled],
+  ['pass', null],
 ] as const)(
-  'a run whose review loop ended by %s says so in its head state',
-  async (outcome, said) => {
+  'a run whose review loop ended by %s says so beside its head state and in the head’s name',
+  async (outcome, beside) => {
     const first = running();
     const f = await show(first);
     const head = part(f.container, 'head');
@@ -965,6 +965,67 @@ it.each([
     const labels = f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
     expect(labels).toHaveLength(1);
     expect(head?.contains(labels[0] ?? null)).toBe(true);
-    expect(labels[0]?.textContent).toBe(said);
+    // The label holds the state's name alone; the detail stands beside it.
+    expect(labels[0]?.textContent).toBe(done);
+    const said = beside ? `${done} · ${beside}` : done;
+    expect(head?.textContent).toContain(said);
+    if (!beside) expect(head?.textContent).not.toMatch(/Round limit|Rounds stalled/);
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(logName('writer', said, '1 step'));
   },
 );
+
+it('a failed run says nothing of the loop that ran out', async () => {
+  const first = running();
+  const f = await show(first);
+  await f.set({ ...loopEnded(first, 'cap_reached'), ...failed(first), status: 'failed' });
+  expect(part(f.container, 'head')?.textContent).not.toContain(detail.round_limit);
+  expect(toggle(f.container)?.getAttribute('aria-label')).not.toContain(detail.round_limit);
+});
+
+// A role's row names its state once by its execution, with what it waits for beside it.
+it.each([
+  ['waiting_children', false, detail.waiting_agents],
+  ['waiting_message', false, detail.waiting_reply],
+  ['waiting_message', true, detail.watching],
+] as const)(
+  'a role that is %s (advisor: %s) says so beside its state',
+  async (status, advisor, said) => {
+    const projection = running();
+    projection.executions.helper = execution('helper', {
+      status,
+      ...(advisor ? { advisor: true as const } : {}),
+    });
+    projection.executionOrder = ['lead', 'helper'];
+    const f = await show(projection);
+    const label = f.container.querySelector('[data-presence-label="execution:helper"]');
+    expect(label?.textContent).toBe(messages.Presence.state.working);
+    expect(part(f.container, 'role:helper')?.textContent).toContain(
+      `${messages.Presence.state.working} · ${said}`,
+    );
+  },
+);
+
+it.each([
+  ['failed', (p: RunProjection) => failed(p), 'text-danger'],
+  ['paused', (p: RunProjection) => ({ ...p, status: 'paused' as const }), 'text-warning'],
+  ['succeeded', (p: RunProjection) => answered(p), null],
+] as const)('a %s head state takes its tone’s colour', async (_name, as, colour) => {
+  const f = await show(as(running()));
+  const word = f.container.querySelector(`[data-presence-label="run:${RUN}"]`);
+  if (colour) expect(word?.classList.contains(colour)).toBe(true);
+  else expect(word?.className ?? '').not.toMatch(/text-(danger|warning|success)/);
+});
+
+it('the log names the lead’s failure by its execution while the run goes on', async () => {
+  const projection = running();
+  projection.executions.lead = execution('lead', { status: 'failed', error: 'Broke' });
+  projection.executions.helper = execution('helper');
+  projection.executionOrder = ['lead', 'helper'];
+  const f = await show(projection);
+  await act(async () => toggle(f.container)?.click());
+  const team = f.container.querySelector('[data-testid="team-activity"]');
+  expect(team).not.toBeNull();
+  const label = team?.querySelector('[data-presence-label]');
+  expect(label?.getAttribute('data-presence-label')).toBe('execution:lead');
+  expect(f.container.querySelectorAll('[data-presence-label="execution:lead"]')).toHaveLength(1);
+});

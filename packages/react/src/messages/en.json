@@ -6177,7 +6177,9 @@
     "detail": {
       "waiting_agents": "Waiting for agents",
       "waiting_reply": "Waiting for a reply",
-      "watching": "Watching"
+      "watching": "Watching",
+      "round_limit": "Round limit reached",
+      "rounds_stalled": "Rounds stalled"
     }
   },
   "Activity": {

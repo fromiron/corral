@@ -23,7 +23,7 @@ import {
   type RunFlowNode,
   runFlowExecutionIterationId,
 } from '../run/flow.ts';
-import { executionPresence } from '../run/presence.ts';
+import { executionViewPresence } from '../run/projectionPresence.ts';
 import { nodeRunSummary } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { PresenceBadge } from './PresenceBadge.tsx';
@@ -369,7 +369,7 @@ export function RunFlowView({
                     attempt: projection.executions[id]?.attemptNo ?? 1,
                   })}
                   {projection.executions[id] ? (
-                    <PresenceBadge presence={executionPresence(projection.executions[id])} />
+                    <PresenceBadge presence={executionViewPresence(projection.executions[id])} />
                   ) : null}
                 </Button>
               )),
