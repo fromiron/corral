@@ -1,5 +1,5 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunSummary, SessionEntry } from '@corral/core';
+import type { DirectiveView, RunSummary, SessionEntry } from '@corral/core';
 import { CopyTextButton, MessageBody, StatusBadge } from '@corral/react';
 import {
   Button,
@@ -17,14 +17,16 @@ import { ImageAttachmentList } from '../ImageAttachments.tsx';
 import { MessageBranch } from '../MessageBranch.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
-import { editRequest, RESEND_REQUEST, RefusalHelp } from '../RefusalHelp.tsx';
+import { editRequest, RESEND_REQUEST } from '../RefusalHelp.tsx';
 import { SentQuotes } from '../ReplySelection.tsx';
 import { RunChanges } from '../RunChanges.tsx';
 import { RunMessage } from '../RunMessage.tsx';
-import { isScheduledRequest } from '../scheduledRuns.ts';
 import { TextAttachmentList } from '../TextAttachments.tsx';
+import { EntryStatus } from './EntryStatus.tsx';
+import { type SteerRecord, steerMeta } from './entryMeta.ts';
+import { useRecordRead } from './runRecords.ts';
 
-// The conversation rows: each request, the run it started, and where an instruction is.
+// The conversation rows: each request, the run it started, and what became of an instruction.
 
 export function EntryCard({
   sessionId,
@@ -32,12 +34,33 @@ export function EntryCard({
   runs,
   artifactMetadataVersion,
   onPanel,
+  record,
+  carried,
+  carriedHere = false,
+  runOnly = false,
+  heldAs,
+  sourceShown = false,
+  runsListed = true,
 }: {
   sessionId: string;
   entry: SessionEntry;
   runs: RunSummary[];
   artifactMetadataVersion: string;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
+  /** An instruction's directive in its run's record: undefined while unread, null if absent. */
+  record?: SteerRecord | null | undefined;
+  /** The request an instruction was carried over to, in whatever state the session has it. */
+  carried?: SessionEntry | undefined;
+  /** That request is right under this message: this message takes its actions. */
+  carriedHere?: boolean;
+  /** A carried request right under its source message: its run row alone. */
+  runOnly?: boolean;
+  /** What the instruction was before this view saw it expire, until the session is read. */
+  heldAs?: DirectiveView['status'] | undefined;
+  /** A carried request's source message is in the conversation, and says it was carried. */
+  sourceShown?: boolean;
+  /** Whether the run list has been read: a run missing from it before then may be going. */
+  runsListed?: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tm = useTranslations('MessageBody');
@@ -50,17 +73,23 @@ export function EntryCard({
       new CustomEvent(RESEND_REQUEST, { detail: { sessionId, entryId: entry.entryId } }),
     );
   const canResend = !runs.some((item) => !TERMINAL_RUN_STATUSES.has(item.status));
+  // Drawn, an instruction to an ended run has its run's record read (once while the app runs).
+  useRecordRead(entry.intent === 'steer' ? entry.runId : null, runs, runsListed);
+  const steer =
+    entry.intent !== 'steer'
+      ? null
+      : record === null
+        ? ({ kind: 'unknown' } as const)
+        : steerMeta(record ?? null, carried, heldAs);
+  // A started carried request right under the instruction it came from belongs to it: that
+  // message edits and branches it (features/composer-flow.md).
+  const request = steer?.kind === 'carriedStarted' && carried && carriedHere ? carried : entry;
+  const requestRun = request.runId ? runs.find((r) => r.runId === request.runId) : undefined;
   // The time alone on the day it was sent; the date joins it afterwards and in the tooltip.
   const created = new Date(entry.createdAt);
   const day = (date: Date) => format.dateTime(date, { dateStyle: 'short' });
   const full = format.dateTime(created, { timeStyle: 'short', dateStyle: 'short' });
   const when = day(created) === day(now) ? format.dateTime(created, { timeStyle: 'short' }) : full;
-  // A plain follow-up needs no label; queue, instruction and question say what they were.
-  const label = isScheduledRequest(entry)
-    ? t('scheduledRequest')
-    : entry.intent === 'next'
-      ? null
-      : t(`intentShort.${entry.intent}`);
   // what an auto request ran with; not a team the person chose.
   const auto = entry.auto
     ? [
@@ -85,22 +114,52 @@ export function EntryCard({
         .filter(Boolean)
         .join(' · ')
     : null;
-  const state =
-    entry.state === 'started' || entry.state === 'sent' ? null : t(`state.${entry.state}`);
   const unfinished =
     run && ['cancelled', 'interrupted', 'failed'].includes(run.status) && entry.intent !== 'steer';
+  // An instruction's attachments live in its directive; a request keeps its own.
+  const attachments = entry.intent === 'steer' ? record?.directive.attachments : entry.attachments;
+  const runRow =
+    run && entry.intent !== 'steer' ? (
+      <RunCard
+        run={run}
+        number={runs.findIndex((item) => item.runId === run.runId) + 1}
+        nested
+        artifactMetadataVersion={artifactMetadataVersion}
+        onPanel={onPanel}
+        endActions={
+          unfinished ? (
+            // What to do next sits with the turn's one notice that it did not finish.
+            <>
+              <Button variant="secondary" disabled={!canResend} onClick={resend}>
+                {t('retryRequest')}
+              </Button>
+              <Button variant="ghost" onClick={() => editRequest(entry.text, entry)}>
+                {t('restoreRequest')}
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+    ) : null;
+  if (runOnly)
+    return runRow ? (
+      <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-2">
+        {runRow}
+      </article>
+    ) : null;
   return (
     <article data-testid={`entry-${entry.entryId}`} className="chat-turn flex flex-col gap-2">
       <div className="flex flex-col items-end gap-1">
-        {/* What the message was, when it was not a plain request that started. */}
-        {label || state ? (
-          <p data-testid="entry-flag" className="px-1 text-caption text-muted-foreground">
-            {[label, state].filter(Boolean).join(' · ')}
-          </p>
-        ) : null}
-        {/* The kit's sent message: a plain bubble, then its time and icon actions. */}
+        {/* The kit's sent message: a plain bubble, then its one meta line. It keeps the kit's
+            entrance but not its position animation: the conversation holds every row in place
+            itself (features/composer-flow.md "튐 없는 본문"), and a re-render while the view
+            follows its end or while the line's words change would slide the message. */}
         <KitChatMessage
           from="user"
+          layout={false}
+          // The line may take the column's width, not only the message's 80%: a reason fits
+          // whole at a desktop width. It stays right-aligned and runs out to the left.
+          metaProps={{ 'data-chat-part': 'meta', className: 'w-max max-w-[125%]' }}
           time={
             <time dateTime={entry.createdAt} title={full}>
               {when}
@@ -109,24 +168,26 @@ export function EntryCard({
           actions={
             <>
               <CopyTextButton text={entry.text} />
-              {entry.intent !== 'steer' ? (
+              {request.intent !== 'steer' ? (
                 <Tooltip content={tm('editAsNew')}>
                   <Button
                     size="icon"
                     variant="ghost"
                     aria-label={tm('editAsNew')}
-                    onClick={() => editRequest(entry.text, entry)}
+                    onClick={() => editRequest(request.text, request)}
                   >
                     <Pencil />
                   </Button>
                 </Tooltip>
               ) : null}
-              {entry.runId && run && (entry.intent === 'next' || entry.intent === 'explain') ? (
+              {request.runId &&
+              requestRun &&
+              (request.intent === 'next' || request.intent === 'explain' || request.carriedFrom) ? (
                 <MessageBranch
                   icon
-                  runId={entry.runId}
+                  runId={request.runId}
                   requestStart
-                  disabled={!TERMINAL_RUN_STATUSES.has(run.status)}
+                  disabled={!TERMINAL_RUN_STATUSES.has(requestRun.status)}
                 />
               ) : null}
               {auto ? (
@@ -146,14 +207,25 @@ export function EntryCard({
               ) : null}
             </>
           }
+          status={
+            <EntryStatus
+              sessionId={sessionId}
+              entry={entry}
+              steer={steer}
+              sourceShown={sourceShown}
+              canResend={canResend}
+              onResend={resend}
+              onPanel={onPanel}
+            />
+          }
         >
           <MessageBody text={entry.text} copy={false} />
-          {entry.attachments?.length ? (
-            <SentQuotes attachments={entry.attachments} owner={entry.entryId} />
+          {attachments?.length ? (
+            <SentQuotes attachments={attachments} owner={entry.entryId} />
           ) : null}
-          {entry.attachments?.some((item) => item.provenance?.kind !== 'reply') ? (
+          {attachments?.some((item) => item.provenance?.kind !== 'reply') ? (
             <TextAttachmentList
-              attachments={entry.attachments.filter((item) => item.provenance?.kind !== 'reply')}
+              attachments={attachments.filter((item) => item.provenance?.kind !== 'reply')}
             />
           ) : null}
           {entry.images?.length ? (
@@ -164,65 +236,7 @@ export function EntryCard({
           </span>
         </KitChatMessage>
       </div>
-      {entry.detail && entry.state === 'refused' && !entry.meetingHandoff ? (
-        <RefusalHelp
-          sessionId={sessionId}
-          code={entry.refusal?.code}
-          owner={entry.refusal?.owner}
-          message={entry.detail}
-          // Edited as the pencil and "restore" edit it: with everything it was sent with.
-          onEdit={() => editRequest(entry.text, entry)}
-        />
-      ) : entry.detail ? (
-        <p role="note" className="text-caption text-danger">
-          {entry.detail}
-        </p>
-      ) : null}
-      {run && entry.intent !== 'steer' ? (
-        <RunCard
-          run={run}
-          number={runs.findIndex((item) => item.runId === run.runId) + 1}
-          nested
-          artifactMetadataVersion={artifactMetadataVersion}
-          onPanel={onPanel}
-          endActions={
-            unfinished ? (
-              // What to do next sits with the turn's one notice that it did not finish.
-              <>
-                <Button variant="secondary" disabled={!canResend} onClick={resend}>
-                  {t('retryRequest')}
-                </Button>
-                <Button variant="ghost" onClick={() => editRequest(entry.text, entry)}>
-                  {t('restoreRequest')}
-                </Button>
-              </>
-            ) : undefined
-          }
-        />
-      ) : null}
-      {entry.intent === 'steer' && entry.runId ? (
-        <div className="flex flex-wrap items-center justify-end gap-2 text-caption text-muted-foreground">
-          <DeliveryStatus
-            runId={entry.runId}
-            commandId={entry.commandId ?? null}
-            executionId={entry.executionId ?? null}
-            onResend={resend}
-            resendDisabled={!canResend}
-          />
-          <Button
-            variant="ghost"
-            onClick={() =>
-              onPanel('run', {
-                run: entry.runId ?? undefined,
-                view: 'run',
-                execution: entry.executionId ?? undefined,
-              })
-            }
-          >
-            {t('openRun')}
-          </Button>
-        </div>
-      ) : null}
+      {runRow}
     </article>
   );
 }
@@ -342,87 +356,5 @@ export function RunCard({
         <RunChanges sessionId={run.sessionId} runId={run.runId} />
       ) : null}
     </section>
-  );
-}
-
-/** Where an instruction is now, from the run's own record of it. */
-/**
- * Whom an instruction was for, when it applies, and where it is now, from the run's
- * own record. It stays readable after the composer moves on to another execution.
- */
-function DeliveryStatus({
-  runId,
-  commandId,
-  executionId,
-  onResend,
-  resendDisabled,
-}: {
-  runId: string;
-  commandId: string | null;
-  executionId: string | null;
-  onResend: () => void;
-  resendDisabled: boolean;
-}) {
-  const t = useTranslations('Sessions');
-  const ts = useTranslations('Transcript.instruction');
-  const { transport } = useServices();
-  const [status, setStatus] = useState<string | null>(null);
-  const [recipient, setRecipient] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    void Promise.all([transport.getSnapshot(runId), transport.getRunDefinition(runId)]).then(
-      ([{ projection }, definition]) => {
-        const execution = executionId ? projection.executions[executionId] : undefined;
-        if (!live || !execution) return;
-        const node = definition?.nodes.find((n) => n.id === execution.nodeId);
-        setRecipient(
-          `${node?.label ?? execution.nodeId} · #${projection.executionOrder.indexOf(execution.executionId) + 1}`,
-        );
-      },
-      () => {},
-    );
-    return () => {
-      live = false;
-    };
-  }, [transport, runId, executionId]);
-  useEffect(() => {
-    if (!commandId) return;
-    let live = true;
-    const read = () =>
-      transport.getSnapshot(runId).then(
-        ({ projection }) => {
-          const directive = Object.values(projection.directives).find(
-            (d) => d.commandId === commandId,
-          );
-          if (live) setStatus(directive?.status ?? null);
-          return directive?.status ?? null;
-        },
-        () => null,
-      );
-    void read();
-    const timer = setInterval(() => {
-      void read().then((now) => {
-        if (now && !['accepted', 'queued', 'attached_to_request'].includes(now))
-          clearInterval(timer);
-      });
-    }, 2000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [transport, runId, commandId]);
-  return (
-    <>
-      <span data-testid="recipient" className="text-foreground" title={executionId ?? ''}>
-        → {recipient ?? executionId}
-      </span>
-      <span>{t('appliesAt')}</span>
-      {status ? <span data-testid="delivery">{t('delivery', { status: ts(status) })}</span> : null}
-      {status && ['not_delivered', 'expired', 'cancelled'].includes(status) ? (
-        <Button variant="tertiary" disabled={resendDisabled} onClick={onResend}>
-          {t('resendNext')}
-        </Button>
-      ) : null}
-    </>
   );
 }

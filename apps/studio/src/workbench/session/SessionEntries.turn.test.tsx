@@ -21,7 +21,6 @@ import { EntryCard, RunCard } from './SessionEntries.tsx';
 const fixture = vi.hoisted(() => ({
   store: null as unknown,
   editRequest: vi.fn(),
-  refusalEdit: null as null | (() => void),
 }));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({
@@ -59,13 +58,12 @@ vi.mock('../TextAttachments.tsx', async (original) => ({
     </ul>
   ),
 }));
-vi.mock('../RefusalHelp.tsx', () => ({
-  RESEND_REQUEST: 'corral:resend-request',
-  RefusalHelp: ({ onEdit }: { onEdit?: () => void }) => {
-    fixture.refusalEdit = onEdit ?? null;
-    return null;
-  },
+vi.mock('../RefusalHelp.tsx', async (original) => ({
+  ...(await original<typeof import('../RefusalHelp.tsx')>()),
   editRequest: fixture.editRequest,
+}));
+vi.mock('../navigation.ts', () => ({
+  useSettingsNavigation: () => ({ link: () => ({ to: '/settings' }) }),
 }));
 vi.mock('../MessageBranch.tsx', () => ({
   MessageBranch: ({ icon }: { icon?: boolean }) => (
@@ -241,9 +239,11 @@ it('a refused request is edited with everything it was sent with, as the pencil 
     ],
     permissionMode: 'ask',
   });
-  await show(value);
-  expect(fixture.refusalEdit).not.toBeNull();
-  await act(async () => fixture.refusalEdit?.());
+  const f = await show(value);
+  // The edit is the pencil on the message's meta line, with the reason.
+  const edit = f.button(messages.MessageBody.editAsNew);
+  expect(edit?.closest('[data-chat-part="meta"]')).not.toBeNull();
+  await act(async () => edit?.click());
   expect(fixture.editRequest).toHaveBeenCalledWith(value.text, value);
 });
 
@@ -253,7 +253,7 @@ it('an instruction keeps copy but cannot be edited as a new request', async () =
   expect(f.button(messages.MessageBody.editAsNew)).toBeUndefined();
 });
 
-it('the visible meta is the time and an unusual state; the rest stays for assistive tech', async () => {
+it('the visible meta is the time and what became of the message; the rest stays for assistive tech', async () => {
   const normal = await show(entry());
   expect(normal.container.querySelector('[data-testid="entry-flag"]')).toBeNull();
   const time = normal.container.querySelector('time');
@@ -264,12 +264,17 @@ it('the visible meta is the time and an unusual state; the rest stays for assist
   expect(normal.container.querySelector('.sr-only')?.textContent).toContain(
     `${messages.Sessions.youAsked.replace('{intent}', messages.Sessions.intent.next)} · ${messages.Sessions.state.started}`,
   );
-  const refused = await show(entry({ intent: 'queue', state: 'refused', runId: null }));
-  const flag = refused.container.querySelector('[data-testid="entry-flag"]');
-  expect(flag?.textContent).toBe(
-    `${messages.Sessions.intentShort.queue} · ${messages.Sessions.state.refused}`,
+  const refused = await show(
+    entry({ intent: 'queue', state: 'refused', runId: null, detail: 'The request did not start' }),
   );
-  expect(flag?.classList.contains('sr-only')).toBe(false);
+  expect(refused.container.querySelector('[data-testid="entry-flag"]')).toBeNull();
+  // On the meta line: the reason (a queued request is no kind of message to name first).
+  const status = refused.container.querySelector(
+    '[data-chat-part="meta"] [data-testid="entry-status"]',
+  );
+  expect(status?.textContent?.startsWith(messages.Refusal.other)).toBe(true);
+  expect(status?.textContent).toContain(messages.Refusal.other);
+  expect(status?.closest('.sr-only')).toBeNull();
 });
 
 it("the process line's run part opens the run record; no separate link floats beside the turn", async () => {

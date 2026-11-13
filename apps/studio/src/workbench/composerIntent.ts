@@ -3,7 +3,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
-import type { RunProjection, SessionIntent } from '@corral/core';
+import type { ExecutionView, RunProjection, SessionIntent } from '@corral/core';
 
 // How the composer sends (features/composer-flow.md "전송", "합류 대상"). Nothing running: every
 // key starts a new request. A run going: the send key joins the target execution (read at its
@@ -147,18 +147,22 @@ export function intentOf(
 
 const WAITING_ON_PERSON = new Set(['approval', 'user']);
 
-/**
- * The executions of a run that can take an instruction, read from its projection
- * (features/composer-flow.md "계약"), and the one writing the conversation's answer.
- */
-export function targetsOf(
+/** An execution waiting on the person (an approval or a question); an instruction is read after. */
+export function awaitsPerson(execution: Pick<ExecutionView, 'status' | 'waitingOn'>): boolean {
+  return (
+    execution.status === 'waiting_approval' ||
+    WAITING_ON_PERSON.has(execution.waitingOn?.kind ?? '')
+  );
+}
+
+/** The executions that can take an instruction now, in run order, with their role names. */
+function openExecutions(
   projection: RunProjection,
   definition: Pick<CorralDefinition, 'nodes'> | null,
-): { targets: SteerTarget[]; lead: string | null } {
-  if (TERMINAL_RUN_STATUSES.has(projection.status) || projection.status === 'cancelling')
-    return { targets: [], lead: null };
+) {
+  if (TERMINAL_RUN_STATUSES.has(projection.status) || projection.status === 'cancelling') return [];
   const node = (id: string) => definition?.nodes.find((item) => item.id === id);
-  const open = projection.executionOrder.flatMap((id, index) => {
+  return projection.executionOrder.flatMap((id, index) => {
     const execution = projection.executions[id];
     if (
       !execution ||
@@ -169,25 +173,51 @@ export function targetsOf(
     const step = node(execution.nodeId);
     // A check step calls no model, so no instruction reaches it.
     if (step?.type === 'decision' && step.mode === 'check') return [];
-    const awaiting =
-      execution.status === 'waiting_approval' ||
-      WAITING_ON_PERSON.has(execution.waitingOn?.kind ?? '');
-    return [
-      {
-        id,
-        name: step?.label ?? execution.nodeId,
-        position: index + 1,
-        // Only a working execution has a response to cut (features/reins.md "전달 방식").
-        interruptible: execution.status === 'active' && !awaiting,
-        awaiting,
-      },
-    ];
+    return [{ id, execution, name: step?.label ?? execution.nodeId, position: index + 1 }];
   });
-  const targets = open.map(({ id, name, position, interruptible, awaiting }) => ({
-    id,
-    label: open.filter((item) => item.name === name).length > 1 ? `${name} · #${position}` : name,
-    interruptible,
-    awaiting,
-  }));
+}
+
+/**
+ * The name the send menu gives an execution: its role, and its run position when another
+ * execution of that role can take an instruction too. An instruction's meta line names its
+ * target the same way, after the execution has ended as well.
+ */
+export function targetLabel(
+  projection: RunProjection,
+  definition: Pick<CorralDefinition, 'nodes'> | null,
+  executionId: string,
+): string {
+  const execution = projection.executions[executionId];
+  const name =
+    definition?.nodes.find((item) => item.id === execution?.nodeId)?.label ??
+    execution?.nodeId ??
+    executionId;
+  const position = projection.executionOrder.indexOf(executionId) + 1;
+  const others = openExecutions(projection, definition).filter(
+    (item) => item.id !== executionId && item.name === name,
+  );
+  return others.length > 0 ? `${name} · #${position}` : name;
+}
+
+/**
+ * The executions of a run that can take an instruction, read from its projection
+ * (features/composer-flow.md "계약"), and the one writing the conversation's answer.
+ */
+export function targetsOf(
+  projection: RunProjection,
+  definition: Pick<CorralDefinition, 'nodes'> | null,
+): { targets: SteerTarget[]; lead: string | null } {
+  if (TERMINAL_RUN_STATUSES.has(projection.status) || projection.status === 'cancelling')
+    return { targets: [], lead: null };
+  const targets = openExecutions(projection, definition).map(({ id, execution }) => {
+    const awaiting = awaitsPerson(execution);
+    return {
+      id,
+      label: targetLabel(projection, definition, id),
+      // Only a working execution has a response to cut (features/reins.md "전달 방식").
+      interruptible: execution.status === 'active' && !awaiting,
+      awaiting,
+    };
+  });
   return { targets, lead: projection.executionOrder[0] ?? null };
 }
