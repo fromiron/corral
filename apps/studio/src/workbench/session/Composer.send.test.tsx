@@ -1272,6 +1272,30 @@ describe('Stop in Send’s place', () => {
     ).toEqual(expect.not.arrayContaining([expect.stringMatching(/./)]));
   });
 
+  it('says nothing under the input of a lost answer for a run its record says ended', async () => {
+    const f = await mount();
+    // Its record says it ended before the run list does: /pause still goes to it.
+    await act(async () =>
+      f.store.setState({
+        projection: projection({ exec_writer: 'succeeded' }, 'run_live', 'succeeded'),
+      }),
+    );
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await f.type('/pause');
+    const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+      node.textContent?.includes('/pause'),
+    );
+    expect(option, document.body.textContent ?? '').toBeDefined();
+    await act(async () => {
+      option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(f.sendCommand.mock.calls.map(([command]) => command.type)).toEqual(['pause']);
+    expect(f.container.textContent).not.toContain(messages.Activity.commandUnconfirmed);
+    expect(
+      [...f.container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent),
+    ).toEqual(expect.not.arrayContaining([expect.stringMatching(/./)]));
+  });
+
   it('says a refusal under the input once its run is no longer going', async () => {
     const f = await mount();
     f.sendCommand.mockResolvedValueOnce({ error: { message: 'The run changed' } } as never);
