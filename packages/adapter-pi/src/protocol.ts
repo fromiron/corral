@@ -229,7 +229,8 @@ export const StartFrame = z.strictObject({
    */
   assignment: z.discriminatedUnion('kind', [
     ...WorkAssignment.options,
-    z.strictObject({ kind: z.literal('advisor'), watches: z.array(Identifier).min(1).max(64) }),
+    // As many as the definition allows; it caps no node count.
+    z.strictObject({ kind: z.literal('advisor'), watches: z.array(Identifier).min(1) }),
   ]),
   /** Callable nodes it may delegate to or ask, as named in the definition. */
   delegateTo: z.array(z.strictObject({ nodeId: Identifier, label: z.string() })),

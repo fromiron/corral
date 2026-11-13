@@ -301,6 +301,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }));
 
     let forceCompaction = false;
+    // A compaction completed for the request being prepared.
+    let rebased = false;
     let preparedMessages: AgentContext['messages'] = [];
     // The flight of the latest response; set when an interrupt cut it.
     let latest: Flight | null = null;
@@ -496,6 +498,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 modelCallIds: summaryCalls,
               },
             });
+            rebased = true;
           }
         } catch (error) {
           if (!owner) throw error;
@@ -548,7 +551,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       }
       unrecorded = false;
       if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
-      if (review && !retryIndex) review.requests += 1;
+      // Every permitted request of the review counts, a retry too, as the Coordinator counts it.
+      if (review) review.requests += 1;
       permit = {
         modelCallId: reply.modelCallId,
         apiKey: reply.apiKey,
@@ -591,6 +595,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           ],
         };
       preparedMessages = [...preparedContext.messages];
+      // An advisor's conversation goes on from review to review, so a compaction is where it now
+      // stands: the next review starts from the compacted context, and a later summary builds on
+      // this one (features/advisor.md, 계약). The response and its tool results follow it.
+      if (advisor && rebased && agent) agent.state.messages = [...preparedMessages];
+      rebased = false;
       return preparedContext === context ? undefined : { context: preparedContext };
     };
 

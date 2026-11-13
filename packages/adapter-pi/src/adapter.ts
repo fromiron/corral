@@ -316,6 +316,7 @@ class WorkerExecution {
       if (this.state !== 'starting') return this.violation();
       this.state = 'running';
       const { role } = this.input;
+      const advisor = this.input.assignment.kind === 'advisor';
       this.send({
         type: 'start',
         ...(this.input.meeting ? { meeting: this.input.meeting } : {}),
@@ -344,10 +345,14 @@ class WorkerExecution {
             }
           : {}),
         criteriaVersionId: this.input.criteriaVersionId,
-        ...(this.input.resumeContext ? { resumeContext: this.input.resumeContext } : {}),
-        ...(this.input.conversation ? { conversation: this.input.conversation } : {}),
+        // An advisor reads only its review input (features/advisor.md, 계약): the run's images,
+        // the earlier conversation and a resumed context are the watched role's, not its own.
+        ...(this.input.resumeContext && !advisor
+          ? { resumeContext: this.input.resumeContext }
+          : {}),
+        ...(this.input.conversation && !advisor ? { conversation: this.input.conversation } : {}),
         ...(this.input.taskBrief ? { taskBrief: this.input.taskBrief } : {}),
-        ...(this.input.images?.length ? { images: this.input.images } : {}),
+        ...(this.input.images?.length && !advisor ? { images: this.input.images } : {}),
         ...(this.input.teamPlanOwner ? { teamPlanOwner: true } : {}),
         round: this.input.round,
         // Only the tools this role may use, and that its links make meaningful, are offered;

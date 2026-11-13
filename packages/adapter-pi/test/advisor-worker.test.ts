@@ -1,9 +1,11 @@
 import type {
   AdvisorReviewRequest,
+  AgentHost,
   AgentSettlement,
   AgentStartInput,
   ToolOutcome,
 } from '@corral/contracts';
+import { resolveProfileContext } from '@corral/core';
 import { Gate } from '@corral/testkit';
 import {
   type TranscriptContext as Context,
@@ -15,7 +17,14 @@ import {
 import { describe, expect, it } from 'vitest';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
-import { HostFrame, SdkStartFrame, StartFrame, WorkerFrame } from '../src/protocol.ts';
+import {
+  HostFrame,
+  SdkHostFrame,
+  SdkStartFrame,
+  SdkWorkerFrame,
+  StartFrame,
+  WorkerFrame,
+} from '../src/protocol.ts';
 import { runWorker } from '../src/worker.ts';
 import { ACCESS_TOKEN, recordingHost } from './harness.ts';
 
@@ -74,6 +83,8 @@ function advisor(
     input?: AgentStartInput;
     execute?: (toolCallId: string) => Promise<ToolOutcome>;
     wrapSignal?: (signal: AbortSignal | undefined) => void;
+    /** Replaces host calls after the recording ones. */
+    host?: Partial<AgentHost>;
   } = {},
 ) {
   const faux = createFauxCore({});
@@ -98,10 +109,23 @@ function advisor(
         (await options.execute?.(toolCallId)) ?? { ok: true, toolCallId, result: { text: 'x' } }
       );
     },
+    ...options.host,
   });
+  // What the host sent the worker, and whether that came after the worker had exited.
+  const sent: { type: string; afterExit: boolean; frame: Record<string, unknown> }[] = [];
   const adapter = new PiAgentAdapter({
     spawn: () => {
       const pair = memoryChannelPair();
+      let exited = false;
+      pair.host.onExit(() => {
+        exited = true;
+      });
+      const send = pair.host.send.bind(pair.host);
+      pair.host.send = (frame) => {
+        const record = frame as Record<string, unknown> & { type: string };
+        sent.push({ type: record.type, afterExit: exited, frame: record });
+        send(frame);
+      };
       runWorker(pair.worker, {
         streamFn: (model, context, streamOptions) => {
           options.wrapSignal?.(streamOptions?.signal);
@@ -125,6 +149,8 @@ function advisor(
     executed,
     requests: () => calls.filter((c) => c === 'prepare').length,
     sdk: () => spawnedSdk,
+    sent,
+    host,
   };
 }
 
@@ -542,5 +568,354 @@ describe('the advisor’s frames', () => {
       expect(
         HostFrame.safeParse({ type: 'review', ...head, requestId: 'req_1', review: bad }).success,
       ).toBe(false);
+  });
+});
+
+describe('how a review ends', () => {
+  const reading = () =>
+    fauxAssistantMessage([fauxToolCall('read_file', { path: 'notes.md' })], {
+      stopReason: 'toolUse',
+    });
+
+  it('a review ended while a tool runs makes no further request', async () => {
+    const running = new Gate();
+    const release = new Gate();
+    let handle: Awaited<ReturnType<PiAgentAdapter['start']>> | undefined;
+    const a = advisor([reading, quiet(), quiet()], {
+      reviews: [review(1), null],
+      execute: async (toolCallId) => {
+        running.open();
+        await release.wait();
+        return { ok: true, toolCallId, result: { text: 'notes' } };
+      },
+    });
+    handle = await a.start();
+    await running.wait();
+    handle.endReview?.('review_1');
+    await tick();
+    release.open();
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(a.requests()).toBe(1);
+    expect(a.asked).toEqual([0, 1]);
+  });
+
+  it('a request refused because its review ended is no failure, and leaves nothing behind', async () => {
+    const preparing = new Gate();
+    const seen: Context[] = [];
+    let prepares = 0;
+    let handle: Awaited<ReturnType<PiAgentAdapter['start']>> | undefined;
+    let base: AgentHost['prepareModelRequest'] | undefined;
+    const a = advisor([reading, quiet(seen)], {
+      reviews: [review(1), review(2), null],
+      host: {
+        prepareModelRequest: async (...args) => {
+          prepares += 1;
+          if (prepares === 2) {
+            preparing.open();
+            await tick();
+            // As the Coordinator does: the review ends, then its request is refused.
+            handle?.endReview?.('review_1');
+            throw new Error('the advisor has no review open for another model request');
+          }
+          if (!base) throw new Error('no host');
+          return base(...args);
+        },
+      },
+    });
+    base = recordingHost().host.prepareModelRequest;
+    handle = await a.start();
+    await preparing.wait();
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(a.asked.length).toBe(3);
+    // The next review starts from the first one's last real message, not from an empty failure.
+    expect(said(seen[0])).not.toContain('"stopReason":"error"');
+    expect(said(seen[0])).toContain(review(2).text);
+  });
+
+  it('a model error inside a review fails the advisor', async () => {
+    const a = advisor(
+      [fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'HTTP 400 bad request' })],
+      { reviews: [review(1), null] },
+    );
+    const settlement = await (await a.start()).waitForSettlement();
+    expect(settlement.outcome).toBe('failed');
+    expect(a.asked).toEqual([0]);
+  });
+
+  it('a refused next review fails the advisor', async () => {
+    const a = advisor([quiet()], {
+      host: {
+        nextReview: async () => {
+          throw new Error('the host lost the review');
+        },
+      },
+    });
+    const settlement = await (await a.start()).waitForSettlement();
+    expect(settlement.outcome).toBe('failed');
+    expect(a.requests()).toBe(0);
+  });
+
+  it('a cancel while the last compaction report is pending ends it cancelled', async () => {
+    const reporting = new Gate();
+    const release = new Gate();
+    const done = new Gate();
+    const a = advisor([quiet()], {
+      reviews: [done.wait().then(() => null)],
+      host: {
+        reportCompaction: async () => {
+          reporting.open();
+          await release.wait();
+        },
+      },
+    });
+    const handle = await a.start();
+    await tick();
+    handle.requestCompaction?.('cmd_compact');
+    await tick();
+    done.open();
+    await reporting.wait();
+    await handle.cancel('the person stopped the run');
+    release.open();
+    expect((await handle.waitForSettlement()).outcome).toBe('cancelled');
+  });
+
+  it('counts a retried request against the cap, as the Coordinator does', async () => {
+    const a = advisor(
+      [
+        fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'fetch failed' }),
+        reading,
+        reading,
+        quiet(),
+      ],
+      { reviews: [review(1, { maxRequests: 2 }), null] },
+    );
+    expect((await (await a.start()).waitForSettlement()).outcome).toBe('succeeded');
+    // The failed attempt and its retry are the review's two requests.
+    expect(a.requests()).toBe(2);
+    expect(a.asked).toEqual([0, 2]);
+  });
+});
+
+describe('the advisor on the adapter', () => {
+  it('is refused by a host that gives no reviews', async () => {
+    const a = advisor([quiet()], { host: { nextReview: undefined } });
+    await expect(a.start()).rejects.toThrow('the host gives this advisor no reviews');
+  });
+
+  it('sends nothing after the worker has exited, however late the next review comes', async () => {
+    let answer: (review: AdvisorReviewRequest | null) => void = () => {};
+    const late = new Promise<AdvisorReviewRequest | null>((resolve) => {
+      answer = resolve;
+    });
+    const a = advisor([quiet()], { reviews: [late] });
+    const handle = await a.start();
+    await tick();
+    await handle.cancel('the person stopped the run');
+    expect((await handle.waitForSettlement()).outcome).toBe('cancelled');
+    answer(review(1));
+    await tick();
+    expect(a.sent.filter((f) => f.afterExit)).toEqual([]);
+  });
+
+  it('a working worker that asks for a review breaks the protocol', async () => {
+    let asked = 0;
+    const { host } = recordingHost({
+      nextReview: async () => {
+        asked += 1;
+        return null;
+      },
+    });
+    const adapter = new PiAgentAdapter({
+      spawn: () => {
+        const pair = memoryChannelPair();
+        pair.worker.onFrame((frame) => {
+          const start = frame as { type: string; executionId: string };
+          if (start.type === 'start')
+            pair.worker.send({
+              type: 'next_review',
+              protocolVersion: 8,
+              executionId: start.executionId,
+              requestId: 'req_1',
+            });
+        });
+        pair.worker.send({ type: 'ready', protocolVersion: 8 });
+        return pair.host;
+      },
+      credentials: async () => ACCESS_TOKEN,
+    });
+    const input = advisorInput({ allowedCollaborationTools: ['submit_result'] });
+    const handle = await adapter.start({ ...input, assignment: { kind: 'scheduled' } }, host);
+    const settlement = await handle.waitForSettlement();
+    expect(settlement.outcome).toBe('failed');
+    expect(settlement.error).toBe('the model worker sent an invalid message');
+    expect(asked).toBe(0);
+  });
+
+  it('offers advise only when the advisor’s role was given it', async () => {
+    const seen: Context[] = [];
+    const a = advisor([quiet(seen)], {
+      reviews: [review(1), null],
+      input: advisorInput({ allowedCollaborationTools: ['read_artifact'] }),
+    });
+    await (await a.start()).waitForSettlement();
+    expect(toolNames(seen[0]).sort()).toEqual(['read_artifact', 'read_file']);
+  });
+
+  it('a working execution’s handle has no endReview', async () => {
+    const input = advisorInput({ allowedCollaborationTools: ['submit_result'] });
+    const a = advisor([quiet()], { input: { ...input, assignment: { kind: 'scheduled' } } });
+    const handle = await a.start();
+    expect(handle.endReview).toBeUndefined();
+    await handle.waitForSettlement();
+  });
+
+  it('gives the advisor only the review input: no run images, earlier conversation or resumed context', async () => {
+    const seen: Context[] = [];
+    const image = {
+      kind: 'image' as const,
+      imageId: 'image_pixel',
+      name: 'pixel.png',
+      mime: 'image/png' as const,
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==',
+    };
+    const input = {
+      ...advisorInput(),
+      images: [image],
+      conversation: {
+        turns: [{ request: 'EARLIER_REQUEST', answer: 'EARLIER_ANSWER' }],
+        omittedTurns: 0,
+      },
+    } as unknown as AgentStartInput;
+    const a = advisor([quiet(seen)], { reviews: [review(1), null], input });
+    expect((await (await a.start()).waitForSettlement()).outcome).toBe('succeeded');
+    const start = a.sent.find((f) => f.type === 'start')?.frame ?? {};
+    expect(Object.keys(start)).not.toContain('images');
+    expect(Object.keys(start)).not.toContain('conversation');
+    expect(Object.keys(start)).not.toContain('resumeContext');
+    expect(said(seen[0])).not.toContain('EARLIER_REQUEST');
+    expect(said(seen[0])).not.toContain(image.data);
+  });
+});
+
+describe('the advise tool’s limits', () => {
+  it('refuses a note over 1,000 characters before the host runs anything', async () => {
+    const seen: Context[] = [];
+    const a = advisor(
+      [
+        fauxAssistantMessage(
+          [fauxToolCall('advise', { severity: 'concern', note: 'x'.repeat(1001) })],
+          { stopReason: 'toolUse' },
+        ),
+        quiet(seen),
+      ],
+      { reviews: [review(1), null] },
+    );
+    expect((await (await a.start()).waitForSettlement()).outcome).toBe('succeeded');
+    expect(a.executed).toEqual([]);
+    expect(JSON.stringify(seen[0]?.messages.filter((m) => m.role === 'toolResult'))).toContain(
+      '"isError":true',
+    );
+  });
+});
+
+describe('the advisor’s frames, further', () => {
+  const head = { protocolVersion: 8, executionId: 'exec_advisor' } as const;
+
+  it('the SDK worker’s frames have none of the review frames', () => {
+    const sdk = { protocolVersion: 9, executionId: 'exec_advisor' } as const;
+    expect(
+      SdkWorkerFrame.safeParse({ type: 'next_review', ...sdk, requestId: 'req_1' }).success,
+    ).toBe(false);
+    expect(
+      SdkHostFrame.safeParse({ type: 'review', ...sdk, requestId: 'req_1', review: review(1) })
+        .success,
+    ).toBe(false);
+    expect(
+      SdkHostFrame.safeParse({ type: 'end_review', ...sdk, reviewId: 'review_1' }).success,
+    ).toBe(false);
+  });
+
+  it('an advisor watches at least one node, and any number the definition allows', () => {
+    const watching = (n: number) =>
+      StartFrame.shape.assignment.safeParse({
+        kind: 'advisor',
+        watches: Array.from({ length: n }, (_, i) => `node_${i}`),
+      }).success;
+    expect(watching(0)).toBe(false);
+    expect(watching(65)).toBe(true);
+  });
+
+  it('a review may make 1 to 64 requests', () => {
+    const at = (maxRequests: number) =>
+      HostFrame.safeParse({
+        type: 'review',
+        ...head,
+        requestId: 'req_1',
+        review: { ...review(1), maxRequests },
+      }).success;
+    expect(at(64)).toBe(true);
+    expect(at(65)).toBe(false);
+  });
+});
+
+describe('compaction between reviews', () => {
+  it('a compacted conversation is where the next review starts, and later summaries build on it', async () => {
+    const policy = resolveProfileContext(
+      { contextWindow: 6000, compaction: { reserveTokens: 0, keepRecentTokens: 1500 } },
+      { contextWindow: 6000, source: 'catalog' },
+      'small-advisor',
+      256,
+    ).policy;
+    if (!policy) throw new Error('no context policy');
+    const names = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN'];
+    const long = (name: string) =>
+      `ANSWER_${name} ${'The moon is made of cheese and nobody checked. '.repeat(110)}`;
+    const reviews = names.map((name, i) => review(i + 1, { text: long(name) }));
+    const summaries: Context[] = [];
+    const turns: Context[] = [];
+    let summary = 0;
+    const step: FauxResponseStep = (context) => {
+      if (said(context).includes('internal context-compaction')) {
+        summaries.push(context);
+        summary += 1;
+        return fauxAssistantMessage(`SUMMARY_${summary} of the earlier reviews.`);
+      }
+      turns.push(context);
+      return fauxAssistantMessage('Nothing to add.');
+    };
+    const phases: string[] = [];
+    const a = advisor(
+      Array.from({ length: 40 }, () => step),
+      {
+        reviews: [...reviews, null],
+        input: {
+          ...advisorInput(),
+          model: {
+            profile: 'model-a',
+            provider: 'openai',
+            modelId: 'faux-1',
+            auth: 'oauth',
+            contextPolicy: policy,
+          },
+        },
+        host: {
+          reportCompaction: async (report) => void phases.push(report.phase),
+        },
+      },
+    );
+    expect((await (await a.start()).waitForSettlement()).outcome).toBe('succeeded');
+    const answers = (context: Context | undefined) =>
+      names.filter((name) => said(context).includes(`ANSWER_${name} `));
+    // Compaction runs when the conversation needs it, not before every review once it did.
+    expect(summaries.length).toBeGreaterThanOrEqual(2);
+    expect(summaries.length).toBeLessThan(turns.length - 1);
+    expect(phases.filter((p) => p === 'failed')).toEqual([]);
+    // The request after the first compaction starts from its summary and the new review only.
+    const firstAfter = turns.findIndex((context) => said(context).includes('SUMMARY_1'));
+    expect(firstAfter).toBeGreaterThan(0);
+    expect(answers(turns[firstAfter])).not.toContain('ONE');
+    // The second summary is asked over the first one, not over the first answer again.
+    expect(said(summaries[1])).toContain('SUMMARY_1');
+    expect(answers(summaries[1])).not.toContain('ONE');
   });
 });
