@@ -62,6 +62,7 @@ export function toolPermission(
       'ask',
       'reply',
       'read_artifact',
+      'advise',
     ].includes(proposal.name)
   )
     return result;

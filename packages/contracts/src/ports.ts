@@ -1,3 +1,4 @@
+import type { AdviceSeverity } from './commands.ts';
 import type { AgentRole, InputBindingKind, ItemRef, TaskBrief } from './definition.ts';
 import type {
   EffortLevel,
@@ -56,7 +57,9 @@ export type IdKind =
   | 'approval'
   | 'decision'
   | 'preparation'
-  | 'route';
+  | 'route'
+  | 'advice'
+  | 'review';
 
 export interface IdFactory {
   next(kind: IdKind): string;
@@ -89,7 +92,23 @@ export interface ResolvedInput {
 export type Assignment =
   | { kind: 'scheduled' }
   | { kind: 'delegated'; brief: string; parentExecutionId: string }
-  | { kind: 'question'; questionId: string; body: string; askerExecutionId: string };
+  | { kind: 'question'; questionId: string; body: string; askerExecutionId: string }
+  /** An advisor: it reviews the executions it watches, one review at a time (features/advisor.md). */
+  | { kind: 'advisor'; watches: string[] };
+
+/**
+ * One review an advisor is woken for: the records of one watched execution since its last review
+ * (features/advisor.md, 계약). The review ends when the advisor asks for the next one.
+ */
+export interface AdvisorReviewRequest {
+  reviewId: string;
+  /** The watched execution under review; the only one its advice may name. */
+  targetExecutionId: string;
+  /** The review input, built from the run's public record. */
+  text: string;
+  /** Model requests this review may make. */
+  maxRequests: number;
+}
 
 /** A callable node this execution may delegate to or ask (capability links). */
 export interface CallableTarget {
@@ -143,6 +162,8 @@ export interface DeliveredDirective {
   text: string;
   /** Who made it; a worker wraps each origin in its own heading (features/reins.md). */
   origin: DirectiveOrigin;
+  /** An `advice` directive's severity and the advisor role's name, shown to the model. */
+  advice?: { severity: AdviceSeverity; from: string };
 }
 
 /** Agent-originated questions; they never carry human directive or approval authority. */
@@ -243,6 +264,11 @@ export interface AgentHost {
   executeTool(toolCallId: string): Promise<ToolOutcome>;
   observe(observation: AgentObservation): Promise<void>;
   streamText(delta: TextDelta): void;
+  /**
+   * Advisor executions only. Ends the review in progress, if any, and waits for the next one;
+   * null means the advisor is done (the flow ended, or it was cancelled) and should finish.
+   */
+  nextReview?(): Promise<AdvisorReviewRequest | null>;
 }
 
 export interface AgentSettlement {
@@ -260,6 +286,11 @@ export interface AgentHandle {
   pushDirective?(directive: DeliveredDirective): void;
   /** Cuts the model response in flight, if any, so the directive rides the next request. */
   interrupt?(directive: DeliveredDirective): void;
+  /**
+   * Advisor executions only: the review used up its model requests. The advisor stops that review
+   * and asks for the next one; requests it still makes for it are refused.
+   */
+  endReview?(reviewId: string): void;
 }
 
 export interface AgentAdapter {

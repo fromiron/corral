@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { type Clock, RecipeStopReason } from '@corral/contracts';
+import { type AdviceSeverity, type Clock, RecipeStopReason } from '@corral/contracts';
 import type { Db } from '@corral/storage-sqlite';
 import { safeRelative, WorkspaceError, type WorkspaceService } from './service.ts';
 
@@ -63,13 +63,25 @@ export interface InboxItem {
     | 'check_failed'
     | 'unreviewed'
     | 'recipe_stopped'
-    | 'lsp_proposal';
+    | 'lsp_proposal'
+    | 'advice';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;
   detail: string | null;
   /** Present only for an uncertain terminal's read-only recovery link. */
   terminalId?: string;
+  /** `advice` only: the execution row the advice was for, which the item's button opens. */
+  executionId?: string;
+  /** `advice` only; `detail` is the advice's first line. */
+  severity?: AdviceSeverity;
+}
+
+/** An advice its target never read, or kept because the target had ended (features/inbox.md). */
+export interface UnreadAdviceItem {
+  targetExecutionId: string;
+  severity: AdviceSeverity;
+  text: string;
 }
 
 /** A session's latest recorded check, decision and applying, with no text, paths or output. */
@@ -658,9 +670,38 @@ export class ReviewService {
     }));
   }
 
+  /** The person opened an execution row; its advice items leave the inbox. Repeats change nothing. */
+  markExecutionOpened(runId: string, executionId: string) {
+    this.db
+      .prepare(
+        'INSERT INTO execution_views (run_id, execution_id, opened_at) VALUES (?,?,?) ON CONFLICT DO NOTHING',
+      )
+      .run(runId, executionId, now(this.clock));
+  }
+
+  private executionOpened(runId: string, executionId: string): boolean {
+    return (
+      this.db
+        .prepare('SELECT 1 AS opened FROM execution_views WHERE run_id = ? AND execution_id = ?')
+        .get(runId, executionId) !== undefined
+    );
+  }
+
+  /**
+   * Runs that recorded any advice. Only their projections can hold an inbox advice item, so the
+   * inbox reads no other run's projection.
+   */
+  runsWithAdvice(): Set<string> {
+    const rows = this.db
+      .prepare("SELECT id FROM runs WHERE json_type(projection_json, '$.advice') = 'object'")
+      .all() as { id: string }[];
+    return new Set(rows.map((row) => row.id));
+  }
+
   inbox(
     sessions: { sessionId: string; title: string; entries: { state: string; text: string }[] }[],
     runs: { runId: string; status: string; sessionId: string | null }[],
+    unreadAdvice: (runId: string) => readonly UnreadAdviceItem[] = () => [],
   ): InboxItem[] {
     const items: InboxItem[] = [];
     const titleOf = new Map(sessions.map((s) => [s.sessionId, s.title]));
@@ -669,6 +710,19 @@ export class ReviewService {
     for (const run of runs) {
       const latest = run.sessionId !== null && !seenSessions.has(run.sessionId);
       if (run.sessionId) seenSessions.add(run.sessionId);
+      if (run.sessionId && titleOf.has(run.sessionId))
+        for (const advice of unreadAdvice(run.runId)) {
+          if (this.executionOpened(run.runId, advice.targetExecutionId)) continue;
+          items.push({
+            kind: 'advice',
+            sessionId: run.sessionId,
+            sessionTitle: titleOf.get(run.sessionId) ?? '',
+            runId: run.runId,
+            executionId: advice.targetExecutionId,
+            severity: advice.severity,
+            detail: (advice.text.split('\n')[0] ?? '').slice(0, 120),
+          });
+        }
       if (latest && run.status === 'failed' && run.sessionId && titleOf.has(run.sessionId)) {
         const row = this.db
           .prepare(

@@ -300,6 +300,9 @@ function Entry({
           <p className="text-muted-foreground">{t(`instruction.${entry.status}`)}</p>
         </ChatMessage>
       );
+    case 'advice':
+      // An advisor's advice is not the person's message; its own line is drawn with advice.
+      return null;
     case 'request':
       return (
         <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">

@@ -287,7 +287,6 @@
   },
   "Validation": {
     "codes": {
-      "ADVISOR_NOT_SUPPORTED": "Advisors cannot run yet.",
       "ADVISOR_OUTSIDE_FLOW": "An advisor stays outside the flow: no connections, no Loop or Team, and no delegating or asking.",
       "ADVISOR_UNWATCHED": "{node} watches no one. Connect it to an agent it advises.",
       "ADVISOR_ADVISE_SOURCE": "Only an advisor can watch an agent. Start this advise connection at an advisor.",
@@ -2503,6 +2502,7 @@
       "steer": "Send as an instruction"
     },
     "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
+    "tooManyItems": "A request carries up to {max} references, text attachments and images in all. Remove {over} before sending.",
     "referenceGone": "(no longer exists)",
     "models": {
       "title": "Models of this team",

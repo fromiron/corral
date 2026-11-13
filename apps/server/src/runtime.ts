@@ -22,6 +22,8 @@ const PREFIX: Record<IdKind, string> = {
   preparation: 'prep',
   route: 'route',
   decision: 'dec',
+  advice: 'adv',
+  review: 'rev',
 };
 
 /** Random ids: a restarted process must never reuse an id the previous one handed out. */

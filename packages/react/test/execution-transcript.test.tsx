@@ -224,6 +224,53 @@ describe('ExecutionTranscript (UX-A3)', () => {
     expect(log.textContent).toContain('Asked Source Responder');
   });
 
+  it('an advisor’s advice is its own entry, never drawn as the person’s message', async () => {
+    const { session, state, writer } = await collaborationRun({
+      steerWriter: 'Cite the vendor docs.',
+    });
+    // The same directive, had an advisor given it.
+    const events = state.events.map((event) =>
+      event.type === 'directive.accepted'
+        ? { ...event, payload: { ...event.payload, origin: 'advice' as const } }
+        : event,
+    );
+    const base = state.projection;
+    if (!base) throw new Error('no projection');
+    const projection = {
+      ...base,
+      directives: Object.fromEntries(
+        Object.entries(base.directives).map(([id, directive]) => [
+          id,
+          {
+            ...directive,
+            origin: 'advice' as const,
+            advice: {
+              adviceId: 'adv_1',
+              severity: 'concern' as const,
+              observerExecutionId: 'exec_advisor',
+            },
+          },
+        ]),
+      ),
+    };
+    const entries = buildTranscript(events, projection, state.streams, writer);
+    expect(entries.some((entry) => entry.kind === 'instruction')).toBe(false);
+    expect(entries.find((entry) => entry.kind === 'advice')).toMatchObject({
+      text: 'Cite the vendor docs.',
+      severity: 'concern',
+      status: 'delivered',
+    });
+    session.setState({ events, projection });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionTranscript session={session} executionId={writer} />
+      </IntlProvider>,
+    );
+    const log = screen.getByRole('log', { name: 'Conversation' });
+    expect(within(log).queryByTestId(/^transcript-instruction-/)).toBeNull();
+    expect(log.textContent).not.toContain('Cite the vendor docs.');
+  });
+
   it('an instruction is shown on the request it reached, not on an earlier one', async () => {
     const { state, writer } = await collaborationRun({ steerWriter: 'Cite the vendor docs.' });
     const entries = buildTranscript(state.events, state.projection, state.streams, writer);

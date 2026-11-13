@@ -1,6 +1,6 @@
-import type { AutoModelChoice, RunReference } from '@corral/contracts';
+import type { AutoModelChoice } from '@corral/contracts';
 import type { RunSummary, SessionEntry } from '@corral/core';
-import { queuedSessionCommandId } from '@corral/core';
+import { entryStartReferences, queuedSessionCommandId } from '@corral/core';
 import { useEffect, useRef } from 'react';
 import type { StudioServices } from '../../../services.tsx';
 import { autoCommandSeed } from '../../autoChoice.ts';
@@ -24,7 +24,7 @@ export const entryCommandKey = (
   choice: AutoModelChoice,
   teamKey: string,
 ) =>
-  `${resend ? 'resend' : 'queue'}\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, [...(entry.attachments ?? []), ...(resend ? (entry.images ?? []) : [])], choice, teamKey)}\u0000${entry.permissionMode ?? ''}`;
+  `${resend ? 'resend' : 'queue'}\u0000${entry.entryId}\u0000${autoCommandSeed(entry.text, entryStartReferences(entry), choice, teamKey)}\u0000${entry.permissionMode ?? ''}`;
 
 export interface QueueDeps extends StartDeps {
   services: Pick<StudioServices, 'mode' | 'live' | 'startAuto' | 'repository'>;
@@ -53,10 +53,8 @@ export async function startQueued(deps: QueueDeps, entry: SessionEntry, resend =
   )
     return;
   deps.setBusy(true);
-  const queuedReferences: RunReference[] = [
-    ...(entry.attachments ?? []),
-    ...(resend ? (entry.images ?? []) : []),
-  ];
+  // The server starts a saved request with this same list (apps/server/src/session-queue.ts).
+  const queuedReferences = entryStartReferences(entry);
   try {
     if (!resend) {
       const current = await services.repository.getSession(session.sessionId);
@@ -115,6 +113,7 @@ export async function startQueued(deps: QueueDeps, entry: SessionEntry, resend =
           commandId,
           ...outcome,
           ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
+          ...(entry.references ? { references: entry.references } : {}),
           ...(entry.attachments ? { attachments: entry.attachments } : {}),
           ...(entry.images ? { images: entry.images } : {}),
           ...(request ? { start: entryStart(request) } : {}),

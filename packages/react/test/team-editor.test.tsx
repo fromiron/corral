@@ -272,8 +272,7 @@ describe('team editor', () => {
   });
 });
 
-// Advisors in the editor (docs/specs/features/canvas.md rules 3, 4, 5 and 11). The compiler's
-// ADVISOR_NOT_SUPPORTED gate may or may not be there; nothing here depends on it.
+// Advisors in the editor (docs/specs/features/canvas.md rules 3, 4, 5 and 11).
 describe('team editor: advisors', () => {
   const advisorIn = (draft: EditorDraft) =>
     draft.definition.nodes.find((n) => n.type === 'agent' && n.invocation === 'observer');

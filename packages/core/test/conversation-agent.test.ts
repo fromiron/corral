@@ -135,7 +135,9 @@ describe('progress guard', () => {
       seq,
       payload: { modelCallId: `call_${seq}` },
     }) as unknown as RunEvent;
-  const projection = { artifacts: {}, questions: {} } as Parameters<typeof applyProgressEvent>[2];
+  const projection = { artifacts: {}, questions: {}, executions: {} } as Parameters<
+    typeof applyProgressEvent
+  >[2];
 
   it('rewriting the same unsubmitted artifact is not progress', () => {
     let state = emptyProgress();

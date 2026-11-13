@@ -16,6 +16,7 @@ import { EntryCard, RunCard } from './SessionEntries.tsx';
 const fixture = vi.hoisted(() => ({
   store: null as unknown,
   editRequest: vi.fn(),
+  refusalEdit: null as null | (() => void),
 }));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({
@@ -46,7 +47,10 @@ vi.mock('../ImageAttachments.tsx', () => ({ ImageAttachmentList: () => null }));
 vi.mock('../TextAttachments.tsx', () => ({ TextAttachmentList: () => null }));
 vi.mock('../RefusalHelp.tsx', () => ({
   RESEND_REQUEST: 'corral:resend-request',
-  RefusalHelp: () => null,
+  RefusalHelp: ({ onEdit }: { onEdit?: () => void }) => {
+    fixture.refusalEdit = onEdit ?? null;
+    return null;
+  },
   editRequest: fixture.editRequest,
 }));
 vi.mock('../MessageBranch.tsx', () => ({
@@ -200,6 +204,32 @@ it('a sent message is a plain bubble; copy, edit and branch are named icon butto
   await act(async () => f.button(messages.MessageBody.copyMessage)?.click());
   expect(writeText).toHaveBeenCalledWith(value.text);
   await act(async () => f.button(messages.MessageBody.editAsNew)?.click());
+  expect(fixture.editRequest).toHaveBeenCalledWith(value.text, value);
+});
+
+it('a refused request is edited with everything it was sent with, as the pencil edits it', async () => {
+  const value = entry({
+    state: 'refused',
+    runId: null,
+    detail: 'No such model',
+    references: [{ kind: 'file', path: 'src/a.ts' }],
+    images: [
+      {
+        kind: 'image_attachment',
+        imageId: 'img_0123456789abcdef',
+        name: 'screen.png',
+        mime: 'image/png',
+        bytes: 1,
+        sha256: 'a'.repeat(64),
+        width: 1,
+        height: 1,
+      },
+    ],
+    permissionMode: 'ask',
+  });
+  await show(value);
+  expect(fixture.refusalEdit).not.toBeNull();
+  await act(async () => fixture.refusalEdit?.());
   expect(fixture.editRequest).toHaveBeenCalledWith(value.text, value);
 });
 

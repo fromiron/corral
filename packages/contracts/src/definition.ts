@@ -350,7 +350,7 @@ export const TaskBrief = z.strictObject({
   version: z.literal(1),
   inputHash: ContentHash,
   criteriaVersionId: Identifier,
-  assignment: z.enum(['scheduled', 'delegated', 'question']),
+  assignment: z.enum(['scheduled', 'delegated', 'question', 'advisor']),
   outputContract: OutputContract,
   taskScope: z.enum(['work', 'review_only']),
   verificationScope: z.enum(['targeted', 'release']),

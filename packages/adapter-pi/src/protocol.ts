@@ -1,4 +1,5 @@
 import {
+  AdviceSeverity,
   CallSnapshotInput,
   CompactionReport,
   ContentHash,
@@ -223,7 +224,13 @@ export const StartFrame = z.strictObject({
 });
 
 /** A delivered directive; its origin decides how the worker heads it (features/reins.md). */
-const directive = { directiveId: Identifier, text: Text, origin: DirectiveOrigin };
+const directive = {
+  directiveId: Identifier,
+  text: Text,
+  origin: DirectiveOrigin,
+  /** An advice's severity and the advisor role's name, for its heading. */
+  advice: z.strictObject({ severity: AdviceSeverity, from: z.string().min(1).max(200) }).optional(),
+};
 
 export const HostFrame = z.discriminatedUnion('type', [
   StartFrame,
