@@ -70,7 +70,7 @@
   - 끊기거나 실패한 호출은 받은 데까지의 글을 확정되지 않은 응답으로 표시해 넣는다.
   - 전체 24,000자를 넘으면 오래된 것부터 차례로 줄인다: 도구 요약을 빼고, 답변 글을 500자까지 줄이고, 도구 행을 수로 바꾼다. 그래도 넘을 때만 가장 오래된 호출을 뺀다. 줄이거나 뺀 수를 적는다.
   - 도구 행의 대상과 요약은 화면이 보이는 필드만 쓴다. 자격 증명으로 보이는 값은 가리고, 작업 폴더의 경로는 `[workspace]`로, 그 밖의 절대 경로는 `[path]`로 바꾼다(검사 출력과 같은 규칙).
-- `advise`는 Coordinator 명령 `submit_advice { observerExecutionId, attemptNo, targetExecutionId, severity, note }`가 된다. `note`는 1–1,000자다. receipt는 접수됐는지와 전달 방식, 또는 버린 이유를 돌려준다. 감독의 현재 시도가 아니거나 `targetExecutionId`가 그 감독이 `advise` 연결로 지켜보는 노드의 실행 단위가 아니면 거절한다.
+- `advise`는 Coordinator 명령 `submit_advice { observerExecutionId, attemptNo, targetExecutionId, severity, note }`가 된다. `note`는 1–1,000자다. receipt는 접수됐는지와 전달 방식, 또는 버린 이유를 돌려준다. 감독의 현재 시도가 아니거나 `targetExecutionId`가 지금 도는 검토의 대상(그 감독이 `advise` 연결로 지켜보는 노드의 실행 단위)이 아니면 거절한다.
 - 접수된 조언은 `advice.admitted`를, 버려진 조언은 `advice.suppressed`를 남긴다(필드는 [API 계약](../api-contract.md)의 이벤트 표). 둘 다 감독과 대상의 실행 단위, 심각도를 담는다. 조언의 글은 전달되는 조언이면 그 지시에, 보존되는 조언(`preserve`)이면 `advice.admitted`의 `note`에 있다. 버려진 조언의 글은 남기지 않는다. `delivery`는 `next_request`, `interrupt`, `preserve` 중 하나다. 전달되는 조언은 출처가 `advice`인 지시가 되고 그 뒤는 [Reins의 전달 상태](reins.md#2-지시-전달-상태)를 따른다. 조언에서 온 지시는 대기 요청으로 넘겨받지 않는다.
 - 문지기의 이력은 감독 실행 단위마다 최근 512개다. 문지기와 전달 방식의 판정은 순수 함수다.
 - 세션은 `advisor: { modelProfile } | null`을 저장한다. 켜져 있으면 대화 실행의 정의에 감독 노드와 대화에 답하는 역할로 가는 `advise` 연결을 더한다. Run의 snapshot에 고정되므로 진행 중인 실행에는 적용되지 않는다.
