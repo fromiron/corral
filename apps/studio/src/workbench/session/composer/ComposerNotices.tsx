@@ -51,6 +51,7 @@ export function ComposerNotices({
   missingTeam,
   refusal,
   onRetry,
+  onAdvisor,
   missingChipCount,
   chips,
   missing,
@@ -75,6 +76,8 @@ export function ComposerNotices({
   missingTeam: boolean;
   refusal: Refusal | null;
   onRetry: () => void;
+  /** Opens the advisor control, after a refusal of the advisor's model. */
+  onAdvisor?: () => void;
   missingChipCount: number;
   /** The references the text names; a gone one is struck through. */
   chips: MentionItem[];
@@ -162,6 +165,7 @@ export function ComposerNotices({
           owner={refusal.owner}
           network={refusal.network}
           onRetry={onRetry}
+          onAdvisor={onAdvisor}
         />
       ) : null}
       {overLimit > 0 ? (

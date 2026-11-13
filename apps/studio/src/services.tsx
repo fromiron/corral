@@ -39,6 +39,7 @@ import {
 import { createRunRecovery, type RunSessionStore } from '@corral/react';
 import { createContext, type ReactNode, useContext } from 'react';
 import { createDemoWorkspaces, type WorkspacesClient } from './demo/workspaces-client.ts';
+import { demoAutoContext } from './demoAutoContext.ts';
 import type {} from './desktop.tsx';
 import { createRunSessions } from './runSessions.ts';
 import { createDemoRuntime } from './runtime.ts';
@@ -277,13 +278,12 @@ export async function createStudioServices(): Promise<StudioServices> {
     },
     startAuto: async (request, signal) => {
       const copy = await workspaces.worktree(request.sessionId).catch(() => null);
-      // As on the server: the stored session's criteria, read when the request is admitted.
-      const sessionCriteria = (await repository.getSession(request.sessionId))?.criteria;
-      return autoStarter.start(request, {
-        fileTools: Boolean(copy),
-        ...(signal ? { signal } : {}),
-        ...(sessionCriteria?.length ? { sessionCriteria } : {}),
-      });
+      // As on the server: the stored session's criteria and advisor, read when it is admitted.
+      const session = await repository.getSession(request.sessionId);
+      return autoStarter.start(
+        request,
+        demoAutoContext(session, { fileTools: Boolean(copy), signal }),
+      );
     },
     // The in-browser runtime runs inline definitions itself.
     startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>

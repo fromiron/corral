@@ -2455,6 +2455,14 @@
     "homeTitle": "What should we work on?"
   },
   "Composer": {
+    "advisor": {
+      "name": "Advisor",
+      "on": "On · {model}",
+      "off": "Off",
+      "failed": "Not saved. {message}",
+      "conflict": "It was changed elsewhere. This is the saved setting.",
+      "lost": "The save was not confirmed. This is the conversation’s setting now."
+    },
     "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
     "viewActiveRun": "View active run",
     "destination": {
@@ -2669,6 +2677,7 @@
   "Refusal": {
     "signin": "The team's model is not connected. Sign in under Settings › Models, or send it with simulated agents.",
     "profile": "The team uses a model profile that is not set up here. Check the model settings or the team's roles.",
+    "advisor": "The advisor’s model could not be prepared.",
     "busy": "Another run is working right now. Queue this request to start it afterwards.",
     "limit": "The request is over this installation's limits (for example, referenced results are too large).",
     "reference": "Something this request refers to no longer exists. Remove that reference and send again.",
@@ -2684,6 +2693,7 @@
     "openTerminal": "Open terminal controls",
     "image": "This model has no confirmed image input support. Remove the image or choose a model that supports images.",
     "capability": "This operation needs a capability that is unavailable in the current environment. Check the diagnostics before trying again.",
+    "chooseAdvisor": "Change or turn off",
     "chooseImageModel": "Choose an image model"
   },
   "Harness": {
