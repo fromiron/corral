@@ -6,13 +6,21 @@ import {
   textAttachmentKey,
 } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Kbd, KitButton, Popover, PopoverPopup, PopoverTrigger } from '@corral/react/design-kit';
-import { Quote } from '@corral/react/icons';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Kbd, KitButton, Popover, PopoverPopup } from '@corral/react/design-kit';
+import { CircleAlert, Quote } from '@corral/react/icons';
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useRegisterCommands } from '../commandRegistry.ts';
 import { shortcutLabel } from '../shortcuts.ts';
-import { holdPointer } from './ChatView.tsx';
+import { holdPointer, placeChatRow } from './ChatView.tsx';
 import {
   type AttachmentResult,
   appendComposerAttachment,
@@ -72,11 +80,32 @@ function around(text: string, start: number, end: number) {
   return { prefix: text.slice(from, start), suffix: text.slice(end, to) };
 }
 
+/** A rectangle as floating placement reads one. */
+const rectOf = (left: number, top: number, width: number, height: number) =>
+  ({
+    x: left,
+    y: top,
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    toJSON: () => ({}),
+  }) as DOMRect;
+
+/** The lines a range is drawn on, without the empty boxes of the elements it crosses. */
+const linesOf = (range: Range) =>
+  [...(range.getClientRects?.() ?? [])].filter((rect) => rect.width > 0 && rect.height > 0);
+
 export interface ReplyPassage {
   body: HTMLElement;
   source: ReplySource;
   text: string;
-  /** Where the toolbar stands: the last line of the passage. */
+  /**
+   * Where the toolbar stands: from the passage's first line to its last, at the first line's
+   * start. It goes over the first line and, with no room there, under the last.
+   */
   rect(): DOMRect;
 }
 
@@ -100,13 +129,35 @@ export function passageOf(selection: Selection | null): ReplyPassage | null {
     text,
     source: { kind: 'reply', runId, modelCallId, start, end, ...around(drawn, start, end) },
     rect: () => {
-      const rects = copy.getClientRects?.();
-      return rects?.length
-        ? (rects[rects.length - 1] as DOMRect)
-        : (copy.getBoundingClientRect?.() ?? body.getBoundingClientRect());
+      const lines = linesOf(copy);
+      const first = lines[0];
+      const last = lines[lines.length - 1];
+      if (!first || !last) return body.getBoundingClientRect();
+      return rectOf(first.left, first.top, Math.max(1, first.width), last.bottom - first.top);
     },
   };
 }
+
+/**
+ * The part of the conversation a person sees: the timeline between its top and the composer
+ * lying over its bottom edge, and the column the rows stand in. Null outside a conversation.
+ */
+function visibleArea(node: Element) {
+  const box = node.closest<HTMLElement>('[data-testid="chat-timeline"]');
+  if (!box) return null;
+  const view = box.getBoundingClientRect();
+  const composer = document.querySelector('[data-testid="chat-composer"]')?.getBoundingClientRect();
+  const bottom =
+    composer && composer.top > view.top && composer.top < view.bottom ? composer.top : view.bottom;
+  const column = box.querySelector('[data-chat-window]')?.getBoundingClientRect() ?? view;
+  return { box, top: view.top, bottom, left: column.left, width: column.width };
+}
+const areaRect = (area: NonNullable<ReturnType<typeof visibleArea>>) => ({
+  x: area.left,
+  y: area.top,
+  width: area.width,
+  height: Math.max(0, area.bottom - area.top),
+});
 
 const passageKey = (passage: ReplyPassage | null) =>
   passage
@@ -156,14 +207,19 @@ export const REVEAL_REPLY = 'corral:reveal-reply';
 export type RevealResult = 'found' | 'missing';
 interface RevealRequest {
   item: TextAttachment;
+  /** The sent chip asked from: where the conversation comes back to when the passage is gone. */
+  from: Element | null;
   done(result: RevealResult): void;
   handled?: boolean;
 }
 
 /** Leads back to a sent quote's passage; the conversation that shows its reply answers. */
-export function revealReplyQuote(item: TextAttachment): Promise<RevealResult> {
+export function revealReplyQuote(
+  item: TextAttachment,
+  from: Element | null = null,
+): Promise<RevealResult> {
   return new Promise((done) => {
-    const request: RevealRequest = { item, done };
+    const request: RevealRequest = { item, from, done };
     window.dispatchEvent(new CustomEvent(REVEAL_REPLY, { detail: request }));
     if (!request.handled) done('missing');
   });
@@ -187,27 +243,55 @@ function highlight(range: Range) {
   }, HIGHLIGHT_MS);
 }
 
+/** The row an element stands in and where it is on screen: a place to come back to. */
+function placeOf(node: Element | null) {
+  const row = node?.closest<HTMLElement>('[data-chat-item]');
+  const box = row?.closest<HTMLElement>('[data-testid="chat-timeline"]');
+  const id = row?.dataset.chatItem;
+  if (!row || !box || !id) return null;
+  return { id, offset: row.getBoundingClientRect().top - box.getBoundingClientRect().top };
+}
+
+// Sent quotes whose passage was not found, by the message they were sent in, and the one whose
+// detail stands open. Kept here, so a chip whose row the timeline mounted again shows the same.
+const missingQuotes = new Set<string>();
+let openDetail: string | null = null;
+let quotesVersion = 0;
+const quoteListeners = new Set<() => void>();
+const quotesChanged = () => {
+  quotesVersion += 1;
+  for (const listener of quoteListeners) listener();
+};
+const subscribeQuotes = (listener: () => void) => {
+  quoteListeners.add(listener);
+  return () => quoteListeners.delete(listener);
+};
+const readQuotes = () => quotesVersion;
+
 /**
  * The conversation's one selection listener and toolbar, and where sent quotes lead back to.
- * `onGoTo` brings the run's row into view by the linked-message path; `onArrived` ends it.
+ * `rowOf` names the timeline row that shows a run; `onPlace` holds a row at an offset from the
+ * top of the view, by the linked-message path.
  */
 export function ReplySelection({
   target,
-  onGoTo,
-  onArrived,
+  rowOf,
+  onPlace = (id, offset) => placeChatRow(target.sessionId, id, offset),
 }: {
   target: ComposerTarget;
-  onGoTo(runId: string): void | Promise<unknown>;
-  onArrived?(): void;
+  rowOf(runId: string): string | undefined;
+  onPlace?(id: string, offset: number): void;
 }) {
   const t = useTranslations('Composer');
   const [passage, setPassage] = useState<ReplyPassage | null>(null);
   const [dismissed, setDismissed] = useState('');
   const [refused, setRefused] = useState<{ key: string; reason: 'long' | 'failed' } | null>(null);
+  // What the live region says: once for each passage not found.
+  const [said, setSaid] = useState('');
   // A passage the conversation selected itself (a sent quote's return) shows no toolbar.
   const revealed = useRef<Range | null>(null);
-  const latest = useRef({ target, onGoTo, onArrived });
-  latest.current = { target, onGoTo, onArrived };
+  const latest = useRef({ target, rowOf, onPlace, t });
+  latest.current = { target, rowOf, onPlace, t };
   useEffect(() => {
     const held = { current: false };
     let shown = '';
@@ -254,26 +338,50 @@ export function ReplySelection({
       const source = request.item.provenance;
       if (source?.kind !== 'reply') return;
       request.handled = true;
-      const going = latest.current.onGoTo(source.runId);
-      let settled = false;
-      const finish = (result: RevealResult) => {
-        if (settled) return;
-        settled = true;
-        observer.disconnect();
-        clearTimeout(timer);
-        latest.current.onArrived?.();
-        request.done(result);
-      };
-      const look = () => {
-        // Only this reply's body: the same words in another reply are not its passage.
-        const body = [...document.querySelectorAll<HTMLElement>('[data-reply-body]')].find(
+      const { rowOf, onPlace } = latest.current;
+      // Only this reply's body: the same words in another reply are not its passage.
+      const bodyNow = () =>
+        [...document.querySelectorAll<HTMLElement>('[data-reply-body]')].find(
           (node) =>
             node.dataset.runId === source.runId && node.dataset.modelCallId === source.modelCallId,
         );
-        if (!body) return;
+      let settled = false;
+      let origin: ReturnType<typeof placeOf> = null;
+      let observer: MutationObserver | null = null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (result: RevealResult) => {
+        if (settled) return;
+        settled = true;
+        observer?.disconnect();
+        clearTimeout(timer);
+        if (result === 'missing') {
+          // Gone looking and found nothing: back to where the person asked from.
+          if (origin) onPlace(origin.id, origin.offset);
+          // Said once, as a change of the live region's words.
+          setSaid('');
+          requestAnimationFrame(() => setSaid(latest.current.t('quoteNotFound')));
+        }
+        request.done(result);
+      };
+      const settle = (body: HTMLElement) => {
         const at = findPassage(body.textContent ?? '', source, request.item.text);
         const range = at && rangeIn(body, at.start, at.end);
         if (!range) return finish('missing');
+        // The passage in view, a third of the way down, when it is not there already. The row
+        // is held there as a linked row is, so reading goes on from the passage.
+        const area = visibleArea(body);
+        const row = body.closest<HTMLElement>('[data-chat-item]');
+        const line = area && (linesOf(range)[0] ?? range.getBoundingClientRect?.());
+        if (
+          area &&
+          line &&
+          row?.dataset.chatItem &&
+          (line.top < area.top || line.bottom > area.bottom)
+        )
+          onPlace(
+            row.dataset.chatItem,
+            (area.bottom - area.top) / 3 - (line.top - row.getBoundingClientRect().top),
+          );
         highlight(range);
         body.focus({ preventScroll: true });
         // The caret at the passage, so reading goes on from there; the toolbar stays away.
@@ -283,23 +391,25 @@ export function ReplySelection({
         selection?.addRange(range);
         finish('found');
       };
-      // The row may be out of the window and unmounted: wait for it to be drawn.
-      const observer = new MutationObserver(look);
-      const timer = setTimeout(() => finish('missing'), REVEAL_WAIT_MS);
-      // Looked for once the link has moved the conversation, so its own scroll comes first.
-      void Promise.resolve(going).then(() =>
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => {
-            if (settled) return;
-            observer.observe(document.body, {
-              childList: true,
-              subtree: true,
-              characterData: true,
-            });
-            look();
-          }),
-        ),
-      );
+      // Drawn already: looked for where it is, without moving the conversation first.
+      const drawn = bodyNow();
+      if (drawn) return settle(drawn);
+      // Out of the window: its row is brought in by the link, and looked for once drawn.
+      const row = rowOf(source.runId);
+      if (!row) return finish('missing');
+      origin = placeOf(request.from);
+      onPlace(row, 0);
+      const look = () => {
+        const body = bodyNow();
+        if (body) settle(body);
+      };
+      observer = new MutationObserver(look);
+      timer = setTimeout(() => finish('missing'), REVEAL_WAIT_MS);
+      requestAnimationFrame(() => {
+        if (settled) return;
+        observer?.observe(document.body, { childList: true, subtree: true, characterData: true });
+        look();
+      });
     };
     window.addEventListener(REVEAL_REPLY, reveal);
     return () => window.removeEventListener(REVEAL_REPLY, reveal);
@@ -345,95 +455,146 @@ export function ReplySelection({
   );
   const reason = refused?.key === key ? refused.reason : null;
   const open = Boolean(passage) && dismissed !== key;
+  const area = passage ? visibleArea(passage.body) : null;
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) setDismissed(key);
-      }}
-    >
-      <PopoverPopup
-        anchor={
-          passage
-            ? { getBoundingClientRect: passage.rect, contextElement: passage.body }
-            : undefined
-        }
-        side="bottom"
-        align="end"
-        padding="none"
-        // The selection stays where it is; the toolbar takes no focus coming or going.
-        initialFocus={false}
-        finalFocus={false}
-        data-testid="reply-selection"
+    <>
+      <p role="status" className="sr-only">
+        {said}
+      </p>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) setDismissed(key);
+        }}
       >
-        <div className="flex flex-col p-1">
-          <KitButton variant="ghost" size="compact" leadingIcon={Quote} onClick={quote}>
-            {t('quoteSelection')}
-            {shortcut ? <Kbd className="ml-2 text-muted-foreground">{shortcut}</Kbd> : null}
-          </KitButton>
-          {reason ? (
-            <p role="alert" className="max-w-64 px-2 py-1 text-caption text-danger">
-              {t(reason === 'long' ? 'quoteTooLong' : 'quoteFailed')}
-            </p>
-          ) : null}
-        </div>
-      </PopoverPopup>
-    </Popover>
+        <PopoverPopup
+          anchor={
+            passage
+              ? { getBoundingClientRect: passage.rect, contextElement: passage.body }
+              : undefined
+          }
+          // Over the passage's first line, where it neither covers the next line to read nor
+          // the way the selection grows; under it only when the view has no room above.
+          side="top"
+          align="start"
+          collisionAvoidance={{ side: 'flip', align: 'shift' }}
+          {...(area ? { collisionBoundary: areaRect(area) } : {})}
+          padding="none"
+          // The selection stays where it is; the toolbar takes no focus coming or going.
+          initialFocus={false}
+          finalFocus={false}
+          data-testid="reply-selection"
+        >
+          <div className="flex flex-col p-1">
+            <KitButton variant="ghost" size="compact" leadingIcon={Quote} onClick={quote}>
+              {t('quoteSelection')}
+              {shortcut ? <Kbd className="ml-2 text-muted-foreground">{shortcut}</Kbd> : null}
+            </KitButton>
+            {reason ? (
+              <p role="alert" className="max-w-64 px-2 py-1 text-caption text-danger">
+                {t(reason === 'long' ? 'quoteTooLong' : 'quoteFailed')}
+              </p>
+            ) : null}
+          </div>
+        </PopoverPopup>
+      </Popover>
+    </>
   );
 }
 
 /**
  * A sent message's quotes, as the chips they were in the request box. A chip leads back to its
- * passage; when the passage is not found, the chip says so and its detail holds the words.
+ * passage; when the passage is not found, the chip itself says so and its detail holds the words.
  */
-export function SentQuotes({ attachments }: { attachments: TextAttachment[] }) {
+export function SentQuotes({
+  attachments,
+  owner,
+}: {
+  attachments: TextAttachment[];
+  owner: string;
+}) {
   const t = useTranslations('Composer');
   const quotes = attachments.filter((item) => item.provenance?.kind === 'reply');
   if (!quotes.length) return null;
   return (
     <ul aria-label={t('quotes')} className="mt-2 flex flex-wrap gap-1">
       {quotes.map((item) => (
-        <SentQuote key={textAttachmentKey(item)} item={item} />
+        <SentQuote
+          key={textAttachmentKey(item)}
+          item={item}
+          quote={`${owner}\u0000${textAttachmentKey(item)}`}
+        />
       ))}
     </ul>
   );
 }
 
-function SentQuote({ item }: { item: TextAttachment }) {
+function SentQuote({ item, quote }: { item: TextAttachment; quote: string }) {
   const t = useTranslations('Composer');
-  const [missing, setMissing] = useState(false);
+  useSyncExternalStore(subscribeQuotes, readQuotes, readQuotes);
+  const missing = missingQuotes.has(quote);
+  const open = missing && openDetail === quote;
+  const chip = useRef<HTMLButtonElement>(null);
+  const said = useId();
+  const [area, setArea] = useState<ReturnType<typeof areaRect> | null>(null);
+  useLayoutEffect(() => {
+    const visible = open && chip.current ? visibleArea(chip.current) : null;
+    setArea(visible ? areaRect(visible) : null);
+  }, [open]);
   const { opening, text } = quoteOpening(item.text);
-  const chip = 'flex max-w-full items-center gap-1 rounded-md bg-subtle px-2 py-0.5 text-caption';
+  const Mark = missing ? CircleAlert : Quote;
   return (
     <li className="flex max-w-full">
       <button
+        ref={chip}
         type="button"
-        className={`${chip} cursor-pointer text-left hover:text-foreground`}
+        className="flex max-w-full cursor-pointer items-center gap-1 rounded-md bg-subtle px-2 py-0.5 text-left text-caption hover:text-foreground"
         aria-label={t('goToQuote', { text })}
-        onClick={async () => setMissing((await revealReplyQuote(item)) === 'missing')}
+        aria-describedby={missing ? said : undefined}
+        onClick={async (event) => {
+          const result = await revealReplyQuote(item, event.currentTarget);
+          if (result === 'missing') {
+            missingQuotes.add(quote);
+            openDetail = quote;
+          } else {
+            missingQuotes.delete(quote);
+            if (openDetail === quote) openDetail = null;
+          }
+          quotesChanged();
+        }}
       >
-        <Quote className="size-3 shrink-0 text-muted-foreground" />
+        <Mark className={`size-3 shrink-0 ${missing ? 'text-warning' : 'text-muted-foreground'}`} />
         <span className="truncate">{opening}</span>
       </button>
       {missing ? (
-        <Popover defaultOpen>
-          <PopoverTrigger
-            render={
-              <button
-                type="button"
-                className={`${chip} ml-1 cursor-pointer text-muted-foreground`}
-              />
-            }
-          >
-            <span role="status">{t('quoteNotFound')}</span>
-          </PopoverTrigger>
-          <PopoverPopup width="md" padding="compact">
-            <blockquote className="max-h-60 overflow-auto whitespace-pre-wrap wrap-anywhere text-body">
-              {item.text}
-            </blockquote>
-          </PopoverPopup>
-        </Popover>
+        <span id={said} hidden>
+          {t('quoteNotFound')}
+        </span>
       ) : null}
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          if (next || openDetail !== quote) return;
+          openDetail = null;
+          quotesChanged();
+        }}
+      >
+        <PopoverPopup
+          anchor={chip}
+          width="md"
+          padding="compact"
+          collisionAvoidance={{ side: 'flip', align: 'shift' }}
+          {...(area ? { collisionBoundary: area } : {})}
+          initialFocus={false}
+          finalFocus={chip}
+          data-testid="quote-detail"
+        >
+          <p className="text-caption text-muted-foreground">{t('quoteNotFound')}</p>
+          <blockquote className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap wrap-anywhere text-body">
+            {item.text}
+          </blockquote>
+        </PopoverPopup>
+      </Popover>
     </li>
   );
 }

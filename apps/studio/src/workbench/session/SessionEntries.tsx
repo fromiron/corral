@@ -148,7 +148,9 @@ export function EntryCard({
           }
         >
           <MessageBody text={entry.text} copy={false} />
-          {entry.attachments?.length ? <SentQuotes attachments={entry.attachments} /> : null}
+          {entry.attachments?.length ? (
+            <SentQuotes attachments={entry.attachments} owner={entry.entryId} />
+          ) : null}
           {entry.attachments?.some((item) => item.provenance?.kind !== 'reply') ? (
             <TextAttachmentList
               attachments={entry.attachments.filter((item) => item.provenance?.kind !== 'reply')}

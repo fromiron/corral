@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { encryptVault } from '../src/vault/crypto.ts';
-import { VaultService, vaultRevision } from '../src/vault/service.ts';
+import { PortableApplication, VaultService, vaultRevision } from '../src/vault/service.ts';
 import type { VaultDomainAdapter } from '../src/vault/types.ts';
 
 const dirs: string[] = [];
@@ -60,6 +60,39 @@ describe('vault application journal', () => {
     expect((await restarted.pending(password)).application?.target).toEqual(target);
     await expect(restarted.acknowledge(pending.id, password, prefs)).rejects.toThrow('readback');
     expect((await restarted.acknowledge(pending.id, password, target)).status).toBe('committed');
+  });
+});
+describe('portable shortcuts', () => {
+  it('carries the reply quote key, Alt alone, there and back like any other shortcut', async () => {
+    const service = new VaultService({ directory: directory(), adapters: () => ({}) });
+    const target = {
+      ...prefs,
+      shortcuts: {
+        palette: { mod: true as const, shift: true, key: 'k' },
+        'reply.quote': { alt: true as const, key: 'e' },
+      },
+    };
+    const envelope = await service.capture(['application'], password, target);
+    const preview = await service.preview(envelope, password, prefs);
+    const pending = await service.apply(preview.previewId, ['application'], password);
+    expect((await service.pending(password)).application?.target).toEqual(target);
+    expect((await service.acknowledge(pending.id, password, target)).status).toBe('committed');
+  });
+  it('reads an export made before the reply quote key, and keeps Alt alone to that key', () => {
+    expect(
+      PortableApplication.parse({ ...prefs, shortcuts: { palette: { mod: true, key: 'k' } } })
+        .shortcuts,
+    ).toEqual({ palette: { mod: true, key: 'k' } });
+    for (const shortcuts of [
+      { palette: { alt: true, key: 'e' } },
+      { 'reply.quote': { key: 'e' } },
+      { 'reply.quote': { alt: false, key: 'e' } },
+    ])
+      expect(() => PortableApplication.parse({ ...prefs, shortcuts })).toThrow();
+    expect(
+      PortableApplication.parse({ ...prefs, shortcuts: { 'reply.quote': { mod: true, key: 'e' } } })
+        .shortcuts,
+    ).toEqual({ 'reply.quote': { mod: true, key: 'e' } });
   });
 });
 describe('partial apply and stale revisions', () => {

@@ -10,7 +10,7 @@ import {
 } from '@corral/react/design-kit';
 import { ArrowDown } from '@corral/react/icons';
 import { defaultRangeExtractor, observeElementRect, useVirtualizer } from '@tanstack/react-virtual';
-import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { changePreferences, preferences } from './preferences.ts';
@@ -107,6 +107,22 @@ function readPlace(box: HTMLElement) {
 
 /** A row's height until it is measured. */
 const ESTIMATED_ROW = 260;
+
+const PLACE_ROW = 'corral:chat-place';
+interface PlaceRequest {
+  sessionId: string;
+  id: string;
+  offset: number;
+}
+/**
+ * Puts a row of a session's conversation at `offset` from the top of the timeline's view, by the
+ * same path a linked message takes: the row is held there until the person moves.
+ */
+export function placeChatRow(sessionId: string, id: string, offset: number) {
+  window.dispatchEvent(
+    new CustomEvent<PlaceRequest>(PLACE_ROW, { detail: { sessionId, id, offset } }),
+  );
+}
 
 /** A session is the conversation; each child turn keeps its Corral Run/Execution identity. */
 export function ChatView({
@@ -424,22 +440,40 @@ export function ChatView({
     sentSeen.current = sent;
     followEnd();
   }, [sent]);
+  /** A linked row held at `offset` from the top of the view until the person moves. */
+  const place = useRef<(id: string, offset: number) => boolean>(() => false);
+  place.current = (id, offset) => {
+    const index = items.findIndex((item) => item.id === id);
+    if (index < 0) return false;
+    follow.current = false;
+    restoreTop.current = null;
+    restoreAnchor.current = { id, offset };
+    const box = timeline.current;
+    const mounted = box?.querySelector(`[data-chat-item][data-index="${index}"]`);
+    if (!mounted) rows.scrollToIndex(index, { align: 'start' });
+    position.current();
+    return true;
+  };
   const jumped = useRef<string | undefined>(undefined);
+  // A linked row may join the items later; `place` reads the current items and list itself.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rerun when the items or list change
   useLayoutEffect(() => {
     if (!messageId) {
       jumped.current = undefined;
       return;
     }
     if (jumped.current === messageId) return;
-    const index = items.findIndex((item) => item.id === messageId);
-    if (index < 0) return;
-    follow.current = false;
-    restoreTop.current = null;
-    restoreAnchor.current = { id: messageId, offset: 0 };
-    rows.scrollToIndex(index, { align: 'start' });
-    position.current();
+    if (!place.current(messageId, 0)) return;
     jumped.current = messageId;
   }, [messageId, items, rows]);
+  useEffect(() => {
+    const placeRow = (event: Event) => {
+      const request = (event as CustomEvent<PlaceRequest>).detail;
+      if (request.sessionId === sessionId) place.current(request.id, request.offset);
+    };
+    window.addEventListener(PLACE_ROW, placeRow);
+    return () => window.removeEventListener(PLACE_ROW, placeRow);
+  }, [sessionId]);
   const stopRestoring = () => {
     restoreTop.current = null;
     restoreAnchor.current = null;

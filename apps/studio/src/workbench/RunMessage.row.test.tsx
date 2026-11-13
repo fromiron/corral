@@ -756,6 +756,38 @@ it('marks the reply being written, the answer and cut-off words as quotable text
   expect(replyBody(f.container)).toEqual([{ run: RUN, call: 'call', text: 'The answer body' }]);
 });
 
+it('marks the words an interrupt cut as quotable text of that call, apart from the answer', async () => {
+  const first = running();
+  first.modelCalls.cut = {
+    modelCallId: 'cut',
+    executionId: 'lead',
+    finished: true,
+    responseRef: null,
+    interrupted: true,
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        cut: { text: 'Words cut by the interrupt', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  expect(replyBody(f.container)).toEqual([
+    { run: RUN, call: 'cut', text: 'Words cut by the interrupt' },
+  ]);
+  const done = answered(first);
+  const answer = done.artifacts.answer;
+  if (!answer) throw new Error('answer');
+  done.artifacts.answer = { ...answer, modelCallId: 'next' };
+  await f.set(done);
+  // The note under the cut words is not part of them.
+  expect(replyBody(f.container)).toEqual([
+    { run: RUN, call: 'cut', text: 'Words cut by the interrupt' },
+    { run: RUN, call: 'next', text: 'The answer body' },
+  ]);
+});
+
 it('an interrupted output is marked as cut off under its words', async () => {
   const projection = running();
   const f = await show(projection);

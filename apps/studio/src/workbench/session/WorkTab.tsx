@@ -5,7 +5,6 @@ import {
   type WorkSession,
 } from '@corral/core';
 import { cn, fontWeights, useSize } from '@corral/react/design-kit';
-import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
@@ -50,7 +49,6 @@ export function WorkTab({
 }) {
   const t = useTranslations('Sessions');
   const { runFor, sessionFor, retainRun, workspaces, workspaceId } = useServices();
-  const navigate = useNavigate();
   const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
   const currentSearch = sessionRoute.useSearch();
@@ -80,20 +78,11 @@ export function WorkTab({
   );
   const folderAction =
     folderAccess === 'unlinked' || folderAccess === 'untrusted' || folderAccess === 'missing';
-  // A sent quote leads back by the linked-message path: the row of the entry that started the
-  // run, or the run's own row when no entry names it.
-  const linkMessage = (message: string | undefined) =>
-    navigate({
-      to: '.',
-      replace: true,
-      search: (previous: Record<string, unknown>) => ({ ...previous, message }),
-    });
-  const goToRun = async (runId: string) => {
-    const message = session.entries.find((entry) => entry.runId === runId)?.entryId ?? runId;
-    // The link already names that row: let go of it first, so naming it again jumps again.
-    if (messageId === message) await linkMessage(undefined);
-    await linkMessage(message);
-  };
+  // A sent quote leads back to the row of the entry that started the run, or the run's own row
+  // when no entry names it.
+  const rowOf = (runId: string) =>
+    session.entries.find((entry) => entry.runId === runId)?.entryId ??
+    (loose.some((run) => run.runId === runId) ? runId : undefined);
   return (
     <RunChecks.Provider value={runChecks}>
       {/* The conversation's one selection listener; its toolbar floats over the rows. */}
@@ -104,8 +93,7 @@ export function WorkTab({
             projectId: session.projectId,
             sessionId: session.sessionId,
           }}
-          onGoTo={goToRun}
-          onArrived={() => void linkMessage(undefined)}
+          rowOf={rowOf}
         />
       ) : null}
       <ChatView

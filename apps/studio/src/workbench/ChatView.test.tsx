@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { ChatView } from './ChatView.tsx';
+import { ChatView, placeChatRow } from './ChatView.tsx';
 import { SessionConnectionContext } from './session/SessionConnection.tsx';
 
 const resizeCallbacks = new Set<(entries?: unknown) => void>();
@@ -1320,6 +1320,25 @@ it('a restored row is held against a move down until the person moves up', async
   await chat.scroll(held - 300);
   await chat.resize();
   expect(chat.top).toBe(held - 300);
+});
+
+it('a row placed at an offset by its link is held there, above the top, until the person moves up', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60);
+  // A passage deep in a tall row: the row starts above the view.
+  await act(async () => placeChatRow('session-follow', 'turn-30', -150));
+  await chat.scroll(chat.top);
+  await chat.resize();
+  const held = 24 + 30 * 260 + 150;
+  expect(chat.top).toBe(held);
+  await chat.key(chat.box, 'PageDown');
+  chat.top = held + 200;
+  await chat.resize();
+  expect(chat.top).toBe(held);
+  // Another session's placing is not this one's.
+  await act(async () => placeChatRow('elsewhere', 'turn-10', 0));
+  await chat.resize();
+  expect(chat.top).toBe(held);
 });
 
 it('a restored offset waits for the history to be tall enough, without reading a place first', async () => {

@@ -721,11 +721,14 @@ export function RunMessage({
             data-testid="stopped-text"
             className="flex min-w-0 flex-col gap-1 wrap-anywhere"
           >
-            {working || handoff ? (
-              <SafeMarkdown text={stream.text} size="chat" />
-            ) : (
-              <MessageBody text={stream.text} markdown size="chat" copy={false} />
-            )}
+            {/* Interrupted output can be quoted too, as that call's words. */}
+            <ReplyBody runId={runId} modelCallId={id}>
+              {working || handoff ? (
+                <SafeMarkdown text={stream.text} size="chat" />
+              ) : (
+                <MessageBody text={stream.text} markdown size="chat" copy={false} />
+              )}
+            </ReplyBody>
             {index < stopped.length - 1 || shownText || shownResults.length || !working ? (
               <p className="text-caption text-muted-foreground" role="note">
                 {tm('interrupted')}

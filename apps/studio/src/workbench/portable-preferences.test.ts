@@ -63,21 +63,15 @@ it('keeps the named theme when the imported theme is the same as now', async () 
   expect(preferences.getState()).toMatchObject({ theme: 'dark', palette: 'builtin:monokai' });
 });
 
-it('keeps the reply quote key on this device: out of the export, and through an import', async () => {
-  values.set(
-    'corral:shortcuts:v1:web',
-    JSON.stringify({
-      palette: { mod: true, shift: true, key: 'k' },
-      'reply.quote': { alt: true, key: 'e' },
-    }),
-  );
+it('carries the reply quote key, Alt alone, in the export and through an import', async () => {
+  values.set('corral:shortcuts:v1:web', JSON.stringify({ 'reply.quote': { alt: true, key: 'e' } }));
   const current = portablePreferences('en');
-  expect(current.shortcuts).toEqual({ palette: { mod: true, shift: true, key: 'k' } });
-  const target: PortableApplication = { ...current, shortcuts: { help: { mod: true, key: '/' } } };
+  expect(current.shortcuts).toEqual({ 'reply.quote': { alt: true, key: 'e' } });
+  const target: PortableApplication = {
+    ...current,
+    shortcuts: { 'reply.quote': { alt: true, key: 'w' }, help: { mod: true, key: '/' } },
+  };
   const readback = await applyPortablePreferences(target, await revision(current), 'en', () => {});
-  expect(readback.shortcuts).toEqual({ help: { mod: true, key: '/' } });
-  expect(JSON.parse(values.get('corral:shortcuts:v1:web') ?? '{}')).toEqual({
-    help: { mod: true, key: '/' },
-    'reply.quote': { alt: true, key: 'e' },
-  });
+  expect(readback.shortcuts).toEqual(target.shortcuts);
+  expect(JSON.parse(values.get('corral:shortcuts:v1:web') ?? '{}')).toEqual(target.shortcuts);
 });

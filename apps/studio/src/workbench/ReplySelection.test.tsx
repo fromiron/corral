@@ -34,14 +34,23 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount(children: ReactNode, onGoTo = vi.fn()) {
+async function mount(
+  children: ReactNode,
+  {
+    onPlace = vi.fn(),
+    rowOf = (runId: string) => (runId === 'run_a' ? 'entry_reply' : undefined),
+  }: {
+    onPlace?: (id: string, offset: number) => void;
+    rowOf?: (runId: string) => string | undefined;
+  } = {},
+) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <ReplySelection target={target} onGoTo={onGoTo} />
+        <ReplySelection target={target} rowOf={rowOf} onPlace={onPlace} />
         {children}
       </IntlProvider>,
     ),
@@ -192,104 +201,178 @@ const sent = (quoted = 'quick brown', start = 4, end = 15) =>
     prefix: 'The ',
     suffix: ' fox jumps over the lazy dog.',
   });
-const chip = () =>
-  [...document.querySelectorAll('button')].find((button) =>
+// Each test sends its quotes in a message of its own: what a chip said stays with its message.
+let messagesSent = 0;
+const sentIn = (item: TextAttachment, owner = `entry_${++messagesSent}`) => (
+  <SentQuotes attachments={[item]} owner={owner} />
+);
+/** The conversation's timeline: the reply's row and the row of the message that quoted it. */
+const timeline = (reply: ReactNode, quotes: ReactNode) => (
+  <section data-testid="chat-timeline">
+    <ol data-chat-window>
+      <li data-chat-item="entry_reply">{reply}</li>
+      <li data-chat-item="entry_sent">{quotes}</li>
+    </ol>
+  </section>
+);
+const chips = () =>
+  [...document.querySelectorAll('button')].filter((button) =>
     button.getAttribute('aria-label')?.startsWith('Go to the quoted passage'),
   );
-async function goBack(item: TextAttachment) {
+const chip = () => chips()[0];
+const detail = () => document.querySelector('[data-testid="quote-detail"]');
+const said = () => document.querySelector('[role="status"]')?.textContent ?? '';
+async function goBack() {
   await act(async () => chip()?.click());
   await vi.waitFor(() => {
-    if (!settled(item)) throw new Error('not yet');
+    if (!document.activeElement?.hasAttribute('data-reply-body') && !description())
+      throw new Error('not yet');
   });
+  // The live region speaks a frame after the change.
+  await act(async () => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))));
 }
-const settled = (_item: TextAttachment) =>
-  document.activeElement?.hasAttribute('data-reply-body') ||
-  document.body.textContent?.includes(messages.Composer.quoteNotFound);
+const description = () => {
+  const id = chip()?.getAttribute('aria-describedby');
+  return id ? (document.getElementById(id)?.textContent ?? '') : '';
+};
 const bodyOf = (testId: string) =>
   document.querySelector(`[data-testid="${testId}"]`)?.closest('[data-reply-body]');
 
-it('a sent quote leads to its passage at its offsets, and the passage takes focus', async () => {
-  const onGoTo = vi.fn();
-  const item = sent();
+it('a drawn reply’s passage is found where it is, takes focus, and the view is left alone', async () => {
+  const onPlace = vi.fn();
   await mount(
     <>
       {replies()}
-      <SentQuotes attachments={[item]} />
+      {sentIn(sent())}
     </>,
-    onGoTo,
+    { onPlace },
   );
-  await goBack(item);
-  expect(onGoTo).toHaveBeenCalledWith('run_a');
+  await goBack();
   expect(document.activeElement).toBe(bodyOf('first'));
   expect(document.getSelection()?.toString()).toBe('quick brown');
   // The conversation's own selection of the passage shows no toolbar.
   expect(toolbar()).toBeNull();
-  expect(document.body.textContent).not.toContain(messages.Composer.quoteNotFound);
+  expect(onPlace).not.toHaveBeenCalled();
+  expect(description()).toBe('');
+  expect(detail()).toBeNull();
 });
 
 it('finds the passage by the words around it when its offsets moved', async () => {
-  const item = sent();
   await mount(
     <>
       {replies(`Edited first. ${REPLY}`)}
-      <SentQuotes attachments={[item]} />
+      {sentIn(sent())}
     </>,
   );
-  await goBack(item);
+  await goBack();
   expect(document.activeElement).toBe(bodyOf('first'));
   const range = document.getSelection()?.getRangeAt(0);
   expect(range?.toString()).toBe('quick brown');
   expect(range?.startOffset).toBe(18);
 });
 
-it('says the passage was not found, with its words in the chip’s detail', async () => {
-  const item = sent();
+it('a passage gone from a drawn reply: the chip itself says so, its detail holds the words, the view stays', async () => {
+  const onPlace = vi.fn();
   await mount(
     <>
       {replies('Nothing like the quote is left here.')}
-      <SentQuotes attachments={[item]} />
+      {sentIn(sent())}
     </>,
+    {
+      onPlace,
+    },
   );
-  await goBack(item);
-  const status = document.querySelector('[role="status"]');
-  expect(status?.textContent).toBe(messages.Composer.quoteNotFound);
-  expect(document.querySelector('blockquote')?.textContent).toBe('quick brown');
+  await goBack();
+  expect(onPlace).not.toHaveBeenCalled();
+  // One chip, now saying the passage was not found, by name and by description.
+  expect(chips()).toHaveLength(1);
+  expect(chip()?.getAttribute('aria-label')).toBe('Go to the quoted passage: quick brown');
+  expect(description()).toBe(messages.Composer.quoteNotFound);
+  expect(detail()?.textContent).toContain(messages.Composer.quoteNotFound);
+  expect(detail()?.querySelector('blockquote')?.textContent).toBe('quick brown');
+  // Said once by the live region.
+  expect(said()).toBe(messages.Composer.quoteNotFound);
   expect(document.getSelection()?.toString()).toBe('');
+  // Escape closes the detail; the chip goes on saying it.
+  await act(async () =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  );
+  await vi.waitFor(() => expect(detail()).toBeNull());
+  expect(description()).toBe(messages.Composer.quoteNotFound);
 });
 
 it('never shows the same words in another reply in place of the passage', async () => {
-  const item = sent();
   await mount(
     <>
       {replies('The first reply changed.', REPLY)}
-      <SentQuotes attachments={[item]} />
+      {sentIn(sent())}
     </>,
   );
-  await goBack(item);
-  expect(document.body.textContent).toContain(messages.Composer.quoteNotFound);
+  await goBack();
+  expect(description()).toBe(messages.Composer.quoteNotFound);
   expect(document.activeElement).not.toBe(bodyOf('second'));
   expect(document.getSelection()?.toString()).toBe('');
 });
 
-it('waits for a reply whose row was out of the window to be drawn', async () => {
-  const item = sent();
+/** A reply whose row is out of the window, drawn once the conversation places its row. */
+function later(first = REPLY) {
+  const shown = { show: () => {} };
   function Later() {
-    const [shown, setShown] = useState(false);
-    later.show = () => setShown(true);
-    return shown ? replies() : null;
+    const [drawn, setDrawn] = useState(false);
+    shown.show = () => setDrawn(true);
+    return drawn ? (
+      <ReplyBody runId="run_a" modelCallId="call_a">
+        <p data-testid="first">{first}</p>
+      </ReplyBody>
+    ) : null;
   }
-  const later = { show: () => {} };
-  const onGoTo = vi.fn(() => setTimeout(() => act(() => later.show()), 50));
-  await mount(
-    <>
-      <Later />
-      <SentQuotes attachments={[item]} />
-    </>,
-    onGoTo,
-  );
-  await goBack(item);
+  const onPlace = vi.fn((id: string) => {
+    if (id === 'entry_reply') setTimeout(() => act(() => shown.show()), 50);
+  });
+  return { Later, onPlace };
+}
+
+it('brings in a reply whose row was out of the window, and finds its passage once drawn', async () => {
+  const { Later, onPlace } = later();
+  await mount(timeline(<Later />, sentIn(sent())), { onPlace });
+  await goBack();
+  expect(onPlace).toHaveBeenNthCalledWith(1, 'entry_reply', 0);
   expect(document.activeElement).toBe(bodyOf('first'));
   expect(document.getSelection()?.toString()).toBe('quick brown');
+});
+
+it('gone looking in a reply out of the window and found nothing: back where the chip was', async () => {
+  const { Later, onPlace } = later('Nothing like the quote is left here.');
+  await mount(timeline(<Later />, sentIn(sent())), { onPlace });
+  await goBack();
+  expect(onPlace.mock.calls).toEqual([
+    ['entry_reply', 0],
+    ['entry_sent', 0],
+  ]);
+  expect(description()).toBe(messages.Composer.quoteNotFound);
+  expect(detail()?.querySelector('blockquote')?.textContent).toBe('quick brown');
+});
+
+it('a chip whose row is drawn again still says its passage was not found', async () => {
+  const item = sent();
+  function Toggle() {
+    const [drawn, setDrawn] = useState(true);
+    toggle.set = setDrawn;
+    return drawn ? sentIn(item, 'entry_kept') : null;
+  }
+  const toggle = { set: (_drawn: boolean) => {} };
+  await mount(
+    <>
+      {replies('Nothing like the quote is left here.')}
+      <Toggle />
+    </>,
+  );
+  await goBack();
+  await act(async () => toggle.set(false));
+  expect(chip()).toBeUndefined();
+  await act(async () => toggle.set(true));
+  expect(description()).toBe(messages.Composer.quoteNotFound);
+  expect(detail()?.textContent).toContain(messages.Composer.quoteNotFound);
 });
 
 it('looks for the passage at its offsets first, then between its words', () => {
