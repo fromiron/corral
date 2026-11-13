@@ -36,6 +36,7 @@ export function WorkTab({
   selectedRunId,
   onChange,
   sessionReads = NO_READS,
+  runsListed = true,
   reference,
   onReferenceUsed,
   onPanel,
@@ -50,6 +51,8 @@ export function WorkTab({
   onChange: () => void;
   /** The session reads: the number of the latest one back, and of the latest one asked for. */
   sessionReads?: { read: number; started: () => number };
+  /** Whether the run list has been read since the page opened. */
+  runsListed?: boolean;
   reference: FileReference | null;
   onReferenceUsed: () => void;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
@@ -153,6 +156,8 @@ export function WorkTab({
                 carried={placement.carriedOf.get(entry.entryId)}
                 carriedHere={placement.carriesActions.has(entry.entryId)}
                 runOnly={placement.runOnly.has(entry.entryId)}
+                sourceShown={placement.sourced.has(entry.entryId)}
+                runsListed={runsListed}
               />
             ),
           })),

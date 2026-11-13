@@ -37,6 +37,7 @@ export function EntryStatus({
   sessionId,
   entry,
   steer,
+  sourceShown = false,
   canResend,
   onResend,
   onPanel,
@@ -45,6 +46,8 @@ export function EntryStatus({
   entry: SessionEntry;
   /** An instruction's line; null for a new or next request. */
   steer: SteerMeta | null;
+  /** A carried request's source message is in the conversation and says it was carried. */
+  sourceShown?: boolean;
   canResend: boolean;
   onResend: () => void;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
@@ -83,7 +86,7 @@ export function EntryStatus({
   else if (steer) {
     const line = steerLine(steer, t, sessionId, onPanel, entry, canResend, onResend);
     if (line) parts.push(line);
-  } else if (entry.carriedFrom && entry.state === 'started')
+  } else if (entry.carriedFrom && entry.state === 'started' && !sourceShown)
     // Carried over from an instruction sent from the run record: no source message here.
     parts.push(<Text key="carried">{t('meta.carriedStarted')}</Text>);
   return (

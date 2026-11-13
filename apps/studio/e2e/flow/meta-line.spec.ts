@@ -381,3 +381,73 @@ test('the meta line says what became of each message and moves nothing', async (
   await shot(page, 'dark', message('Look at session.ts instead'));
   expect(corral.errors).toEqual([]);
 });
+
+// Opened again while its run goes (features/composer-flow.md "계약"): the run is not read as
+// ended before the run list says so; the line follows it live and then says its ended record.
+test('a page opened again while the run goes follows the instruction to its end', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  const first = hold();
+  const second = hold();
+  const runs = () => [...corral.server.coordinator.listRuns()].reverse();
+  const projection = () => {
+    const run = runs()[0];
+    return run ? corral.server.coordinator.getSnapshot(run.runId).projection : null;
+  };
+  corral.fake?.setResponses([
+    async () => {
+      first.reach();
+      await first.opened;
+      return fauxAssistantMessage(
+        [
+          fauxToolCall('update_plan', {
+            scope: 'execution',
+            expectedRevision: 0,
+            criteriaVersionId: projection()?.currentCriteriaVersionId ?? null,
+            items: [{ id: 'look', title: 'Look at the session store', status: 'in_progress' }],
+          }),
+        ],
+        { stopReason: 'toolUse' },
+      );
+    },
+    async () => {
+      second.reach();
+      await second.opened;
+      return fauxAssistantMessage('Ran the tests as well.');
+    },
+  ]);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await corral.open('/projects/default');
+  await newConversation(page);
+  const box = requestBox(page);
+  await box.fill('Find why login is slow');
+  await box.press('Enter');
+  await first.reached;
+  await waitForStill(page);
+  await box.fill('Run the tests too');
+  await box.press('Enter');
+  const status = page
+    .locator('[data-chat-item]')
+    .filter({ hasText: 'Run the tests too' })
+    .getByTestId('entry-status')
+    .first();
+  await expect(status).toHaveText(/^Waiting to join/);
+  // Opened again while the run goes.
+  await page.reload();
+  await expect(status).toHaveText(/^Waiting to join/);
+  first.open();
+  await second.reached;
+  await expect(status).toHaveText(/^Read/);
+  second.open();
+  await expect.poll(() => runs()[0]?.status).toBe('succeeded');
+  await expect
+    .poll(() => Object.values(projection()?.directives ?? {}).map((item) => item.status))
+    .toEqual(['delivered']);
+  // Ended: the line says the ended record, and stays.
+  await expect(status).toHaveText(/^Read/);
+  await page.waitForTimeout(2_000);
+  await expect(status).toHaveText(/^Read/);
+  expect(corral.errors).toEqual([]);
+});

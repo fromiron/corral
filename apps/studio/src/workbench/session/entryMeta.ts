@@ -114,6 +114,8 @@ export interface EntryPlacement {
   carriesActions: Set<string>;
   /** An item drawn as nothing (a carried request that did not start, under its source). */
   emptyFor: Map<string, string>;
+  /** Carried requests whose source message is in the conversation, which says it was carried. */
+  sourced: Set<string>;
 }
 
 /**
@@ -133,6 +135,7 @@ export function placeEntries(
     carriedOf: new Map(),
     carriesActions: new Set(),
     emptyFor: new Map(),
+    sourced: new Set(),
   };
   const steers = entries.filter((entry) => entry.intent === 'steer' && entry.state !== 'dismissed');
   const shown = entries.filter(inConversation);
@@ -142,6 +145,15 @@ export function placeEntries(
     if (source) placement.carriedOf.set(source.entryId, entry);
     const at = shown.indexOf(entry);
     if (at < 0) continue;
+    // Its source is here; or, while an instruction before it is unread, taken to be.
+    if (
+      source
+        ? shown.includes(source)
+        : shown
+            .slice(0, at)
+            .some((item) => item.intent === 'steer' && item.runId != null && !directiveOf(item))
+    )
+      placement.sourced.add(entry.entryId);
     const above = shown[at - 1];
     const under =
       above !== undefined &&

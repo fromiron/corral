@@ -24,7 +24,15 @@ import { EntryCard } from './SessionEntries.tsx';
 // The one line under a sent message (features/composer-flow.md "보낸 메시지의 메타 줄"): its time
 // and actions on hover or focus, and what became of it, always.
 
-const fixture = vi.hoisted(() => ({ store: null as unknown, editRequest: vi.fn() }));
+const fixture = vi.hoisted(() => ({
+  store: null as unknown,
+  editRequest: vi.fn(),
+  recordRead: vi.fn(),
+}));
+vi.mock('./runRecords.ts', async (original) => ({
+  ...(await original<typeof import('./runRecords.ts')>()),
+  useRecordRead: fixture.recordRead,
+}));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({ workspaces: null, mode: 'browser' }),
 }));
@@ -188,6 +196,8 @@ async function show(
     runOnly?: boolean;
     carriedHere?: boolean;
     heldAs?: DirectiveView['status'];
+    sourceShown?: boolean;
+    runsListed?: boolean;
     runs?: RunSummary[];
   } = {},
 ) {
@@ -218,6 +228,8 @@ async function show(
           {...(options.runOnly ? { runOnly: true } : {})}
           {...(options.carriedHere ? { carriedHere: true } : {})}
           {...(options.heldAs ? { heldAs: options.heldAs } : {})}
+          {...(options.sourceShown ? { sourceShown: true } : {})}
+          {...(options.runsListed === false ? { runsListed: false } : {})}
         />
       </IntlProvider>,
     ),
@@ -620,6 +632,14 @@ it('a carried request without its source here draws its own message, saying it s
   expect(f.button(messages.MessageBody.editAsNew)).toBeDefined();
 });
 
+it('a carried request drawing its own message under another item writes a started request’s line', async () => {
+  // Its source is in the conversation and says it was carried, once.
+  const f = await show(carriedStarted, { sourceShown: true });
+  expect(f.container.textContent).toContain(carriedStarted.text);
+  expect(f.said()).toBe('');
+  expect(f.button(messages.MessageBody.editAsNew)).toBeDefined();
+});
+
 it('a carried request taken out of the queue, or back to edit, leaves the message not delivered', async () => {
   const removed = entry({
     entryId: 'entry_carried',
@@ -688,11 +708,38 @@ it('a carried request is placed once: right under its source, under an unread on
   const apart = placeEntries([steer, between, carried], () => directive);
   expect(apart.runOnly.size).toBe(0);
   expect(apart.carriedOf.get(steer.entryId)).toBe(carried);
+  // Whether its source is in the conversation, which then says it was carried: known, apart,
+  // under an unread one; not for one sent from the run record.
+  expect([...read.sourced]).toEqual([carried.entryId]);
+  expect([...apart.sourced]).toEqual([carried.entryId]);
+  expect([...placeEntries([steer, between, carried], () => undefined).sourced]).toEqual([
+    carried.entryId,
+  ]);
+  expect(other.sourced.size).toBe(0);
+  expect(placeEntries([carried], () => undefined).sourced.size).toBe(0);
+  // Two carried from one run: each said at its source alone.
+  const second = entry({ entryId: 'entry_steer_b', commandId: 'cmd_steer_b' });
+  const carriedB = { ...carried, entryId: 'entry_carried_b', carriedFrom: 'directive_b' };
+  const two = placeEntries([steer, second, carried, carriedB], (item) =>
+    item === second ? { ...directive, directiveId: 'directive_b' } : directive,
+  );
+  expect(two.runOnly.size).toBe(0);
+  expect([...two.sourced].sort()).toEqual([carried.entryId, carriedB.entryId].sort());
   // Did not start, under its source: an item drawn as nothing, reached through its source.
   const refused = { ...carried, state: 'refused' as const, runId: null };
   expect(placeEntries([steer, refused], () => directive).emptyFor.get(refused.entryId)).toBe(
     steer.entryId,
   );
+});
+
+it('a drawn instruction asks for its run’s record with what is known of the run list', async () => {
+  await show(entry(), { runs: [], runsListed: false });
+  expect(fixture.recordRead).toHaveBeenLastCalledWith('run_live', [], false);
+  await show(entry(), { runs: ended });
+  expect(fixture.recordRead).toHaveBeenLastCalledWith('run_live', ended, true);
+  // A request has no instruction's record to read.
+  await show(request());
+  expect(fixture.recordRead).toHaveBeenLastCalledWith(null, ended, true);
 });
 
 it('an instruction whose run was read but has no directive for it is not known to be delivered', async () => {

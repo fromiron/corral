@@ -39,6 +39,8 @@ export function EntryCard({
   carriedHere = false,
   runOnly = false,
   heldAs,
+  sourceShown = false,
+  runsListed = true,
 }: {
   sessionId: string;
   entry: SessionEntry;
@@ -55,6 +57,10 @@ export function EntryCard({
   runOnly?: boolean;
   /** What the instruction was before this view saw it expire, until the session is read. */
   heldAs?: DirectiveView['status'] | undefined;
+  /** A carried request's source message is in the conversation, and says it was carried. */
+  sourceShown?: boolean;
+  /** Whether the run list has been read: a run missing from it before then may be going. */
+  runsListed?: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tm = useTranslations('MessageBody');
@@ -68,10 +74,7 @@ export function EntryCard({
     );
   const canResend = !runs.some((item) => !TERMINAL_RUN_STATUSES.has(item.status));
   // Drawn, an instruction to an ended run has its run's record read (once while the app runs).
-  useRecordRead(
-    entry.intent === 'steer' ? entry.runId : null,
-    !run || TERMINAL_RUN_STATUSES.has(run.status),
-  );
+  useRecordRead(entry.intent === 'steer' ? entry.runId : null, runs, runsListed);
   const steer =
     entry.intent !== 'steer'
       ? null
@@ -209,6 +212,7 @@ export function EntryCard({
               sessionId={sessionId}
               entry={entry}
               steer={steer}
+              sourceShown={sourceShown}
               canResend={canResend}
               onResend={resend}
               onPanel={onPanel}

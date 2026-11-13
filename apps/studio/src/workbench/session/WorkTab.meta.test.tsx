@@ -22,6 +22,8 @@ type CardProps = {
   carriedHere?: boolean;
   runOnly?: boolean;
   heldAs?: DirectiveView['status'];
+  sourceShown?: boolean;
+  runsListed?: boolean;
 };
 const fixture = vi.hoisted(() => ({
   cards: new Map<string, CardProps>(),
@@ -145,6 +147,7 @@ async function show(
           selectedRunId={null}
           onChange={onChange}
           sessionReads={reads}
+          runsListed={false}
           reference={null}
           onReferenceUsed={() => {}}
           onPanel={() => {}}
@@ -172,6 +175,8 @@ it('each instruction gets its own directive, by the command it was sent as', asy
   expect(fixture.cards.get('c')?.record).toBeNull();
   // Its run's record is not read yet.
   expect(fixture.cards.get('d')?.record).toBeUndefined();
+  // Before the run list is read, a row does not take a missing run to have ended.
+  expect(fixture.cards.get('a')?.runsListed).toBe(false);
 });
 
 it('an instruction’s carried request is handed to it whatever became of it, removed as well', async () => {
@@ -221,6 +226,9 @@ it('a carried request is drawn as a run row only right under its source', async 
   // its source, so each draws its own message; A and B keep only the words.
   await show([entry('a'), entry('b'), carriedA, carriedB]);
   for (const id of ['carried_a', 'carried_b']) expect(fixture.cards.get(id)?.runOnly).toBe(false);
+  // Their sources are here and say they were carried: their own lines do not.
+  for (const id of ['carried_a', 'carried_b'])
+    expect(fixture.cards.get(id)?.sourceShown).toBe(true);
   expect(fixture.cards.get('a')?.carried).toEqual(carriedA);
   expect(fixture.cards.get('b')?.carried).toEqual(carriedB);
   for (const id of ['a', 'b']) expect(fixture.cards.get(id)?.carriedHere).toBe(false);
