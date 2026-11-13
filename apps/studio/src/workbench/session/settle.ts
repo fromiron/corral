@@ -28,67 +28,82 @@ export function useSettledAppearance(shown: boolean): boolean {
   return !shown || (!changed && !held);
 }
 
-type Key = string | number | null;
+type Hold = { round: number; counting: boolean };
 
 /**
- * False for the settle wait after `key` becomes a value other than the last one it had; true
- * otherwise. `null` (nothing in that place) neither starts nor ends a wait, so a value that comes
- * back after a gap, or after another, still waits; the first value ever is settled at once.
+ * Whether the activity line's place holds its press (features/composer-flow.md "활동 바"): for the
+ * settle wait after what stands there changes to
+ *
+ * - another approval than the one before on the line, its View or its buttons (the first approval
+ *   ever on the line is taken at once);
+ * - an approval's buttons where a frame painted View alone (its own, or a count line's) since the
+ *   line last waited on nothing;
+ * - anything at all while a wait runs: buttons that leave and come back are counted again.
+ *
+ * The wait counts from the frame that paints what came, never from before it, however late the
+ * frame. What a frame paints is read from that frame's own callback, which a later render does not
+ * take back: a View judged away in the same task is never counted, one painted always is.
  */
-export function useSettled(key: Key): boolean {
-  const ms = useContext(SettleContext);
-  const [state, setState] = useState<{ last: Key; held: Key }>({ last: key, held: null });
-  const fresh = key !== null && key !== state.last;
-  if (fresh) setState({ last: key, held: state.last === null ? null : key });
-  const held = state.held;
-  useEffect(() => {
-    if (held === null) return;
-    const timer = setTimeout(
-      () => setState((current) => (current.held === held ? { ...current, held: null } : current)),
-      ms,
-    );
-    return () => clearTimeout(timer);
-  }, [held, ms]);
-  if (fresh) return state.last === null;
-  return held === null || held !== key;
-}
-
-/**
- * True for the settle wait after `key` (what came to a place: an approval's buttons) turns to a
- * new value where a frame was painted with only View there (`viewAlone`) since the place was last
- * empty (`there` false). What a frame paints is read before it is painted, from the frame's own
- * callback, which a later render does not take back: a View judged away in the same task is not
- * counted, and one painted, however briefly and however slow the device, always is.
- */
-export function useHeldAfterView({
-  viewAlone,
-  there,
-  key,
+export function useLineHold({
+  approval,
+  decide,
+  waiting,
 }: {
-  viewAlone: boolean;
-  there: boolean;
-  key: Key;
+  /** The approval the line names, if any. */
+  approval: string | null;
+  /** Its buttons are on the line. */
+  decide: boolean;
+  /** The line says something waits (an approval, a question, or a count of them). */
+  waiting: boolean;
 }): boolean {
   const ms = useContext(SettleContext);
-  const now = useRef({ viewAlone, there });
+  const [hold, setHold] = useState<Hold | null>(null);
+  const place = approval ? `${approval}:${decide ? 'decide' : 'view'}` : null;
+  const now = useRef({ waiting, viewAlone: waiting && !decide, hold });
+  const first = useRef<string | null>(null);
+  const shown = useRef<string | null>(null);
+  const last = useRef<string | null>(null);
   const painted = useRef(false);
-  const last = useRef<Key>(null);
-  const [held, setHeld] = useState<Key>(null);
+  const frame = useRef<number | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Attached and detached: on mount, and again whenever the effects are cleaned up and run again
+  // (StrictMode's second mount, a hidden tree shown again). Detached, nothing waits for a frame or
+  // a clock; attached again, a wait that was counting counts anew from the next painted frame.
   useLayoutEffect(() => {
-    now.current = { viewAlone, there };
-    if (key !== null && key !== last.current && painted.current) setHeld(key);
-    last.current = key;
-    if (typeof requestAnimationFrame === 'undefined') return;
-    // Never cancelled: the frame reads what it is about to paint, whatever rendered since.
-    requestAnimationFrame(() => {
-      if (now.current.viewAlone) painted.current = true;
-      else if (!now.current.there) painted.current = false;
+    setHold((current) => (current?.counting ? { ...current, counting: false } : current));
+    return () => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = null;
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    now.current = { waiting, viewAlone: waiting && !decide, hold };
+    if (approval && first.current === null) first.current = approval;
+    if (place !== shown.current && place !== null) {
+      const another = last.current !== null && place !== last.current && approval !== first.current;
+      if (hold || another || (decide && painted.current))
+        setHold({ round: (hold?.round ?? 0) + 1, counting: false });
+      last.current = place;
+    }
+    shown.current = place;
+    if (frame.current !== null || typeof requestAnimationFrame === 'undefined') return;
+    // One frame waited for at a time, never cancelled by a render: it reads what it paints.
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      const painting = now.current;
+      if (painting.viewAlone) painted.current = true;
+      else if (!painting.waiting) painted.current = false;
+      const counting = painting.hold;
+      if (!counting || counting.counting) return;
+      setHold({ ...counting, counting: true });
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        setHold((current) => (current?.round === counting.round ? null : current));
+      }, ms);
     });
   });
-  useEffect(() => {
-    if (held === null) return;
-    const timer = setTimeout(() => setHeld(null), ms);
-    return () => clearTimeout(timer);
-  }, [held, ms]);
-  return held !== null && held === key;
+  return hold !== null;
 }

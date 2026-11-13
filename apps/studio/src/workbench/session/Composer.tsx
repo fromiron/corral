@@ -386,26 +386,24 @@ function SessionComposer({
         : failure.kind === 'refused'
           ? tApprovals('refused', { message: failure.message })
           : tActivity('commandUnconfirmed');
-      if (text && going?.runId !== runId) {
-        if (failure?.kind === 'refused') setError(text);
-        setCommandFailed(null);
-      } else
-        setCommandFailed(
-          text && failure
-            ? { runId, text, lost: failure.kind === 'unconfirmed', status: going?.status }
-            : null,
-        );
+      setCommandFailed(
+        text && failure
+          ? { runId, text, lost: failure.kind === 'unconfirmed', status: going?.status }
+          : null,
+      );
     },
   };
-  // The run moves on: a lost answer goes with the state it was pressed in; the refusal of a run no
-  // longer going is said under the input, as another run's is.
-  useEffect(() => {
-    if (!commandFailed) return;
-    if (going?.runId !== commandFailed.runId) {
-      if (!commandFailed.lost) setError(commandFailed.text);
-      setCommandFailed(null);
-    } else if (commandFailed.lost && going.status !== commandFailed.status) setCommandFailed(null);
-  }, [going, commandFailed]);
+  // The run moves on, settled as it renders so no frame says what no longer holds: a lost answer
+  // goes with the state it was pressed in; the refusal of a run no longer going is said under the
+  // input, as another run's is.
+  const runGone = commandFailed !== null && going?.runId !== commandFailed.runId;
+  if (
+    commandFailed &&
+    (runGone || (commandFailed.lost && going?.status !== commandFailed.status))
+  ) {
+    if (runGone && !commandFailed.lost) setError(commandFailed.text);
+    setCommandFailed(null);
+  }
   // Stop asks first while two or more executions work, or while how many is not known yet: one
   // stop then ends them all.
   const activeExecutions = useActiveExecutionCount(going?.runId ?? null);
@@ -646,13 +644,7 @@ function SessionComposer({
           onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
           onViewRun={onViewRun}
           {...(revealRun ? { revealRun } : {})}
-          notice={
-            going &&
-            commandFailed?.runId === going.runId &&
-            !(commandFailed.lost && commandFailed.status !== going.status)
-              ? commandFailed.text
-              : null
-          }
+          notice={commandFailed?.text ?? null}
           request={
             ownActive
               ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)

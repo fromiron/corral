@@ -679,19 +679,70 @@ test('⑥ the line decides a call only while it says it whole; the next call in 
     const spot = await approve.boundingBox();
     if (!spot) throw new Error('Allow once is missing');
     const first = pending();
-    await page.mouse.click(spot.x + spot.width / 2, spot.y + spot.height / 2);
-    // The next call comes to the same place; the same place pressed again does not decide it.
+    const x = spot.x + spot.width / 2;
+    const y = spot.y + spot.height / 2;
+    // From inside the page, every frame: the frame the next call's Allow once first stands on the
+    // same place, that place is pressed, before anything else runs.
+    await page.evaluate(
+      ({ x, y }) => {
+        const w = window as unknown as {
+          nextPress: { disabled: boolean; at: number } | null;
+          nextFrames: string[];
+        };
+        w.nextPress = null;
+        w.nextFrames = [];
+        const tick = () => {
+          const bar = document.querySelector('[data-testid="activity-bar"]');
+          const frame = `${bar?.getAttribute('data-line')}: ${[
+            ...(bar?.querySelectorAll('[data-activity-bar] > div button') ?? []),
+          ]
+            .filter((button) => !button.closest('[inert]'))
+            .map(
+              (button) =>
+                `${button.getAttribute('aria-label') ?? button.textContent}${(button as HTMLButtonElement).disabled ? ' (off)' : ''}`,
+            )
+            .join(' | ')}`;
+          if (w.nextFrames.at(-1) !== frame) w.nextFrames.push(frame);
+          // Found by where it stands, not by hit testing: a held button lets the pointer through.
+          const next = [
+            ...(bar?.querySelectorAll<HTMLButtonElement>('[data-activity-bar] > div button') ?? []),
+          ].find(
+            (button) =>
+              !button.closest('[inert]') &&
+              button.getAttribute('aria-label') === 'Allow once · Run · echo second',
+          );
+          const box = next?.getBoundingClientRect();
+          if (next && box && x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
+            w.nextPress = { disabled: next.disabled, at: performance.now() };
+            // Pressed in that frame: a held button takes no press, one that is not decides.
+            next.click();
+            return;
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      },
+      { x, y },
+    );
+    await page.mouse.click(x, y);
+    // The next call comes to the same place; the same place pressed as it comes does not decide it.
     await expect(activityLine(page)).toContainText('echo second', { timeout: 30_000 });
     const next = activityLine(page).getByRole('button', {
       name: 'Allow once · Run · echo second',
       exact: true,
     });
-    const arrived = { disabled: await next.isDisabled(), box: await next.boundingBox() };
-    await page.mouse.click(spot.x + spot.width / 2, spot.y + spot.height / 2);
+    const pressed = await page
+      .waitForFunction(() => (window as unknown as { nextPress: unknown }).nextPress, null, {
+        timeout: 10_000,
+      })
+      .then((handle) => handle.jsonValue() as Promise<{ disabled: boolean; at: number }>);
     await page.waitForTimeout(200);
     const waiting = pending();
-    record('next-in-place', { first, arrived, waiting, spot });
-    expect(arrived.disabled).toBe(true);
+    const frames = await page.evaluate(
+      () => (window as unknown as { nextFrames: string[] }).nextFrames,
+    );
+    record('next-in-place', { first, pressed, waiting, spot, frames });
+    expect(pressed.disabled).toBe(true);
     expect(waiting).toHaveLength(1);
     expect(waiting).not.toEqual(first);
     // A moment later it is decided by a press.
@@ -1033,13 +1084,11 @@ test('⑨ on a slow machine with reduced motion, a press where View stood alone 
     const timeline = page.getByTestId('chat-timeline');
     await timeline.hover({ position: { x: 16, y: 120 } });
     for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
-    await expect
-      .poll(() => page.evaluate(() => (window as unknown as { viewAt: unknown }).viewAt), {
-        timeout: 10_000,
-      })
-      .not.toBeNull()
-      .catch(() => undefined);
-    await page.waitForTimeout(2_000);
+    // The line comes to its buttons, and the 0.6 s after any View alone before them goes by.
+    await expect(
+      activityLine(page).getByRole('button', { name: 'Allow once · Run · echo tray-ok' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(1_500);
     const seen = await page.evaluate(() => {
       const w = window as unknown as { viewAt: number | null; press: unknown; frames: string[] };
       return { viewAlone: w.viewAt !== null, press: w.press, frames: w.frames };
@@ -1061,4 +1110,102 @@ test('⑨ on a slow machine with reduced motion, a press where View stood alone 
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => undefined);
     await session.cleanup();
   }
+});
+
+test('⑩ open, the work plan keeps its height as its steps go from waiting to working to done', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(240_000);
+  const gates = [hold(), hold(), hold(), hold()];
+  const projection = () => {
+    const run = corral.server.coordinator.listRuns()[0];
+    return run ? corral.server.coordinator.getSnapshot(run.runId).projection : null;
+  };
+  type Step = 'pending' | 'in_progress' | 'completed';
+  const plan = (revision: number, look: Step, fix: Step) =>
+    fauxToolCall('update_plan', {
+      scope: 'execution',
+      expectedRevision: revision,
+      criteriaVersionId: projection()?.currentCriteriaVersionId ?? null,
+      items: [
+        { id: 'look', title: 'Look at the login path', status: look },
+        { id: 'fix', title: 'Fix the slow call', status: fix },
+      ],
+    });
+  const states: [Step, Step][] = [
+    ['pending', 'pending'],
+    ['in_progress', 'pending'],
+    ['completed', 'in_progress'],
+    ['completed', 'completed'],
+  ];
+  // Each request writes the plan's next state, then the next request is held until it is let go.
+  corral.fake?.setResponses([
+    ...states.map(([look, fix], index) => async () => {
+      if (index > 0) {
+        gates[index - 1]?.reach();
+        await gates[index - 1]?.opened;
+      }
+      return fauxAssistantMessage([plan(index, look, fix)], { stopReason: 'toolUse' });
+    }),
+    async () => {
+      gates[3]?.reach();
+      await gates[3]?.opened;
+      return fauxAssistantMessage('Done.');
+    },
+    fauxAssistantMessage('Done.'),
+  ] as never);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await corral.open('/projects/default');
+  await newConversation(page);
+  await requestBox(page).fill('Find why login is slow');
+  await requestBox(page).press('Enter');
+  await gates[0]?.reached;
+  await openActivity(page);
+  const section = activityBar(page).getByTestId('composer-work-plan');
+  const items = section.locator('[data-plan-item]');
+  await expect(items).toHaveCount(2, { timeout: 30_000 });
+  await waitForStill(page);
+  // Every frame from here: the plan's height, and the whole bar's.
+  await page.evaluate(() => {
+    const w = window as unknown as { planFrames: { plan: number; bar: number; text: string }[] };
+    w.planFrames = [];
+    const tick = () => {
+      const bar = document.querySelector('[data-testid="activity-bar"]');
+      const plan = bar?.querySelector('[data-testid="composer-work-plan"]');
+      w.planFrames.push({
+        plan: plan?.getBoundingClientRect().height ?? -1,
+        bar: bar?.getBoundingClientRect().height ?? -1,
+        text: (plan?.textContent ?? '').slice(0, 120),
+      });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  const statuses = () => items.evaluateAll((nodes) => nodes.map((node) => node.dataset.status));
+  for (const [index, want] of [
+    ['active', 'pending'],
+    ['done', 'active'],
+    ['done', 'done'],
+  ].entries()) {
+    gates[index]?.open();
+    await expect.poll(statuses, { timeout: 30_000 }).toEqual(want);
+    await gates[index + 1]?.reached;
+    await waitForStill(page);
+  }
+  const frames = await page.evaluate(
+    () =>
+      (window as unknown as { planFrames: { plan: number; bar: number; text: string }[] })
+        .planFrames,
+  );
+  const heights = [...new Set(frames.map((frame) => frame.plan))];
+  const bars = [...new Set(frames.map((frame) => frame.bar))];
+  const odd = frames.filter((frame) => frame.plan !== frames[0]?.plan).slice(0, 5);
+  record('plan-height', { heights, bars, frames: frames.length, odd });
+  expect(frames.length).toBeGreaterThan(30);
+  expect(heights, 'the plan section kept one height').toHaveLength(1);
+  expect(bars, 'the bar kept one height').toHaveLength(1);
+  gates[3]?.open();
+  await expect(activityBar(page)).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
+  expect(corral.errors).toEqual([]);
 });

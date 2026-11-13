@@ -343,29 +343,30 @@ function useChatWidgetState(
   });
   // A settled run releases its plan body. The chip keeps the count it last read for this plan
   // revision, or is not shown; a released body is never a load error.
-  const planKey =
+  const planOwner =
     presentationRunId && ref
-      ? [
-          presentationRunId,
-          ref.scope,
-          ref.executionId,
-          ref.attemptNo,
-          ref.revision,
-          ref.bodyHash,
-        ].join('|')
+      ? [presentationRunId, ref.scope, ref.executionId, ref.attemptNo].join('|')
       : null;
-  const [lastPlan, setLastPlan] = useState<{ key: string; status: PlanProgressStatus } | null>(
-    null,
-  );
+  const planKey = planOwner && ref ? [planOwner, ref.revision, ref.bodyHash].join('|') : null;
+  const [lastPlan, setLastPlan] = useState<{
+    key: string;
+    owner: string;
+    status: PlanProgressStatus;
+  } | null>(null);
   if (
     planKey &&
+    planOwner &&
     'plan' in readPlan &&
     (lastPlan?.key !== planKey ||
       lastPlan.status.plan !== readPlan.plan ||
       lastPlan.status.state !== readPlan.state)
   ) {
-    setLastPlan({ key: planKey, status: readPlan });
+    setLastPlan({ key: planKey, owner: planOwner, status: readPlan });
   }
+  // A newer revision of the same plan is read while the one before stays: its rows change in
+  // place, and the plan never gives its place to a loading line it would take back.
+  const revising =
+    readPlan.state === 'loading' && lastPlan !== null && lastPlan.owner === planOwner;
   const planStatus: ReturnType<typeof useWorkPlanSnapshot>['status'] =
     projection &&
     (readPlan.state === 'loading' || readPlan.state === 'error') &&
@@ -373,7 +374,9 @@ function useChatWidgetState(
       ? lastPlan && lastPlan.key === planKey
         ? { ...lastPlan.status, runFinished: true }
         : { state: 'hidden' }
-      : readPlan;
+      : revising && lastPlan
+        ? lastPlan.status
+        : readPlan;
   // Loading and error details must remain expandable so their scoped Retry is reachable.
   const open = Boolean(ref) && workPlanOpen(preference);
   const calls = useMemo(
