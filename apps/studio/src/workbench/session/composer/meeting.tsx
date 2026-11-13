@@ -50,7 +50,8 @@ import {
   writeComposerDraft,
 } from '../../sessionDraft.ts';
 import { TextAttachmentList } from '../../TextAttachments.tsx';
-import { backToInput, ComposerCard, type SendTarget } from './ComposerCard.tsx';
+import { ComposerCard, type SendTarget } from './ComposerCard.tsx';
+import { backToInput, menuOpenChange } from './focus.ts';
 import { RecipientChip, type Recipients } from './SendControls.tsx';
 
 // A meeting's send target (features/composer-flow.md, the send table's meeting row): every key
@@ -339,7 +340,7 @@ export function MeetingSend({
           ) : null
         }
         attach={
-          <Menu onOpenChange={(open) => (open ? undefined : toInput())}>
+          <Menu onOpenChange={menuOpenChange(toInput)}>
             <Tooltip content={t('attachmentActions')}>
               <MenuTrigger
                 render={
