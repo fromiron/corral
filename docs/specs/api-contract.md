@@ -306,7 +306,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `review.stale` | reviewVersion,newCriteriaVersion,cause |
 | `loop.iteration_started` | iterationId,no,pinnedCarryInputs,criteriaVersion |
 | `loop.iteration_finished` | outcome,submittedVersions |
-| `loop.escalated` | loopNodeId,iterationId(걸린 회차),reason(`cap_reached`·`stalled`),policy(`raise_reasoning`·`upper_model`),nodeIds(바뀐 Agent 노드). `raise_reasoning`은 노드별 `level`, `upper_model`은 `modelProfile`. 의미는 [루프 실행](features/team-graph.md#루프-실행) |
+| `loop.escalated` | loopNodeId,iterationId(걸린 회차),reason(`cap_reached`·`stalled`),policy(`raise_reasoning`·`upper_model`),nodeIds(바뀐 Agent 노드). `raise_reasoning`은 노드별 수준 `levels`, `upper_model`은 `modelProfile`. 의미는 [루프 실행](features/team-graph.md#루프-실행) |
 | `workflow.joined` | nodeId,policy,iterationId,cancelledNodeIds. Join이 길을 이었다. `any`가 멈춘 분기의 단계를 남긴다([병렬 실행](features/team-graph.md#병렬-실행)) |
 | `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion. `breakpoint`는 nodeId |
 | `approval.resolved` | decision,actor,subjectVersions. 사람이 승인한 도구 승인은 `scope`(`once`\|`run`). 등록 검사 승인 종료는 선택 reason(cancelled/timeout/execution_ended)과 runtime actor로 기록한다. "이 실행 동안 허용"이 함께 닫은 도구 승인은 reason `allowed_for_run`과 runtime actor로 기록한다 |
@@ -350,7 +350,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 - `resolve_approval`의 `subjectVersionId`는 `subjectVersions[0]`이어야 한다. 검사 순서: 없는 승인 `TARGET_NOT_FOUND` → 이미 해결 `APPROVAL_STALE` → `expectedControlRevision` 불일치 `STALE_CONTROL_REVISION` → 다른 버전 `APPROVAL_STALE`. 같은 commandId 재전송은 처음 receipt를 돌려준다.
 - 검토 본문이 `review.schema.json`이 아니거나, 대상이 검토자가 받은 입력이 아니거나, 기준이 Run의 `criteriaVersionId`가 아니면 `review.recorded.verdict`는 `inconclusive`이고 `user_action` 승인으로 넘어간다. 통과로 처리하지 않는다.
 - 거절한 `route`·`check`·`final_output`·`breakpoint`는 Run을 취소로 끝낸다.
-- Run이 끝나면(성공·실패·취소) 그때까지 기다리던 승인은 종류와 관계없이 런타임이 닫는다. 승인마다 `approval.resolved`(decision `reject`, runtime actor, reason은 취소로 끝나면 `cancelled`, 그 밖에는 `execution_ended`)를 한 번 남긴다. 취소에서는 `cancel.confirmed` 앞에, 실패와 성공에서는 종료 상태와 같은 커밋 안에서 그 앞에 쓴다. 끝난 Run의 투영에는 `pending` 승인이 없고, 닫힌 뒤의 응답은 `APPROVAL_STALE`이다. 실행 단위 하나를 취소하거나 한 시도가 실패해 다시 시도하는 것은 Run의 승인을 닫지 않는다. 화면은 런타임이 닫은 승인을 사람의 결정(승인함·반려함)으로 적지 않는다.
+- Run이 끝나면(성공·실패·취소) 그때까지 기다리던 승인은 종류와 관계없이 런타임이 닫는다. 승인마다 `approval.resolved`(decision `reject`, runtime actor)를 한 번 남긴다. Run 취소는 요청을 받은 즉시 reason `cancelled`로 닫는다. `cancel.confirmed`보다 앞이고, 취소가 확인되지 않아 Run이 실패로 끝나도 그 기록은 그대로다. 실패와 성공은 종료 상태와 같은 커밋 안에서 그 앞에 reason `execution_ended`로 닫는다. 사람이 승인을 거절해 끝나는 Run은 종료 상태와 같은 커밋 안에서 그 앞에 `cancelled`로 닫는다. 도구·검사 승인은 그 실행 단위가 멈출 때 위 표의 reason으로 먼저 닫히며, 이 규칙은 그때까지 남은 승인에 적용한다. 끝난 Run의 투영에는 `pending` 승인이 없고, 닫힌 뒤의 응답은 `APPROVAL_STALE`이다. 실행 단위 하나를 취소하거나 한 시도가 실패해 다시 시도하는 것은 Run의 승인을 닫지 않는다. 화면은 런타임이 닫은 승인을 사람의 결정으로 적거나 세지 않는다.
 - 같은 Agent가 다음 Loop 라운드에 쓴 버전은 같은 artifactId의 다음 version이다. 투영의 `parentVersionId`가 이전 버전을 가리킨다.
 
 ## 5. timeout·재연결·다중 탭

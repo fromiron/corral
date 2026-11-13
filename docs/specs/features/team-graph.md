@@ -78,7 +78,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
    - `limitPolicy`가 `unlimited`이면 `maxIterations`를 두지 않는다. 그 밖에는 `maxIterations`가 있어야 한다.
    - `reviewRecipe`가 있는 Loop의 `limitPolicy`는 `exhaust`다. 레시피의 시도 수가 상한이다.
    - `raise_reasoning`의 `level`은 `off`가 아니다.
-   - `upper_model`의 `modelProfile`은 허용 목록에 있고, Loop 안 Agent의 역할마다 그 모델로 모델 기능 호환 검사를 통과한다.
+   - `upper_model`의 `modelProfile`은 허용 목록에 있다. 실행을 시작할 때 Loop 안 Agent의 역할마다 그 모델로 역할의 모델과 같은 기능 호환 검사를 하고, 통과하지 못하면 시작을 거절한다(`CAPABILITY_DENIED`).
    - Loop 안 Agent는 `parentId`를 따라 올라가면 이 Loop에 닿는 Agent 노드다. 안쪽 Loop와 `inline` Team의 구성원이 든다. `reference` Team 안의 Agent는 들지 않는다.
 5. **팀 완결성.** `inline` Team은 구성원이 하나 이상이고 `body`가 연결돼 있다. `next`가 연결돼 있으면 `exit`로 들어오는 연결이 하나 이상 있다. `inline` Team에는 `inputBindings`를 두지 않는다. 구성원이 앞 단계를 이름으로 읽는다.
 6. **참조 팀.**
@@ -125,12 +125,12 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 - **한도 정책.** 걸렸을 때 할 일은 Loop의 `limitPolicy`가 정한다. 사용자에게 묻지 않는다.
   - `exhaust`, `unlimited`: 소진이다.
   - `raise_reasoning`: Loop 안 Agent의 추론 수준을 `level`로 고정한다. 모델이 `level`을 지원하지 않으면 그 모델이 지원하는 `level` 이하의 가장 높은 수준을 쓴다. 이미 그 수준 이상으로 고정된 Agent와 쓸 수준이 없는 모델의 Agent는 바꾸지 않는다.
-  - `upper_model`: Loop 안 Agent의 모델을 `modelProfile`로 바꾼다. 추론 설정은 그대로 둔다. 이미 그 모델을 쓰는 Agent는 바꾸지 않는다.
+  - `upper_model`: Loop 안 Agent의 모델을 `modelProfile`로 바꾼다. 추론 설정은 그대로 둔다. 이미 그 모델을 쓰는 Agent와, 사람이 패치로 정한 추론을 그 모델이 쓸 수 없는 Agent는 바꾸지 않는다.
   - 올리기와 바꾸기는 한 진입에서 한 번만 한다. 이미 했거나 바뀌는 Agent가 하나도 없으면 소진이다.
-  - 적용하면 `loop.escalated`를 남기고, 이 회차를 `revise`로 끝내고 다음 회차를 연다. 회차 번호는 이어지고 상한은 그 자리부터 다시 센다. 정체 비교는 이어진다.
+  - 적용하면 `loop.escalated`를 남기고, 이 회차를 `revise`로 끝내고 다음 회차를 연다. 회차 번호는 이어지고 상한은 그 자리부터 다시 센다. 정체 비교는 이어진다. 한 회차가 상한과 정체에 함께 걸리면 이유는 `cap_reached`다.
   - 바뀐 모델과 추론 수준은 그 진입이 끝날 때까지 Loop 안 Agent의 새 실행(execution)에 쓰인다. 진행 중인 실행은 바꾸지 않는다. 다시 들어오면 정의의 값으로 시작한다.
   - 사람이 `node_future` 패치로 모델이나 추론을 정한 Agent는 그 항목을 바꾸지 않는다. 뒤에 온 사람의 패치가 앞선다.
-- **소진.** 회차를 걸린 이유(`cap_reached`·`stalled`)로 끝내고 Loop를 떠난다. `exhausted`에 연결이 있으면 그리로 간다. 연결이 없으면 Run이 실패로 끝난다. 이유(`loop_exhausted`)에 Loop와 걸린 이유가 남고, 그때까지 제출한 산출물은 실패한 Run의 부분 결과로 남는다.
+- **소진.** 회차를 걸린 이유(`cap_reached`·`stalled`)로 끝내고 Loop를 떠난다. `exhausted`에 연결이 있으면 그리로 간다. 연결이 없으면 Run이 실패로 끝난다. 이유(`loop_exhausted`)에 Loop와 걸린 이유가 남고, 그때까지 제출한 산출물은 실패한 Run의 부분 결과로 남는다. 리뷰 레시피가 있는 Loop는 레시피의 중단 이유로 끝난다([하네스 계약](../harness-contract.md) H6).
 - **나가기.** Loop의 `exit`로 들어오면 회차를 `pass`로 끝내고 `next`로 간다. 여러 겹 바깥 상자의 `exit`나 `repeat`로 바로 가면, 그 사이 안쪽 Loop의 열린 회차는 모두 `pass`로 끝난다.
 
 ### 재시도와 실패 경로
