@@ -338,6 +338,13 @@ test('the meta line says what became of each message and moves nothing', async (
   await shot(page, 'refusal-raw');
   await page.keyboard.press('Escape');
   // Focus back on the reason reveals the time and actions; the rest is measured without it.
+  // The closing dialog hands focus back first, so wait for that before taking it away.
+  await expect(page.getByTestId('refusal-raw')).toBeHidden();
+  await expect(
+    message('Write the release notes').getByRole('button', {
+      name: /model profile that is not set up/,
+    }),
+  ).toBeFocused();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(4, 4);
 
