@@ -370,12 +370,27 @@ function roleRow(
   );
 }
 
-/** Scrolls the row into view and gives it the focus: its first control, else the row itself. */
-function goTo(row: Element) {
+/** Drawn on the page: not hidden, not inert, with a box. */
+const drawn = (element: Element) =>
+  element.getClientRects().length > 0 && !element.closest('[inert], [hidden]');
+
+/**
+ * Scrolls the row into view and gives it the focus: its first control on the page, else the row
+ * itself. A row folded away inside its turn is reached by the conversation item that holds it.
+ */
+function goTo(found: Element) {
+  const folded = !drawn(found) && found.closest('[data-chat-item]');
+  const row = folded || found;
   row.scrollIntoView({ block: 'nearest' });
-  const control = row.matches(FOCUSABLE) ? row : row.querySelector(FOCUSABLE);
-  if (control instanceof HTMLElement) control.focus({ preventScroll: true });
-  else if (row instanceof HTMLElement) {
+  const control = folded
+    ? undefined
+    : [row, ...row.querySelectorAll(FOCUSABLE)].find(
+        (element): element is HTMLElement =>
+          element instanceof HTMLElement && element.matches(FOCUSABLE) && drawn(element),
+      );
+  control?.focus({ preventScroll: true });
+  if (control && document.activeElement === control) return;
+  if (row instanceof HTMLElement) {
     row.tabIndex = -1;
     row.focus({ preventScroll: true });
   }

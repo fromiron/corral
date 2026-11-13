@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -159,15 +159,22 @@ function Clock({ startedAt, endedAt }: { startedAt?: number; endedAt?: number })
   );
 }
 
-/** The line's words: the state where no row says it, then what it does. */
+/**
+ * The line's words: the state where no row says it, then what it does. Words fading out after a
+ * change say nothing any more: they carry no state name and are not measured.
+ */
 function LineWords({ line }: { line: ActivityBarLine }) {
+  const present = useIsPresent();
   return (
     <>
-      {line.state ? <StateWords state={line.state} /> : null}
+      {line.state ? <StateWords state={line.state} said={present} /> : null}
       {line.state && line.text ? <MetaDot /> : null}
       {line.text ? (
         // Cut at its end; the whole of it is on the card the line's View goes to.
-        <span data-activity-text="" className={cn('min-w-0 truncate', line.approval && 'flex-1')}>
+        <span
+          data-activity-text={present ? '' : undefined}
+          className={cn('min-w-0 truncate', line.approval && 'flex-1')}
+        >
           <span>{line.text}</span>
         </span>
       ) : null}
@@ -201,9 +208,12 @@ export function decisionsFit({
   return words <= (shown ? room : room - buttons - gap);
 }
 
-function StateWords({ state }: { state: ActivityState }) {
+function StateWords({ state, said = true }: { state: ActivityState; said?: boolean }) {
   return (
-    <span data-presence-label={state.target} className="shrink-0 whitespace-nowrap">
+    <span
+      data-presence-label={said ? state.target : undefined}
+      className="shrink-0 whitespace-nowrap"
+    >
       {state.text}
     </span>
   );

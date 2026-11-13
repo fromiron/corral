@@ -335,13 +335,16 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
     for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
     await waitForStill(page);
     await expect(
-      page.locator(`[data-presence-label="run:${run()?.runId}"]`).first(),
+      page
+        .getByTestId('chat-timeline')
+        .locator(`[data-presence-label="run:${run()?.runId}"]`)
+        .first(),
     ).not.toBeInViewport();
     await openActivity(page);
     await waitForStill(page);
     const open = (await countVisibleLabels(page)).labels;
     record('panel-open-away', open);
-    for (const [label, count] of Object.entries(open))
+    for (const [label, { count }] of Object.entries(open))
       expect.soft(count, `${label} on screen ${count} times`).toBe(1);
     await noDuplicates(page, 'panel open, rows away');
 
