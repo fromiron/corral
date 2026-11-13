@@ -275,6 +275,14 @@
   "Validation": {
     "codes": {
       "ADVISOR_NOT_SUPPORTED": "감독은 아직 실행할 수 없습니다.",
+      "ADVISOR_OUTSIDE_FLOW": "감독은 흐름 밖에 둡니다. 연결, 루프·팀 안, 위임·질문 연결을 가질 수 없습니다.",
+      "ADVISOR_UNWATCHED": "{node}: 지켜보는 에이전트가 없습니다. 조언할 에이전트에 연결하세요.",
+      "ADVISOR_ADVISE_SOURCE": "에이전트를 지켜보는 것은 감독뿐입니다. 이 조언 연결은 감독에서 시작해야 합니다.",
+      "ADVISOR_ADVISE_TARGET": "감독은 흐름 안이나 호출되는 에이전트를 지켜봅니다. 다른 감독, 결정, 상자, Join, Output은 지켜볼 수 없습니다.",
+      "ADVISOR_ADVISE_QUESTIONS": "조언 연결에는 부모 질문을 둘 수 없습니다.",
+      "ADVISOR_TOOLS": "감독은 읽기만 합니다. 검색, 문서·파일 목록·파일 읽기와 버전 읽기, 조언만 쓸 수 있습니다.",
+      "ADVISE_TOOL_ADVISOR_ONLY": "조언은 감독만 할 수 있습니다. 이 에이전트의 역할에서 조언을 빼세요.",
+      "ADVISOR_NOT_A_STEP": "감독은 단계가 아닙니다. 흐름이 감독에서 시작할 수 없고, 어떤 입력도 감독을 읽을 수 없습니다.",
       "BINDING_SOURCE": "입력이 그 값을 줄 수 없는 단계에서 읽습니다: {message}",
       "BOX_BOUNDARY": "이 연결은 포트가 아닌 곳으로 상자 경계를 넘습니다.",
       "BOX_PARENT": "이 노드는 그 상자 안에 둘 수 없습니다.",
@@ -384,8 +392,7 @@
       }
     },
     "breakpoints": "시작 전에 멈출 단계",
-    "breakpointsCount": "시작 전에 멈출 단계 · {count}",
-    "madeResults": "만든 것은 결과에서 볼 수 있습니다."
+    "breakpointsCount": "시작 전에 멈출 단계 · {count}"
   },
   "Reins": {
     "executionNumber": "에이전트 실행 {number}",
@@ -971,7 +978,12 @@
       "foreground": "완료까지 실행",
       "timeout": "시간 제한",
       "editFile": "파일 변경"
-    }
+    },
+    "continueHeading": "결정 {count}건",
+    "continueAnswered": "답함",
+    "continueRegion": "계속 여부",
+    "continueRegionOfRun": "{run} · 계속 여부",
+    "continueStopped": "멈춤"
   },
   "Inbox": {
     "title": "확인 필요",
@@ -1991,7 +2003,8 @@
       "tooMany": "완료 기준은 {max}줄까지 적을 수 있습니다.",
       "tooLong": "{line}번째 줄이 {max}자를 넘습니다.",
       "changedElsewhere": "다른 곳에서 완료 기준이 바뀌었습니다. 저장하면 적은 내용으로 바꿉니다."
-    }
+    },
+    "neededNow": "지금 필요한 것"
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",
@@ -2819,6 +2832,9 @@
       "unknown": "부작용 미분류"
     },
     "userQuestions": "응답 대기",
+    "userQuestionsNamed": "응답 대기: {question}",
+    "answered": "답함",
+    "answeredLine": "답함: {answer}",
     "questionUnavailable": "질문을 불러오지 못했습니다. 다시 시도하거나 실행을 취소하세요.",
     "recommended": "추천",
     "yourAnswer": "직접 입력",
@@ -5403,9 +5419,6 @@
     }
   },
   "Turn": {
-    "working": "작업 중 · {time}",
-    "worked": "작업 {time}",
-    "workedSteps": "작업 {time} · {count}단계",
     "seconds": "{s}초",
     "minutes": "{m}분 {s}초",
     "think": "생각",
@@ -5450,7 +5463,14 @@
     "requestFinished": "응답 완료",
     "requestUnconfirmed": "응답 완료 기록 없음",
     "stepDetails": "{step} 상세",
-    "allowedForRun": "이 실행 동안 허용됨"
+    "allowedForRun": "이 실행 동안 허용됨",
+    "steps": "{count}단계",
+    "failedCount": "실패 {count}",
+    "logToggle": "작업 기록 · {state}",
+    "changes": "변경 {count}",
+    "results": "결과 {count}",
+    "resultKind": "{count, plural, other {결과}}",
+    "partialKind": "{count, plural, other {부분 결과}}"
   },
   "RunMonitor": {
     "backToWork": "작업으로 돌아가기",
@@ -5504,6 +5524,7 @@
       "now": "지금"
     },
     "activity": "활동",
+    "runWaiting": "{run} · 응답 대기",
     "respond": "{count, plural, =1 {응답하기} other {응답하기 · #}}",
     "showPanel": "옆 패널 보기",
     "hidePanel": "옆 패널 숨기기",

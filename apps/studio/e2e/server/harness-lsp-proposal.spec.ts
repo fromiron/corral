@@ -119,7 +119,11 @@ test('reviews immutable LSP changes and applies them explicitly to the session c
       { source, definition },
     );
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    await page.getByRole('button', { name: 'Run this query once', exact: true }).click();
+    // The record beside the conversation reads the request; the conversation's tray answers it.
+    await page.getByTestId('run-side').getByTestId('respond-in-conversation').click();
+    const needsYou = page.locator('[data-pending-tray]');
+    await expect(needsYou).toBeFocused();
+    await needsYou.getByRole('button', { name: 'Run this query once', exact: true }).click();
     await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
     const before = await page.evaluate(
       async (id) =>

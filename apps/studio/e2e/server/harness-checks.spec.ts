@@ -94,7 +94,13 @@ test('selects a registered check, approves its SDK call and reads the owned veri
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
     // A session's run opens in its run history, beside the conversation that also shows the request.
-    const needsYou = page.getByTestId('run-needs-you');
+    // The record beside it reads the request; the conversation's needed-now tray answers it.
+    await expect(
+      page.getByTestId('run-side').getByText('node check.mjs', { exact: true }),
+    ).toBeVisible();
+    await page.getByTestId('run-side').getByTestId('respond-in-conversation').click();
+    const needsYou = page.locator('[data-pending-tray]');
+    await expect(needsYou).toBeFocused();
     await expect(needsYou.getByText('node check.mjs', { exact: true })).toBeVisible();
     await needsYou.getByRole('button', { name: 'Run this check once', exact: true }).click();
     await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');

@@ -101,7 +101,7 @@ const rowOf = (element: HTMLElement) =>
 it('puts the close on the decision card heading row, first in focus order', () => {
   show({ approvals: [approval('approval_1', 'pending')] });
   expect(screen.getAllByRole('button', { name: 'Close details' })).toHaveLength(1);
-  const card = screen.getByRole('article', { name: messages.Approvals.heading });
+  const card = screen.getByRole('article', { name: messages.Approvals.kind.user_action });
   const row = rowOf(close());
   expect(row?.textContent).toContain(messages.Approvals.kind.user_action);
   expect(card.contains(row)).toBe(true);
@@ -115,16 +115,17 @@ it('puts the close on the first decision already made, above the waiting card', 
   expect(rowOf(close())).toBe(screen.getByTestId('approved-approval_0'));
 });
 
-it('puts the close on the question card row that names who asks, not on a later card', () => {
+it('puts the close on the question card head row, with its question, not on a later card', () => {
   show({ approvals: [approval('approval_1', 'pending')], events: [question] });
   expect(screen.getAllByRole('button', { name: 'Close details' })).toHaveLength(1);
-  const form = screen.getByRole('form', { name: 'Waiting for you' });
+  const form = screen.getByRole('form', { name: /^Waiting for you/ });
   const row = rowOf(close());
   expect(form.contains(row)).toBe(true);
-  expect(row?.textContent).toContain('writer');
+  expect(row?.hasAttribute('data-request-head')).toBe(true);
+  expect(row?.textContent).toContain(asked.questions[0]?.prompt);
   expect(
     within(row as HTMLElement).getByRole('button', { name: 'Copy execution ID' }),
   ).toBeVisible();
-  const card = screen.getByRole('article', { name: messages.Approvals.heading });
+  const card = screen.getByRole('article', { name: messages.Approvals.kind.user_action });
   expect(within(card).queryByRole('button', { name: 'Close details' })).toBeNull();
 });

@@ -218,11 +218,13 @@ test.describe('long multi-agent output', () => {
     test.setTimeout(60_000);
     const template = templateForWorkspace('research-team', 'audit_team');
     const { runId } = await graphSession(page, corral, template);
-    await expect(timeline(page).getByTestId('run-ended')).toBeVisible({ timeout: 20000 });
+    // The run row's head says the run failed; the end of its body says why.
+    await expect(
+      timeline(page).locator(`[data-chat-part="head"] [data-presence-label="run:${runId}"]`),
+    ).toHaveText('Failed', { timeout: 20000 });
     const projection = corral.server.coordinator.getSnapshot(runId).projection;
     expect(Object.keys(projection.reviews).length).toBeGreaterThan(0);
-    await expect(timeline(page).getByTestId('run-ended')).toContainText('failed');
-    await expect(timeline(page).getByTestId('run-ended')).toHaveAttribute('role', 'note');
+    await expect(timeline(page).getByTestId('turn-end')).toContainText('failed');
     await expect(timeline(page).getByTestId('review-verdict')).toContainText(
       'Cite a primary source',
     );
@@ -350,54 +352,46 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
 }) => {
   await graphSession(page, corral, approvalResearchTeam('approval_team'));
   const sessionUrl = new URL(page.url()).pathname;
-  // The conversation offers approval inline; opening history exposes only its own form.
-  await expect(timeline(page).locator('[data-testid^="approval-"]')).toBeVisible({
-    timeout: 15000,
-  });
-  // The top bar's waiting pill is the way to the run's response area (the composer has no
-  // notice for an approval its turn already shows).
+  // The conversation answers the approval in its needed-now tray, at the timeline's end.
+  const tray = timeline(page).locator('[data-pending-tray]');
+  const decision = tray.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
+  await expect(decision).toBeVisible({ timeout: 15000 });
+  // The top bar's waiting pill brings that tray into view (the composer has no notice for an
+  // approval the conversation already shows).
   const pill = page.getByRole('banner').getByTestId('dock-open-active-run');
   await expect(pill).toHaveAttribute('data-state', 'waiting');
   await pill.click();
-  const observer = page.getByTestId('run-monitor');
-  const decision = observer
-    .locator('[data-testid^="approval-"]')
-    .filter({ hasText: 'Your decision' });
-  await expect(decision).toBeVisible({ timeout: 15000 });
+  await expect(tray).toBeFocused();
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
-  await expect(timeline(page).locator('[data-testid^="approval-"]')).toBeHidden();
   await expect(
     page
       .getByTestId('app-sidebar')
       // The row's mark names the state; its words are the time alone.
       .getByRole('link', { name: /^Review the release plan Waiting for you/ }),
   ).toBeVisible();
+  // A version the decision is about opens as a document over the run record, in the session.
   await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(sessionUrl);
+  const observer = page.getByTestId('run-monitor');
   await expect(
     observer.getByRole('region', { name: 'draft · Version 2', exact: true }),
   ).toBeVisible();
-  // A version opens as a document over the work; versions other than final results are
-  // listed in the run's Results view behind it.
+  // Versions other than final results are listed in the run's Results view behind it.
   await observer.getByRole('button', { name: 'Back to work', exact: true }).click();
+  // The record reads what waits; it has no second way to decide.
+  await expect(
+    observer.getByRole('button', { name: 'Continue with this version', includeHidden: true }),
+  ).toHaveCount(0);
   await (await showResults(page)).getByRole('button', { name: 'review v2', exact: true }).click();
   await expect(
     observer.getByRole('region', { name: 'review · Version 2', exact: true }),
   ).toBeVisible();
   await observer.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await decision.getByRole('button', { name: 'draft v2', exact: true }).click();
-  await expect(
-    observer.getByRole('region', { name: 'draft · Version 2', exact: true }),
-  ).toBeVisible();
-  // An open document covers the response area (workbench.md: a respond link closes "가리는
-  // 문서"), so the decision is made back at the work.
-  await expect(decision).toBeHidden();
-  await observer.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await panelTab(page, 'Conversation');
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
-  const final = observer.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
+  const final = tray.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
-  await panelTab(page, 'Conversation');
   await expect(timeline(page).getByText('Succeeded').first()).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

@@ -1,66 +1,10 @@
 import type { AgentAdapter, AgentSettlement, RunEvent } from '@corral/contracts';
 import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
-import { applyEvent, Coordinator, compileDefinition, InMemoryRunStore } from '../src/index.ts';
+import { applyEvent, Coordinator, InMemoryRunStore } from '../src/index.ts';
 
-// The advisor contract is in place before its behavior (docs/specs/features/advisor.md): until
-// the compile rules and the command handling exist, advisors are refused out loud.
-
-function withAdvisor() {
-  const definition = linearCorral(['writer']);
-  definition.nodes.push({
-    id: 'advisor',
-    type: 'agent',
-    label: 'Advisor',
-    roleId: definition.roles[0]!.id,
-    invocation: 'observer',
-    outputName: 'notes',
-  });
-  definition.capabilityLinks.push({
-    id: 'watch',
-    kind: 'advise',
-    sourceNodeId: 'advisor',
-    targetNodeId: 'writer',
-  });
-  return definition;
-}
-
-describe('advisors before their compile rules', () => {
-  it('refuses an advisor node and its advise link by name, not by running it', () => {
-    const result = compileDefinition(withAdvisor());
-    expect(result.ok).toBe(false);
-    expect(result.diagnostics).toHaveLength(2);
-    expect(result.diagnostics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: 'ADVISOR_NOT_SUPPORTED',
-          severity: 'error',
-          nodeId: 'advisor',
-        }),
-        expect.objectContaining({
-          code: 'ADVISOR_NOT_SUPPORTED',
-          severity: 'error',
-          linkId: 'watch',
-        }),
-      ]),
-    );
-  });
-
-  it('refuses an advise link even without an advisor node', () => {
-    const definition = linearCorral(['writer', 'editor']);
-    definition.capabilityLinks.push({
-      id: 'watch',
-      kind: 'advise',
-      sourceNodeId: 'writer',
-      targetNodeId: 'editor',
-    });
-    const result = compileDefinition(definition);
-    expect(result.ok).toBe(false);
-    expect(result.diagnostics).toContainEqual(
-      expect.objectContaining({ code: 'ADVISOR_NOT_SUPPORTED', linkId: 'watch' }),
-    );
-  });
-});
+// The advice contract is in place before its handling (docs/specs/features/advisor.md): until
+// the command handling exists, advice is refused out loud.
 
 describe('advice before its handling', () => {
   function setup() {

@@ -314,7 +314,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `directive.attached` | contextSnapshotId,modelCallId |
 | `directive.dispatched` | modelCallId,executionEpoch |
 | `directive.undelivered` | reason |
-| `advice.admitted` | adviceId,observerExecutionId,targetExecutionId,severity,delivery(`next_request`·`interrupt`·`preserve`),directiveId(전달될 때) |
+| `advice.admitted` | adviceId,observerExecutionId,targetExecutionId,severity,delivery(`next_request`·`interrupt`·`preserve`),directiveId(전달될 때),note(`preserve`일 때의 조언 글) |
 | `advice.suppressed` | observerExecutionId,targetExecutionId,severity,reason(`noise`·`duplicate`·`over_budget`·`target_terminal`). 조언의 글은 싣지 않는다 |
 | `context.compaction_changed` | executionId,attemptNo,phase,beforeHash,afterHash,modelCallIds,trigger(`manual`·`automatic`). 수동은 명령 ID를, 자동은 worker가 만든 식별자를 갖는다 |
 | `patch.committed` | patchId,scope,before,after,controlRevision |

@@ -28,7 +28,6 @@ vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: (_key: string, initial: boolean) => useState(initial),
 }));
 vi.mock('../pages/GettingStarted.tsx', () => ({ markRunReviewed() {} }));
-vi.mock('./TurnProcess.tsx', () => ({ TurnProcess: () => null }));
 vi.mock('./MessageBranch.tsx', () => ({
   MessageBranch: () => <button type="button">Restore artifact branch</button>,
 }));
@@ -43,6 +42,15 @@ afterEach(() => {
 });
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  // The turn's head and its work log measure their panel.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   fixture.metadataCurrent = true;
   const projection = emptyProjection('run_chat');
   projection.status = 'succeeded';
@@ -182,8 +190,15 @@ it('a failed turn says so once, with its readable cause and the next action', as
     },
   });
   const container = await show(<button type="button">Retry request</button>);
-  const notice = container.querySelector<HTMLElement>('[data-testid="run-ended"]');
+  // The state is the head's word; the cause and the next action close the body, on no banner.
+  expect(container.querySelector('[data-testid="run-ended"]')).toBeNull();
+  const state = container.querySelectorAll('[data-presence-label="run:run_chat"]');
+  expect(state).toHaveLength(1);
+  expect(state[0]?.closest('[data-chat-part="head"]')).not.toBeNull();
+  expect(state[0]?.textContent).toBe(messages.Status.failed);
+  const notice = container.querySelector<HTMLElement>('[data-testid="turn-end"]');
   expect(notice).not.toBeNull();
+  expect(notice?.closest('[data-chat-part="body"]')?.lastElementChild).toBe(notice);
   // The cause a person can act on is in the notice itself, not only under diagnostics.
   expect(notice?.textContent).toContain(messages.Failure.provider.RATE_LIMIT);
   expect(notice?.textContent).toContain(messages.Failure.recovery.RATE_LIMIT);
@@ -193,22 +208,25 @@ it('a failed turn says so once, with its readable cause and the next action', as
   expect(container.querySelectorAll('button')).toHaveLength(1);
   expect((container.textContent ?? '').match(/Failed/g)).toHaveLength(1);
   expect(container.querySelector('[data-testid="team-activity"]')).toBeNull();
-  // It made nothing, so it does not point at results.
-  expect(container.querySelector('[data-testid="run-made-results"]')).toBeNull();
+  // It made nothing, so its tail counts no results.
+  expect(container.querySelector('[data-chat-part="tail"]')?.textContent).toBe('');
 });
 
-it('a cancelled turn points at its results only when it made some', async () => {
+it('a cancelled turn says so in its head and counts what it made in its tail', async () => {
   const store = fixture.store;
   const projection = store?.getState().projection;
   if (!store || !projection) throw new Error('fixture run missing');
   fixture.turn = null;
   store.setState({ projection: { ...projection, status: 'cancelled', output: null } });
   const container = await show();
-  const notice = container.querySelector('[data-testid="run-ended"]');
-  expect(notice?.textContent).toContain(messages.Status.cancelled);
-  expect(notice?.querySelector('[data-testid="run-made-results"]')?.textContent).toBe(
-    messages.Run.madeResults,
-  );
+  expect(container.querySelector('[data-testid="run-ended"]')).toBeNull();
+  expect(
+    container.querySelector('[data-chat-part="head"] [data-presence-label="run:run_chat"]')
+      ?.textContent,
+  ).toBe(messages.Status.cancelled);
+  expect(container.querySelector('[data-chat-part="tail"]')?.textContent).toBe('1 result');
+  // No sentence repeats what the tail counts.
+  expect(container.querySelector('[data-testid="run-made-results"]')).toBeNull();
 });
 
 it('keeps a capped streaming reply at its own end while the reply grows', async () => {

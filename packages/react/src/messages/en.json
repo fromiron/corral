@@ -275,6 +275,14 @@
   "Validation": {
     "codes": {
       "ADVISOR_NOT_SUPPORTED": "Advisors cannot run yet.",
+      "ADVISOR_OUTSIDE_FLOW": "An advisor stays outside the flow: no connections, no Loop or Team, and no delegating or asking.",
+      "ADVISOR_UNWATCHED": "{node} watches no one. Connect it to an agent it advises.",
+      "ADVISOR_ADVISE_SOURCE": "Only an advisor can watch an agent. Start this advise connection at an advisor.",
+      "ADVISOR_ADVISE_TARGET": "An advisor watches a scheduled or callable agent, not another advisor, a decision, a box, a Join or an Output.",
+      "ADVISOR_ADVISE_QUESTIONS": "An advise connection carries no parent questions.",
+      "ADVISOR_TOOLS": "An advisor only reads: search, documents, file lists and files, plus reading versions and giving advice.",
+      "ADVISE_TOOL_ADVISOR_ONLY": "Only an advisor can give advice. Remove advise from this agent’s role.",
+      "ADVISOR_NOT_A_STEP": "An advisor is not a step: the flow cannot start at one, and no input can read one.",
       "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
       "BOX_BOUNDARY": "This connection crosses a box boundary outside its ports.",
       "BOX_PARENT": "This node cannot sit in that box.",
@@ -384,8 +392,7 @@
       }
     },
     "breakpoints": "Pause before steps",
-    "breakpointsCount": "Pause before steps · {count}",
-    "madeResults": "What it made is in its results."
+    "breakpointsCount": "Pause before steps · {count}"
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
@@ -971,7 +978,12 @@
       "foreground": "Foreground",
       "timeout": "Timeout",
       "editFile": "Edit file"
-    }
+    },
+    "continueHeading": "{count, plural, one {# decision} other {# decisions}}",
+    "continueAnswered": "Answered",
+    "continueRegion": "Continue or stop",
+    "continueRegionOfRun": "{run} · Continue or stop",
+    "continueStopped": "Stopped"
   },
   "Inbox": {
     "title": "Needs you",
@@ -1991,7 +2003,8 @@
       "tooMany": "Completion criteria have up to {max} lines.",
       "tooLong": "Line {line} is longer than {max} characters.",
       "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
-    }
+    },
+    "neededNow": "Needed now"
   },
   "Files": {
     "folderHeading": "Project source folder",
@@ -2819,6 +2832,9 @@
       "unknown": "Side effects not classified"
     },
     "userQuestions": "Waiting for you",
+    "userQuestionsNamed": "Waiting for you: {question}",
+    "answered": "Answered",
+    "answeredLine": "Answered: {answer}",
     "questionUnavailable": "The question could not be loaded. Try again or cancel the run.",
     "recommended": "Recommended",
     "yourAnswer": "Your answer",
@@ -5403,9 +5419,6 @@
     }
   },
   "Turn": {
-    "working": "Working · {time}",
-    "worked": "Worked {time}",
-    "workedSteps": "Worked {time} · {count, plural, one {# step} other {# steps}}",
     "seconds": "{s}s",
     "minutes": "{m}m {s}s",
     "think": "Think",
@@ -5450,7 +5463,14 @@
     "requestFinished": "Response complete",
     "requestUnconfirmed": "Response completion not recorded",
     "stepDetails": "Details of {step}",
-    "allowedForRun": "Allowed for this run"
+    "allowedForRun": "Allowed for this run",
+    "steps": "{count, plural, one {# step} other {# steps}}",
+    "failedCount": "{count} failed",
+    "logToggle": "Work log · {state}",
+    "changes": "{count, plural, one {# change} other {# changes}}",
+    "results": "{count, plural, one {# result} other {# results}}",
+    "resultKind": "{count, plural, one {Result} other {Results}}",
+    "partialKind": "{count, plural, one {Partial result} other {Partial results}}"
   },
   "RunMonitor": {
     "backToWork": "Back to work",
@@ -5504,6 +5524,7 @@
       "now": "Now"
     },
     "activity": "Activity",
+    "runWaiting": "{run} · Waiting for you",
     "respond": "{count, plural, =1 {Respond} other {Respond · #}}",
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",

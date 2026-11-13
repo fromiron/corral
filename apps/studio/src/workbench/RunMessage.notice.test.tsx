@@ -10,6 +10,7 @@ import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
 import { RunMessage } from './RunMessage.tsx';
+import { PendingTray } from './session/PendingTray.tsx';
 
 const fixture = vi.hoisted(() => ({
   store: null as RunSessionStore | null,
@@ -23,11 +24,13 @@ vi.mock('./useCorralChat.ts', () => ({
     bodyMetadataCurrent: true,
   }),
 }));
+vi.mock('../services.tsx', () => ({
+  useServices: () => ({ runFor: () => fixture.store, retainRun: () => () => {} }),
+}));
 vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: (_key: string, initial: boolean) => useState(initial),
 }));
 vi.mock('../pages/GettingStarted.tsx', () => ({ markRunReviewed() {} }));
-vi.mock('./TurnProcess.tsx', () => ({ TurnProcess: () => null }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, search }: { children: ReactNode; search?: unknown }) => {
     fixture.links.push(search);
@@ -44,6 +47,15 @@ beforeEach(() => {
     addEventListener() {},
     removeEventListener() {},
   }));
+  // The turn's head and its work log measure their panel.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   fixture.links = [];
 });
 afterEach(() => {
@@ -93,7 +105,8 @@ const question = (requestId: string, executionId: string, runSeq: number) =>
 const body = (prompt: string) =>
   JSON.stringify({ key: 'layout', questions: [{ id: 'layout', kind: 'text', prompt }] });
 
-async function show(sessionId: string | null = 'session_chat') {
+/** The turn; with `tray`, the conversation's needed-now tray after it, as the session shows it. */
+async function show(sessionId: string | null = 'session_chat', tray = false) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -105,6 +118,22 @@ async function show(sessionId: string | null = 'session_chat') {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <RunMessage runId="run_chat" sessionId={sessionId} live onOpenArtifact={vi.fn()} />
+        {tray && sessionId ? (
+          <PendingTray
+            sessionId={sessionId}
+            runs={[
+              {
+                runId: 'run_chat',
+                status: 'awaiting_user',
+                corralId: 'team',
+                projectId: 'project',
+                sessionId,
+                startedAt: '2026-11-09T00:00:00.000Z',
+              },
+            ]}
+            onOpenArtifact={vi.fn()}
+          />
+        ) : null}
       </IntlProvider>,
     ),
   );
@@ -169,11 +198,13 @@ it('leaves a waiting question to the composer notice: the turn neither names nor
   expect(loadArtifact).not.toHaveBeenCalledWith('body_q_2');
 });
 
-it('draws a waiting approval in the turn under no heading of its own', async () => {
+it('draws a waiting approval in the needed-now tray under no heading of its own', async () => {
   fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
-  const container = await show();
-  // The card is the decision, with its buttons, in the conversation.
+  const container = await show('session_chat', true);
+  // The card is the decision, with its buttons, in the conversation's tray, not in the turn.
   const card = container.querySelector('[data-testid="approval-approval_1"]');
+  expect(card?.closest('[data-pending-tray]')).not.toBeNull();
+  expect(card?.closest('[data-chat-part]')).toBeNull();
   expect(card?.textContent).toContain(messages.Approvals.kind.user_action);
   const buttons = [...(card?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
   expect(buttons).toEqual(
@@ -182,10 +213,15 @@ it('draws a waiting approval in the turn under no heading of its own', async () 
       messages.Approvals.approveAs.user_action,
     ]),
   );
-  // The top bar's pill says the run waits: no visible heading repeats it, and the area keeps
-  // its accessible name.
+  // The run row's head says the run waits, once: no visible heading repeats it, and the area
+  // keeps its accessible name.
   expect(container.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
-  expect(visibleLines(container)).not.toContain(messages.Approvals.heading);
+  const state = container.querySelectorAll('[data-presence-label="run:run_chat"]');
+  expect(state).toHaveLength(1);
+  expect(state[0]?.textContent).toBe(messages.Status.awaiting_user);
+  const rest = container.cloneNode(true) as HTMLElement;
+  for (const node of rest.querySelectorAll('[data-presence-label]')) node.remove();
+  expect(visibleLines(rest)).not.toContain(messages.Approvals.heading);
   expect(
     container.querySelector(`section[aria-label="${messages.Approvals.heading}"]`),
   ).not.toBeNull();
@@ -193,7 +229,7 @@ it('draws a waiting approval in the turn under no heading of its own', async () 
 
 it('leaves why the run waits to the approval card, with no reason line under it', async () => {
   fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
-  const container = await show();
+  const container = await show('session_chat', true);
   expect(container.querySelector('[data-testid="approval-approval_1"]')).not.toBeNull();
   expect(container.querySelector('[data-testid="run-reason"]')).toBeNull();
   const visible = visibleLines(container).join('\n');
@@ -207,21 +243,18 @@ it('keeps the reason line of a paused turn', async () => {
   projection.statusReason = 'needs_user: exec_a';
   fixture.store = sessionStore({ runId: 'run_chat', projection });
   const container = await show();
-  expect(container.querySelector('[data-testid="run-reason"]')?.textContent).toContain(
-    messages.Run.reasonPrefix,
+  const reason = container.querySelector('[data-testid="run-reason"]');
+  expect(reason?.textContent).toContain(messages.Run.reasonPrefix);
+  // It is in the work log the head opens, with the run's steps, not above the answer.
+  const toggle = container.querySelector<HTMLButtonElement>(
+    '[data-chat-part="head"] button[aria-expanded]',
   );
+  const log = document.getElementById(toggle?.getAttribute('aria-controls') ?? '');
+  expect(log?.contains(reason)).toBe(true);
+  expect(toggle?.getAttribute('aria-expanded')).toBe('false');
 });
 
 it('keeps the heading and the reason for a run outside a session', async () => {
-  // The standalone turn's work log measures its panel.
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  );
   fixture.store = sessionStore({ runId: 'run_chat', projection: approvalWaiting() });
   const container = await show(null);
   expect(container.querySelector('h3')?.textContent).toBe(messages.Approvals.heading);
@@ -250,7 +283,7 @@ it('shows a thinking indicator where the answer will appear until observed outpu
   expect(container.textContent).toContain('First words');
 });
 
-it('drops the thinking indicator once the turn shows a tool step', async () => {
+it('keeps the thinking indicator through a tool step, which it names', async () => {
   const projection = emptyProjection('run_chat');
   projection.status = 'running';
   projection.executionOrder = ['lead'];
@@ -259,7 +292,7 @@ it('drops the thinking indicator once the turn shows a tool step', async () => {
   const container = await show();
   const pending = () => container.querySelector('[data-testid="reply-pending"]');
   expect(pending()).not.toBeNull();
-  // A step the turn's process lists means work was observed: the indicator gives way to it.
+  // The process is closed, so a step it lists does not end the wait: the wait names the step.
   await act(async () =>
     fixture.store?.setState({
       events: [
@@ -276,7 +309,8 @@ it('drops the thinking indicator once the turn shows a tool step', async () => {
       ] as unknown as RunEvent[],
     }),
   );
-  expect(pending()).toBeNull();
+  expect(pending()).not.toBeNull();
+  expect(pending()?.textContent).toContain(messages.Turn.tool.read_file);
 });
 
 it('keeps the thinking indicator for a step the turn does not list', async () => {

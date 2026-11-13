@@ -138,11 +138,24 @@
    they hide, and the composer's Overview button opens the same widgets. */
 [data-chat-view] {
   container: chat-view / inline-size;
-  /* The kit chat composition: a 680px conversation column (gutters included) over a composer
-     that is 744px with its gutters, 696px itself. The empty session is the kit home, whose
-     composer is 672px. */
-  --chat-column-width: 680px;
-  --chat-composer-width: 696px;
+  /* The conversation column is 744px with its gutters (its text 696px), over a composer as
+     wide as the chat content (46rem), so the composer's tool row holds on one line. The empty
+     session is the kit home, whose composer is 672px. */
+  --chat-column-width: 744px;
+  --chat-composer-width: var(--chat-content-max-width);
+  /* Set by ChatView: the composer's height, which the timeline keeps as its bottom space, and
+     the timeline's scrollbar width, which the composer leaves uncovered. */
+  --composer-h: 0px;
+  --timeline-gutter: 0px;
+}
+/* The floor the work sits on (RootLayout's .app-main): the page background, one surface up
+   beside the inset sidebar. The composer zone is painted with it, so the conversation passes
+   under the composer without a second surface. */
+.app-main {
+  --chat-floor: var(--background);
+}
+:where(.peer)[data-variant="inset"] ~ .app-main {
+  --chat-floor: var(--surface-2);
 }
 [data-chat-view][data-empty-centered] {
   --chat-composer-width: 672px;
