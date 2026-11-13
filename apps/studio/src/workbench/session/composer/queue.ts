@@ -171,6 +171,8 @@ export async function resendQueued(deps: ResendDeps, entryId: string) {
   )
     return;
   deps.state.current.pending = true;
+  // What is sent again: the message's words and its text attachments, quotes included.
+  let message = entry;
   try {
     if (entry.intent === 'steer') {
       const { projection } = await deps.services.transport.getSnapshot(entry.runId);
@@ -179,6 +181,8 @@ export async function resendQueued(deps: ResendDeps, entryId: string) {
       );
       if (!directive || !['not_delivered', 'expired', 'cancelled'].includes(directive.status))
         return;
+      // A join's attachments live in its directive, in the run's record.
+      if (directive.attachments?.length) message = { ...entry, attachments: directive.attachments };
     } else if (
       !deps.runs.some(
         (run) =>
@@ -192,11 +196,11 @@ export async function resendQueued(deps: ResendDeps, entryId: string) {
       deps.autoRequest.current
     )
       return;
-    if (deps.pending.current && deps.pending.current.key !== deps.commandKey(entry)) {
+    if (deps.pending.current && deps.pending.current.key !== deps.commandKey(message)) {
       deps.setError(deps.resolvePendingMessage);
       return;
     }
-    await deps.start(entry);
+    await deps.start(message);
   } finally {
     deps.state.current.pending = false;
   }

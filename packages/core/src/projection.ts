@@ -66,6 +66,8 @@ export interface DirectiveView {
   text: string;
   /** Who made it: the person or an accepted advice. */
   origin: DirectiveOrigin;
+  /** How it is delivered, as accepted: an interrupt the target cannot take is a next_request. */
+  delivery: 'next_request' | 'interrupt';
   /** Text attachments carried after the text when a request delivers it. */
   attachments?: TextAttachment[];
   status: DirectiveStatus;
@@ -557,12 +559,13 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       });
     }
     case 'directive.accepted': {
-      const { directiveId, targetExecutionId, text, origin, attachments } = event.payload;
+      const { directiveId, targetExecutionId, text, origin, attachments, delivery } = event.payload;
       const directive: DirectiveView = {
         directiveId,
         targetExecutionId,
         text,
         origin,
+        delivery,
         ...(attachments?.length ? { attachments } : {}),
         status: 'queued',
         commandId: event.commandId ?? null,

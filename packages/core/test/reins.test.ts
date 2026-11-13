@@ -396,6 +396,10 @@ describe('interrupt delivery', () => {
     expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'immediate' });
     expect(s.accepted().map((event) => event.payload)).toMatchObject([{ delivery: 'interrupt' }]);
     const directiveId = Object.keys(s.coordinator.getSnapshot(s.runId).projection.directives)[0];
+    // The run's record keeps the delivery the directive was accepted with.
+    expect(
+      s.coordinator.getSnapshot(s.runId).projection.directives[directiveId ?? '']?.delivery,
+    ).toBe('interrupt');
     expect(s.interrupts).toEqual([{ directiveId, text: 'Stop and cite sources.', origin: 'user' }]);
     expect(s.pushed).toEqual([]);
     // The same command sent again is the same intent: one directive, one interrupt.
@@ -475,6 +479,12 @@ describe('interrupt delivery', () => {
     expect(s.accepted().map((event) => event.payload)).toMatchObject([
       { delivery: 'next_request' },
     ]);
+    // A lowered interrupt is recorded as the join it became.
+    expect(
+      Object.values(s.coordinator.getSnapshot(s.runId).projection.directives).map(
+        (directive) => directive.delivery,
+      ),
+    ).toEqual(['next_request']);
     expect(s.pushed).toHaveLength(1);
     const permit = await host.prepareModelRequest();
     await host.modelRequestDispatched?.(permit.modelCallId);
