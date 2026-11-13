@@ -959,6 +959,7 @@
     "continueHeading": "결정 {count}건",
     "continueAnswered": "답함",
     "continueRegion": "계속 여부",
+    "continueRegionOfRun": "{run} · 계속 여부",
     "continueStopped": "멈춤"
   },
   "Inbox": {

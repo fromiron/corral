@@ -959,6 +959,7 @@
     "continueHeading": "{count, plural, one {# decision} other {# decisions}}",
     "continueAnswered": "Answered",
     "continueRegion": "Continue or stop",
+    "continueRegionOfRun": "{run} · Continue or stop",
     "continueStopped": "Stopped"
   },
   "Inbox": {

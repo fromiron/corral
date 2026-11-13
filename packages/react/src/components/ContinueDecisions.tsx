@@ -145,7 +145,8 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
         heading={(count) => (count > 0 ? t('continueHeading', { count }) : t('continueAnswered'))}
         clearHeading={t('continueAnswered')}
         emptyLabel=""
-        labels={{ region: t('continueRegion') }}
+        // Several runs' stacks stand together in the tray: each named by its run as well.
+        labels={{ region: run ? t('continueRegionOfRun', { run }) : t('continueRegion') }}
       />
       {refused ? (
         <Banner role="alert" status="error">

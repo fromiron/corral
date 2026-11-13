@@ -33,36 +33,59 @@ function retiredOf(session: RunSessionStore) {
  * only its new cards.
  *
  * Two facts say a line belongs to an earlier wait: the run was seen waiting on nothing after it
- * was given, or the run's history has it given before the oldest request still waiting was made.
+ * was given, or the run's history has a moment after it was given when no request was open.
  * A line with no such fact in view stands.
  */
 export function useFreshDecisions(session: RunSessionStore, kind: 'approval' | 'answer') {
   const events = useStore(session, (s) => s.events);
   const projection = useStore(session, (s) => s.projection);
   const retired = retiredOf(session);
-  const waiting = pendingInteractions(events, projection);
-  const asked = new Map<string, number>();
-  const given = new Map<string, number>();
-  for (const event of events) {
-    if (event.type === 'approval.requested') asked.set(event.payload.approvalId, event.runSeq);
-    else if (event.type === 'user_input.requested' || event.type === 'extension.ui_requested')
-      asked.set(event.payload.requestId, event.runSeq);
-    else if (kind === 'approval' && event.type === 'approval.resolved')
-      given.set(event.payload.approvalId, event.runSeq);
-    else if (kind === 'answer' && event.type === 'user_input.answered')
-      given.set(event.payload.requestId, event.runSeq);
-  }
-  const since = Math.min(
-    ...waiting.flatMap((item) => {
-      const seq = asked.get(
-        item.kind === 'approval' ? item.approval.approvalId : item.event.payload.requestId,
-      );
-      return seq === undefined ? [] : [seq];
-    }),
+  // A request waiting now whose asking is not in the history has been open all along.
+  const asked = new Set(
+    events.flatMap((event) =>
+      event.type === 'approval.requested'
+        ? [event.payload.approvalId]
+        : event.type === 'user_input.requested' || event.type === 'extension.ui_requested'
+          ? [event.payload.requestId]
+          : [],
+    ),
   );
+  const open = new Set(
+    pendingInteractions(events, projection)
+      .map((item) =>
+        item.kind === 'approval' ? item.approval.approvalId : item.event.payload.requestId,
+      )
+      .filter((id) => !asked.has(id)),
+  );
+  const given = new Map<string, number>();
+  // The last point in the history where no request was open.
+  let idleAt = Number.NEGATIVE_INFINITY;
+  for (const event of [...events].sort((a, b) => a.runSeq - b.runSeq)) {
+    switch (event.type) {
+      case 'approval.requested':
+        open.add(event.payload.approvalId);
+        break;
+      case 'user_input.requested':
+      case 'extension.ui_requested':
+        open.add(event.payload.requestId);
+        break;
+      case 'approval.resolved':
+        if (kind === 'approval') given.set(event.payload.approvalId, event.runSeq);
+        if (open.delete(event.payload.approvalId) && !open.size) idleAt = event.runSeq;
+        break;
+      case 'user_input.answered':
+      case 'user_input.closed':
+      case 'extension.ui_answered':
+      case 'extension.ui_expired':
+        if (kind === 'answer' && event.type === 'user_input.answered')
+          given.set(event.payload.requestId, event.runSeq);
+        if (open.delete(event.payload.requestId) && !open.size) idleAt = event.runSeq;
+        break;
+    }
+  }
   return (id: string) => {
     if (retired.has(id)) return false;
     const at = given.get(id);
-    return at === undefined || !Number.isFinite(since) || at > since;
+    return at === undefined || at > idleAt;
   };
 }

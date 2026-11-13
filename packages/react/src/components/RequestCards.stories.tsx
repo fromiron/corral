@@ -1,9 +1,10 @@
 import { RunEvent } from '@corral/contracts';
 import type { ExecutionView, RunProjection } from '@corral/core';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, within } from 'storybook/test';
+import { expect, fn, waitFor, within } from 'storybook/test';
 import { projectionWith, sessionStore } from '../stories/fixtures.tsx';
 import { ApprovalPanel } from './ApprovalPanel.tsx';
+import { ContinueDecisions } from './ContinueDecisions.tsx';
 import { RequestAreaContext, RequestRunContext } from './RequestCard.tsx';
 
 // Every waiting request in one card grammar (RequestCard.tsx): an approval beside a question with
@@ -256,5 +257,50 @@ export const SeveralRuns: Story = {
     await expect(canvas.getByRole('region', { name: 'Run #2 · Waiting for you' })).toBeVisible();
     await expect(canvas.queryAllByRole('region', { name: 'Waiting for you' })).toHaveLength(0);
     await expect(canvas.queryAllByRole('article', { name: 'Waiting for you' })).toHaveLength(0);
+  },
+};
+
+const limitApproval = (approvalId: string): RunProjection['approvals'][string] => ({
+  approvalId,
+  kind: 'user_action',
+  subjectVersionIds: [],
+  criteriaVersionId: null,
+  status: 'pending',
+  limit: { kind: 'loop_iterations', used: 3, max: 3 },
+});
+
+/**
+ * Two runs at their limits in one place: each continue-or-stop stack is named by its run as well,
+ * so the two stacks are told apart.
+ */
+export const SeveralRunsAtLimits: Story = {
+  render: () => (
+    <div className="flex flex-col gap-3">
+      {(['Run #1', 'Run #2'] as const).map((run, index) => (
+        <section key={run} aria-label={`${run} · Waiting for you`}>
+          <RequestRunContext.Provider value={run}>
+            <RequestAreaContext.Provider value={true}>
+              <ContinueDecisions session={store([], [limitApproval(`limit_${index}`)])} />
+            </RequestAreaContext.Provider>
+          </RequestRunContext.Provider>
+        </section>
+      ))}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByRole('region', { name: 'Run #1 · Continue or stop' }),
+    ).toBeVisible();
+    await expect(canvas.getByRole('region', { name: 'Run #2 · Continue or stop' })).toBeVisible();
+    await expect(canvas.queryAllByRole('region', { name: 'Continue or stop' })).toHaveLength(0);
+    // The stacks fade in on springs; the a11y check runs after play, once nothing still fades.
+    await waitFor(
+      () => {
+        for (const element of canvasElement.querySelectorAll('*'))
+          expect(getComputedStyle(element).opacity).toBe('1');
+      },
+      { timeout: 3000 },
+    );
   },
 };
