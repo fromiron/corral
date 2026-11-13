@@ -1,6 +1,7 @@
 import { compileDefinition } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import { connectCapability, type EditorDraft, emptyDraft } from '../src/editor/model.ts';
+import { createEditorStore } from '../src/editor/store.ts';
 import {
   applyPattern,
   connectPorts,
@@ -209,6 +210,7 @@ describe('team editor commands: boxes', () => {
         `${loop}.body>agent_2.in`,
         `agent_2.out>${loop}.exit`,
         `${loop}.next>agent_3.in`,
+        `${loop}.exhausted>agent_3.in`,
       ].sort(),
     );
     expect(codes(draft)).not.toContain('BOX_BOUNDARY');
@@ -231,10 +233,42 @@ describe('team editor commands: boxes', () => {
         `${inner}.body>agent_2.in`,
         `agent_2.out>${outer}.exit`,
         `${outer}.next>agent_3.in`,
+        `${outer}.exhausted>agent_3.in`,
       ].sort(),
     );
     expect(codes(nested)).not.toContain('BOX_BOUNDARY');
   });
+
+  it('a Team gets no exhausted path, and a Loop with nothing after it gets none either', () => {
+    const team = ok(wrapIn(chain(3), ['agent_2'], 'team'));
+    expect(wiring(team.draft).filter((w) => w.includes('.exhausted>'))).toEqual([]);
+    const last = ok(wrapIn(chain(2), ['agent_2'], 'loop'));
+    expect(
+      wiring(last.draft).filter((w) => w.includes('.next>') || w.includes('.exhausted>')),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['a Loop', (d: EditorDraft) => wrapIn(d, ['agent_2'], 'loop')],
+    ['a review loop', (d: EditorDraft) => applyPattern(d, 'reviewLoop', ['agent_2'])],
+    ['a check loop', (d: EditorDraft) => applyPattern(d, 'checkLoop', ['agent_2'])],
+  ] as const)(
+    'wrapping in %s is one undo step with its exhausted path, and the box takes it when removed',
+    (_name, wrap) => {
+      const store = createEditorStore(chain(3));
+      const before = wiring(store.getState().draft);
+      const { draft, nodeId: loop } = ok(wrap(store.getState().draft));
+      store.getState().applyDraft(draft);
+      const wrapped = wiring(store.getState().draft);
+      expect(wrapped).toContain(`${loop}.exhausted>agent_3.in`);
+      store.getState().undo();
+      expect(wiring(store.getState().draft)).toEqual(before);
+      store.getState().redo();
+      expect(wiring(store.getState().draft)).toEqual(wrapped);
+      store.getState().applyDraft(removeItems(store.getState().draft, [loop]));
+      expect(wiring(store.getState().draft).filter((w) => w.includes('.exhausted>'))).toEqual([]);
+    },
+  );
 
   it('refuses to wrap steps from different boxes together', () => {
     const { draft } = ok(wrapIn(chain(3), ['agent_2'], 'loop'));
@@ -278,6 +312,7 @@ describe('team editor commands: patterns on the selection', () => {
         `${verdict?.id}.pass>${loop}.exit`,
         `${verdict?.id}.revise>${loop}.repeat`,
         `${loop}.next>agent_2.in`,
+        `${loop}.exhausted>agent_2.in`,
       ].sort(),
     );
     const role = draft.definition.roles.find(
@@ -314,6 +349,14 @@ describe('team editor commands: patterns on the selection', () => {
         `${check?.id}.fail>${loop}.repeat`,
       ].sort(),
     );
+  });
+
+  it('a check loop with a step after it goes on there when exhausted, as through next', () => {
+    const { draft, nodeId: loop } = ok(applyPattern(chain(3), 'checkLoop', ['agent_2']));
+    expect(wiring(draft)).toEqual(
+      expect.arrayContaining([`${loop}.next>agent_3.in`, `${loop}.exhausted>agent_3.in`]),
+    );
+    expect(codes(draft)).not.toContain('BOX_BOUNDARY');
   });
 
   it('adds a new agent for the pattern when nothing is selected', () => {

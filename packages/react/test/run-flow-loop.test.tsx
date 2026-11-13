@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { RunFlowView } from '../src/components/RunFlowView.tsx';
+import { ExecutionTree } from '../src/components/RunView.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { loopFlowFixture } from '../src/stories/loopFlowFixture.ts';
 
@@ -92,5 +93,88 @@ describe('bounded loop flow', () => {
       within(screen.getByRole('region', { name: 'Created results' })).getByText('Draft round 101'),
     ).toBeInTheDocument();
     expect(onSelectExecution).not.toHaveBeenCalled();
+  });
+});
+
+describe('a Loop whose limit policy applied', () => {
+  /** Cap 2; the policy applied as round 2 ended, so round 3 runs on the raised settings. */
+  const raised = (escalation: Record<string, unknown>) => {
+    const data = loopFlowFixture(3);
+    data.definition.nodes = data.definition.nodes.map((node) =>
+      node.type === 'loop' ? { ...node, maxIterations: 2 } : node,
+    );
+    const round3 = data.projection.iterations.round_3;
+    if (round3) round3.outcome = null;
+    data.projection.loopEscalations = {
+      review_loop: [
+        {
+          loopNodeId: 'review_loop',
+          iterationId: 'round_2',
+          reason: 'cap_reached',
+          nodeIds: ['writer'],
+          runSeq: 40,
+          ...escalation,
+        } as never,
+      ],
+    };
+    data.projection.modelProfiles = {
+      'model-u': { profile: 'model-u', provider: 'openai', modelId: 'gpt-upper', auth: 'mock' },
+    } as never;
+    data.session.setState({ definition: data.definition, projection: data.projection });
+    return data;
+  };
+  const views = (data: ReturnType<typeof raised>) =>
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunFlowView
+          session={data.session}
+          definition={data.definition}
+          onSelectExecution={vi.fn()}
+          onOpenArtifact={vi.fn()}
+        />
+        <ExecutionTree session={data.session} onSteer={vi.fn()} selectedExecutionId={null} />
+      </IntlProvider>,
+    );
+
+  it('counts the rounds before the policy into the cap and says what it raised', () => {
+    views(raised({ policy: 'raise_reasoning', levels: { writer: 'high' } }));
+    const flow = screen.getByTestId('run-flow-loop');
+    expect(flow).toHaveTextContent('3 observed rounds · max 4');
+    expect(within(flow).getByTestId('run-flow-loop-escalation')).toHaveTextContent(
+      'Reasoning raised to High',
+    );
+    const group = screen.getByTestId('loop-group-review_loop');
+    expect(group).toHaveTextContent('3 observed rounds · max 4');
+    expect(within(group).getByTestId('run-loop-escalation')).toHaveTextContent(
+      'Reasoning raised to High',
+    );
+  });
+
+  it('names the model it switched to, not its profile id', () => {
+    views(raised({ policy: 'upper_model', modelProfile: 'model-u' }));
+    expect(screen.getByTestId('run-flow-loop-escalation')).toHaveTextContent(
+      'Switched to gpt-upper',
+    );
+  });
+
+  it('counts a new entry afresh, without the earlier entry’s policy', () => {
+    const data = raised({ policy: 'raise_reasoning', levels: { writer: 'high' } });
+    const { projection } = data;
+    const round3 = projection.iterations.round_3;
+    if (round3) round3.outcome = 'pass';
+    projection.iterations.again_1 = {
+      iterationId: 'again_1',
+      loopNodeId: 'review_loop',
+      no: 1,
+      criteriaVersionId: 'criteria',
+      parentIterationId: null,
+      outcome: null,
+    };
+    projection.loopIterations.review_loop?.push('again_1');
+    data.session.setState({ projection: { ...projection } });
+    views(data);
+    expect(screen.getByTestId('run-flow-loop')).toHaveTextContent('4 observed rounds · max 2');
+    expect(screen.queryByTestId('run-flow-loop-escalation')).toBeNull();
+    expect(screen.queryByTestId('run-loop-escalation')).toBeNull();
   });
 });

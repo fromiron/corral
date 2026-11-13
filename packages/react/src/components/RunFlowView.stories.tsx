@@ -213,3 +213,39 @@ export const LoopRounds: Story = {
     await expect(canvas.getByText('Exit Review')).toBeVisible();
   },
 };
+
+/** Cap 2; the policy raised reasoning as round 2 ended, and round 3 is running. */
+function raisedFixture() {
+  const data = loopFlowFixture(3);
+  data.definition.nodes = data.definition.nodes.map((node) =>
+    node.type === 'loop' ? { ...node, maxIterations: 2 } : node,
+  );
+  const round3 = data.projection.iterations.round_3;
+  if (round3) round3.outcome = null;
+  data.projection.loopEscalations = {
+    review_loop: [
+      {
+        loopNodeId: 'review_loop',
+        iterationId: 'round_2',
+        reason: 'cap_reached',
+        nodeIds: ['writer'],
+        runSeq: 40,
+        policy: 'raise_reasoning',
+        levels: { writer: 'high' },
+      },
+    ],
+  };
+  data.session.setState({ definition: data.definition, projection: data.projection });
+  return data;
+}
+const raised = raisedFixture();
+export const RaisedLimit: Story = {
+  args: { session: raised.session, definition: raised.definition },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId('run-flow-loop')).toHaveTextContent('max 4');
+    await expect(canvas.getByTestId('run-flow-loop-escalation')).toHaveTextContent(
+      'Reasoning raised to High',
+    );
+  },
+};

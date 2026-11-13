@@ -1,5 +1,6 @@
 import type { RunEvent } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
+import type { RunFlowLoop } from '../run/flow.ts';
 
 // Words for run facts (roadmap UX-A4). Event types and reason codes stay visible where they are
 // precise (Timeline detail, filters); everywhere a person reads, they read a sentence.
@@ -193,4 +194,24 @@ export function RunReason({
   // `{node} {why}`: an exhausted Loop also names why it ran out (`cap_reached`, `stalled`).
   const [first = '', second = ''] = rest.split(' ');
   return <>{t(head, { detail: rest, node: nodeLabel(first), reason: second })}</>;
+}
+
+/** What a Loop's limit policy changed in its current entry, as one line of its group. */
+export function LoopEscalationText({
+  escalation,
+  modelName,
+}: {
+  escalation: RunFlowLoop['escalation'];
+  modelName: (profile: string) => string;
+}) {
+  const t = useTranslations('RunLoop');
+  const level = useTranslations('Reasoning.level');
+  if (!escalation) return null;
+  return (
+    <>
+      {escalation.policy === 'raise_reasoning'
+        ? t('raised', { level: level(escalation.level) })
+        : t('switched', { model: modelName(escalation.modelProfile) })}
+    </>
+  );
 }

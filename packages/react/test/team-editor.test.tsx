@@ -15,6 +15,7 @@ import {
   patchNode,
   placeStep,
   type TeamReference,
+  wrapIn,
 } from '../src/team-editor/commands.ts';
 import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
 
@@ -121,6 +122,20 @@ describe('team editor', () => {
       .at(0) as HTMLElement;
     await act(async () => fireEvent.click(item));
     expect(canvasNode(review.nodeId).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it.each([
+    [{ maxIterations: undefined }, messages.Validation.codes.LOOP_MAX_ITERATIONS],
+    [
+      { limitPolicy: { kind: 'raise_reasoning', level: 'off' } },
+      messages.Validation.codes.LOOP_REASONING_OFF,
+    ],
+  ])('names a Loop limit problem in its own words (%o)', async (change, words) => {
+    const wrapped = ok(wrapIn(chain(2), ['agent_1'], 'loop'));
+    renderEditor(patchNode(wrapped.draft, wrapped.nodeId, change));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /problems?$/ })));
+    const named = screen.getAllByRole('button').filter((b) => b.textContent?.includes(words));
+    expect(named.length).toBeGreaterThan(0);
   });
 
   it('offers only agents in the flow as input sources', async () => {

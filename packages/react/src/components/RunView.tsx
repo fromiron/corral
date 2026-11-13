@@ -31,7 +31,7 @@ import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
-import { RunReason } from './RunText.tsx';
+import { LoopEscalationText, RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 import { UsageInspector } from './UsageInspector.tsx';
@@ -448,6 +448,14 @@ export function ExecutionTree({
             <p className="text-caption text-muted-foreground">
               {latest ? loopText('current', { no: latest.no, outcome }) : loopText('noIterations')}
             </p>
+            {loop.escalation ? (
+              <p className="text-caption" data-testid="run-loop-escalation">
+                <LoopEscalationText
+                  escalation={loop.escalation}
+                  modelName={(profile) => projection?.modelProfiles[profile]?.modelId ?? profile}
+                />
+              </p>
+            ) : null}
             {loop.iterations.length > 0 ? (
               <Select
                 label={loopText('iterationLabel', { name: loop.label })}

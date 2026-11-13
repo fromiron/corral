@@ -503,6 +503,13 @@ export function wrapIn(
         target: e.target,
         targetPort: e.targetPort,
       })),
+      // A Loop at its limit goes on with its last result to where `next` goes.
+      ...(kind === 'loop' ? unique(leaving) : []).map((e) => ({
+        source: boxId,
+        sourcePort: 'exhausted',
+        target: e.target,
+        targetPort: e.targetPort,
+      })),
     ],
     [],
   );
