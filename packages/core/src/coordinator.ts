@@ -2946,11 +2946,7 @@ export class Coordinator {
     const affected = new Set<string>(
       scope.kind === 'run'
         ? Object.values(run.projection.executions)
-            .filter(
-              (e) =>
-                !TERMINAL_EXECUTION_STATUSES.has(e.status) &&
-                !(advisorsOnly && run.cancelRequested.has(e.executionId)),
-            )
+            .filter((e) => !TERMINAL_EXECUTION_STATUSES.has(e.status))
             .map((e) => e.executionId)
         : target
           ? [target.executionId]
@@ -2960,6 +2956,10 @@ export class Coordinator {
       for (const e of Object.values(run.projection.executions))
         if (e.parentExecutionId === id && !TERMINAL_EXECUTION_STATUSES.has(e.status))
           affected.add(e.executionId);
+    // An advisor already stopping is not asked again; its end is still what confirms this stop.
+    const stopping = new Set(
+      [...affected].filter((id) => !(advisorsOnly && run.cancelRequested.has(id))),
+    );
     const drafts: EventDraft[] = [
       {
         type: 'cancel.requested',
@@ -2978,7 +2978,7 @@ export class Coordinator {
       !['pausing', 'paused'].includes(run.projection.status)
     )
       drafts.push(runState(run.projection.status, 'awaiting_user', 'required_task_cancelling'));
-    for (const id of affected) {
+    for (const id of stopping) {
       const e = run.projection.executions[id];
       if (!e) continue;
       drafts.push({
@@ -3013,7 +3013,7 @@ export class Coordinator {
       'safe_boundary',
     );
     if (stopsRun) run.stop.aborted = true;
-    for (const id of affected) this.requestCancel(run, id, command.payload.reason);
+    for (const id of stopping) this.requestCancel(run, id, command.payload.reason);
     for (const [questionId, q] of run.questions)
       if (affected.has(q.askerExecutionId) || affected.has(q.responderExecutionId)) {
         run.questions.delete(questionId);

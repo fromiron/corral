@@ -2323,7 +2323,7 @@ describe('stopping a run that has only its last review left', () => {
    * its second it holds a model call open until it is stopped, then reports that call late and
    * tries to advise again.
    */
-  function holding(options: Partial<Setup> = {}) {
+  function holding(options: Partial<Setup> = {}, release?: Gate) {
     const stops = new Map<string, Gate>();
     const stop = (executionId: string) => {
       const gate = stops.get(executionId) ?? new Gate();
@@ -2374,6 +2374,8 @@ describe('stopping a run that has only its last review left', () => {
             await host.modelRequestDispatched?.(permit.modelCallId);
             held.add(input.nodeId);
             await stop(input.executionId).wait();
+            // The advisor's own end, held when the test holds it.
+            await release?.wait();
             lateObserved.push(
               await host
                 .observe({
@@ -2457,6 +2459,126 @@ describe('stopping a run that has only its last review left', () => {
     // The advice of the first review stays; the stop takes nothing back.
     expect(h.early.map((o) => o.ok)).toEqual([true]);
     expect(Object.values(h.s.projection().advice ?? {})).toHaveLength(1);
+    // The stop is confirmed once, with the advisor's end, and its receipt says so.
+    const confirmed = h.s.events().filter((e) => e.type === 'cancel.confirmed');
+    expect(confirmed.map((e) => e.commandId)).toEqual(['stop']);
+    expect(h.stopRun().status).toBe('applied');
+  });
+
+  /** Each confirmation, after the settlements it names, and the advisor's settlement among them. */
+  const confirmations = (h: ReturnType<typeof holding>) => {
+    const events = h.s.events();
+    const advisor = h.s.advisorExecution()?.executionId;
+    const settled = events.find(
+      (e) => e.type === 'execution.settled' && e.payload.executionId === advisor,
+    );
+    return events
+      .filter((e) => e.type === 'cancel.confirmed')
+      .map((e) => ({
+        commandId: e.commandId,
+        afterTheAdvisor: settled !== undefined && e.runSeq > settled.runSeq,
+        namesTheAdvisor:
+          e.type === 'cancel.confirmed' &&
+          settled !== undefined &&
+          e.payload.settlementRefs.includes(settled.eventId),
+      }));
+  };
+  const resend = (h: ReturnType<typeof holding>, commandId: string) => h.stopRun(commandId).status;
+
+  it('a second stop while the advisor still stops is confirmed only once the advisor has ended', async () => {
+    const release = new Gate();
+    const h = holding({}, release);
+    await h.lastReviewOnly();
+    h.stopRun('stop');
+    await h.s.wait(
+      (p) => p.executions[h.s.advisorExecution()?.executionId ?? '']?.status === 'cancelling',
+      'the advisor to stop',
+    );
+    h.stopRun('stop_again');
+    await idle();
+    expect(h.s.events().some((e) => e.type === 'cancel.confirmed')).toBe(false);
+    expect(resend(h, 'stop_again')).not.toBe('applied');
+    release.open();
+    await h.s.ended();
+    await idle();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(confirmations(h)).toEqual([
+      { commandId: 'stop', afterTheAdvisor: true, namesTheAdvisor: true },
+      { commandId: 'stop_again', afterTheAdvisor: true, namesTheAdvisor: true },
+    ]);
+    expect(resend(h, 'stop_again')).toBe('applied');
+  });
+
+  it('a stop while the advisor alone is being cancelled is confirmed only once it has ended', async () => {
+    const release = new Gate();
+    const h = holding({}, release);
+    await h.lastReviewOnly();
+    h.s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'stop_advisor',
+      runId: h.s.runId,
+      type: 'cancel',
+      payload: {
+        scope: { kind: 'execution', executionId: h.s.advisorExecution()?.executionId ?? '' },
+        reason: 'not needed',
+      },
+    });
+    h.stopRun('stop');
+    await idle();
+    expect(h.s.events().some((e) => e.type === 'cancel.confirmed')).toBe(false);
+    expect(resend(h, 'stop')).not.toBe('applied');
+    release.open();
+    await h.s.ended();
+    await idle();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(confirmations(h)).toEqual([
+      { commandId: 'stop_advisor', afterTheAdvisor: true, namesTheAdvisor: true },
+      { commandId: 'stop', afterTheAdvisor: true, namesTheAdvisor: true },
+    ]);
+    expect(h.cancels).toEqual(['advisor']);
+  });
+
+  it('a stop once the advisors have ended, with the run not yet over, cancels the run', async () => {
+    // Nothing is left to stop but the run itself: the stop is as it is in a run without advisors.
+    let h: ReturnType<typeof holding> | null = null;
+    let atStop: { live: number; status: string } | null = null;
+    class StopAfterAdvisors extends InMemoryRunStore {
+      override appendEvents(runId: string, events: readonly RunEvent[]) {
+        super.appendEvents(runId, events);
+        const advisor = h?.s.advisorExecution()?.executionId;
+        if (
+          atStop === null &&
+          events.some((e) => e.type === 'execution.settled' && e.payload.executionId === advisor)
+        )
+          void Promise.resolve().then(() => {
+            if (!h) return;
+            const p = h.s.projection();
+            atStop = {
+              live: Object.values(p.executions).filter(
+                (e) => !['succeeded', 'failed', 'cancelled'].includes(e.status),
+              ).length,
+              status: p.status,
+            };
+            h.stopRun('stop_late');
+          });
+      }
+    }
+    h = holding({ store: new StopAfterAdvisors() });
+    await h.lastReviewOnly();
+    h.s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'stop_advisor',
+      runId: h.s.runId,
+      type: 'cancel',
+      payload: {
+        scope: { kind: 'execution', executionId: h.s.advisorExecution()?.executionId ?? '' },
+        reason: 'not needed',
+      },
+    });
+    await h.s.ended();
+    expect(atStop).toEqual({ live: 0, status: 'running' });
+    expect(h.s.projection().status).toBe('cancelled');
+    expect(h.s.projection().output).toBeNull();
   });
 
   it('a call that finishes after the stop starts no review, and the advice after it is refused', async () => {
