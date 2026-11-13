@@ -138,10 +138,10 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       'Start preview-app.cjs as a service, open its owned preview, verify the heading and ask me whether to keep it running.',
     );
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 45_000 });
-    await page.getByTestId('action-required').getByRole('link').click();
+    // The question comes to the conversation's needed-now tray, in view: no notice repeats it.
     await expect(page.getByRole('form', { name: 'Waiting for you' })).toContainText(
       'Keep the service running?',
+      { timeout: 45_000 },
     );
     await panelTab(page, 'Tasks & preview');
     const previews = page.getByRole('region', { name: 'Open previews', exact: true });

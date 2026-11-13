@@ -252,9 +252,8 @@ test('a check Decision runs a registered check in the working copy, and a Loop t
 
     // A check command not run before needs the person's approval; the Loop then stops changing.
     const waiting = page.locator('[data-pending-tray]');
-    // Whether to go on is asked in the kit's decision stack.
     const stalled = waiting
-      .locator('[data-continue-decisions]')
+      .locator('[data-testid^="approval-"]')
       .filter({ hasText: 'Loop stopped changing' });
     const check = waiting.getByRole('button', { name: 'Run this check once', exact: true });
     for (let step = 0; step < 4 && !(await stalled.isVisible()); step++) {

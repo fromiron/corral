@@ -359,3 +359,49 @@ test('a card arriving while the person reads above leaves their place; Respond g
     await cleanup();
   }
 });
+
+test('a question out of view is told above the composer, and Respond brings its card', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(150_000);
+  const asked = hold();
+  corral.fake?.setResponses([
+    async () => {
+      asked.reach();
+      await asked.opened;
+      return question();
+    },
+    fauxAssistantMessage('Done.'),
+  ]);
+  await corral.open('/');
+  await newConversation(page);
+  const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
+  await earlier(page, sessionId, 24);
+  await page.reload();
+  await expect(page.locator('[data-chat-item]').first()).toBeVisible();
+  await requestBox(page).fill('Ask me how to report it.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await asked.reached;
+  await waitForStill(page);
+  const timeline = page.getByTestId('chat-timeline');
+  await timeline.hover({ position: { x: 16, y: 200 } });
+  for (let step = 0; step < 6; step += 1) await page.mouse.wheel(0, -500);
+  await waitForStill(page);
+  asked.open();
+  const form = tray(page).getByRole('form', { name: 'Waiting for you' });
+  await expect(form).toHaveCount(1, { timeout: 30_000 });
+  await expect(tray(page)).not.toBeInViewport();
+  // Out of view: the notice above the composer says what waits.
+  const notice = page.getByTestId('action-required');
+  await expect(notice).toContainText('Which format should I use?');
+  await notice.getByRole('button', { name: 'Respond', exact: true }).click();
+  await expect(tray(page)).toBeFocused();
+  await expect(tray(page)).toBeInViewport();
+  // In view, the card says it; the notice does not say it again.
+  await expect(notice).toHaveCount(0);
+  await form.getByRole('textbox', { name: 'Your answer' }).fill('A table');
+  await form.getByRole('button', { name: 'Send answer' }).click();
+  await expect(page.getByTestId('chat-result')).toContainText('Done.', { timeout: 30_000 });
+  expect(corral.errors).toEqual([]);
+});
