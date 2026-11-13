@@ -687,13 +687,35 @@ test('⑥ the line decides a call only while it says it whole; the next call in 
       ({ x, y }) => {
         const w = window as unknown as {
           nextPress: { disabled: boolean; at: number } | null;
+          nextFrames: string[];
         };
         w.nextPress = null;
+        w.nextFrames = [];
         const tick = () => {
-          const under = document.elementFromPoint(x, y)?.closest('button');
-          if (under?.getAttribute('aria-label') === 'Allow once · Run · echo second') {
-            w.nextPress = { disabled: under.disabled, at: performance.now() };
-            under.click();
+          const bar = document.querySelector('[data-testid="activity-bar"]');
+          const frame = `${bar?.getAttribute('data-line')}: ${[
+            ...(bar?.querySelectorAll('[data-activity-bar] > div button') ?? []),
+          ]
+            .filter((button) => !button.closest('[inert]'))
+            .map(
+              (button) =>
+                `${button.getAttribute('aria-label') ?? button.textContent}${(button as HTMLButtonElement).disabled ? ' (off)' : ''}`,
+            )
+            .join(' | ')}`;
+          if (w.nextFrames.at(-1) !== frame) w.nextFrames.push(frame);
+          // Found by where it stands, not by hit testing: a held button lets the pointer through.
+          const next = [
+            ...(bar?.querySelectorAll<HTMLButtonElement>('[data-activity-bar] > div button') ?? []),
+          ].find(
+            (button) =>
+              !button.closest('[inert]') &&
+              button.getAttribute('aria-label') === 'Allow once · Run · echo second',
+          );
+          const box = next?.getBoundingClientRect();
+          if (next && box && x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
+            w.nextPress = { disabled: next.disabled, at: performance.now() };
+            // Pressed in that frame: a held button takes no press, one that is not decides.
+            next.click();
             return;
           }
           requestAnimationFrame(tick);
@@ -716,7 +738,10 @@ test('⑥ the line decides a call only while it says it whole; the next call in 
       .then((handle) => handle.jsonValue() as Promise<{ disabled: boolean; at: number }>);
     await page.waitForTimeout(200);
     const waiting = pending();
-    record('next-in-place', { first, pressed, waiting, spot });
+    const frames = await page.evaluate(
+      () => (window as unknown as { nextFrames: string[] }).nextFrames,
+    );
+    record('next-in-place', { first, pressed, waiting, spot, frames });
     expect(pressed.disabled).toBe(true);
     expect(waiting).toHaveLength(1);
     expect(waiting).not.toEqual(first);
