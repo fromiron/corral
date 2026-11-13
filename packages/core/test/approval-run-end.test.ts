@@ -546,6 +546,24 @@ describe('approvals a run ends with', () => {
     expect(closing(s.events(), required(approval).approvalId).payload.reason).toBe('cancelled');
   });
 
+  it('refuses an answer sent after the cancel request and before its confirmation', async () => {
+    const s = manual(linearCorral(['writer']), { cancelSettles: false });
+    await drain();
+    const { promise } = await stall(s, required(s.hosts[0]));
+    const [approval] = pendingOf(s.projection());
+    s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
+    expect(s.projection().status).toBe('cancelling');
+    expect(s.events().some((e) => e.type === 'cancel.confirmed')).toBe(false);
+    // Closed at the request, not at the confirmation.
+    expect(s.projection().approvals[required(approval).approvalId]?.status).toBe('rejected');
+    expect(s.answer(required(approval), 'approve', 'late').error?.code).toBe('APPROVAL_STALE');
+    await promise;
+    s.exits[0]?.({ outcome: 'cancelled' });
+    await drain();
+    expect(s.projection().status).toBe('cancelled');
+    closedOnce(s.events(), s.projection());
+  });
+
   it('closes one approval two executions wait on once', async () => {
     const s = manual(collaborationCorral());
     await drain();

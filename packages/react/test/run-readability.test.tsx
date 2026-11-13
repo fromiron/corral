@@ -82,7 +82,11 @@ describe('event sentences (UX-A4)', () => {
   });
 
   it('an approval the runtime closed is not written as the person rejecting it', () => {
-    const resolved = (actor: 'user' | 'runtime', decision: 'approve' | 'reject') => {
+    const resolved = (
+      actor: 'user' | 'runtime',
+      decision: 'approve' | 'reject',
+      reason = 'execution_ended',
+    ) => {
       const event = {
         type: 'approval.resolved',
         runSeq: 1,
@@ -92,7 +96,7 @@ describe('event sentences (UX-A4)', () => {
           decision,
           actor: actor === 'user' ? 'local_user' : 'coordinator',
           subjectVersionIds: ['v1'],
-          ...(actor === 'runtime' ? { reason: 'execution_ended' } : {}),
+          ...(actor === 'runtime' ? { reason } : {}),
         },
       } as unknown as RunEvent;
       const view = intl(<EventText event={event} labelOf={() => ''} nodeLabel={(id) => id} />);
@@ -103,6 +107,8 @@ describe('event sentences (UX-A4)', () => {
     expect(resolved('runtime', 'reject')).toBe('Closed without a decision');
     expect(resolved('user', 'reject')).toBe('You rejected');
     expect(resolved('user', 'approve')).toBe('You approved');
+    // A call the person allowed for the run passes others like it: still the person's approval.
+    expect(resolved('runtime', 'approve', 'allowed_for_run')).toBe('You approved');
   });
 
   it('an event without a sentence still shows its type, never an empty row', async () => {

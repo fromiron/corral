@@ -2916,7 +2916,6 @@ export class Coordinator {
             },
           },
         ];
-        if (scope.kind === 'run') confirmed.unshift(...this.runEndClosings(run, 'cancelled'));
         if (scope.kind === 'run')
           confirmed.push(
             ...this.closeRounds(run),
@@ -4127,10 +4126,9 @@ export class Coordinator {
       q.wake({ questionId, outcome: 'cancelled' });
     }
     run.questions.clear();
-    // Every approval still waiting closes in the commit that ends the run, before its end.
-    drafts.push(
-      ...this.runEndClosings(run, status === 'cancelling' ? 'cancelled' : 'execution_ended'),
-    );
+    // Every approval still waiting closes in the commit that ends the run, before its end. A run
+    // failing as its cancellation goes unconfirmed closed its approvals at the cancel request.
+    drafts.push(...this.runEndClosings(run, 'execution_ended'));
     this.wakeApprovalWaiters(run);
     this.wake(run);
     try {

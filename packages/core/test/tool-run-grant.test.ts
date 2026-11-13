@@ -717,6 +717,65 @@ describe('allow for this run', () => {
     expect(s.authorized(runId)).toHaveLength(0);
     writer.settle({ outcome: 'cancelled' });
   });
+
+  it("a tool call waiting in another branch closes, named by its execution, when the person's rejection ends the Run", async () => {
+    // p, then a and an approval step at once, meeting at a Join.
+    const gated = () => {
+      const definition = forkedCorral();
+      definition.nodes = definition.nodes.filter((node) => node.id !== 'b');
+      definition.nodes.push({
+        id: 'gate',
+        type: 'decision',
+        label: 'gate',
+        mode: 'approval',
+        rule: 'human_approval',
+        inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+      });
+      definition.controlEdges = definition.controlEdges.map((edge) =>
+        edge.target === 'b'
+          ? { ...edge, target: 'gate' }
+          : edge.source === 'b'
+            ? { ...edge, source: 'gate', sourcePort: 'approve' }
+            : edge,
+      );
+      return definition;
+    };
+    const s = setup({ definition: gated });
+    const runId = s.start();
+    await s.finish(await s.next(0));
+    const a = await s.next(1);
+    const call = await s.ask(runId, a, write('notes.md'));
+    await vi.waitFor(() =>
+      expect(
+        Object.values(s.coordinator.getSnapshot(runId).projection.approvals).some(
+          (approval) => !approval.tool,
+        ),
+      ).toBe(true),
+    );
+    const gate = Object.values(s.coordinator.getSnapshot(runId).projection.approvals).find(
+      (approval) => !approval.tool,
+    )!;
+    expect(s.resolve(runId, gate.approvalId, 'reject').status).toBe('applied');
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(runId).projection.status).toBe('cancelled'),
+    );
+    // The call's waiter is told no, and its closing names the execution that asked.
+    expect((await call.outcome).ok).toBe(false);
+    const closed = s
+      .events(runId)
+      .filter(
+        (event) =>
+          event.type === 'approval.resolved' &&
+          event.payload.approvalId === call.approval.approvalId,
+      );
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatchObject({
+      executionId: a.input.executionId,
+      actor: { kind: 'runtime' },
+      payload: { decision: 'reject', actor: 'coordinator', reason: 'cancelled' },
+    });
+    a.settle({ outcome: 'cancelled' });
+  });
 });
 
 describe('allow for this run on a command', () => {

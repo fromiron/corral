@@ -341,10 +341,12 @@ describe('Coordinator model requests', () => {
 
     it('closes with the run when the run fails', async () => {
       const s = await setup();
-      const { approval } = await stalled(s);
+      const { approval, waiting } = await stalled(s);
       s.settles[0]?.({ outcome: 'failed', error: 'worker crashed' });
       await drain();
       expect(s.projection().status).toBe('failed');
+      // Whoever waited on it is told no.
+      expect(await Promise.race([waiting, drain().then(() => 'still waiting')])).toBe('stopped');
       expect(s.projection().approvals[approval.approvalId]).toMatchObject({
         status: 'rejected',
         reason: 'execution_ended',

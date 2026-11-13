@@ -197,6 +197,11 @@ export interface ApprovalView {
    */
   limit?: { kind: EventPayload<'limit.reached'>['limitKind']; used: number; max: number };
   status: 'pending' | 'approved' | 'rejected' | 'stale';
+  /**
+   * Who closed it, from the `approval.resolved` envelope actor: the person, or the runtime (the
+   * run or step ended, a deadline passed, or the person's allow-for-run covered it).
+   */
+  resolvedBy?: 'person' | 'runtime';
 }
 
 export interface PatchView extends EventPayload<'patch.committed'> {
@@ -700,6 +705,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           [approval.approvalId]: {
             ...approval,
             status,
+            resolvedBy: event.actor.kind === 'user' ? 'person' : 'runtime',
             ...(event.payload.routeId ? { routeId: event.payload.routeId } : {}),
             ...(event.payload.scope ? { scope: event.payload.scope } : {}),
             ...(event.payload.reason ? { reason: event.payload.reason } : {}),
