@@ -14,7 +14,7 @@
 | 백본 | B1–B13 | 진행 중(B13만 남음) |
 | 화면 | K1, U1–U14 | 진행 중(K1·U1–U5·U8·U10·U12 병합) |
 | 회의 | M1–M4 | 진행 중(M1–M3 병합) |
-| 감독 | A1–A9 | 진행 중(A1–A4·A7 병합) |
+| 감독 | A1–A9 | 진행 중(A1–A5·A7 병합) |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
@@ -447,7 +447,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 완료 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 완료 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
-| U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 구현 끝. 디자인 수정 중(`flow/u7-activity-bar`): 중지 버튼 글리프, 바의 승인 요약, 뜻 없는 조각, 역할 행의 상태. 그 뒤 코드 리뷰 |
+| U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 디자인 검수 통과, 코드 리뷰 중(`flow/u7-activity-bar`) |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
@@ -463,11 +463,11 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 완료 |
 | A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 완료 |
 | A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 완료 |
-| A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 수정 끝, 리뷰어가 수정분 확인 중(`flow/a5-advisor-run`) |
-| A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 대기 |
+| A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 완료 |
+| A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 구현 중(`flow/a6-advisor-worker`) |
 | A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 완료 |
 | A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 대기 |
-| A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 대기 |
+| A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 계약·코어·서버 구현 중(`flow/a9-session-advisor`). 화면(도구 줄의 켜고 끄기)은 U7 뒤 |
 | V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
 
 백본 신뢰 게이트: B2가 통과하기 전에는 U5·U6·A5를 병합하지 않는다. 지금 테스트가 하나도 없는 경로(실행이 돌지 않을 때 버려지는 지시, 승인·질문 대기 중의 지시, 대기열 자동 시작, 관찰자 연결, 조각이 나온 뒤 끊긴 스트림) 위에 화면을 얹지 않기 위해서다.
@@ -733,6 +733,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
   - 검토 밖의 모델 요청은 Coordinator가 거절한다(`prepareModelRequest`). `handle.endReview(reviewId)`를 받으면 그 검토의 요청을 멈추고 `nextReview()`로 돌아간다. 무시하면 다음 요청이 거절돼 감독이 실패한다.
   - `advise` 도구의 인자는 `severity`와 `note`뿐이다. 대상과 명령 ID는 Coordinator가 정한다(도구 호출 ID에서. 같은 도구 호출의 재전송은 처음 결과). 결과는 `advice.outcome`이 `admitted`(전달 방식 포함)이거나 `suppressed`(이유 포함)다. 버려진 조언은 오류가 아니다(`ok: true`, `status: 'rejected'`).
   - 조언이 대상에게 실릴 때의 머리말("Advice from this run's advisor, not from the person …")과 다듬기는 A5가 넣었다. 여기서 다시 감싸지 않는다.
+  - 감독은 작업 방식 없이 시작하므로 `worker.ts`로만 온다(`sdk-worker.ts`에는 오지 않는다). 감독의 도구 호출은 역할에 묶인 작업 방식의 권한 규칙과 Run의 권한 방식을 따르고, 묻기는 거절(`CAPABILITY_DENIED`)로 돌아온다. 감독 역할에는 `answer`가 없다.
 - 구현: 감독 worker의 한 살이를 만든다: 시작 → `nextReview()` → 그 글로 한 턴(도구 호출 포함, 요청 상한까지) → 다시 `nextReview()` → `null`이면 끝. 검토 사이에는 대화 맥락을 잇는다(같은 감독이 앞 검토에서 본 것을 기억한다). 압축은 다른 worker와 같은 규칙을 따른다. `advise`의 결과를 모델에 돌려줄 때 버려진 이유를 사실대로 적는다. 일시정지·재개·취소는 다른 worker와 같다. 두 worker 형식(`worker.ts`, `sdk-worker.ts`) 모두.
 - 완료 체크: `packages/adapter-pi/test/`에 검토 두 번을 도는 감독(두 번째가 앞 검토를 기억), `null`에서 성공 종료, `endReview` 뒤 요청 멈춤, `advise` 호출과 두 결과, 모르는 인자 거절, 검토 중 취소. 스크립트 모델만 쓴다. Coordinator와 실제 worker를 잇는 통합 테스트 하나(감독이 우려를 내고 대상의 다음 요청에 실린다).
 
@@ -852,6 +853,8 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **M3 (리뷰와 병합에서 정한 것).** 회의는 대화의 컴포저 카드(`composer/ComposerCard.tsx`)를 쓰고 수신자가 전송 대상이다(`SendTarget`). 회의에는 보내기 메뉴와 "초안 지우기" 버튼이 없다(글·수신자·근거를 제자리에서 지운다). 보낸 뒤 수신자는 자동으로 돌아간다. 640px 미만에서는 도구 줄의 폭이 상태와 무관하다: 중지와 플랜 요청은 아이콘 버튼, 중지 자리는 예약, 수신자 배지는 폭이 고정이고 이름 대신 수("2명")를 보인다(480px·390px에서 수신자 변경과 답변 시작·끝에 입력 0px). "없음"인 채 참가자 줄을 눌러 @이름을 넣으면 자동으로 돌아간다. 손으로 친 @이름과 "없음"은 서버가 거절하고 문구는 영어 그대로다. 기다리는 메시지 편집기에는 "없음"이 없다. 복원한 초안에서 회의에 없는 참가자는 뺀다. 메뉴를 쓴 뒤 포커스는 입력으로 돌아온다(대화와 한 구현: `backToInput`).
 - **컴포저 메뉴 뒤의 포커스(M3 병합 뒤 고친 것).** 컴포저의 메뉴를 쓴 뒤 포커스는 입력으로 돌아오지만, 그 프레임 전에 컴포저의 메뉴가 다시 열렸으면 돌아오지 않는다(`composer/focus.ts`의 `menuOpenChange`가 열림을 세고 `backToInput`이 그 수를 본다). 수신자·대상·보내기 메뉴와 회의의 추가 메뉴에 걸려 있고, 대화의 추가 메뉴와 팀 고르기에는 걸려 있지 않다.
 - **M4 (M3가 남긴 것).** 회의 컴포저에는 활동 바와 누계 줄이 없다. 참가자 줄이 "Answering…"을 되풀이한다(타임라인의 답변 행과 같은 상태가 두 번). 기다리는 메시지 블록이 카드 위에 옛 모양으로 남아 있다. 좁은 폭의 배지 이름은 수로 읽힌다("Recipients: 2 people"). 대화 컴포저는 640px 미만에서 실행 중과 쉬는 때 사이에 8–38px 움직인다(기준과 같은 수치, 계획이 재는 폭 밖).
+- **A5 (리뷰에서 정한 것).** 검토 간격의 셈과 읽은 자리는 (감독, 대상) 쌍마다 따로다. 감독의 도구는 Coordinator가 정한다(`advisor/tools.ts`의 `advisorRole()`: 역할이 고른 읽기 도구 + `read_artifact` + `advise`. 협업 도구 목록에 없어도 준다. 확장 도구와 `run_check`는 거절). 감독은 작업 방식 없이 시작하지만 그 작업 방식의 권한 규칙과 Run의 권한 방식은 감독의 도구 호출에 적용되고, 묻기는 거절로 바뀐다(감독은 승인 요청을 만들지 않는다). 감독 실행 단위는 항목 위임의 "다른 실행 단위가 모두 끝남"과 무진전 셈에 들지 않는다. 실패·취소·거절로 끝나는 Run은 마지막 검토를 기다리지 않는다. `advise` 도구의 인자는 심각도와 글뿐이고 명령 ID는 `advice_<toolCallId>`다. 감독 이름은 Coordinator가 다듬어(제어·방향·폭 없는 문자와 괄호·콜론을 빼고 80단위까지) 싣고, 조언의 글은 adapter가 줄마다 인용 표시(`> `)로 싣는다. inbox는 저장된 projection에 `advice`가 있는 Run만 읽는다.
+- **A5 (남긴 한계).** 감독 worker가 `nextReview`를 다시 부르지 않으면 Run이 `running`에 머문다(시간 상한 없음. 취소는 닿는다). 감독의 예약 상태는 메모리에만 있어 서버가 다시 뜨면 그 Run은 중단된 것으로 남는다. 일시정지 중에 흐름이 끝난 감독은 `waiting_message → active → succeeded`로 끝난다. 감독 역할의 작업 방식은 쓰이지 않아도 Run 시작 때 해석돼 snapshot에 든다(해석 실패면 시작이 거절된다). 지켜보는 역할의 답변 글에 든 경로는 검토 입력에 가려지지 않고 실린다(도구 행의 대상·요약만 가린다). 맨 앞의 설명과 달리 `runsWithAdvice()`는 `projection_json`이 깨진 행이 있으면 던진다(저장소가 쓰는 값으로는 닿지 않는다).
 - **A7 (병합하며 남긴 것).** 감독 연결은 곧은 곡선이 다른 카드와 겹칠 때만 대상 열 옆 틈으로 돌아간다(`layout.ts`의 `routeAdvise`·`around`). 양쪽 틈이 모두 막히면(한 에이전트가 호출 전용 둘을 나란히 부르고 감독이 둘째를 지켜볼 때처럼 틈이 24px뿐인 배치) 곧은 곡선으로 남는다. 일반 경로 탐색은 넣지 않았다. 감독을 지켜보는 대상의 시트는 자기를 지켜보는 감독을 나열하지 않는다. 에이전트 하나와 감독만 있는 팀은 `SCHEMA_INVALID`로 보인다. `RequestCard.tsx`와 `RunPage.tsx`의 `invocation !== 'callable'` 셈은 감독을 흐름 안 에이전트로 센다(A8에서 고친다). 감독으로 바꾸면 역할의 `harness`·`imageProfile`·`editingMode`·`answer`가 지워지고 `outputContract`가 `notes`가 된다. 시작점이던 에이전트를 감독으로 바꿨는데 시작할 곳이 없으면 `entryNodeId`가 빈 값이 된다. 다른 팀의 역할을 가져올 때 감독의 역할(`advise` 도구를 가진 역할)은 목록에 없다(`importableRoles`).
 - **검사 출력(A4가 바꾼 것).** 가리기 규칙을 `packages/core/src/redact.ts` 한 곳으로 옮기면서 작업 폴더 안의 경로가 `[workspace][path]`가 아니라 `[workspace]/src/a.ts`로 남는다(검사·LSP·디버그 출력도 같다).
 - **A7 (A2가 정한 진단).** 감독의 컴파일 진단은 `ADVISOR_OUTSIDE_FLOW`, `ADVISOR_UNWATCHED`(감독 노드), `ADVISOR_ADVISE_SOURCE`·`ADVISOR_ADVISE_TARGET`·`ADVISOR_ADVISE_QUESTIONS`(연결), `ADVISOR_TOOLS`, `ADVISE_TOOL_ADVISOR_ONLY`, `ADVISOR_NOT_A_STEP`, 그리고 문 `ADVISOR_NOT_SUPPORTED`다. 편집기 문구 카탈로그는 `{message}`와 `{node}`만 받아 걸린 도구나 입력의 이름을 말하지 못한다.
