@@ -104,9 +104,11 @@ export function useSessionSettings({
   };
 
   // The conversation's advisor (features/advisor.md "두는 곳" 대화): shown as the session's record
-  // says, never before a save confirms it. While it saves, the composer is busy, so a request sent
-  // right after turning it on waits and carries it. A conflict or a lost answer reads the session
-  // again and shows what it says; nothing is sent again by itself.
+  // says, never before a save confirms it. While it saves, the composer is held: the ref stops a
+  // second press or a send in the same moment, and busy holds Send and the other settings on the
+  // screen. A conflict or a lost answer reads the session again and shows what it says; nothing is
+  // sent again by itself. When that read fails too, the setting is not known: the screen says only
+  // that, and a request first reads the session (a later read from anywhere also settles it).
   const tc = useTranslations('Composer');
   const [confirmedAdvisor, setConfirmedAdvisor] = useState<{
     revision: number;
@@ -118,45 +120,42 @@ export function useSessionSettings({
       : (session.advisor ?? null);
   const [advisorSaving, setAdvisorSaving] = useState(false);
   const [advisorProblem, setAdvisorProblem] = useState<string | null>(null);
-  const updateAdvisor = async (next: SessionAdvisor | null) => {
-    if (autoSaving.current || busy) return;
+  // The session as it was read when the setting became unknown; another read of it settles it.
+  const [unknownSince, setUnknownSince] = useState<WorkSession | null>(null);
+  const advisorUnknown = unknownSince !== null && unknownSince === session;
+
+  /** Reads the session again; whether it was read. */
+  const readAdvisor = async (): Promise<boolean> => {
+    try {
+      const fresh = await repository.getSession(session.sessionId);
+      if (!fresh) return false;
+      if (mounted.current) {
+        setConfirmedAdvisor({ revision: fresh.revision, value: fresh.advisor ?? null });
+        setUnknownSince(null);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  /** After an answer that does not say what the session holds: read it, or call it unknown. */
+  const settle = async (known: string) => {
+    if (await readAdvisor()) {
+      if (mounted.current) setAdvisorProblem(known);
+      await router.invalidate();
+    } else if (mounted.current) {
+      setUnknownSince(session);
+      setAdvisorProblem(tc('advisor.unconfirmed'));
+    }
+  };
+  /** Holds the composer while `work` runs. */
+  const holding = async <T>(work: () => Promise<T>, otherwise: T): Promise<T> => {
+    if (autoSaving.current) return otherwise;
     autoSaving.current = true;
     setBusy(true);
     setAdvisorSaving(true);
-    setAdvisorProblem(null);
-    const reread = async () => {
-      try {
-        const fresh = await repository.getSession(session.sessionId);
-        if (fresh && mounted.current)
-          setConfirmedAdvisor({ revision: fresh.revision, value: fresh.advisor ?? null });
-      } catch {
-        // What the session says stays unknown; the screen keeps what it last read.
-      }
-    };
     try {
-      const result = await repository
-        .updateSession(session.sessionId, {
-          advisor: next,
-          expectedRevision: Math.max(session.revision, confirmedAdvisor?.revision ?? 0),
-        })
-        .catch(() => null);
-      if (!mounted.current) return;
-      // The REST client answers a dropped connection or a server failure with
-      // storage_unavailable: whether the save landed is not known either way.
-      if (result === null || (!result.ok && result.error === 'storage_unavailable')) {
-        await reread();
-        if (mounted.current) setAdvisorProblem(tc('advisor.lost'));
-      } else if (result.ok) {
-        setConfirmedAdvisor({
-          revision: result.session.revision,
-          value: result.session.advisor ?? null,
-        });
-        await router.invalidate();
-      } else if (result.error === 'revision_conflict') {
-        await reread();
-        if (mounted.current) setAdvisorProblem(tc('advisor.conflict'));
-        await router.invalidate();
-      } else setAdvisorProblem(tc('advisor.failed', { message: result.message }));
+      return await work();
     } finally {
       autoSaving.current = false;
       if (mounted.current) {
@@ -166,6 +165,43 @@ export function useSessionSettings({
     }
   };
 
+  const updateAdvisor = async (next: SessionAdvisor | null) => {
+    if (busy) return;
+    await holding(async () => {
+      setAdvisorProblem(null);
+      const result = await repository
+        .updateSession(session.sessionId, {
+          advisor: next,
+          expectedRevision: Math.max(session.revision, confirmedAdvisor?.revision ?? 0),
+        })
+        .catch(() => null);
+      if (!mounted.current) return;
+      // The REST client answers a dropped connection or a server failure with
+      // storage_unavailable: whether the save landed is not known either way.
+      if (result === null || (!result.ok && result.error === 'storage_unavailable'))
+        await settle(tc('advisor.lost'));
+      else if (result.ok) {
+        setConfirmedAdvisor({
+          revision: result.session.revision,
+          value: result.session.advisor ?? null,
+        });
+        setUnknownSince(null);
+        await router.invalidate();
+      } else if (result.error === 'revision_conflict') await settle(tc('advisor.conflict'));
+      else setAdvisorProblem(tc('advisor.failed', { message: result.message }));
+    }, undefined);
+  };
+
+  /** Reads the session again while the setting is unknown; whether it is known now. */
+  const recheckAdvisor = () =>
+    holding(async () => {
+      const known = await readAdvisor();
+      if (!mounted.current) return known;
+      setAdvisorProblem(known ? null : tc('advisor.unconfirmed'));
+      if (known) await router.invalidate();
+      return known;
+    }, false);
+
   return {
     autoChoice,
     updateAuto,
@@ -173,8 +209,12 @@ export function useSessionSettings({
     autoStart,
     updateAutoStart,
     advisor,
+    advisorUnknown,
     advisorSaving,
-    advisorProblem,
+    // Once something else settles an unknown setting, its "not confirmed" goes with it.
+    advisorProblem:
+      advisorUnknown || advisorProblem !== tc('advisor.unconfirmed') ? advisorProblem : null,
     updateAdvisor,
+    recheckAdvisor,
   };
 }

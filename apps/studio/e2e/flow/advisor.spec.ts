@@ -88,7 +88,18 @@ test.describe("the conversation's advisor", () => {
       page.getByText('The advisor’s model could not be prepared.').first(),
     ).toBeVisible();
     expect(corral.server.coordinator.listRuns()).toEqual([]);
-    await page.getByRole('button', { name: 'Change or turn off' }).first().click();
-    await expect(page.getByRole('switch', { name: 'Advisor' })).toBeChecked();
+    // The message's meta line and the refusal under the input each open the advisor control.
+    const actions = page.getByRole('button', { name: 'Change or turn off' });
+    await expect(actions).toHaveCount(2);
+    for (const index of [0, 1]) {
+      await actions.nth(index).click();
+      await expect(page.getByRole('switch', { name: 'Advisor' })).toBeChecked();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('switch', { name: 'Advisor' })).toHaveCount(0);
+    }
+    // The refused start's own 422, which the browser logs, and nothing else.
+    expect(corral.errors).toEqual([
+      'Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)',
+    ]);
   });
 });

@@ -181,9 +181,11 @@ function SessionComposer({
     autoStart,
     updateAutoStart,
     advisor,
+    advisorUnknown,
     advisorSaving,
     advisorProblem,
     updateAdvisor,
+    recheckAdvisor,
   } = useSessionSettings({
     session,
     profiles,
@@ -340,6 +342,11 @@ function SessionComposer({
     const explicitQueue = 'role' in pick ? pick.role === 'queue' : pick.choice === 'queue';
     if (!body || busy || autoSaving.current || availableFor(how.intent, explicitQueue).unavailable)
       return;
+    // Whether the advisor rides along is not known: the session is read first, or nothing goes.
+    if (advisorUnknown && !(await recheckAdvisor())) {
+      if (mounted.current) setError(tc('advisor.unconfirmedSend'));
+      return;
+    }
     onSent?.();
     lastPick.current = pick;
     setLowered(false);
@@ -642,6 +649,8 @@ function SessionComposer({
           {/* A session setting for the next requests: it stays in view while a run goes. */}
           <AdvisorControl
             value={advisor}
+            unknown={advisorUnknown}
+            onRecheck={() => void recheckAdvisor()}
             defaultModel={autoChoice.modelProfile}
             profiles={profiles}
             saving={advisorSaving}

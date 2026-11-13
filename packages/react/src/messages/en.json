@@ -2461,7 +2461,13 @@
       "off": "Off",
       "failed": "Not saved. {message}",
       "conflict": "It was changed elsewhere. This is the saved setting.",
-      "lost": "The save was not confirmed. This is the conversation’s setting now."
+      "lost": "The save was not confirmed. This is the conversation’s setting now.",
+      "unknown": "Not confirmed",
+      "unconfirmed": "The save could not be confirmed.",
+      "recheck": "Check again",
+      "unconfirmedSend": "Whether the advisor is on could not be checked, so nothing was sent.",
+      "unavailable": "Unavailable model",
+      "onOnly": "On"
     },
     "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
     "viewActiveRun": "View active run",

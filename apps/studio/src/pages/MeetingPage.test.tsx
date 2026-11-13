@@ -710,6 +710,18 @@ it('names the reviewed minutes once, where the secretary posted them, and not in
   expect(f.button('summarise')?.closest('[data-testid="chat-composer"]')).toBe(composer);
 });
 
+// features/advisor.md "두는 곳" (대화): the advisor is a conversation's setting; a meeting's composer
+// draws no advisor control.
+it('draws no advisor control in the meeting composer', async () => {
+  const f = await mount(view());
+  const composer = must(
+    f.container.querySelector<HTMLElement>('[data-testid="chat-composer"]'),
+    'the composer',
+  );
+  expect(composer.querySelector('[data-slot="composer-shell"]')).not.toBeNull();
+  expect(document.querySelector('[data-slot="composer-advisor"]')).toBeNull();
+});
+
 it('reads an answer as prose under its participant, and the person’s message as a sent bubble', async () => {
   const f = await mount(view());
   const architect = must(

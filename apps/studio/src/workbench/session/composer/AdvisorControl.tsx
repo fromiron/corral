@@ -28,6 +28,8 @@ export function openAdvisorControl() {
 
 export function AdvisorControl({
   value,
+  unknown,
+  onRecheck,
   defaultModel,
   profiles,
   saving,
@@ -37,6 +39,13 @@ export function AdvisorControl({
 }: {
   /** What the session's record says. */
   value: SessionAdvisor | null;
+  /**
+   * Neither on nor off: a save's outcome and the session's setting could not be read. The value
+   * is not shown; reading the session again is.
+   */
+  unknown: boolean;
+  /** Reads the session again; sends nothing. */
+  onRecheck: () => void;
   /** The model turning it on uses: the conversation's. */
   defaultModel: string;
   /** The conversation's model list; none in the browser demo. */
@@ -56,24 +65,33 @@ export function AdvisorControl({
     window.addEventListener(OPEN_ADVISOR, show);
     return () => window.removeEventListener(OPEN_ADVISOR, show);
   }, []);
-  const on = value !== null;
+  const on = !unknown && value !== null;
   const held = saving || disabled;
-  const model = value
-    ? (profiles?.find((profile) => profile.profileId === value.modelProfile)?.label ??
-      value.modelProfile)
-    : null;
+  // A profile no longer listed is named as unavailable, never by its id. Without a model list
+  // (the browser demo) no model is named.
+  const model =
+    value && profiles
+      ? (profiles.find((profile) => profile.profileId === value.modelProfile)?.label ??
+        tc('advisor.unavailable'))
+      : null;
   const name = tc('advisor.name');
-  const state = model ? tc('advisor.on', { model }) : tc('advisor.off');
+  const state = unknown
+    ? tc('advisor.unknown')
+    : on
+      ? model
+        ? tc('advisor.on', { model })
+        : tc('advisor.onOnly')
+      : tc('advisor.off');
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip content={model ? `${name} · ${model}` : name}>
+      <Tooltip content={unknown ? `${name} · ${state}` : on && model ? `${name} · ${model}` : name}>
         <PopoverTrigger
           render={
             <Button
               variant="ghost"
               size="icon-compact"
               data-slot="composer-advisor"
-              data-state={on ? 'on' : 'off'}
+              data-state={unknown ? 'unknown' : on ? 'on' : 'off'}
               aria-label={name}
               aria-description={state}
               disabled={disabled}
@@ -84,36 +102,57 @@ export function AdvisorControl({
         >
           <Eye />
           {on ? <LiveDot live={false} className="absolute top-1 right-1" /> : null}
+          {/* Not known: a mark of its own shape, not a colour of the on or off one. */}
+          {unknown ? (
+            <span
+              aria-hidden="true"
+              className="absolute top-0 right-0.5 text-micro font-semibold text-warning"
+            >
+              ?
+            </span>
+          ) : null}
         </PopoverTrigger>
       </Tooltip>
       <PopoverPopup side="top" align="start" padding="compact" aria-label={name}>
         <div data-slot="advisor-popover" className="flex min-w-0 flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-1">
-            <Switch
-              size="compact"
-              label={name}
-              checked={on}
-              disabled={held}
-              onToggle={() => {
-                if (!held) onChange(on ? null : { modelProfile: defaultModel });
-              }}
-            />
-            {value && profiles ? (
-              <AutoModelMenu
-                value={{ modelProfile: value.modelProfile }}
-                profiles={profiles}
-                showReasoning={false}
+          {unknown ? (
+            <div className="flex min-w-0 items-center gap-2 px-2 py-1">
+              <p role="alert" className="m-0 max-w-64 text-caption text-warning">
+                {problem}
+              </p>
+              <Button variant="tertiary" size="compact" disabled={saving} onClick={onRecheck}>
+                {tc('advisor.recheck')}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-center gap-1">
+              <Switch
+                size="compact"
+                label={name}
+                checked={on}
                 disabled={held}
-                open={modelOpen}
-                onOpenChange={setModelOpen}
-                onChange={(next) => {
-                  if (!held && next.modelProfile !== value.modelProfile)
-                    onChange({ modelProfile: next.modelProfile });
+                onToggle={() => {
+                  if (!held) onChange(on ? null : { modelProfile: defaultModel });
                 }}
               />
-            ) : null}
-          </div>
-          {problem ? (
+              {value && profiles ? (
+                <AutoModelMenu
+                  value={{ modelProfile: value.modelProfile }}
+                  profiles={profiles}
+                  showReasoning={false}
+                  missingName={tc('advisor.unavailable')}
+                  disabled={held}
+                  open={modelOpen}
+                  onOpenChange={setModelOpen}
+                  onChange={(next) => {
+                    if (!held && next.modelProfile !== value.modelProfile)
+                      onChange({ modelProfile: next.modelProfile });
+                  }}
+                />
+              ) : null}
+            </div>
+          )}
+          {problem && !unknown ? (
             <p role="alert" className="m-0 max-w-64 px-2 pb-1 text-caption text-destructive">
               {problem}
             </p>

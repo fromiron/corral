@@ -2461,7 +2461,13 @@
       "off": "꺼짐",
       "failed": "저장하지 못했습니다. {message}",
       "conflict": "다른 곳에서 바뀌었습니다. 저장된 설정입니다.",
-      "lost": "저장을 확인하지 못했습니다. 지금 대화의 설정입니다."
+      "lost": "저장을 확인하지 못했습니다. 지금 대화의 설정입니다.",
+      "unknown": "확인되지 않음",
+      "unconfirmed": "저장을 확인하지 못했습니다.",
+      "recheck": "다시 확인",
+      "unconfirmedSend": "감독이 켜져 있는지 확인하지 못해 보내지 않았습니다.",
+      "unavailable": "사용할 수 없는 모델",
+      "onOnly": "켜짐"
     },
     "viewingOtherRun": "진행 중: 실행 #{active} · 현재 보는 실행: #{viewed}",
     "viewActiveRun": "현재 실행 보기",

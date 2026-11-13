@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { emptyProjection } from '@corral/core';
 import { act, type ReactNode } from 'react';
@@ -98,6 +96,7 @@ async function mount({
   active = null as RunSummary | null,
   save,
   stored,
+  start,
   home = false,
 }: {
   session?: WorkSession;
@@ -106,6 +105,8 @@ async function mount({
   save?: Save;
   /** The session as a fresh read returns it; by default the current one. */
   stored?: () => WorkSession;
+  /** The server's answer to a new request; by default it starts. */
+  start?: () => Promise<unknown>;
   home?: boolean;
 } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -139,11 +140,14 @@ async function mount({
       return { ok: true, session: current };
     }),
   };
-  const startAuto = vi.fn(async () => ({
-    runId: 'run_new',
-    receipt: { commandId: 'x', accepted: true },
-    autoRoute: null,
-  }));
+  const startAuto = vi.fn(
+    start ??
+      (async () => ({
+        runId: 'run_new',
+        receipt: { commandId: 'x', accepted: true },
+        autoRoute: null,
+      })),
+  );
   const sendCommand = vi.fn(async () => ({}));
   const projection = emptyProjection('run_live');
   projection.status = 'running';
@@ -246,10 +250,20 @@ async function mount({
     });
     await act(async () => {});
   };
+  const button = (name: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+      (node) => node.textContent?.trim() === name || node.getAttribute('aria-label') === name,
+    );
+  const recheck = async () => {
+    await act(async () => button(messages.Composer.advisor.recheck)?.click());
+  };
   return {
     container,
     repository,
     startAuto,
+    button,
+    recheck,
+    box,
     sendCommand,
     render,
     current: () => current,
@@ -400,11 +414,15 @@ describe('the advisor control on the tool line', () => {
   it('keeps a saved model that is no longer listed, shown as unavailable, and stays on', async () => {
     const f = await mount({ session: { ...baseSession, advisor: { modelProfile: 'model-gone' } } });
     expect(f.control()?.dataset.state).toBe('on');
+    // Named as unavailable, never by the profile id: on the control, in its tooltip and popover.
+    const unavailable = messages.Composer.advisor.unavailable;
+    expect(f.control()?.getAttribute('aria-description')).toContain(unavailable);
+    expect(f.control()?.getAttribute('aria-description')).not.toContain('model-gone');
     await f.open();
     expect(f.toggle()?.getAttribute('aria-checked')).toBe('true');
-    expect(document.querySelector('[data-slot="advisor-popover"]')?.textContent).toContain(
-      'model-gone',
-    );
+    const popover = document.querySelector('[data-slot="advisor-popover"]')?.textContent ?? '';
+    expect(popover).toContain(unavailable);
+    expect(popover).not.toContain('model-gone');
   });
 });
 
@@ -475,7 +493,228 @@ describe('the advisor and requests', () => {
   });
 });
 
-it('a meeting’s composer has no advisor control', () => {
-  const source = readFileSync(resolve(import.meta.dirname, 'composer/meeting.tsx'), 'utf8');
-  expect(source).not.toMatch(/AdvisorControl/);
+// What the screen says when a save's outcome and the session's setting are both unknown: neither
+// on nor off, nothing about its value, a way to read the session again; and no request starts
+// without knowing whether the advisor rides along.
+describe('when the setting is not known', () => {
+  const failing = () => {
+    let reads = 'fail' as 'fail' | 'on' | 'off';
+    return {
+      set: (next: typeof reads) => {
+        reads = next;
+      },
+      stored: () => {
+        if (reads === 'fail') throw new TypeError('Failed to fetch');
+        return {
+          ...baseSession,
+          advisor: reads === 'on' ? { modelProfile: 'model-a' } : null,
+          revision: 4,
+        };
+      },
+    };
+  };
+  const unknownShown = (f: Awaited<ReturnType<typeof mount>>) => {
+    expect(f.control()?.dataset.state).toBe('unknown');
+    expect(f.control()?.getAttribute('aria-description')).toBe(messages.Composer.advisor.unknown);
+    // Neither on nor off: no switch to read a value from, and no sentence about the value.
+    expect(f.toggle()).toBeNull();
+    expect(f.said()).toBe(messages.Composer.advisor.unconfirmed);
+    expect(f.button(messages.Composer.advisor.recheck)).toBeDefined();
+  };
+
+  it('a lost answer whose session cannot be read again is shown as not known', async () => {
+    const reads = failing();
+    const f = await mount({
+      save: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      stored: reads.stored,
+    });
+    await f.open();
+    await f.flip();
+    unknownShown(f);
+    // Checking again reads the session; it sends nothing.
+    reads.set('on');
+    await f.recheck();
+    expect(advisorSaves(f.repository)).toHaveLength(1);
+    expect(f.control()?.dataset.state).toBe('on');
+    expect(f.toggle()?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('a conflict whose session cannot be read again is shown as not known', async () => {
+    const reads = failing();
+    const f = await mount({
+      save: async () => ({ ok: false, error: 'revision_conflict', message: 'changed elsewhere' }),
+      stored: reads.stored,
+    });
+    await f.open();
+    await f.flip();
+    unknownShown(f);
+    reads.set('off');
+    await f.recheck();
+    expect(f.control()?.dataset.state).toBe('off');
+  });
+
+  it('a send reads the session first and goes once it is read', async () => {
+    const reads = failing();
+    const f = await mount({
+      save: async () => ({ ok: false, error: 'storage_unavailable', message: 'Could not save' }),
+      stored: reads.stored,
+    });
+    await f.open();
+    await f.flip();
+    expect(f.control()?.dataset.state).toBe('unknown');
+    reads.set('on');
+    await f.type('Find why login is slow');
+    await f.press();
+    expect(f.startAuto).toHaveBeenCalledTimes(1);
+    expect(f.control()?.dataset.state).toBe('on');
+    expect(advisorSaves(f.repository)).toHaveLength(1);
+  });
+
+  it('a send whose session cannot be read does not start, and says so', async () => {
+    const reads = failing();
+    const f = await mount({
+      save: async () => ({ ok: false, error: 'storage_unavailable', message: 'Could not save' }),
+      stored: reads.stored,
+    });
+    await f.open();
+    await f.flip();
+    await f.type('Find why login is slow');
+    await f.press();
+    expect(f.startAuto).not.toHaveBeenCalled();
+    expect(f.container.textContent).toContain(messages.Composer.advisor.unconfirmedSend);
+    expect(f.box().value).toBe('Find why login is slow');
+    expect(f.control()?.dataset.state).toBe('unknown');
+    expect(advisorSaves(f.repository)).toHaveLength(1);
+  });
+
+  it('a later read of the session, from anywhere, ends it and is followed', async () => {
+    const reads = failing();
+    const f = await mount({
+      save: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      stored: reads.stored,
+    });
+    await f.open();
+    await f.flip();
+    expect(f.control()?.dataset.state).toBe('unknown');
+    // The page's loader reads the session again (a router revalidation).
+    await f.render({ ...baseSession, advisor: { modelProfile: 'model-b' }, revision: 4 });
+    expect(f.control()?.dataset.state).toBe('on');
+    expect(f.control()?.getAttribute('aria-description')).toContain('Model B');
+  });
+});
+
+describe('after a lost answer that was read again', () => {
+  it('refreshes the session, and the next save goes with the revision it read', async () => {
+    const f = await mount({
+      save: async (change) =>
+        change.advisor === null
+          ? { ok: true, session: { ...baseSession, advisor: null, revision: 7 } }
+          : Promise.reject(new TypeError('Failed to fetch')),
+      stored: () => ({ ...baseSession, advisor: { modelProfile: 'model-a' }, revision: 6 }),
+    });
+    await f.open();
+    await f.flip();
+    expect(fixture.invalidate).toHaveBeenCalled();
+    await f.flip();
+    expect(advisorSaves(f.repository).at(-1)).toEqual({ advisor: null, expectedRevision: 6 });
+  });
+
+  it('a conflict read again also gives its revision to the next save', async () => {
+    let conflict = true;
+    const f = await mount({
+      save: async () => {
+        if (!conflict) return { ok: true, session: { ...baseSession, advisor: null, revision: 7 } };
+        conflict = false;
+        return { ok: false, error: 'revision_conflict', message: 'changed elsewhere' };
+      },
+      stored: () => ({ ...baseSession, advisor: { modelProfile: 'model-b' }, revision: 6 }),
+    });
+    await f.open();
+    await f.flip();
+    await f.flip();
+    expect(advisorSaves(f.repository).at(-1)).toEqual({ advisor: null, expectedRevision: 6 });
+  });
+});
+
+describe('what holds a request while the advisor saves', () => {
+  it('two presses in one moment save once', async () => {
+    const answer = held<unknown>();
+    const f = await mount({ save: () => answer.promise });
+    await f.open();
+    // Both presses land before the screen draws again.
+    await act(async () => {
+      f.toggle()?.click();
+      f.toggle()?.click();
+    });
+    expect(advisorSaves(f.repository)).toHaveLength(1);
+    await act(async () =>
+      answer.resolve({
+        ok: true,
+        session: { ...baseSession, advisor: { modelProfile: 'model-a' }, revision: 4 },
+      }),
+    );
+  });
+
+  it('Send is held while it saves, and the control itself stays open to read', async () => {
+    const answer = held<unknown>();
+    const f = await mount({ save: () => answer.promise });
+    await f.type('Find why login is slow');
+    await f.open();
+    await f.flip();
+    expect(f.button('Send')?.disabled).toBe(true);
+    expect(f.control()?.disabled).toBe(false);
+    await act(async () =>
+      answer.resolve({
+        ok: true,
+        session: { ...baseSession, advisor: { modelProfile: 'model-a' }, revision: 4 },
+      }),
+    );
+    expect(f.button('Send')?.disabled).toBe(false);
+  });
+
+  it('is not pressed while a request of this composer is on its way', async () => {
+    const answer = held<unknown>();
+    const f = await mount({ start: () => answer.promise });
+    await f.type('Find why login is slow');
+    await f.press();
+    expect(f.startAuto).toHaveBeenCalledTimes(1);
+    expect(f.control()?.disabled).toBe(true);
+    await act(async () =>
+      answer.resolve({
+        runId: 'run_new',
+        receipt: { commandId: 'x', accepted: true },
+        autoRoute: null,
+      }),
+    );
+  });
+});
+
+it('the refusal under the input opens the advisor control', async () => {
+  const f = await mount({
+    session: { ...baseSession, advisor: { modelProfile: 'model-a' } },
+    start: async () => ({
+      runId: null,
+      receipt: {
+        commandId: 'x',
+        accepted: false,
+        error: { code: 'GRAPH_INVALID', message: 'Advisor model model-a: sign in to OpenAI' },
+      },
+      autoRoute: null,
+    }),
+  });
+  await f.type('Find why login is slow');
+  await f.press();
+  const refusal = f.container.querySelector('[data-kind="advisor"]');
+  expect(refusal).not.toBeNull();
+  expect(f.toggle()).toBeNull();
+  await act(async () =>
+    [...(refusal?.querySelectorAll('button') ?? [])]
+      .find((node) => node.textContent === messages.Refusal.chooseAdvisor)
+      ?.click(),
+  );
+  expect(f.toggle()?.getAttribute('aria-checked')).toBe('true');
 });
