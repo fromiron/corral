@@ -254,3 +254,31 @@ it('keeps the plan it read while a newer revision of it loads, and says the firs
   await settle(() => revision() === 2);
   expect(revision()).toBe(2);
 });
+
+it('says another plan is loading rather than show the one before in its place', async () => {
+  const running = await projection('running');
+  const store = runStore({
+    runId: 'run_plan',
+    projection: running,
+    artifactTexts: { body_plan: JSON.stringify(plan) },
+    loadArtifact: vi.fn(() => new Promise(() => {})),
+  });
+  fixture.services = services(store);
+  await mount(true);
+  await settle(() => seen?.plan.status.state === 'ready');
+  expect(seen?.plan.status.state).toBe('ready');
+  // The role's next attempt writes its own plan, its body not read yet.
+  const retried = structuredClone(running);
+  (retried.executions.exec_plan as { attemptNo: number }).attemptNo = 2;
+  retried.workPlans = {
+    plan: {
+      ...(running.workPlans.plan as RunProjection['workPlans'][string]),
+      attemptNo: 2,
+      bodyRef: 'body_plan_attempt_2',
+      bodyHash: await hashOf({ ...plan, attemptNo: 2 }),
+    },
+  };
+  await act(async () => store.setState({ projection: retried }));
+  await settle(() => seen?.plan.status.state === 'loading');
+  expect(seen?.plan.status.state).toBe('loading');
+});
