@@ -429,6 +429,7 @@ async function twoReplies(page: Page, corral: Harness) {
   corral.fake?.setResponses([
     fauxAssistantMessage(`${FIRST}\n\n${SECOND}`),
     fauxAssistantMessage(ONLY),
+    fauxAssistantMessage('Noted.'),
   ]);
   const reply = await conversation(page, corral, 0);
   await requestBox(page).fill('One more');
@@ -512,7 +513,8 @@ test('the toolbar follows each passage the mouse chooses, by a drag, two clicks 
   await page.screenshot({ path: join(ROUND3, 'triple-click-last-paragraph.png') });
   await page.keyboard.press('Alt+KeyQ');
   await expect(requestBox(page)).toBeFocused();
-  expect((await quoted(page)).at(-1)?.text.trim()).toBe(ONLY);
+  // What a copy of a whole paragraph gives, without the line break it ends with.
+  expect((await quoted(page)).at(-1)?.text).toBe(ONLY);
   // A drag let go a little under a reply's last line, with a row under it and with none.
   for (const [body, index, word, rest] of [
     [0, 1, 'paragraph', 'paragraph holds another passage worth quoting.'],
@@ -527,7 +529,26 @@ test('the toolbar follows each passage the mouse chooses, by a drag, two clicks 
     const count = (await quoted(page)).length;
     await page.keyboard.press('Alt+KeyQ');
     await expect.poll(async () => (await quoted(page)).length).toBe(count + 1);
-    expect((await quoted(page)).at(-1)?.text.trim()).toBe(rest);
+    expect((await quoted(page)).at(-1)?.text).toBe(rest);
+  }
+  // Sent, each quote leads back to its words.
+  await clear(page);
+  await requestBox(page).fill('Where are these?');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect
+    .poll(() => runStates(corral), { timeout: 30_000 })
+    .toBe('succeeded,succeeded,succeeded');
+  const chips = sentChip(page, 'Where are these?');
+  await expect(chips).toHaveCount(3);
+  await waitForStill(page);
+  for (const [index, text] of [
+    ONLY,
+    'paragraph holds another passage worth quoting.',
+    'paragraph stands in this reply.',
+  ].entries()) {
+    await chips.nth(index).click();
+    await expect.poll(() => selected(page), text).toBe(text);
+    await expect(page.getByTestId('quote-detail')).toHaveCount(0);
   }
   // Over two replies: no toolbar.
   await clear(page);

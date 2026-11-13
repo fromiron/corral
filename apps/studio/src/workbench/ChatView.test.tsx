@@ -1486,6 +1486,149 @@ it('focus coming to a placed row while the end was followed keeps the row held, 
   expect(chat.top).toBe(held + 100);
 });
 
+/**
+ * Tab moves the focus to `target`, drawn at `rect` on screen once focused; the browser may scroll
+ * to it (`scroll`) between the key and the focus, as Chromium does.
+ */
+async function tabTo(
+  target: HTMLElement,
+  rect: { top: number; bottom: number },
+  scroll?: () => void,
+) {
+  target.getBoundingClientRect = () =>
+    ({ ...rect, height: rect.bottom - rect.top, left: 0, right: 40, width: 40 }) as DOMRect;
+  await act(async () => {
+    (document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' }),
+    );
+    scroll?.();
+    target.focus();
+  });
+}
+
+for (const [hold, start] of [
+  ['a linked row', 'link'],
+  ['a restored row', 'restore'],
+] as const) {
+  for (const [where, rect, padding, scrolled] of [
+    ['below the view', { top: 520, bottom: 548 }, 0, 0],
+    ['behind the composer', { top: 150, bottom: 178 }, 80, 0],
+    ['below the view, scrolled to by the browser first', { top: 100, bottom: 128 }, 0, 420],
+  ] as const) {
+    it(`${hold} lets go when Tab takes the focus ${where}, and the browser bringing it in stands`, async () => {
+      sessionStorage.clear();
+      if (start === 'restore')
+        sessionStorage.setItem(
+          'corral:chat-scroll:session-follow',
+          JSON.stringify({ top: 5_000, follow: false, anchor: { id: 'turn-30', offset: 0 } }),
+        );
+      const chat = await mountLong(60, (index) => <button type="button">Copy {index}</button>);
+      chat.box.style.scrollPaddingBottom = `${padding}px`;
+      let placed: PlacedRow | null = null;
+      if (start === 'link')
+        await act(async () => {
+          placed = placeChatRow('session-follow', 'turn-30', 0);
+        });
+      await chat.scroll(chat.top);
+      await chat.resize();
+      const held = 24 + 30 * 260;
+      expect(chat.top).toBe(held);
+      const target = chat.container.querySelector<HTMLButtonElement>(
+        '[data-chat-item="turn-31"] button',
+      );
+      if (!target) throw new Error('Row action missing');
+      const brought = vi.fn();
+      target.scrollIntoView = brought;
+      await tabTo(target, rect, () => {
+        chat.top += scrolled;
+      });
+      if (placed) expect((placed as PlacedRow).held()).toBe(false);
+      // Brought into view above the composer, which a browser leaves to the page there.
+      expect(brought).toHaveBeenCalledWith({ block: 'nearest' });
+      // The browser scrolls the focus into view; layout after it does not put the row back.
+      await chat.scroll(held + 300);
+      await chat.resize();
+      expect(chat.top).toBe(held + 300);
+      expect(document.activeElement).toBe(target);
+    });
+  }
+}
+
+it('a held row stays held when Tab moves the focus within the view, or focus is given without a move', async () => {
+  sessionStorage.clear();
+  const chat = await mountLong(60, (index) => <button type="button">Copy {index}</button>);
+  chat.box.style.scrollPaddingBottom = '80px';
+  let placed: PlacedRow | null = null;
+  await act(async () => {
+    placed = placeChatRow('session-follow', 'turn-30', 0);
+  });
+  await chat.scroll(chat.top);
+  await chat.resize();
+  const held = 24 + 30 * 260;
+  const own = chat.container.querySelector<HTMLButtonElement>('[data-chat-item="turn-30"] button');
+  const below = chat.container.querySelector<HTMLButtonElement>(
+    '[data-chat-item="turn-31"] button',
+  );
+  if (!own || !below) throw new Error('Row action missing');
+  const brought = vi.fn();
+  own.scrollIntoView = brought;
+  below.scrollIntoView = brought;
+  await tabTo(own, { top: 40, bottom: 68 });
+  expect((placed as PlacedRow | null)?.held()).toBe(true);
+  // Focus given by the page (a return to a quote), not moved by a key, out of view.
+  below.getBoundingClientRect = () => ({ top: 520, bottom: 548 }) as DOMRect;
+  await act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    below.focus();
+  });
+  expect((placed as PlacedRow | null)?.held()).toBe(true);
+  expect(brought).not.toHaveBeenCalled();
+  chat.top = held + 200;
+  await chat.resize();
+  expect(chat.top).toBe(held);
+});
+
+for (const key of ['End', 'Home'] as const) {
+  it(`${key} in a focused box that scrolls on its own is that box’s, the conversation staying`, async () => {
+    sessionStorage.clear();
+    const chat = await mountLong(60, (index) =>
+      index === 30 ? (
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroller the browser focuses
+        <div data-testid="nested" tabIndex={0} style={{ overflowY: 'auto' }}>
+          Streaming
+        </div>
+      ) : (
+        <p>Turn {index}</p>
+      ),
+    );
+    let placed: PlacedRow | null = null;
+    await act(async () => {
+      placed = placeChatRow('session-follow', 'turn-30', 0);
+    });
+    await chat.scroll(chat.top);
+    await chat.resize();
+    const held = 24 + 30 * 260;
+    const nested = chat.container.querySelector<HTMLElement>('[data-testid="nested"]');
+    if (!nested) throw new Error('Nested box missing');
+    // At either end of the box: the key still belongs to it.
+    Object.defineProperties(nested, {
+      scrollHeight: { configurable: true, value: 500 },
+      clientHeight: { configurable: true, value: 100 },
+      scrollTop: { configurable: true, value: key === 'End' ? 0 : 400 },
+    });
+    await act(async () => nested.focus());
+    expect(await chat.key(nested, key)).toBe(false);
+    expect(await chat.key(nested, key, { ctrlKey: true })).toBe(false);
+    expect(chat.top).toBe(held);
+    expect((placed as PlacedRow | null)?.held()).toBe(true);
+    // The same key from the reply’s words beside the box is the conversation’s.
+    const words = chat.container.querySelector('[data-chat-item="turn-29"] p');
+    if (!words) throw new Error('Row missing');
+    expect(await chat.key(words, key)).toBe(true);
+    expect(chat.top).toBe(key === 'End' ? chat.end() : 0);
+  });
+}
+
 it('a restored offset waits for the history to be tall enough, without reading a place first', async () => {
   sessionStorage.clear();
   sessionStorage.setItem(
