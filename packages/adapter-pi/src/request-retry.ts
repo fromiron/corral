@@ -19,6 +19,35 @@ export function isReplaySafe(partial: Pick<AssistantMessage, 'content'>): boolea
 }
 
 /**
+ * The text fragments one call streams to the host, shared by both workers. Whitespace before
+ * the response has shown anything waits and goes out, fragment by fragment, just before what
+ * it shows first (text or a tool call). A response that ends whole sends what still waits; one
+ * that ends unfinished before showing anything sends nothing. Empty fragments are never sent.
+ */
+export function streamedText(send: (text: string) => void) {
+  let waiting: string[] | null = [];
+  const release = () => {
+    const pending = waiting ?? [];
+    waiting = null;
+    for (const text of pending) send(text);
+  };
+  return {
+    event(event: AssistantMessageEvent) {
+      if (event.type === 'done' || event.type === 'error') return;
+      if (waiting && !isReplaySafe(event.partial)) release();
+      if (event.type !== 'text_delta' || !event.delta) return;
+      if (waiting) waiting.push(event.delta);
+      else send(event.delta);
+    },
+    /** The call ended; `whole` when its response is a confirmed one. */
+    end(whole: boolean) {
+      if (whole) release();
+      waiting = null;
+    },
+  };
+}
+
+/**
  * The wait before a failed attempt is asked for again, or null when it is not (context-overflow
  * recovery aside). `responseStarted` says whether the attempt sent any event before it ended.
  */

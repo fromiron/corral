@@ -79,7 +79,7 @@ import {
   withProtectedContext,
   withRequiredImages,
 } from './request-record.ts';
-import { isReplaySafe, managedRetryStream, retryDelayAfter } from './request-retry.ts';
+import { managedRetryStream, streamedText } from './request-retry.ts';
 import { brokerParameters, describeTool } from './static-tools.ts';
 import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
@@ -217,7 +217,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       ) {
         // Steered first, so Pi goes on with the directive once the cut response has ended.
         void (known ? Promise.resolve() : steer(frame)).then(() => {
-          if (!cancelled && !endedUnfinished) flight.abort.abort();
+          if (!cancelled) flight.abort.abort();
         });
         return;
       }
@@ -626,39 +626,18 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               },
             });
             let chunkIndex = 0;
-            let responseStarted = false;
-            const sendText = (text: string) => {
-              if (!cancelled) send({ type: 'stream', modelCallId, chunkIndex: chunkIndex++, text });
-            };
-            // Whitespace before the first text is held, as the retry wrapper holds it from the
-            // agent: an attempt that is asked for again has shown nothing.
-            let held: string[] | null = [];
-            const release = (ended?: AssistantMessage) => {
-              const pending = held;
-              held = null;
-              if (
-                !pending ||
-                (ended &&
-                  !options?.signal?.aborted &&
-                  retryDelayAfter(ended, retryIndex, responseStarted) !== null)
-              )
-                return;
-              for (const text of pending) sendText(text);
-            };
+            // A summary is internal: its text is never shown as the conversation's.
+            const text = streamedText((delta) => {
+              if (!cancelled && requestPurpose !== 'compaction')
+                send({ type: 'stream', modelCallId, chunkIndex: chunkIndex++, text: delta });
+            });
             for await (const event of stream) {
               if (event.type === 'done' || event.type === 'error') {
                 const answer = event.type === 'done' ? event.message : event.error;
                 meter.observe(requestContext, model, answer);
-                release(answer);
+                text.end(!unfinished(answer));
                 report(answer);
-              } else {
-                responseStarted = true;
-                if (held && !isReplaySafe(event.partial)) release();
-                if (event.type === 'text_delta' && event.delta) {
-                  if (held) held.push(event.delta);
-                  else sendText(event.delta);
-                }
-              }
+              } else text.event(event);
               out.push(proxyEvent(event));
             }
             const answer = await stream.result();
@@ -671,7 +650,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 ? modelCallId
                 : undefined;
             if (!observed) {
-              release(answer);
+              text.end(!unfinished(answer));
               report(answer);
             }
             out.end(proxyMessage(answer));

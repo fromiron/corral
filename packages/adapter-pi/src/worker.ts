@@ -53,7 +53,7 @@ import {
   withProtectedContext,
   withRequiredImages,
 } from './request-record.ts';
-import { managedRetryStream } from './request-retry.ts';
+import { managedRetryStream, streamedText } from './request-retry.ts';
 import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
 import {
@@ -245,7 +245,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     const meter = new ContextMeter();
     let lastPrepared: Context | undefined;
     let measuredContext: ReturnType<typeof inspectContext> | null = null;
-    let chunk = 0;
+    // The text the call in flight streams, counted from its permit.
+    let text: ReturnType<typeof streamedText> | null = null;
+    const textOfCall = (modelCallId: string) => {
+      let chunk = 0;
+      return streamedText((delta) =>
+        port.send({ type: 'stream', ...head, modelCallId, chunkIndex: chunk++, text: delta }),
+      );
+    };
     const authorized = new Map<string, string>();
     let logicalRequests = 0;
     let logicalRequestId = '';
@@ -530,7 +537,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         cacheRetention: reply.cacheRetention,
         ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
       };
-      chunk = 0;
+      text = textOfCall(reply.modelCallId);
       // Older hosts may deliver a directive only with the permit (compatibility path).
       const present = JSON.stringify(preparedContext.messages);
       const missing = reply.directives.filter(
@@ -715,22 +722,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
 
     agent.subscribe((event) => {
       if (!permit) return;
-      // An empty fragment is never sent; whitespace a retry replaced never reaches this agent.
-      if (
-        event.type === 'message_update' &&
-        event.assistantMessageEvent.type === 'text_delta' &&
-        event.assistantMessageEvent.delta
-      ) {
-        port.send({
-          type: 'stream',
-          ...head,
-          modelCallId: permit.modelCallId,
-          chunkIndex: chunk++,
-          text: event.assistantMessageEvent.delta,
-        });
-      }
+      if (event.type === 'message_update') text?.event(event.assistantMessageEvent);
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         const message = event.message as AssistantMessage;
+        text?.end(!unfinished(message));
         if (lastPrepared) meter.observe(lastPrepared, model, message);
         attemptedTools ||= message.content.some((part) => part.type === 'toolCall');
         // Meetings answer before any tool; a final-reply role may use tools first.

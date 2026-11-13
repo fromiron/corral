@@ -123,8 +123,19 @@ function runtime(
     if (options.workerGate) void options.workerGate.wait().then(run);
     else run();
   };
+  /** Every text fragment the worker streamed, in order. */
+  const streamFrames: { modelCallId: string; chunkIndex: number; text: string }[] = [];
   const pair = () => {
     const channels = memoryChannelPair();
+    channels.host.onFrame((frame) => {
+      const f = frame as WorkerFrame;
+      if (f.type === 'stream')
+        streamFrames.push({
+          modelCallId: String(f.modelCallId),
+          chunkIndex: Number(f.chunkIndex),
+          text: String(f.text),
+        });
+    });
     if (options.onWorkerFrame) {
       const seen = options.onWorkerFrame;
       channels.host.onFrame((frame) => seen(frame as WorkerFrame));
@@ -245,7 +256,7 @@ function runtime(
     };
     return { runId, executionId, events, steer, directiveOf };
   };
-  return { transport, coordinator, start, steerNow, compactNow };
+  return { transport, coordinator, start, steerNow, compactNow, streamFrames };
 }
 
 describe('directives sent while the worker is starting', () => {
@@ -734,13 +745,30 @@ const compactionPhases = (events: RunEvent[]) =>
   );
 const purposes = (events: RunEvent[]) =>
   events.flatMap((e) => (e.type === 'model.request_recorded' ? [e.payload.purpose] : []));
+/** What the summary calls streamed and left as partial output: nothing, in either worker. */
+const summaryTraces = (
+  events: RunEvent[],
+  frames: { modelCallId: string }[],
+  partials: Record<string, unknown> | undefined,
+) => {
+  const summaries = events.flatMap((e) =>
+    e.type === 'model.request_recorded' && e.payload.purpose === 'compaction'
+      ? [e.payload.modelCallId]
+      : [],
+  );
+  return {
+    summaries: summaries.length,
+    frames: frames.filter((frame) => summaries.includes(frame.modelCallId)),
+    partials: summaries.filter((id) => partials?.[id] !== undefined),
+  };
+};
 
 describe('an automatic compaction whose summary fails', () => {
   /** The first request is a summary; it shows text, the test may steer, then it fails. */
   const summaryFails = async (worker: Worker, steering: boolean, ending: 'error' | 'throws') => {
     const streamed = new Gate(),
       release = new Gate();
-    const { transport, coordinator, start } = runtime(
+    const { transport, coordinator, start, streamFrames } = runtime(
       [
         ending === 'error'
           ? fauxAssistantMessage('Partial summary before the drop.', {
@@ -770,7 +798,7 @@ describe('an automatic compaction whose summary fails', () => {
     await tick();
     release.open();
     const final = await waitForProjection(transport, runId, settled);
-    return { coordinator, runId, executionId, events, final, directiveOf };
+    return { coordinator, runId, executionId, events, final, directiveOf, streamFrames };
   };
 
   it.each<[Worker, boolean, 'error' | 'throws']>([
@@ -785,12 +813,13 @@ describe('an automatic compaction whose summary fails', () => {
   ])(
     'a %s execution whose summary fails ends failed after that one call (directive waiting: %s, summary %s)',
     async (worker, steering, ending) => {
-      const { coordinator, runId, executionId, events, final, directiveOf } = await summaryFails(
-        worker,
-        steering,
-        ending,
-      );
+      const { coordinator, runId, executionId, events, final, directiveOf, streamFrames } =
+        await summaryFails(worker, steering, ending);
       expect(final.status).toBe('failed');
+      // The summary's text is never streamed, so the conversation never shows it.
+      expect(
+        summaryTraces(events, streamFrames, coordinator.getSnapshot(runId).partialOutputs),
+      ).toEqual({ summaries: 1, frames: [], partials: [] });
       expect(final.executions[executionId]?.status).toBe('failed');
       expect(final.executions[executionId]?.modelCallIds).toHaveLength(1);
       expect(purposes(events)).toEqual(['compaction']);
@@ -799,6 +828,26 @@ describe('an automatic compaction whose summary fails', () => {
         expect((await directiveOf('cmd_join'))?.status).toBe('expired');
         expect(coordinator.getReceipt(runId, 'cmd_join')?.status).toBe('expired');
       }
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s summary that succeeds streams nothing either',
+    async (worker) => {
+      const { transport, coordinator, start, streamFrames } = runtime(
+        [
+          fauxAssistantMessage('Summary: keep the requirement; nothing done yet.'),
+          ...writeThenSubmit(),
+        ],
+        { worker, contextPolicy: contextPolicy('core-auto', 4000) },
+      );
+      const { runId, events } = await start('Keep this requirement. '.repeat(700));
+      const final = await waitForProjection(transport, runId, settled);
+      expect(final.status).toBe('succeeded');
+      expect(compactionPhases(events)).toEqual(['automatic:started', 'automatic:completed']);
+      expect(
+        summaryTraces(events, streamFrames, coordinator.getSnapshot(runId).partialOutputs),
+      ).toEqual({ summaries: 1, frames: [], partials: [] });
     },
   );
 });
@@ -817,7 +866,7 @@ describe('a manual compaction waiting on the turn in flight', () => {
     const streamed = new Gate(),
       release = new Gate();
     const seen: unknown[][] = [];
-    const { transport, coordinator, start, compactNow } = runtime(
+    const { transport, coordinator, start, compactNow, streamFrames } = runtime(
       [
         first === 'fails'
           ? fauxAssistantMessage('Partial answer before the drop.', {
@@ -859,7 +908,12 @@ describe('a manual compaction waiting on the turn in flight', () => {
     await tick();
     release.open();
     const final = await waitForProjection(transport, runId, settled);
-    return { coordinator, runId, executionId, events, final, directiveOf, seen };
+    const summary = summaryTraces(
+      events,
+      streamFrames,
+      coordinator.getSnapshot(runId).partialOutputs,
+    );
+    return { coordinator, runId, executionId, events, final, directiveOf, seen, summary };
   };
 
   it.each<[Worker, boolean]>([
@@ -870,8 +924,9 @@ describe('a manual compaction waiting on the turn in flight', () => {
   ])(
     'a %s turn that fails after text ends the execution failed and skips the waiting compaction (directive waiting: %s)',
     async (worker, steering) => {
-      const { coordinator, runId, executionId, events, final, directiveOf } =
+      const { coordinator, runId, executionId, events, final, directiveOf, summary } =
         await waitingCompaction(worker, 'fails', steering);
+      expect(summary).toEqual({ summaries: 0, frames: [], partials: [] });
       expect(final.status).toBe('failed');
       expect(final.executions[executionId]?.status).toBe('failed');
       expect(final.executions[executionId]?.modelCallIds).toHaveLength(1);
@@ -887,8 +942,9 @@ describe('a manual compaction waiting on the turn in flight', () => {
   it.each<Worker>(['pi-core', 'sdk'])(
     'after a whole %s turn the waiting compaction runs and the execution goes on',
     async (worker) => {
-      const { events, final } = await waitingCompaction(worker, 'whole', false);
+      const { events, final, summary } = await waitingCompaction(worker, 'whole', false);
       expect(final.status).toBe('succeeded');
+      expect(summary).toEqual({ summaries: 1, frames: [], partials: [] });
       expect(purposes(events)).toEqual(['turn', 'compaction', 'turn', 'turn']);
       expect(compactionPhases(events)).toEqual([
         'manual:queued',
@@ -901,12 +957,13 @@ describe('a manual compaction waiting on the turn in flight', () => {
   it.each<Worker>(['pi-core', 'sdk'])(
     'after a %s turn cut by an interrupt the waiting compaction still runs and the execution goes on',
     async (worker) => {
-      const { executionId, events, final, directiveOf } = await waitingCompaction(
+      const { executionId, events, final, directiveOf, summary } = await waitingCompaction(
         worker,
         'cut',
         false,
       );
       expect(final.status).toBe('succeeded');
+      expect(summary).toEqual({ summaries: 1, frames: [], partials: [] });
       const [cut] = final.executions[executionId]?.modelCallIds ?? [];
       expect(final.modelCalls[cut ?? '']?.interrupted).toBe(true);
       // pi-core compacts while preparing the request after the cut; the SDK first answers the
@@ -977,6 +1034,159 @@ describe('a directive that reaches the worker around the end of a turn', () => {
       expect(outcomes).toEqual(expected);
     },
     60_000,
+  );
+
+  /** Calls `before`, then holds the first response's last event for `k` microtasks. */
+  const beforeFirstEnd = (k: number, before: () => void) => {
+    let calls = 0;
+    return (stream: StreamFn): StreamFn =>
+      (model, context, options) => {
+        if (++calls > 1) return stream(model, context, options);
+        const inner = stream(model, context, options);
+        const out = createAssistantMessageEventStream();
+        void (async () => {
+          const source = await inner;
+          for await (const event of source) {
+            if (event.type === 'error' || event.type === 'done') {
+              before();
+              await microtasks(k);
+            }
+            out.push(event);
+          }
+          out.end(await source.result());
+        })();
+        return out;
+      };
+  };
+
+  it.each<[Worker, 'next_request' | 'interrupt']>([
+    ['pi-core', 'next_request'],
+    ['pi-core', 'interrupt'],
+    ['sdk', 'next_request'],
+    ['sdk', 'interrupt'],
+  ])(
+    'a %s directive (%s) sent any number of microtasks before a response that showed text fails is either a cut the execution goes on from, or expires with it',
+    async (worker, delivery) => {
+      const outcomes: string[] = [];
+      for (let k = 0; k <= 40; k++) {
+        let sent: Receipt | undefined;
+        const { transport, start, steerNow } = runtime(failingAfterText(), {
+          worker,
+          wrapStream: beforeFirstEnd(k, () => {
+            sent = steerNow('Stop and cite.', 'cmd_late', delivery);
+          }),
+        });
+        const { runId, executionId, directiveOf } = await start();
+        const final = await waitForProjection(transport, runId, settled);
+        const [first] = final.executions[executionId]?.modelCallIds ?? [];
+        const call = final.modelCalls[first ?? ''];
+        const recorded = call?.interrupted ? 'cut' : call?.responseRef ? 'whole' : 'failed';
+        outcomes.push(
+          `k=${k} ${sent?.status} first=${recorded} ${final.status} calls=${final.executions[executionId]?.modelCallIds.length} ${(await directiveOf('cmd_late'))?.status}`,
+        );
+      }
+      // Never a call recorded as failed with the execution going on anyway.
+      const allowed = outcomes.map((line) => {
+        const k = line.split(' ')[0];
+        return line.includes('first=cut')
+          ? `${k} queued first=cut succeeded calls=3 delivered`
+          : `${k} queued first=failed failed calls=1 expired`;
+      });
+      expect(outcomes).toEqual(allowed);
+      // A join never cuts; an interrupt that arrives in time does.
+      if (delivery === 'next_request') expect(outcomes.join()).not.toContain('first=cut');
+      else expect(outcomes.at(-1)).toContain('first=cut');
+    },
+    60_000,
+  );
+
+  /**
+   * The first response shows text and holds; once the interrupt has cut it, the provider ends
+   * it without a final event, or throws.
+   */
+  const cutWithout = (ending: 'no-final-event' | 'throws', streamed: Gate, release: Gate) => {
+    let calls = 0;
+    return (stream: StreamFn): StreamFn =>
+      (model, context, options) => {
+        if (++calls > 1) return stream(model, context, options);
+        const inner = stream(model, context, options);
+        if (ending === 'throws')
+          return {
+            async *[Symbol.asyncIterator]() {
+              for await (const event of await inner) {
+                yield event;
+                if (event.type === 'text_delta') {
+                  streamed.open();
+                  await release.wait();
+                  if (options?.signal?.aborted) throw new Error('This operation was aborted');
+                }
+              }
+            },
+            result: () => Promise.reject(new Error('This operation was aborted')),
+          } as unknown as ReturnType<StreamFn>;
+        const out = createAssistantMessageEventStream();
+        void (async () => {
+          const source = await inner;
+          for await (const event of source) {
+            if (event.type === 'done' || event.type === 'error') continue;
+            out.push(event);
+            if (event.type === 'text_delta') {
+              streamed.open();
+              await release.wait();
+              if (options?.signal?.aborted) {
+                out.end({ ...event.partial, stopReason: 'aborted' as const });
+                return;
+              }
+            }
+          }
+          out.end(await source.result());
+        })();
+        return out;
+      };
+  };
+
+  it.each<[Worker, 'no-final-event' | 'throws']>([
+    ['pi-core', 'no-final-event'],
+    ['pi-core', 'throws'],
+    ['sdk', 'no-final-event'],
+    ['sdk', 'throws'],
+  ])(
+    'a %s response cut by an interrupt whose provider then %s is recorded as cut and the execution goes on',
+    async (worker, ending) => {
+      const streamed = new Gate(),
+        release = new Gate();
+      const { transport, start } = runtime(
+        [
+          fauxAssistantMessage(
+            [
+              fauxText('A long answer the person did not want.'),
+              fauxToolCall('write_artifact', { text: 'D.' }),
+            ],
+            { stopReason: 'toolUse' },
+          ),
+          ...writeThenSubmit(),
+        ],
+        { worker, wrapStream: cutWithout(ending, streamed, release) },
+      );
+      const { runId, executionId, events, steer, directiveOf } = await start();
+      await streamed.wait();
+      await tick();
+      expect((await steer('Stop and cite.', 'cmd_cut', 'interrupt')).requestedBoundary).toBe(
+        'immediate',
+      );
+      await tick();
+      release.open();
+      const final = await waitForProjection(transport, runId, settled);
+      expect(final.status).toBe('succeeded');
+      const [cut, next] = final.executions[executionId]?.modelCallIds ?? [];
+      expect(final.modelCalls[cut ?? '']).toMatchObject({ interrupted: true, responseRef: null });
+      expect(
+        events.find((e) => e.type === 'model.finished' && e.payload.modelCallId === cut)?.payload,
+      ).toMatchObject({ interrupted: true });
+      const directive = await directiveOf('cmd_cut');
+      expect(directive?.status).toBe('delivered');
+      expect(final.modelCalls[next ?? '']?.directiveIds).toEqual([directive?.directiveId]);
+    },
   );
 
   it('a directive sent while a whole SDK reply without a tool call streams gets a turn of its own', async () => {
@@ -1063,25 +1273,59 @@ describe('a directive that reaches the worker around the end of a turn', () => {
 });
 
 describe('empty and whitespace-only text', () => {
-  /** The stream frames each worker sends and the partial outputs the run keeps. */
-  const streamed = async (worker: Worker, responses: FauxResponseStep[]) => {
-    const frames: string[] = [];
-    const { transport, coordinator, start } = runtime(responses, {
+  /**
+   * The stream frames each worker sends and the partial outputs the run keeps. `act` runs once
+   * the first response, held by `wrap`, has shown its first text.
+   */
+  const streamed = async (
+    worker: Worker,
+    responses: FauxResponseStep[],
+    options: {
+      wrap?: (streamed: Gate, release: Gate) => (stream: StreamFn) => StreamFn;
+      act?: (run: {
+        steer: (text: string, commandId: string, delivery: 'interrupt') => Promise<Receipt>;
+        cancel: () => Promise<Receipt>;
+      }) => Promise<unknown>;
+      contextPolicy?: ProfileContextPolicy;
+      brief?: string;
+    } = {},
+  ) => {
+    const gates = { streamed: new Gate(), release: new Gate() };
+    const { transport, coordinator, start, streamFrames } = runtime(responses, {
       worker,
-      onWorkerFrame: (frame) => {
-        if (frame.type === 'stream')
-          frames.push(`${frame.modelCallId}#${frame.chunkIndex}=${JSON.stringify(frame.text)}`);
-      },
+      ...(options.wrap ? { wrapStream: options.wrap(gates.streamed, gates.release) } : {}),
+      ...(options.contextPolicy ? { contextPolicy: options.contextPolicy } : {}),
     });
-    const { runId } = await start();
+    const { runId, executionId, steer } = await start(options.brief);
+    if (options.act) {
+      await gates.streamed.wait();
+      await tick();
+      await options.act({
+        steer,
+        cancel: () =>
+          transport.sendCommand({
+            schemaVersion: '0.1',
+            commandId: 'cmd_cancel',
+            runId,
+            type: 'cancel',
+            payload: { scope: { kind: 'run' }, reason: 'stop' },
+          }),
+      });
+      await tick();
+      gates.release.open();
+    }
     const final = await waitForProjection(transport, runId, settled);
+    const frames = streamFrames.map(
+      (frame) => `${frame.modelCallId}#${frame.chunkIndex}=${JSON.stringify(frame.text)}`,
+    );
     const partial = Object.fromEntries(
       Object.entries(coordinator.getSnapshot(runId).partialOutputs ?? {}).map(([id, output]) => [
         id,
         output.text,
       ]),
     );
-    return { final, frames, partial };
+    const calls = final.executions[executionId]?.modelCallIds ?? [];
+    return { final, frames, partial, calls };
   };
   // A transient failure the provider asks to retry at once, so no retry waits.
   const failing = (text: string) =>
@@ -1094,6 +1338,19 @@ describe('empty and whitespace-only text', () => {
         requestId: null,
       }),
     });
+  const submitAfterWrite: FauxResponseStep[] = [
+    (context) =>
+      fauxAssistantMessage(
+        [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
+        { stopReason: 'toolUse' },
+      ),
+    fauxAssistantMessage('Done.'),
+  ];
+  const whitespaceThenText = () =>
+    fauxAssistantMessage(
+      [fauxText('\n'), fauxText('Real text.'), fauxToolCall('write_artifact', { text: 'A.' })],
+      { stopReason: 'toolUse' },
+    );
 
   it.each<Worker>(['pi-core', 'sdk'])(
     'a %s call that fails with only an empty text sends no frame and keeps no partial output, retried or not',
@@ -1118,12 +1375,7 @@ describe('empty and whitespace-only text', () => {
           [fauxText(''), fauxText('Hello there.'), fauxToolCall('write_artifact', { text: 'A.' })],
           { stopReason: 'toolUse' },
         ),
-        (context) =>
-          fauxAssistantMessage(
-            [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
-            { stopReason: 'toolUse' },
-          ),
-        fauxAssistantMessage('Done.'),
+        ...submitAfterWrite,
       ]);
       expect(final.status).toBe('succeeded');
       expect(frames).toEqual(['call_0001#0="Hello there."']);
@@ -1145,7 +1397,7 @@ describe('empty and whitespace-only text', () => {
   );
 
   it.each<Worker>(['pi-core', 'sdk'])(
-    'a %s call that fails after only whitespace keeps it only when it is the last attempt',
+    'a %s call that fails after only whitespace keeps nothing, even as the last attempt',
     async (worker) => {
       const { final, frames, partial } = await streamed(worker, [
         failing('\n'),
@@ -1153,8 +1405,161 @@ describe('empty and whitespace-only text', () => {
         failing('\n'),
       ]);
       expect(final.status).toBe('failed');
-      expect(frames).toEqual(['call_0003#0="\\n"']);
-      expect(partial).toEqual({ call_0003: '\n' });
+      expect(Object.keys(final.modelCalls)).toHaveLength(3);
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call that fails after only whitespace with an error that is not retried keeps nothing',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(worker, [
+        fauxAssistantMessage('\n', {
+          stopReason: 'error',
+          errorMessage: JSON.stringify({
+            code: 'AUTH',
+            status: 401,
+            retryAfterMs: null,
+            requestId: null,
+          }),
+        }),
+        ...writeThenSubmit(),
+      ]);
+      expect(final.status).toBe('failed');
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call that overflows the context after only whitespace keeps nothing, and its retry after the forced compaction goes on',
+    async (worker) => {
+      const { final, frames, partial, calls } = await streamed(
+        worker,
+        [
+          fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'First.' })], {
+            stopReason: 'toolUse',
+          }),
+          fauxAssistantMessage('\n', {
+            stopReason: 'error',
+            errorMessage: JSON.stringify({
+              code: 'CONTEXT_OVERFLOW',
+              status: 400,
+              retryAfterMs: null,
+              requestId: null,
+            }),
+          }),
+          fauxAssistantMessage('Summary that keeps the required task.'),
+          ...writeThenSubmit(),
+        ],
+        {
+          contextPolicy: contextPolicy('core-auto', 64000),
+          brief: 'Keep this requirement. '.repeat(40),
+        },
+      );
+      expect(final.status).toBe('succeeded');
+      expect(final.modelCalls[calls[1] ?? '']?.responseRef).toBeNull();
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call cut by an interrupt after only whitespace keeps nothing',
+    async (worker) => {
+      const { final, frames, partial, calls } = await streamed(
+        worker,
+        [whitespaceThenText(), ...writeThenSubmit()],
+        {
+          wrap: holdFirstText,
+          act: ({ steer }) => steer('Stop and cite.', 'cmd_cut', 'interrupt'),
+        },
+      );
+      expect(final.status).toBe('succeeded');
+      expect(final.modelCalls[calls[0] ?? '']?.interrupted).toBe(true);
+      expect(frames.filter((frame) => frame.startsWith(`${calls[0]}#`))).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call cancelled after only whitespace sends no frame',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(
+        worker,
+        [whitespaceThenText(), ...writeThenSubmit()],
+        { wrap: holdFirstText, act: ({ cancel }) => cancel() },
+      );
+      expect(final.status).toBe('cancelled');
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call whose stream throws after only whitespace sends no frame',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(
+        worker,
+        [fauxAssistantMessage([fauxText('\n'), fauxText('Real text.')]), ...writeThenSubmit()],
+        { wrap: throwAfterFirstText, act: async () => {} },
+      );
+      expect(final.status).toBe('failed');
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'whitespace before a %s tool call goes out before the call, as it came',
+    async (worker) => {
+      const { final, frames } = await streamed(worker, [
+        fauxAssistantMessage([fauxText('\n \n'), fauxToolCall('write_artifact', { text: 'A.' })], {
+          stopReason: 'toolUse',
+        }),
+        ...submitAfterWrite,
+      ]);
+      expect(final.status).toBe('succeeded');
+      expect(frames.filter((frame) => frame.startsWith('call_0001#'))).toEqual([
+        'call_0001#0="\\n \\n"',
+      ]);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a whole %s response of only whitespace sends it',
+    async (worker) => {
+      const { final, frames, calls } = await streamed(worker, [
+        fauxAssistantMessage([fauxText('\n'), fauxText('\n')]),
+        ...writeThenSubmit(),
+      ]);
+      expect(final.modelCalls[calls[0] ?? '']?.responseRef).not.toBeNull();
+      expect(frames.filter((frame) => frame.startsWith('call_0001#'))).toEqual([
+        'call_0001#0="\\n"',
+        'call_0001#1="\\n"',
+      ]);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'whitespace after the first %s text goes out at once, and stays when the call then fails',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(worker, [
+        fauxAssistantMessage([fauxText('\n'), fauxText(' '), fauxText('Shown.'), fauxText(' \n')], {
+          stopReason: 'error',
+          errorMessage: 'fetch failed',
+        }),
+        ...writeThenSubmit(),
+      ]);
+      expect(final.status).toBe('failed');
+      expect(frames).toEqual([
+        'call_0001#0="\\n"',
+        'call_0001#1=" "',
+        'call_0001#2="Shown."',
+        'call_0001#3=" \\n"',
+      ]);
+      expect(partial).toEqual({ call_0001: '\n Shown. \n' });
     },
   );
 
@@ -1167,12 +1572,7 @@ describe('empty and whitespace-only text', () => {
           [...text.map((part) => fauxText(part)), fauxToolCall('write_artifact', { text: 'A.' })],
           { stopReason: 'toolUse' },
         ),
-        (context) =>
-          fauxAssistantMessage(
-            [fauxToolCall('submit_result', { artifactVersionIds: [lastArtifactVersion(context)] })],
-            { stopReason: 'toolUse' },
-          ),
-        fauxAssistantMessage('Done.'),
+        ...submitAfterWrite,
       ]);
       expect(final.status).toBe('succeeded');
       const first = frames.filter((frame) => frame.startsWith('call_0001#'));
