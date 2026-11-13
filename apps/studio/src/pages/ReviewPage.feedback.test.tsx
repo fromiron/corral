@@ -356,6 +356,12 @@ it.each([
       expect.objectContaining({
         state: 'started',
         commandId: view.startAuto.mock.calls[0]?.[0].commandId,
+        // The start the server would use, as the composer's new requests record it.
+        start: {
+          choice: view.session.auto,
+          team: expectedTeam,
+          mode: expectedMode,
+        },
       }),
     );
   },

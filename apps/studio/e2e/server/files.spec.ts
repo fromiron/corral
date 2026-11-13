@@ -136,7 +136,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(page.getByTestId('pre-run')).toContainText('can change the working copy');
 
     await requestBox(page).fill('Write the notes');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
     // The turn's run card begins with its state, for screen readers: in a conversation the line
     // above the composer is where a finished run's status shows. Not an exact text match: the
     // card's process rows (Writer · Succeeded) carry the same word, so it finds more than one.

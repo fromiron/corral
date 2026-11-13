@@ -1,71 +1,39 @@
 import type { CorralSummary, RunSummary, SessionIntent, WorkSession } from '@corral/core';
-import { Badge, Button, Select } from '@corral/react/design-kit';
+import { Badge, Button } from '@corral/react/design-kit';
 import { Square } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { WORKSPACE_CHANGED } from '../../pages/FilesViews.tsx';
 import { useServices } from '../../services.tsx';
-import { type Blocked, type IntentChoice, intentChoice } from '../composerIntent.ts';
 import { ComposerStats } from '../widgets/ComposerStats.tsx';
 
 // The rows around the input that say what the next request is and what it would start with.
 
 /**
- * The one-line status's lead: cancelling the pre-run auto choice, and what the request is and
- * for whom. The send mode shows only when both a next request and an instruction are possible.
+ * The one-line status's lead: cancelling the pre-run auto choice, and the result a question is
+ * about. Where a message goes and how it is sent are on the tool line (SendControls).
  */
 export function ComposerHeader({
   choosingAuto,
   onCancelAuto,
-  allowed,
-  blocked,
   intent,
-  onChooseIntent,
-  steerTarget,
-  targets,
-  targetName,
-  onChooseTarget,
   about = null,
 }: {
   choosingAuto: boolean;
   onCancelAuto: () => void;
-  allowed: IntentChoice[];
-  blocked: Blocked;
   intent: SessionIntent;
-  onChooseIntent: (value: IntentChoice) => void;
-  steerTarget: string;
-  targets: { id: string; label: string }[];
-  targetName: (id: string) => string;
-  onChooseTarget: (value: string) => void;
   /** The result a question starts from. */
   about?: string | null;
 }) {
   const t = useTranslations('Sessions');
-  const tc = useTranslations('Composer');
   return (
     <>
-      {/* A live run's status and Cancel sit in the top bar; only the pre-run auto choice is cancelled here. */}
+      {/* A live run's status and Cancel sit elsewhere; only the pre-run auto choice is cancelled here. */}
       {choosingAuto ? (
         <Button variant="tertiary" data-slot="composer-run-header" onClick={onCancelAuto}>
           <Square className="size-3.5 fill-current" />
           {t('cancelAutoChoice')}
         </Button>
-      ) : null}
-      {allowed.length > 1 && !blocked ? (
-        <Select
-          variant="chip"
-          label={t('intentLabel')}
-          value={intentChoice(intent)}
-          onValueChange={onChooseIntent}
-          options={allowed.map((value) => ({
-            value,
-            label: t(`intentShort.${value}`),
-            // A next request chosen while a run is going waits behind it.
-            hint: t(
-              value === 'next' && intent === 'queue' ? 'intentHint.queue' : `intentHint.${value}`,
-            ),
-          }))}
-        />
       ) : null}
       {intent === 'explain' && about ? (
         <span
@@ -74,28 +42,6 @@ export function ComposerHeader({
         >
           {about}
         </span>
-      ) : null}
-      {intent === 'steer' ? (
-        <Select
-          variant="chip"
-          label={t('target')}
-          value={steerTarget || null}
-          placeholder={t('noTarget')}
-          onValueChange={onChooseTarget}
-          options={[
-            ...(steerTarget && !targets.some((x) => x.id === steerTarget)
-              ? [
-                  {
-                    value: steerTarget,
-                    label: tc('ended', { name: targetName(steerTarget) }),
-                    disabled: true,
-                  },
-                ]
-              : []),
-            ...targets.map((x) => ({ value: x.id, label: x.label })),
-          ]}
-          disabled={targets.length === 0}
-        />
       ) : null}
     </>
   );

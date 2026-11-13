@@ -1,4 +1,5 @@
 import {
+  type AutoModelChoice,
   IMAGE_MAX_COUNT,
   TERMINAL_RUN_STATUSES,
   TEXT_ATTACHMENT_MAX_COUNT,
@@ -18,6 +19,7 @@ import { sendKeyLabel } from '../../shortcuts.ts';
 import { sessionRunMode } from '../autoChoice.ts';
 import { ComposerInput } from '../ComposerInput.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
+import type { SendChoice, SendKeyRole } from '../composerIntent.ts';
 
 import { removeMention, selectMention } from '../composerMenu.ts';
 import type { FileReference } from '../FilePanel.tsx';
@@ -44,6 +46,7 @@ import { compactContext, composerCommands, runCommand } from './composer/command
 import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs.tsx';
 import { useComposerKeys } from './composer/keys.ts';
 import { useQueuedRequests } from './composer/queue.ts';
+import { KeyHint, menuSends, SendMenu, TargetChip } from './composer/SendControls.tsx';
 import {
   type AutoRequest,
   type CommandSlot,
@@ -149,7 +152,7 @@ export function Composer({
   // UX-06: which model each role uses, and whether it is connected.
   const profiles = useModelProfiles();
   const failed = (message: string) => t('failed', { message });
-  const { autoChoice, updateAuto, updateTeam } = useSessionSettings({
+  const { autoChoice, updateAuto, updateTeam, autoStart, updateAutoStart } = useSessionSettings({
     session,
     profiles,
     busy,
@@ -191,15 +194,23 @@ export function Composer({
     team,
   });
   const pending = useRef(pendingSessionCommands.get(session.sessionId) ?? null);
+  const sending = useRef(false);
   const commands: CommandSlot = {
     sessionId: session.sessionId,
     pending,
     store: pendingSessionCommands,
     newId: newCommandId,
+    sending,
   };
-  const [autoStart, setAutoStart] = useRemembered(`corral:auto-queue:${session.sessionId}`, false);
+  // An interrupt the runtime could not deliver was read at the next request instead.
+  const [lowered, setLowered] = useState(false);
 
-  const { targets, targetNames } = useSteerTargets(ownActive, restored);
+  const { targets, lead, ready, ended, targetNames } = useSteerTargets(ownActive, restored);
+  // Once the run's own record says it ended, the composer is idle at once, before the run list
+  // says so: a send is a new request that carries the conversation through that run.
+  const going = ended ? null : ownActive;
+  const waitingOn = ended && active?.runId === ownActive?.runId ? null : active;
+  const throughRunId = (ended ? ownActive?.runId : lastEnded?.runId) ?? null;
   const draft = useComposerDraft({
     session,
     team,
@@ -211,13 +222,35 @@ export function Composer({
   });
   const { text, permissionMode, setPermissionMode, attachments, setAttachments } = draft;
   const { images, picked, setPicked, missing } = draft;
-  const { allowed, blocked, intent, steerTarget, targetName, write, chooseIntent, chooseTarget } =
-    useComposerIntent({ draft, targets, targetNames, ownActive, active });
+  const {
+    situation,
+    keys: sendKeys,
+    blocked,
+    loading,
+    intent,
+    forKey,
+    forChoice,
+    steerTarget,
+    targetName,
+    write,
+    chooseIntent,
+    chooseTarget,
+  } = useComposerIntent({
+    draft,
+    targets,
+    lead,
+    ready,
+    targetNames,
+    ownActive: going,
+    active: waitingOn,
+  });
   useFileReference({ reference, input, text, write, setPicked, onReferenceUsed });
   const { references, chips, missingChips } = draft;
-  const { notReady, autoBlocked, autoProfile, reasoningBlocked, ...availability } =
+  // Whether a send of this intent can go now, and why not. Until the run's record is read the
+  // send key's target is unknown; only an explicit next request goes meanwhile.
+  const availableFor = (sendIntent: typeof intent, explicitQueue = false) =>
     composerAvailability({
-      intent,
+      intent: sendIntent,
       runMode,
       live,
       isAuto,
@@ -226,10 +259,14 @@ export function Composer({
       profiles,
       autoChoice,
       draft,
-      blocked,
+      // A fixed target that ended holds its instruction; a next request is another send.
+      blocked: sendIntent === 'steer' ? blocked : null,
       hasLatest: Boolean(latest),
       steerTarget,
+      loading: loading && !explicitQueue,
     });
+  const { notReady, autoBlocked, autoProfile, reasoningBlocked, ...availability } =
+    availableFor(intent);
   const { liveUnavailable, savedRequestUnavailable, unavailable, heldForNew } = availability;
 
   const startDeps = {
@@ -237,7 +274,7 @@ export function Composer({
     session,
     choice: autoChoice,
     teamMode,
-    throughRunId: lastEnded?.runId ?? null,
+    throughRunId,
     missingTeam,
     messages: { selectedTeamMissing: t('selectedTeamMissing'), noResult: t('noResult'), failed },
     commands,
@@ -263,12 +300,20 @@ export function Composer({
     busy,
   );
 
-  const send = async () => {
+  // A refused or lost send is tried again the way it was sent.
+  const lastPick = useRef<{ role: SendKeyRole } | { choice: SendChoice }>({ role: 'send' });
+  /** Sends as a key, or a choice in the send menu, says (features/composer-flow.md "전송"). */
+  const send = async (pick: { role: SendKeyRole } | { choice: SendChoice }) => {
     const body = text.trim();
-    if (!body || busy || autoSaving.current || unavailable) return;
+    const how = 'role' in pick ? forKey(pick.role) : forChoice(pick.choice);
+    const explicitQueue = 'role' in pick ? pick.role === 'queue' : pick.choice === 'queue';
+    if (!body || busy || autoSaving.current || availableFor(how.intent, explicitQueue).unavailable)
+      return;
     onSent?.();
+    lastPick.current = pick;
+    setLowered(false);
     const revision = draft.submit();
-    await sendRequest(
+    const outcome = await sendRequest(
       {
         ...startDeps,
         team,
@@ -279,9 +324,33 @@ export function Composer({
         clearDraft: (sent, keepAttachments, keepImages) =>
           clearSentComposerDraft(session.sessionId, sent, keepAttachments, keepImages),
       },
-      { body, intent, steerTarget, references, attachments, images, permissionMode, revision },
+      {
+        body,
+        intent: how.intent,
+        delivery: how.delivery,
+        steerTarget,
+        references,
+        attachments,
+        images,
+        permissionMode,
+        revision,
+      },
     );
+    if (mounted.current) setLowered(outcome.lowered);
   };
+
+  // A menu or notice of the composer, once used, gives the focus back to the box; a click that
+  // moved it elsewhere keeps it there.
+  const backToInput = () =>
+    requestAnimationFrame(() => {
+      const focused = document.activeElement;
+      if (
+        !focused ||
+        focused === document.body ||
+        focused.closest('[role="menu"], [data-slot="composer-host"]')
+      )
+        input.current?.focus();
+    });
 
   const requestStop = () => {
     setConfirmStop(ownActive !== null);
@@ -299,19 +368,9 @@ export function Composer({
     runs,
     pending,
     resolvePendingMessage: t('resolvePendingBeforeRetry'),
-    active,
-    ownActive,
-    autoStart,
-    queued,
     onEdit: draft.takeBack,
   });
-  const keys = useComposerKeys({
-    draft,
-    entries: session.entries,
-    write,
-    sendKey: prefs.sendKey,
-    send: () => void send(),
-  });
+  const keys = useComposerKeys({ draft, entries: session.entries, write });
   const onText = (value: string) => {
     keys.resetRecall();
     write(value);
@@ -321,18 +380,18 @@ export function Composer({
   const viewingOtherRun = active && selectedRunId && active.runId !== selectedRunId;
   const destination =
     intent === 'steer'
-      ? ownActive
+      ? ownActive && !blocked
         ? tc('destination.steer', {
             number: runNumber(ownActive.runId),
             name: targetName(steerTarget),
           })
         : tc('destination.steerUnavailable', { name: targetName(steerTarget) })
       : tc(`destination.${intent}`);
-  // What Send does now, said where it is pressed (#89).
-  const sendMeaning = intent === 'next' ? t('send') : `${t('send')} · ${t(`intent.${intent}`)}`;
+  // What Send does now, said where it is pressed (#89); its name stays Send.
+  const sendMeaning = tc(`sendAs.${sendKeys.send}`);
   const attachBusy = busy || draft.attachmentsBusy || draft.imagesBusy;
-  const textAttachable =
-    (intent === 'next' || intent === 'queue') && attachments.length < TEXT_ATTACHMENT_MAX_COUNT;
+  // Text attachments ride every send; images only a new request.
+  const textAttachable = attachments.length < TEXT_ATTACHMENT_MAX_COUNT;
 
   useRegisterCommands(
     'composer',
@@ -341,7 +400,8 @@ export function Composer({
       tc,
       tr,
       tStatus,
-      allowed,
+      // `/next` while nothing runs is a new request, as every key is then.
+      available: { ...menuSends(situation), queue: true },
       ownActive,
       corrals,
       chooseIntent,
@@ -354,24 +414,57 @@ export function Composer({
     }),
   );
   const slashCommands = useRegisteredCommands();
+  // The request's settings sit before the key hint on the left; voice stays by Send.
+  const requestTools = {
+    intent,
+    showModel: Boolean(isAuto || team),
+    browserMode: services.mode === 'browser',
+    autoChoice,
+    profiles,
+    busy,
+    modelOpen: autoModelOpen,
+    onModelOpenChange: setAutoModelOpen,
+    onAutoChange: (value: AutoModelChoice) => void updateAuto(value),
+    permissionMode,
+    onPermissionMode: setPermissionMode,
+    voice: services.voice ?? null,
+    voiceTarget: {
+      hostId: window.location.origin,
+      sessionId: session.sessionId,
+      ...(ownActive ? { runId: ownActive.runId } : {}),
+      ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
+    },
+    voiceLabel: session.title,
+    onTranscript,
+  };
   const compose = (
     <InputMessage
+      toolbar="single"
       data-slot="composer-host"
       role="region"
       aria-label={t('requestLabel')}
       inputRef={input}
       value={text}
       onValueChange={onText}
-      onSend={() => void send()}
+      onSend={() => void send({ role: 'send' })}
       placeholder={tc('placeholder')}
       textareaProps={{ 'aria-label': t('requestLabel'), 'aria-describedby': destinationId }}
       sendDisabled={busy || !text.trim() || unavailable}
       sendLabel={t('send')}
       sendDescription={sendMeaning}
       renderAction={(action) => (
-        <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
-          {action}
-        </Tooltip>
+        <>
+          <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
+            {action}
+          </Tooltip>
+          <SendMenu
+            situation={situation}
+            sendKey={prefs.sendKey}
+            disabled={busy || !text.trim()}
+            onSend={(choice) => void send({ choice })}
+            onClose={backToInput}
+          />
+        </>
       )}
       contentSlot={
         <ComposerNotices
@@ -388,14 +481,15 @@ export function Composer({
           }
           onViewRun={onViewRun}
           blocked={blocked}
-          targetName={targetName(steerTarget)}
-          allowed={allowed}
-          onChooseIntent={chooseIntent}
+          onChooseIntent={(value) => {
+            chooseIntent(value);
+            input.current?.focus();
+          }}
           notReady={notReady}
           autoBlockedModel={autoBlocked ? (autoProfile?.label ?? autoChoice.modelProfile) : null}
           missingTeam={missingTeam}
           refusal={refusal}
-          onRetry={() => void send()}
+          onRetry={() => void send(lastPick.current)}
           missingChipCount={missingChips.length}
           chips={chips}
           missing={missing}
@@ -409,10 +503,6 @@ export function Composer({
           busy={busy}
           destinationId={destinationId}
           destination={destination}
-          // Only an instruction to a running target, or a target that cannot be used, shows a
-          // line; a new run is the default and the send mode choice says a queue.
-          quietDestination={intent !== 'steer' && !blocked}
-          running={Boolean(ownActive)}
         />
       }
       renderInput={(inputProps) => (
@@ -424,6 +514,8 @@ export function Composer({
           value={text}
           onChange={onText}
           onKeyDown={keys.onKeyDown}
+          sendKey={prefs.sendKey}
+          onSend={(role) => void send({ role })}
           commands={slashCommands}
           searchMentions={searchMentions}
           onMention={(item) => {
@@ -451,7 +543,18 @@ export function Composer({
             onAction={onFolderAction}
             onWorkFolder={onWorkFolder}
           />
-          {(intent === 'next' || intent === 'queue') && !blocked ? (
+          <TargetChip
+            situation={situation}
+            target={steerTarget || null}
+            targets={targets}
+            name={targetName(steerTarget)}
+            loading={loading}
+            disabled={busy}
+            onChoose={chooseTarget}
+            onClose={backToInput}
+          />
+          {/* While the run's record is read, what a send is is not known: no request settings. */}
+          {(intent === 'next' || intent === 'queue') && !blocked && !loading ? (
             <TeamChoice
               projectId={session.projectId}
               team={team}
@@ -465,32 +568,19 @@ export function Composer({
               onTeam={(corralId) => void updateTeam(corralId)}
             />
           ) : null}
+          {/* The request's settings, then the keys, right before voice and Send. */}
+          <span className="ml-auto flex min-w-0 items-center gap-1.5">
+            {loading ? null : <RequestTools only="settings" {...requestTools} />}
+            <KeyHint
+              keys={sendKeys}
+              situation={situation}
+              loading={loading}
+              sendKey={prefs.sendKey}
+            />
+          </span>
         </>
       }
-      rightSlot={
-        <RequestTools
-          intent={intent}
-          showModel={Boolean(isAuto || team)}
-          browserMode={services.mode === 'browser'}
-          autoChoice={autoChoice}
-          profiles={profiles}
-          busy={busy}
-          modelOpen={autoModelOpen}
-          onModelOpenChange={setAutoModelOpen}
-          onAutoChange={(value) => void updateAuto(value)}
-          permissionMode={permissionMode}
-          onPermissionMode={setPermissionMode}
-          voice={services.voice ?? null}
-          voiceTarget={{
-            hostId: window.location.origin,
-            sessionId: session.sessionId,
-            ...(ownActive ? { runId: ownActive.runId } : {}),
-            ...(ownActive && steerTarget ? { executionId: steerTarget } : {}),
-          }}
-          voiceLabel={session.title}
-          onTranscript={onTranscript}
-        />
-      }
+      rightSlot={<RequestTools only="voice" {...requestTools} />}
     />
   );
   return (
@@ -510,14 +600,7 @@ export function Composer({
           <ComposerHeader
             choosingAuto={choosingAuto}
             onCancelAuto={cancelAuto}
-            allowed={allowed}
-            blocked={blocked}
             intent={intent}
-            onChooseIntent={chooseIntent}
-            steerTarget={steerTarget}
-            targets={targets}
-            targetName={targetName}
-            onChooseTarget={chooseTarget}
             about={latest?.label ?? null}
           />
         }
@@ -536,7 +619,9 @@ export function Composer({
       <ComposerQueue
         queued={queued}
         autoStart={autoStart}
-        onAutoStartChange={setAutoStart}
+        // Auto start is the server's; the browser demo has none, so it has no such setting.
+        autoStartShown={services.mode !== 'browser'}
+        onAutoStartChange={(value) => void updateAutoStart(value)}
         startDisabled={Boolean(active) || busy || savedRequestUnavailable}
         onStart={(entry) => void queue.start(entry)}
         onEdit={(entry) => void queue.edit(entry)}
@@ -562,6 +647,11 @@ export function Composer({
         reasoningBlocked={reasoningBlocked}
         error={error}
       />
+      {lowered ? (
+        <p role="status" className="sr-only">
+          {tc('lowered')}
+        </p>
+      ) : null}
       <MaterialsDialog
         open={materialsOpen}
         onOpenChange={setMaterialsOpen}
@@ -570,7 +660,7 @@ export function Composer({
         value={attachments}
         onChange={setAttachments}
         onBusyChange={draft.setAttachmentsBusy}
-        disabled={busy || (intent !== 'next' && intent !== 'queue')}
+        disabled={busy}
       />
       <ModelsDialog
         open={modelsOpen}

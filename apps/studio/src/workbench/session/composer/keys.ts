@@ -1,16 +1,13 @@
 import type { SessionEntry } from '@corral/core';
 import { type KeyboardEvent, useState } from 'react';
-import { isSendKey, type Preferences } from '../../preferences.ts';
 import type { ComposerDraftState } from './useComposerDraft.ts';
 
-// The composer's keys: the send key, and ↑/↓ in an empty box to recall earlier requests.
+// ↑/↓ in an empty box recall earlier requests. The send keys are the input's (ComposerInput).
 
 export function useComposerKeys({
   draft,
   entries,
   write,
-  sendKey,
-  send,
 }: {
   draft: Pick<
     ComposerDraftState,
@@ -18,8 +15,6 @@ export function useComposerKeys({
   >;
   entries: SessionEntry[];
   write: (value: string) => void;
-  sendKey: Preferences['sendKey'];
-  send: () => void;
 }) {
   const { text, resetAttachments, setAttachments, setPermissionMode, setImages } = draft;
   const [recall, setRecall] = useState(-1);
@@ -29,13 +24,7 @@ export function useComposerKeys({
     .filter((value, index, all) => value.trim() && all.lastIndexOf(value) === index)
     .reverse();
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // An IME composition's Enter confirms the text; it never sends.
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (isSendKey(event, sendKey)) {
-      event.preventDefault();
-      send();
-      return;
-    }
     const box = event.currentTarget;
     const recalled = recall >= 0 && text === history[recall];
     if (

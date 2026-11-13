@@ -20,6 +20,7 @@ export function composerAvailability({
   blocked,
   hasLatest,
   steerTarget,
+  loading,
 }: {
   intent: SessionIntent;
   runMode: 'mock' | 'live';
@@ -40,9 +41,10 @@ export function composerAvailability({
   blocked: Blocked;
   hasLatest: boolean;
   steerTarget: string;
+  /** The run's record is not read yet, so where Send goes is not known. */
+  loading: boolean;
 }) {
   const { attachmentsBusy, imagesBusy } = draft;
-  const attachmentCount = draft.attachments.length;
   const imageCount = draft.images.length;
   const chipCount = draft.chips.length;
   const missingChipCount = draft.missingChips.length;
@@ -78,7 +80,7 @@ export function composerAvailability({
     liveUnavailable ||
     attachmentsBusy ||
     imagesBusy ||
-    (attachmentCount > 0 && intent !== 'next' && intent !== 'queue') ||
+    loading ||
     autoBlocked ||
     reasoningBlocked ||
     notReady.length > 0 ||
@@ -87,13 +89,11 @@ export function composerAvailability({
     (missingTeam && (intent === 'next' || intent === 'explain')) ||
     (intent === 'explain' && !hasLatest) ||
     (intent === 'steer' && !steerTarget);
-  // Items this intent does not carry share one notice and one wording (#89).
+  // Items this intent does not carry share one notice and one wording (#89). Text attachments
+  // ride every send (features/composer-flow.md "합류 대상").
   const heldForNew = [
     ...(chipCount && intent !== 'next' ? (['references'] as const) : []),
     ...(imageCount > 0 && intent !== 'next' ? (['images'] as const) : []),
-    ...(attachmentCount > 0 && intent !== 'next' && intent !== 'queue'
-      ? (['attachments'] as const)
-      : []),
   ];
   return {
     notReady,

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import type { InboxItemView } from '@corral/client';
-import type { Receipt } from '@corral/contracts';
+import { type Receipt, RunEvent } from '@corral/contracts';
 import {
   emptyProjection,
   type ProjectSummary,
@@ -814,4 +815,434 @@ it('shows the empty state and asks again only when the window regains focus', as
   expect(services.workspaces.inbox).toHaveBeenCalledTimes(reads);
   await refocus();
   expect(services.workspaces.inbox).toHaveBeenCalledTimes(reads + 1);
+});
+
+// A decision's detail is the run's one response area, as the conversation's needed-now tray draws
+// it, continue-or-stop decisions included.
+
+it('answers a decision in the same response area the conversation’s tray draws', () => {
+  const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
+  const area = /import \{ RunResponseArea \} from '([^']+)';/;
+  // Both resolve to apps/studio/src/workbench/RunResponseArea.tsx.
+  expect(source('./InboxPage.tsx').match(area)?.[1]).toBe('../workbench/RunResponseArea.tsx');
+  expect(source('../workbench/session/PendingTray.tsx').match(area)?.[1]).toBe(
+    '../RunResponseArea.tsx',
+  );
+  expect(source('./InboxPage.tsx')).toMatch(/<RunResponseArea\b/);
+  expect(source('../workbench/session/PendingTray.tsx')).toMatch(/<RunResponseArea\b/);
+});
+
+const limit = { kind: 'no_progress', used: 3, max: 3 } as const;
+/** A run that waits on the given approvals: a continue-or-stop decision, an approval, or both. */
+const waitingOn = (runId: string, ...approvals: ('limit' | 'approval')[]): RunProjection => ({
+  ...emptyProjection(runId),
+  status: 'awaiting_user',
+  approvals: Object.fromEntries(
+    approvals.map((kind, index) => {
+      const approvalId = `${kind}_${runId}_${index}`;
+      return [
+        approvalId,
+        {
+          approvalId,
+          kind: 'user_action',
+          subjectVersionIds: kind === 'approval' ? ['artv_subject'] : [],
+          criteriaVersionId: null,
+          status: 'pending',
+          ...(kind === 'limit' ? { limit } : {}),
+        },
+      ];
+    }),
+  ) as RunProjection['approvals'],
+});
+/** The run closes the given approval as decided. */
+const decided = (store: RunSessionStore, approvalId: string, status: 'approved' | 'rejected') => {
+  const projection = store.getState().projection as RunProjection;
+  const approvals = {
+    ...projection.approvals,
+    [approvalId]: { ...projection.approvals[approvalId], status },
+  } as RunProjection['approvals'];
+  const waits = Object.values(approvals).some((approval) => approval.status === 'pending');
+  store.setState({
+    projection: { ...projection, approvals, status: waits ? 'awaiting_user' : 'running' },
+  });
+};
+const receiptFor = (runId: string, approvalId: string, error?: string): Receipt => {
+  const receipt: Receipt = {
+    commandId: `cmd_${runId}`,
+    runId,
+    status: error ? 'rejected' : 'applied',
+    acceptedSeq: error ? null : 2,
+    target: `approval:${approvalId}`,
+    requestedBoundary: 'immediate',
+    relatedEventIds: [],
+  };
+  if (error) receipt.error = { code: 'STALE_CONTROL_REVISION', message: error };
+  return receipt;
+};
+/** Clicks a control the way a keyboard does: focus on it first. */
+const press = async (button: HTMLElement | null | undefined) => {
+  expect(button).toBeTruthy();
+  await act(async () => {
+    button?.focus();
+    button?.click();
+  });
+  await flush();
+};
+const frames = () => act(async () => new Promise((done) => setTimeout(done, 40)));
+
+for (const [choice, label, command] of [
+  ['continue', en.Approvals.limit.approve, 'approve'],
+  ['stop', en.Approvals.limit.reject, 'reject'],
+] as const)
+  it(`answers a continue-or-stop decision with ${choice}, keeping it until its receipt, then focuses the next item`, async () => {
+    let listed = [decisionA, decisionB];
+    const { container, stores, rowButton, detail, click } = await mount({
+      inbox: async () => listed,
+    });
+    await click(rowButton('Fix login'));
+    const run = stores.get('run_a') as RunFixture;
+    await act(async () => run.store.setState({ projection: waitingOn('run_a', 'limit') }));
+    await flush();
+    // The same card as in the conversation; something waits, so no line says nothing does.
+    const card = detail()?.querySelector('[data-continue-decisions]');
+    expect(card?.textContent).toContain(
+      en.Approvals.limit.title.no_progress.replace('{used}', '3'),
+    );
+    expect(detail()?.textContent).not.toContain(en.Inbox.nothingWaiting);
+    // One title above the card, the session's; no state title again.
+    expect(
+      [...(detail()?.querySelectorAll('h1, h2, h3, h4') ?? [])].map((h) => h.textContent),
+    ).toEqual(['Fix login']);
+    expect(detail()?.textContent).not.toContain(en.Status.awaiting_user);
+    const buttonsOf = () => [...(card?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
+    await press(buttonsOf().find((button) => button.textContent === label));
+    // One command, sent at once; both answers wait for its receipt and the item stays.
+    expect(run.sendCommand).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(run.sendCommand.mock.calls[0])).toContain(command);
+    expect(buttonsOf().every((button) => button.disabled)).toBe(true);
+    await press(buttonsOf()[0]);
+    expect(run.sendCommand).toHaveBeenCalledTimes(1);
+    expect(rowButton('Fix login')).toBeDefined();
+    listed = [decisionB];
+    await act(async () => {
+      decided(run.store, 'limit_run_a_0', command === 'approve' ? 'approved' : 'rejected');
+      run.sent[0]?.resolve(receiptFor('run_a', 'limit_run_a_0'));
+    });
+    await flush();
+    await frames();
+    expect(rowButton('Fix login')).toBeUndefined();
+    // Focus goes to the next item, never to a request box (there is none here) or the page.
+    expect(document.activeElement).toBe(rowButton('Ship it'));
+    // The answered item keeps the way to its run and no other item is chosen.
+    expect(detail()?.textContent).toContain('This item was handled.');
+    expect([...(detail()?.querySelectorAll('a') ?? [])].map((link) => link.textContent)).toEqual([
+      'Open run',
+    ]);
+    expect(container.querySelector('[role="listitem"] [aria-current], [data-selected]')).toBeNull();
+    expect(stores.get('run_b')).toBeUndefined();
+  });
+
+it('focuses the list’s heading once the last continue-or-stop decision is answered', async () => {
+  let listed = [decisionA];
+  const { stores, rowButton, detail, click } = await mount({ inbox: async () => listed });
+  await click(rowButton('Fix login'));
+  const run = stores.get('run_a') as RunFixture;
+  await act(async () => run.store.setState({ projection: waitingOn('run_a', 'limit') }));
+  await flush();
+  await press(
+    [
+      ...(detail()?.querySelectorAll<HTMLButtonElement>('[data-continue-decisions] button') ?? []),
+    ].find((button) => button.textContent === en.Approvals.limit.approve),
+  );
+  listed = [];
+  await act(async () => {
+    decided(run.store, 'limit_run_a_0', 'approved');
+    run.sent[0]?.resolve(receiptFor('run_a', 'limit_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement?.tagName).toBe('H1');
+});
+
+it('moves focus to the main action of what still waits on the same run', async () => {
+  const { stores, rowButton, detail, click } = await mount({ inbox: async () => [decisionA] });
+  await click(rowButton('Fix login'));
+  const run = stores.get('run_a') as RunFixture;
+  const primaryOf = (approvalId: string) =>
+    detail()?.querySelector<HTMLButtonElement>(
+      `[data-approval="${approvalId}"] [data-approval-action="primary"]`,
+    );
+  // Two approvals: answering one hands focus to the other's main action.
+  await act(async () =>
+    run.store.setState({ projection: waitingOn('run_a', 'approval', 'approval') }),
+  );
+  await flush();
+  await press(primaryOf('approval_run_a_0'));
+  await act(async () => {
+    decided(run.store, 'approval_run_a_0', 'approved');
+    run.sent[0]?.resolve(receiptFor('run_a', 'approval_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(primaryOf('approval_run_a_1'));
+  expect(rowButton('Fix login')).toBeDefined();
+
+  // A continue-or-stop decision beside an approval: answering it hands focus to the approval.
+  await act(async () =>
+    run.store.setState({ projection: waitingOn('run_a', 'limit', 'approval') }),
+  );
+  await flush();
+  await press(
+    [
+      ...(detail()?.querySelectorAll<HTMLButtonElement>('[data-continue-decisions] button') ?? []),
+    ].find((button) => button.textContent === en.Approvals.limit.approve),
+  );
+  await act(async () => {
+    decided(run.store, 'limit_run_a_0', 'approved');
+    run.sent[1]?.resolve(receiptFor('run_a', 'limit_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(primaryOf('approval_run_a_1'));
+
+  // An approval beside a continue-or-stop decision: answering it hands focus to that decision.
+  await act(async () =>
+    run.store.setState({ projection: waitingOn('run_a', 'approval', 'limit') }),
+  );
+  await flush();
+  await press(primaryOf('approval_run_a_0'));
+  await act(async () => {
+    decided(run.store, 'approval_run_a_0', 'approved');
+    run.sent[2]?.resolve(receiptFor('run_a', 'approval_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(
+    detail()?.querySelector<HTMLButtonElement>('[data-continue-decisions] button:not(:disabled)'),
+  );
+  expect(document.activeElement?.textContent).toBe(en.Approvals.limit.approve);
+});
+
+it('frees a refused continue-or-stop decision and says why in its place', async () => {
+  const { stores, rowButton, detail, click } = await mount({ inbox: async () => [decisionA] });
+  await click(rowButton('Fix login'));
+  const run = stores.get('run_a') as RunFixture;
+  await act(async () => run.store.setState({ projection: waitingOn('run_a', 'limit') }));
+  await flush();
+  const buttonsOf = () => [
+    ...(detail()?.querySelectorAll<HTMLButtonElement>('[data-continue-decisions] button') ?? []),
+  ];
+  await press(buttonsOf().find((button) => button.textContent === en.Approvals.limit.approve));
+  expect(buttonsOf().every((button) => button.disabled)).toBe(true);
+  await act(async () =>
+    run.sent[0]?.resolve(receiptFor('run_a', 'limit_run_a_0', 'The run moved on.')),
+  );
+  await flush();
+  expect(buttonsOf().length).toBeGreaterThan(0);
+  expect(buttonsOf().every((button) => !button.disabled)).toBe(true);
+  const reason = detail()?.querySelector('[data-continue-decisions] [role="alert"]');
+  expect(reason?.textContent).toContain('The run moved on.');
+  expect(rowButton('Fix login')).toBeDefined();
+});
+
+/** A run waiting on one approval and one written request: a question or an extension's input. */
+function questionBeside(
+  store: RunSessionStore,
+  runId: string,
+  round = 1,
+  kind: 'question' | 'extension' = 'question',
+) {
+  const executionId = `exec_${runId}`;
+  const requestId = `${kind}_${runId}_${round}`;
+  const projection = waitingOn(runId, 'approval');
+  projection.executions[executionId] = {
+    executionId,
+    nodeId: 'writer',
+    taskId: `task_${executionId}`,
+    attemptNo: 1,
+    parentExecutionId: null,
+    previousExecutionId: null,
+    depth: 0,
+    iterationId: null,
+    modelProfile: 'model-a',
+    configRevision: 0,
+    criteriaVersionId: null,
+    status: 'waiting_approval',
+    activity: null,
+    waitingOn: null,
+    modelCallIds: [],
+    error: null,
+  } as RunProjection['executions'][string];
+  projection.executionOrder.push(executionId);
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `event_${requestId}_${runSeq}`,
+      runId,
+      runSeq,
+      recordedAt: '2026-11-13T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const target = { requestId, executionId, attemptNo: 1 };
+  const asked =
+    kind === 'question'
+      ? event(round * 2 - 1, 'user_input.requested', {
+          ...target,
+          bodyRef: `body_${requestId}`,
+          schemaHash: 'b'.repeat(64),
+          deadline: '2099-11-13T00:01:00.000Z',
+        })
+      : event(round * 2 - 1, 'extension.ui_requested', {
+          ...target,
+          kind: 'input',
+          bodyRef: `body_${requestId}`,
+          bodyHash: 'b'.repeat(64),
+          deadline: '2099-11-13T00:01:00.000Z',
+        });
+  store.setState({
+    projection,
+    events: [asked],
+    artifactTexts: {
+      [`body_${requestId}`]: JSON.stringify(
+        kind === 'question'
+          ? {
+              key: 'layout',
+              questions: [{ id: 'layout', kind: 'text', prompt: 'Which layout should I keep?' }],
+            }
+          : { kind: 'input', title: 'Name the build', placeholder: 'nightly', timeoutMs: 60_000 },
+      ),
+    },
+  });
+  const answer = () =>
+    store.setState({
+      events: [
+        asked,
+        event(round * 2, kind === 'question' ? 'user_input.answered' : 'extension.ui_answered', {
+          requestId,
+          executionId,
+          attemptNo: 1,
+          answerRef: `answer_${requestId}`,
+          answerHash: 'c'.repeat(64),
+        }),
+      ],
+    });
+  return { requestId, answer };
+}
+
+/** Types into a controlled field as a person does. */
+async function typeInto(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    set?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+/** Sends from a focused control; a browser drops focus from it once it is disabled. */
+const sendFrom = async (button: HTMLElement | null | undefined) => {
+  await press(button);
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body && active.matches(':disabled'))
+    // jsdom keeps focus on a disabled control and will not blur it: pass it through a stand-in.
+    await act(async () => {
+      const standIn = document.createElement('input');
+      document.body.append(standIn);
+      standIn.focus();
+      standIn.remove();
+    });
+};
+
+it('moves focus between a question and an approval waiting on the same run', async () => {
+  const { stores, rowButton, detail, click, buttonIn } = await mount({
+    inbox: async () => [decisionA],
+  });
+  await click(rowButton('Fix login'));
+  const run = stores.get('run_a') as RunFixture;
+  const first = questionBeside(run.store, 'run_a');
+  await flush();
+  const primary = () =>
+    detail()?.querySelector<HTMLButtonElement>(
+      '[data-approval="approval_run_a_0"] [data-approval-action="primary"]',
+    );
+  const inputOf = (requestId: string) =>
+    detail()?.querySelector<HTMLInputElement>(`[data-question="${requestId}"] form input`);
+  expect(inputOf(first.requestId)).toBeTruthy();
+  expect(primary()).toBeTruthy();
+
+  // The question answered: focus goes to the approval's main action.
+  await typeInto(inputOf(first.requestId) as HTMLInputElement, 'Wide');
+  await sendFrom(buttonIn(detail(), en.Harness.sendAnswer));
+  expect(run.sendCommand).toHaveBeenCalledTimes(1);
+  expect(document.activeElement).toBe(document.body);
+  await act(async () =>
+    run.sent[0]?.resolve({
+      ...receiptFor('run_a', first.requestId),
+      target: `user_input:${first.requestId}`,
+    }),
+  );
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(primary());
+  await act(async () => first.answer());
+  await flush();
+
+  // Asked again beside the approval: the approval answered, focus goes to the question.
+  const second = questionBeside(run.store, 'run_a', 2);
+  await flush();
+  await sendFrom(primary());
+  await act(async () => {
+    decided(run.store, 'approval_run_a_0', 'approved');
+    run.sent[1]?.resolve(receiptFor('run_a', 'approval_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(inputOf(second.requestId));
+});
+
+it('moves focus between an extension’s request and an approval waiting on the same run', async () => {
+  const { stores, rowButton, detail, click } = await mount({ inbox: async () => [decisionA] });
+  await click(rowButton('Fix login'));
+  const run = stores.get('run_a') as RunFixture;
+  const first = questionBeside(run.store, 'run_a', 1, 'extension');
+  await flush();
+  const primary = () =>
+    detail()?.querySelector<HTMLButtonElement>(
+      '[data-approval="approval_run_a_0"] [data-approval-action="primary"]',
+    );
+  const cardOf = (requestId: string) =>
+    detail()?.querySelector<HTMLElement>(`[data-extension="${requestId}"]`);
+  const inputOf = (requestId: string) =>
+    cardOf(requestId)?.querySelector<HTMLInputElement>('input');
+  expect(inputOf(first.requestId)).toBeTruthy();
+
+  // The extension's request answered: focus goes to the approval's main action.
+  await typeInto(inputOf(first.requestId) as HTMLInputElement, 'nightly');
+  await sendFrom(cardOf(first.requestId)?.querySelector('[data-extension-action="primary"]'));
+  expect(run.sendCommand).toHaveBeenCalledTimes(1);
+  await act(async () =>
+    run.sent[0]?.resolve({
+      ...receiptFor('run_a', first.requestId),
+      target: `extension_ui:${first.requestId}`,
+    }),
+  );
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(primary());
+  await act(async () => first.answer());
+  await flush();
+
+  // Asked again beside the approval: the approval answered, focus goes to the request's field.
+  const second = questionBeside(run.store, 'run_a', 2, 'extension');
+  await flush();
+  await sendFrom(primary());
+  await act(async () => {
+    decided(run.store, 'approval_run_a_0', 'approved');
+    run.sent[1]?.resolve(receiptFor('run_a', 'approval_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(inputOf(second.requestId));
 });

@@ -294,7 +294,7 @@ test('one deterministic agent request changes the copy, and the person commits a
   const { sessionId } = await startSession(page, 'Alpha writer');
   await panelTab(page, 'Conversation');
   await requestBox(page).fill('Write the notes');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
   const copy = copyOf(original, sessionId);
   // the session's lead calls the team's writer, whose node is team_writer_role.

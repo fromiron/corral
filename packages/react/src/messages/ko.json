@@ -1424,7 +1424,9 @@
       "session": "세션 및 실행",
       "composer": "입력칸",
       "editor": "팀 편집기"
-    }
+    },
+    "interrupt": "지금 응답을 끊고 요청 전달",
+    "queueNext": "실행이 끝난 뒤의 다음 요청으로 보내기"
   },
   "TeamDraft": {
     "title": "목표에서 팀 초안 만들기",
@@ -1904,7 +1906,7 @@
     "targetChip": "대상: {label} · 다음 모델 요청에 전달",
     "editQueued": "수정",
     "autoStart": "실행이 끝나면 대기 작업을 자동으로 시작",
-    "autoStartHint": "이 페이지가 열려 있고 실행이 끝나는 것을 본 뒤에만 시작합니다. 서버를 다시 시작한 뒤에는 시작하지 않습니다.",
+    "autoStartHint": "실행이 끝나면 이 페이지가 닫혀 있어도 서버가 시작합니다. 서버를 다시 시작한 뒤에는 시작하지 않습니다.",
     "preRun": "{team} · 모델 {profiles} · 파일: {files} · {mode}",
     "filesCopy": "작업 사본을 바꿀 수 있음",
     "filesNoCopy": "도구는 켜졌지만 작업 사본 없음",
@@ -2493,8 +2495,8 @@
     "focus": "요청 입력칸으로 이동",
     "ended": "{name} (끝남)",
     "blocked": {
-      "target": "{name} 실행이 끝나 더 이상 지시를 받지 않습니다. 다른 실행을 고르거나 다른 방식으로 보내세요.",
-      "run": "이 실행이 끝나 지시를 전달할 수 없습니다. 다른 방식으로 보내세요."
+      "target": "이 역할이 끝나 더 이상 지시를 받지 않습니다. 다른 역할을 고르거나 다음 요청으로 보내세요.",
+      "run": "이 실행이 끝나 지시를 전달할 수 없습니다. 다음 요청으로 보내세요."
     },
     "switchTo": {
       "next": "다음 요청으로 보내기",
@@ -2598,7 +2600,24 @@
     "teamAutoHint": "기획·조사·작성·검토 에이전트를 이끄는 어시스턴트",
     "teamCorralHint": "역할을 이끄는 어시스턴트, 흐름은 참고",
     "teamCorralGroup": "Corral",
-    "attachmentHash": "내용 해시 (SHA-256)"
+    "attachmentHash": "내용 해시 (SHA-256)",
+    "sendAs": {
+      "new": "보내기",
+      "join": "합류",
+      "interrupt": "끼어들기",
+      "queue": "다음 요청"
+    },
+    "keyHint": {
+      "new": "보내기",
+      "join": "합류",
+      "interrupt": "끼어들기",
+      "queue": "다음"
+    },
+    "sendMenu": "전송 방식",
+    "targetLabel": "{name}에게 보내기",
+    "targetAwaiting": "{name} · 결정 뒤에 읽힘",
+    "targetNone": "지금 지시를 받을 역할 없음",
+    "lowered": "이 역할은 지금 끼어들 수 없어 다음 요청에 읽힙니다."
   },
   "Commands": {
     "newSession": "새 세션",

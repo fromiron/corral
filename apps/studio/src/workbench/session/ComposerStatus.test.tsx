@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import type { SessionIntent } from '@corral/core';
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import en from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import { resolveIntent, type SteerTarget } from '../composerIntent.ts';
 import { ComposerHeader } from './ComposerStatus.tsx';
+import { KeyHint } from './composer/SendControls.tsx';
 
 vi.mock('../../services.tsx', () => ({ useServices: () => ({}) }));
 vi.mock('../../pages/FilesViews.tsx', () => ({ WORKSPACE_CHANGED: 'workspace-changed' }));
@@ -26,7 +27,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function header(locale: 'en' | 'ko', intent: SessionIntent) {
+async function render(locale: 'en' | 'ko', node: ReactNode) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -37,19 +38,7 @@ async function header(locale: 'en' | 'ko', intent: SessionIntent) {
   await act(async () =>
     root.render(
       <IntlProvider locale={locale} messages={locale === 'en' ? en : ko} timeZone="UTC">
-        <ComposerHeader
-          choosingAuto={false}
-          onCancelAuto={() => {}}
-          // While a run is in progress the next message is a next request or an instruction.
-          allowed={['next', 'steer']}
-          blocked={null}
-          intent={intent}
-          onChooseIntent={() => {}}
-          steerTarget=""
-          targets={[]}
-          targetName={(id) => id}
-          onChooseTarget={() => {}}
-        />
+        {node}
       </IntlProvider>,
     ),
   );
@@ -57,24 +46,39 @@ async function header(locale: 'en' | 'ko', intent: SessionIntent) {
 }
 
 const words = (text: string) => text.split(/[\s·]+/).filter(Boolean);
+const writer: SteerTarget = { id: 'w', label: 'Writer', interruptible: true, awaiting: false };
 
-// workbench.md: the line above the input does not show an in-progress state again; the top
-// bar's pill says it. The send mode it leads with must not read as that state's word.
+// The line above the input does not say the run's state again; the composer's send keys say
+// what a message does, never in a run state's words (presence.md "한 화면에 한 번").
 it.each(['en', 'ko'] as const)(
-  'the send mode during a run does not repeat a run state word in %s',
+  'the send keys during a run do not repeat a run state word in %s',
   async (locale) => {
     const messages = locale === 'en' ? en : ko;
     const states = ['running', 'pausing', 'paused', 'awaiting_user'] as const;
     const stateWords = new Set(states.flatMap((state) => words(messages.Status[state])));
-    // A next request sent now waits behind the run (`queue`); it is still named a next request.
-    for (const [intent, choice] of [
-      ['queue', 'next'],
-      ['steer', 'steer'],
-    ] as const) {
-      const line = await header(locale, intent);
-      expect(line).toContain(messages.Sessions.intentShort[choice]);
-      expect(line).not.toContain(messages.Sessions.intentShort.queue);
+    for (const targets of [[writer], [{ ...writer, interruptible: false }], []]) {
+      const { keys, situation } = resolveIntent({
+        running: true,
+        targets,
+        lead: 'w',
+        chosenTarget: null,
+        lock: null,
+        chosen: null,
+      });
+      const line = await render(
+        locale,
+        <KeyHint keys={keys} situation={situation} sendKey="enter" />,
+      );
+      expect(line).toContain(messages.Composer.keyHint[keys.send]);
       expect(words(line).filter((word) => stateWords.has(word))).toEqual([]);
     }
   },
 );
+
+it('the status lead no longer chooses the send or the target', async () => {
+  const line = await render(
+    'en',
+    <ComposerHeader choosingAuto={false} onCancelAuto={() => {}} intent="steer" />,
+  );
+  expect(line).toBe('');
+});

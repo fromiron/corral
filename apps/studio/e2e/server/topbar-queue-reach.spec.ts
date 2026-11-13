@@ -160,13 +160,19 @@ test.describe('a held run', () => {
     await holdRun(page, corral);
     const box = requestBox(page);
     const texts = ['First saved', 'Second saved', 'Third saved', 'Fourth saved'];
-    // Each next request sent while the run works waits behind it (workbench.md).
+    // Each next request (Alt+Enter) sent while the run works waits behind it. The tool line
+    // says so once the composer follows the run.
+    await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
     for (const text of texts) {
       await box.fill(text);
-      await page.getByRole('button', { name: 'Send', exact: true }).click();
+      await box.press('Alt+Enter');
       await expect(page.getByRole('region', { name: 'Queued next tasks' })).toContainText(text);
     }
     const queue = page.getByRole('region', { name: 'Queued next tasks' });
+    // Left on, the server would start the first one when the run ends.
+    await queue
+      .getByRole('switch', { name: 'Start the next queued task when the run ends', exact: true })
+      .click();
     // The card around a queued text (the text itself ignores the pointer).
     const card = (text: string) => queue.getByText(text, { exact: true }).locator('..');
     // Once the run ends, Start now is offered on every card and joins the tab order.

@@ -4,7 +4,7 @@ import { X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import type { RefObject } from 'react';
 import { useTranslations } from 'use-intl';
-import { type Blocked, type IntentChoice, intentChoice } from '../../composerIntent.ts';
+import type { Blocked, SendChoice } from '../../composerIntent.ts';
 import { type MentionItem, mentionLabel } from '../../composerMenu.ts';
 import { SourceAttachments } from '../../context/SourceAttachments.tsx';
 import { DevelopmentMode } from '../../DevelopmentMode.tsx';
@@ -44,8 +44,6 @@ export function ComposerNotices({
   viewingOtherRun,
   onViewRun,
   blocked,
-  targetName,
-  allowed,
   onChooseIntent,
   notReady,
   autoBlockedModel,
@@ -62,8 +60,6 @@ export function ComposerNotices({
   busy,
   destinationId,
   destination,
-  quietDestination,
-  running,
 }: {
   sessionId: string;
   intent: SessionIntent;
@@ -71,9 +67,7 @@ export function ComposerNotices({
   viewingOtherRun: { viewed: number; active: number; activeRunId: string } | null;
   onViewRun: ((runId: string) => void) | undefined;
   blocked: Blocked;
-  targetName: string;
-  allowed: IntentChoice[];
-  onChooseIntent: (value: IntentChoice) => void;
+  onChooseIntent: (value: SendChoice) => void;
   notReady: RoleModel[];
   /** The auto model that is not connected; null when it is. */
   autoBlockedModel: string | null;
@@ -102,13 +96,9 @@ export function ComposerNotices({
   busy: boolean;
   destinationId: string;
   destination: string;
-  quietDestination: boolean;
-  /** The session's run is going. */
-  running: boolean;
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
-  const contextMessages = useTranslations('Context');
   const { attachmentEpoch, images, attachments, attachmentsBusy } = draft;
   return (
     <>
@@ -131,16 +121,14 @@ export function ComposerNotices({
         </Banner>
       ) : null}
       {blocked ? (
+        // A fixed target that cannot take its instruction: the person picks another target in
+        // the tool line, or sends this as a next request; it never goes elsewhere by itself.
         <Banner data-testid="intent-blocked" status="warning" contrast="high">
-          <BannerTitle>{tc(`blocked.${blocked}`, { name: targetName })}</BannerTitle>
+          <BannerTitle>{tc(`blocked.${blocked}`)}</BannerTitle>
           <BannerActions>
-            {allowed
-              .filter((value) => value !== intentChoice(intent))
-              .map((value) => (
-                <Button key={value} variant="secondary" onClick={() => onChooseIntent(value)}>
-                  {tc(`switchTo.${value}`)}
-                </Button>
-              ))}
+            <Button variant="secondary" onClick={() => onChooseIntent('queue')}>
+              {tc('switchTo.next')}
+            </Button>
           </BannerActions>
         </Banner>
       ) : null}
@@ -222,7 +210,8 @@ export function ComposerNotices({
         onChange={draft.setAttachments}
         onLoading={draft.setAttachmentsBusy}
         disabled={busy}
-        enabled={intent === 'next' || intent === 'queue'}
+        // Text attachments ride every send (features/composer-flow.md "합류 대상").
+        enabled
         hideList
       />
       <SourceAttachments
@@ -230,32 +219,10 @@ export function ComposerNotices({
         onChange={draft.setAttachments}
         disabled={busy || attachmentsBusy}
       />
-      <p
-        id={destinationId}
-        data-testid="composer-destination"
-        className={
-          quietDestination
-            ? 'sr-only'
-            : `px-1 text-caption ${intent === 'steer' && !running ? 'text-warning' : 'text-muted-foreground'}`
-        }
-      >
+      {/* Where Send goes, for assistive tech: the tool line's target and keys show it. */}
+      <p id={destinationId} data-testid="composer-destination" className="sr-only">
         {destination}
       </p>
-      {attachments.length > 0 && intent !== 'next' && intent !== 'queue' ? (
-        <div
-          role="status"
-          className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground"
-        >
-          <span>{contextMessages('nextOrQueue')}</span>
-          {allowed
-            .filter((value) => value === 'next')
-            .map((value) => (
-              <Button key={value} variant="tertiary" onClick={() => onChooseIntent(value)}>
-                {tc(`switchTo.${value}`)}
-              </Button>
-            ))}
-        </div>
-      ) : null}
     </>
   );
 }

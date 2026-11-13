@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import type { VerificationReport } from '@corral/contracts';
+import { redactCredentialsAndPaths } from '@corral/core';
 
 /** Redact complete bounded lines before retaining head/tail, including split UTF-8/tokens. */
 export class CheckOutput {
@@ -87,15 +88,6 @@ export class CheckOutput {
 
 export function redactToolText(raw: string, paths: string[]) {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: strip ANSI terminal escapes from check output
-  let text = raw.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
-  for (const path of paths) text = text.split(path).join('[workspace]');
-  text = text
-    .replace(/(bearer\s+)[\w.+/=-]+/gi, '$1[redacted]')
-    .replace(/\b(?:sk-|rt-|eyJ)[\w.-]{8,}/g, '[redacted]')
-    .replace(
-      /\b[\w-]*(?:token|secret|password|api[_-]?key)[\w-]*\s*[:=]\s*(?:"[^"]*"|'[^']*'|\S+)/gi,
-      '[credential redacted]',
-    )
-    .replace(/(?:[A-Za-z]:\\|(?<![:/\w])\/)(?:[^\s:<>"'|]+[\\/])*[^\s:<>"'|]*/g, '[path]');
-  return text;
+  const text = raw.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
+  return redactCredentialsAndPaths(text, paths);
 }

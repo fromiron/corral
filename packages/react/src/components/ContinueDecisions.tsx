@@ -95,7 +95,11 @@ export function ContinueDecisions({ session }: { session: RunSessionStore }) {
       ? {
           approvalId,
           chat: box.current.closest('[data-chat-view]'),
-          tray: box.current.closest('[data-pending-tray]'),
+          // The response place: a conversation's needed-now tray, else the run's whole response
+          // area (Needs you, the Run page), so an approval card beside it is next.
+          tray:
+            box.current.closest('[data-pending-tray]') ??
+            box.current.closest('[data-run-response]'),
         }
       : null;
     setSent((current) => new Set(current).add(approvalId));
