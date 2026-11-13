@@ -117,3 +117,16 @@ it('reads a session saved before autoStart as starting its queue', async () => {
   expect([...store.data.values()].some((value) => value.includes('autoStart'))).toBe(false);
   expect((await repo.getSession(made.session.sessionId))?.autoStart).toBe(true);
 });
+
+it('reads a session saved before the advisor setting as having it off', async () => {
+  const { store, repo } = setup();
+  const made = await repo.createSession({ projectId: 'default', title: 'older' });
+  if (!made.ok) throw new Error(made.message);
+  for (const [key, value] of store.data) {
+    if (!value.includes(made.session.sessionId)) continue;
+    const sessions = JSON.parse(value) as Record<string, unknown>[];
+    store.setItem(key, JSON.stringify(sessions.map(({ advisor: _drop, ...rest }) => rest)));
+  }
+  expect([...store.data.values()].some((value) => value.includes('advisor'))).toBe(false);
+  expect((await repo.getSession(made.session.sessionId))?.advisor).toBeNull();
+});
