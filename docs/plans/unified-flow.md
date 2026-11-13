@@ -14,7 +14,7 @@
 | 백본 | B1–B12 | 진행 중(B11b만 남음) |
 | 화면 | K1, U1–U14 | 진행 중(K1·U1·U8·U10 병합) |
 | 회의 | M1–M4 | 진행 중(M1·M2 병합) |
-| 감독 | A1–A9 | 진행 중(A1 구현 중) |
+| 감독 | A1–A9 | 진행 중(A1 병합) |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
@@ -437,14 +437,15 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 완료 |
 | B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 완료 |
-| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 구현 중(`flow/b11b-loop-limit-editor`) |
+| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 디자인 검수 통과, 코드 리뷰 중(`flow/b11b-loop-limit-editor`) |
+| B13 | 다음 요청에 이미지·참조 싣기 | U5 | `core/repository`, `apps/server/src/session-queue.ts`, 컴포저 전송 모듈 | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 네 번째 리뷰 중(`flow/u2-timeline-frame-2`) |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 디자인 검수 통과, 코드 리뷰 수정 중(`flow/u4-pending-tray`, U3 브랜치 위) |
-| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 디자인 검수 수정 중(`flow/u5-send-model`) |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 디자인 검수 통과, 재리뷰 중(`flow/u4-pending-tray`, U3 브랜치 위) |
+| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 디자인 검수 통과, 코드 리뷰 중(`flow/u5-send-model`) |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
@@ -458,8 +459,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 완료 |
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 대기 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
-| A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 구현 중(`flow/a1-advisor-contract`) |
-| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 대기 |
+| A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 완료 |
+| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 구현 중(`flow/a2-advisor-compile`) |
 | A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 대기 |
 | A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 대기 |
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 대기 |
@@ -683,9 +684,10 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 완료 체크: 스키마 테스트(기본값, 경계값, 감독이 아닌 노드의 `review` 거절), `pnpm contracts:generate`·`pnpm contracts:check`, `pnpm typecheck`.
 
 ### A2 감독 컴파일 규칙
-- 대상: `C/compiler/`(포트 규칙은 `ports.ts`), 테스트.
-- 구현: 감독 노드는 제어 흐름 간선을 가질 수 없고 `advise` 연결을 하나 이상 가져야 한다. `advise`의 출발은 감독 노드, 도착은 `agent` 노드다. 감독 역할의 작업 도구는 읽기(`search`, `read_document`, `list_files`, `read_file`)만, 협업 도구는 `read_artifact`와 `advise`로 고정한다. 감독이 감독을 가리킬 수 없다. 위반은 지금의 컴파일 오류 형식으로 낸다.
-- 완료 체크: 규칙마다 반례 테스트 하나씩.
+- 명세: `features/team-graph.md` 구조 규칙 10(observer는 `advise` 연결이 있으면 고립이 아니다)과 11(감독) 전부, 포트 표.
+- 대상: `C/compiler/`(포트 규칙은 `ports.ts`), `C/expand-teams.ts`, 테스트.
+- 구현: 규칙 11의 다섯 줄을 각각 진단으로 낸다(제어 흐름 간선 없음·상자 밖, `delegate`·`question`의 출발·대상 불가, `advise` 연결 하나 이상이고 출발은 observer·대상은 scheduled 또는 callable Agent, observer 역할의 도구 제한, 다른 호출 방식의 역할은 `advise` 도구 불가, 시작 노드와 `task_output` 생산자 불가). 참조 팀을 펼칠 때 observer는 callable처럼 상자 밖에 둔다. 컴파일된 plan은 감독을 실행 순서 밖의 목록(노드, 역할, `review`, 지켜보는 노드)으로 갖는다. A5가 실행을 만들기 전까지는, 규칙을 모두 통과한 감독이 든 정의도 마지막에 `ADVISOR_NOT_SUPPORTED`로 거절한다(감독 없이 조용히 도는 Run을 만들지 않는다). A5가 그 문을 없앤다.
+- 완료 체크: 규칙마다 반례 테스트 하나씩, observer만 있는 정의, observer의 포트 행, 참조 팀 안의 observer.
 
 ### A3 조언 문지기와 전달 채널
 - 대상: 새 `C/advisor/guard.ts`, `C/advisor/channel.ts`, 테스트.
@@ -791,6 +793,12 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U6 (끼어듦의 표시).** 메타 줄의 "끼어듦 · 응답을 끊고 전달됨"은 지시의 `delivery`가 `interrupt`이고, 그 지시를 실은 호출 바로 앞의 같은 실행 단위 호출이 `interrupted`일 때만 쓴다. 아니면(끊을 응답이 없어 그냥 실린 경우) "읽힘"이다.
 
 - **U5 (디자인 검수에서 정한 것).** 키 안내는 통째로 보이거나 통째로 없다. 자리가 모자라면 폴더 안내가 먼저 아이콘만 남게 줄어든다. 대상 배지는 대상이 둘 이상일 때만 여는 표식이 있는 메뉴이고 하나면 고정 배지다. 남기는 한계: 실행이 막 시작돼 컴포저가 아직 그 실행을 모르는 짧은 사이에 보내면 새 요청으로 나가 같은 세션에 Run이 둘 열린다(서버는 한 세션의 열린 Run 수를 막지 않는다. 사람의 입력 속도로는 드물어 고치지 않았다).
+- **U5 (디자인 검수 2·3차).** 키 안내는 어느 상태에서나 마이크·보내기 바로 왼쪽이다(모델·권한 칩이 보이면 그 뒤). 막힌 전송의 키는 키 안내에서 뺀다. "대상 없음" 이유 한 줄은 폴더 안내보다 자리를 먼저 갖고 키 안내보다 먼저 줄어든다.
+- **B13 (U5가 찾은 명세와 코드의 차이).** 명세(`composer-flow.md` "합류 대상")는 이미지와 참조가 새 요청과 다음 요청에 실린다고 하지만, 저장소는 대기 항목(`queue`)의 이미지를 거절하고 서버가 대기 요청을 시작할 때도 넘기지 않는다(U5 이전부터). 명세가 맞다: 대기 항목이 이미지와 참조를 갖고, 서버의 시작 요청에 실리며, 그 뒤 "새 요청에만 적용" 한 줄은 합류·끼어들기에서만 보인다. U5는 그 줄을 다음 요청에도 그대로 둔다(지금 코드에서는 사실이다). U5가 병합된 뒤 한다.
+- **A5 (A1 리뷰가 남긴 것).** `refuseControl`이 거절을 `(runId, commandId)`로 저장하므로 같은 commandId의 재전송은 처리를 켠 뒤에도 옛 거절 receipt를 돌려준다(도구가 commandId를 새로 만들면 문제없다). `submit_advice`의 `expectedControlRevision`을 볼지 정한다. `advice.admitted`의 "`preserve`가 아닐 때만 `directiveId`"는 zod에만 있고 JSON Schema에는 없다.
+- **A7 (A1 리뷰가 남긴 것).** 편집기는 observer를 열 수는 있지만(예외 없음) 다루지 못한다: `layout.ts`가 observer에 포트 표시를 만들고, `wrapIn`·`setParent`가 observer를 상자에 넣으며, `connectCapability`가 observer에서 `delegate`를 잇고, 지켜보던 노드를 지우면 `advise` 연결만 지워지고 observer가 남는다. `VaultSettingsPage.tsx`와 `apps/server/src/vault/subagents.ts`는 observer를 하위 에이전트의 부모 후보로 받는다. observer의 호출 방식을 바꾸지 못하게 한 가드에 테스트가 없다. 문구 키 `Inspector.observer`·`TeamEditor.fields.observer`는 아직 쓰는 곳이 없다.
+- **A8 (A1 리뷰가 남긴 것).** `RunText`가 `advice.*`에 문장을 주지 않아 이벤트 보기는 종류 글자를 그대로 보인다.
+- **A5 (A1이 남긴 것).** 서버의 HTTP 명령 경로는 `RunCommand`를 그대로 받으므로 사람이 `submit_advice`를 보낼 수 있다(지금은 Coordinator가 `COMMAND_NOT_SUPPORTED`로 거절). 명세는 감독의 도구만 보낸다고 하니 A5가 화면·API 경로를 닫아 둔다. A2 전까지 컴파일러는 `observer` 노드와 `advise` 연결을 `ADVISOR_NOT_SUPPORTED`로 거절한다(A2가 규칙으로 바꾼다). 역할이 `advise`를 협업 도구로 가질 수 있는지의 검사도 A2다.
 - **U5 (U3가 병합된 뒤).** `apps/studio/e2e/flow/send-model.spec.ts`는 실행 종료와 끼어들기 단계에서 끝난 실행 아래 항목을 측정에서 뺐다(U3 이전에는 과정이 접히며 306px 움직였다). U3가 통합 브랜치에 들어오면 그 제외를 없앤다.
 - **U6 (U5가 남긴 것).** 지시의 전달 방식은 `directive.accepted`와 receipt의 `requestedBoundary`에만 있고 `DirectiveView`와 세션의 steer 항목에는 없다. 메타 줄이 "끼어듦"을 말하려면 투영이 전달 방식을 가져야 한다. 합류에 실은 텍스트 첨부는 지시(`DirectiveView.attachments`)에만 남으니 보낸 메시지에 첨부 이름을 그 값으로 보인다(지금은 보낸 뒤 첨부가 보이지 않는다). 낮춰진 끼어들기(receipt의 `requestedBoundary`)는 지금 sr-only 알림뿐이다. `SessionEntries.tsx`의 `DeliveryStatus`는 끼어들기여도 "at its next model request"라고 쓴다.
 - **U7 (U5가 남긴 것).** 대상 목록은 `composer/useRunState.ts`의 `useSteerTargets`, "여기에 합류"는 `composer/useIntent.ts`의 `chooseTarget(id)`, 자동 시작은 `composer/useSessionSettings.ts`의 `autoStart`·`updateAutoStart`다. 브라우저 데모 모드에는 서버 대기열이 없어 자동 시작 스위치가 듣지 않는다.

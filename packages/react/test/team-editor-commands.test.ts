@@ -323,6 +323,7 @@ describe('team editor commands: patterns on the selection', () => {
     const work = node(draft, 'agent_1');
     expect(
       work?.type === 'agent' &&
+        work.invocation !== 'observer' &&
         work.inputBindings.some(
           (b) => b.kind === 'previous_iteration_output' && b.sourceNodeId === reviewer?.id,
         ),

@@ -192,7 +192,7 @@ describe('fork', () => {
     const r = runtime();
     const definition = abc();
     const c = definition.nodes.find((n) => n.id === 'c');
-    if (c?.type === 'agent')
+    if (c?.type === 'agent' && c.invocation !== 'observer')
       c.inputBindings.push({ kind: 'task_output', name: 'first', sourceNodeId: 'a' });
     r.save('abc', 1, definition);
     const source = await r.run('abc', 1);

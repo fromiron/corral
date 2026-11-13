@@ -129,6 +129,10 @@ export function describeEvent(
       return of('observationLate', { what: str(p.originalEventType) });
     case 'output.finalized':
       return of('outputFinalized');
+    // Advice has no sentence yet (features/advisor.md).
+    case 'advice.admitted':
+    case 'advice.suppressed':
+      return null;
     default:
       return null;
   }

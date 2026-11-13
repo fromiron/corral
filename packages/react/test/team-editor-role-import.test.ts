@@ -22,7 +22,8 @@ function ok(result: EditResult): { draft: EditorDraft; nodeId: string } {
 const refused = (result: EditResult) => (result.ok ? 'accepted' : result.reason);
 const agent = (draft: EditorDraft, id: string) => {
   const found = draft.definition.nodes.find((n) => n.id === id);
-  if (found?.type !== 'agent') throw new Error(`${id} is not an agent`);
+  if (found?.type !== 'agent' || found.invocation === 'observer')
+    throw new Error(`${id} is not a working agent`);
   return found;
 };
 const roleOf = (draft: EditorDraft, id: string) =>

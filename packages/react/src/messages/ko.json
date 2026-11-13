@@ -126,6 +126,7 @@
       "next": "다음",
       "delegate": "위임",
       "question": "질문",
+      "advise": "조언",
       "callable": "호출됨",
       "error": "오류",
       "exhausted": "소진",
@@ -133,7 +134,8 @@
     },
     "linkLabel": {
       "delegate": "위임",
-      "question": "질문"
+      "question": "질문",
+      "advise": "조언"
     },
     "nodeStatus": {
       "idle": "실행 전",
@@ -192,6 +194,7 @@
     "invocation": "실행 방식",
     "scheduled": "흐름 안에서",
     "callable": "호출될 때만",
+    "observer": "감독으로",
     "prompt": "역할 프롬프트",
     "contract": "출력",
     "contracts": {
@@ -271,6 +274,7 @@
   },
   "Validation": {
     "codes": {
+      "ADVISOR_NOT_SUPPORTED": "감독은 아직 실행할 수 없습니다.",
       "BINDING_SOURCE": "입력이 그 값을 줄 수 없는 단계에서 읽습니다: {message}",
       "BOX_BOUNDARY": "이 연결은 포트가 아닌 곳으로 상자 경계를 넘습니다.",
       "BOX_PARENT": "이 노드는 그 상자 안에 둘 수 없습니다.",
@@ -5698,6 +5702,7 @@
     "kinds": {
       "agent": "에이전트",
       "callable": "호출 전용 에이전트",
+      "observer": "감독",
       "review": "검토",
       "approval": "승인",
       "rule": "규칙",
@@ -5732,7 +5737,8 @@
     "retry": "재시도 {count}회",
     "links": {
       "delegate": "위임",
-      "question": "질문"
+      "question": "질문",
+      "advise": "조언"
     },
     "rejected": {
       "unknownNode": "그 단계는 더 이상 없습니다.",
@@ -5769,6 +5775,7 @@
       "invocation": "실행 방식",
       "scheduled": "흐름 안에서",
       "callable": "호출될 때",
+      "observer": "감독으로",
       "retry": "실패 후 재시도",
       "maxIterations": "최대 회차",
       "stallDetection": "회차가 나아지지 않으면 멈추기",

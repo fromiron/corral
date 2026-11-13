@@ -323,7 +323,7 @@ function setup(
 function forkedCorral(): CorralDefinition {
   const definition = linearCorral(['p', 'a', 'b', 'm']);
   for (const node of definition.nodes)
-    if (node.type === 'agent' && node.id !== 'p')
+    if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
       node.inputBindings = [{ kind: 'task_output', name: 'previous', sourceNodeId: 'p' }];
   definition.nodes.push({ id: 'j', type: 'join', label: 'j', policy: 'all' });
   const edge = (id: string, source: string, target: string) => ({
