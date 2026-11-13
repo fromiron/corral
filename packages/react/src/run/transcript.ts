@@ -1,4 +1,5 @@
 import {
+  type AdviceSeverity,
   type ReasoningResolution,
   type ReasoningWire,
   type RunEvent,
@@ -19,6 +20,15 @@ export type TranscriptEntry =
       seq: number;
       directiveId: string;
       text: string;
+      status: RunProjection['directives'][string]['status'] | 'accepted';
+    }
+  /** An advisor's advice delivered as a directive: never the person's words. */
+  | {
+      kind: 'advice';
+      seq: number;
+      directiveId: string;
+      text: string;
+      severity: AdviceSeverity | null;
       status: RunProjection['directives'][string]['status'] | 'accepted';
     }
   | {
@@ -113,16 +123,22 @@ export function buildTranscript(
             : null,
         });
         break;
-      case 'directive.accepted':
+      case 'directive.accepted': {
         if (event.payload.targetExecutionId !== executionId) break;
-        entries.push({
-          kind: 'instruction',
+        const directive = projection.directives[event.payload.directiveId];
+        const common = {
           seq: event.runSeq,
           directiveId: event.payload.directiveId,
           text: event.payload.text,
-          status: projection.directives[event.payload.directiveId]?.status ?? 'accepted',
-        });
+          status: directive?.status ?? ('accepted' as const),
+        };
+        entries.push(
+          event.payload.origin === 'advice'
+            ? { kind: 'advice', ...common, severity: directive?.advice?.severity ?? null }
+            : { kind: 'instruction', ...common },
+        );
         break;
+      }
       case 'model.request_prepared': {
         if (event.payload.executionId !== executionId) break;
         const call = event.payload.modelCallId;

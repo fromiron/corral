@@ -996,7 +996,12 @@ it("an advice goes in under its own heading, apart from and in order with the pe
   ]);
   const directives = [
     { directiveId: 'dir_user', text: 'Keep the API.', origin: 'user' as const },
-    { directiveId: 'dir_adv', text: 'Check the dates.', origin: 'advice' as const },
+    {
+      directiveId: 'dir_adv',
+      text: 'Check the dates.',
+      origin: 'advice' as const,
+      advice: { severity: 'concern' as const, from: 'Reviewer' },
+    },
     { directiveId: 'dir_user2', text: 'Cite pages.', origin: 'user' as const },
   ];
   const { host } = recordingHost({ pendingDirectives: () => directives });
@@ -1018,7 +1023,7 @@ it("an advice goes in under its own heading, apart from and in order with the pe
     .filter((text) => text.includes(DIRECTIVE_PREFIX) || text.includes(ADVICE_DIRECTIVE_PREFIX));
   expect(texts).toEqual([
     `${DIRECTIVE_PREFIX}dir_user): Keep the API.`,
-    `${ADVICE_DIRECTIVE_PREFIX}dir_adv): Check the dates.`,
+    `${ADVICE_DIRECTIVE_PREFIX}concern from Reviewer, dir_adv): Check the dates.`,
     `${DIRECTIVE_PREFIX}dir_user2): Cite pages.`,
   ]);
   expect(ADVICE_DIRECTIVE_PREFIX).not.toContain(DIRECTIVE_PREFIX);

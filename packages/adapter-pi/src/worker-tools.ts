@@ -368,15 +368,19 @@ export const SDK_DIRECTIVE_PREFIX = 'Corral instruction (';
 /** How both workers open an accepted advice; it does not carry the person's authority. */
 export const ADVICE_DIRECTIVE_PREFIX = "Advice from this run's advisor, not from the person (";
 
-type Delivered = Pick<DeliveredDirective, 'directiveId' | 'text' | 'origin'>;
+type Delivered = Pick<DeliveredDirective, 'directiveId' | 'text' | 'origin' | 'advice'>;
+
+/** An advice's heading names its severity and the advisor, then the directive. */
+const adviceHead = (d: Delivered) =>
+  `${ADVICE_DIRECTIVE_PREFIX}${d.advice ? `${d.advice.severity} from ${d.advice.from}, ` : ''}${d.directiveId})`;
 
 /** The core worker's form of one delivered directive; each directive is its own message. */
 export const directiveText = (d: Delivered) =>
-  `${d.origin === 'user' ? DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`;
+  `${d.origin === 'user' ? `${DIRECTIVE_PREFIX}${d.directiveId})` : adviceHead(d)}: ${d.text}`;
 
 /** The SDK worker's form of one delivered directive. */
 export const sdkDirectiveText = (d: Delivered) =>
-  `${d.origin === 'user' ? SDK_DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}):\n${d.text}`;
+  `${d.origin === 'user' ? `${SDK_DIRECTIVE_PREFIX}${d.directiveId})` : adviceHead(d)}:\n${d.text}`;
 
 export function parentQuestionsText(questions: readonly ParentQuestionMessage[]): string {
   return (

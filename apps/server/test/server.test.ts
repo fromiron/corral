@@ -691,6 +691,37 @@ describe('REST: Corrals and runs', () => {
       }),
     });
     expect([501, 400]).toContain(unsupported.status);
+    // Advice comes only from an advisor's tool: a person's submit_advice is refused and recorded
+    // nowhere, so its command id stays unused.
+    const advice = await call(`${server.url}/api/v1/runs/${id}/commands`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        schemaVersion: '0.1',
+        commandId: 'cmd_advice',
+        runId: id,
+        type: 'submit_advice',
+        payload: {
+          observerExecutionId: inFlight.executionOrder[0],
+          attemptNo: 1,
+          targetExecutionId: inFlight.executionOrder[0],
+          severity: 'blocker',
+          note: 'Stop now.',
+        },
+      }),
+    });
+    expect(advice.status).toBe(403);
+    // The route refuses it before the Coordinator: an error, not a receipt.
+    expect(await advice.json()).toEqual({
+      error: { code: 'CAPABILITY_DENIED', message: expect.any(String) },
+    });
+    expect((await call(`${server.url}/api/v1/runs/${id}/commands/cmd_advice`)).status).toBe(404);
+    // Opening an execution row is recorded once; an unknown row is not.
+    const opened = (executionId: string) =>
+      call(`${server.url}/api/v1/runs/${id}/executions/${executionId}/opened`, { method: 'POST' });
+    expect((await opened(inFlight.executionOrder[0] ?? '')).status).toBe(204);
+    expect((await opened(inFlight.executionOrder[0] ?? '')).status).toBe(204);
+    expect((await opened('exec_9999')).status).toBe(404);
     for (const gate of gates) gate.open();
     await waitForProjection(transport, id, (p) => p.status === 'succeeded');
     const receipt = await call(`${server.url}/api/v1/runs/${id}/commands/cmd_steer`);
