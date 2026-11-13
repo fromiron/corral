@@ -3598,7 +3598,6 @@
     "compactNotLive": "Manual compaction is only available during a live run.",
     "compactCancelling": "This run is cancelling, so compaction was not sent.",
     "compactAmbiguous": "More than one execution is still running, so compaction was not sent.",
-    "compactUnconfirmed": "This execution ended before compaction completion was confirmed.",
     "compactPhase": {
       "queued": "Compaction requested; waiting for a safe boundary.",
       "started": "Compacting history.",

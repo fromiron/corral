@@ -1,10 +1,9 @@
-import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { HarnessDetails, type RunSessionStore } from '@corral/react';
 import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  Button,
   fontWeights,
 } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
@@ -12,7 +11,6 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
-import { compactTarget } from './compactTarget.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { ProfileContextDetails } from './ProfileContextDetails.tsx';
 import { RunChanges } from './RunChanges.tsx';
@@ -158,13 +156,6 @@ export function RunStatusCards({
                 <code>{record.contextHash.slice(0, 12)}</code>
               </p>
             ) : null}
-            {selected ? (
-              <ContextCompaction
-                key={`${state.runId}:${selected}`}
-                session={session}
-                executionId={selected}
-              />
-            ) : null}
             {['interrupted', 'failed', 'cancelled'].includes(projection.status) &&
             projection.mode === 'live' ? (
               <RuntimeRecovery
@@ -230,8 +221,9 @@ export function RunStatusCards({
 }
 
 /**
- * One line for the execution detail: how much context its last recorded request carried, and
- * compaction while the execution can still use it. Run-wide diagnostics stay in Run info.
+ * One line for the execution detail: how much context its last recorded request carried.
+ * Run-wide diagnostics stay in Run info; compaction is sent from /compact and the activity
+ * bar's context detail.
  */
 export function ExecutionContext({
   session,
@@ -241,10 +233,8 @@ export function ExecutionContext({
   executionId: string;
 }) {
   const t = useTranslations('RunStatus');
-  const noInformation = useTranslations('Usage')('noInformation');
   const { projection, events } = useStore(session);
   if (!projection) return null;
-  const execution = projection.executions[executionId];
   const request = events
     .filter(
       (event) =>
@@ -254,95 +244,13 @@ export function ExecutionContext({
     .at(-1);
   const estimate =
     request?.type === 'model.request_recorded' ? request.payload.contextEstimate : undefined;
-  const open =
-    execution &&
-    !TERMINAL_EXECUTION_STATUSES.has(execution.status) &&
-    !TERMINAL_RUN_STATUSES.has(projection.status);
-  if (!estimate && !open) return null;
+  if (!estimate) return null;
   return (
     <section data-testid="execution-context" className="grid gap-1 text-caption">
       <p>
         <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('contextOnly')}</span> ·{' '}
-        {estimate ? t('estimate', { count: estimate.tokens }) : noInformation}
+        {t('estimate', { count: estimate.tokens })}
       </p>
-      {open ? <ContextCompaction session={session} executionId={executionId} /> : null}
     </section>
-  );
-}
-
-function ContextCompaction({
-  session,
-  executionId,
-}: {
-  session: RunSessionStore;
-  executionId: string;
-}) {
-  const t = useTranslations('RunStatus');
-  const state = useStore(session);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState<string | null>(null);
-  const execution = state.projection?.executions[executionId];
-  const decision = compactTarget(state.projection, executionId);
-  const event = state.events
-    .filter(
-      (event) =>
-        event.type === 'context.compaction_changed' &&
-        event.payload.trigger !== 'automatic' &&
-        event.payload.executionId === executionId,
-    )
-    .at(-1);
-  const phase = event?.type === 'context.compaction_changed' ? event.payload.phase : null;
-  const pending = phase === 'queued' || phase === 'started';
-  const ended =
-    !execution ||
-    TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
-    !state.projection ||
-    TERMINAL_RUN_STATUSES.has(state.projection.status);
-  return (
-    <div className="space-y-1">
-      {decision.ok ? (
-        <>
-          <p className="text-muted-foreground">{t('compactHint')}</p>
-          <Button
-            variant="tertiary"
-            disabled={busy || decision.pending}
-            onClick={() => {
-              const current = session.getState();
-              const next = compactTarget(current.projection, executionId);
-              if (!next.ok || next.pending) return;
-              setBusy(true);
-              setError(null);
-              void current
-                .sendCommand({
-                  type: 'compact_context',
-                  expectedControlRevision: next.expectedControlRevision,
-                  payload: { executionId: next.executionId, attemptNo: next.attemptNo },
-                })
-                .then((receipt) => {
-                  if (receipt.error) setError(receipt.error.message);
-                })
-                .catch((failure) =>
-                  setError(failure instanceof Error ? failure.message : t('compactUnavailable')),
-                )
-                .finally(() => setBusy(false));
-            }}
-          >
-            {t('compactRequest')}
-          </Button>
-        </>
-      ) : (
-        <p className="text-muted-foreground">{t(decision.reason)}</p>
-      )}
-      {phase ? (
-        <p role="status">
-          {pending && ended ? t('compactUnconfirmed') : t(`compactPhase.${phase}`)}
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-danger">
-          {error}
-        </p>
-      ) : null}
-    </div>
   );
 }
