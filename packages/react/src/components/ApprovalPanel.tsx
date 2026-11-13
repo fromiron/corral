@@ -328,7 +328,12 @@ export function ApprovalPanel({
       ? {
           approvalId,
           chat: section.current?.closest('[data-chat-view]') ?? null,
-          tray: section.current?.closest('[data-pending-tray]') ?? null,
+          // The response place: a conversation's needed-now tray, else the run's whole response
+          // area (Needs you, the Run page), so a continue-or-stop decision beside it is next.
+          tray:
+            section.current?.closest('[data-pending-tray]') ??
+            section.current?.closest('[data-run-response]') ??
+            null,
         }
       : null;
     setBusy(true);
