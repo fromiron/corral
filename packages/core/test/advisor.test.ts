@@ -1296,6 +1296,7 @@ describe('the advisor’s tools', () => {
     args: Record<string, unknown>,
     extra: Partial<ToolGateView> = {},
     role: Partial<AgentStartInput['role']> = {},
+    assignment: Partial<AgentStartInput['assignment']> = { kind: 'advisor', watches: ['writer'] },
   ) {
     const gate = DEFAULT_GATES['tool.authorize'].find((g) => g.id === 'role_allowlist');
     if (!gate) throw new Error('no role allowlist');
@@ -1303,7 +1304,7 @@ describe('the advisor’s tools', () => {
       executionId: 'exec_advisor',
       nodeId: 'advisor',
       attemptNo: 1,
-      assignment: { kind: 'advisor', watches: ['writer'] },
+      assignment,
       role: {
         id: 'advisor_role',
         name: 'Reviewer',
@@ -1350,6 +1351,30 @@ describe('the advisor’s tools', () => {
       expect(decide(name, {}, {}, role)).toBe('CAPABILITY_DENIED');
     // A read tool its role did not pick stays closed.
     expect(decide('list_files', {}, {}, role)).toBe('CAPABILITY_DENIED');
+    // An extension tool that takes the name of one of the advisor's tools is still an extension
+    // tool, even where the work style would let it run.
+    expect(
+      decide(
+        'advise',
+        { severity: 'nit', note: 'x' },
+        { descriptor: { ...descriptor, name: 'advise' } },
+        role,
+      ),
+    ).toBe('CAPABILITY_DENIED');
+  });
+
+  it('only an advisor advises, with a known severity and a note of 1 to 1,000 characters', () => {
+    const work = { allowedCollaborationTools: ['advise'] } as unknown as Partial<
+      AgentStartInput['role']
+    >;
+    // A working role whose work style offers `advise` still may not use it.
+    expect(
+      decide('advise', { severity: 'nit', note: 'x' }, { simulation: true }, work, {
+        kind: 'scheduled',
+      }),
+    ).toBe('CAPABILITY_DENIED');
+    expect(decide('advise', { severity: 'nit', note: 'x'.repeat(1001) })).toBe('SCHEMA_INVALID');
+    expect(decide('advise', { severity: 'urgent', note: 'x' })).toBe('SCHEMA_INVALID');
   });
 
   it('advice takes only a severity and a note', () => {

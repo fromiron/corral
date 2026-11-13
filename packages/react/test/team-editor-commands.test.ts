@@ -480,7 +480,8 @@ describe('team editor commands: patterns on the selection', () => {
 const advisorCodes = (draft: EditorDraft) =>
   codes(draft).filter(
     (code) =>
-      (code.startsWith('ADVIS') || code.startsWith('SCHEMA')) && code !== 'ADVISOR_NOT_SUPPORTED',
+      (code.startsWith('ADVIS') || code.startsWith('SCHEMA')) &&
+      (code as string) !== 'ADVISOR_NOT_SUPPORTED',
   );
 const advises = (draft: EditorDraft) =>
   draft.definition.capabilityLinks
