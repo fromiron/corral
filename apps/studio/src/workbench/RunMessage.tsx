@@ -186,6 +186,8 @@ export function RunMessage({
     bodyCheckFailed = false,
     settled = true,
   } = useCorralRun(runId, live, expanded, artifactMetadataVersion);
+  // The last words a finishing conversation turn showed, kept while its answer is still on the way.
+  const heldWords = useRef<[string, (typeof state.streams)[string]] | null>(null);
   // A conversation row the timeline mounts again keeps the height it left with until its record
   // and bodies are read again; what the read then changes is a real change.
   const [returning] = useState(() => Boolean(sessionId) && rowHeight(runId) !== null);
@@ -343,29 +345,64 @@ export function RunMessage({
       effect: call.effectId ? projection.effects[call.effectId]?.outcome : null,
     })),
   ).filter((row) => row.tone !== 'ok' && row.tone !== 'running');
+  const textOf = (result: ResultItem) =>
+    result.artifactVersionId === preservedTurn?.artifactVersionId
+      ? (preservedTurn.answer ?? undefined)
+      : bodyMetadataCurrent && canReadArtifactBody(projection, result.artifactVersionId)
+        ? state.artifactTexts[result.artifactVersionId]
+        : undefined;
   // What a model is writing right now, shown in the conversation; never a fact.
   // A turn finishing here hands its last reply (if any) over to the result once the result's
   // text is read, so the answer never flashes "Loading…" in between. A failed read ends it.
+  // A conversation turn's answer may come only with the turn's record, read once the row is no
+  // longer live: until that read has settled, its last words keep their place.
   const handoff =
     watched &&
     !working &&
     !resultError &&
-    visible.some(
-      (result) =>
-        !result.media &&
-        !projection.reviews[result.artifactVersionId] &&
-        result.artifactVersionId !== preservedTurn?.artifactVersionId &&
-        bodyMetadataCurrent &&
-        canReadArtifactBody(projection, result.artifactVersionId) &&
-        state.artifactTexts[result.artifactVersionId] === undefined,
-    );
+    (sessionId
+      ? !bodyCheckFailed &&
+        (live || !settled || bodiesPending) &&
+        visible.some(
+          (result) =>
+            !result.media &&
+            !projection.reviews[result.artifactVersionId] &&
+            textOf(result) === undefined,
+        )
+      : visible.some(
+          (result) =>
+            !result.media &&
+            !projection.reviews[result.artifactVersionId] &&
+            result.artifactVersionId !== preservedTurn?.artifactVersionId &&
+            bodyMetadataCurrent &&
+            canReadArtifactBody(projection, result.artifactVersionId) &&
+            state.artifactTexts[result.artifactVersionId] === undefined,
+        ));
   // In a conversation only the lead's reply can become the answer; delegates speak in rows.
   const lead = projection.executionOrder[0];
+  // Responses an interrupt cut, in call order: interrupted output, never the answer. In a
+  // conversation they stay where they stood, through later replies and the run's end; what the
+  // run writes after them comes below.
+  const stopped =
+    sessionId && chatDensity !== 'results'
+      ? Object.entries(state.streams).filter(([id, stream]) => {
+          const call = projection.modelCalls[id];
+          return (
+            call?.interrupted === true &&
+            (!call.executionId || call.executionId === lead) &&
+            Boolean(stream.text)
+          );
+        })
+      : [];
+  const lastCut = stopped.length
+    ? Object.keys(state.streams).indexOf(stopped[stopped.length - 1]?.[0] ?? '')
+    : -1;
   const streams =
     working || handoff || !projection.output
-      ? Object.entries(state.streams).filter(([id]) => {
+      ? Object.entries(state.streams).filter(([id], index) => {
           const owner = projection.modelCalls[id]?.executionId;
           return (
+            index > lastCut &&
             (!sessionId || !owner || owner === lead) &&
             (working ||
               handoff ||
@@ -398,6 +435,7 @@ export function RunMessage({
     ['created', 'validating', 'running'].includes(projection.status) &&
     interactions.length === 0 &&
     !streams.some(([, stream]) => stream.text) &&
+    stopped.length === 0 &&
     visible.length === 0;
   // The wait names the tool or role in progress, as the log names it; the head already says the
   // state. A model request's name says nothing to the person, so it waits with the mark alone.
@@ -504,12 +542,6 @@ export function RunMessage({
   const approval = sessionId ? null : (
     <ApprovalPanel session={store} onOpenArtifact={onOpenArtifact} />
   );
-  const textOf = (result: ResultItem) =>
-    result.artifactVersionId === preservedTurn?.artifactVersionId
-      ? (preservedTurn.answer ?? undefined)
-      : bodyMetadataCurrent && canReadArtifactBody(projection, result.artifactVersionId)
-        ? state.artifactTexts[result.artifactVersionId]
-        : undefined;
   const partial = results?.kind === 'partial';
   const shownResults = handoff ? [] : visible;
   if (sessionId) {
@@ -551,7 +583,12 @@ export function RunMessage({
         {ts.has(projection.status) ? ts(projection.status) : projection.status}
       </span>
     );
-    const shownText = writing && chatDensity !== 'results' ? writing : undefined;
+    const liveWords = writing && chatDensity !== 'results' ? writing : undefined;
+    // The store may let a finished reply's words go before its answer is read: the words it
+    // showed stay until the answer takes their place.
+    if (liveWords) heldWords.current = liveWords;
+    else if (!handoff) heldWords.current = null;
+    const shownText = liveWords ?? (handoff ? (heldWords.current ?? undefined) : undefined);
     // The words an ended turn kept; only a response that never completed is marked as cut off.
     const kept = shownText && !working && !handoff ? shownText[1].text : null;
     const cutOff =
@@ -675,6 +712,27 @@ export function RunMessage({
             labels={{ status: pendingStep ?? pendingWord, words: [pendingStep ?? ''] }}
           />
         ) : null}
+        {stopped.map(([id, stream], index) => (
+          // Drawn as the reply being written is, so a cut takes nothing from its height; it reads
+          // as interrupted once something follows it or the run has ended.
+          <div
+            key={id}
+            data-testid="stopped-text"
+            className="flex min-w-0 flex-col gap-1 wrap-anywhere"
+          >
+            {working || handoff ? (
+              <SafeMarkdown text={stream.text} size="chat" />
+            ) : (
+              <MessageBody text={stream.text} markdown size="chat" copy={false} />
+            )}
+            {index < stopped.length - 1 || shownText || shownResults.length || !working ? (
+              <p className="text-caption text-muted-foreground" role="note">
+                {tm('interrupted')}
+                {stream.truncated ? ` · ${tm('truncated')}` : ''}
+              </p>
+            ) : null}
+          </div>
+        ))}
         {shownText ? (
           // The reply being written reads as the answer it may become.
           <div
