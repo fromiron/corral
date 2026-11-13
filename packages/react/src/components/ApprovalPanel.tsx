@@ -141,7 +141,6 @@ export function ApprovalPanel({
     .filter((approval) => fresh(approval.approvalId))
     .map((approval) => approval.approvalId)
     .join(',');
-  // biome-ignore lint/correctness/useExhaustiveDependencies: freshKey names the kept decisions
   const done = useMemo(
     () => decided.filter((approval) => freshKey.split(',').includes(approval.approvalId)),
     [decided, freshKey],
@@ -328,7 +327,12 @@ export function ApprovalPanel({
       ? {
           approvalId,
           chat: section.current?.closest('[data-chat-view]') ?? null,
-          tray: section.current?.closest('[data-pending-tray]') ?? null,
+          // The response place: a conversation's needed-now tray, else the run's whole response
+          // area (Needs you, the Run page), so a continue-or-stop decision beside it is next.
+          tray:
+            section.current?.closest('[data-pending-tray]') ??
+            section.current?.closest('[data-run-response]') ??
+            null,
         }
       : null;
     setBusy(true);
