@@ -78,6 +78,21 @@ describe('portable shortcuts', () => {
     expect((await service.pending(password)).application?.target).toEqual(target);
     expect((await service.acknowledge(pending.id, password, target)).status).toBe('committed');
   });
+  it('carries the reply quote key as the shortcut settings save it, each modifier held or not', async () => {
+    const service = new VaultService({ directory: directory(), adapters: () => ({}) });
+    const target = {
+      ...prefs,
+      shortcuts: {
+        palette: { key: 'k', mod: true as const, alt: false, shift: true },
+        'reply.quote': { key: 'w', mod: false as const, alt: true as const, shift: false },
+      },
+    };
+    expect(PortableApplication.parse(target)).toEqual(target);
+    const envelope = await service.capture(['application'], password, target);
+    const preview = await service.preview(envelope, password, prefs);
+    await service.apply(preview.previewId, ['application'], password);
+    expect((await service.pending(password)).application?.target).toEqual(target);
+  });
   it('reads an export made before the reply quote key, and keeps Alt alone to that key', () => {
     expect(
       PortableApplication.parse({ ...prefs, shortcuts: { palette: { mod: true, key: 'k' } } })
@@ -87,6 +102,9 @@ describe('portable shortcuts', () => {
       { palette: { alt: true, key: 'e' } },
       { 'reply.quote': { key: 'e' } },
       { 'reply.quote': { alt: false, key: 'e' } },
+      { 'reply.quote': { mod: false, alt: false, key: 'e' } },
+      { 'reply.quote': { alt: true, key: 'e', extra: true } },
+      { 'reply.quote': { alt: true, key: 'e' }, unknown: { mod: true, key: 'k' } },
     ])
       expect(() => PortableApplication.parse({ ...prefs, shortcuts })).toThrow();
     expect(

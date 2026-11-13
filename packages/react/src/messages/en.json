@@ -2530,6 +2530,7 @@
     "removeQuote": "Remove quote {text}",
     "quotes": "Quotes",
     "quoteSelection": "Quote",
+    "selectedPassage": "Selected passage",
     "quoteTooLong": "A quote holds at most 8,000 characters. Choose a shorter passage.",
     "quoteFailed": "The quote could not be added to the request.",
     "goToQuote": "Go to the quoted passage: {text}",

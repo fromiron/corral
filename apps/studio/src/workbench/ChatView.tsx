@@ -109,20 +109,51 @@ function readPlace(box: HTMLElement) {
 const ESTIMATED_ROW = 260;
 
 const PLACE_ROW = 'corral:chat-place';
+const FOLLOW_END = 'corral:chat-follow-end';
+/** A row the conversation put in place. */
+export interface PlacedRow {
+  /** The conversation followed its end before the row was placed. */
+  following: boolean;
+  /** Still held where it was placed: nobody has moved the conversation since. */
+  held(): boolean;
+}
 interface PlaceRequest {
   sessionId: string;
   id: string;
   offset: number;
+  placed?: PlacedRow | null;
 }
 /**
  * Puts a row of a session's conversation at `offset` from the top of the timeline's view, by the
- * same path a linked message takes: the row is held there until the person moves.
+ * same path a linked message takes: the row is held there through layout until the person moves.
+ * Null when the conversation shown has no such row.
  */
-export function placeChatRow(sessionId: string, id: string, offset: number) {
+export function placeChatRow(sessionId: string, id: string, offset: number): PlacedRow | null {
+  const request: PlaceRequest = { sessionId, id, offset, placed: null };
+  window.dispatchEvent(new CustomEvent<PlaceRequest>(PLACE_ROW, { detail: request }));
+  return request.placed ?? null;
+}
+/** The session's conversation goes to its end and follows it, as "Jump to latest" does. */
+export function followChatEnd(sessionId: string) {
   window.dispatchEvent(
-    new CustomEvent<PlaceRequest>(PLACE_ROW, { detail: { sessionId, id, offset } }),
+    new CustomEvent<{ sessionId: string }>(FOLLOW_END, { detail: { sessionId } }),
   );
 }
+
+const EDITING =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="menu"], [role="menubar"], [role="listbox"], [role="dialog"], [role="tablist"], [role="radiogroup"], [role="grid"], [role="tree"], [role="slider"], [role="spinbutton"], [role="combobox"], [role="toolbar"]';
+/**
+ * A key the conversation moves by: pressed on the timeline or on anything in it (a reply's words,
+ * a row's button) but a text box, a menu or a dialog, whose own keys they are, or something drawn
+ * elsewhere whose events only pass through the timeline.
+ */
+function conversationKey(target: EventTarget | null, timeline: HTMLElement) {
+  if (!(target instanceof Element) || !timeline.contains(target)) return false;
+  const own = target.closest(EDITING);
+  return !own || !timeline.contains(own);
+}
+/** The keys that move a conversation. */
+const MOVING_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 /** A session is the conversation; each child turn keeps its Corral Run/Execution identity. */
 export function ChatView({
@@ -441,18 +472,18 @@ export function ChatView({
     followEnd();
   }, [sent]);
   /** A linked row held at `offset` from the top of the view until the person moves. */
-  const place = useRef<(id: string, offset: number) => boolean>(() => false);
+  const place = useRef<(id: string, offset: number) => PlacedRow | null>(() => null);
   place.current = (id, offset) => {
-    const index = items.findIndex((item) => item.id === id);
-    if (index < 0) return false;
+    if (!items.some((item) => item.id === id)) return null;
+    const following = follow.current;
+    // Held rather than followed: focus coming to the row is not the person leaving the end.
     follow.current = false;
-    restoreTop.current = null;
-    restoreAnchor.current = { id, offset };
-    const box = timeline.current;
-    const mounted = box?.querySelector(`[data-chat-item][data-index="${index}"]`);
-    if (!mounted) rows.scrollToIndex(index, { align: 'start' });
+    const anchor = { id, offset };
+    // The hold takes the place of a restored offset still waiting; a row out of the window is
+    // brought in by the hold itself.
+    restoreAnchor.current = anchor;
     position.current();
-    return true;
+    return { following, held: () => restoreAnchor.current === anchor };
   };
   const jumped = useRef<string | undefined>(undefined);
   // A linked row may join the items later; `place` reads the current items and list itself.
@@ -466,14 +497,35 @@ export function ChatView({
     if (!place.current(messageId, 0)) return;
     jumped.current = messageId;
   }, [messageId, items, rows]);
+  // followEnd only writes refs.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refs only
   useEffect(() => {
     const placeRow = (event: Event) => {
       const request = (event as CustomEvent<PlaceRequest>).detail;
-      if (request.sessionId === sessionId) place.current(request.id, request.offset);
+      if (request.sessionId === sessionId)
+        request.placed = place.current(request.id, request.offset);
+    };
+    const toEnd = (event: Event) => {
+      if ((event as CustomEvent<{ sessionId: string }>).detail.sessionId === sessionId) followEnd();
     };
     window.addEventListener(PLACE_ROW, placeRow);
-    return () => window.removeEventListener(PLACE_ROW, placeRow);
+    window.addEventListener(FOLLOW_END, toEnd);
+    return () => {
+      window.removeEventListener(PLACE_ROW, placeRow);
+      window.removeEventListener(FOLLOW_END, toEnd);
+    };
   }, [sessionId]);
+  /**
+   * The person's own move, whichever way: a row held in place (a linked message, a return to a
+   * quote, a restored place) lets go of the view at once. Layout alone never lets it go.
+   */
+  const letGo = () => {
+    if (restoreAnchor.current === null && restoreTop.current === null) return;
+    restoreTop.current = null;
+    restoreAnchor.current = null;
+    readingAnchor.current = null;
+    follow.current = false;
+  };
   const stopRestoring = () => {
     restoreTop.current = null;
     restoreAnchor.current = null;
@@ -548,18 +600,19 @@ export function ChatView({
         // A focused row scrolls into view above the composer, not behind it.
         className={`chat-timeline min-h-0 overscroll-contain scroll-pb-(--composer-h) ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
         onWheel={(event) => {
-          if (!(event.deltaY < 0)) return;
           const box = timeline.current;
+          if (!box || scrollingNested(event.target, box)) return;
+          if (event.deltaY !== 0) letGo();
           // The scroll a wheel causes can land before its event, already at the top; what
           // counts is that the conversation could move up, not where it is now.
-          if (!box || box.scrollHeight <= box.clientHeight || scrollingNested(event.target, box))
-            return;
+          if (!(event.deltaY < 0) || box.scrollHeight <= box.clientHeight) return;
           stopRestoring();
           rememberPlace(box);
         }}
         onPointerDown={(event) => {
           // A scrollbar drag is navigation; clicking message actions is not.
           if (event.target === event.currentTarget) {
+            letGo();
             holdPointer(scrollbarPointer);
             return;
           }
@@ -589,20 +642,23 @@ export function ChatView({
           const box = timeline.current;
           const y = event.touches[0]?.clientY;
           const start = touchY.current;
+          if (!box || y === undefined || start === null || y === start) return;
+          if (scrollingNested(event.target, box)) return;
+          letGo();
           // A finger moving down carries the conversation toward the past.
-          if (!box || y === undefined || start === null || y <= start) return;
-          if (box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
+          if (y < start || box.scrollTop <= 0) return;
           stopRestoring();
         }}
         onKeyDown={(event) => {
           const box = timeline.current;
-          if (!box) return;
-          // On the timeline itself, Home and End (with Ctrl or Cmd as well) go to the first row
-          // and to the end. The browser's own scroll for them animates to an offset that the
-          // scroll anchoring for rows measured on the way carries along, short of either.
-          // Shift and Alt keep their own meanings.
+          if (!box || !conversationKey(event.target, box)) return;
+          if (MOVING_KEYS.has(event.key) && !scrollingNested(event.target, box)) letGo();
+          // Home and End (with Ctrl or Cmd as well) go to the first row and to the end, from
+          // the timeline or from a reply's words in it. The browser's own scroll for them
+          // animates to an offset that the scroll anchoring for rows measured on the way
+          // carries along, short of either. Shift and Alt keep their own meanings.
           const plain = !(event.altKey || event.shiftKey);
-          if (event.target === event.currentTarget && plain && event.key === 'End') {
+          if (plain && event.key === 'End') {
             event.preventDefault();
             followEnd();
             return;
@@ -610,7 +666,7 @@ export function ChatView({
           if (!['ArrowUp', 'PageUp', 'Home'].includes(event.key)) return;
           if (box.scrollTop <= 0 || scrollingNested(event.target, box)) return;
           stopRestoring();
-          if (event.target === event.currentTarget && plain && event.key === 'Home') {
+          if (plain && event.key === 'Home') {
             event.preventDefault();
             // The first row starts at the top whatever the rows below it measure.
             box.scrollTop = 0;

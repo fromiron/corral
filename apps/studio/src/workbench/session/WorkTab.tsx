@@ -15,7 +15,7 @@ import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
-import { ReplySelection } from '../ReplySelection.tsx';
+import { ReplySelection, runRow } from '../ReplySelection.tsx';
 import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
 import { PendingTray } from './PendingTray.tsx';
@@ -78,11 +78,7 @@ export function WorkTab({
   );
   const folderAction =
     folderAccess === 'unlinked' || folderAccess === 'untrusted' || folderAccess === 'missing';
-  // A sent quote leads back to the row of the entry that started the run, or the run's own row
-  // when no entry names it.
-  const rowOf = (runId: string) =>
-    session.entries.find((entry) => entry.runId === runId)?.entryId ??
-    (loose.some((run) => run.runId === runId) ? runId : undefined);
+  const rowOf = (runId: string) => runRow(session.entries, loose, runId);
   return (
     <RunChecks.Provider value={runChecks}>
       {/* The conversation's one selection listener; its toolbar floats over the rows. */}

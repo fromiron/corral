@@ -14,6 +14,7 @@ import {
 } from './types.ts';
 
 const ShortcutKey = z.string().regex(/^(?:[a-z0-9,./[\]]|Digit)$/i);
+// A chord as the shortcut settings save it: each modifier held or not, or left out.
 /** A chord with the platform modifier: what every shortcut may be bound to. */
 const ModChord = z.strictObject({
   key: ShortcutKey,
@@ -24,6 +25,7 @@ const ModChord = z.strictObject({
 /** Alt without the platform modifier: the reply quote's own default kind of chord. */
 const AltChord = z.strictObject({
   key: ShortcutKey,
+  mod: z.literal(false).optional(),
   alt: z.literal(true),
   shift: z.boolean().optional(),
 });

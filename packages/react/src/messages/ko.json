@@ -2530,6 +2530,7 @@
     "removeQuote": "{text} 인용 빼기",
     "quotes": "인용",
     "quoteSelection": "인용",
+    "selectedPassage": "고른 구절",
     "quoteTooLong": "인용은 8,000자까지입니다. 더 짧은 구절을 고르세요.",
     "quoteFailed": "인용을 요청에 붙이지 못했습니다.",
     "goToQuote": "인용한 구절로 가기: {text}",

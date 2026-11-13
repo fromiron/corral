@@ -47,6 +47,25 @@ export function sameChord(a: Chord, b: Chord) {
     Boolean(a.shift) === Boolean(b.shift)
   );
 }
+/**
+ * The chords a browser or the system keeps for itself, which no shortcut takes: with the platform
+ * modifier, editing, finding, tabs, windows and quitting, and in a browser its own window keys;
+ * with Alt alone, the browser's address bar and menus (Alt+D, Alt+E, Alt+F and the menu bar's
+ * letters) and, in a browser, its tabs by number.
+ */
+const RESERVED: { alt: boolean; keys: RegExp; web: boolean }[] = [
+  { alt: false, keys: /^[acvxzysfqwt]$/i, web: false },
+  { alt: false, keys: /^(?:[nlrpd1-9]|Digit)$/i, web: true },
+  { alt: true, keys: /^[bdefhstv]$/i, web: false },
+  { alt: true, keys: /^(?:[1-9]|Digit)$/i, web: true },
+];
+function browserKeeps(chord: Chord, desktop: boolean) {
+  const altOnly = chord.mod !== true;
+  return RESERVED.some(
+    (reserved) =>
+      reserved.alt === altOnly && (!reserved.web || !desktop) && reserved.keys.test(chord.key),
+  );
+}
 export function bindingError(
   id: ShortcutId,
   candidate: Chord,
@@ -65,11 +84,7 @@ export function bindingError(
     (id === 'session.jump') !== (candidate.key === 'Digit')
   )
     return 'reserved';
-  if (
-    (!altOnly && /^[acvxzysfqwt]$/i.test(candidate.key)) ||
-    (!desktop && /^(?:[nlrpd1-9]|Digit)$/i.test(candidate.key))
-  )
-    return 'reserved';
+  if (browserKeeps(candidate, desktop)) return 'reserved';
   return Object.entries(effective).some(
     ([other, chord]) => other !== id && chord && sameChord(candidate, chord),
   )

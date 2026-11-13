@@ -66,14 +66,30 @@ it('rejects conflicting, editing, OS/browser and corrupt saved shortcuts', () =>
 
 it('lets only the reply quote take Alt alone, and never a bare key', () => {
   storage();
-  expect(bindingError('reply.quote', { alt: true, key: 'e' }, effectiveShortcuts(), false)).toBe(
+  expect(bindingError('reply.quote', { alt: true, key: 'k' }, effectiveShortcuts(), false)).toBe(
     null,
   );
-  expect(bindingError('reply.quote', { key: 'e' }, effectiveShortcuts(), false)).toBe('reserved');
-  expect(bindingError('palette', { alt: true, key: 'e' }, effectiveShortcuts(), false)).toBe(
+  expect(bindingError('reply.quote', { key: 'k' }, effectiveShortcuts(), false)).toBe('reserved');
+  expect(bindingError('palette', { alt: true, key: 'k' }, effectiveShortcuts(), false)).toBe(
     'reserved',
   );
   expect(bindingError('reply.quote', { mod: true, key: 'k' }, effectiveShortcuts(), false)).toBe(
     'conflict',
   );
+});
+
+it('keeps the browser’s own Alt keys from the reply quote, as it keeps its other keys from all', () => {
+  storage();
+  for (const key of ['d', 'e', 'f', 'b', 'h', 's', 't', 'v'])
+    expect(bindingError('reply.quote', { alt: true, key }, {}, false), key).toBe('reserved');
+  // Its tabs by number, in a browser only.
+  expect(bindingError('reply.quote', { alt: true, key: '1' }, {}, false)).toBe('reserved');
+  expect(bindingError('reply.quote', { alt: true, key: '1' }, {}, true)).toBeNull();
+  // As settings save a chord: each modifier held or not.
+  for (const key of ['q', 'w', 'k'])
+    expect(
+      bindingError('reply.quote', { key, mod: false, alt: true, shift: false }, {}, false),
+      key,
+    ).toBeNull();
+  expect(bindingError('reply.quote', { mod: true, key: 'w' }, {}, false)).toBe('reserved');
 });

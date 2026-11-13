@@ -1,11 +1,26 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createTextAttachment } from '@corral/core';
 import { fauxAssistantMessage } from '@corral/server/testing';
 import type { Locator, Page } from '@playwright/test';
 import { expect, type Harness, test } from '../server/harness.ts';
 import { newConversation, requestBox } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
+import {
+  conversation,
+  drag,
+  FIRST,
+  keepQuotes,
+  NOT_FOUND,
+  quoted,
+  requests,
+  runStates,
+  SECOND,
+  selected,
+  sendEntry,
+  sendQuote,
+  sentChip,
+  wordPoints,
+} from './replies.ts';
 
 // Scene ⑤, quoting a reply (docs/specs/features/reply-citation.md): a passage chosen by keys
 // alone in one reply, quoted with Alt+Q, sent, and led back to from the sent chip once its row
@@ -61,9 +76,6 @@ async function measure(page: Page, name: string, happen: () => Promise<void>) {
   return result;
 }
 
-const FIRST = 'The quick brown fox jumps over the lazy dog.';
-const SECOND = 'A second paragraph holds another passage worth quoting.';
-
 /** The first character of `word` in the first reply body chosen, where caret browsing would be. */
 async function chooseFrom(page: Page, word: string) {
   await page.evaluate((word) => {
@@ -87,7 +99,6 @@ async function chooseFrom(page: Page, word: string) {
 async function extend(page: Page, length: number) {
   for (let step = 1; step < length; step += 1) await page.keyboard.press('Shift+ArrowRight');
 }
-const selected = (page: Page) => page.evaluate(() => document.getSelection()?.toString() ?? '');
 
 test.use({ live: true, codexLogin: true });
 
@@ -254,89 +265,6 @@ const within = (inner: Box, outer: Box) =>
   inner.left >= outer.left - 0.5 &&
   inner.right <= outer.right + 0.5;
 
-/** A conversation with one reply, and requests that never ran after it to push it away. */
-async function conversation(page: Page, corral: Harness, later: number) {
-  await corral.open('/projects/default');
-  await newConversation(page);
-  const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
-  await requestBox(page).fill('Tell me about the fox');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  const run = () => [...corral.server.coordinator.listRuns()][0];
-  await expect
-    .poll(() => {
-      const found = run();
-      return found ? corral.server.coordinator.getSnapshot(found.runId).projection.status : null;
-    })
-    .toBe('succeeded');
-  const body = page.locator('[data-reply-body]').first();
-  await expect(body).toBeVisible();
-  const runId = run()?.runId as string;
-  const modelCallId = (await body.getAttribute('data-model-call-id')) as string;
-  const drawn = (await body.textContent()) ?? '';
-  if (later) await requests(page, sessionId, later);
-  return { sessionId, runId, modelCallId, drawn };
-}
-/** Requests that never ran, long enough to wrap. */
-const requests = (page: Page, sessionId: string, count: number) =>
-  page.evaluate(
-    async ({ id, count }) => {
-      const { csrfToken } = await (await fetch('/api/v1/session')).json();
-      for (let index = 0; index < count; index += 1) {
-        const response = await fetch(`/api/v1/sessions/${id}/entries`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
-          body: JSON.stringify({
-            intent: 'next',
-            text: `Later request ${index + 1}. ${'Long enough to wrap over several lines. '.repeat(4)}`,
-            state: 'refused',
-          }),
-        });
-        if (!response.ok) throw new Error(`filler entry: ${response.status}`);
-      }
-    },
-    { id: sessionId, count },
-  );
-/** A message sent with a quote of the reply: of `text` at `at` in the drawn reply. */
-async function sendQuote(
-  page: Page,
-  reply: { sessionId: string; runId: string; modelCallId: string; drawn: string },
-  text: string,
-  at: number,
-) {
-  const attachment = createTextAttachment('quote.txt', 'text/plain', text, {
-    kind: 'reply',
-    runId: reply.runId,
-    modelCallId: reply.modelCallId,
-    start: at,
-    end: at + text.length,
-    prefix: reply.drawn.slice(Math.max(0, at - 32), at),
-    suffix: reply.drawn.slice(at + text.length, at + text.length + 32),
-  });
-  await page.evaluate(
-    async ({ id, attachment }) => {
-      const { csrfToken } = await (await fetch('/api/v1/session')).json();
-      const response = await fetch(`/api/v1/sessions/${id}/entries`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
-        body: JSON.stringify({
-          intent: 'next',
-          text: 'About the passage',
-          state: 'refused',
-          attachments: [attachment],
-        }),
-      });
-      if (!response.ok) throw new Error(`entry: ${response.status}`);
-    },
-    { id: reply.sessionId, attachment },
-  );
-}
-const sentChip = (page: Page) =>
-  page
-    .locator('[data-chat-item]')
-    .filter({ hasText: 'About the passage' })
-    .getByRole('button', { name: /^Go to the quoted passage/ });
-const NOT_FOUND = "Couldn't find the passage in the reply";
-
 test('the toolbar stands over the passage’s first line, at its start, and under it only at the top edge', async ({
   page,
   corral,
@@ -486,5 +414,436 @@ test('a passage late in a reply taller than two views is led back to in view, an
   const held = await selectionLines(page);
   expect(Math.abs((held.first?.top ?? 0) - shown.first.top)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: join(SHOTS, 'long-reply.png') });
+  expect(corral.errors).toEqual([]);
+});
+
+// Chosen by hand: passages the mouse chooses, as a person does, and what the toolbar, the quote
+// and its return make of them (reply-citation.md: the toolbar follows the selection now; a quote
+// holds what copying the passage gives).
+
+const ROUND3 = join(OUT, 'citation-round3');
+const ONLY = 'Only one paragraph stands in this reply.';
+
+/** Two replies: the first of two paragraphs, the last of one paragraph with no row under it. */
+async function twoReplies(page: Page, corral: Harness) {
+  corral.fake?.setResponses([
+    fauxAssistantMessage(`${FIRST}\n\n${SECOND}`),
+    fauxAssistantMessage(ONLY),
+  ]);
+  const reply = await conversation(page, corral, 0);
+  await requestBox(page).fill('One more');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => runStates(corral), { timeout: 30_000 }).toBe('succeeded,succeeded');
+  await expect(page.locator('[data-reply-body]')).toHaveCount(2);
+  await waitForStill(page);
+  return reply;
+}
+
+/**
+ * What stands half a second after the pointer let go: the toolbar, the words chosen, and whether
+ * the toolbar is over the passage's first line at its start (a passage chosen whole by clicks
+ * ends past its last line, so only drags are placed).
+ */
+async function after(page: Page) {
+  await page.waitForTimeout(500);
+  const toolbar = page.getByTestId('reply-selection');
+  const text = (await selected(page)).trim();
+  if (!(await toolbar.isVisible())) return { shown: false, text };
+  const line = (await selectionLines(page)).first;
+  const bar = await boxOf(toolbar);
+  const over = !!line && bar.bottom <= line.top + 0.5 && Math.abs(bar.left - line.left) <= 1;
+  return { shown: true, text, over };
+}
+const clear = async (page: Page) => {
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => document.getSelection()?.removeAllRanges());
+  await page.waitForTimeout(200);
+};
+const paragraph = (page: Page, body: number, index: number) =>
+  page.locator('[data-reply-body]').nth(body).locator('p').nth(index);
+async function clicks(page: Page, body: number, index: number, count: number) {
+  const box = await paragraph(page, body, index).boundingBox();
+  if (!box) throw new Error('no paragraph');
+  await page.mouse.click(box.x + 80, box.y + 8, { clickCount: count });
+}
+/** A drag from `word` in paragraph `index` of reply `body`, let go `under` px below the paragraph. */
+async function dragUnder(page: Page, body: number, index: number, word: string, under: number) {
+  const box = await paragraph(page, body, index).boundingBox();
+  if (!box) throw new Error('no paragraph');
+  const at = await wordPoints(page, body, word, word);
+  await page.mouse.move(at.from.x, at.from.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + box.height + under, { steps: 8 });
+  await page.mouse.up();
+}
+
+test('the toolbar follows each passage the mouse chooses, by a drag, two clicks or three', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  await twoReplies(page, corral);
+  await keepQuotes(page);
+  // One drag after another, while the toolbar of the one before still stands.
+  for (const [from, to, text] of [
+    ['quick', 'brown', 'quick brown'],
+    ['lazy', 'dog', 'lazy dog'],
+    ['fox', 'jumps', 'fox jumps'],
+  ] as const) {
+    await drag(page, 0, from, to);
+    expect(await after(page), text).toEqual({ shown: true, text, over: true });
+  }
+  // Two clicks choose a word, three its paragraph, while a toolbar stands.
+  const brown = await wordPoints(page, 0, 'brown', 'brown');
+  await page.mouse.click(brown.from.x + 4, brown.from.y, { clickCount: 2 });
+  expect(await after(page), 'two clicks').toEqual({ shown: true, text: 'brown', over: true });
+  await clicks(page, 0, 0, 3);
+  expect((await after(page)).shown, 'three clicks, first paragraph').toBe(true);
+  expect(await selected(page)).toContain(FIRST);
+  // The last paragraph of a reply, where the browser ends the choice past the reply's body.
+  await clicks(page, 0, 1, 3);
+  const last = await after(page);
+  expect(last.shown, 'three clicks, last paragraph').toBe(true);
+  expect(last.text).toBe(SECOND);
+  await clicks(page, 1, 0, 3);
+  const only = await after(page);
+  expect(only.shown, 'three clicks, the only paragraph of the last reply').toBe(true);
+  mkdirSync(ROUND3, { recursive: true });
+  await page.screenshot({ path: join(ROUND3, 'triple-click-last-paragraph.png') });
+  await page.keyboard.press('Alt+KeyQ');
+  await expect(requestBox(page)).toBeFocused();
+  expect((await quoted(page)).at(-1)?.text.trim()).toBe(ONLY);
+  // A drag let go a little under a reply's last line, with a row under it and with none.
+  for (const [body, index, word, rest] of [
+    [0, 1, 'paragraph', 'paragraph holds another passage worth quoting.'],
+    [1, 0, 'paragraph', 'paragraph stands in this reply.'],
+  ] as const) {
+    for (const under of [8, 24]) {
+      await clear(page);
+      await dragUnder(page, body, index, word, under);
+      const chosen = await after(page);
+      expect(chosen, `reply ${body}, ${under}px under`).toMatchObject({ shown: true, text: rest });
+    }
+    const count = (await quoted(page)).length;
+    await page.keyboard.press('Alt+KeyQ');
+    await expect.poll(async () => (await quoted(page)).length).toBe(count + 1);
+    expect((await quoted(page)).at(-1)?.text.trim()).toBe(rest);
+  }
+  // Over two replies: no toolbar.
+  await clear(page);
+  const from = await wordPoints(page, 0, 'lazy', 'lazy');
+  const to = await wordPoints(page, 1, 'stands', 'stands');
+  await page.mouse.move(from.from.x, from.from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.to.x, to.to.y, { steps: 8 });
+  await page.mouse.up();
+  expect((await after(page)).shown, 'over two replies').toBe(false);
+  expect(corral.errors).toEqual([]);
+});
+
+const CODE = [
+  'Before the code.',
+  '',
+  '```ts',
+  'const answer = 42;',
+  'console.log(answer);',
+  '```',
+  '',
+  'After the code.',
+].join('\n');
+
+test('a passage chosen in a code block stays chosen, its toolbar over its line, as the conversation refreshes', async ({
+  page,
+  corral,
+}) => {
+  corral.fake?.setResponses([fauxAssistantMessage(CODE)]);
+  await conversation(page, corral, 0);
+  await waitForStill(page);
+  await drag(page, 0, 'const', '42');
+  const shown = await after(page);
+  expect(shown).toEqual({ shown: true, text: 'const answer = 42', over: true });
+  // Past a refresh of the run list, which draws the reply again.
+  await page.waitForTimeout(2000);
+  expect(await after(page)).toEqual(shown);
+  mkdirSync(ROUND3, { recursive: true });
+  await page.screenshot({ path: join(ROUND3, 'code-block-toolbar.png') });
+  expect(corral.errors).toEqual([]);
+});
+
+const RICH = [
+  'Plain words with **bold words** and `inline code` and a [link text](https://example.com) here.',
+  '',
+  '- First item of the list',
+  '- Second item of the list',
+  '',
+  '```ts',
+  'const answer = 42;',
+  'console.log(answer);',
+  '```',
+  '',
+  '| Name | Value |',
+  '| --- | --- |',
+  '| alpha | one |',
+  '| beta | two |',
+  '',
+  'The end of the reply.',
+].join('\n');
+
+test('a quote holds what copying the passage gives, and leads back to it', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  corral.fake?.setResponses([fauxAssistantMessage(RICH), fauxAssistantMessage('Noted.')]);
+  const reply = await conversation(page, corral, 0);
+  await waitForStill(page);
+  await keepQuotes(page);
+  const toolbar = page.getByTestId('reply-selection');
+  const cases = [
+    ['a table', 'alpha', 'two', 'alpha\tone\nbeta\ttwo'],
+    [
+      'a list and a code block',
+      'First',
+      'answer);',
+      'First item of the list\nSecond item of the list\nconst answer = 42;\nconsole.log(answer);',
+    ],
+    [
+      'words in bold, code and a link',
+      'bold',
+      'here.',
+      'bold words and inline code and a link text here.',
+    ],
+  ] as const;
+  for (const [index, [name, from, to, text]] of cases.entries()) {
+    await drag(page, 0, from, to);
+    await expect(toolbar, name).toBeVisible();
+    await page.keyboard.press('Control+KeyC');
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    await page.keyboard.press('Alt+KeyQ');
+    await expect.poll(async () => (await quoted(page)).length, name).toBe(index + 1);
+    const quote = (await quoted(page)).at(-1);
+    expect(quote?.text, `${name}: as copied`).toBe(copied);
+    expect(quote?.text, name).toBe(text);
+  }
+  // Sent, then led back to each: the passage is chosen again, as it was copied.
+  await page.keyboard.type('What do these say?');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => runStates(corral), { timeout: 30_000 }).toBe('succeeded,succeeded');
+  const chips = sentChip(page, 'What do these say?');
+  await expect(chips).toHaveCount(cases.length);
+  await waitForStill(page);
+  for (const [index, [name, , , text]] of cases.entries()) {
+    await chips.nth(index).click();
+    await expect(page.locator('[data-reply-body]').first(), name).toBeFocused();
+    expect(await selected(page), `${name}: led back`).toBe(text);
+    await expect(page.getByTestId('quote-detail')).toHaveCount(0);
+  }
+  // A table's quote whose reply is gone: its detail shows the words in their cells.
+  const table = (await quoted(page))[0];
+  await sendEntry(page, reply.sessionId, 'About the table', [
+    { ...table, provenance: { ...(table?.provenance ?? {}), runId: 'run_gone' } },
+  ]);
+  const gone = sentChip(page, 'About the table');
+  await expect(gone).toBeVisible();
+  await waitForStill(page);
+  await gone.click();
+  const detail = page.getByTestId('quote-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('blockquote')).toHaveText('alpha\tone\nbeta\ttwo', {
+    useInnerText: true,
+  });
+  mkdirSync(ROUND3, { recursive: true });
+  await page.screenshot({ path: join(ROUND3, 'table-quote-detail.png') });
+  expect(corral.errors).toEqual([]);
+});
+
+test('the toolbar keeps to its passage as the window changes; it and a quote’s detail are named, and the detail closes as focus leaves', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  corral.fake?.setResponses([fauxAssistantMessage(`${FIRST}\n\n${SECOND}`)]);
+  const reply = await conversation(page, corral, 0);
+  await sendQuote(page, reply, 'a passage that is gone', 4);
+  await page.reload();
+  await expect(sentChip(page)).toBeVisible();
+  await waitForStill(page);
+  await drag(page, 0, 'brown', 'jumps');
+  const toolbar = page.getByRole('toolbar', { name: 'Selected passage', exact: true });
+  await expect(toolbar).toBeVisible();
+  const size = page.viewportSize() ?? { width: 1280, height: 800 };
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await waitForStill(page);
+  const shown = await after(page);
+  expect(shown, 'a narrower, lower window').toEqual({
+    shown: true,
+    text: 'brown fox jumps',
+    over: true,
+  });
+  await page.setViewportSize(size);
+  await waitForStill(page);
+  expect(await after(page), 'the window as it was').toEqual(shown);
+  await clear(page);
+  // The chip says whether its detail is open; the detail is named and goes as focus leaves.
+  const chip = sentChip(page);
+  await expect(chip).toHaveAttribute('aria-expanded', 'false');
+  await chip.click();
+  const detail = page.getByRole('dialog', { name: NOT_FOUND, exact: true });
+  await expect(detail).toBeVisible();
+  await expect(chip).toHaveAttribute('aria-expanded', 'true');
+  await expect(chip).toBeFocused();
+  // Into the detail and on out of it: the detail goes as focus leaves, and focus is where it went.
+  for (let step = 0; step < 3 && (await detail.isVisible()); step += 1)
+    await page.keyboard.press('Tab');
+  await expect(detail).toBeHidden();
+  await expect(chip).toHaveAttribute('aria-expanded', 'false');
+  expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
+  await page.keyboard.press('Shift+Tab');
+  await expect(chip).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(detail).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(detail).toBeHidden();
+  await expect(chip).toBeFocused();
+  expect(corral.errors).toEqual([]);
+});
+
+// A passage looked for far away and not found (reply-citation.md: back to the chip, unless the
+// person moved meanwhile; a conversation that followed its end goes on following it).
+
+test('a passage not found far away: a conversation that followed its end goes on following it', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  corral.fake?.setResponses([fauxAssistantMessage(`${FIRST}\n\n${SECOND}`)]);
+  const reply = await conversation(page, corral, 48);
+  await sendQuote(page, reply, 'quick brown', reply.drawn.indexOf('quick brown'), {
+    modelCallId: 'call_never_drawn',
+  });
+  await page.reload();
+  const chip = sentChip(page);
+  await expect(chip).toBeVisible();
+  await waitForStill(page);
+  const gap = () =>
+    page
+      .getByTestId('chat-timeline')
+      .evaluate((box) => box.scrollHeight - box.scrollTop - box.clientHeight);
+  expect(await gap()).toBeLessThanOrEqual(1);
+  await chip.click();
+  await expect(page.getByTestId('quote-detail')).toBeVisible({ timeout: 10_000 });
+  await waitForStill(page);
+  expect(await gap(), 'back at the end').toBeLessThanOrEqual(1);
+  await page.keyboard.press('Escape');
+  await requests(page, reply.sessionId, 1, 'Arrived request');
+  await expect(
+    page.locator('[data-chat-item]').filter({ hasText: 'Arrived request 1.' }),
+  ).toBeVisible();
+  await waitForStill(page);
+  expect(await gap(), 'a request arrived: still at the end').toBeLessThanOrEqual(1);
+  expect(corral.errors).toEqual([]);
+});
+
+test('a passage not found far away: a person who moved while it was looked for stays where they went', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(120_000);
+  corral.fake?.setResponses([fauxAssistantMessage(`${FIRST}\n\n${SECOND}`)]);
+  const reply = await conversation(page, corral, 48);
+  await sendQuote(page, reply, 'quick brown', reply.drawn.indexOf('quick brown'), {
+    modelCallId: 'call_never_drawn',
+  });
+  await page.reload();
+  const chip = sentChip(page);
+  await expect(chip).toBeVisible();
+  await waitForStill(page);
+  await chip.click();
+  await page.waitForTimeout(900);
+  await page.getByTestId('chat-timeline').hover({ position: { x: 16, y: 200 } });
+  await page.mouse.wheel(0, 700);
+  await page.waitForTimeout(300);
+  await page.mouse.wheel(0, 700);
+  await waitForStill(page);
+  const where = () =>
+    page.getByTestId('chat-timeline').evaluate((box) => {
+      const top = box.getBoundingClientRect().top;
+      const row = [...box.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+        (item) => item.getBoundingClientRect().bottom > top,
+      );
+      return { id: row?.dataset.chatItem, offset: (row?.getBoundingClientRect().top ?? 0) - top };
+    });
+  const went = await where();
+  await expect(page.getByTestId('quote-detail')).toBeVisible({ timeout: 10_000 });
+  await waitForStill(page);
+  const now = await where();
+  expect(now.id, 'the row read').toBe(went.id);
+  expect(Math.abs(now.offset - went.offset), 'where it is').toBeLessThanOrEqual(1);
+  expect(corral.errors).toEqual([]);
+});
+
+test('the quote key bound in settings goes out in an export and comes back, and a browser’s Alt key is refused', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/settings?section=shortcuts');
+  const row = page.getByRole('button', { name: /Quote the selected reply text/ });
+  await expect(row).toBeVisible();
+  const stored = () => page.evaluate(() => localStorage.getItem('corral:shortcuts:v1:web'));
+  // A key the browser keeps with Alt: refused, nothing saved.
+  await row.click();
+  await page.keyboard.press('Alt+KeyD');
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect(await stored()).toBeNull();
+  await page.keyboard.press('Escape');
+  await row.click();
+  await page.keyboard.press('Alt+KeyW');
+  await expect(row).toContainText('Alt+W');
+  const shortcuts = JSON.parse((await stored()) ?? '{}');
+  expect(shortcuts['reply.quote']).toMatchObject({ key: 'w', alt: true });
+  const back = await page.evaluate(async (shortcuts) => {
+    const { csrfToken } = await (await fetch('/api/v1/session')).json();
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`/api/v1/vault/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`${path}: ${response.status}`);
+      return response.json();
+    };
+    const password = 'a long enough password';
+    const application = {
+      version: 1,
+      theme: 'system',
+      locale: 'en',
+      sendKey: 'enter',
+      notify: false,
+      shortcuts,
+    };
+    const { envelope } = await post('export', {
+      password,
+      domains: ['application'],
+      application,
+      bindings: {},
+      includeSecrets: [],
+    });
+    const preview = await post('preview', { envelope, password, application, bindings: {} });
+    const applied = await post('apply', {
+      previewId: preview.previewId,
+      password,
+      domains: ['application'],
+    });
+    const pending = await post('pending', { password });
+    const target = pending.application?.target;
+    const acknowledged = await post('acknowledge', {
+      id: applied.id,
+      password,
+      application: target,
+    });
+    return { shortcuts: target?.shortcuts, status: acknowledged.status };
+  }, shortcuts);
+  expect(back).toEqual({ shortcuts, status: 'committed' });
   expect(corral.errors).toEqual([]);
 });
