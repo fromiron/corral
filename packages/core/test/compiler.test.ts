@@ -66,7 +66,7 @@ describe('compileDefinition: valid definition', () => {
       body: [{ nodeId: 'write', port: 'in' }],
       members: ['write', 'review', 'review_decision'],
       next: [{ nodeId: 'approval', port: 'in' }],
-      exhausted: [],
+      exhausted: [{ nodeId: 'approval', port: 'in' }],
     });
     expect(plan.boxes).toEqual({
       review_loop: {
@@ -138,13 +138,13 @@ describe('compileDefinition: rejected definitions name the location', () => {
         'parallel branches meeting without a join',
         (d) =>
           d.controlEdges.push({
-            id: 'e9',
+            id: 'e10',
             source: 'research',
             sourcePort: 'out',
             target: 'output',
             targetPort: 'in',
           }),
-        { code: 'PARALLEL_MERGE_NEEDS_JOIN', nodeId: 'output', edgeId: 'e9' },
+        { code: 'PARALLEL_MERGE_NEEDS_JOIN', nodeId: 'output', edgeId: 'e10' },
       ],
       [
         'callable agent in the control flow',
@@ -215,7 +215,7 @@ describe('compileDefinition: rejected definitions name the location', () => {
               targetPort: 'enter',
             },
             {
-              id: 'e9',
+              id: 'e10',
               source: 'loop_two',
               sourcePort: 'next',
               target: 'output',

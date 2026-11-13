@@ -15,6 +15,14 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
     return result.plan;
   };
+  /** The research team with its review Loop's exhausted path taken out. */
+  const withoutExhausted = () => {
+    const definition = JSON.parse(JSON.stringify(researchTeam)) as typeof researchTeam;
+    definition.controlEdges = definition.controlEdges.filter(
+      (edge) => edge.sourcePort !== 'exhausted',
+    );
+    return definition;
+  };
 
   /**
    * Records every callback and answers decisions from a script, in order. `stops` is what the
@@ -240,7 +248,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         undefined,
         { 'review_loop#2': 'cap_reached' },
       );
-      const result = await makeRunner().run(planOf(researchTeam), callbacks);
+      const result = await makeRunner().run(planOf(withoutExhausted()), callbacks);
       expect(log.filter((line) => line.startsWith('activate write'))).toEqual([
         'activate write#1',
         'activate write#2',
@@ -250,6 +258,21 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         'leave review_loop#2 cap_reached',
       ]);
       expect(result).toEqual({ kind: 'exhausted', loopId: 'review_loop', reason: 'cap_reached' });
+    });
+
+    it('leaves an exhausted Loop through its exhausted path to the step next leads to', async () => {
+      const { log, callbacks } = recorder(
+        { review_decision: ['revise', 'revise'], approval: ['approve'] },
+        undefined,
+        { 'review_loop#2': 'cap_reached' },
+      );
+      const result = await makeRunner().run(planOf(researchTeam), callbacks);
+      expect(log.slice(-3)).toEqual([
+        'leave review_loop#2 cap_reached',
+        'decide approval → approve',
+        'finalize output',
+      ]);
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
     });
 
     it('opens another round whenever the Loop check lets the Loop go on', async () => {
@@ -272,7 +295,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
     });
 
     it('leaves a stalled Loop through its exhausted path', async () => {
-      const definition = JSON.parse(JSON.stringify(researchTeam)) as typeof researchTeam;
+      const definition = withoutExhausted();
       definition.nodes.push({
         id: 'fallback',
         type: 'agent',

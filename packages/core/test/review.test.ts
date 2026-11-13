@@ -289,14 +289,24 @@ describe('review loop and approvals', () => {
     }
   });
 
-  it('at the Loop cap no third round starts and nobody is asked: the run fails', async () => {
+  it('at the Loop cap no third round starts: the last draft goes on to the team approval', async () => {
     const alwaysRevise = { review: () => 'revise' as const };
     const transport = runtime(alwaysRevise);
     const { runId } = await start(transport);
+    const atApproval = await waitForProjection(transport, runId, (p) => pending(p) !== null);
+    // The first question is the team's own approval step, about the last round's draft.
+    expect(Object.keys(atApproval.approvals)).toHaveLength(1);
+    const [, write2] = executionsOf(atApproval, 'write');
+    expect(pending(atApproval)?.subjectVersionIds[0]).toBe(
+      submittedBy(atApproval, write2?.executionId),
+    );
+    const [, round2] = atApproval.loopIterations.review_loop ?? [];
+    expect(atApproval.iterations[round2 ?? '']?.outcome).toBe('cap_reached');
+    // Then the Output's own final approval.
+    await resolve(transport, runId, 'approve');
+    await resolve(transport, runId, 'approve');
     const final = await waitForProjection(transport, runId, done);
-    expect(final.status).toBe('failed');
-    expect(final.statusReason).toBe('loop_exhausted: review_loop cap_reached');
-    expect(Object.keys(final.approvals)).toEqual([]);
+    expect(final.status).toBe('succeeded');
     expect(executionsOf(final, 'write')).toHaveLength(2);
     await drain();
     expect(executionsOf((await transport.getSnapshot(runId)).projection, 'write')).toHaveLength(2);
