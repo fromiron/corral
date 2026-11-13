@@ -1197,7 +1197,7 @@ it('shows the send keys on the tool line, never a send mode to choose first', as
   const f = await mount(sessionId, null, [], [finished]);
   const line = f.container.querySelector('[data-slot="composer-notes"]');
   // Idle, every key sends a new request: the status line names nothing and the keys say Send.
-  expect(line?.textContent).not.toContain(messages.Sessions.intentShort.next);
+  expect(line?.textContent).not.toContain(messages.Sessions.intent.next);
   expect(keys(f.container)).toContain(messages.Composer.keyHint.new);
   expect(f.container.querySelector('[data-slot="composer-target"]')).toBeNull();
   // A running target: the keys join, interrupt and queue, and the target is named.
@@ -1299,7 +1299,7 @@ it('a next request that will wait is said by the input description only', async 
   expect(line?.classList.contains('sr-only')).toBe(true);
   expect(describedBy(f.container)).toContain(line?.id);
   expect(f.container.querySelector('[data-slot="composer-notes"]')?.textContent).not.toContain(
-    messages.Sessions.intentShort.queue,
+    'Queue',
   );
 });
 

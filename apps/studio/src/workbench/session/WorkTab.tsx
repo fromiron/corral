@@ -18,8 +18,12 @@ import type { SessionSearch } from '../panels/routes.ts';
 import { ReplySelection, runRow } from '../ReplySelection.tsx';
 import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
+import { inConversation, placeEntries, type SteerRecord } from './entryMeta.ts';
 import { PendingTray } from './PendingTray.tsx';
+import { useRunRecords } from './runRecords.ts';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
+
+const NO_READS = { read: 0, started: () => 0 };
 
 /** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
 export function WorkTab({
@@ -31,6 +35,8 @@ export function WorkTab({
   liveRunId,
   selectedRunId,
   onChange,
+  sessionReads = NO_READS,
+  runsListed = true,
   reference,
   onReferenceUsed,
   onPanel,
@@ -44,6 +50,10 @@ export function WorkTab({
   liveRunId: string | null;
   selectedRunId: string | null;
   onChange: () => void;
+  /** The session reads: the number of the latest one back, and of the latest one asked for. */
+  sessionReads?: { read: number; started: () => number };
+  /** Whether the run list has been read since the page opened. */
+  runsListed?: boolean;
   reference: FileReference | null;
   onReferenceUsed: () => void;
   onPanel: (panel: SessionPanel, run?: Partial<SessionSearch>) => void;
@@ -58,7 +68,7 @@ export function WorkTab({
   const { binding } = useBinding(session.projectId);
   const liveSession = liveRunId ? runFor(liveRunId) : sessionFor(session.sessionId);
   const currentSearch = sessionRoute.useSearch();
-  const messageId = currentSearch.message;
+  const linkedMessage = currentSearch.message;
   useEffect(() => {
     if (!liveRunId) return;
     const release = retainRun(liveRunId);
@@ -85,6 +95,34 @@ export function WorkTab({
   const folderAction =
     folderAccess === 'unlinked' || folderAccess === 'untrusted' || folderAccess === 'missing';
   const rowOf = (runId: string) => runRow(session.entries, loose, runId);
+  // What became of each instruction, from its run's record (features/composer-flow.md). One
+  // seen to expire unread asks for the session, which alone says whether it was carried.
+  const { records, watched } = useRunRecords(
+    session.entries.flatMap((e) => (e.intent === 'steer' && e.runId ? [e.runId] : [])),
+    runs,
+    { started: sessionReads.started, onWatchedExpiry: onChange },
+  );
+  const steerRecord = (entry: (typeof session.entries)[number]): SteerRecord | null | undefined => {
+    const record = entry.runId ? records.get(entry.runId) : undefined;
+    if (!record) return undefined;
+    const directive = Object.values(record.projection.directives).find(
+      (item) => entry.commandId != null && item.commandId === entry.commandId,
+    );
+    return directive ? { ...record, directive } : null;
+  };
+  const placement = placeEntries(session.entries, (entry) => {
+    const record = steerRecord(entry);
+    return record === undefined ? undefined : (record?.directive ?? null);
+  });
+  const steerProps = (entry: (typeof session.entries)[number]) => {
+    const record = steerRecord(entry);
+    const seen = record ? watched.get(record.directive.directiveId) : undefined;
+    // Held with what it was until a session read asked after it saw the expiry comes back.
+    const held = seen && sessionReads.read <= seen.at ? { heldAs: seen.before } : {};
+    return { record, ...held };
+  };
+  // A carried request drawn as nothing is reached through the message it came from.
+  const messageId = (linkedMessage && placement.emptyFor.get(linkedMessage)) ?? linkedMessage;
   return (
     <RunChecks.Provider value={runChecks}>
       {/* The conversation's one selection listener; its toolbar floats over the rows. */}
@@ -111,20 +149,24 @@ export function WorkTab({
           />
         }
         items={[
-          ...session.entries
-            .filter((e) => e.state !== 'queued' && e.state !== 'dismissed')
-            .map((entry) => ({
-              id: entry.entryId,
-              content: (
-                <EntryCard
-                  sessionId={session.sessionId}
-                  entry={entry}
-                  runs={runs}
-                  artifactMetadataVersion={artifactMetadataVersion}
-                  onPanel={onPanel}
-                />
-              ),
-            })),
+          ...session.entries.filter(inConversation).map((entry) => ({
+            id: entry.entryId,
+            content: (
+              <EntryCard
+                sessionId={session.sessionId}
+                entry={entry}
+                runs={runs}
+                artifactMetadataVersion={artifactMetadataVersion}
+                onPanel={onPanel}
+                {...(entry.intent === 'steer' ? steerProps(entry) : {})}
+                carried={placement.carriedOf.get(entry.entryId)}
+                carriedHere={placement.carriesActions.has(entry.entryId)}
+                runOnly={placement.runOnly.has(entry.entryId)}
+                sourceShown={placement.sourced.has(entry.entryId)}
+                runsListed={runsListed}
+              />
+            ),
+          })),
           ...loose.map((run) => ({
             id: run.runId,
             content: (

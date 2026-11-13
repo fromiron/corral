@@ -110,7 +110,7 @@ function WorkSessionPage() {
     });
   }, [urlViewKey, viewKey, navigate]);
   const router = useRouter();
-  const { runs, active, refresh, lost, listed } = useSessionRuns(
+  const { runs, active, refresh, lost, listed, sessionReads } = useSessionRuns(
     session.sessionId,
     search.run,
     session.revision,
@@ -266,6 +266,8 @@ function WorkSessionPage() {
           liveRunId={liveRun?.runId ?? null}
           selectedRunId={presentationRunId}
           onChange={refresh}
+          sessionReads={sessionReads}
+          runsListed={listed}
           reference={reference}
           onReferenceUsed={() => setReference(null)}
           onPanel={(value, run) => showPanel({ panel: value, ...run })}
