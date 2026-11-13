@@ -124,7 +124,7 @@ export function NodeSettings({
               aria-label={t('invocation')}
               value={node.invocation}
               onValueChange={(value) =>
-                update(node.id, { invocation: value as typeof node.invocation })
+                update(node.id, { invocation: value as 'scheduled' | 'callable' })
               }
             >
               {(['scheduled', 'callable'] as const).map((value, index) => (

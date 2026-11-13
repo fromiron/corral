@@ -79,7 +79,8 @@ export type DiagnosticCode =
   | 'REVIEW_CONTRACT'
   | 'REVIEW_WITHOUT_CRITERIA'
   | 'UNKNOWN_MODEL_PROFILE'
-  | 'SPAWNS_CAPPED';
+  | 'SPAWNS_CAPPED'
+  | 'ADVISOR_NOT_SUPPORTED';
 
 export interface Diagnostic {
   code: DiagnosticCode;
@@ -233,6 +234,7 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
 
   const context = new Context(definition);
   checkIdentity(context);
+  checkAdvisorsNotSupported(context);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkContainment(context);
   if (context.hasErrors()) return fail(context.diagnostics);
@@ -265,6 +267,25 @@ const BLOCKING = new Set<DiagnosticCode>([
   'BOX_BOUNDARY',
   'ENTRY_INVALID',
 ]);
+
+/**
+ * Advisor nodes and `advise` links are in the contract, but their compile rules
+ * (features/team-graph.md, "구조 규칙" 11) are not built yet: they are refused here, before any
+ * other check, so neither ever reaches the run order.
+ */
+function checkAdvisorsNotSupported(c: Context) {
+  for (const node of c.definition.nodes)
+    if (node.type === 'agent' && node.invocation === 'observer')
+      c.error('ADVISOR_NOT_SUPPORTED', 'advisor nodes cannot run yet', { nodeId: node.id });
+  for (const link of c.definition.capabilityLinks)
+    if (link.kind === 'advise')
+      c.error('ADVISOR_NOT_SUPPORTED', 'advise links cannot run yet', { linkId: link.id });
+}
+
+/** Agent input bindings; an advisor takes none. */
+function agentBindings(node: AgentNode) {
+  return node.invocation === 'observer' ? [] : node.inputBindings;
+}
 
 function checkReviewRecipes(c: Context) {
   for (const loop of c.definition.nodes) {
@@ -311,10 +332,10 @@ function checkReviewRecipes(c: Context) {
       !edge(reviewer.id, 'out', decision.id) ||
       !edge(decision.id, 'pass', loop.id, 'exit') ||
       !edge(decision.id, 'revise', loop.id, 'repeat') ||
-      !reviewer.inputBindings.some(
+      !agentBindings(reviewer).some(
         (binding) => binding.kind === 'task_output' && binding.sourceNodeId === candidate.id,
       ) ||
-      !reviewer.inputBindings.some(
+      !agentBindings(reviewer).some(
         (binding) => binding.kind === 'run_input' && binding.name === 'criteria',
       ) ||
       decision.inputBindings[0]?.sourceNodeId !== reviewer.id
@@ -362,7 +383,7 @@ function checkReviewerCriteria(c: Context) {
   const contracts = new Map(c.definition.roles.map((r) => [r.id, r.outputContract]));
   for (const node of c.definition.nodes) {
     if (node.type !== 'agent' || contracts.get(node.roleId) !== 'review') continue;
-    if (node.inputBindings.some((b) => b.kind === 'run_input' && b.name === 'criteria')) continue;
+    if (agentBindings(node).some((b) => b.kind === 'run_input' && b.name === 'criteria')) continue;
     c.warn(
       'REVIEW_WITHOUT_CRITERIA',
       'this reviewer does not receive the criteria; add the run input "criteria"',
@@ -1062,9 +1083,10 @@ function checkParallel(
 
 // ── capabilities, bindings, profiles ─────────────────────────────────────────
 
-const TOOL_FOR: Record<CapabilityLink['kind'], 'spawn_subagents' | 'ask'> = {
+const TOOL_FOR: Record<CapabilityLink['kind'], 'spawn_subagents' | 'ask' | 'advise'> = {
   delegate: 'spawn_subagents',
   question: 'ask',
+  advise: 'advise',
 };
 
 function checkCapabilities(c: Context, graph: Graph) {
@@ -1261,6 +1283,8 @@ function lower(c: Context, graph: Graph): CompiledPlan {
     };
     switch (node.type) {
       case 'agent':
+        if (node.invocation === 'observer')
+          throw new Error('advisor nodes are refused before lowering');
         steps[id] = {
           ...base,
           kind: 'agent',
@@ -1338,6 +1362,7 @@ function lower(c: Context, graph: Graph): CompiledPlan {
 
   const callables: CompiledPlan['callables'] = {};
   for (const link of definition.capabilityLinks) {
+    if (link.kind === 'advise') throw new Error('advise links are refused before lowering');
     const entry = callables[link.sourceNodeId] ?? { delegate: [], question: [] };
     entry[link.kind].push(link.targetNodeId);
     callables[link.sourceNodeId] = entry;

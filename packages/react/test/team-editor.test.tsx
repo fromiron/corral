@@ -82,7 +82,8 @@ describe('team editor', () => {
     const reviewer = draft.definition.nodes.find(
       (n) => n.type === 'agent' && contracts.get(n.roleId) === 'review',
     );
-    if (reviewer?.type !== 'agent') throw new Error('the pattern made no reviewer');
+    if (reviewer?.type !== 'agent' || reviewer.invocation === 'observer')
+      throw new Error('the pattern made no reviewer');
     renderEditor(
       patchNode(draft, reviewer.id, {
         inputBindings: reviewer.inputBindings.filter((b) => b.kind !== 'run_input'),
@@ -179,7 +180,9 @@ describe('team editor', () => {
     );
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Add' })));
     const node = editor.getState().draft.definition.nodes.find((n) => n.id === 'agent_1');
-    expect(node?.type === 'agent' && node.inputBindings.at(-1)).toMatchObject({
+    expect(
+      node?.type === 'agent' && node.invocation !== 'observer' && node.inputBindings.at(-1),
+    ).toMatchObject({
       kind: 'explicit_version',
       artifactVersionId: 'av_draft_2',
     });

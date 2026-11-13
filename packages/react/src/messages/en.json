@@ -126,6 +126,7 @@
       "next": "next",
       "delegate": "delegate",
       "question": "ask",
+      "advise": "advise",
       "callable": "callable",
       "error": "error",
       "exhausted": "exhausted",
@@ -133,7 +134,8 @@
     },
     "linkLabel": {
       "delegate": "delegates",
-      "question": "asks"
+      "question": "asks",
+      "advise": "advises"
     },
     "nodeStatus": {
       "idle": "Not run",
@@ -192,6 +194,7 @@
     "invocation": "Runs",
     "scheduled": "In the flow",
     "callable": "Only when called",
+    "observer": "As an advisor",
     "prompt": "Role prompt",
     "contract": "Output",
     "contracts": {
@@ -256,6 +259,7 @@
   },
   "Validation": {
     "codes": {
+      "ADVISOR_NOT_SUPPORTED": "Advisors cannot run yet.",
       "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
       "BOX_BOUNDARY": "This connection crosses a box boundary outside its ports.",
       "BOX_PARENT": "This node cannot sit in that box.",
@@ -5680,6 +5684,7 @@
     "kinds": {
       "agent": "Agent",
       "callable": "Callable agent",
+      "observer": "Advisor",
       "review": "Review",
       "approval": "Approval",
       "rule": "Rule",
@@ -5714,7 +5719,8 @@
     "retry": "Retry ×{count}",
     "links": {
       "delegate": "delegates",
-      "question": "asks"
+      "question": "asks",
+      "advise": "advises"
     },
     "rejected": {
       "unknownNode": "That step no longer exists.",
@@ -5751,6 +5757,7 @@
       "invocation": "Runs",
       "scheduled": "In the flow",
       "callable": "When called",
+      "observer": "As an advisor",
       "retry": "Retries after a failure",
       "maxIterations": "Most rounds",
       "stallDetection": "Stop when rounds stop improving",

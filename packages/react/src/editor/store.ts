@@ -1,6 +1,6 @@
-import type { CapabilityLink } from '@corral/contracts';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
+  type CallLinkKind,
   connectCapability,
   type EditorDraft,
   emptyDraft,
@@ -38,7 +38,7 @@ export interface EditorState {
   removeNode(nodeId: string): void;
   removeEdge(edgeId: string): void;
   removeLink(linkId: string): void;
-  connectCapability(source: string, target: string, kind: CapabilityLink['kind']): boolean;
+  connectCapability(source: string, target: string, kind: CallLinkKind): boolean;
   select(nodeId: string | null): void;
 }
 
