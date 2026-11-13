@@ -33,7 +33,7 @@
 | GET /runs/:id/events?after=N | cursor | commit된 domain events의 SSE; token frames 별도 type |
 | GET /runs/:id/artifact-versions/:versionId | — | 현재 조회 가능한 본문은 `{text}`. 기록된 ID지만 본문 수명이 끝나 조회할 수 없으면 HTTP 200 `{text:null, bodyAvailable:false}`를 반환한다. 실행 중 발견한 참조가 조회 전에 해제돼도 정상적인 부재로 처리하며, 없는 Run·다른 Run·알 수 없는 ID는 404다 |
 | POST /runs/:id/commands | `packages/contracts/generated/command.schema.json` | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |
-| POST /runs/:id/executions/:executionId/opened | — | 204. 그 실행 행을 사람이 열어 봤음을 기록한다(전달하지 못한 [감독](features/advisor.md)의 조언이 [확인 필요](features/inbox.md)에서 빠진다). 모르는 실행 단위는 404 |
+| POST /runs/:id/executions/:executionId/opened | — | 204. 그 실행 행을 사람이 열어 본 시각을 기록한다(그때까지 전달하지 못한 [감독](features/advisor.md)의 조언이 [확인 필요](features/inbox.md)에서 빠진다. 그 뒤에 남은 조언은 다시 항목이 되고, 다시 부르면 시각을 새로 적는다). 모르는 실행 단위는 404 |
 | GET /runs/:id/commands/:commandId | — | command 상태·관련 events·적용 scope |
 | GET /runs/:id/artifacts/:artifactId/versions/:version | — | 현재 보관 중인 본문·생성/읽기/지시/검토 경로. 해제된 본문은 조회 불가 |
 | GET /model-profiles | — | public profileId·지원 capability·keyConfigured, secret 없음 |
