@@ -122,6 +122,8 @@ export const WorkerFrame = z.discriminatedUnion('type', [
     chunkIndex: z.int().min(0),
     text: Text,
   }),
+  /** An advisor asks for its next review; the host answers with `review`. */
+  z.strictObject({ type: z.literal('next_review'), ...head, requestId: RequestId }),
   z.strictObject({
     type: z.literal('settled'),
     ...head,
@@ -158,8 +160,24 @@ export const WorkerTool = z.enum([
   'ask',
   'reply',
   'read_artifact',
+  'advise',
 ]);
 export type WorkerTool = z.infer<typeof WorkerTool>;
+
+/** The assignments of a working execution; an advisor's is added only to the core start frame. */
+const WorkAssignment = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('scheduled') }),
+  z.strictObject({ kind: z.literal('delegated'), brief: Text }),
+  z.strictObject({ kind: z.literal('question'), questionId: Identifier, body: Text }),
+]);
+
+/** One review an advisor runs a turn on (`AdvisorReviewRequest`). */
+export const AdvisorReview = z.strictObject({
+  reviewId: Identifier,
+  targetExecutionId: Identifier,
+  text: Text,
+  maxRequests: z.int().min(1).max(64),
+});
 
 export const StartFrame = z.strictObject({
   type: z.literal('start'),
@@ -205,11 +223,13 @@ export const StartFrame = z.strictObject({
   item: ItemRef.optional(),
   /** Tools this execution may propose. The host still checks every call. */
   tools: z.array(WorkerTool),
-  /** Why the execution exists: its own step, a delegated task, or a question to answer. */
+  /**
+   * Why the execution exists: its own step, a delegated task, a question to answer, or the
+   * reviews of an advisor (features/advisor.md).
+   */
   assignment: z.discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('scheduled') }),
-    z.strictObject({ kind: z.literal('delegated'), brief: Text }),
-    z.strictObject({ kind: z.literal('question'), questionId: Identifier, body: Text }),
+    ...WorkAssignment.options,
+    z.strictObject({ kind: z.literal('advisor'), watches: z.array(Identifier).min(1).max(64) }),
   ]),
   /** Callable nodes it may delegate to or ask, as named in the definition. */
   delegateTo: z.array(z.strictObject({ nodeId: Identifier, label: z.string() })),
@@ -307,6 +327,15 @@ export const HostFrame = z.discriminatedUnion('type', [
     reason: z.string().max(500).optional(),
   }),
   z.strictObject({ type: z.literal('cancel'), ...head, reason: z.string().min(1).max(500) }),
+  /** The answer to `next_review`: the next review, or null when the advisor is done. */
+  z.strictObject({
+    type: z.literal('review'),
+    ...head,
+    requestId: RequestId,
+    review: AdvisorReview.nullable(),
+  }),
+  /** The review used up its requests: the advisor stops it and asks for the next one. */
+  z.strictObject({ type: z.literal('end_review'), ...head, reviewId: Identifier }),
 ]);
 export type HostFrame = z.infer<typeof HostFrame>;
 export type StartFrame = z.infer<typeof StartFrame>;
@@ -348,6 +377,8 @@ export const SdkResources = z.strictObject({
 });
 export type SdkResources = z.infer<typeof SdkResources>;
 const sdkHead = { protocolVersion: z.literal(PROTOCOL_VERSION), executionId: Identifier };
+/** An advisor's review frames: the SDK worker never runs an advisor, so it has none of them. */
+const ADVISOR_FRAMES: ReadonlySet<string> = new Set(['next_review', 'review', 'end_review']);
 export const SdkStartFrame = StartFrame.extend({
   ...sdkHead,
   compaction: z
@@ -356,6 +387,8 @@ export const SdkStartFrame = StartFrame.extend({
   tools: z.array(
     z.union([WorkerTool, z.enum(['read', 'edit', 'write', 'run_check', 'lsp_query'])]),
   ),
+  // An advisor starts without a work style, so it only ever runs on the core worker.
+  assignment: WorkAssignment,
   harness: EffectiveHarnessSnapshot,
   resources: SdkResources,
 });
@@ -381,9 +414,9 @@ export const SdkWorkerFrame = z.union([
     requestId: RequestId,
     notice: ExtensionUiNotice,
   }),
-  ...WorkerFrame.options.map((frame) =>
-    frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) }),
-  ),
+  ...WorkerFrame.options
+    .filter((frame) => !ADVISOR_FRAMES.has(frame.shape.type.value))
+    .map((frame) => frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) })),
   z.strictObject({
     type: z.literal('prepare_request'),
     ...sdkHead,
@@ -442,7 +475,9 @@ export const SdkHostFrame = z.union([
     result: ExtensionUiResult,
   }),
   ...HostFrame.options
-    .filter((frame) => frame.shape.type.value !== 'start')
+    .filter(
+      (frame) => frame.shape.type.value !== 'start' && !ADVISOR_FRAMES.has(frame.shape.type.value),
+    )
     .map((frame) => frame.extend({ protocolVersion: z.literal(PROTOCOL_VERSION) })),
   SdkStartFrame,
 ]);

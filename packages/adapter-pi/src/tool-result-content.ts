@@ -1,5 +1,6 @@
 import { IMAGE_MAX_COUNT, ImageInput } from '@corral/contracts';
 import type { ImageContent, TextContent } from '@earendil-works/pi-ai';
+import { adviceResultText } from './worker-tools.ts';
 
 /** Authorized artifact reads carry pixels as image blocks, never base64 in prose. */
 export function corralToolResultContent(name: string, result: Record<string, unknown>) {
@@ -20,6 +21,7 @@ export function corralToolResultContent(name: string, result: Record<string, unk
     );
     return { content, details };
   }
-  content.push({ type: 'text', text: JSON.stringify(result) });
+  const advice = name === 'advise' ? adviceResultText(result) : null;
+  content.push({ type: 'text', text: advice ?? JSON.stringify(result) });
   return { content, details: result };
 }

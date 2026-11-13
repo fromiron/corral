@@ -60,6 +60,12 @@ export class PiAgentAdapter implements AgentAdapter {
 
   async start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle> {
     let resources: SdkResources | undefined;
+    // An advisor starts without its role's work style (features/advisor.md, 계약), so it runs on
+    // the core worker only; one handed a work style is a host error, not an SDK execution.
+    if (input.assignment.kind === 'advisor' && (input.role.harness || input.harness))
+      throw new Error('an advisor runs without a work style');
+    if (input.assignment.kind === 'advisor' && !host.nextReview)
+      throw new Error('the host gives this advisor no reviews');
     if (input.role.harness) {
       if (
         !input.harness ||
@@ -195,6 +201,14 @@ class WorkerExecution {
         if (this.state === 'running' && !this.pendingSettlement)
           this.send({ type: 'interrupt', ...directive });
       },
+      ...(input.assignment.kind === 'advisor'
+        ? {
+            endReview: (reviewId: string) => {
+              if (this.state === 'running' && !this.pendingSettlement)
+                this.send({ type: 'end_review', reviewId });
+            },
+          }
+        : {}),
     };
   }
 
@@ -268,6 +282,28 @@ class WorkerExecution {
     } catch (error) {
       if (this.transportExited || this.state !== 'running' || this.pendingSettlement) return;
       this.send({ type: 'tool_result', requestId, ok: false, reason: reasonOf(error) });
+    }
+  }
+
+  private async nextReview(requestId: string) {
+    const live = () => !this.transportExited && this.state === 'running' && !this.pendingSettlement;
+    try {
+      const review = (await this.host.nextReview?.()) ?? null;
+      if (!live()) return;
+      this.send({
+        type: 'review',
+        requestId,
+        review: review
+          ? {
+              reviewId: review.reviewId,
+              targetExecutionId: review.targetExecutionId,
+              text: review.text,
+              maxRequests: review.maxRequests,
+            }
+          : null,
+      });
+    } catch (error) {
+      if (live()) this.send({ type: 'refused', requestId, reason: reasonOf(error) });
     }
   }
 
@@ -347,7 +383,9 @@ class WorkerExecution {
                 ? ['lsp_query']
                 : []),
             ]
-          : offeredTools(this.input),
+          : this.input.assignment.kind === 'advisor'
+            ? advisorTools(this.input)
+            : offeredTools(this.input),
         assignment:
           this.input.assignment.kind === 'delegated'
             ? { kind: 'delegated', brief: this.input.assignment.brief }
@@ -357,7 +395,9 @@ class WorkerExecution {
                   questionId: this.input.assignment.questionId,
                   body: this.input.assignment.body,
                 }
-              : { kind: 'scheduled' },
+              : this.input.assignment.kind === 'advisor'
+                ? { kind: 'advisor', watches: this.input.assignment.watches }
+                : { kind: 'scheduled' },
         ...(this.input.item ? { item: this.input.item } : {}),
         delegateTo: this.input.capabilities.delegateTo,
         askTo: this.input.capabilities.askTo,
@@ -644,6 +684,13 @@ class WorkerExecution {
         }
         return;
       }
+      case 'next_review': {
+        if (this.resources || this.input.assignment.kind !== 'advisor' || !this.host.nextReview)
+          return this.violation();
+        // The wait for the next review must not block the queue that carries the worker's exit.
+        void this.nextReview(frame.requestId);
+        return;
+      }
       case 'execute_tool': {
         // Invoke after earlier observations/authorization, but let exit/settled frames pass
         // while ask or await_tasks is pending. The Coordinator owns effect cancellation.
@@ -746,6 +793,29 @@ function offeredTools(input: AgentStartInput): WorkerTool[] {
   if (may('submit_result') && assignment.kind !== 'question' && !replies)
     tools.push('submit_result');
   return tools;
+}
+
+const ADVISOR_READ_TOOLS: readonly WorkerTool[] = [
+  'search',
+  'read_document',
+  'list_files',
+  'read_file',
+];
+
+/**
+ * An advisor's tools are what its role was given (the Coordinator's advisor role): its read tools,
+ * `read_artifact` and `advise`. No working tool is offered, whatever else the role lists.
+ */
+function advisorTools(input: AgentStartInput): WorkerTool[] {
+  const { role } = input;
+  return [
+    ...ADVISOR_READ_TOOLS.filter((tool) =>
+      (role.allowedWorkTools as readonly string[]).includes(tool),
+    ),
+    ...(['read_artifact', 'advise'] as const).filter((tool) =>
+      (role.allowedCollaborationTools as readonly string[]).includes(tool),
+    ),
+  ];
 }
 
 function reasonOf(_error: unknown): string {
