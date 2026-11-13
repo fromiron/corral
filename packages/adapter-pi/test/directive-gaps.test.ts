@@ -17,6 +17,7 @@ import {
 import { FakeClock, Gate, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import type { StreamFn } from '@earendil-works/pi-agent-core';
 import {
+  type AssistantMessageEvent,
   createAssistantMessageEventStream,
   createFauxCore,
   type FauxResponseStep,
@@ -227,7 +228,17 @@ function runtime(
     });
     if (!runId) throw new Error(JSON.stringify(receipt.error));
     const events: RunEvent[] = [];
-    transport.subscribe(runId, 0, { onEvent: (e) => events.push(e), onFrame: () => {} });
+    const published: { modelCallId: string; chunkIndex: number; text: string }[] = [];
+    transport.subscribe(runId, 0, {
+      onEvent: (e) => events.push(e),
+      onFrame: (frame) => {
+        published.push({
+          modelCallId: frame.modelCallId,
+          chunkIndex: frame.chunkIndex,
+          text: frame.text,
+        });
+      },
+    });
     const executionId = (
       await waitForProjection(transport, runId, (p) => p.executionOrder.length === 1)
     ).executionOrder[0];
@@ -254,7 +265,7 @@ function runtime(
       );
       return accepted ? projection.directives[accepted.payload.directiveId] : undefined;
     };
-    return { runId, executionId, events, steer, directiveOf };
+    return { runId, executionId, events, steer, directiveOf, published };
   };
   return { transport, coordinator, start, steerNow, compactNow, streamFrames };
 }
@@ -310,7 +321,12 @@ describe('directives sent while the worker is starting', () => {
  * Holds the first response after its first text until `release` opens. A provider that hears
  * the abort meanwhile ends the response there as aborted; a `deaf` one answers in full.
  */
-const holdFirstText = (streamed: Gate, release: Gate, deaf = false) => {
+const holdFirstText = (
+  streamed: Gate,
+  release: Gate,
+  deaf = false,
+  at: Exclude<AssistantMessageEvent['type'], 'done' | 'error'> = 'text_delta',
+) => {
   let calls = 0;
   return (stream: StreamFn): StreamFn =>
     (model, context, options) => {
@@ -322,7 +338,7 @@ const holdFirstText = (streamed: Gate, release: Gate, deaf = false) => {
         let held = false;
         for await (const event of source) {
           out.push(event);
-          if (!held && event.type === 'text_delta') {
+          if (!held && event.type === at && 'partial' in event) {
             held = true;
             streamed.open();
             await release.wait();
@@ -1296,7 +1312,7 @@ describe('empty and whitespace-only text', () => {
       ...(options.wrap ? { wrapStream: options.wrap(gates.streamed, gates.release) } : {}),
       ...(options.contextPolicy ? { contextPolicy: options.contextPolicy } : {}),
     });
-    const { runId, executionId, steer } = await start(options.brief);
+    const { runId, executionId, steer, published } = await start(options.brief);
     if (options.act) {
       await gates.streamed.wait();
       await tick();
@@ -1325,7 +1341,10 @@ describe('empty and whitespace-only text', () => {
       ]),
     );
     const calls = final.executions[executionId]?.modelCallIds ?? [];
-    return { final, frames, partial, calls };
+    const shown = published.map(
+      (frame) => `${frame.modelCallId}#${frame.chunkIndex}=${JSON.stringify(frame.text)}`,
+    );
+    return { final, frames, partial, calls, shown };
   };
   // A transient failure the provider asks to retry at once, so no retry waits.
   const failing = (text: string) =>
@@ -1511,10 +1530,11 @@ describe('empty and whitespace-only text', () => {
     },
   );
 
+  // A tool call is not a letter: whitespace before it waits for the response to end whole.
   it.each<Worker>(['pi-core', 'sdk'])(
-    'whitespace before a %s tool call goes out before the call, as it came',
+    'whitespace before a %s tool call goes out when the response ends whole, on the same call',
     async (worker) => {
-      const { final, frames } = await streamed(worker, [
+      const { final, frames, shown } = await streamed(worker, [
         fauxAssistantMessage([fauxText('\n \n'), fauxToolCall('write_artifact', { text: 'A.' })], {
           stopReason: 'toolUse',
         }),
@@ -1523,6 +1543,68 @@ describe('empty and whitespace-only text', () => {
       expect(final.status).toBe('succeeded');
       expect(frames.filter((frame) => frame.startsWith('call_0001#'))).toEqual([
         'call_0001#0="\\n \\n"',
+      ]);
+      // The host still had the call open, so it kept and published the fragment.
+      expect(shown.filter((frame) => frame.startsWith('call_0001#'))).toEqual([
+        'call_0001#0="\\n \\n"',
+      ]);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'whitespace before a %s tool call is not sent when the response then fails',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(worker, [
+        fauxAssistantMessage([fauxText('\n\n'), fauxToolCall('write_artifact', { text: 'A.' })], {
+          stopReason: 'error',
+          errorMessage: 'fetch failed',
+        }),
+        ...writeThenSubmit(),
+      ]);
+      expect(final.status).toBe('failed');
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'whitespace before a %s tool call is not sent when an interrupt cuts the call while its arguments stream',
+    async (worker) => {
+      const { final, frames, partial, calls } = await streamed(
+        worker,
+        [
+          fauxAssistantMessage(
+            [fauxText('\n\n'), fauxToolCall('write_artifact', { text: 'A long draft.' })],
+            { stopReason: 'toolUse' },
+          ),
+          ...writeThenSubmit(),
+        ],
+        {
+          wrap: (streamed, release) => holdFirstText(streamed, release, false, 'toolcall_delta'),
+          act: ({ steer }) => steer('Stop and cite.', 'cmd_cut', 'interrupt'),
+        },
+      );
+      expect(final.status).toBe('succeeded');
+      expect(final.modelCalls[calls[0] ?? '']?.interrupted).toBe(true);
+      expect(frames.filter((frame) => frame.startsWith(`${calls[0]}#`))).toEqual([]);
+      expect(partial).toEqual({});
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'whitespace before a %s tool call goes out with the first letter that follows the call',
+    async (worker) => {
+      const { final, frames } = await streamed(worker, [
+        fauxAssistantMessage(
+          [fauxText('\n\n'), fauxToolCall('write_artifact', { text: 'A.' }), fauxText('Writing.')],
+          { stopReason: 'toolUse' },
+        ),
+        ...submitAfterWrite,
+      ]);
+      expect(final.status).toBe('succeeded');
+      expect(frames.filter((frame) => frame.startsWith('call_0001#'))).toEqual([
+        'call_0001#0="\\n\\n"',
+        'call_0001#1="Writing."',
       ]);
     },
   );
@@ -1560,6 +1642,108 @@ describe('empty and whitespace-only text', () => {
         'call_0001#3=" \\n"',
       ]);
       expect(partial).toEqual({ call_0001: '\n Shown. \n' });
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s retry streams its text as its own call, from its first fragment',
+    async (worker) => {
+      const { final, frames, calls } = await streamed(worker, [
+        failing('\n'),
+        fauxAssistantMessage(
+          [
+            fauxText('\n'),
+            fauxText('Hello there.'),
+            fauxToolCall('write_artifact', { text: 'A.' }),
+          ],
+          { stopReason: 'toolUse' },
+        ),
+        ...submitAfterWrite,
+      ]);
+      expect(final.status).toBe('succeeded');
+      const [failed, retry] = calls;
+      expect(frames.filter((frame) => !frame.startsWith(`${failed}#`)).slice(0, 2)).toEqual([
+        `${retry}#0="\\n"`,
+        `${retry}#1="Hello there."`,
+      ]);
+      expect(frames.filter((frame) => frame.startsWith(`${failed}#`))).toEqual([]);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s request sent again after a forced compaction streams its text as its own call',
+    async (worker) => {
+      const { final, frames, calls } = await streamed(
+        worker,
+        [
+          fauxAssistantMessage([fauxToolCall('write_artifact', { text: 'First.' })], {
+            stopReason: 'toolUse',
+          }),
+          fauxAssistantMessage('\n', {
+            stopReason: 'error',
+            errorMessage: JSON.stringify({
+              code: 'CONTEXT_OVERFLOW',
+              status: 400,
+              retryAfterMs: null,
+              requestId: null,
+            }),
+          }),
+          fauxAssistantMessage('Summary that keeps the required task.'),
+          fauxAssistantMessage(
+            [fauxText('\n'), fauxText('Again.'), fauxToolCall('write_artifact', { text: 'B.' })],
+            { stopReason: 'toolUse' },
+          ),
+          ...submitAfterWrite,
+        ],
+        {
+          contextPolicy: contextPolicy('core-auto', 64000),
+          brief: 'Keep this requirement. '.repeat(40),
+        },
+      );
+      expect(final.status).toBe('succeeded');
+      const resent = calls[3] ?? '';
+      expect(frames.slice(0, 2)).toEqual([`${resent}#0="\\n"`, `${resent}#1="Again."`]);
+    },
+  );
+
+  it.each<Worker>(['pi-core', 'sdk'])(
+    'a %s call that ends without its final event after only whitespace keeps nothing',
+    async (worker) => {
+      const { final, frames, partial } = await streamed(
+        worker,
+        [
+          fauxAssistantMessage('\n', {
+            stopReason: 'error',
+            errorMessage: JSON.stringify({
+              code: 'AUTH',
+              status: 401,
+              retryAfterMs: null,
+              requestId: null,
+            }),
+          }),
+          ...writeThenSubmit(),
+        ],
+        {
+          // The provider never sends `done` or `error`; only the result says how it ended.
+          wrap: () => (stream) => {
+            let calls = 0;
+            return (model, context, options) => {
+              if (++calls > 1) return stream(model, context, options);
+              const out = createAssistantMessageEventStream();
+              void (async () => {
+                const source = await stream(model, context, options);
+                for await (const event of source)
+                  if (event.type !== 'done' && event.type !== 'error') out.push(event);
+                out.end(await source.result());
+              })();
+              return out;
+            };
+          },
+        },
+      );
+      expect(final.status).toBe('failed');
+      expect(frames).toEqual([]);
+      expect(partial).toEqual({});
     },
   );
 

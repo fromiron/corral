@@ -20,9 +20,9 @@ export function isReplaySafe(partial: Pick<AssistantMessage, 'content'>): boolea
 
 /**
  * The text fragments one call streams to the host, shared by both workers. Whitespace before
- * the response has shown anything waits and goes out, fragment by fragment, just before what
- * it shows first (text or a tool call). A response that ends whole sends what still waits; one
- * that ends unfinished before showing anything sends nothing. Empty fragments are never sent.
+ * the response's first letter waits and goes out, fragment by fragment, just before that
+ * letter; a tool call does not send it. A response that ends whole sends what still waits; one
+ * that ends unfinished before its first letter sends nothing. Empty fragments are never sent.
  */
 export function streamedText(send: (text: string) => void) {
   let waiting: string[] | null = [];
@@ -33,9 +33,8 @@ export function streamedText(send: (text: string) => void) {
   };
   return {
     event(event: AssistantMessageEvent) {
-      if (event.type === 'done' || event.type === 'error') return;
-      if (waiting && !isReplaySafe(event.partial)) release();
       if (event.type !== 'text_delta' || !event.delta) return;
+      if (waiting && event.delta.trim() !== '') release();
       if (waiting) waiting.push(event.delta);
       else send(event.delta);
     },
