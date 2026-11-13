@@ -1,5 +1,5 @@
-import type { SessionEntry, WorkSession } from '@corral/core';
-import { queuedSessionCommandId } from '@corral/core';
+import type { DirectiveView, SessionEntry, WorkSession } from '@corral/core';
+import { createTextAttachment, emptyProjection, queuedSessionCommandId } from '@corral/core';
 import { describe, expect, it, vi } from 'vitest';
 import { createPendingSessionCommands } from '../../../pendingCommands.ts';
 import * as queue from './queue.ts';
@@ -140,5 +140,52 @@ describe('starting a queued request', () => {
   it('has no client auto-start: the server starts the queue when a run ends', () => {
     expect('useAutoStart' in queue).toBe(false);
     expect('autoStartEntry' in queue).toBe(false);
+  });
+});
+
+// features/composer-flow.md "보낸 메시지의 메타 줄": "다시 보내기" sends the message's words and
+// its text attachments. A join's attachments live in its directive, in the run's record.
+describe('sending a join again', () => {
+  it('takes the attachments the join carried', async () => {
+    const notes = createTextAttachment('notes.txt', 'text/plain', 'Look at the cache first.');
+    const join: SessionEntry = {
+      entryId: 'entry_join',
+      intent: 'steer',
+      text: 'Run the tests too',
+      createdAt: '2026-11-13T00:00:00Z',
+      state: 'sent',
+      runId: 'run_old',
+      executionId: 'exec',
+      commandId: 'cmd_join',
+      detail: null,
+    };
+    const projection = emptyProjection('run_old');
+    projection.directives.directive_join = {
+      directiveId: 'directive_join',
+      commandId: 'cmd_join',
+      status: 'not_delivered',
+      attachments: [notes],
+    } as DirectiveView;
+    const start = vi.fn(async (_entry: SessionEntry) => {});
+    await queue.resendQueued(
+      {
+        services: { transport: { getSnapshot: async () => ({ projection }) } } as never,
+        sessionId: 'session',
+        entries: [join],
+        runs: [],
+        active: false,
+        busy: false,
+        autoRequest: { current: null },
+        pending: { current: null },
+        state: { current: { sessionId: 'session', active: false, pending: false } },
+        commandKey: () => 'key',
+        resolvePendingMessage: '',
+        setError: () => {},
+        start,
+      },
+      'entry_join',
+    );
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ text: join.text, attachments: [notes] });
   });
 });

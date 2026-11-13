@@ -185,11 +185,13 @@ test.describe('instruction delivery', () => {
       Object.values(corral.server.coordinator.getSnapshot(runId as string).projection.directives)[0]
         ?.status;
     await expect.poll(status).toBe('queued');
-    // The first UI poll must observe queued before the run resumes (the reproduced stale-state bug).
-    await expect(page.getByTestId('delivery')).toContainText('Waiting for the next model request');
+    // The message's meta line says it waits before the run resumes (the reproduced stale-state
+    // bug), then follows the run's record to read.
+    const line = page.getByTestId('entry-status').last();
+    await expect(line).toContainText('Waiting to join');
     await page.getByRole('button', { name: 'Resume run', exact: true }).click();
     await expect.poll(status).toBe('delivered');
-    await expect(page.getByTestId('delivery')).toContainText('Included in a model request');
+    await expect(line).toContainText(/^Read/);
     expect(
       Object.values(corral.server.coordinator.getSnapshot(runId as string).projection.directives),
     ).toHaveLength(1);

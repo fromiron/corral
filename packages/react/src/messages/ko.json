@@ -1915,21 +1915,16 @@
     "agentSummary": "에이전트 결과(에이전트가 쓴 글)",
     "nextActions": "다음 행동",
     "reviewChanges": "변경 검토",
-    "delivery": "전달: {status}",
     "connectionLost": "서버에 연결할 수 없어 실행 상태를 모릅니다. 끝났거나 취소된 것으로 보지 않습니다.",
     "retry": "다시 시도",
     "reviewLoadFailed": "검토할 항목을 불러오지 못했습니다.",
     "checked": "검사: {name} {state}",
     "notChecked": "검사 안 함",
     "intentShort": {
-      "next": "다음 요청",
-      "queue": "대기열",
-      "steer": "지시",
       "explain": "질문"
     },
     "editTeam": "팀 설계 열기",
     "objectivePlaceholder": "에이전트에게 보내지 않는 메모",
-    "appliesAt": "다음 모델 요청에",
     "autoTeam": "기본 대화",
     "runSettings": "실행 설정",
     "autoModel": "모델",
@@ -1972,7 +1967,6 @@
     "agentCopy": "세션 작업 사본을 읽고 바꿀 수 있습니다.",
     "retryRequest": "같은 요청 다시 보내기",
     "restoreRequest": "메시지 되돌리기",
-    "resendNext": "다음 실행으로 보내기",
     "resolvePendingBeforeRetry": "이전 요청의 접수를 먼저 확인하세요. 접수 여부가 불명확한 동안 다른 요청을 재전송할 수 없습니다.",
     "archivedSending": "메시지를 보내도 이 세션은 보관 상태를 유지합니다.",
     "restoreSession": "세션 되살리기",
@@ -2019,7 +2013,20 @@
       "tooLong": "{line}번째 줄이 {max}자를 넘습니다.",
       "changedElsewhere": "다른 곳에서 완료 기준이 바뀌었습니다. 저장하면 적은 내용으로 바꿉니다."
     },
-    "neededNow": "지금 필요한 것"
+    "neededNow": "지금 필요한 것",
+    "meta": {
+      "waiting": "합류 대기 · 다음 단계에 읽힘",
+      "afterDecision": "결정 뒤에 읽힘",
+      "delivering": "전달하는 중",
+      "read": "읽힘",
+      "interrupted": "끼어듦 · 응답을 끊고 전달됨",
+      "carriedWaiting": "먼저 끝나 다음 요청으로 대기",
+      "carriedStarted": "먼저 끝나 새 요청으로 시작",
+      "notDelivered": "전달되지 않음",
+      "resend": "다시 보내기",
+      "unknown": "전달 여부를 확인하지 못함",
+      "openTarget": "{name}의 실행 기록 열기"
+    }
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",
