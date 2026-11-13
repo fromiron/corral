@@ -1045,10 +1045,15 @@ it('frees a refused continue-or-stop decision and says why in its place', async 
   expect(rowButton('Fix login')).toBeDefined();
 });
 
-/** A run waiting on one written question and one approval. */
-function questionBeside(store: RunSessionStore, runId: string, round = 1) {
+/** A run waiting on one approval and one written request: a question or an extension's input. */
+function questionBeside(
+  store: RunSessionStore,
+  runId: string,
+  round = 1,
+  kind: 'question' | 'extension' = 'question',
+) {
   const executionId = `exec_${runId}`;
-  const requestId = `question_${runId}_${round}`;
+  const requestId = `${kind}_${runId}_${round}`;
   const projection = waitingOn(runId, 'approval');
   projection.executions[executionId] = {
     executionId,
@@ -1081,29 +1086,41 @@ function questionBeside(store: RunSessionStore, runId: string, round = 1) {
       type,
       payload,
     });
-  const asked = event(round * 2 - 1, 'user_input.requested', {
-    requestId,
-    executionId,
-    attemptNo: 1,
-    bodyRef: `body_${requestId}`,
-    schemaHash: 'b'.repeat(64),
-    deadline: '2099-11-13T00:01:00.000Z',
-  });
+  const target = { requestId, executionId, attemptNo: 1 };
+  const asked =
+    kind === 'question'
+      ? event(round * 2 - 1, 'user_input.requested', {
+          ...target,
+          bodyRef: `body_${requestId}`,
+          schemaHash: 'b'.repeat(64),
+          deadline: '2099-11-13T00:01:00.000Z',
+        })
+      : event(round * 2 - 1, 'extension.ui_requested', {
+          ...target,
+          kind: 'input',
+          bodyRef: `body_${requestId}`,
+          bodyHash: 'b'.repeat(64),
+          deadline: '2099-11-13T00:01:00.000Z',
+        });
   store.setState({
     projection,
     events: [asked],
     artifactTexts: {
-      [`body_${requestId}`]: JSON.stringify({
-        key: 'layout',
-        questions: [{ id: 'layout', kind: 'text', prompt: 'Which layout should I keep?' }],
-      }),
+      [`body_${requestId}`]: JSON.stringify(
+        kind === 'question'
+          ? {
+              key: 'layout',
+              questions: [{ id: 'layout', kind: 'text', prompt: 'Which layout should I keep?' }],
+            }
+          : { kind: 'input', title: 'Name the build', placeholder: 'nightly', timeoutMs: 60_000 },
+      ),
     },
   });
   const answer = () =>
     store.setState({
       events: [
         asked,
-        event(round * 2, 'user_input.answered', {
+        event(round * 2, kind === 'question' ? 'user_input.answered' : 'extension.ui_answered', {
           requestId,
           executionId,
           attemptNo: 1,
@@ -1174,6 +1191,51 @@ it('moves focus between a question and an approval waiting on the same run', asy
 
   // Asked again beside the approval: the approval answered, focus goes to the question.
   const second = questionBeside(run.store, 'run_a', 2);
+  await flush();
+  await sendFrom(primary());
+  await act(async () => {
+    decided(run.store, 'approval_run_a_0', 'approved');
+    run.sent[1]?.resolve(receiptFor('run_a', 'approval_run_a_0'));
+  });
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(inputOf(second.requestId));
+});
+
+it('moves focus between an extension’s request and an approval waiting on the same run', async () => {
+  const { stores, rowButton, detail, click } = await mount({ inbox: async () => [decisionA] });
+  await click(rowButton('Fix login'));
+  const run = stores.get('run_a') as RunFixture;
+  const first = questionBeside(run.store, 'run_a', 1, 'extension');
+  await flush();
+  const primary = () =>
+    detail()?.querySelector<HTMLButtonElement>(
+      '[data-approval="approval_run_a_0"] [data-approval-action="primary"]',
+    );
+  const cardOf = (requestId: string) =>
+    detail()?.querySelector<HTMLElement>(`[data-extension="${requestId}"]`);
+  const inputOf = (requestId: string) =>
+    cardOf(requestId)?.querySelector<HTMLInputElement>('input');
+  expect(inputOf(first.requestId)).toBeTruthy();
+
+  // The extension's request answered: focus goes to the approval's main action.
+  await typeInto(inputOf(first.requestId) as HTMLInputElement, 'nightly');
+  await sendFrom(cardOf(first.requestId)?.querySelector('[data-extension-action="primary"]'));
+  expect(run.sendCommand).toHaveBeenCalledTimes(1);
+  await act(async () =>
+    run.sent[0]?.resolve({
+      ...receiptFor('run_a', first.requestId),
+      target: `extension_ui:${first.requestId}`,
+    }),
+  );
+  await flush();
+  await frames();
+  expect(document.activeElement).toBe(primary());
+  await act(async () => first.answer());
+  await flush();
+
+  // Asked again beside the approval: the approval answered, focus goes to the request's field.
+  const second = questionBeside(run.store, 'run_a', 2, 'extension');
   await flush();
   await sendFrom(primary());
   await act(async () => {

@@ -327,6 +327,7 @@ function ExtensionPrompt({
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const card = useRef<HTMLDivElement>(null);
   let request: ExtensionUiRequest | null = null;
   try {
     request = text ? ExtensionUiRequest.parse(JSON.parse(text)) : null;
@@ -336,6 +337,13 @@ function ExtensionPrompt({
   async function answer(value: string | boolean | null) {
     const state = session.getState();
     if (!state.projection || state.runId !== event.runId) return;
+    // As an answered question does: the response place this card stands in, the chat view around
+    // it, and whether focus was in the card when it was answered.
+    const container = card.current?.closest('[data-chat-view]');
+    const place =
+      card.current?.closest('[data-pending-tray]') ?? card.current?.closest('[data-run-response]');
+    const answered = card.current;
+    const ownedFocus = card.current?.contains(document.activeElement);
     setBusy(true);
     setError('');
     try {
@@ -350,6 +358,17 @@ function ExtensionPrompt({
         },
       });
       if (receipt.error) setError(receipt.error.message);
+      else if (ownedFocus)
+        // The next waiting card's main action, else the request box.
+        requestAnimationFrame(() => {
+          if (
+            (container?.isConnected || place?.isConnected) &&
+            document.activeElement === document.body
+          )
+            nextResponseTarget(place?.isConnected ? place : null, container, answered)?.focus({
+              preventScroll: true,
+            });
+        });
     } catch {
       setError(t('answerUnconfirmed'));
     } finally {
@@ -358,10 +377,12 @@ function ExtensionPrompt({
   }
   return (
     <AgentCard
+      ref={card}
       role="article"
       aria-labelledby={titleId}
       className="text-caption"
       data-testid={`extension-ui-${event.payload.requestId}`}
+      data-extension={event.payload.requestId}
     >
       <RequestCardHead
         titleId={titleId}
@@ -426,12 +447,17 @@ function ExtensionPrompt({
               <Button variant="tertiary" disabled={busy} onClick={() => void answer(false)}>
                 {t('confirmNo')}
               </Button>
-              <Button disabled={busy} onClick={() => void answer(true)}>
+              <Button
+                data-extension-action="primary"
+                disabled={busy}
+                onClick={() => void answer(true)}
+              >
                 {t('confirmYes')}
               </Button>
             </>
           ) : request ? (
             <Button
+              data-extension-action="primary"
               disabled={busy || (request.kind === 'select' && !value)}
               onClick={() => void answer(value)}
             >
