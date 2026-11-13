@@ -365,7 +365,9 @@ function SessionComposer({
     setConfirmStop(ownActive !== null);
   };
   // A run command the run refused or whose answer was lost: the activity bar's line says so, where
-  // it says a refused decision, until the next press. Without the run's line, the composer does.
+  // it says a refused decision, until the next press. A lost answer goes once the run changes state
+  // or ends: whatever it was, the run has moved on. The refusal of a run no longer going is said
+  // once, under the input.
   const [commandFailed, setCommandFailed] = useState<{
     runId: string;
     text: string;
@@ -384,8 +386,10 @@ function SessionComposer({
         : failure.kind === 'refused'
           ? tApprovals('refused', { message: failure.message })
           : tActivity('commandUnconfirmed');
-      if (text && going?.runId !== runId) setError(text);
-      else
+      if (text && going?.runId !== runId) {
+        if (failure?.kind === 'refused') setError(text);
+        setCommandFailed(null);
+      } else
         setCommandFailed(
           text && failure
             ? { runId, text, lost: failure.kind === 'unconfirmed', status: going?.status }
@@ -393,12 +397,12 @@ function SessionComposer({
         );
     },
   };
-  // The run moves on: a lost answer whose run has since changed state reached it, and goes; the
-  // failure of a run no longer going is said under the input, as another run's is.
+  // The run moves on: a lost answer goes with the state it was pressed in; the refusal of a run no
+  // longer going is said under the input, as another run's is.
   useEffect(() => {
     if (!commandFailed) return;
     if (going?.runId !== commandFailed.runId) {
-      setError(commandFailed.text);
+      if (!commandFailed.lost) setError(commandFailed.text);
       setCommandFailed(null);
     } else if (commandFailed.lost && going.status !== commandFailed.status) setCommandFailed(null);
   }, [going, commandFailed]);

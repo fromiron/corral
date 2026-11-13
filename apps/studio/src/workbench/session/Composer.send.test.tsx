@@ -1242,6 +1242,36 @@ describe('Stop in Send’s place', () => {
     );
   });
 
+  it('lets a lost answer go with its run: nothing says it under the input', async () => {
+    const f = await mount();
+    f.sendCommand.mockRejectedValueOnce(new Error('Failed to fetch'));
+    await act(async () => stop(f.container)?.click());
+    expect(line(f.container)?.textContent).toContain(messages.Activity.commandUnconfirmed);
+    await f.render(null);
+    expect(f.container.textContent).not.toContain(messages.Activity.commandUnconfirmed);
+    expect(
+      [...f.container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent),
+    ).toEqual(expect.not.arrayContaining([expect.stringMatching(/./)]));
+  });
+
+  it('lets a lost answer go when its run ended before the answer was lost', async () => {
+    const f = await mount();
+    let lose = () => {};
+    f.sendCommand.mockImplementationOnce(
+      () =>
+        new Promise((_done, fail) => {
+          lose = () => fail(new Error('Failed to fetch'));
+        }),
+    );
+    await act(async () => stop(f.container)?.click());
+    await f.render(null);
+    await act(async () => lose());
+    expect(f.container.textContent).not.toContain(messages.Activity.commandUnconfirmed);
+    expect(
+      [...f.container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent),
+    ).toEqual(expect.not.arrayContaining([expect.stringMatching(/./)]));
+  });
+
   it('says a refusal under the input once its run is no longer going', async () => {
     const f = await mount();
     f.sendCommand.mockResolvedValueOnce({ error: { message: 'The run changed' } } as never);
