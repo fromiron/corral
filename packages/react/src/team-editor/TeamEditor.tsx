@@ -1,4 +1,9 @@
-import type { AgentRole, CorralDefinition, HarnessBindingRef } from '@corral/contracts';
+import {
+  type AgentRole,
+  type CorralDefinition,
+  type HarnessBindingRef,
+  isWorkAgent,
+} from '@corral/contracts';
 import {
   isBox,
   ROLE_PRESET_IDS,
@@ -214,18 +219,27 @@ export function TeamEditor({
     setDropped(result.ok && result.droppedHarness ? result.draft : null);
   };
 
-  /** Where a new step goes when nothing else says: after, into or on what is selected. */
-  const placement = (): Placement => {
+  /**
+   * Where a new step goes when nothing else says: after, into or on what is selected. An advisor
+   * is never put into the flow: it watches the selected agent, a callable one too, or nobody.
+   */
+  const placement = (kind?: StepKind): Placement => {
+    const only = selection.nodes.length === 1 ? nodes.get(selection.nodes[0] as string) : undefined;
+    if (kind === 'observer')
+      return isWorkAgent(only) ? { kind: 'after', nodeId: only.id } : { kind: 'empty' };
     if (selection.edge && definition.controlEdges.some((e) => e.id === selection.edge))
       return { kind: 'edge', edgeId: selection.edge };
-    const only = selection.nodes.length === 1 ? nodes.get(selection.nodes[0] as string) : undefined;
     if (only && isBox(only) && !(only.type === 'team' && only.source.kind === 'reference'))
       return { kind: 'into', boxId: only.id };
     if (only && primaryOut(only) && !(only.type === 'agent' && only.invocation === 'callable'))
       return { kind: 'after', nodeId: only.id };
     return { kind: 'empty' };
   };
-  const placeName = (at: Placement) => {
+  const placeName = (at: Placement, kind?: StepKind) => {
+    if (kind === 'observer')
+      return at.kind === 'after' && isWorkAgent(nodes.get(at.nodeId))
+        ? t('addWatching', { name: nodes.get(at.nodeId)?.label ?? at.nodeId })
+        : undefined;
     switch (at.kind) {
       case 'after':
         return t('addAfter', { name: nodes.get(at.nodeId)?.label ?? at.nodeId });
@@ -249,10 +263,19 @@ export function TeamEditor({
     [editor],
   );
 
-  // Flow order for the outline: the canvas reads left to right, then top to bottom.
+  // Flow order for the outline: the canvas reads left to right, then top to bottom. Advisors
+  // are not steps: they come after the flow, in the order of their row.
   const order = useMemo(() => {
+    const advisor = new Set(
+      definition.nodes
+        .filter((n) => n.type === 'agent' && n.invocation === 'observer')
+        .map((n) => n.id),
+    );
     const items = [...layoutTeam(definition).items.values()].sort(
-      (a, b) => a.rect.x - b.rect.x || a.rect.y - b.rect.y,
+      (a, b) =>
+        Number(advisor.has(a.id)) - Number(advisor.has(b.id)) ||
+        a.rect.x - b.rect.x ||
+        a.rect.y - b.rect.y,
     );
     return new Map(items.map((item, index) => [item.id, index]));
   }, [definition]);
@@ -266,13 +289,14 @@ export function TeamEditor({
   const at = menu.at ?? placement();
   const commands: CommandMenuItemData[] = [];
   for (const kind of ADDABLE) {
-    const result = placeStep(draft, kind, at);
+    const where = kind === 'observer' ? (menu.at ?? placement(kind)) : at;
+    const result = placeStep(draft, kind, where);
     const Icon = KIND_ICON[kind];
     commands.push({
       value: `add:${kind}`,
       label: t('addKind', { kind: t(`kinds.${kind}`) }),
       description: result.ok
-        ? (placeName(at) ?? t(`kindDescriptions.${kind}`))
+        ? (placeName(where, kind) ?? t(`kindDescriptions.${kind}`))
         : t(`rejected.${result.reason}`),
       icon: Icon,
       group: t('groups.add'),
@@ -545,7 +569,7 @@ export function TeamEditor({
                   setDragging(kind);
                 }}
                 onDragEnd={() => setDragging(null)}
-                onClick={() => apply(placeStep(draft, kind, placement()))}
+                onClick={() => apply(placeStep(draft, kind, placement(kind)))}
               >
                 <Icon />
               </Button>

@@ -107,6 +107,9 @@ export function createSubagentsVaultAdapter(options: {
     if (!nodes.length) throw new Error('The source team has no callable agents.');
     const profiles = await options.profiles();
     const parent = record.definition.nodes.find((node) => node.id === bindings.parentNodeId);
+    // An advisor neither delegates nor is called (team-graph.md structure rule 11).
+    if (parent?.type === 'agent' && parent.invocation === 'observer')
+      throw new Error('Bind the parent to an agent in the flow, not an advisor.');
     const parentRole =
       parent?.type === 'agent'
         ? record.definition.roles.find((role) => role.id === parent.roleId)

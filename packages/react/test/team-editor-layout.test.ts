@@ -160,3 +160,56 @@ describe('team editor layout: reference teams', () => {
     expect(l.ports.some((p) => p.nodeId === nodeId && p.port === 'body')).toBe(false);
   });
 });
+
+// Advisors sit in one row above the flow, in the order of the agents they watch
+// (docs/specs/features/canvas.md rules 2 and 4).
+describe('team editor layout: advisors', () => {
+  const watching = (draft: EditorDraft, agent: string) =>
+    ok(placeStep(draft, 'observer', { kind: 'after', nodeId: agent }));
+
+  it('puts advisors in one row above the flow, in the order of the agents they watch', () => {
+    const base = chain(3);
+    const late = watching(base, 'agent_3');
+    const early = watching(late.draft, 'agent_1');
+    const before = layout(base);
+    const l = layout(early.draft);
+    const flowTop = Math.min(...['agent_1', 'agent_2', 'agent_3'].map((id) => rect(l, id).y));
+    const [a, b] = [rect(l, early.nodeId), rect(l, late.nodeId)] as [Rect, Rect];
+    expect(a.y).toBe(b.y);
+    expect(a.y + a.h).toBeLessThan(flowTop);
+    expect(a.x + a.w).toBeLessThanOrEqual(b.x);
+    expect(a.x).toBe(rect(l, 'agent_1').x);
+    // The flow does not move for them.
+    for (const id of ['agent_1', 'agent_2', 'agent_3'])
+      expect(rect(l, id)).toEqual(rect(before, id));
+    expect(overlap(a, b)).toBe(false);
+  });
+
+  it('moves nothing else: no step, box or callable agent', () => {
+    let base = ok(wrapIn(chain(3), ['agent_2'], 'loop')).draft;
+    base = ok(placeStep(base, 'agent', { kind: 'empty' })).draft;
+    base = patchNode(base, 'agent_4', { invocation: 'callable' });
+    const before = layout(base);
+    const after = layout(watching(base, 'agent_2').draft);
+    for (const [id, item] of before.items) expect(rect(after, id)).toEqual(item.rect);
+  });
+
+  it('gives an advisor no ports and draws its watch as an advise connection', () => {
+    const { draft, nodeId } = watching(chain(2), 'agent_2');
+    const l = layout(draft);
+    expect(l.ports.filter((p) => p.nodeId === nodeId)).toEqual([]);
+    const drawn = l.edges.filter((e) => e.from === nodeId);
+    expect(drawn.map((e) => [e.kind, e.to, e.label?.text, e.insertAt])).toEqual([
+      ['advise', 'agent_2', 'advise', null],
+    ]);
+  });
+
+  it('draws the watch of an agent inside a collapsed box to the box tile', () => {
+    const { draft: boxed, nodeId: loop } = ok(wrapIn(chain(3), ['agent_2'], 'loop'));
+    const { draft, nodeId } = watching(boxed, 'agent_2');
+    const l = layout(draft, new Set([loop]));
+    expect(l.items.get(loop)?.kind).toBe('tile');
+    expect(l.edges.find((e) => e.from === nodeId)?.to).toBe(loop);
+    expect(rect(l, nodeId).y + rect(l, nodeId).h).toBeLessThan(rect(l, loop).y);
+  });
+});

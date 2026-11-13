@@ -1,10 +1,11 @@
-import type {
-  AgentRole,
-  ControlEdge,
-  CorralDefinition,
-  CorralNode,
-  HarnessBindingRef,
-  TargetPort,
+import {
+  type AgentRole,
+  type ControlEdge,
+  type CorralDefinition,
+  type CorralNode,
+  type HarnessBindingRef,
+  isWorkAgent,
+  type TargetPort,
 } from '@corral/contracts';
 import {
   boxBoundaryViolation,
@@ -17,9 +18,11 @@ import {
   wouldCreateCycle,
 } from '@corral/core';
 import {
+  addAdvisor,
   addNode,
   duplicateNode,
   type EditorDraft,
+  watchAgent as linkWatch,
   nextId,
   removeNode,
   withDefinition,
@@ -32,6 +35,8 @@ import {
 
 export type StepKind =
   | 'agent'
+  /** An advisor: an agent outside the flow that watches others (features/advisor.md). */
+  | 'observer'
   | 'review'
   | 'approval'
   | 'rule'
@@ -64,7 +69,10 @@ export type EditRejection =
   | 'notABox'
   | 'noPredecessor'
   | 'oneAgentOnly'
-  | 'roleNeedsAgent';
+  | 'roleNeedsAgent'
+  | 'advisorOutsideBoxes'
+  | 'watchNeedsAdvisor'
+  | 'watchNeedsAgent';
 
 export type EditResult =
   | { ok: true; draft: EditorDraft; nodeId?: string }
@@ -90,6 +98,8 @@ export interface PortRequest {
 }
 
 const nodesOf = (definition: CorralDefinition) => new Map(definition.nodes.map((n) => [n.id, n]));
+const isAdvisor = (node: CorralNode | undefined) =>
+  node?.type === 'agent' && node.invocation === 'observer';
 
 /** The port a step continues from: agent and join `out`, a decision's first branch, a box's `next`. */
 export function primaryOut(node: CorralNode): string | null {
@@ -187,6 +197,9 @@ function createStep(
   };
   const numbered = (base: string, index: number) => (index === 1 ? base : `${base} ${index}`);
   switch (kind) {
+    case 'observer':
+      // Never in a box: an advisor sits outside the flow.
+      return addAdvisor(draft);
     case 'agent':
     case 'output':
       return placed(addNode(draft, kind));
@@ -295,6 +308,16 @@ export function placeStep(
 ): EditResult {
   const { definition } = draft;
   const nodes = nodesOf(definition);
+  if (kind === 'observer') {
+    // Never put into the flow: placed on an agent it watches that agent, anywhere else nobody.
+    const watched = at.kind === 'after' ? nodes.get(at.nodeId) : undefined;
+    if (at.kind === 'after' && !watched) return { ok: false, reason: 'unknownNode' };
+    const created = addAdvisor(draft);
+    const linked = isWorkAgent(watched)
+      ? linkWatch(created.draft, created.nodeId, watched.id)
+      : null;
+    return { ok: true, nodeId: created.nodeId, draft: linked?.ok ? linked.draft : created.draft };
+  }
   switch (at.kind) {
     case 'empty': {
       const created = createStep(draft, kind, null, options.reference);
@@ -411,6 +434,14 @@ export function placeStep(
   }
 }
 
+// ── advisors ─────────────────────────────────────────────────────────────────
+
+/** An advisor starts watching a scheduled or callable agent. Removing the link stops it. */
+export function watchAgent(draft: EditorDraft, advisorId: string, agentId: string): EditResult {
+  const linked = linkWatch(draft, advisorId, agentId);
+  return linked.ok ? { ok: true, draft: linked.draft } : linked;
+}
+
 // ── boxes ────────────────────────────────────────────────────────────────────
 
 /**
@@ -420,13 +451,17 @@ export function placeStep(
  */
 export function wrapIn(
   draft: EditorDraft,
-  ids: readonly string[],
+  selected: readonly string[],
   kind: 'loop' | 'team',
 ): EditResult {
   const { definition } = draft;
   const nodes = nodesOf(definition);
+  if (selected.some((id) => !nodes.has(id))) return { ok: false, reason: 'unknownNode' };
+  // An advisor in the selection stays outside (canvas.md rule 5).
+  const ids = selected.filter((id) => !isAdvisor(nodes.get(id)));
+  if (selected.length > 0 && ids.length === 0) return { ok: false, reason: 'advisorOutsideBoxes' };
   const members = ids.map((id) => nodes.get(id));
-  if (members.length === 0 || members.some((n) => !n)) return { ok: false, reason: 'unknownNode' };
+  if (members.length === 0) return { ok: false, reason: 'unknownNode' };
   const parentId = members[0]?.parentId ?? null;
   if (members.some((n) => (n?.parentId ?? null) !== parentId))
     return { ok: false, reason: 'mixedBoxes' };
@@ -536,6 +571,7 @@ export function setParent(draft: EditorDraft, id: string, parentId: string | nul
   const node = nodes.get(id);
   if (!node) return { ok: false, reason: 'unknownNode' };
   if (parentId !== null) {
+    if (isAdvisor(node)) return { ok: false, reason: 'advisorOutsideBoxes' };
     const box = nodes.get(parentId);
     if (!isBox(box) || (box.type === 'team' && box.source.kind === 'reference'))
       return { ok: false, reason: 'notABox' };
@@ -834,7 +870,8 @@ export function importRole(
     targetId = created.nodeId as string;
   }
   const target = targetId ? nodesOf(next.definition).get(targetId) : undefined;
-  if (target?.type !== 'agent') return { ok: false, reason: 'roleNeedsAgent' };
+  // An advisor's role holds advisor tools only; a working agent's role would not fit it.
+  if (target?.type !== 'agent' || isAdvisor(target)) return { ok: false, reason: 'roleNeedsAgent' };
   const label = ids.length === 0 ? source.name : target.label;
   const { id: roleId, counters } = nextId(next, 'role');
   const {

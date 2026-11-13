@@ -4,7 +4,8 @@ import { isBox, outputPortsOf } from '@corral/core';
 // Automatic layout for the team editor (docs/specs/features/team-graph.md). Nobody places nodes:
 // each box lays out its own members in layers from left to right, sizes itself around them and
 // takes part in its parent's layout as one item. Chains stay on one line; a fan-out or a
-// decision's branches stack below it. Callable agents sit in a row under the flow.
+// decision's branches stack below it. Callable agents sit in a row under the flow, advisors in a
+// row above it.
 
 export const GEOMETRY = {
   node: { w: 216, h: 76 },
@@ -43,7 +44,8 @@ export interface Point {
 
 export interface LaidEdge {
   id: string;
-  kind: 'control' | 'call';
+  /** A control edge, a call link (`delegate`, `question`) or an advisor's `advise` link. */
+  kind: 'control' | 'call' | 'advise';
   /** The drawn ends: a node hidden in a collapsed box is drawn at that box's tile. */
   from: string;
   to: string;
@@ -156,7 +158,7 @@ export function layoutTeam(
 
   function measureContainer(container: string | null): Measured {
     const members = definition.nodes.filter(
-      (n) => (n.parentId ?? null) === container && !callable(n),
+      (n) => (n.parentId ?? null) === container && !callable(n) && !advisor(n),
     );
     if (members.length === 0) return { w: 0, h: 0, main: 0, place() {} };
     const ids = members.map((n) => n.id);
@@ -323,9 +325,41 @@ export function layoutTeam(
     nextX = x + w + GEOMETRY.padX;
   }
 
+  // Advisors: one row above the flow, in the order of the agents they watch. The flow keeps its
+  // place, so adding or removing an advisor moves no step.
+  const advisors = definition.nodes.filter(advisor);
+  const watchedX = (id: string) => {
+    let x = Number.POSITIVE_INFINITY;
+    for (const link of definition.capabilityLinks) {
+      if (link.kind !== 'advise' || link.sourceNodeId !== id) continue;
+      const watched = items.get(shownAs(link.targetNodeId));
+      if (watched) x = Math.min(x, watched.rect.x);
+    }
+    return x;
+  };
+  const advisorTop = items.size ? -(GEOMETRY.node.h + GEOMETRY.callGap) : 0;
+  let advisorX = 0;
+  for (const node of [...advisors].sort(
+    (a, b) => watchedX(a.id) - watchedX(b.id) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+  )) {
+    const want = watchedX(node.id);
+    const x = Math.max(advisorX, Number.isFinite(want) ? want : advisorX);
+    const { w, h } = GEOMETRY.node;
+    items.set(node.id, {
+      id: node.id,
+      kind: 'node',
+      rect: { x, y: advisorTop, w, h },
+      mainY: advisorTop + h / 2,
+      depth: 0,
+    });
+    advisorX = x + w + GEOMETRY.padX;
+  }
+
   const { edges, ports } = routeTeam(definition, items, collapsed);
   return { items, edges, ports, bounds: boundsOf(items) };
 }
+
+const advisor = (n: CorralNode | undefined) => n?.type === 'agent' && n.invocation === 'observer';
 
 /** Where the items reach: the area to fit in view. */
 export function boundsOf(items: ReadonlyMap<string, LaidItem>): Rect {
@@ -363,7 +397,9 @@ export function routeTeam(
   const ports = portsOf(definition, items, shownAs);
   const edges = [
     ...definition.controlEdges.flatMap((edge) => routeControl(edge, nodes, items, shownAs, ports)),
-    ...definition.capabilityLinks.flatMap((link) => routeCall(link, items, shownAs)),
+    ...definition.capabilityLinks.flatMap((link) =>
+      link.kind === 'advise' ? routeAdvise(link, items, shownAs) : routeCall(link, items, shownAs),
+    ),
   ];
   return { edges, ports: [...ports.values()] };
 }
@@ -383,7 +419,8 @@ function portsOf(
     marks.set(portKey(nodeId, port, side), { nodeId, port, side, at });
   for (const node of definition.nodes) {
     const item = items.get(node.id);
-    if (!item || shownAs(node.id) !== node.id) continue;
+    // An advisor has no control ports: it is not a step (team-graph.md port table).
+    if (!item || shownAs(node.id) !== node.id || advisor(node)) continue;
     const { x, y, w, h } = item.rect;
     if (item.kind === 'box') {
       mark(node.id, 'enter', 'in', { x, y: item.mainY });
@@ -507,6 +544,39 @@ function routeControl(
       path,
       arrow: !(to === edge.target && (edge.targetPort === 'exit' || edge.targetPort === 'repeat')),
       insertAt,
+    },
+  ];
+}
+
+/**
+ * From the bottom of an advisor down to the top of an agent it watches, named beside the arrow
+ * so the name stays off the line. One that does not lie below is drawn as a call link is.
+ */
+function routeAdvise(
+  link: CapabilityLink,
+  items: ReadonlyMap<string, LaidItem>,
+  shownAs: (id: string) => string,
+): LaidEdge[] {
+  const from = shownAs(link.sourceNodeId);
+  const to = shownAs(link.targetNodeId);
+  const source = items.get(from);
+  const target = items.get(to);
+  if (!source || !target || from === to) return [];
+  if (target.rect.y < source.rect.y + source.rect.h)
+    return routeCall(link, items, shownAs).map((edge) => ({ ...edge, kind: 'advise' }));
+  const a = { x: source.rect.x + source.rect.w / 2, y: source.rect.y + source.rect.h };
+  const b = { x: target.rect.x + target.rect.w / 2, y: target.rect.y };
+  const bend = Math.max(24, (b.y - a.y) / 2);
+  return [
+    {
+      id: link.id,
+      kind: 'advise',
+      from,
+      to,
+      path: `M${a.x} ${a.y} C${a.x} ${a.y + bend} ${b.x} ${b.y - bend} ${b.x} ${b.y}`,
+      arrow: true,
+      insertAt: null,
+      label: { text: link.kind, at: { x: b.x + 8, y: b.y - 10 } },
     },
   ];
 }

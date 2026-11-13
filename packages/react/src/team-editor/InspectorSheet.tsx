@@ -1,4 +1,4 @@
-import type { ControlEdge, CorralNode, TargetPort } from '@corral/contracts';
+import { type ControlEdge, type CorralNode, isWorkAgent, type TargetPort } from '@corral/contracts';
 import { type Diagnostic, outputPortsOf } from '@corral/core';
 import { type ReactNode, useId } from 'react';
 import { useTranslations } from 'use-intl';
@@ -239,7 +239,7 @@ export function InspectorSheet({
               {action.label}
             </Button>
           ))}
-        {onImportRole && ids.length === 1 && nodes.get(ids[0] as string)?.type === 'agent' ? (
+        {onImportRole && ids.length === 1 && isWorkAgent(nodes.get(ids[0] as string)) ? (
           <Button variant="secondary" size="compact" onClick={onImportRole}>
             {t('importRole')}
           </Button>
