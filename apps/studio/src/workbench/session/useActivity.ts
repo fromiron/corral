@@ -16,6 +16,7 @@ import {
   waitingToolPlan,
 } from '@corral/react';
 import { type RefObject, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -130,7 +131,10 @@ export function closedLine(input: ActivityInput): ClosedLine {
 /**
  * The `data-presence-label` values on screen in the conversation this element is in: one
  * observer on the timeline (features/composer-flow.md "보안·성능·접근성"), with the composer lying
- * over its bottom edge left out, and the labels rows bring as they mount.
+ * over its bottom edge left out, and the labels rows bring as they mount. A label that came in the
+ * timeline and is not measured yet counts as on screen until the observer says it is not: what
+ * comes in view is never pointed at for the frames before its first measure, and what comes out of
+ * view is said a few frames late, once. A label not in the timeline at all is not on screen.
  */
 export function useVisibleLabels(anchor: RefObject<HTMLElement | null>): ReadonlySet<string> {
   const [key, setKey] = useState('');
@@ -139,23 +143,30 @@ export function useVisibleLabels(anchor: RefObject<HTMLElement | null>): Readonl
     const timeline = view?.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
     if (!view || !timeline || typeof IntersectionObserver === 'undefined') return;
     const composer = view.querySelector<HTMLElement>('[data-testid="chat-composer"]');
-    const seen = new Set<Element>();
-    let watched = new WeakSet<Element>();
+    // Each label element in the timeline and whether it is on screen: measured, or assumed so
+    // from the moment it came until its first measure.
+    const shown = new Map<Element, boolean>();
     let observer: IntersectionObserver | null = null;
     let margin = -1;
-    const publish = () => {
+    let published: string | null = null;
+    const publish = (now = false) => {
       const values = new Set<string>();
-      for (const element of seen) {
+      for (const [element, onScreen] of shown) {
         const value = element.isConnected ? element.getAttribute('data-presence-label') : null;
-        if (value) values.add(value);
-        else seen.delete(element);
+        if (!value) shown.delete(element);
+        else if (onScreen) values.add(value);
       }
-      setKey([...values].sort().join('\n'));
+      const next = [...values].sort().join('\n');
+      if (next === published) return;
+      published = next;
+      // A label that just came is said before the frame that paints it.
+      if (now) flushSync(() => setKey(next));
+      else setKey(next);
     };
     const watch = () => {
       for (const element of timeline.querySelectorAll('[data-presence-label]')) {
-        if (watched.has(element)) continue;
-        watched.add(element);
+        if (shown.has(element)) continue;
+        shown.set(element, true);
         observer?.observe(element);
       }
     };
@@ -164,27 +175,31 @@ export function useVisibleLabels(anchor: RefObject<HTMLElement | null>): Readonl
       if (covered === margin) return;
       margin = covered;
       observer?.disconnect();
-      seen.clear();
-      watched = new WeakSet();
       observer = new IntersectionObserver(
         (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting && entry.intersectionRect.height > 0) seen.add(entry.target);
-            else seen.delete(entry.target);
-          }
+          for (const entry of entries)
+            if (shown.has(entry.target))
+              shown.set(entry.target, entry.isIntersecting && entry.intersectionRect.height > 0);
           publish();
         },
         { root: timeline, rootMargin: `0px 0px -${covered}px 0px` },
       );
+      // A new margin measures every label again; until then each keeps what it was.
+      for (const element of shown.keys()) observer.observe(element);
       watch();
       publish();
     };
     build();
     const mutations = new MutationObserver(() => {
       watch();
-      publish();
+      publish(true);
     });
-    mutations.observe(timeline, { childList: true, subtree: true });
+    mutations.observe(timeline, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-presence-label'],
+    });
     const resized = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(build) : null;
     if (composer) resized?.observe(composer);
     return () => {

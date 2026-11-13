@@ -285,13 +285,15 @@ export function RunMessage({
   // composer's notice names a waiting question, so the turn does not repeat either.
   const interactions = sessionId ? pendingInteractions(state.events, projection) : [];
   if (!projection && sessionId)
-    // The row's three lines before its record is read; the words come into the same places.
+    // The row's three lines before its record is read; the words come into the same places. The
+    // place of the run's state is its own already, so the activity bar does not say the state for
+    // a row on screen while its words load.
     return (
       <RunRow
         {...held}
         head={
           <RunHead trailing={runLine}>
-            <Skeleton className="h-3 w-40 max-w-full" />
+            <Skeleton data-presence-label={`run:${runId}`} className="h-3 w-40 max-w-full" />
           </RunHead>
         }
         tail={<RunTail />}
