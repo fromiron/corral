@@ -207,6 +207,18 @@ it('keeps the same parts from before the record is read to the working run', asy
   expect(part(f.container, 'head')?.textContent).toContain('Run #1');
 });
 
+it('marks its head as the run’s place before its record is read, once, as after', async () => {
+  // The row is on screen from the moment it comes: the activity bar must not say the run's state
+  // for it while its words load.
+  const f = await show(null);
+  const label = () => f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
+  expect(label()).toHaveLength(1);
+  expect(part(f.container, 'head')?.contains(label()[0] ?? null)).toBe(true);
+  await f.set(running());
+  expect(label()).toHaveLength(1);
+  expect(part(f.container, 'head')?.contains(label()[0] ?? null)).toBe(true);
+});
+
 it('the head and tail say nothing to assistive tech on their own', async () => {
   const f = await show(running());
   expect(part(f.container, 'head')?.getAttribute('aria-live')).toBe('off');

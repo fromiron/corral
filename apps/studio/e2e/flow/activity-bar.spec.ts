@@ -1210,7 +1210,15 @@ test('⑩ open, the work plan keeps its height as its steps go from waiting to w
   expect(corral.errors).toEqual([]);
 });
 
-type LineFrame = { at: number; line: string | null; label: string | null; text: string };
+type LineFrame = {
+  at: number;
+  line: string | null;
+  label: string | null;
+  text: string;
+  /** Where the newest run row's label stands in the conversation's view, and how far the view is from its end. */
+  row?: string;
+  gap?: number;
+};
 
 /** Every frame from now on: the closed line's kind, the state it writes for an unseen row, and its words. */
 function watchClosedLine(page: Page) {
@@ -1227,13 +1235,34 @@ function watchClosedLine(page: Page) {
         label:
           row?.querySelector('[data-presence-label]')?.getAttribute('data-presence-label') ?? null,
         text: ((row as HTMLElement | null)?.innerText ?? '').replace(/\n/g, ' | ').slice(0, 120),
+        ...(() => {
+          const timeline = document.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+          const label = [...(timeline?.querySelectorAll('[data-presence-label^="run:"]') ?? [])].at(
+            -1,
+          );
+          const view = timeline?.getBoundingClientRect();
+          const box = label?.getBoundingClientRect();
+          const place =
+            !label || !view || !box
+              ? 'none'
+              : box.top >= view.bottom
+                ? 'below'
+                : box.bottom <= view.top
+                  ? 'above'
+                  : 'in';
+          const gap = timeline
+            ? Math.round(timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight)
+            : -1;
+          return { row: place, gap };
+        })(),
       };
       const last = w.lineFrames.at(-1);
       if (
         !last ||
         last.line !== frame.line ||
         last.label !== frame.label ||
-        last.text !== frame.text
+        last.text !== frame.text ||
+        last.row !== frame.row
       )
         w.lineFrames.push(frame);
       requestAnimationFrame(tick);
@@ -1297,6 +1326,14 @@ for (const cpu of [1, 4])
       await page.waitForTimeout(1_500);
       const carded = await closedLineFrames(page);
       record(`arrival${cpu > 1 ? `-cpu${cpu}` : ''}`, { arriving, carded });
+      // Its own file too: the scenes of other workers write the shared record.
+      writeFileSync(
+        join(
+          OUT,
+          `activity-bar-arrival${cpu > 1 ? `-cpu${cpu}` : ''}-${test.info().repeatEachIndex}.json`,
+        ),
+        `${JSON.stringify({ arriving, carded }, null, 2)}\n`,
+      );
       // Whatever came was in view: never a role named as off screen, never a run or role state
       // written for a row the person sees, never the waiting line for a card in view.
       const pointing = (frames: LineFrame[]) =>
