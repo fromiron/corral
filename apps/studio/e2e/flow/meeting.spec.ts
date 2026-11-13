@@ -502,6 +502,73 @@ test.describe('a meeting in the conversation frame', () => {
     expect(corral.errors).toEqual([]);
   });
 
+  // A continue the server applied whose receipt never came back: the meeting is read once more.
+  // Answered by keys, the focus goes to the new card's Continue when the chain is held again,
+  // and to the message box when nothing holds any more.
+  test('a continue whose receipt is lost hands the focus on to what came', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(240_000);
+    let id = '';
+    let mention = '';
+    let quiet = false;
+    corral.fake?.setResponses(
+      Array.from(
+        { length: 200 },
+        () => () =>
+          fauxAssistantMessage(quiet ? 'Agreed, Tuesday it is.' : `${mention} what do you think?`),
+      ),
+    );
+    await corral.open('/projects/default');
+    id = await newMeeting(page);
+    const { config } = await meeting(page, id);
+    mention = config.participants.map((person) => `@${person.participantId}`).join(' ');
+    const composer = page.getByTestId('chat-composer');
+    const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+    const tray = page.locator('[data-pending-tray]');
+    const press = tray.getByRole('button', { name: 'Continue', exact: true });
+    const settled = async () => {
+      const view = await meeting(page, id);
+      return view.rounds.every((round) =>
+        round.answers.every((item) => item.status === 'answered'),
+      );
+    };
+    // Applied by the server; the answer is lost on its way back.
+    const loseReceipt = () =>
+      page.route(
+        '**/meeting/continue',
+        async (route) => {
+          await route.fetch();
+          await route.abort('failed');
+        },
+        { times: 1 },
+      );
+
+    await box.fill('Which day should we launch?');
+    await box.press('Enter');
+    await expect(press).toBeEnabled({ timeout: 120_000 });
+    await expect.poll(settled, { timeout: 120_000 }).toBe(true);
+
+    // Held again at once after the continue: a new card, and the focus on its Continue.
+    quiet = true;
+    await loseReceipt();
+    await press.focus();
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(async () => (await meeting(page, id)).rounds.filter((round) => round.continued).length)
+      .toBe(1);
+    await expect(press).toBeEnabled({ timeout: 30_000 });
+    await expect(press).toBeFocused();
+
+    // Pressed again, lost again; nothing holds now: the focus goes to the message box.
+    await expect.poll(settled, { timeout: 120_000 }).toBe(true);
+    await loseReceipt();
+    await page.keyboard.press('Enter');
+    await expect(tray).toHaveCount(0, { timeout: 30_000 });
+    await expect(box).toBeFocused();
+  });
+
   // Under 640px the kit's tool line wraps; what the meeting puts on it keeps one width whatever
   // the recipients are and whether someone answers, so the line, and the input above it, stay.
   for (const width of [480, 390]) {
@@ -591,4 +658,245 @@ test.describe('a meeting in the conversation frame', () => {
       expect(corral.errors).toEqual([]);
     });
   }
+});
+
+/** A new meeting, opened; its id. */
+async function newMeeting(page: Page) {
+  await page.getByRole('button', { name: 'New meeting', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create a meeting' });
+  await dialog.getByLabel('Meeting name', { exact: true }).fill('Launch day');
+  await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+  return new URL(page.url()).pathname.split('/').at(-1) ?? '';
+}
+
+/**
+ * Every answer that started has its row, and none that never started has one; there was at least
+ * one of those, so the case was there to see.
+ */
+async function expectRowsOfStartedOnly(page: Page, id: string) {
+  const view = await meeting(page, id);
+  const answers = view.rounds.flatMap((round) =>
+    round.answers.map((item) => ({
+      row: `${round.roundId}:${item.participantId}`,
+      started: item.order !== undefined || item.runId !== null,
+    })),
+  );
+  const rows = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-chat-item]')].map((item) =>
+      item.getAttribute('data-chat-item'),
+    ),
+  );
+  const never = answers.filter((item) => !item.started).map((item) => item.row);
+  expect(never.length, 'answers that never started').toBeGreaterThan(0);
+  expect(rows.filter((row) => row && never.includes(row))).toEqual([]);
+  for (const item of answers.filter((answer) => answer.started))
+    expect(rows, `${item.row} started`).toContain(item.row);
+}
+
+/** The stop commands the page sends from now on. */
+function stopRequests(page: Page) {
+  const sent: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && /\/meeting\/rounds\/[^/]+\/stop$/.test(request.url()))
+      sent.push(request.url());
+  });
+  return sent;
+}
+
+// A stop (workbench.md, the meeting): answers that never started have no row, whatever became of
+// them, and one stop leaves one line, at the end of the timeline as it was when the person
+// stopped; nothing already on screen moves. Stop that just took Send's place is not pressed by a
+// press meant for Send (composer-flow.md "활동 바").
+test.describe('a meeting stopped', () => {
+  test.use({
+    live: true,
+    codexLogin: true,
+    streamTokensPerSecond: 60,
+    meetingScores: [0.1, 0.9, 0.1],
+  });
+
+  for (const reduced of [false, true])
+    test(`Send's place, pressed again just after sending, does not stop${reduced ? ', reduced motion' : ''}`, async ({
+      page,
+      corral,
+    }) => {
+      test.setTimeout(120_000);
+      if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
+      let open!: () => void;
+      const opened = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      corral.fake?.setResponses(
+        Array.from({ length: 4 }, () => async () => {
+          await opened;
+          return fauxAssistantMessage('Tuesday.');
+        }),
+      );
+      await corral.open('/projects/default');
+      await newMeeting(page);
+      const composer = page.getByTestId('chat-composer');
+      const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+      const stops = stopRequests(page);
+      try {
+        // The empty room's centred composer goes to the bottom with the first message.
+        await composer.locator('[data-slot="composer-target"]').click();
+        await page.getByRole('menuitemradio', { name: 'No one', exact: true }).click();
+        await box.fill('The launch is next week');
+        await box.press('Enter');
+        await expect(
+          page.getByTestId('chat-timeline').getByText('The launch is next week'),
+        ).toBeVisible();
+        await waitForStill(page);
+        await box.fill('Which day should we launch?');
+        await waitForStill(page);
+        const send = composer.getByRole('button', { name: 'Send', exact: true });
+        const spot = await send.boundingBox();
+        if (!spot) throw new Error('Send is missing');
+        const x = spot.x + spot.width / 2;
+        const y = spot.y + spot.height / 2;
+        await page.mouse.click(x, y);
+        const stop = page.getByTestId('composer-stop');
+        await expect(stop).toBeVisible();
+        // Pressed again on the same place, 300, 450 and 550 ms after sending.
+        for (const wait of [300, 150, 100]) {
+          await page.waitForTimeout(wait);
+          await page.mouse.click(x, y);
+        }
+        await page.waitForTimeout(200);
+        expect(stops).toEqual([]);
+        // Then it is Stop, and stops.
+        await expect(stop).toBeEnabled({ timeout: 2_000 });
+        await stop.click();
+        await expect.poll(() => stops.length).toBe(1);
+        expect(corral.errors).toEqual([]);
+      } finally {
+        open();
+      }
+    });
+
+  test('a note posted while a mention chain answers, then a stop: one line, after the note', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(180_000);
+    let id = '';
+    let mention = '';
+    let requests = 0;
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    // The pick mentions the other two; the first of them answers and does not finish.
+    corral.fake?.setResponses(
+      Array.from({ length: 6 }, () => async () => {
+        requests += 1;
+        if (requests === 1) return fauxAssistantMessage(`${mention} what do you think?`);
+        await opened;
+        return fauxAssistantMessage('Agreed.');
+      }),
+    );
+    await corral.open('/projects/default');
+    id = await newMeeting(page);
+    const { config } = await meeting(page, id);
+    const [first, picked, third] = config.participants;
+    if (!first || !picked || !third) throw new Error('three participants');
+    mention = `@${first.participantId} @${third.participantId}`;
+    const composer = page.getByTestId('chat-composer');
+    const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+    const recipients = composer.locator('[data-slot="composer-target"]');
+    const timeline = page.getByTestId('chat-timeline');
+    try {
+      await box.fill('Which day should we launch?');
+      await box.press('Enter');
+      // One answers in the chain, the other waits.
+      await expect
+        .poll(
+          async () =>
+            (await meeting(page, id)).rounds
+              .flatMap((round) => round.answers)
+              .map((item) => item.status)
+              .sort()
+              .join(','),
+          { timeout: 60_000 },
+        )
+        .toBe('answered,running,waiting');
+      await recipients.click();
+      await page.getByRole('menuitemradio', { name: 'No one', exact: true }).click();
+      await box.fill('Noting this for the release notes');
+      await box.press('Enter');
+      await expect(timeline.getByText('Noting this for the release notes')).toBeVisible();
+      await waitForStill(page, { stillMs: 600 });
+      const done = await watch(page, 'meeting-stop-after-note');
+      await page.getByTestId('composer-stop').click();
+      const line = timeline.getByText(/^You stopped the replies\./);
+      await expect(line).toHaveCount(1, { timeout: 30_000 });
+      await waitForStill(page);
+      await done();
+      // The line is the last item; the one who never started has no row.
+      const last = await page.evaluate(
+        () => [...document.querySelectorAll('[data-chat-item]')].at(-1)?.textContent ?? '',
+      );
+      expect(last).toContain('You stopped the replies.');
+      await expectRowsOfStartedOnly(page, id);
+      await expect(page.getByTestId('chat-composer').getByRole('textbox')).toBeFocused();
+      expect(corral.errors).toEqual([]);
+    } finally {
+      open();
+    }
+  });
+
+  test('a question, a follow-up while it is answered, then a stop: one line, after the follow-up', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(180_000);
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    corral.fake?.setResponses(
+      Array.from({ length: 6 }, () => async () => {
+        await opened;
+        return fauxAssistantMessage('Agreed.');
+      }),
+    );
+    await corral.open('/projects/default');
+    const id = await newMeeting(page);
+    const { config } = await meeting(page, id);
+    const [first, picked, third] = config.participants;
+    if (!first || !picked || !third) throw new Error('three participants');
+    const composer = page.getByTestId('chat-composer');
+    const box = composer.getByRole('textbox', { name: 'Meeting message', exact: true });
+    const timeline = page.getByTestId('chat-timeline');
+    try {
+      await box.fill(`@${first.participantId} @${third.participantId} which day should we launch?`);
+      await box.press('Enter');
+      // Both asked answer at once, and neither finishes.
+      await expect
+        .poll(async () => (await meeting(page, id)).rounds[0]?.answers.map((item) => item.status), {
+          timeout: 60_000,
+        })
+        .toEqual(['running', 'running']);
+      await box.fill('And who writes the announcement?');
+      await box.press('Enter');
+      await expect(timeline.getByText('And who writes the announcement?')).toBeVisible();
+      await waitForStill(page, { stillMs: 600 });
+      const done = await watch(page, 'meeting-stop-after-follow-up');
+      await page.getByTestId('composer-stop').click();
+      const line = timeline.getByText(/^You stopped the replies\./);
+      await expect(line).toHaveCount(1, { timeout: 30_000 });
+      await waitForStill(page);
+      await done();
+      const last = await page.evaluate(
+        () => [...document.querySelectorAll('[data-chat-item]')].at(-1)?.textContent ?? '',
+      );
+      expect(last).toContain('You stopped the replies.');
+      // The follow-up's answer, waiting its turn, never started: it has no row.
+      await expectRowsOfStartedOnly(page, id);
+      expect(corral.errors).toEqual([]);
+    } finally {
+      open();
+    }
+  });
 });

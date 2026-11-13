@@ -51,6 +51,7 @@ import {
   writeComposerDraft,
 } from '../../sessionDraft.ts';
 import { QueueLine } from '../ComposerQueue.tsx';
+import { useSettledAppearance } from '../settle.ts';
 import { ComposerCard, type SendTarget } from './ComposerCard.tsx';
 import { backToInput, menuOpenChange } from './focus.ts';
 import { RecipientChip, type Recipients } from './SendControls.tsx';
@@ -266,12 +267,18 @@ export function MeetingSend({
         if (stoppingNow.current) return;
         stoppingNow.current = true;
         setStopping(true);
+        const pressed = document.activeElement;
         void Promise.resolve(onStop()).finally(() => {
           stoppingNow.current = false;
           setStopping(false);
+          // Stopped: the focus goes to the message box, unless the person moved it meanwhile.
+          const now = document.activeElement;
+          if (!now || now === document.body || now === pressed) input.current?.focus();
         });
       }
     : undefined;
+  // Stop that just took Send's place is not pressed by a second press meant for Send.
+  const stopSettled = useSettledAppearance(Boolean(stop) && !text.trim());
   const toInput = () => backToInput(input);
   const meeting: SendTarget = {
     badge: (
@@ -337,7 +344,9 @@ export function MeetingSend({
           ) : null
         }
         // While nothing is written and replies run, Send's place stops them, as a conversation's.
-        stop={stop ? { label: t('stopRound'), disabled: stopping, onStop: stop } : null}
+        stop={
+          stop ? { label: t('stopRound'), disabled: stopping || !stopSettled, onStop: stop } : null
+        }
         notices={
           summaryFailed || attachments.length ? (
             <>

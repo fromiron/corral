@@ -125,6 +125,31 @@ describe('the closed line', () => {
     expect(meetingLine(failed, nothing)).toEqual({ kind: 'summary', answered: 0, failed: 3 });
   });
 
+  it('only waiting, nothing running yet: busy, with how many wait', () => {
+    const waiting = view([round('r1', [answer('p3', 'waiting'), answer('p1', 'waiting')])]);
+    expect(meetingLine(waiting, nothing)).toEqual({ kind: 'busy', waiting: 2 });
+  });
+
+  it('nothing received: the summary says no count, and answers that never started are no failures', () => {
+    const never = (participantId: string, status: Answer['status']) => ({
+      ...answer(participantId, status),
+      runId: null,
+    });
+    // Stopped before anyone started: nothing to count.
+    const stopped = view([
+      round('r1', [never('p1', 'stopped'), never('p2', 'stopped')], { stoppedAt: 'y' }),
+    ]);
+    expect(meetingLine(stopped, nothing)).toBeNull();
+    // One replied, one was skipped before it started: one reply, no failure.
+    const skipped = view([round('r1', [answer('p1', 'answered'), never('p2', 'not_started')])]);
+    expect(meetingLine(skipped, nothing)).toEqual({ kind: 'summary', answered: 1, failed: 0 });
+    // Refused when it was to start (it has its place): a failure.
+    const refused = view([
+      round('r1', [answer('p1', 'answered'), { ...never('p2', 'refused'), order: 3 }]),
+    ]);
+    expect(meetingLine(refused, nothing)).toEqual({ kind: 'summary', answered: 1, failed: 1 });
+  });
+
   it('after a stop: at rest, with what was received', () => {
     const stopped = view([
       round('r1', [answer('p1', 'answered'), answer('p2', 'stopped'), answer('p3', 'stopped')], {

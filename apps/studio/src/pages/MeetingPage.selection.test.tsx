@@ -510,7 +510,8 @@ describe('a held mention chain waits on the continue card', () => {
     const f = await mount(heldView());
     f.meetings.continueChain.mockRejectedValueOnce(new Error('connection lost'));
     await act(async () => f.continueButton()?.click());
-    expect(f.continueButton()?.disabled).toBe(false);
+    // Pressable again once the meeting read again is on screen.
+    await vi.waitFor(() => expect(f.continueButton()?.disabled).toBe(false));
     f.meetings.continueChain.mockRejectedValueOnce(new Error('connection lost'));
     await act(async () => f.continueButton()?.click());
     const ids = () => f.meetings.continueChain.mock.calls.map((call) => call[1].commandId);
@@ -596,10 +597,32 @@ describe('a held mention chain waits on the continue card', () => {
     await vi.waitFor(() => expect(f.continueButton()?.disabled).toBe(false));
     expect(f.card()?.querySelector('[role="status"]')).toBeNull();
     expect(f.card()?.querySelector('header')?.textContent).toBe(m.hold.heading);
+    // Held a third time at the same place: again a new card, read from the last continue.
+    f.meetings.continueChain.mockImplementationOnce(async (_id, { commandId }) => {
+      const again = heldAgain(f.meetings.continueChain.mock.calls[0]?.[1].commandId ?? '');
+      f.next({
+        ...again,
+        rounds: [
+          ...again.rounds,
+          round('r4', {
+            kind: 'mention',
+            message: null,
+            continued: true,
+            commandId,
+            participantIds: ['p2'],
+            answers: [answered('p2', '@Architect once more')],
+          }),
+        ],
+      });
+      return { ok: true, outcome: 'started', roundId: 'r4' };
+    });
+    await act(async () => f.continueButton()?.click());
+    await vi.waitFor(() => expect(f.continueButton()?.disabled).toBe(false));
+    expect(f.card()?.querySelector('[role="status"]')).toBeNull();
     await act(async () => f.continueButton()?.click());
     const ids = f.meetings.continueChain.mock.calls.map((call) => call[1].commandId);
-    expect(ids).toHaveLength(2);
-    expect(ids[1]).not.toBe(ids[0]);
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
   });
 
   it('not confirmed, but the meeting went on: read once, and the hold that came again is new', async () => {
@@ -617,12 +640,34 @@ describe('a held mention chain waits on the continue card', () => {
       throw new Error('connection lost');
     });
     const reads = f.meetings.view.mock.calls.length;
+    f.continueButton()?.focus();
     await act(async () => f.continueButton()?.click());
     await vi.waitFor(() => expect(f.meetings.view.mock.calls.length).toBe(reads + 1));
     await vi.waitFor(() => expect(f.continueButton()?.disabled).toBe(false));
+    // Answered from the card by keys: the focus is on the new card's Continue.
+    await vi.waitFor(() => expect(document.activeElement).toBe(f.continueButton()));
     await act(async () => f.continueButton()?.click());
     const ids = f.meetings.continueChain.mock.calls.map((call) => call[1].commandId);
     expect(ids[1]).not.toBe(ids[0]);
+  });
+
+  it('not confirmed, and the meeting went on with no hold: the focus goes to the message box', async () => {
+    const f = await mount(heldView());
+    f.meetings.continueChain.mockImplementationOnce(async (_id, { commandId }) => {
+      f.next(
+        view([
+          round('r1'),
+          round('r3', { kind: 'mention', message: null, continued: true, commandId }),
+        ]),
+      );
+      throw new Error('connection lost');
+    });
+    f.continueButton()?.focus();
+    await act(async () => f.continueButton()?.click());
+    await vi.waitFor(() => expect(f.card()).toBeNull());
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(f.container.querySelector('textarea')),
+    );
   });
 
   it('refused or not confirmed: the focus is back on Continue, unless the person moved it', async () => {
@@ -915,6 +960,8 @@ describe('the meeting’s activity bar', () => {
     const panel = activity(f.container)?.textContent ?? '';
     expect(panel).toContain(messages.Activity.stop);
     expect(panel).not.toContain(messages.Activity.join);
+    // No row is where an instruction goes.
+    expect(panel).not.toContain(messages.Activity.joinTarget);
     expect(panel).not.toContain(messages.Activity.pause);
   });
 
@@ -933,6 +980,78 @@ describe('the meeting’s activity bar', () => {
     expect(
       activity(f.container)?.querySelector(`[data-activity-role="${SECRETARY_ID}"]`)?.textContent,
     ).toContain(m.secretary);
+  });
+
+  it('a long answer followed to its end, its head out of view: the line names who answers', async () => {
+    // What is in an answer's head (its name and Answering…) is out of view; its body is in view.
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        readonly report: IntersectionObserverCallback;
+        constructor(report: IntersectionObserverCallback) {
+          this.report = report;
+        }
+        observe(target: Element) {
+          const inView = !target.closest('header');
+          queueMicrotask(() =>
+            this.report(
+              [
+                {
+                  target,
+                  isIntersecting: inView,
+                  intersectionRect: { height: inView ? 10 : 0 },
+                } as never,
+              ],
+              this as never,
+            ),
+          );
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const f = await mount(
+      view([round('r1', { participantIds: ['p2'], active: true, answers: [running('p2')] })]),
+    );
+    await act(async () => {});
+    expect(activity(f.container)?.getAttribute('data-line')).toBe('answering');
+    expect(line(f.container)?.textContent).toContain('Builder');
+  });
+
+  it('the continue card is said by its head: with the head out of view, the line says it', async () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        readonly report: IntersectionObserverCallback;
+        constructor(report: IntersectionObserverCallback) {
+          this.report = report;
+        }
+        observe(target: Element) {
+          const inView = !target.closest('header');
+          queueMicrotask(() =>
+            this.report(
+              [
+                {
+                  target,
+                  isIntersecting: inView,
+                  intersectionRect: { height: inView ? 10 : 0 },
+                } as never,
+              ],
+              this as never,
+            ),
+          );
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const f = await mount(
+      view([round('r1', { answers: [answered('p2')] })], {
+        hold: { kind: 'chain', after: 'r1' },
+      }),
+    );
+    await act(async () => {});
+    expect(activity(f.container)?.getAttribute('data-line')).toBe('hold');
   });
 
   it('a hold out of view comes first; View goes to the card', async () => {
@@ -996,7 +1115,8 @@ describe('the meeting’s activity bar', () => {
     );
     const words = line(f.container)?.textContent ?? '';
     expect(words).toContain(ma.failed.replace('{count}', '2'));
-    expect(words).not.toContain('reply');
+    // No "0 replies".
+    expect(words).not.toMatch(/repl/);
   });
 
   it('an empty meeting: the line is there, the same height, saying nothing', async () => {
@@ -1004,5 +1124,144 @@ describe('the meeting’s activity bar', () => {
     expect(activity(f.container)?.getAttribute('data-line')).toBe('none');
     expect(line(f.container)?.textContent).toBe('');
     expect(line(f.container)?.className).toContain('h-8');
+  });
+});
+
+describe('a stop leaves one line at the end, and no row for an answer that never started', () => {
+  const items = (f: { container: HTMLElement }) =>
+    [...f.container.querySelectorAll('[data-chat-item]')].map((node) =>
+      node.getAttribute('data-chat-item'),
+    );
+  const never = (participantId: string, status: 'waiting' | 'stopped' | 'not_started') => ({
+    ...answered(participantId),
+    runId: null,
+    status,
+    text: null,
+  });
+  const at = (second: number) => `2026-11-14T00:00:${String(second).padStart(2, '0')}.000Z`;
+
+  it('a note posted while a mention chain runs, then a stop: the line comes after the note', async () => {
+    const r1 = round('r1', {
+      order: 0,
+      createdAt: at(0),
+      answers: [{ ...answered('p1'), order: 1 }],
+    });
+    const chain = (answers: Round['answers'], stoppedAt: string | null = null) =>
+      round('r2', {
+        kind: 'mention',
+        message: null,
+        order: 2,
+        createdAt: at(1),
+        participantIds: ['p2', 'p3'],
+        active: stoppedAt === null,
+        stoppedAt,
+        answers,
+      });
+    const note = round('r3', {
+      message: 'A note for no one',
+      order: 4,
+      createdAt: at(2),
+      participantIds: [],
+      answers: [],
+      ...select({ strategy: 'none', reason: 'no_recipients' }),
+    });
+    const f = await mount(
+      view([r1, chain([{ ...running('p2'), order: 3 }, never('p3', 'waiting')]), note]),
+    );
+    const before = items(f);
+    expect(before).toEqual(['r1:message', 'r1:p1', 'r2:p2', 'r3:message']);
+    await f.refresh(
+      view([
+        r1,
+        chain([{ ...running('p2'), status: 'stopped', order: 3 }, never('p3', 'stopped')], at(3)),
+        note,
+      ]),
+    );
+    // Nothing moved in above; the one who never started has no row; one line, at the end.
+    expect(items(f)).toEqual([...before, 'r2:stopped']);
+  });
+
+  it('a question, a follow-up while it is answered, then a stop: one line, after the follow-up', async () => {
+    const first = (answers: Round['answers'], stoppedAt: string | null = null) =>
+      round('r1', {
+        order: 0,
+        createdAt: at(0),
+        participantIds: ['p1', 'p2'],
+        active: stoppedAt === null,
+        stoppedAt,
+        answers,
+      });
+    const follow = (answers: Round['answers'], stoppedAt: string | null = null) =>
+      round('r2', {
+        message: 'And the second part?',
+        order: 2,
+        createdAt: at(1),
+        participantIds: ['p2'],
+        active: stoppedAt === null,
+        stoppedAt,
+        answers,
+      });
+    const f = await mount(
+      view([
+        first([{ ...running('p1'), order: 1 }, never('p2', 'waiting')]),
+        follow([never('p2', 'waiting')]),
+      ]),
+    );
+    const before = items(f);
+    expect(before).toEqual(['r1:message', 'r1:p1', 'r2:message']);
+    // One stop, two messages stopped with it (their stop times a moment apart).
+    await f.refresh(
+      view([
+        first([{ ...running('p1'), status: 'stopped', order: 1 }, never('p2', 'stopped')], at(3)),
+        follow([never('p2', 'stopped')], '2026-11-14T00:00:03.001Z'),
+      ]),
+    );
+    expect(items(f)).toEqual([...before, 'r1:stopped']);
+  });
+
+  it('a mention of three stopped with one answering: only that one has a row', async () => {
+    const f = await mount(
+      view([
+        round('r1', {
+          order: 0,
+          createdAt: at(0),
+          participantIds: ['p1', 'p2', 'p3'],
+          stoppedAt: at(1),
+          answers: [
+            { ...running('p1'), status: 'stopped', order: 1 },
+            never('p2', 'stopped'),
+            never('p3', 'not_started'),
+          ],
+        }),
+      ]),
+    );
+    expect(items(f)).toEqual(['r1:message', 'r1:p1', 'r1:stopped']);
+  });
+
+  it('a later stop has its own line at its end; the earlier one stays where it was', async () => {
+    const f = await mount(
+      view([
+        round('r1', {
+          order: 0,
+          createdAt: at(0),
+          stoppedAt: at(1),
+          answers: [{ ...running('p2'), status: 'stopped', order: 1 }],
+        }),
+        round('r2', {
+          order: 2,
+          createdAt: at(2),
+          stoppedAt: at(3),
+          answers: [{ ...running('p2'), status: 'stopped', order: 3 }],
+        }),
+      ]),
+    );
+    expect(items(f)).toEqual([
+      'r1:message',
+      'r1:p2',
+      'r1:stopped',
+      'r2:message',
+      'r2:p2',
+      'r2:stopped',
+    ]);
   });
 });

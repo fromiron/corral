@@ -1,4 +1,5 @@
 import type { MeetingView } from '@corral/contracts';
+import { startedAnswer } from './meetingTimeline.ts';
 
 // What a meeting's activity bar says (workbench.md, the meeting's composer;
 // features/composer-flow.md "활동 바"): read from the meeting's view and from what is on screen.
@@ -78,11 +79,14 @@ export function meetingLine(
   // line, so it is not counted here.
   const last = view.rounds.findLast((round) => round.answers.length > 0);
   if (!last) return null;
-  return {
-    kind: 'summary',
-    answered: last.answers.filter((answer) => answer.status === 'answered').length,
-    failed: last.answers.filter((answer) => FAILED.has(answer.status)).length,
-  };
+  const answered = last.answers.filter((answer) => answer.status === 'answered').length;
+  // One that never started (stopped or skipped before its turn) did not fail.
+  const failed = last.answers.filter(
+    (answer) => startedAnswer(answer) && FAILED.has(answer.status),
+  ).length;
+  // Nothing received: no count to say.
+  if (!answered && !failed) return null;
+  return { kind: 'summary', answered, failed };
 }
 
 /** One row per participant answering or waiting: the one answering first, then by first turn. */

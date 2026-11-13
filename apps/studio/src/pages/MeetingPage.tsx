@@ -39,6 +39,13 @@ import {
 } from '../workbench/MeetingRecords.tsx';
 import { MeetingRoundStatus } from '../workbench/MeetingRoundStatus.tsx';
 import { answerLabel, HOLD_LABEL } from '../workbench/meetingActivity.ts';
+import {
+  answerOrder,
+  continuedOrder,
+  roundOrder,
+  startedAnswer,
+  stopLines,
+} from '../workbench/meetingTimeline.ts';
 import { preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { TurnActions } from '../workbench/RunMessage.tsx';
@@ -57,23 +64,9 @@ import { useRemembered } from './Workbench.tsx';
 type RoundView = MeetingView['rounds'][number];
 type AnswerView = RoundView['answers'][number];
 
-/**
- * An answer's place in the timeline: when it started speaking, or (kept before answers had a
- * place of their own) after its round's message. One not started has no row: the activity bar
- * says who waits, and the row comes at the end once the answer starts.
- */
-const answerOrder = (round: RoundView, index: number, answer: AnswerView, n: number) =>
-  answer.order ?? (round.order ?? index * 7) + n + 1;
-
 /** The command of the last continue of a held chain, if the meeting was ever continued. */
 const lastContinue = (view: MeetingView) =>
   view.rounds.findLast((round) => round.continued)?.commandId;
-
-/**
- * A continued round's line: where the person continued, after everything said by then. Its
- * answers, and any that were still waiting, start later and come after it.
- */
-const continuedOrder = (round: RoundView, index: number) => (round.order ?? index * 7) + 0.5;
 
 /**
  * The meeting room: participants on top, the conversation, then the composer. The minutes,
@@ -218,8 +211,8 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                 <ArchivedSessionNotice session={session} />
               </>
             }
-            items={view.rounds
-              .flatMap((round, index) => [
+            items={[
+              ...view.rounds.flatMap((round, index) => [
                 ...(round.continued
                   ? [
                       {
@@ -239,12 +232,14 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                   : [
                       {
                         id: `${round.roundId}:message`,
-                        order: round.order ?? index * 7,
+                        order: roundOrder(round, index),
                         content: <MeetingMessage round={round} config={view.config} />,
                       },
                     ]),
+                // One not started has no row, whatever became of it: the activity bar says who
+                // waits, and the row comes at the end once the answer starts.
                 ...round.answers.flatMap((answer, n) =>
-                  answer.status === 'waiting'
+                  !startedAnswer(answer)
                     ? []
                     : [
                         {
@@ -268,30 +263,23 @@ export function MeetingPage({ session }: { session: WorkSession }) {
                         },
                       ],
                 ),
-                ...(round.stoppedAt
-                  ? [
-                      {
-                        id: `${round.roundId}:stopped`,
-                        order:
-                          Math.max(
-                            round.order ?? index * 7,
-                            ...round.answers.map((answer) => answer.order ?? 0),
-                          ) + 0.5,
-                        content: (
-                          <p role="status" className="mb-5 text-caption text-muted-foreground">
-                            {t('roundStopped')}
-                          </p>
-                        ),
-                      },
-                    ]
-                  : []),
-              ])
-              .sort((a, b) => a.order - b.order)}
+              ]),
+              // One stop, one line, at the end of what there was when it came.
+              ...stopLines(view).map((stop) => ({
+                id: `${stop.roundId}:stopped`,
+                order: stop.order,
+                content: (
+                  <p role="status" className="mb-5 text-caption text-muted-foreground">
+                    {t('roundStopped')}
+                  </p>
+                ),
+              })),
+            ].sort((a, b) => a.order - b.order)}
             tray={
               view.hold ? (
                 // What the meeting needs from the person now: a held chain's continue card. The
                 // card names itself; this place adds no second name.
-                <div data-pending-tray data-presence-label={HOLD_LABEL} className="pb-4">
+                <div data-pending-tray className="pb-4">
                   <MeetingContinue
                     // A hold is where the chain stopped and the continue before it: held again
                     // at the same place after a continue, it is a new card with a new command.
@@ -611,10 +599,6 @@ function AnswerCard({
   return (
     <article
       aria-label={name}
-      // A running answer's row says who answers: the activity bar does not say it again.
-      data-presence-label={
-        answer.status === 'running' && answer.runId ? answerLabel(answer.runId) : undefined
-      }
       className="chat-turn turn-actions-scope flex min-w-0 flex-col gap-1.5 wrap-anywhere"
     >
       <header>
@@ -625,6 +609,13 @@ function AnswerCard({
             <>
               {answer.status !== 'answered' ? (
                 <AgentStatusLabel
+                  // A running answer's head says who answers, as a conversation's state word: the
+                  // activity bar says it while this word is out of view.
+                  data-presence-label={
+                    answer.status === 'running' && answer.runId
+                      ? answerLabel(answer.runId)
+                      : undefined
+                  }
                   role={answer.status === 'running' ? 'status' : undefined}
                   status={failed ? 'failed' : (ANSWER_GLYPH[answer.status] ?? 'stopped')}
                   label={t(`status.${answer.status}`)}

@@ -4,22 +4,35 @@ import { AgentStatusLabel, DecisionInbox } from '@corral/react/design-kit';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { newCommandId } from '../sessionActions.ts';
+import { HOLD_LABEL } from './meetingActivity.ts';
 
 /** Nothing has the focus: it was on something that went (or could no longer be focused). */
 const focusLost = () => !document.activeElement || document.activeElement === document.body;
 
 /**
  * The focus left with the answer (its button gave way to the result, or the card left): to the
- * message box of the conversation it was answered in. Focus a person moved elsewhere stays.
+ * message box of the conversation it was answered in, or, after a continue whose receipt was lost
+ * and that came back as a new card (`toCard`), to that card's Continue. Focus a person moved
+ * elsewhere stays.
  */
-function toBox(handoff: { current: Element | null }) {
+function toBox(handoff: { current: Element | null }, toCard = false) {
   const chat = handoff.current;
   handoff.current = null;
   if (!chat?.isConnected || !focusLost()) return;
-  chat.querySelector<HTMLElement>('[data-testid=chat-composer] textarea')?.focus({
+  const card = toCard
+    ? chat.querySelector<HTMLElement>('[data-meeting-hold] button:not([disabled])')
+    : null;
+  (card ?? chat.querySelector<HTMLElement>('[data-testid=chat-composer] textarea'))?.focus({
     preventScroll: true,
   });
 }
+
+/** After what is rendering now has been committed and painted. */
+const nextFrame = () =>
+  new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === 'undefined') setTimeout(resolve, 0);
+    else requestAnimationFrame(() => resolve());
+  });
 
 /**
  * A held mention chain's continue card (workbench.md, the meeting): at the end of the timeline,
@@ -52,13 +65,16 @@ export function MeetingContinue({
   const live = useRef(true);
   // Answered from the card: when it folds or leaves, the focus goes to the message box.
   const handoff = useRef<Element | null>(null);
+  // Not confirmed, and the meeting read again: if the card leaves, a new card takes the focus.
+  const lost = useRef(false);
   // Pressable again (refused, or not confirmed) with the focus lost on the way: back to it.
   const [refocus, setRefocus] = useState(0);
   useEffect(() => {
     live.current = true;
     return () => {
       live.current = false;
-      if (handoff.current) requestAnimationFrame(() => toBox(handoff));
+      const toCard = lost.current;
+      if (handoff.current) requestAnimationFrame(() => toBox(handoff, toCard));
     };
   }, []);
   useEffect(() => {
@@ -104,8 +120,13 @@ export function MeetingContinue({
     } else {
       // Read the meeting once: if the chain went on, its hold goes or comes again as a new card
       // and this one leaves; if not, this card waits to be pressed again, with the same command.
+      lost.current = true;
       await onSettled();
+      // What the read brought may not be on screen yet: judge once it is, so a card about to
+      // leave does not take back its hand-off.
+      await nextFrame();
       if (!live.current) return;
+      lost.current = false;
       setPending(false);
     }
     const owned = handoff.current !== null;
@@ -116,7 +137,12 @@ export function MeetingContinue({
     // Answered: one line with the answer, no card around it, until the meeting is read again.
     return (
       <div ref={box} data-meeting-hold className="flex min-h-8 items-center px-1">
-        <AgentStatusLabel role="status" status="done" label={t('hold.continued')} />
+        <AgentStatusLabel
+          data-presence-label={HOLD_LABEL}
+          role="status"
+          status="done"
+          label={t('hold.continued')}
+        />
       </div>
     );
   return (
@@ -134,7 +160,8 @@ export function MeetingContinue({
         ]}
         optimistic={false}
         onDecide={() => void decide()}
-        heading={() => t('hold.heading')}
+        // The card's head says it is there: the activity bar says it while the head is out of view.
+        heading={() => <span data-presence-label={HOLD_LABEL}>{t('hold.heading')}</span>}
         emptyLabel=""
         labels={{ region: t('hold.region') }}
       />

@@ -3,7 +3,7 @@ import type { MeetingRoundRequest, MeetingView } from '@corral/contracts';
 import { createTextAttachment, type WorkSession } from '@corral/core';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const translate = vi.hoisted(() => (key: string) => key);
 const services = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -1413,6 +1413,84 @@ it('Stop ends the answering and waiting turns through the meeting command while 
   expect(f.meetings.stop).toHaveBeenCalledExactlyOnceWith('session_1', 'round_1');
   expect(f.meetings.send).not.toHaveBeenCalled();
   expect(f.box.value).toBe('One more thing');
+});
+
+describe('Stop that just took Send’s place', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const stopPlace = (f: { container: HTMLElement }) =>
+    f.container.querySelector<HTMLButtonElement>('[data-testid="composer-stop"]');
+
+  for (const reduced of [false, true])
+    it(`is not pressed by a press meant for Send for 0.6 s${reduced ? ', reduced motion' : ''}`, async () => {
+      const f = await mount(view());
+      if (reduced) {
+        const media = window.matchMedia;
+        vi.stubGlobal('matchMedia', (query: string) =>
+          query.includes('prefers-reduced-motion')
+            ? { matches: true, media: query, addEventListener() {}, removeEventListener() {} }
+            : media(query),
+        );
+      }
+      // Sent: the meeting now answers, so Send's place, with nothing written, is Stop.
+      f.meetings.view.mockResolvedValue(
+        view({ rounds: [{ ...firstRound(), active: true, answers: [answer('p1', 'running')] }] }),
+      );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await f.type('Ship it today?');
+      await act(async () => f.button('send')?.click());
+      await act(async () => {});
+      const place = must(stopPlace(f), 'Stop in Send’s place');
+      // The second press of a double click, and presses a moment later: nothing stops.
+      for (const wait of [0, 300, 150, 100]) {
+        await act(async () => vi.advanceTimersByTime(wait));
+        expect(stopPlace(f)?.disabled).toBe(true);
+        await act(async () => stopPlace(f)?.click());
+      }
+      expect(f.meetings.stop).not.toHaveBeenCalled();
+      // From 0.6 s on, Stop.
+      await act(async () => vi.advanceTimersByTime(60));
+      expect(place.isConnected && stopPlace(f)?.disabled).toBe(false);
+      await act(async () => stopPlace(f)?.click());
+      expect(f.meetings.stop).toHaveBeenCalledExactlyOnceWith('session_1', 'round_1');
+    });
+
+  it('while a stop is on its way, is not pressable', async () => {
+    const f = await mount(
+      view({ rounds: [{ ...firstRound(), active: true, answers: [answer('p1', 'running')] }] }),
+    );
+    let finish: (value: { ok: boolean; outcome: string }) => void = () => {};
+    f.meetings.stop.mockImplementationOnce(
+      () =>
+        new Promise<{ ok: boolean; outcome: string }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await act(async () => stopPlace(f)?.click());
+    expect(stopPlace(f)?.disabled).toBe(true);
+    await act(async () => finish({ ok: true, outcome: 'updated' }));
+  });
+
+  it('once stopped, the focus goes to the message box, from Send’s place or the bar', async () => {
+    const answering = view({
+      rounds: [{ ...firstRound(), active: true, answers: [answer('p1', 'running')] }],
+    });
+    const f = await mount(answering);
+    // Pressed by keys: the browser keeps the focus on it until it leaves or is disabled.
+    const place = must(stopPlace(f), 'Stop in Send’s place');
+    place.focus();
+    await act(async () => place.click());
+    await act(async () => {});
+    expect(document.activeElement).toBe(f.box);
+    // The bar's Stop.
+    await act(async () => f.button('details')?.click());
+    const bar = must(f.button('stop'), 'the bar’s Stop');
+    bar.focus();
+    await act(async () => bar.click());
+    await act(async () => {});
+    expect(document.activeElement).toBe(f.box);
+  });
 });
 
 it('renames and pins a meeting with a revision read just before the change', async () => {

@@ -52,7 +52,7 @@ export function MeetingActivity({
   const rows = meetingRows(view);
   for (const row of rows)
     if (row.runId && !seen.current.has(row.runId)) seen.current.set(row.runId, Date.now());
-  const line = meetingLine(view, { visible, open: open && rows.length > 0 });
+  const line = meetingLine(view, { visible, open });
   const revealAnswer = (runId: string) =>
     goTo(
       timelineOf(anchor.current)

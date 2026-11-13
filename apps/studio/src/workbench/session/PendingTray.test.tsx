@@ -856,6 +856,35 @@ it('gives the focus back to a continue answer refused or not confirmed, unless i
   expect(document.activeElement).toBe(elsewhere);
 });
 
+it('gives the focus back to the answer pressed, and a refused answer hands nothing on later', async () => {
+  const store = waitingRun('run_a', {
+    approvals: [decision('approval_limit', { limit: roundLimit })],
+  });
+  const sent = decisions(store);
+  const { container } = await show(['run_a']);
+  const stack = () => trayOf(container)?.querySelector('[data-continue-decisions]');
+  const stop = () => buttons(stack(), messages.Approvals.limit.reject)[0];
+  const drop = () => {
+    const passing = document.body.appendChild(document.createElement('button'));
+    passing.focus();
+    passing.remove();
+  };
+  stop()?.focus();
+  await act(async () => stop()?.click());
+  drop();
+  await sent[0]?.settle('The loop already moved on.');
+  await settleFrames();
+  // Back on Stop, the answer pressed, not on the first.
+  expect(document.activeElement).toBe(stop());
+  // The person puts the focus down; the run then closes the request on its own: nothing was
+  // answered from the card this time, so the focus is not carried to the request box.
+  drop();
+  await act(async () => closeApproval(store, 'approval_limit', 'approve'));
+  await settleFrames();
+  expect(trayOf(container)).toBeNull();
+  expect(document.activeElement).toBe(document.body);
+});
+
 it('shows the receipt’s confirmation while the request is still open', async () => {
   const store = waitingRun('run_a', {
     approvals: [decision('approval_limit', { limit: roundLimit })],
