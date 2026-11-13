@@ -51,9 +51,10 @@ function expandOne(
       binding.sourceNodeId ? { ...binding, sourceNodeId: name(binding.sourceNodeId) } : binding,
     ];
   };
-  // A callable member runs only when called and stays outside every box, as in the saved team.
+  // A callable member runs only when called, and an advisor only watches: both stay outside
+  // every box, as in the saved team.
   const placed = (node: CorralNode) =>
-    node.type === 'agent' && node.invocation === 'callable'
+    node.type === 'agent' && node.invocation !== 'scheduled'
       ? {}
       : { parentId: node.parentId ? name(node.parentId) : team.id };
 
@@ -77,11 +78,15 @@ function expandOne(
     const base = { ...unplaced, id: name(node.id), ...placed(node) };
     switch (base.type) {
       case 'agent':
-        members.push({
-          ...base,
-          roleId: name(base.roleId),
-          inputBindings: base.inputBindings.flatMap(inner),
-        });
+        members.push(
+          base.invocation === 'observer'
+            ? { ...base, roleId: name(base.roleId) }
+            : {
+                ...base,
+                roleId: name(base.roleId),
+                inputBindings: base.inputBindings.flatMap(inner),
+              },
+        );
         break;
       case 'decision':
         members.push({ ...base, inputBindings: base.inputBindings.flatMap(inner) } as CorralNode);

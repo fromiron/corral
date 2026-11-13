@@ -23,19 +23,22 @@ export function approvalResearchTeam(id?: string): DemoTemplate {
   const nodes = definition.nodes.flatMap((node) =>
     node.type === 'output' ? [APPROVAL, { ...node, requireApproval: true }] : [node],
   );
+  // The Loop's next and exhausted paths both lead to the approval, as they both led to Output.
   const controlEdges = definition.controlEdges.flatMap((edge): CorralDefinition['controlEdges'] =>
     edge.source === 'review_loop' && edge.sourcePort === 'next'
       ? [
           { ...edge, target: 'approval' },
           {
-            id: 'e8',
+            id: 'e_approve',
             source: 'approval',
             sourcePort: 'approve',
             target: 'output',
             targetPort: 'in',
           },
         ]
-      : [edge],
+      : edge.source === 'review_loop' && edge.sourcePort === 'exhausted'
+        ? [{ ...edge, target: 'approval' }]
+        : [edge],
   );
   return { ...template, definition: { ...definition, nodes, controlEdges } };
 }

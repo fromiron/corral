@@ -35,6 +35,10 @@ import { Badge } from './badge.tsx';
 /** Open state of the nearest ThinkingSteps root, for the header trigger/panel. */
 const ThinkingStepsOpenContext = createContext(false);
 
+/** True while a panel that mounted open with `settledOnMount` is still snapping to
+ *  its first height: steps that arrive with it are already there and do not grow in. */
+const ArrivedOpenContext = createContext(false);
+
 interface TriggerRowProps extends HTMLAttributes<HTMLButtonElement> {
   open: boolean;
   children: ReactNode;
@@ -124,6 +128,7 @@ TriggerRow.displayName = 'ThinkingStepsTriggerRow';
 
 interface CollapsePanelProps {
   open: boolean;
+  settledOnMount?: boolean;
   children: ReactNode;
 }
 
@@ -132,7 +137,7 @@ interface CollapsePanelProps {
  * soon as it closes, cutting the JS exit short, so we strip it and apply it
  * after the exit. The panel stays mounted to keep `aria-controls` valid.
  */
-function CollapsePanel({ open, children }: CollapsePanelProps) {
+function CollapsePanel({ open, settledOnMount = false, children }: CollapsePanelProps) {
   const compactStep = useSize().variant === 'compact';
   // Animate to a measured offsetHeight, not "auto": framer resolves "auto"
   // from the transformed size and overshoots under a scaled ancestor.
@@ -206,7 +211,9 @@ function CollapsePanel({ open, children }: CollapsePanelProps) {
                   typeClass('body', compactStep ? 'compact' : 'default'),
                 )}
               >
-                {children}
+                <ArrivedOpenContext.Provider value={settledOnMount && needsSnap}>
+                  {children}
+                </ArrivedOpenContext.Provider>
               </div>
             </motion.div>
           </div>
@@ -276,14 +283,17 @@ ThinkingStepsHeader.displayName = 'ThinkingStepsHeader';
 // ─── ThinkingStepsContent ────────────────────────────────────────────────────
 
 interface ThinkingStepsContentProps extends HTMLAttributes<HTMLDivElement> {
+  /** The panel is open at mount and its steps were already shown (a view mounted
+   *  again): they start at their own height instead of growing in. */
+  settledOnMount?: boolean;
   children: ReactNode;
 }
 
 const ThinkingStepsContent = forwardRef<HTMLDivElement, ThinkingStepsContentProps>(
-  ({ children, className, ...props }, ref) => {
+  ({ settledOnMount, children, className, ...props }, ref) => {
     const isOpen = useContext(ThinkingStepsOpenContext);
     return (
-      <CollapsePanel open={isOpen}>
+      <CollapsePanel open={isOpen} settledOnMount={settledOnMount}>
         <div ref={ref} className={cn('flex flex-col', className)} {...props}>
           {children}
         </div>
@@ -345,6 +355,16 @@ function ThinkingStep({
   const shape = useShape();
   const sizeClasses = useSize();
   const [stepRef, stepHeight] = useStepHeight();
+  // A step that mounts with an already-open panel (a row remounted into view)
+  // keeps its natural height until measured, then snaps once; later steps grow in.
+  const arrivedOpen = useContext(ArrivedOpenContext);
+  const [arrived] = useState(arrivedOpen);
+  const [snap, setSnap] = useState(arrivedOpen);
+  useEffect(() => {
+    if (!snap || stepHeight === null) return;
+    const frame = requestAnimationFrame(() => setSnap(false));
+    return () => cancelAnimationFrame(frame);
+  }, [snap, stepHeight]);
 
   if (status === 'pending') return null;
 
@@ -354,13 +374,13 @@ function ThinkingStep({
     /* Outer animates height; inner fades in and is the measured element. */
     <motion.div
       className={cn('relative z-10 overflow-hidden', className)}
-      initial={{ height: 0 }}
-      animate={{ height: stepHeight ?? 0 }}
-      transition={spring.slow}
+      initial={{ height: arrived ? 'auto' : 0 }}
+      animate={{ height: stepHeight ?? (arrived ? 'auto' : 0) }}
+      transition={snap ? { duration: 0 } : spring.slow}
     >
       <motion.div
         ref={stepRef}
-        initial={{ opacity: 0 }}
+        initial={arrived ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ ...tween.slow, delay }}
       >

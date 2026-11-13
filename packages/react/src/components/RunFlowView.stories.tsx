@@ -213,3 +213,69 @@ export const LoopRounds: Story = {
     await expect(canvas.getByText('Exit Review')).toBeVisible();
   },
 };
+
+/** Cap 2; the policy raised reasoning as round 2 ended, and round 3 is running. */
+function raisedFixture() {
+  const data = loopFlowFixture(3);
+  data.definition.nodes = data.definition.nodes.map((node) =>
+    node.type === 'loop' ? { ...node, maxIterations: 2 } : node,
+  );
+  const round3 = data.projection.iterations.round_3;
+  if (round3) round3.outcome = null;
+  data.projection.loopEscalations = {
+    review_loop: [
+      {
+        loopNodeId: 'review_loop',
+        iterationId: 'round_2',
+        reason: 'cap_reached',
+        nodeIds: ['writer'],
+        runSeq: 40,
+        policy: 'raise_reasoning',
+        levels: { writer: 'high' },
+      },
+    ],
+  };
+  data.session.setState({ definition: data.definition, projection: data.projection });
+  return data;
+}
+const raised = raisedFixture();
+export const RaisedLimit: Story = {
+  args: { session: raised.session, definition: raised.definition },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByTestId('run-flow-loop')).toHaveTextContent('max 4');
+    await expect(canvas.getByTestId('run-flow-loop-escalation')).toHaveTextContent(
+      'Reasoning raised to High',
+    );
+  },
+};
+
+/** An inner Loop on its second entry: three rounds before, the second round of this one runs. */
+function enteredAgainFixture() {
+  const data = loopFlowFixture(3);
+  const { projection } = data;
+  projection.status = 'running';
+  for (const no of [1, 2]) {
+    const iterationId = `again_${no}`;
+    projection.loopIterations.review_loop?.push(iterationId);
+    projection.iterations[iterationId] = {
+      iterationId,
+      loopNodeId: 'review_loop',
+      no,
+      criteriaVersionId: 'criteria',
+      parentIterationId: null,
+      outcome: no === 2 ? null : 'revise',
+    };
+  }
+  data.session.setState({ projection });
+  return data;
+}
+const enteredAgain = enteredAgainFixture();
+export const EnteredAgain: Story = {
+  args: { session: enteredAgain.session, definition: enteredAgain.definition },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByTestId('run-flow-loop')).toHaveTextContent(
+      '2 observed rounds · max 3',
+    );
+  },
+};

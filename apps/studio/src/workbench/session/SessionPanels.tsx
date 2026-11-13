@@ -94,7 +94,8 @@ export function RunPanel({
                   artifact: search.artifact,
                   view: search.view ?? (search.result ? 'results' : 'run'),
                   result: search.result,
-                  respond: search.respond,
+                  // A request to respond goes to the conversation's needed-now tray
+                  // (SessionPage), never to the record beside it.
                 }
               : { view: 'run' }
           }

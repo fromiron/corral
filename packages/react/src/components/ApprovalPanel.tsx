@@ -9,7 +9,7 @@ import {
   ToolPermissionPlan,
 } from '@corral/contracts';
 import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -27,15 +27,17 @@ import {
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow, RowAction } from './FirstRow.tsx';
+import { useFreshDecisions } from './freshDecisions.ts';
 import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
 import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
+import {
+  RequestAreaContext,
+  RequestCardHead,
+  requestCard,
+  useRequestOwner,
+} from './RequestCard.tsx';
+import { nextResponseTarget } from './responseFocus.ts';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
-
-/** A Loop that stopped for a stall is asked about in its own words. */
-const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
-  approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
-    ? `loop_${approval.loopStop}`
-    : approval.kind;
 
 /** One line of a call's main subject: the command it runs or the file it touches. */
 function callSubject(plan: ToolPermissionPlan): string | null {
@@ -67,6 +69,8 @@ export function ApprovalPanel({
   headed = true,
   policySettingsAction,
   action,
+  readOnly = false,
+  skip,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
@@ -92,6 +96,13 @@ export function ApprovalPanel({
    * own. For hosts that leave the plan out (`showPlan` false).
    */
   action?: ReactNode;
+  /**
+   * The requests shown to read, without their decisions: another place on the same screen
+   * answers them (a session's run record, whose conversation holds the response place).
+   */
+  readOnly?: boolean;
+  /** Approvals another part of the host draws and answers (continue-or-stop decisions). */
+  skip?: (approval: ApprovalView) => boolean;
 }) {
   const t = useTranslations('Approvals');
   const headingId = useId();
@@ -107,21 +118,33 @@ export function ApprovalPanel({
   );
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
-  const executions = useStore(session, (s) => s.projection?.executions);
+  const owner = useRequestOwner(session);
+  const inArea = useContext(RequestAreaContext);
   const toolCalls = useStore(session, (s) => s.projection?.toolCalls);
   const nodes = useStore(session, (s) => s.definition?.nodes);
   const tTurn = useTranslations('Turn');
   const approvals = useMemo(
-    () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
-    [all],
+    () => Object.values(all ?? {}).filter((a) => a.status === 'pending' && !skip?.(a)),
+    [all, skip],
   );
   // A card the run-wide decision covered leaves with no line of its own: that decision says it.
-  const done = useMemo(
+  const decided = useMemo(
     () =>
       Object.values(all ?? {}).filter(
-        (a) => a.status === 'approved' && a.reason !== 'allowed_for_run',
+        (a) => a.status === 'approved' && a.reason !== 'allowed_for_run' && !skip?.(a),
       ),
-    [all],
+    [all, skip],
+  );
+  // Only decisions of the current wait fold into a line; earlier waits' never come back.
+  const fresh = useFreshDecisions(session, 'approval');
+  const freshKey = decided
+    .filter((approval) => fresh(approval.approvalId))
+    .map((approval) => approval.approvalId)
+    .join(',');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: freshKey names the kept decisions
+  const done = useMemo(
+    () => decided.filter((approval) => freshKey.split(',').includes(approval.approvalId)),
+    [decided, freshKey],
   );
   // The criteria a decision about versions is judged by; a run limit and a tool call have none.
   const criteriaId = approvals.find((a) => !a.limit && !a.tool)?.criteriaVersionId;
@@ -180,11 +203,16 @@ export function ApprovalPanel({
 
   // A decision sent while focus was in its card hands focus on once the card has left and the
   // decision's receipt is in (the buttons are enabled again), as an answered question does: to
-  // the next waiting card's main action (its decline when that action cannot be taken), else, in
-  // a chat view, to the request box. Focus the person moved elsewhere stays; other hosts (the Run
-  // page, Needs you) place focus themselves once nothing waits.
+  // the next waiting card's main action (its decline when that action cannot be taken) in the same
+  // response place (a conversation's needed-now tray holds every run's), else, in a chat view, to
+  // the request box. Focus the person moved elsewhere stays; other hosts (the Run page, Needs
+  // you) place focus themselves once nothing waits.
   const section = useRef<HTMLElement>(null);
-  const handoff = useRef<{ approvalId: string; chat: Element | null } | null>(null);
+  const handoff = useRef<{
+    approvalId: string;
+    chat: Element | null;
+    tray: Element | null;
+  } | null>(null);
   useEffect(() => {
     const owned = handoff.current;
     if (!owned || busy || approvals.some((approval) => approval.approvalId === owned.approvalId))
@@ -192,17 +220,27 @@ export function ApprovalPanel({
     const frame = requestAnimationFrame(() => {
       handoff.current = null;
       if (document.activeElement && document.activeElement !== document.body) return;
-      const next = section.current?.querySelector<HTMLElement>('[data-approval]');
-      const target =
-        next?.querySelector<HTMLButtonElement>('[data-approval-action="primary"]:not(:disabled)') ??
-        next?.querySelector<HTMLButtonElement>('[data-approval-action]:not(:disabled)') ??
-        (owned.chat?.isConnected
-          ? owned.chat.querySelector<HTMLTextAreaElement>('[data-testid=chat-composer] textarea')
-          : null);
-      target?.focus({ preventScroll: true });
+      nextResponseTarget(owned.tray?.isConnected ? owned.tray : section.current, owned.chat)?.focus(
+        { preventScroll: true },
+      );
     });
     return () => cancelAnimationFrame(frame);
   }, [approvals, busy]);
+  // The area itself left with the decision (its run waits on nothing else): the same hand-off,
+  // from the response place the card stood in.
+  useEffect(
+    () => () => {
+      const owned = handoff.current;
+      if (!owned) return;
+      requestAnimationFrame(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        nextResponseTarget(owned.tray?.isConnected ? owned.tray : null, owned.chat)?.focus({
+          preventScroll: true,
+        });
+      });
+    },
+    [],
+  );
 
   const related = showRelatedPanels ? (
     <>
@@ -211,7 +249,11 @@ export function ApprovalPanel({
         onOpenArtifact={onOpenArtifact}
         action={lead === 'recipe' ? action : undefined}
       />
-      <InteractionPanel session={session} action={lead === 'interaction' ? action : undefined} />
+      <InteractionPanel
+        session={session}
+        readOnly={readOnly}
+        action={lead === 'interaction' ? action : undefined}
+      />
     </>
   ) : null;
   if (approvals.length === 0)
@@ -240,7 +282,7 @@ export function ApprovalPanel({
   const kindText = (approval: ApprovalView) =>
     approval.limit
       ? limitText(approval.limit)
-      : t(`kind.${copyKey(approval)}`, {
+      : t(`kind.${approval.kind}`, {
           step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
         });
   const toolLabel = (name: string) => (tTurn.has(`tool.${name}`) ? tTurn(`tool.${name}`) : name);
@@ -265,12 +307,17 @@ export function ApprovalPanel({
       ? t('done', { step: kindText(approval), subject })
       : t('doneBare', { step: kindText(approval) });
   };
-  /** The agent that asks, named only where the run has more than one. */
-  const askedBy = (executionId: string) => {
-    if (Object.keys(executions ?? {}).length < 2) return null;
-    const nodeId = executions?.[executionId]?.nodeId;
-    return nodes?.find((node) => node.id === nodeId)?.label ?? null;
-  };
+  /** The card's title: the kind of call, or what waits. */
+  const headingText = (approval: ApprovalView) =>
+    approval.tool
+      ? t(
+          approval.tool.purpose === 'tool'
+            ? 'toolHeading'
+            : approval.tool.purpose === 'lsp'
+              ? 'lspHeading'
+              : 'checkHeading',
+        )
+      : kindText(approval);
   const decide = async (
     approvalId: string,
     decision: 'approve' | 'reject',
@@ -278,7 +325,11 @@ export function ApprovalPanel({
   ) => {
     // Focus in this decision's card is handed on when the card leaves.
     handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
-      ? { approvalId, chat: section.current?.closest('[data-chat-view]') ?? null }
+      ? {
+          approvalId,
+          chat: section.current?.closest('[data-chat-view]') ?? null,
+          tray: section.current?.closest('[data-pending-tray]') ?? null,
+        }
       : null;
     setBusy(true);
     try {
@@ -298,9 +349,8 @@ export function ApprovalPanel({
   // Buttons are the only way to decide: the card has no Enter/Escape shortcut. As in the kit's
   // permission card, the decline sits left of the primary action, and as there and in the kit
   // run screen's approval card, the decision row is compact at every interface density.
-  const decisionButtons = (approval: (typeof approvals)[number]) => (
-    <SizeScope size="compact">{decisionRow(approval)}</SizeScope>
-  );
+  const decisionButtons = (approval: (typeof approvals)[number]) =>
+    readOnly ? null : <SizeScope size="compact">{decisionRow(approval)}</SizeScope>;
   /** Decline, then approve; a tool call also offers approving it for the run. */
   const answers = (approval: (typeof approvals)[number]) => (
     <>
@@ -320,7 +370,7 @@ export function ApprovalPanel({
             )
           : approval.limit
             ? t('limit.reject')
-            : t(`rejectAs.${copyKey(approval)}`)}
+            : t(`rejectAs.${approval.kind}`)}
       </Button>
       {approval.tool?.purpose === 'tool' ? (
         // The same call again needs no answer until the run ends; a command is matched by its
@@ -357,7 +407,7 @@ export function ApprovalPanel({
               )
             : approval.limit
               ? t('limit.then')
-              : t(`then.${copyKey(approval)}`)
+              : t(`then.${approval.kind}`)
         }
         onClick={() => void decide(approval.approvalId, 'approve')}
       >
@@ -371,7 +421,7 @@ export function ApprovalPanel({
             )
           : approval.limit
             ? t('limit.approve')
-            : t(`approveAs.${copyKey(approval)}`)}
+            : t(`approveAs.${approval.kind}`)}
       </Button>
     </>
   );
@@ -420,7 +470,11 @@ export function ApprovalPanel({
       {showPlan ? <WorkPlanPanel session={session} /> : null}
       <section
         ref={section}
-        {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
+        {...(headed
+          ? { 'aria-labelledby': headingId }
+          : inArea
+            ? {}
+            : { 'aria-label': t('heading') })}
         className={`flex flex-col gap-2 ${className ?? ''}`}
       >
         {headed ? (
@@ -455,57 +509,40 @@ export function ApprovalPanel({
             data-testid={`approval-${approval.approvalId}`}
             data-approval={approval.approvalId}
             role="article"
-            aria-label={t('heading')}
+            // Named by its own title: several waiting cards are told apart.
+            {...(compact
+              ? { 'aria-label': headingText(approval) }
+              : { 'aria-labelledby': `${headingId}-${approval.approvalId}` })}
             className="text-caption"
           >
-            <div
-              className={
-                compact
-                  ? 'flex flex-wrap items-center gap-2.5 px-3 py-2'
-                  : 'flex items-start gap-2.5 px-4 pt-3.5 pr-3.5'
-              }
-            >
-              {index === 0 && !compact ? <RowAction action={cardAction} /> : null}
-              <AgentStatusIcon
-                status="waiting"
-                size={14}
-                className={compact ? undefined : 'mt-0.5 self-start'}
-              />
-              <div className="grid min-w-0 flex-1">
-                <p
-                  className="text-body text-foreground [overflow-wrap:anywhere]"
-                  style={{ fontVariationSettings: fontWeights.semibold }}
-                >
-                  {approval.tool
-                    ? t(
-                        approval.tool.purpose === 'tool'
-                          ? 'toolHeading'
-                          : approval.tool.purpose === 'lsp'
-                            ? 'lspHeading'
-                            : 'checkHeading',
-                      )
-                    : kindText(approval)}
-                </p>
-                {approval.tool && !compact && askedBy(approval.tool.executionId) ? (
-                  <span className="truncate text-muted-foreground">
-                    {askedBy(approval.tool.executionId)}
-                  </span>
-                ) : null}
-              </div>
-              {compact ? (
+            {compact ? (
+              <div className="flex flex-wrap items-center gap-2.5 px-3 py-2">
+                <AgentStatusIcon status="waiting" size={14} />
+                <div className="grid min-w-0 flex-1">
+                  <p
+                    className="text-body text-foreground [overflow-wrap:anywhere]"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {headingText(approval)}
+                  </p>
+                </div>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   {index === 0 ? <RowAction action={cardAction} /> : null}
                   {decisionButtons(approval)}
                 </div>
-              ) : null}
-            </div>
-            <div
-              className={
-                compact
-                  ? 'flex min-w-0 flex-col gap-2 px-3 pb-2'
-                  : 'flex min-w-0 flex-col gap-2 py-3 pr-4 pl-10'
-              }
-            >
+              </div>
+            ) : (
+              <RequestCardHead
+                title={headingText(approval)}
+                titleId={`${headingId}-${approval.approvalId}`}
+                owner={owner({
+                  executionId: approval.tool?.executionId ?? null,
+                  nodeId: approval.tool ? null : (approval.nodeId ?? null),
+                })}
+                action={index === 0 ? cardAction : undefined}
+              />
+            )}
+            <div className={compact ? 'flex min-w-0 flex-col gap-2 px-3 pb-2' : requestCard.body}>
               {approval.tool?.purpose === 'tool' ? (
                 <PermissionDetails plan={toolPlans[approval.tool.bodyRef]} />
               ) : approval.tool ? (
@@ -555,7 +592,7 @@ export function ApprovalPanel({
               ) : null}
               {compact || approval.tool ? null : (
                 <p className="text-muted-foreground">
-                  {approval.limit ? t('limit.explain') : t(`explain.${copyKey(approval)}`)}
+                  {approval.limit ? t('limit.explain') : t(`explain.${approval.kind}`)}
                 </p>
               )}
               {/* A run limit is about the run, not a version: it names no subject or criteria. */}
@@ -593,8 +630,8 @@ export function ApprovalPanel({
                 </div>
               ) : null}
             </div>
-            {compact ? null : (
-              <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 pt-3 pb-4">
+            {compact || readOnly ? null : (
+              <div data-request-foot className={requestCard.foot}>
                 {decisionButtons(approval)}
               </div>
             )}

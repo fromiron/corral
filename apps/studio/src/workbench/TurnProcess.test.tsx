@@ -475,9 +475,9 @@ it.each(['en', 'ko'] as const)(
     );
     expect(askRow?.querySelector('button[aria-expanded]')).toBeNull();
     expect(plan).toContain(locale === 'en' ? 'Done' : '완료');
-    // Like any other state, the header is the time the turn worked, to its last record.
+    // Like any other state, the head's time is the time the turn worked, to its last record.
     const header = container.querySelector('[data-testid="turn-process-header"]')?.textContent;
     expect(header).not.toContain(messages.Status.awaiting_user);
-    expect(header).toMatch(locale === 'en' ? /^Worked 5s/ : /^작업 5초/);
+    expect(header).toBe(locale === 'en' ? '5s' : '5초');
   },
 );

@@ -11,10 +11,10 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
-| 백본 | B1–B10 | 진행 중(B1·B3·B4·B6·B7·B8·B10 병합) |
-| 화면 | K1, U1–U14 | 진행 중(K1·U1·U8·U10 병합) |
+| 백본 | B1–B13 | 진행 중(B13만 남음) |
+| 화면 | K1, U1–U14 | 진행 중(K1·U1–U4·U8·U10 병합) |
 | 회의 | M1–M4 | 진행 중(M1·M2 병합) |
-| 감독 | A1–A9 | 대기 |
+| 감독 | A1–A9 | 진행 중(A1–A3 병합) |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
@@ -435,36 +435,37 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
-| B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 구현 중(`flow/b12-reject-stops-branches`) |
-| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 리뷰 수정 중(`flow/b11-loop-limit`) |
-| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 대기 |
+| B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 완료 |
+| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 완료 |
+| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 완료 |
+| B13 | 다음 요청에 이미지·참조 싣기 | U5 | `core/repository`, `apps/server/src/session-queue.ts`, 컴포저 전송 모듈 | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
-| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 재리뷰 수정 중(`flow/u2-timeline-frame-2`, 자라는 실행 행에서 끝으로 되돌아감) |
-| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 구현 중(`flow/u4-pending-tray`, U3 브랜치 위) |
-| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 대기 |
+| U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 완료 |
+| U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 완료 |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 완료 |
+| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 디자인 검수 통과, 코드 리뷰 수정 중(`flow/u5-send-model`) |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
-| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 대기 |
-| U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 대기 |
+| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 구현 중(`flow/u11-reply-selection`) |
+| U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 구현 중(`flow/u12-inbox-response`) |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
 | U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
 | M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 완료 |
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 완료 |
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 대기 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
-| A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 대기 |
-| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 대기 |
-| A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 대기 |
-| A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 대기 |
+| A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 완료 |
+| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 완료 |
+| A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 완료 |
+| A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 리뷰 중(`flow/a4-advisor-delta`) |
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 대기 |
 | A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 대기 |
-| A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 대기 |
+| A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 구현 중(`flow/a7-advisor-editor`) |
 | A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 대기 |
 | A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 대기 |
 | V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
@@ -547,7 +548,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - B11a 완료 체크: 명세 시나리오 각각, 그리고 반례: 한 진입에 한 번만 / 다시 들어오면 새로 / 사람의 패치가 앞섬(앞·뒤 순서 둘 다) / 진행 중인 실행은 안 바뀜 / 지원하지 않는 수준은 아래로 맞춤 / 바뀌는 Agent 없음 → 이벤트 없이 소진 / 안쪽 Loop의 정책은 바깥 Agent를 안 바꿈, 바깥 것은 안쪽을 바꿈 / `inline` Team 포함, `reference` Team 제외 / `unlimited`에 `loop_limit` 패치 / 연결 없는 소진은 실패이고 승인 요청이 없음 / 재시작 뒤 같은 상태.
 - B11a 리뷰에서 정한 것: 기본 제공 팀(템플릿·초안·자동 팀·데모·예시)의 검토 루프는 `exhausted`를 `next`와 같은 곳에 잇는다(전에는 상한에서 물었고, 잇지 않으면 이제 Run이 실패한다). 회차 사이에 한 번 양보해 기다리는 일이 없는 회차만 도는 Loop에도 취소·일시정지가 닿게 한다(상한 없는 Loop로 쉽게 닿는 꼴이 됐다). 레시피 Loop가 시도 수보다 낮은 상한에서 멈추면 `loop_exhausted`다. 남기는 한계: 올린 직후 회차 사이 창에서 온 추론 패치는 기준 모델로 검증된다. 상위 모델 기준으로 받은 사람의 추론 패치는 다시 들어온 진입에서 기준 모델에 그대로 쓰인다. 기다리는 일이 없는 회차만 도는 Loop는 취소할 수 있지만 이벤트를 빠르게 쌓는다.
 - U9에 넘기는 것: 검토 루프가 소진돼 마지막 후보로 끝난 Run임을 실행 행이 말한다(지금은 작업 기록과 검토 블록에서만 보인다).
-- B11b: 설정 시트 Loop의 "한도" 줄. 캔버스의 "검토 루프로 감싸기"·"검사 루프로 감싸기"도 `exhausted`를 `next`와 같은 곳에 잇는다(`features/canvas.md` 규칙 5에 적고 시작한다). B11a가 남긴 것도 함께: 실행 흐름의 "n / 최대"가 올린 뒤의 허용 회차를 반영하지 않는다(3/2처럼 보인다), `SettingsPatchPanel`이 상한 없는 Loop의 현재 값을 비워 보인다, `NodeSettings`는 `unlimited`일 때 최대 회차 입력만 숨긴다(정책을 고르는 UI가 없다). 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 브리프는 B11a가 병합된 뒤 쓴다.
+- B11b: 설정 시트 Loop의 "한도" 줄. 캔버스의 "검토 루프로 감싸기"·"검사 루프로 감싸기"도 `exhausted`를 `next`와 같은 곳에 잇는다(`features/canvas.md` 규칙 5에 적고 시작한다). B11a가 남긴 것도 함께: 실행 흐름의 "n / 최대"가 올린 뒤의 허용 회차를 반영하지 않는다(3/2처럼 보인다), `SettingsPatchPanel`이 상한 없는 Loop의 현재 값을 비워 보인다, `NodeSettings`는 `unlimited`일 때 최대 회차 입력만 숨긴다(정책을 고르는 UI가 없다). 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 정한 것: 그냥 Loop로 감쌀 때도 `exhausted`를 `next`와 같은 곳에 잇는다(편집기가 만든 Loop가 한도에서 Run을 실패시키는 덫이 되지 않게. 연결을 지우면 실패로 끝난다). 실행 화면의 상한은 "유효한 상한"(적용 전에 끝난 회차 수 + 상한)으로 적고, 정책이 적용됐으면 무엇이 바뀌었는지 한 줄로 보인다(`features/execution-monitor.md`).
 - 나중에(감독이 들어온 뒤): 사람에게 묻는 나머지 승인(무진전, router가 고르지 못한 route, 판정 없는 check, 회의 연쇄 확인)을 같은 눈으로 한 번 본다. 이 계획의 범위 밖이면 따로 묻는다.
 
 ### B10 응답 중간 끊김의 재시도 분류
@@ -676,20 +677,21 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - 완료 체크: 세 표시 각각의 테스트, 회의 장면의 이동 1px 이하.
 
 ### A1 감독 계약
-- 명세: `features/advisor.md`, `features/team-graph.md`.
-- 대상: `T/definition.ts`(113행 `invocation`, 61–70행 `CollaborationTool`, 255–262행 `CapabilityLink`), `T/commands.ts`, `T/events.ts`.
-- 구현: `invocation`에 `observer`, `CapabilityLink.kind`에 `advise`, `CollaborationTool`에 `advise`. 명령 `submit_advice { observerExecutionId, attemptNo, targetExecutionId, severity: nit|concern|blocker, note(1–1000자) }`. 이벤트 `advice.admitted { adviceId, severity, channel: aside|steer|interrupt|preserve }`, `advice.suppressed { reason: duplicate|noise|over_budget|target_terminal }`. 지시에 `origin: user|advice|system`. 감독 노드 설정 `review: { interval(기본 1), maxRequestsPerReview(기본 8) }`.
-- 완료 체크: 스키마 테스트, `pnpm contracts:check`.
+- 명세: `features/advisor.md` "계약", `features/team-graph.md`(정의 스키마의 Agent 행, capability link, 포트 표), `api-contract.md`(`submit_advice`, `advice.*`).
+- 대상: `T/definition.ts`(`invocation`, `CollaborationTool`, `CapabilityLink`), `T/commands.ts`, `T/events.ts`, 생성 스키마, 계약 테스트.
+- 구현: `invocation`에 `observer`, `CapabilityLink.kind`에 `advise`, `CollaborationTool`에 `advise`. 감독 노드 설정 `review?: { interval, maxRequestsPerReview }`(1 이상, 기본 3과 8). 명령 `submit_advice { observerExecutionId, attemptNo, targetExecutionId, severity: nit|concern|blocker, note(1–1,000자) }`. 이벤트 `advice.admitted { adviceId, severity, delivery: next_request|interrupt|preserve, directiveId? }`, `advice.suppressed { severity, reason: noise|duplicate|over_budget|target_terminal }`(조언의 글을 싣지 않는다). 지시의 출처는 B9가 넣은 `user`·`advice` 그대로다(`system`은 없다).
+- 하지 않는 것: 컴파일 규칙(A2), 명령 처리와 `advice` 지시 만들기(A5), 화면. 새 종류 때문에 깨지는 망라 검사(switch·표)는 "아직 지원하지 않음"으로 조용히 넘기지 않고 가장 가까운 기존 동작으로 명시해 두며, 어디를 그렇게 했는지 보고에 적는다.
+- 완료 체크: 스키마 테스트(기본값, 경계값, 감독이 아닌 노드의 `review` 거절), `pnpm contracts:generate`·`pnpm contracts:check`, `pnpm typecheck`.
 
 ### A2 감독 컴파일 규칙
-- 대상: `C/compiler/`(포트 규칙은 `ports.ts`), 테스트.
-- 구현: 감독 노드는 제어 흐름 간선을 가질 수 없고 `advise` 연결을 하나 이상 가져야 한다. `advise`의 출발은 감독 노드, 도착은 `agent` 노드다. 감독 역할의 작업 도구는 읽기(`search`, `read_document`, `list_files`, `read_file`)만, 협업 도구는 `read_artifact`와 `advise`로 고정한다. 감독이 감독을 가리킬 수 없다. 위반은 지금의 컴파일 오류 형식으로 낸다.
-- 완료 체크: 규칙마다 반례 테스트 하나씩.
+- 명세: `features/team-graph.md` 구조 규칙 10(observer는 `advise` 연결이 있으면 고립이 아니다)과 11(감독) 전부, 포트 표.
+- 대상: `C/compiler/`(포트 규칙은 `ports.ts`), `C/expand-teams.ts`, 테스트.
+- 구현: 규칙 11의 다섯 줄을 각각 진단으로 낸다(제어 흐름 간선 없음·상자 밖, `delegate`·`question`의 출발·대상 불가, `advise` 연결 하나 이상이고 출발은 observer·대상은 scheduled 또는 callable Agent, observer 역할의 도구 제한, 다른 호출 방식의 역할은 `advise` 도구 불가, 시작 노드와 `task_output` 생산자 불가). 참조 팀을 펼칠 때 observer는 callable처럼 상자 밖에 둔다. 컴파일된 plan은 감독을 실행 순서 밖의 목록(노드, 역할, `review`, 지켜보는 노드)으로 갖는다. A5가 실행을 만들기 전까지는, 규칙을 모두 통과한 감독이 든 정의도 마지막에 `ADVISOR_NOT_SUPPORTED`로 거절한다(감독 없이 조용히 도는 Run을 만들지 않는다). A5가 그 문을 없앤다.
+- 완료 체크: 규칙마다 반례 테스트 하나씩, observer만 있는 정의, observer의 포트 행, 참조 팀 안의 observer.
 
 ### A3 조언 문지기와 전달 채널
-- 대상: 새 `C/advisor/guard.ts`, `C/advisor/channel.ts`, 테스트.
-- 구현: 둘 다 순수 함수다. `admit(state, { severity, note })`는 소문자·NFKC·글자와 숫자 밖은 공백으로 정규화한 뒤, 빈 것과 빈말 목록(stop, done, ok, lgtm, looks good, continue, no issue continue와 한국어 대응)은 `noise`, 이미 본 키이고 이전 심각도가 같거나 높으면 `duplicate`, 한 번의 검토에서 차단이 아닌 조언이 3개를 넘으면 `over_budget`로 돌려준다. 이력은 감독 실행 단위마다 512개까지다. `resolveChannel({ severity, target })`는 대상이 작업 중이면 nit는 `aside`, concern은 `steer`, blocker는 `interrupt`(대상 어댑터가 못 하면 `steer`), 대상이 사람을 기다리면 그대로 두고 결정 뒤에 전달, 대상이 종료면 nit는 억제(`target_terminal`), 나머지는 `preserve`다.
-- 완료 체크: 정규화 표 테스트("Stop.", "*stop*", "  STOP " 가 같은 키), 중복·심각도 상승 통과, 채널 표 전부.
+- 대상: `C/advisor/guard.ts`, `C/advisor/channel.ts`, 테스트.
+- 구현(병합됨): 둘 다 순수 함수다. `admit(state, { severity, note })`는 NFKC·소문자·글자와 숫자 밖은 공백으로 정규화한 뒤, 빈 글과 빈말 구절만 이어진 글(`ADVICE_FILLER_PHRASES`의 구절로 남김없이 나뉘는 글)은 `noise`, 이미 접수한 키이고 그때 심각도가 같거나 높으면 `duplicate`, 한 번의 검토에서 중단 권고가 아닌 조언이 3개를 넘으면 `over_budget`를 돌려준다. 접수만 상태를 바꾼다. 이력은 512개까지다. `beginReview(state)`가 검토마다 셈을 0으로 돌린다. `resolveDelivery({ severity, target: { terminal, interruptible } })`는 [명세가 정한 차이](#명세가-정한-차이)의 A1·A3 줄대로 `next_request`·`interrupt`·`preserve` 또는 `target_terminal`을 돌려준다.
 
 ### A4 검토 입력 작성기
 - 대상: 새 `C/advisor/delta.ts`, 테스트. 읽는 곳: `C/projection.ts`(`modelCalls` 243행, `toolCalls` 245행, `responseRef` 92행), 응답 산출물(`response_<id>`).
@@ -767,6 +769,8 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U8 (리뷰에서 정한 것).** 끝난 것으로 한 번 보인 실행은 진행 중으로 되돌아가지 않는다(캐시된 옛 목록이 먼저 그려져도). 세션·실행을 고르는 메뉴의 행도 사이드바 행처럼 표식과 접근 이름만 쓴다. 색은 톤이 정하고 킷 표식(`AgentStatusIcon`)은 모양만 쓴다. 터미널 확인 알림 글자는 상태 이름이 아니라 그대로 둔다.
 - **U9 (U8이 남긴 것).** `W/Sidebar.tsx`의 예약 실행 결과 알림(105, 179행 근처)이 아직 `Status` 네임스페이스의 Run 상태 낱말을 쓴다. U9가 `Presence` 문구로 바꾼다. 배지·점의 색은 톤에서만 온다(`presenceDot`과 같은 대응).
 - **U3 (행의 모양).** 머리 줄이 곧 작업 과정을 여닫는 줄이다: 여닫는 표식 · 역할 · 상태 · 경과 · 과정의 셈, 오른쪽 끝에 실행 번호. "작업 과정" 이름표 줄을 따로 두지 않는다(§4.4 그림의 두 줄을 한 줄로 합친다). 대화에서 작업 과정은 기본이 닫힘이고 밀도가 `detailed`이거나 사람이 누를 때만 열린다. 실행이 시작되거나 끝난다고 저절로 여닫지 않는다(열린 과정이 본문 위에서 자라면 본문이 밀린다). 실패한 도구·실행 단위는 셈 끝의 "실패 n"이 알리고 내용은 과정 안에 있다. 끝맺지 못한 턴의 이유·실패 글·`endActions`는 본문의 맨 끝 블록 하나다(배너 면 없음). 꼬리 줄은 값이 있는 것만 쓰고 줄표를 쓰지 않는다. 답이 하나면 그 답의 아이콘 동작(복사·결과 열기)이 꼬리 줄 안에 온다(답 아래 줄을 하나 더 두지 않는다).
+- **U4 (디자인 검수에서 정한 것).** 질문·확장 요청 카드는 승인 카드와 같은 카드 문법을 쓴다(`packages/react/src/components/RequestCard.tsx`: 아이콘 + 제목, 그 아래 누가 기다리는지, 본문, 오른쪽 정렬 버튼의 아래 줄). 색 깔린 면과 강조색 테두리는 쓰지 않는다. 답한 질문도 한 줄("Answered: …")로 접힌다. 컴포저의 질문 알림은 트레이가 화면에 보이지 않을 때만 뜬다(U7이 활동 바로 옮길 때까지). 역할 이름은 역할이 둘 이상인 Run이나 기다리는 Run이 둘 이상일 때만 카드에 보인다.
+- **U13 (U4가 남긴 것).** 질문 카드 머리의 실행 ID 복사 버튼은 무엇을 복사하는지 드러나지 않는다(아이콘만 있다). 진단용 식별자는 접힌 상세에 둔다는 규칙(`chat-widgets-contract.md`)에 맞춰 옮기거나 뺀다. 확장 요청에는 접힌 한 줄이 없다.
 - **U4 (U3가 남긴 것).** U3는 `ApprovalPanel`을 없애지 않고 행의 세 구역 밖, 꼬리 줄 다음으로 옮겨 둔다(통합 브랜치에서 승인이 끊기지 않게). U4가 그것을 `RunMessage`에서 빼고 타임라인 끝의 `PendingTray`로 옮긴다.
 - **U7 (면은 하나).** 컴포저의 올라온 면은 열 너비의 `Elevated` 카드 하나다. 활동 바, 칩, 입력, 도구 줄이 그 카드 안에 있고 입력 상자는 자기 테두리를 갖지 않는다. 세션 누계 줄은 카드 아래에 온다. U2가 만든 컴포저 구역 자체는 면이 아니다(배경과 같은 바탕, 위쪽으로 짧게 옅어지는 가림뿐이다).
 - **U2 (리뷰에서 정한 것).** 타임라인은 항목 수와 무관하게 가상화 한 방식이다(마운트된 행은 흐름 안, 창 밖은 목록의 위·아래 padding). 가상화를 없앤 첫 구현은 200개 이상에서 쓸 수 없게 느려 되돌렸다. 컴포저 구역은 면이 아니다: 페이지 바탕(`--chat-floor`)과 위쪽 가림(`data-composer-fade`)뿐이다.
@@ -777,15 +781,36 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B6 (남긴 한계).** 모델은 다음 요청에서 자기 끊긴 글을 보지 못한다(공급자 변환이 끊긴 assistant 메시지를 통째로 뺀다). 컨텍스트 초과 복구 중에 지시가 오면 재준비가 압축 결과를 버린다(B6 이전부터 있던 동작). 끊긴 호출은 무진전 턴으로 세지 않는다.
 - **B5 (정한 것).** 조건을 만족한 지시는 `expired`가 되는 순간 바로 넘겨받는다(앞 지시가 풀리기를 기다리지 않는다). 같은 순간에 만료된 여럿은 보낸 순서, 다른 때에 넘겨받은 것은 넘겨받은 순서로 시작한다. 넘겨받은 항목은 세션 기록의 끝에 붙고, 다음에 시작할 것을 고를 때 먼저다(`@corral/core`의 `queuedEntriesInStartOrder`, `nextQueuedEntry`). 지시 기록에 `origin`이 생길 때까지(A1) `origin ?? 'user'`로 읽는다.
 - **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 판정은 그 지시가 속한 Run이 취소됐는지로 한다(세션의 마지막 Run이 아니다). 그 지시를 가진 Run을 찾지 못하면 특권은 그대로다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
-- **A1 (B5·B9가 남긴 것).** 지시 기록의 출처(`directive.accepted.origin`, `DirectiveView.origin`)는 B9가 타입 있는 필수 필드로 넣었다(`user`·`advice`). A1은 `advice` 지시를 만드는 쪽만 더하고, 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다. 모델에 실리는 머리말(`ADVICE_DIRECTIVE_PREFIX`)은 `packages/adapter-pi/src/worker-tools.ts`에 있다.
+- **A5 (B5·B9가 남긴 것).** 지시 기록의 출처(`directive.accepted.origin`, `DirectiveView.origin`)는 B9가 타입 있는 필수 필드로 넣었다(`user`·`advice`). `advice` 지시를 만드는 쪽은 A5가 더하고, 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다. 모델에 실리는 머리말(`ADVICE_DIRECTIVE_PREFIX`)은 `packages/adapter-pi/src/worker-tools.ts`에 있다.
 - **B9 (리뷰에서 정한 것).** 끝난 Run의 승인은 종류별로 따로 닫지 않고 한 규칙으로 닫는다: Run이 끝나면(성공·실패·취소) 기다리던 승인을 모두 런타임이 닫는다(`api-contract.md` "구현에서 정한 검토·승인 규칙"). 무진전 승인만 닫던 것, 기준 패치로 다시 물은 무진전 승인이 남던 것, 성공이나 승인 거절로 끝난 Run에 주인 없는 승인이 남던 것이 이 규칙에 든다. 남기는 한계: 실행 단위 하나만 취소돼 기다리는 쪽이 없어진 무진전 승인은 Run이 끝날 때까지 열려 있다(다음 시도가 같은 승인에 합류할 수 있어 닫지 않는다). `origin` 없는 옛 `directive.accepted`가 저장된 Run은 화면의 이벤트 스트림이 멈춘다(개발 중이라 옮기지 않는다. 옛 데이터를 지울지는 사용자가 정한다).
-- **B12 (B9 리뷰가 찾은 기존 문제).** 사람이 승인을 거절해 Run이 끝날 때(`endRun`) 살아 있는 다른 갈래를 멈추지 않았다. 취소된 Run에 실행이 `active`로 남고 종료 상태 뒤에 `execution.state_changed`가 붙을 수 있었다. 명세(`api-contract.md` "거절한 …는 Run을 취소로 끝낸다")에 멈추는 규칙을 적고 B9 빌더가 `flow/b12-reject-stops-branches`에서 고친다.
-- **A1·A6 (B9 리뷰가 남긴 것).** `advice` 지시를 만드는 태스크가 함께 고친다: `packages/adapter-pi/src/call-snapshot.ts`의 `isRequest`가 조언 머리말을 지시로 알아보게 하고(지금은 조언이 마지막 user 메시지면 판정 입력의 현재 요청이 조언 문장이 된다), `corral_state`의 `directives` 목록과 판정 입력의 적용 지시에 출처를 싣고, `packages/react/src/run/transcript.ts`와 `apps/server/src/session-search.ts`가 조언을 사람의 말로 보이지 않게 한다.
+- **B12 (정한 것과 남긴 것).** 사람의 거절로 끝나는 Run은 살아 있는 갈래가 있으면 Run 범위 취소 경로를 타고(중단점 거절과 같은 길), 멈추는 동안과 끝난 뒤의 상태 이유는 거절 사유다. 살아 있는 갈래가 없으면 전과 같이 한 커밋으로 끝난다. 남기는 것: 런타임이 낸 취소도 `cancel.requested`에 사람 actor로 남는다(중단점·타임아웃 취소와 같은 기존 관례). 멈추는 중에 호스트가 재시작되면 Run은 `interrupted`로 끝나고 거절 사유는 `cancel.requested`의 reason에만 남는다. Run이 `cancelling`일 때 사람이 실행 하나를 취소하면 Run 상태가 `awaiting_user`로 되돌아갔다가 `cancelled`가 된다(전부터).
+- **A5·A6 (B9 리뷰가 남긴 것).** `advice` 지시를 만드는 태스크(A5)가 함께 고친다: `packages/adapter-pi/src/call-snapshot.ts`의 `isRequest`가 조언 머리말을 지시로 알아보게 하고(지금은 조언이 마지막 user 메시지면 판정 입력의 현재 요청이 조언 문장이 된다), `corral_state`의 `directives` 목록과 판정 입력의 적용 지시에 출처를 싣고, `packages/react/src/run/transcript.ts`와 `apps/server/src/session-search.ts`가 조언을 사람의 말로 보이지 않게 한다.
 - **U6 (B9가 남긴 것).** 대화 기록·지시 목록(`ExecutionSteering.tsx`)·기록 내보내기(`transcript.ts`)·세션 검색은 지시를 출처 표시 없이 사람의 지시처럼 보인다. 감독(A 작업)이 `advice` 지시를 만들기 시작하면 U6·A7이 `origin`이 `user`가 아닌 지시를 사람의 메시지로 그리지 않게 한다.
 - **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
 - **B2 (찾은 빈틈과 정한 것).** 반례 테스트가 둘을 찾았다. (1) worker가 아직 시작되지 않은 대상에 온 끼어들기는 끊을 응답이 없으니 `next_request`로 낮춘다(receipt와 지시 기록 모두). (2) 끼어들기로 끊겼거나 오류로 끝난 호출은 확정 응답(`responseRef`)으로 기록하지 않고 받은 글은 부분 출력(`partialOutputs`)으로만 읽는다. 명세를 그렇게 고쳤고 B2 브랜치에서 구현을 고친다.
 - **B2 (리뷰에서 정한 것).** 낮추는 조건은 "Coordinator가 worker를 아직 넘겨받지 못했을 때"로 좁힌다(어댑터가 끼어들 수 있는지 그때는 알 수 없다). worker가 뜨는 중(준비 신호 전)의 끼어들기는 요청 준비 중과 같이 끊지 않고 첫 요청에 실리며 기록은 `interrupt` 그대로다. 글이 보인 뒤 스트림이 깨졌을 때 대기 중인 지시가 있으면 SDK 런타임만 실행을 이어 가 성공으로 끝나던 차이(B2 이전부터)는 없앤다: 어느 런타임에서나 실행 단위는 실패하고 지시는 `expired`다. 실패·끊긴 호출의 글은 스트림 조각으로만 남고 Run이 끝난 뒤에도 중단된 응답으로 읽힌다(`workbench.md` "대화 본문과 중단된 출력"). 두 번째 리뷰: 자동 압축의 요약 응답이 오류로 끝난 경우와 수동 압축이 대기 중인 경우에도 SDK가 실행을 이어 가던 것을 같은 규칙으로 막는다. 남기는 차이: 도구 없는 온전한 마지막 응답이 흐르는 동안 온 지시는 SDK에서는 한 턴을 더 돌아 그 요청에 실리고(`delivered`), pi-core에서는 실행이 끝나 `expired`가 된 뒤 넘겨받는다. 어느 쪽도 지시를 잃지 않는다. 세 번째 리뷰: SDK는 압축 요약의 글을 스트림하지 않는다(실패한 요약의 글이 대화에 중단된 응답으로 보이던 것). 앞 공백은 첫 글자와 함께 나가고, 글자가 나오기 전에 끝나지 못한 호출은 부분 출력을 남기지 않는다(두 런타임 같게). 네 번째 리뷰: 도구 호출은 쥔 공백을 내보내지 않는다(공백 뒤 도구 호출이 시작된 다음 실패하면 공백뿐인 중단된 응답이 그려지던 것). 두 규칙은 `workbench.md` "대화 본문과 중단된 출력"에 적었다. 남기는 한계: 재시도될 응답의 종료 직전(0~1 microtask)에 온 끼어들기는 SDK에서 실행을 실패로 끝낸다(pi-core는 끊김으로 기록하고 이어 간다). SDK의 확장 목적 요청은 스트림되며 그 호출이 실패할 때 보이는 것은 확인하지 않았다. 남기는 한계: pi-core에서 끼어들기로 끊긴 뒤 수동 압축이 돌면 지시 메시지가 요약 요청에 들어가고, 지시의 전달 기록은 압축 뒤 두 번째 요청에 붙는다(지시는 잃지 않는다).
 - **U6 (끼어듦의 표시).** 메타 줄의 "끼어듦 · 응답을 끊고 전달됨"은 지시의 `delivery`가 `interrupt`이고, 그 지시를 실은 호출 바로 앞의 같은 실행 단위 호출이 `interrupted`일 때만 쓴다. 아니면(끊을 응답이 없어 그냥 실린 경우) "읽힘"이다.
+
+- **U5 (디자인 검수에서 정한 것).** 키 안내는 통째로 보이거나 통째로 없다. 자리가 모자라면 폴더 안내가 먼저 아이콘만 남게 줄어든다. 대상 배지는 대상이 둘 이상일 때만 여는 표식이 있는 메뉴이고 하나면 고정 배지다. 남기는 한계: 실행이 막 시작돼 컴포저가 아직 그 실행을 모르는 짧은 사이에 보내면 새 요청으로 나가 같은 세션에 Run이 둘 열린다(서버는 한 세션의 열린 Run 수를 막지 않는다. 사람의 입력 속도로는 드물어 고치지 않았다).
+- **B11b (리뷰에서 정한 것).** 감싸기는 `next`가 한 곳으로 이어질 때만 `exhausted`를 그곳에 잇는다(여러 곳으로 갈라지면 합류가 한 포트의 갈래만 모으므로 잇지 않는다). 제한 없음을 끄면 기본값(3회, 끝내기)이고 전 값은 되돌리기로 찾는다. 레시피를 붙이면 같은 쓰기에서 정책이 끝내기로 정리되고, 제한 없는 Loop는 레시피의 최대 시도 수를 상한으로 받는다(`editor/model.ts`의 `updateNode`). 실행 화면의 회차 수·유효한 상한·현재 상태는 가장 최근 진입의 것이다. 남긴 것: 패치 패널의 "현재 값"은 정책 적용 뒤에도 원래 상한을 보인다. 회차 요약 문구에 단수형이 없다("1 observed rounds", U14).
+- **평가(B11a가 남긴 한계).** `packages/core/src/evaluation.ts`의 품질 셈은 레시피 중단으로 실패한 Run만 반려로 센다. `exhausted`가 이어진 검토 루프(기본 제공 팀의 새 기본값)에서 레시피가 거절한 후보가 마지막 후보로 이어 가 성공하면 반려로 세지 않고, 틀린 후보였다면 잘못된 통과로 센다. `docs/guides/evaluation.md`의 "불필요한 반려" 정의도 레시피 중단이 Run을 멈춘다고 전제한다. 평가용 정의(`examples/eval/`)는 `exhausted`를 잇지 않아 영향이 없다. 이 계획에서는 고치지 않고 끝에 보고한다.
+- **U4 (재리뷰에서 정한 것).** 가려진 대화의 트레이 자리는 "모름"이고 다시 보일 때 새로 잰다. 답한 줄은 그 뒤로 기다리는 것이 하나도 없던 순간이 있으면 떠난다(겹쳐 이어진 대기에서는 남는다). 실행 기록 화면에서 응답 영역이 보이면 머리 알약은 상태만 말한다. 여러 Run이 기다리면 영역 이름에 Run 이름이 붙는다.
+- **U5 (디자인 검수 2·3차).** 키 안내는 어느 상태에서나 마이크·보내기 바로 왼쪽이다(모델·권한 칩이 보이면 그 뒤). 막힌 전송의 키는 키 안내에서 뺀다. "대상 없음" 이유 한 줄은 폴더 안내보다 자리를 먼저 갖고 키 안내보다 먼저 줄어든다.
+- **B13 (U5가 찾은 명세와 코드의 차이).** 명세(`composer-flow.md` "합류 대상")는 이미지와 참조가 새 요청과 다음 요청에 실린다고 하지만, 저장소는 대기 항목(`queue`)의 이미지를 거절하고 서버가 대기 요청을 시작할 때도 넘기지 않는다(U5 이전부터). 명세가 맞다: 대기 항목이 이미지와 참조를 갖고, 서버의 시작 요청에 실리며, 그 뒤 "새 요청에만 적용" 한 줄은 합류·끼어들기에서만 보인다. U5는 그 줄을 다음 요청에도 그대로 둔다(지금 코드에서는 사실이다). U5가 병합된 뒤 한다.
+- **A5 (A1 리뷰가 남긴 것).** `refuseControl`이 거절을 `(runId, commandId)`로 저장하므로 같은 commandId의 재전송은 처리를 켠 뒤에도 옛 거절 receipt를 돌려준다(도구가 commandId를 새로 만들면 문제없다). `submit_advice`의 `expectedControlRevision`을 볼지 정한다. `advice.admitted`의 "`preserve`가 아닐 때만 `directiveId`"는 zod에만 있고 JSON Schema에는 없다.
+- **A7 (A1 리뷰가 남긴 것).** 편집기는 observer를 열 수는 있지만(예외 없음) 다루지 못한다: `layout.ts`가 observer에 포트 표시를 만들고, `wrapIn`·`setParent`가 observer를 상자에 넣으며, `connectCapability`가 observer에서 `delegate`를 잇고, 지켜보던 노드를 지우면 `advise` 연결만 지워지고 observer가 남는다. `VaultSettingsPage.tsx`와 `apps/server/src/vault/subagents.ts`는 observer를 하위 에이전트의 부모 후보로 받는다. observer의 호출 방식을 바꾸지 못하게 한 가드에 테스트가 없다. 문구 키 `Inspector.observer`·`TeamEditor.fields.observer`는 아직 쓰는 곳이 없다.
+- **A8 (A1 리뷰가 남긴 것).** `RunText`가 `advice.*`에 문장을 주지 않아 이벤트 보기는 종류 글자를 그대로 보인다.
+- **A5 (A1이 남긴 것).** 서버의 HTTP 명령 경로는 `RunCommand`를 그대로 받으므로 사람이 `submit_advice`를 보낼 수 있다(지금은 Coordinator가 `COMMAND_NOT_SUPPORTED`로 거절). 명세는 감독의 도구만 보낸다고 하니 A5가 화면·API 경로를 닫아 둔다. A2 전까지 컴파일러는 `observer` 노드와 `advise` 연결을 `ADVISOR_NOT_SUPPORTED`로 거절한다(A2가 규칙으로 바꾼다). 역할이 `advise`를 협업 도구로 가질 수 있는지의 검사도 A2다.
+- **U5 (U3가 병합된 뒤).** `apps/studio/e2e/flow/send-model.spec.ts`는 실행 종료와 끼어들기 단계에서 끝난 실행 아래 항목을 측정에서 뺐다(U3 이전에는 과정이 접히며 306px 움직였다). U3가 통합 브랜치에 들어오면 그 제외를 없앤다.
+- **U6 (U5가 남긴 것).** 지시의 전달 방식은 `directive.accepted`와 receipt의 `requestedBoundary`에만 있고 `DirectiveView`와 세션의 steer 항목에는 없다. 메타 줄이 "끼어듦"을 말하려면 투영이 전달 방식을 가져야 한다. 합류에 실은 텍스트 첨부는 지시(`DirectiveView.attachments`)에만 남으니 보낸 메시지에 첨부 이름을 그 값으로 보인다(지금은 보낸 뒤 첨부가 보이지 않는다). 낮춰진 끼어들기(receipt의 `requestedBoundary`)는 지금 sr-only 알림뿐이다. `SessionEntries.tsx`의 `DeliveryStatus`는 끼어들기여도 "at its next model request"라고 쓴다.
+- **M3 (U5 리뷰가 남긴 것).** 회의 행에서 Alt+Enter는 보내지 않는다(`MeetingPage.tsx:790`, `preferences.ts:114-121`). 명세(`composer-flow.md` 입력 규칙 표의 회의 행)는 세 키 모두 회의에 보낸다고 한다. M3가 맞춘다.
+- **U7 (U5가 남긴 것).** 대상 목록은 `composer/useRunState.ts`의 `useSteerTargets`, "여기에 합류"는 `composer/useIntent.ts`의 `chooseTarget(id)`, 자동 시작은 `composer/useSessionSettings.ts`의 `autoStart`·`updateAutoStart`다. 브라우저 데모 모드에는 서버 대기열이 없어 자동 시작 스위치가 듣지 않는다.
+- **U7 (U4가 남긴 것).** `usePendingTray().waiting`(기다리는 수)과 `visible`을 활동 바가 읽는다. 트레이가 측정되기 전에는 "화면 밖"으로 보지 않는다.
+- **U13 (U4·U5가 남긴 것).** Run에 본문이 아직 없을 때 실행 행 머리와 트레이 카드 사이가 약 100px 빈다(U3의 행 자리 예약). 도구 줄의 폴더 안내("에이전트가 파일을 읽거나 바꿀 수 없습니다")는 늘 떠 있는 설명 글이다. 이미지가 붙은 다음 요청을 서버가 시작할 때 이미지가 실리지 않는다(명세는 실린다고 한다).
+
+- **A5 (A2·A3가 남긴 것).** 감독의 문은 컴파일 옵션 `CompileOptions.advisors`(`refuse`가 기본, `plan`이면 `plan.advisors`를 가진 plan)다. A5는 감독 실행을 만드는 같은 커밋에서 기본값을 바꾼다(`compiler/index.ts`의 `refuseAdvisorsUntilTheyRun`). 대상이 끝난 뒤의 참고(`target_terminal`)는 문지기의 이력과 예산을 차지하지 않는다: `admit`이 돌려준 상태는 `resolveDelivery`가 버리지 않을 때만 반영한다. 문지기 상태는 조언의 정규화한 글을 키로 가지므로 이벤트만으로는 다시 만들 수 없다(이벤트는 글을 싣지 않는다). 감독 실행 단위와 함께 메모리에 둔다.
+- **A7 (A2가 정한 진단).** 감독의 컴파일 진단은 `ADVISOR_OUTSIDE_FLOW`, `ADVISOR_UNWATCHED`(감독 노드), `ADVISOR_ADVISE_SOURCE`·`ADVISOR_ADVISE_TARGET`·`ADVISOR_ADVISE_QUESTIONS`(연결), `ADVISOR_TOOLS`, `ADVISE_TOOL_ADVISOR_ONLY`, `ADVISOR_NOT_A_STEP`, 그리고 문 `ADVISOR_NOT_SUPPORTED`다. 편집기 문구 카탈로그는 `{message}`와 `{node}`만 받아 걸린 도구나 입력의 이름을 말하지 못한다.
+- **U2 (네 번째 리뷰가 남긴 것).** 통합 브랜치에도 있던 것이라 병합을 막지 않았다. (1) 스트리밍 중 끝에서의 첫 휠이 가끔 먹지 않는다(대기하던 scroll 이벤트가 `gap < 1`로 따라가기를 다시 켠다, `ChatView.tsx`). (2) 실행이 끝나 스트리밍 행이 줄어들 때 끝에서 약 1,350px 안쪽을 읽던 사람은 끝으로 끌려간다. (3) 링크·복원된 행에서 아래 키가 40–151px 샜다가 다음 콘텐츠 변화 때 돌아온다. (4) 끝에서 Shift+Space는 끝을 떠나지 못한다. 터치·스크롤바 드래그·WebKit은 재지 못했다.
 
 ### V2 최종 장면
 - 대상: `apps/studio/e2e/flow/{idle,multi-agent,join-interrupt,awaiting,citation,sidebar,meeting}.spec.ts`.

@@ -210,6 +210,14 @@ function researchTeam(): DemoTemplate {
         targetPort: 'exit',
       },
       { id: 'e7', source: 'review_loop', sourcePort: 'next', target: 'output', targetPort: 'in' },
+      // At the round cap nobody is asked: the last draft goes on with its review.
+      {
+        id: 'e8',
+        source: 'review_loop',
+        sourcePort: 'exhausted',
+        target: 'output',
+        targetPort: 'in',
+      },
     ],
     capabilityLinks: [
       { id: 'cap1', kind: 'delegate', sourceNodeId: 'research', targetNodeId: 'helper' },

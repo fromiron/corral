@@ -30,7 +30,7 @@ describe('definitionHash', () => {
       'e791e6ee7d2f933ea17a78bbbec3ae96185da731b9c5b1fa5f7cb11b6e468d88',
     );
     expect(definitionHash(parse(researchTeam))).toBe(
-      '5f825805d5d5e8e3c754d5b7fc66d829a0195739c12cdee61e70de9f3032a8d0',
+      '4b25570e1f60cbdedc18644604530372e09e1a2fac16b23715ed1a8bc2e467ac',
     );
   });
 

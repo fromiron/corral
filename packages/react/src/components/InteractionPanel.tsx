@@ -3,31 +3,84 @@ import {
   ExtensionUiNotice,
   ExtensionUiRequest,
   type RunEvent,
-  type UserAnswers,
+  UserAnswers,
   UserInputRequest,
   validUserAnswers,
 } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Check, Copy } from '../design-kit/icons.ts';
-import { Button, fontWeights, Input, Select, Tooltip } from '../design-kit/index.ts';
+import {
+  AgentCard,
+  AgentStatusIcon,
+  Banner,
+  BannerTitle,
+  Button,
+  fontWeights,
+  Input,
+  Select,
+  Tooltip,
+} from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { FirstRow, RowAction } from './FirstRow.tsx';
+import { FirstRow } from './FirstRow.tsx';
+import { useFreshDecisions } from './freshDecisions.ts';
+import {
+  RequestAreaContext,
+  RequestCardFoot,
+  RequestCardHead,
+  RequestRunContext,
+  requestCard,
+  useRequestOwner,
+} from './RequestCard.tsx';
+import { nextResponseTarget } from './responseFocus.ts';
 
 /** Whether the panel shows: a question or extension prompt waits, or an extension said something. */
 export const interactionShown = (events: readonly RunEvent[], projection: RunProjection | null) =>
   pendingInteractions(events, projection).some((item) => item.kind !== 'approval') ||
   events.some((event) => event.type === 'extension.ui_notified');
 
+/** What an answer said, in one line: the options picked and the words written, per question. */
+function answerSummary(requestText: string | undefined, answerText: string | undefined) {
+  if (!requestText || !answerText) return null;
+  try {
+    const request = UserInputRequest.parse(JSON.parse(requestText));
+    const answers = UserAnswers.parse(JSON.parse(answerText)?.answers);
+    const words = answers
+      .map((answer) => {
+        const question = request.questions.find((q) => q.id === answer.questionId);
+        return [
+          ...(question?.options ?? [])
+            .filter((option) => answer.optionIds?.includes(option.id))
+            .map((option) => option.label),
+          ...(answer.text ? [answer.text] : []),
+        ].join(', ');
+      })
+      .filter(Boolean)
+      .join(' · ');
+    // The line cuts the rest on screen; this only keeps a long answer out of the page.
+    // By code point, so a character outside the basic plane is never cut in half.
+    return (
+      Array.from(words.trim().split('\n')[0] ?? '')
+        .slice(0, 200)
+        .join('') || null
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function InteractionPanel({
   session,
   action,
+  readOnly = false,
 }: {
   session: RunSessionStore;
   /** A control of the host's frame, at the end of the first row (see ApprovalPanel). */
   action?: ReactNode;
+  /** The prompts to read only; another place on the same screen answers them (ApprovalPanel). */
+  readOnly?: boolean;
 }) {
   const events = useStore(session, (s) => s.events);
   const projection = useStore(session, (s) => s.projection);
@@ -35,9 +88,34 @@ export function InteractionPanel({
   const [failedRefs, setFailedRefs] = useState<Set<string>>(new Set());
   const [retry, setRetry] = useState(0);
   const t = useTranslations('Harness');
-  const pending = pendingInteractions(events, projection).flatMap((item) =>
-    item.kind === 'approval' ? [] : [item.event],
+  const inArea = useContext(RequestAreaContext);
+  const waiting = pendingInteractions(events, projection);
+  const pendingIds = new Set(
+    waiting.flatMap((item) => (item.kind === 'approval' ? [] : [item.event.payload.requestId])),
   );
+  // A question answered in this run folds into one line in its place while the run still waits on
+  // something, as a decided approval does; once nothing waits, it leaves with the area.
+  // Only answers of the current wait fold into a line; earlier waits' never come back.
+  const fresh = useFreshDecisions(session, 'answer');
+  const answers = new Map(
+    (waiting.length ? events : []).flatMap((event) =>
+      event.type === 'user_input.answered' && fresh(event.payload.requestId)
+        ? [[event.payload.requestId, event] as const]
+        : [],
+    ),
+  );
+  const requests = [
+    ...new Map(
+      events.flatMap((event) =>
+        (event.type === 'user_input.requested' || event.type === 'extension.ui_requested') &&
+        (pendingIds.has(event.payload.requestId) ||
+          (event.type === 'user_input.requested' && answers.has(event.payload.requestId)))
+          ? [[event.payload.requestId, event] as const]
+          : [],
+      ),
+    ).values(),
+  ];
+  const pending = requests.filter((event) => pendingIds.has(event.payload.requestId));
   const notices = [
     ...new Map(
       events
@@ -50,14 +128,19 @@ export function InteractionPanel({
         ]),
     ).values(),
   ].slice(-8);
-  const refs = [...pending, ...notices].map((event) => event.payload.bodyRef).join(',');
+  const refs = [
+    ...requests.map((event) => event.payload.bodyRef),
+    ...[...answers.values()].map((event) => event.payload.answerRef),
+    ...notices.map((event) => event.payload.bodyRef),
+  ].join(',');
   useEffect(() => {
     void retry;
     let active = true;
     for (const ref of refs.split(',').filter(Boolean))
       void (async () => {
         try {
-          await session.getState().loadArtifact(ref);
+          if (session.getState().artifactTexts[ref] === undefined)
+            await session.getState().loadArtifact(ref);
           if (!session.getState().artifactTexts[ref]) throw new Error('missing prompt');
         } catch {
           if (active) setFailedRefs((current) => new Set([...current, ref]));
@@ -67,7 +150,7 @@ export function InteractionPanel({
       active = false;
     };
   }, [session, refs, retry]);
-  if (!pending.length && !notices.length) return null;
+  if (!requests.length && !notices.length) return null;
   const shownNotices = notices.flatMap((event) => {
     const text = bodies[event.payload.bodyRef];
     if (!text) return [];
@@ -78,13 +161,37 @@ export function InteractionPanel({
       return [];
     }
   });
+  // The host's control sits in the first waiting prompt's head, else in the first notice's row.
+  const lead = pending[0]?.payload.requestId;
   return (
     <section
-      aria-label={pending.length ? t('extensionUi') : t('extensionNotice')}
+      {...(inArea
+        ? {}
+        : { 'aria-label': pending.length ? t('extensionUi') : t('extensionNotice') })}
       className="flex flex-col gap-2"
     >
-      {pending.map((event, index) =>
-        event.type === 'user_input.requested' ? (
+      {requests.map((event) => {
+        const answered = answers.get(event.payload.requestId);
+        if (answered && event.type === 'user_input.requested') {
+          const summary = answerSummary(
+            bodies[event.payload.bodyRef],
+            bodies[answered.payload.answerRef],
+          );
+          return (
+            <p
+              key={event.payload.requestId}
+              data-testid={`answered-${event.payload.requestId}`}
+              className="flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground"
+            >
+              <AgentStatusIcon status="done" size={12} className="shrink-0" />
+              <span className="min-w-0 truncate">
+                {summary ? t('answeredLine', { answer: summary }) : t('answered')}
+              </span>
+            </p>
+          );
+        }
+        const own = event.payload.requestId === lead ? action : undefined;
+        return event.type === 'user_input.requested' ? (
           <UserQuestionPrompt
             key={event.payload.requestId}
             session={session}
@@ -95,7 +202,8 @@ export function InteractionPanel({
               setFailedRefs(new Set());
               setRetry((n) => n + 1);
             }}
-            action={index === 0 ? action : undefined}
+            action={own}
+            readOnly={readOnly}
           />
         ) : (
           <ExtensionPrompt
@@ -112,10 +220,11 @@ export function InteractionPanel({
               });
               setRetry((current) => current + 1);
             }}
-            action={index === 0 ? action : undefined}
+            action={own}
+            readOnly={readOnly}
           />
-        ),
-      )}
+        );
+      })}
       {shownNotices.map(({ event, notice }, index) => (
         <FirstRow key={event.eventId} action={!pending.length && index === 0 ? action : undefined}>
           <p
@@ -134,6 +243,66 @@ export function InteractionPanel({
   );
 }
 
+/**
+ * Who asks, under a request card's title: the role and run where the place names them
+ * (`useRequestOwner`), the Loop round, and the attempt once it is not the first.
+ */
+function useAskedBy(session: RunSessionStore, executionId: string, attemptNo: number) {
+  const t = useTranslations('Harness');
+  const owner = useRequestOwner(session);
+  const round = useStore(session, (s) => {
+    const iterationId = s.projection?.executions[executionId]?.iterationId;
+    return iterationId ? s.projection?.iterations[iterationId]?.no : undefined;
+  });
+  return (extra?: string | null) =>
+    [
+      owner({ executionId }),
+      round ? t('round', { round }) : null,
+      attemptNo > 1 ? t('attempt', { attempt: attemptNo }) : null,
+      extra ?? null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || null;
+}
+
+/** The exact execution id, one copy away for a report: the card head's secondary control. */
+function CopyExecutionId({ executionId }: { executionId: string }) {
+  const t = useTranslations('Harness');
+  const [copied, setCopied] = useState(false);
+  return (
+    <>
+      <Tooltip content={copied ? t('executionIdCopied') : executionId}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t('copyExecutionId')}
+          onClick={() =>
+            void navigator.clipboard?.writeText(executionId).then(
+              () => setCopied(true),
+              () => setCopied(false),
+            )
+          }
+        >
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      </Tooltip>
+      <span role="status" className="sr-only">
+        {copied ? t('executionIdCopied') : ''}
+      </span>
+    </>
+  );
+}
+
+/** A refused or unconfirmed answer, in its card, as a refused decision is. */
+function CardAlert({ message }: { message: string }) {
+  return message ? (
+    <Banner role="alert" status="error" className="mx-3 mb-3">
+      <BannerTitle>{message}</BannerTitle>
+    </Banner>
+  ) : null;
+}
+
 function ExtensionPrompt({
   session,
   event,
@@ -141,6 +310,7 @@ function ExtensionPrompt({
   loadFailed,
   retry,
   action,
+  readOnly,
 }: {
   session: RunSessionStore;
   event: EventOf<'extension.ui_requested'>;
@@ -148,9 +318,12 @@ function ExtensionPrompt({
   loadFailed: boolean;
   retry(): void;
   action?: ReactNode;
+  readOnly: boolean;
 }) {
   const t = useTranslations('Harness');
   const format = useFormatter();
+  const askedBy = useAskedBy(session, event.payload.executionId, event.payload.attemptNo);
+  const titleId = useId();
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -184,94 +357,91 @@ function ExtensionPrompt({
     }
   }
   return (
-    <article
-      className="flex flex-col gap-2 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
+    <AgentCard
+      role="article"
+      aria-labelledby={titleId}
+      className="text-caption"
       data-testid={`extension-ui-${event.payload.requestId}`}
     >
-      <FirstRow action={action}>
-        <p
-          className="text-caption text-muted-foreground"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {t('extensionUi')}
-        </p>
-      </FirstRow>
-      <h3 style={{ fontVariationSettings: fontWeights.semibold }}>
-        {request?.title ??
-          t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')}
-      </h3>
-      {!request && loadFailed ? (
-        <Button variant="tertiary" onClick={retry}>
-          {t('retryPrompt')}
-        </Button>
-      ) : null}
-      <ExecutionLine
-        session={session}
-        executionId={event.payload.executionId}
-        attemptNo={event.payload.attemptNo}
+      <RequestCardHead
+        titleId={titleId}
+        title={
+          request?.title ??
+          t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')
+        }
+        owner={[t('extensionUi'), askedBy()].filter(Boolean).join(' · ')}
+        aside={<CopyExecutionId executionId={event.payload.executionId} />}
+        action={action}
       />
-      <p className="text-caption text-muted-foreground">
-        {t('expires', {
-          time: format.dateTime(new Date(event.payload.deadline), {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          }),
-        })}
-      </p>
-      {request?.kind === 'confirm' ? (
-        <p className="whitespace-pre-wrap break-words">{request.message}</p>
-      ) : null}
-      {request?.kind === 'select' ? (
-        <Select
-          label={request.title}
-          disabled={busy}
-          value={value}
-          onValueChange={setValue}
-          options={[
-            { value: '', label: t('chooseOption') },
-            ...request.options.map((option) => ({ value: option, label: option })),
-          ]}
-        />
-      ) : null}
-      {request?.kind === 'input' ? (
-        <Input
-          aria-label={request.title}
-          disabled={busy}
-          value={value}
-          maxLength={12000}
-          placeholder={request.placeholder}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        {request?.kind === 'confirm' ? (
-          <>
-            <Button disabled={busy} onClick={() => void answer(true)}>
-              {t('confirmYes')}
+      <div className={requestCard.body}>
+        {!request && loadFailed ? (
+          <span>
+            <Button variant="tertiary" onClick={retry}>
+              {t('retryPrompt')}
             </Button>
-            <Button variant="tertiary" disabled={busy} onClick={() => void answer(false)}>
-              {t('confirmNo')}
-            </Button>
-          </>
-        ) : request ? (
-          <Button
-            disabled={busy || (request.kind === 'select' && !value)}
-            onClick={() => void answer(value)}
-          >
-            {t('sendAnswer')}
-          </Button>
+          </span>
         ) : null}
-        <Button variant="ghost" disabled={busy} onClick={() => void answer(null)}>
-          {t('dismissPrompt')}
-        </Button>
-      </div>
-      {error ? (
-        <p role="alert" className="text-caption text-danger">
-          {error}
+        {request?.kind === 'confirm' ? (
+          <p className="whitespace-pre-wrap break-words text-foreground">{request.message}</p>
+        ) : null}
+        {readOnly ? null : request?.kind === 'select' ? (
+          <Select
+            label={request.title}
+            disabled={busy}
+            value={value}
+            onValueChange={setValue}
+            options={[
+              { value: '', label: t('chooseOption') },
+              ...request.options.map((option) => ({ value: option, label: option })),
+            ]}
+          />
+        ) : null}
+        {!readOnly && request?.kind === 'input' ? (
+          <Input
+            aria-label={request.title}
+            disabled={busy}
+            value={value}
+            maxLength={12000}
+            placeholder={request.placeholder}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        ) : null}
+        <p className="text-muted-foreground">
+          {t('expires', {
+            time: format.dateTime(new Date(event.payload.deadline), {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            }),
+          })}
         </p>
-      ) : null}
-    </article>
+      </div>
+      {readOnly ? null : (
+        <RequestCardFoot>
+          <Button variant="tertiary" disabled={busy} onClick={() => void answer(null)}>
+            {t('dismissPrompt')}
+          </Button>
+          {request?.kind === 'confirm' ? (
+            <>
+              <Button variant="tertiary" disabled={busy} onClick={() => void answer(false)}>
+                {t('confirmNo')}
+              </Button>
+              <Button disabled={busy} onClick={() => void answer(true)}>
+                {t('confirmYes')}
+              </Button>
+            </>
+          ) : request ? (
+            <Button
+              disabled={busy || (request.kind === 'select' && !value)}
+              onClick={() => void answer(value)}
+            >
+              {t('sendAnswer')}
+            </Button>
+          ) : null}
+        </RequestCardFoot>
+      )}
+      <CardAlert message={error} />
+    </AgentCard>
   );
 }
 
@@ -282,6 +452,7 @@ function UserQuestionPrompt({
   loadFailed,
   retry,
   action,
+  readOnly,
 }: {
   session: RunSessionStore;
   event: EventOf<'user_input.requested'>;
@@ -289,10 +460,13 @@ function UserQuestionPrompt({
   loadFailed: boolean;
   retry(): void;
   action?: ReactNode;
+  readOnly: boolean;
 }) {
   const t = useTranslations('Harness');
+  const askedBy = useAskedBy(session, event.payload.executionId, event.payload.attemptNo);
+  const run = useContext(RequestRunContext);
   const form = useRef<HTMLFormElement>(null);
-  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const stepHeading = useRef<HTMLParagraphElement>(null);
   const headingId = useId();
   const [values, setValues] = useState<Record<string, UserAnswers[number]>>({});
   const [busy, setBusy] = useState(false);
@@ -330,6 +504,7 @@ function UserQuestionPrompt({
     )
       return;
     const container = form.current?.closest('[data-chat-view]');
+    const tray = form.current?.closest('[data-pending-tray]');
     const ownedFocus = form.current?.contains(document.activeElement);
     setBusy(true);
     setError('');
@@ -347,11 +522,12 @@ function UserQuestionPrompt({
       });
       if (receipt.error) setError(receipt.error.message);
       else if (ownedFocus)
+        // As a decided approval does: the next waiting card's main action, else the request box.
         requestAnimationFrame(() => {
           if (container?.isConnected && document.activeElement === document.body)
-            container
-              .querySelector<HTMLTextAreaElement>('[data-testid=chat-composer] textarea')
-              ?.focus({ preventScroll: true });
+            nextResponseTarget(tray?.isConnected ? tray : null, container)?.focus({
+              preventScroll: true,
+            });
         });
     } catch {
       setError(t('answerUnconfirmed'));
@@ -359,20 +535,50 @@ function UserQuestionPrompt({
       setBusy(false);
     }
   }
+  // The card's title is the question itself (the step's, in a stepped request), so the asked
+  // sentence reads first; the step count joins who asks under it.
+  const unavailable = t(loadFailed || text !== undefined ? 'questionUnavailable' : 'loadingPrompt');
+  const title = !request
+    ? unavailable
+    : reviewing
+      ? t('reviewAnswers')
+      : (request.questions[stepped ? step : 0]?.prompt ?? '');
+  const owner = askedBy(
+    stepped && !reviewing ? t('questionStep', { current: step + 1, total: count }) : null,
+  );
+  const head = (
+    <RequestCardHead
+      title={title}
+      titleId={headingId}
+      {...(readOnly ? {} : { titleRef: stepHeading })}
+      owner={owner}
+      aside={<CopyExecutionId executionId={event.payload.executionId} />}
+      action={action}
+    />
+  );
   const questionFieldset = (q: UserInputRequest['questions'][number], hidden = false) => {
     const value = values[q.id] ?? { questionId: q.id };
     return (
-      <fieldset key={q.id} disabled={busy} hidden={hidden} className="flex flex-col gap-2">
-        <legend style={{ fontVariationSettings: fontWeights.semibold }}>{q.prompt}</legend>
+      <fieldset
+        key={q.id}
+        disabled={busy}
+        hidden={hidden}
+        aria-label={q.prompt}
+        className="flex min-w-0 flex-col gap-2"
+      >
         {q.description ? (
           <p className="whitespace-pre-wrap break-words text-muted-foreground">{q.description}</p>
         ) : null}
         {q.options?.map((option) => (
-          <label key={option.id} className="flex cursor-pointer items-start gap-2 rounded p-1">
+          <label
+            key={option.id}
+            className="flex cursor-pointer items-start gap-2 rounded text-foreground"
+          >
             <input
               type={q.kind === 'multiple' ? 'checkbox' : 'radio'}
               name={`${event.payload.requestId}_${q.id}`}
               value={option.id}
+              className="mt-0.5"
               checked={value.optionIds?.includes(option.id) ?? false}
               onChange={(e) =>
                 setValues((current) => ({
@@ -391,11 +597,11 @@ function UserQuestionPrompt({
             />
             <span>
               {option.label}
-              {option.recommended ? ` (${t('recommended')})` : ''}
+              {option.recommended ? (
+                <span className="text-muted-foreground"> ({t('recommended')})</span>
+              ) : null}
               {option.description ? (
-                <span className="block text-caption text-muted-foreground">
-                  {option.description}
-                </span>
+                <span className="block text-muted-foreground">{option.description}</span>
               ) : null}
             </span>
           </label>
@@ -405,8 +611,10 @@ function UserQuestionPrompt({
             className="flex flex-col gap-1"
             htmlFor={`${event.payload.requestId}-${q.id}-text`}
           >
-            {/* A lone text field sits right under its prompt; beside options it names itself. */}
-            <span className={q.options?.length ? undefined : 'sr-only'}>{t('yourAnswer')}</span>
+            {/* A lone text field sits right under its question; beside options it names itself. */}
+            <span className={q.options?.length ? 'text-muted-foreground' : 'sr-only'}>
+              {t('yourAnswer')}
+            </span>
             <Input
               id={`${event.payload.requestId}-${q.id}-text`}
               nativeInput
@@ -431,64 +639,98 @@ function UserQuestionPrompt({
       </fieldset>
     );
   };
+  if (readOnly)
+    return (
+      <AgentCard
+        role="article"
+        aria-labelledby={headingId}
+        data-question={event.payload.requestId}
+        className="text-caption"
+      >
+        {head}
+        {request ? (
+          <div className={requestCard.body}>
+            {request.questions.map((q, index) => (
+              <div key={q.id} className="flex flex-col gap-1">
+                {/* The first question is the title; the others read in turn below it. */}
+                {index > 0 ? (
+                  <p
+                    className="text-foreground"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {q.prompt}
+                  </p>
+                ) : null}
+                {q.description ? (
+                  <p className="whitespace-pre-wrap break-words text-muted-foreground">
+                    {q.description}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </AgentCard>
+    );
   return (
-    <form
-      ref={form}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
-          event.preventDefault();
-      }}
-      className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 p-3 text-body"
-      onSubmit={(e) => {
-        e.preventDefault();
-        // A question step's submit (Next, or Enter in a text answer) only moves on.
-        if (stepped && !reviewing) goTo(step + 1);
-        else void submit();
-      }}
-      aria-label={t('userQuestions')}
-    >
-      <ExecutionLine
-        session={session}
-        executionId={event.payload.executionId}
-        attemptNo={event.payload.attemptNo}
-        action={action}
-      />
-      {!request ? (
-        <>
-          <p>{t(loadFailed || text !== undefined ? 'questionUnavailable' : 'loadingPrompt')}</p>
-          <Button type="button" variant="tertiary" onClick={retry}>
-            {t('retryPrompt')}
-          </Button>
-        </>
-      ) : stepped ? (
-        <>
-          <h3
-            ref={stepHeading}
-            id={headingId}
-            tabIndex={-1}
-            className="text-caption text-muted-foreground tabular-nums outline-none"
-          >
-            {reviewing
-              ? t('reviewAnswers')
-              : t('questionStep', { current: step + 1, total: count })}
-          </h3>
-          {/* Every question keeps its native fieldset; only the current step is shown. */}
-          {request.questions.map((q, index) => questionFieldset(q, index !== step))}
-          {reviewing ? (
-            <ul aria-labelledby={headingId} className="flex flex-col divide-y divide-border">
-              {request.questions.map((q, index) => (
-                <ReviewRow
-                  key={q.id}
-                  question={q}
-                  answer={values[q.id]}
-                  busy={busy}
-                  onEdit={() => goTo(index)}
-                />
-              ))}
-            </ul>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            {step > 0 ? (
+    <AgentCard data-question={event.payload.requestId} className="text-caption">
+      <form
+        ref={form}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
+            event.preventDefault();
+        }}
+        className="flex min-w-0 flex-col"
+        onSubmit={(e) => {
+          e.preventDefault();
+          // A question step's submit (Next, or Enter in a text answer) only moves on.
+          if (stepped && !reviewing) goTo(step + 1);
+          else void submit();
+        }}
+        // Each question's form is its own landmark, told apart by its first question, and by its
+        // run where several runs' requests stand together.
+        aria-label={[
+          run,
+          request?.questions[0]
+            ? t('userQuestionsNamed', { question: request.questions[0].prompt })
+            : t('userQuestions'),
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      >
+        {head}
+        <div className={requestCard.body}>
+          {!request ? (
+            <span>
+              <Button type="button" variant="tertiary" onClick={retry}>
+                {t('retryPrompt')}
+              </Button>
+            </span>
+          ) : stepped ? (
+            <>
+              {/* Every question keeps its native fieldset; only the current step is shown. */}
+              {request.questions.map((q, index) => questionFieldset(q, index !== step))}
+              {reviewing ? (
+                <ul aria-labelledby={headingId} className="flex flex-col divide-y divide-border">
+                  {request.questions.map((q, index) => (
+                    <ReviewRow
+                      key={q.id}
+                      question={q}
+                      answer={values[q.id]}
+                      busy={busy}
+                      onEdit={() => goTo(index)}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            request.questions.map((q) => questionFieldset(q))
+          )}
+        </div>
+        {request ? (
+          <RequestCardFoot>
+            {stepped && step > 0 ? (
               <Button
                 type="button"
                 variant="tertiary"
@@ -498,86 +740,18 @@ function UserQuestionPrompt({
                 {t('previousQuestion')}
               </Button>
             ) : null}
-            {reviewing ? (
+            {stepped && !reviewing ? (
+              <Button type="submit">{t('nextQuestion')}</Button>
+            ) : (
               <Button type="submit" disabled={busy || !validUserAnswers(request, answers)}>
                 {t('sendAnswer')}
               </Button>
-            ) : (
-              <Button type="submit">{t('nextQuestion')}</Button>
             )}
-          </div>
-        </>
-      ) : (
-        request.questions.map((q) => questionFieldset(q))
-      )}
-      {request && !stepped ? (
-        <Button type="submit" disabled={busy || !validUserAnswers(request, answers)}>
-          {t('sendAnswer')}
-        </Button>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-caption text-danger">
-          {error}
-        </p>
-      ) : null}
-    </form>
-  );
-}
-
-/**
- * Who is asking, in the person's words: the agent, its round and attempt. The exact execution id
- * stays one copy away for a report.
- */
-function ExecutionLine({
-  session,
-  executionId,
-  attemptNo,
-  action,
-}: {
-  session: RunSessionStore;
-  executionId: string;
-  attemptNo: number;
-  action?: ReactNode;
-}) {
-  const t = useTranslations('Harness');
-  const definition = useStore(session, (s) => s.definition);
-  const execution = useStore(session, (s) => s.projection?.executions[executionId]);
-  const round = useStore(session, (s) =>
-    execution?.iterationId ? s.projection?.iterations[execution.iterationId]?.no : undefined,
-  );
-  const [copied, setCopied] = useState(false);
-  const agent = execution
-    ? (definition?.nodes.find((node) => node.id === execution.nodeId)?.label ?? execution.nodeId)
-    : null;
-  const words = [
-    agent,
-    round ? t('round', { round }) : null,
-    t('attempt', { attempt: attemptNo }),
-  ].filter(Boolean);
-  return (
-    <p className="flex min-w-0 items-center gap-1 text-caption text-muted-foreground">
-      <RowAction action={action} />
-      <span className="min-w-0 truncate">{words.join(' · ')}</span>
-      <Tooltip content={copied ? t('executionIdCopied') : executionId}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t('copyExecutionId')}
-          onClick={() =>
-            void navigator.clipboard?.writeText(executionId).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            )
-          }
-        >
-          {copied ? <Check /> : <Copy />}
-        </Button>
-      </Tooltip>
-      <span role="status" className="sr-only">
-        {copied ? t('executionIdCopied') : ''}
-      </span>
-    </p>
+          </RequestCardFoot>
+        ) : null}
+        <CardAlert message={error} />
+      </form>
+    </AgentCard>
   );
 }
 
@@ -606,7 +780,10 @@ function ReviewRow({
   return (
     <li className="flex items-start gap-2 py-2">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="break-words" style={{ fontVariationSettings: fontWeights.semibold }}>
+        <span
+          className="break-words text-foreground"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
           {question.prompt}
         </span>
         {missing ? (

@@ -88,6 +88,7 @@ import { ExecutionContext, RunStatusCards } from '../workbench/RunStatusCards.ts
 import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
 import { RunViews } from '../workbench/RunViews.tsx';
 import { runFlowChecks } from '../workbench/runFlowChecks.ts';
+import { useRespondInConversation } from '../workbench/session/PendingTray.tsx';
 import { toolMarks } from '../workbench/toolMarks.ts';
 import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { failedExecutionId } from '../workbench/widgets/selectors.ts';
@@ -246,6 +247,10 @@ function RunWorkspace({
   const resultOpen = search.view === 'results' || result !== undefined;
   const documentOpen = resultOpen || artifact !== undefined;
   const Main = embedded ? 'div' : 'main';
+  // Beside its session's conversation, the run record only shows what waits: the conversation's
+  // needed-now tray is the one place it is answered, and Respond goes there (workbench.md).
+  const conversationResponds = useRespondInConversation();
+  const respondElsewhere = embedded && sessionId ? conversationResponds : null;
   const { previewUrl, workspaces } = useServices();
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
@@ -374,6 +379,9 @@ function RunWorkspace({
   const responding = pending > 0 || extensionSaid || extensionReplying;
   const sideShown =
     !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || responding);
+  // The response area beside the run is on screen: it is the one way to respond there, so the
+  // header's state names the wait without a second Respond.
+  const responseShown = sideShown && panel === 'approval' && responding;
   useEffect(() => {
     if (hasOutput) markRunReviewed();
   }, [hasOutput]);
@@ -559,8 +567,12 @@ function RunWorkspace({
         session={session}
         definition={definition}
         request={request}
-        waiting={pending}
+        waiting={responseShown ? 0 : pending}
         onRespond={() => {
+          if (respondElsewhere) {
+            respondElsewhere();
+            return;
+          }
           rememberTrigger();
           setSteeringOpen(false);
           setSearch({ artifact: undefined, result: undefined, view: undefined });
@@ -847,6 +859,7 @@ function RunWorkspace({
                   focusRef={response}
                   onOpenArtifact={openArtifact}
                   {...(panel === 'approval' ? { action: closeDetails } : {})}
+                  {...(respondElsewhere ? { onRespond: respondElsewhere } : {})}
                 />
               ) : null}
             </div>
@@ -1207,17 +1220,16 @@ function RunFacts({
   const requests = Object.values(projection.modelCalls);
   const inFlight = requests.filter((c) => !c.finished).length;
   const ended = TERMINAL_RUN_STATUSES.has(projection.status);
-  const loops = definition.nodes.flatMap((node) =>
-    node.type === 'loop' && projection.loopIterations[node.id]?.length
-      ? [
-          t('loopRound', {
-            label: node.label,
-            round: projection.loopIterations[node.id]?.length ?? 0,
-            max: loopLimit(projection, node.id) ?? node.maxIterations,
-          }),
-        ]
-      : [],
-  );
+  const loops = definition.nodes.flatMap((node) => {
+    if (node.type !== 'loop' || !projection.loopIterations[node.id]?.length) return [];
+    const round = projection.loopIterations[node.id]?.length ?? 0;
+    const max = loopLimit(projection, node.id) ?? node.maxIterations;
+    return [
+      max === undefined
+        ? t('loopRoundUnlimited', { label: node.label, round })
+        : t('loopRound', { label: node.label, round, max }),
+    ];
+  });
   const team = definition.sourceTeam
     ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
     : definition.name;

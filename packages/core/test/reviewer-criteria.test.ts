@@ -12,8 +12,12 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
+/** Lets the host run its queued work, macrotasks included (a Loop yields one between rounds). */
 async function until(done: () => boolean) {
-  for (let i = 0; i < 20_000 && !done(); i++) await Promise.resolve();
+  const deadline = Date.now() + 2_000;
+  const host = globalThis as unknown as { setImmediate(fn: () => void): unknown };
+  while (!done() && Date.now() < deadline)
+    await new Promise<void>((resolve) => host.setImmediate(resolve));
   if (!done()) throw new Error('timed out');
 }
 

@@ -17,6 +17,7 @@ import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
+import { PendingTray } from './PendingTray.tsx';
 import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.tsx';
 
 /** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
@@ -117,6 +118,16 @@ export function WorkTab({
             ),
           })),
         ]}
+        tray={
+          <PendingTray
+            sessionId={session.sessionId}
+            runs={runs}
+            // A decision's subject opens as a document over the run record, as on the run page.
+            onOpenArtifact={(run, artifact) =>
+              onPanel('run', { run, view: 'run', artifact, result: undefined })
+            }
+          />
+        }
         composer={
           <Composer
             key={session.sessionId}

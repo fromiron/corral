@@ -11,6 +11,7 @@ import {
   type LspReport,
   type RunEvent,
   type Scheduler,
+  TERMINAL_EXECUTION_STATUSES,
   type ToolDescriptor,
   type ToolOutcome,
 } from '@corral/contracts';
@@ -25,6 +26,7 @@ import {
   emptyProjection,
   type FileTools,
   InMemoryRunStore,
+  type RunProjection,
   toolRunGrant,
   validToolPermissionPlan,
 } from '../src/index.ts';
@@ -321,7 +323,7 @@ function setup(
 function forkedCorral(): CorralDefinition {
   const definition = linearCorral(['p', 'a', 'b', 'm']);
   for (const node of definition.nodes)
-    if (node.type === 'agent' && node.id !== 'p')
+    if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
       node.inputBindings = [{ kind: 'task_output', name: 'previous', sourceNodeId: 'p' }];
   definition.nodes.push({ id: 'j', type: 'join', label: 'j', policy: 'all' });
   const edge = (id: string, source: string, target: string) => ({
@@ -719,46 +721,16 @@ describe('allow for this run', () => {
   });
 
   it("a tool call waiting in another branch closes, named by its execution, when the person's rejection ends the Run", async () => {
-    // p, then a and an approval step at once, meeting at a Join.
-    const gated = () => {
-      const definition = forkedCorral();
-      definition.nodes = definition.nodes.filter((node) => node.id !== 'b');
-      definition.nodes.push({
-        id: 'gate',
-        type: 'decision',
-        label: 'gate',
-        mode: 'approval',
-        rule: 'human_approval',
-        inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
-      });
-      definition.controlEdges = definition.controlEdges.map((edge) =>
-        edge.target === 'b'
-          ? { ...edge, target: 'gate' }
-          : edge.source === 'b'
-            ? { ...edge, source: 'gate', sourcePort: 'approve' }
-            : edge,
-      );
-      return definition;
-    };
     const s = setup({ definition: gated });
     const runId = s.start();
     await s.finish(await s.next(0));
     const a = await s.next(1);
     const call = await s.ask(runId, a, write('notes.md'));
-    await vi.waitFor(() =>
-      expect(
-        Object.values(s.coordinator.getSnapshot(runId).projection.approvals).some(
-          (approval) => !approval.tool,
-        ),
-      ).toBe(true),
-    );
-    const gate = Object.values(s.coordinator.getSnapshot(runId).projection.approvals).find(
-      (approval) => !approval.tool,
-    )!;
-    expect(s.resolve(runId, gate.approvalId, 'reject').status).toBe('applied');
+    expect(s.resolve(runId, (await gateOf(s, runId)).approvalId, 'reject').status).toBe('applied');
     await vi.waitFor(() =>
       expect(s.coordinator.getSnapshot(runId).projection.status).toBe('cancelled'),
     );
+    endedClean(s.events(runId), s.coordinator.getSnapshot(runId).projection);
     // The call's waiter is told no, and its closing names the execution that asked.
     expect((await call.outcome).ok).toBe(false);
     const closed = s
@@ -774,9 +746,96 @@ describe('allow for this run', () => {
       actor: { kind: 'runtime' },
       payload: { decision: 'reject', actor: 'coordinator', reason: 'cancelled' },
     });
-    a.settle({ outcome: 'cancelled' });
+  });
+
+  it("a tool call running in another branch is stopped before the person's rejection ends the Run", async () => {
+    const release = new Gate();
+    const s = setup({
+      definition: gated,
+      files: {
+        execute: async (value) => {
+          await release.wait();
+          return { path: value.args.path, created: true };
+        },
+      },
+    });
+    const runId = s.start();
+    await s.finish(await s.next(0));
+    const a = await s.next(1);
+    const call = await s.ask(runId, a, write('notes.md'));
+    expect(s.resolve(runId, call.approval.approvalId, 'approve').status).toBe('applied');
+    await vi.waitFor(() =>
+      expect(
+        s
+          .events(runId)
+          .some((event) => event.type === 'tool.started' || event.type === 'effect.admitted'),
+      ).toBe(true),
+    );
+    expect(s.resolve(runId, (await gateOf(s, runId)).approvalId, 'reject').status).toBe('applied');
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(runId).projection.status).toBe('cancelling'),
+    );
+    // While the branch stops, the run already gives the rejection as its reason.
+    expect(s.coordinator.getSnapshot(runId).projection.statusReason).toBe('rejected: gate');
+    release.open();
+    await call.outcome.catch(() => null);
+    await vi.waitFor(() =>
+      expect(s.coordinator.getSnapshot(runId).projection.status).toBe('cancelled'),
+    );
+    endedClean(s.events(runId), s.coordinator.getSnapshot(runId).projection);
   });
 });
+
+/** p, then a and an approval step at once, meeting at a Join. */
+function gated(): CorralDefinition {
+  const definition = forkedCorral();
+  definition.nodes = definition.nodes.filter((node) => node.id !== 'b');
+  definition.nodes.push({
+    id: 'gate',
+    type: 'decision',
+    label: 'gate',
+    mode: 'approval',
+    rule: 'human_approval',
+    inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+  });
+  definition.controlEdges = definition.controlEdges.map((edge) =>
+    edge.target === 'b'
+      ? { ...edge, target: 'gate' }
+      : edge.source === 'b'
+        ? { ...edge, source: 'gate', sourcePort: 'approve' }
+        : edge,
+  );
+  return definition;
+}
+
+/** The approval step's approval, once it asks. */
+async function gateOf(s: ReturnType<typeof setup>, runId: string) {
+  const step = () =>
+    Object.values(s.coordinator.getSnapshot(runId).projection.approvals).find(
+      (approval) => !approval.tool,
+    );
+  await vi.waitFor(() => expect(step()).toBeDefined());
+  return step()!;
+}
+
+/** Nothing of an execution is recorded after the run's end, and no execution is still live. */
+function endedClean(events: readonly RunEvent[], projection: RunProjection) {
+  const end = events.findIndex(
+    (event) => event.type === 'run.state_changed' && event.payload.to === 'cancelled',
+  );
+  expect(end).toBeGreaterThanOrEqual(0);
+  expect(events.slice(end + 1).filter((event) => event.type.startsWith('execution.'))).toEqual([]);
+  expect(
+    Object.values(projection.executions).filter(
+      (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+    ),
+  ).toEqual([]);
+  // The rejection is the reason, for the stop it asked for and for the end.
+  expect(projection.statusReason).toBe('rejected: gate');
+  expect(
+    events.flatMap((event) => (event.type === 'cancel.requested' ? [event.payload.reason] : [])),
+  ).toEqual(['rejected: gate']);
+}
 
 describe('allow for this run on a command', () => {
   const report = {

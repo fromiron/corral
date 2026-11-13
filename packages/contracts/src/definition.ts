@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ImageAttachments } from './attachments.ts';
 import { ContentHash, HarnessBindingRef, HarnessResourceRef } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
-import { ReasoningPolicy } from './reasoning.ts';
+import { ReasoningLevel, ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
 
 // Canonical definition of a Corral. Where nodes are drawn is derived from it, never stored.
@@ -67,6 +67,7 @@ export const CollaborationTool = z.enum([
   'submit_result',
   'ask_user',
   'update_plan',
+  'advise',
 ]);
 export type CollaborationTool = z.infer<typeof CollaborationTool>;
 
@@ -82,7 +83,7 @@ export const AgentRole = z.strictObject({
   allowedWorkTools: z.array(WorkTool).max(13),
   imageProfile: Identifier.optional(),
   editingMode: z.enum(['pi', 'hashline']).optional(),
-  allowedCollaborationTools: z.array(CollaborationTool).max(8),
+  allowedCollaborationTools: z.array(CollaborationTool).max(9),
   outputContract: OutputContract,
   harness: HarnessBindingRef.optional(),
   /**
@@ -106,7 +107,8 @@ const nodeBase = {
   note: z.string().max(4000).optional(),
 };
 
-export const AgentNode = z.strictObject({
+/** An Agent in the run order, or one other Agents call through capability links. */
+export const WorkAgentNode = z.strictObject({
   ...nodeBase,
   type: z.literal('agent'),
   roleId: Identifier,
@@ -116,7 +118,40 @@ export const AgentNode = z.strictObject({
   /** Further attempts after a failure; then the `error` port. */
   retry: z.strictObject({ maxAttempts: z.int().min(0) }).optional(),
 });
+export type WorkAgentNode = z.infer<typeof WorkAgentNode>;
+
+/** How often an advisor reviews and how many model requests one review may make. */
+export const AdvisorReview = z.strictObject({
+  interval: z.int().min(1),
+  maxRequestsPerReview: z.int().min(1),
+});
+export type AdvisorReview = z.infer<typeof AdvisorReview>;
+
+/** An absent `review` (docs/specs/features/advisor.md). */
+export const DEFAULT_ADVISOR_REVIEW: AdvisorReview = { interval: 3, maxRequestsPerReview: 8 };
+
+/**
+ * An advisor: outside the run order, it watches the Agents its `advise` links point to
+ * (docs/specs/features/advisor.md). It takes no input bindings and no retry.
+ */
+export const ObserverAgentNode = z.strictObject({
+  ...nodeBase,
+  type: z.literal('agent'),
+  roleId: Identifier,
+  invocation: z.literal('observer'),
+  outputName: z.string().min(1),
+  review: AdvisorReview.optional(),
+});
+export type ObserverAgentNode = z.infer<typeof ObserverAgentNode>;
+
+export const AgentNode = z.discriminatedUnion('invocation', [WorkAgentNode, ObserverAgentNode]);
 export type AgentNode = z.infer<typeof AgentNode>;
+export type AgentInvocation = AgentNode['invocation'];
+
+/** The review settings an advisor node runs with: its own, or the defaults. */
+export function advisorReview(node: ObserverAgentNode): AdvisorReview {
+  return node.review ?? DEFAULT_ADVISOR_REVIEW;
+}
 
 export const DecisionRule = z.enum([
   'review_verdict',
@@ -167,10 +202,25 @@ export const DecisionNode = z.discriminatedUnion('mode', [
 export type DecisionNode = z.infer<typeof DecisionNode>;
 export type DecisionNodeMode = DecisionNode['mode'];
 
+/**
+ * What a Loop does when a round that asks to repeat reaches its cap or stalls: end, raise its
+ * Agents' reasoning or switch them to an upper model for more rounds, or have no cap at all
+ * (docs/specs/features/team-graph.md, "루프 실행"). Absent is `exhaust`.
+ */
+export const LoopLimitPolicy = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('exhaust') }),
+  z.strictObject({ kind: z.literal('raise_reasoning'), level: ReasoningLevel }),
+  z.strictObject({ kind: z.literal('upper_model'), modelProfile: Identifier }),
+  z.strictObject({ kind: z.literal('unlimited') }),
+]);
+export type LoopLimitPolicy = z.infer<typeof LoopLimitPolicy>;
+
 export const LoopNode = z.strictObject({
   ...nodeBase,
   type: z.literal('loop'),
-  maxIterations: z.int().min(1),
+  /** Absent only with the `unlimited` policy (a compiler rule). */
+  maxIterations: z.int().min(1).optional(),
+  limitPolicy: LoopLimitPolicy.optional(),
   stallDetection: z.boolean().optional(),
   reviewRecipe: ReviewRecipeRevision.optional(),
 });
@@ -223,6 +273,11 @@ export type NodeType = CorralNode['type'];
 /** Nodes that hold other nodes. */
 export type BoxNode = LoopNode | TeamNode;
 
+/** A scheduled or callable Agent: one that runs work, as opposed to an advisor. */
+export function isWorkAgent(node: CorralNode | undefined): node is WorkAgentNode {
+  return node?.type === 'agent' && node.invocation !== 'observer';
+}
+
 /** Named ports of the port table; a router adds one port per route id. */
 export const SourcePort = z.enum([
   'out',
@@ -254,7 +309,7 @@ export type ControlEdge = z.infer<typeof ControlEdge>;
 
 export const CapabilityLink = z.strictObject({
   id: Identifier,
-  kind: z.enum(['delegate', 'question']),
+  kind: z.enum(['delegate', 'question', 'advise']),
   sourceNodeId: Identifier,
   targetNodeId: Identifier,
   /** Delegate-only opt-in: its child may ask the existing current parent execution. */

@@ -4,6 +4,7 @@ import {
   type AgentHandle,
   type AgentHost,
   type AgentObservation,
+  type AgentRole,
   type AgentSettlement,
   type AgentStartInput,
   type AnswerExtensionUiCommand,
@@ -89,6 +90,7 @@ import {
   StartRunRequest,
   type SteerCommand,
   type StreamFrame,
+  type SubmitAdviceCommand,
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
   type ToolAuthorization,
@@ -164,11 +166,12 @@ import {
   applyEvent,
   type DirectiveView,
   emptyProjection,
+  type LoopEscalationView,
   type RunProjection,
   toolGrantKey,
   toolRunGrant,
 } from './projection.ts';
-import { reasoningError } from './reasoning.ts';
+import { fittedLevel, levelRank, reasoningError } from './reasoning.ts';
 import { recipeAttempts } from './review-recipe.ts';
 import { planRun, type RunPlan } from './run-plan.ts';
 import { type RunStats, runStats } from './run-stats.ts';
@@ -443,6 +446,15 @@ export interface HarnessResolver {
 }
 
 const NO_DEADLINES: Scheduler = { after: () => () => {} };
+
+/** One macrotask of the host, for a Scheduler without `turn`; core names no host globals. */
+const hostTurn = (): Promise<void> => {
+  const host = globalThis as { setTimeout?: (fn: () => void, ms: number) => unknown };
+  return new Promise((resolve) => {
+    if (host.setTimeout) host.setTimeout(resolve, 0);
+    else resolve();
+  });
+};
 const TERMINAL_TASK = new Set(['failed', 'cancelled']);
 
 export type ModelResolution =
@@ -515,6 +527,8 @@ interface LiveRun {
   stepApprovals: Map<string, Set<string>>;
   /** A pending run-level limit intervention; concurrent workers wait on this one. */
   limitApproval: Promise<'approve' | 'reject'> | null;
+  /** Why the person's rejection ended the run, while its live branches are still stopping. */
+  endReason?: string;
   /**
    * Model concurrency: a slot is held only while a model request is
    * open. A parent waiting for children or an answer holds none.
@@ -560,6 +574,8 @@ interface LiveRun {
       model: ModelProfileSnapshot;
       prompt: string;
       reasoning?: ReasoningPolicy;
+      setModel: boolean;
+      setReasoning: boolean;
       revision: number;
     }
   >;
@@ -649,7 +665,10 @@ export function routerModelProfile(definition: CorralDefinition, router: RouterN
   return (role ?? definition.roles[0])?.modelProfile ?? '';
 }
 
-/** Every model profile a run pins at start: its roles' and its routers' choosers'. */
+/**
+ * Every model profile a run pins at start: its roles', its routers' choosers' and its Loops'
+ * upper models.
+ */
 export function runModelProfiles(definition: CorralDefinition): string[] {
   return [
     ...new Set([
@@ -657,8 +676,25 @@ export function runModelProfiles(definition: CorralDefinition): string[] {
       ...definition.nodes.flatMap((n) =>
         n.type === 'decision' && n.mode === 'router' ? [routerModelProfile(definition, n)] : [],
       ),
+      ...definition.nodes.flatMap((n) =>
+        n.type === 'loop' && n.limitPolicy?.kind === 'upper_model'
+          ? [n.limitPolicy.modelProfile]
+          : [],
+      ),
     ]),
   ];
+}
+
+/** The upper models a role's Agents may switch to: those of the Loops that hold them. */
+function upperModelsOf(plan: CompiledPlan, definition: CorralDefinition, roleId: string) {
+  return Object.values(plan.loops).flatMap((loop) =>
+    loop.limitPolicy.kind === 'upper_model' &&
+    loop.agents.some((id) =>
+      definition.nodes.some((n) => n.id === id && n.type === 'agent' && n.roleId === roleId),
+    )
+      ? [loop.limitPolicy.modelProfile]
+      : [],
+  );
 }
 
 /** The built-in role a router's chooser runs with: no tools, its last reply is the answer. */
@@ -861,6 +897,7 @@ export class Coordinator {
       definition.nodes.filter((node) => node.type === 'output').length === 1 &&
       !!agent &&
       agent.type === 'agent' &&
+      agent.invocation !== 'observer' &&
       agent.inputBindings.every((binding) => binding.kind === 'run_input') &&
       !definition.capabilityLinks.length &&
       definition.roles.length === 1 &&
@@ -1817,6 +1854,16 @@ export class Coordinator {
     for (const role of planned.definition.roles) {
       const error = reasoningError(role.reasoning, models[role.modelProfile]!);
       if (error) return refuse({ code: 'CAPABILITY_DENIED', message: `${role.id}: ${error}` });
+      // A Loop's upper model must serve each role in it as the role's own model does.
+      for (const profile of upperModelsOf(planned.plan, planned.definition, role.id)) {
+        const model = models[profile];
+        const upper = model ? reasoningError(role.reasoning, model) : 'model is unavailable';
+        if (upper)
+          return refuse({
+            code: 'CAPABILITY_DENIED',
+            message: `${role.id} on ${profile}: ${upper}`,
+          });
+      }
     }
 
     const reviewOnly = planned.definition.input.taskScope === 'review_only';
@@ -1882,7 +1929,9 @@ export class Coordinator {
               'review-only requests cannot start native extensions, MCP or codemode; choose a restricted profile',
           });
         if (
-          models[role.modelProfile]?.workerIsolation &&
+          [role.modelProfile, ...upperModelsOf(planned.plan, planned.definition, role.id)].some(
+            (profile) => models[profile]?.workerIsolation,
+          ) &&
           (snapshot.policy !== 'strict' ||
             snapshot.resources.some((resource) => resource.kind === 'extension') ||
             snapshot.projectTools?.mcpServerIds?.length ||
@@ -2547,6 +2596,12 @@ export class Coordinator {
     }
     try {
       if (command.type === 'steer') return this.steer(command, payloadHash);
+      // Advice is in the contract; its handling (features/advisor.md) is not built yet.
+      if (command.type === 'submit_advice')
+        return this.refuseControl(command, payloadHash, {
+          code: 'COMMAND_NOT_SUPPORTED',
+          message: 'advice is not handled yet',
+        });
       if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
       if (command.type === 'compact_context') return this.compactContext(command, payloadHash);
       if (command.type === 'answer_user') return this.answerUser(command, payloadHash);
@@ -2680,6 +2735,7 @@ export class Coordinator {
     command: Exclude<
       RunCommand,
       | SteerCommand
+      | SubmitAdviceCommand
       | ResolveApprovalCommand
       | AnswerExtensionUiCommand
       | AnswerUserCommand
@@ -2793,8 +2849,11 @@ export class Coordinator {
         payload: { scope, fenceSeq: run.projection.lastSeq + 1, reason: command.payload.reason },
       },
     ];
+    // A cancel a rejection asked for gives the rejection as the reason; the person did not cancel.
     if (scope.kind === 'run')
-      drafts.push(runState(run.projection.status, 'cancelling', 'cancel_requested'));
+      drafts.push(
+        runState(run.projection.status, 'cancelling', run.endReason ?? 'cancel_requested'),
+      );
     else if (
       target &&
       run.projection.tasks[target.taskId]?.status !== 'completed' &&
@@ -2919,7 +2978,7 @@ export class Coordinator {
         if (scope.kind === 'run')
           confirmed.push(
             ...this.closeRounds(run),
-            runState(run.projection.status, 'cancelled', 'cancel_confirmed'),
+            runState(run.projection.status, 'cancelled', run.endReason ?? 'cancel_confirmed'),
           );
         else if (
           target &&
@@ -2989,7 +3048,7 @@ export class Coordinator {
         if (!resolved.ok) return refuse(resolved.code, resolved.reason);
         patchedModel = JSON.parse(canonicalJson(resolved.snapshot)) as ModelProfileSnapshot;
         after.modelSnapshot = patchedModel;
-      } else patchedModel = current?.model ?? run.snapshot.models[role.modelProfile];
+      } else patchedModel = this.agentSettings(run, node.id, role).model;
       if (!patchedModel) return refuse('CAPABILITY_DENIED', 'the pinned model is unavailable');
       const error = reasoningError(after.reasoning as ReasoningPolicy | undefined, patchedModel);
       if (error) return refuse('CAPABILITY_DENIED', error);
@@ -2997,7 +3056,8 @@ export class Coordinator {
       if (node?.type !== 'loop') return refuse('SCHEMA_INVALID', 'loop_limit requires a Loop node');
       if (node.reviewRecipe && change.maxIterations > recipeAttempts(node.reviewRecipe))
         return refuse('LIMIT_REACHED', 'loop limit exceeds the pinned review recipe');
-      before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? node.maxIterations };
+      // An unlimited Loop has no cap until this patch gives it one.
+      before = { maxIterations: run.plan.loops[node.id]?.maxIterations ?? null };
       after = { maxIterations: change.maxIterations };
     } else if (change.kind === 'run_limits') {
       if (change.changes.maxSpawns > this.policy.maxSpawns)
@@ -3069,11 +3129,12 @@ export class Coordinator {
         model: patchedModel as ModelProfileSnapshot,
         prompt: String(after.prompt),
         ...(after.reasoning ? { reasoning: after.reasoning as ReasoningPolicy } : {}),
+        // Which items a person set: a Loop's limit policy leaves those alone.
+        setModel: Boolean(run.nodePatches.get(change.nodeId)?.setModel || change.modelProfile),
+        setReasoning: Boolean(run.nodePatches.get(change.nodeId)?.setReasoning || change.reasoning),
         revision: run.projection.controlRevision,
       });
     else if (change.kind === 'loop_limit') {
-      const step = run.plan.steps[change.nodeId];
-      if (step?.kind === 'loop') step.maxIterations = change.maxIterations;
       const loop = run.plan.loops[change.nodeId];
       if (loop) loop.maxIterations = change.maxIterations;
     } else if (change.kind === 'run_limits') {
@@ -3407,14 +3468,14 @@ export class Coordinator {
   /**
    * The runtime's closing of every approval still waiting when the run ends, whatever its kind:
    * drafts for the commit that ends it (api-contract, "구현에서 정한 검토·승인 규칙"). An approval
-   * already closed is not pending and is left alone. The caller wakes the waiters once, after it.
+   * already closed is not pending and is left alone; a tool or check approval has closed on its
+   * own path by then, as every caller stops the live executions first or has none.
    */
   private runEndClosings(run: LiveRun, reason: 'cancelled' | 'execution_ended'): EventDraft[] {
     return Object.values(run.projection.approvals)
       .filter((approval) => approval.status === 'pending')
       .map((approval) => ({
         type: 'approval.resolved',
-        ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
         payload: {
           approvalId: approval.approvalId,
           decision: 'reject',
@@ -4258,10 +4319,11 @@ export class Coordinator {
         return;
       case 'stopped':
         return;
-      // The person stopped it: at the Loop cap, at an approval, or after an inconclusive review.
-      case 'cap_reached':
-        this.endRun(run, 'cancelled', `loop_cap_declined: ${result.loopId}`);
+      // An exhausted Loop with no exhausted path: the Loop and why are in the reason.
+      case 'exhausted':
+        this.failRun(run, `loop_exhausted: ${result.loopId} ${result.reason}`);
         return;
+      // The person stopped it at an approval.
       case 'rejected':
         this.endRun(run, 'cancelled', `rejected: ${result.nodeId}`);
         return;
@@ -4347,8 +4409,7 @@ export class Coordinator {
         ]);
         return decision.branch;
       },
-      loopCapReached: async (loopId, rounds, reason) => this.atLoopCap(run, loopId, rounds, reason),
-      loopCheck: async (loopId) => this.loopStopOf(run, loopId),
+      loopCheck: (loopId, no) => this.loopCheck(run, loopId, no),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
       loopEntered: async (loopId, no) => {
         await this.boundary(run);
@@ -4739,7 +4800,6 @@ export class Coordinator {
       'route',
       subjects.length > 0 ? subjects : [run.criteriaVersionId],
       undefined,
-      undefined,
       connected.map((r) => ({ id: r.id, label: r.label })),
       nodeId,
     );
@@ -4816,7 +4876,6 @@ export class Coordinator {
         summary ? [summary] : [run.criteriaVersionId],
         undefined,
         undefined,
-        undefined,
         nodeId,
       );
       if ((await requested.decision) === 'reject') return null;
@@ -4890,7 +4949,8 @@ export class Coordinator {
     if (!(await this.passBreakpoint(run, nodeId, iterationId)))
       return { ok: false, reason: 'stopped at its breakpoint' };
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
-    const retries = node?.type === 'agent' ? (node.retry?.maxAttempts ?? 0) : 0;
+    const retries =
+      node?.type === 'agent' && node.invocation !== 'observer' ? (node.retry?.maxAttempts ?? 0) : 0;
     let prepared = this.prepareExecution(run, {
       nodeId,
       iterationId,
@@ -4975,15 +5035,10 @@ export class Coordinator {
       throw new Error(`plan references missing agent ${spec.nodeId}`);
     }
     const patch = run.nodePatches.get(spec.nodeId);
-    const role = patch
-      ? {
-          ...baseRole,
-          modelProfile: patch.modelProfile,
-          prompt: patch.prompt,
-          ...(patch.reasoning ? { reasoning: patch.reasoning } : {}),
-        }
-      : baseRole;
-    const model = patch?.model ?? run.snapshot.models[role.modelProfile];
+    // A router's or check's own role is not an Agent's: no patch or Loop policy reaches it.
+    const { role, model } = spec.role
+      ? { role: spec.role, model: run.snapshot.models[spec.role.modelProfile] }
+      : this.agentSettings(run, spec.nodeId, baseRole);
     if (!model) throw new Error('the pinned model is unavailable');
     const label = (id: string) => {
       const target = definition.nodes.find((n) => n.id === id);
@@ -5869,7 +5924,6 @@ export class Coordinator {
         [...bound, ...(review ? [review] : [])],
         undefined,
         undefined,
-        undefined,
         nodeId,
       );
       return choice(await requested.decision, 'human_approval', [
@@ -5938,7 +5992,6 @@ export class Coordinator {
         [recorded.targetVersionId, reviewVersionId],
         undefined,
         undefined,
-        undefined,
         nodeId,
       );
       return choice(
@@ -5961,7 +6014,6 @@ export class Coordinator {
       run,
       'user_action',
       [recorded.targetVersionId, reviewVersionId],
-      undefined,
       undefined,
       undefined,
       nodeId,
@@ -6082,7 +6134,6 @@ export class Coordinator {
     kind: EventPayload<'approval.requested'>['kind'],
     subjectVersionIds: string[],
     request?: { tool: NonNullable<EventPayload<'approval.requested'>['tool']>; body: string },
-    loopStop?: LoopStop,
     routes?: EventPayload<'approval.requested'>['routes'],
     /** The step that waits on it, so stopping that step's branch can withdraw it. */
     step?: string,
@@ -6109,7 +6160,6 @@ export class Coordinator {
               ? null
               : (run.pendingCriteriaVersionId ?? run.criteriaVersionId),
             ...(request ? { tool: request.tool } : {}),
-            ...(loopStop ? { loopStop } : {}),
             ...(routes ? { routes } : {}),
             ...(kind === 'breakpoint' && step ? { nodeId: step } : {}),
           },
@@ -6153,7 +6203,6 @@ export class Coordinator {
       inputs.length
         ? [...new Set(inputs)]
         : [run.pendingCriteriaVersionId ?? run.criteriaVersionId],
-      undefined,
       undefined,
       undefined,
       nodeId,
@@ -6421,15 +6470,38 @@ export class Coordinator {
     }
   }
 
-  /** At the Loop cap: ask for one more round, unless the installation's hard cap is reached. */
-  private async atLoopCap(
-    run: LiveRun,
-    loopId: string,
-    rounds: number,
-    reason: LoopStop,
-  ): Promise<'continue' | 'stop'> {
+  /**
+   * A round asks to repeat (docs/specs/features/team-graph.md, "루프 실행"). Null opens another
+   * round; a reason exhausts the Loop. At its round cap or a stall the Loop's limit policy may
+   * change its Agents instead, once per entry; nobody is asked.
+   */
+  private async loopCheck(run: LiveRun, loopId: string, no: number): Promise<LoopStop | null> {
+    const asked = run.rounds.get(loopId);
+    // Between rounds a cancel or pause must get in, even when a round waits on nothing: let the
+    // host run its queued work once (a macrotask, no real waiting), then check the boundary.
+    await (this.timers.turn ? this.timers.turn() : hostTurn());
+    await this.boundary(run);
+    // Meanwhile an `any` Join may have stopped this branch and closed its round: it leaves
+    // nothing more, by recipe, limit policy or exhaustion, and the runner drops the answer.
+    const round = run.rounds.get(loopId);
+    if (!asked || round?.no !== no || round.iterationId !== asked.iterationId) return null;
+    const loop = run.plan.loops[loopId];
+    if (!loop) throw new Error(`plan has no Loop ${loopId}`);
+    // Stall detection compares every round with the one before, the cap round included.
+    const stalled = this.stalledRound(run, loopId);
+    const since = this.escalationOf(run, loopId)?.no ?? 0;
+    const stop: LoopStop | null =
+      loop.maxIterations !== null && no - since >= loop.maxIterations
+        ? 'cap_reached'
+        : stalled
+          ? 'stalled'
+          : null;
+    if (!stop) return null;
+    // Escalated: the runner ends this round as revise and the next round's entry waits at its
+    // boundary, so a pause or cancel that came after the escalation holds or stops it there.
+    if (this.escalate(run, loopId, stop)) return null;
     const recipe = run.recipes.get(loopId)?.recipe;
-    if (recipe && rounds >= recipeAttempts(recipe)) {
+    if (recipe && !loop.exhausted.length && no >= recipeAttempts(recipe)) {
       this.stopRecipe(
         run,
         loopId,
@@ -6437,33 +6509,152 @@ export class Coordinator {
       );
       throw new Error('review recipe stopped');
     }
-    const members = run.plan.loops[loopId]?.members ?? [];
-    const round = run.rounds.get(loopId)?.iterationId;
-    const latest = members.flatMap((m) =>
-      this.submittedOutputOf(run, m, round ? (at) => this.sameRound(run, at, round) : undefined),
-    );
-    const requested = this.requestApproval(
-      run,
-      'loop_cap',
-      latest,
-      undefined,
-      reason,
-      undefined,
-      loopId,
-    );
-    if ((await requested.decision) === 'approve') {
-      await this.boundary(run);
-      return 'continue';
-    }
-    return 'stop';
+    return stop;
   }
 
-  /** Whether a Loop round below its cap must stop instead of repeating: it resubmitted the previous round's work. */
-  private loopStopOf(run: LiveRun, loopId: string): LoopStop | null {
+  /**
+   * The escalation of a Loop's current entry, with the round it ended: none before its policy
+   * applied, and none once the Loop is left, so a new entry starts from the definition.
+   */
+  private escalationOf(
+    run: LiveRun,
+    loopId: string,
+  ): (LoopEscalationView & { no: number }) | undefined {
+    if (!run.rounds.has(loopId)) return undefined;
+    const { projection } = run;
+    const ids = projection.loopIterations[loopId] ?? [];
+    const first = ids.findLastIndex((id) => projection.iterations[id]?.no === 1);
+    const entry = new Set(first < 0 ? [] : ids.slice(first));
+    const found = (projection.loopEscalations?.[loopId] ?? []).findLast((e) =>
+      entry.has(e.iterationId),
+    );
+    const no = found ? projection.iterations[found.iterationId]?.no : undefined;
+    return found && no !== undefined ? { ...found, no } : undefined;
+  }
+
+  /**
+   * What the open Loops around an Agent raised for it: per item, the innermost open Loop's raise
+   * wins. That is also the latest, since an outer Loop raises only once its inner Loops are left.
+   */
+  private raisedFor(
+    run: LiveRun,
+    nodeId: string,
+  ): { modelProfile?: string; level?: ReasoningLevel } {
+    const within = (inner: string, outer: string) => {
+      for (
+        let box = run.plan.boxes[inner]?.parentId ?? null;
+        box;
+        box = run.plan.boxes[box]?.parentId ?? null
+      )
+        if (box === outer) return true;
+      return false;
+    };
+    let model: LoopEscalationView | undefined;
+    let reasoning: LoopEscalationView | undefined;
+    for (const [loopId, loop] of Object.entries(run.plan.loops)) {
+      if (!loop.agents.includes(nodeId)) continue;
+      const escalation = this.escalationOf(run, loopId);
+      if (!escalation?.nodeIds.includes(nodeId)) continue;
+      const held = escalation.policy === 'upper_model' ? model : reasoning;
+      if (held && !within(loopId, held.loopNodeId)) continue;
+      if (escalation.policy === 'upper_model') model = escalation;
+      else reasoning = escalation;
+    }
+    return {
+      ...(model?.policy === 'upper_model' ? { modelProfile: model.modelProfile } : {}),
+      ...(reasoning?.policy === 'raise_reasoning' ? { level: reasoning.levels[nodeId] } : {}),
+    };
+  }
+
+  /**
+   * What a new execution of an Agent runs with, read in one place: each item a person patched
+   * (`node_future`), else what its Loop's limit policy raised, else its role.
+   */
+  private agentSettings(
+    run: LiveRun,
+    nodeId: string,
+    baseRole: AgentRole,
+  ): { role: AgentRole; model: ModelProfileSnapshot | undefined } {
+    const patch = run.nodePatches.get(nodeId);
+    const raised = this.raisedFor(run, nodeId);
+    const modelProfile = patch?.setModel
+      ? patch.modelProfile
+      : (raised.modelProfile ?? baseRole.modelProfile);
+    const model = patch?.setModel ? patch.model : run.snapshot.models[modelProfile];
+    // A raised level fits the model the execution runs on, which a later patch may change.
+    const lifted =
+      !patch?.setReasoning && raised.level && model ? fittedLevel(raised.level, model) : null;
+    const reasoning: ReasoningPolicy | undefined = lifted
+      ? { mode: 'fixed', level: lifted }
+      : patch?.setReasoning
+        ? patch.reasoning
+        : baseRole.reasoning;
+    return {
+      role: {
+        ...baseRole,
+        modelProfile,
+        prompt: patch?.prompt ?? baseRole.prompt,
+        ...(reasoning ? { reasoning } : {}),
+      },
+      model,
+    };
+  }
+
+  /**
+   * Applies a Loop's `raise_reasoning` or `upper_model` policy for the rest of this entry: true
+   * when it changed an Agent and recorded `loop.escalated`. A person's patched item stays.
+   */
+  private escalate(run: LiveRun, loopId: string, reason: LoopStop): boolean {
+    const loop = run.plan.loops[loopId];
+    const iterationId = run.rounds.get(loopId)?.iterationId;
+    const policy = loop?.limitPolicy;
+    if (!loop || !iterationId || !policy) return false;
+    if (policy.kind !== 'raise_reasoning' && policy.kind !== 'upper_model') return false;
+    if (this.escalationOf(run, loopId)) return false;
+    const { definition } = run.snapshot;
+    const nodeIds: string[] = [];
+    const levels: Record<string, ReasoningLevel> = {};
+    for (const nodeId of loop.agents) {
+      const node = definition.nodes.find((n) => n.id === nodeId);
+      const baseRole =
+        node?.type === 'agent' ? definition.roles.find((r) => r.id === node.roleId) : undefined;
+      if (!baseRole) continue;
+      const patch = run.nodePatches.get(nodeId);
+      const { role, model } = this.agentSettings(run, nodeId, baseRole);
+      if (policy.kind === 'raise_reasoning') {
+        const level = !patch?.setReasoning && model ? fittedLevel(policy.level, model) : null;
+        if (!level) continue;
+        const current = role.reasoning?.mode === 'fixed' ? role.reasoning.level : null;
+        if (current && levelRank(current) >= levelRank(level)) continue;
+        levels[nodeId] = level;
+      } else {
+        const upper = run.snapshot.models[policy.modelProfile];
+        if (patch?.setModel || role.modelProfile === policy.modelProfile || !upper) continue;
+        // The upper model was checked with the role's reasoning; a person's may not fit it.
+        if (patch?.setReasoning && reasoningError(role.reasoning, upper)) continue;
+      }
+      nodeIds.push(nodeId);
+    }
+    if (!nodeIds.length) return false;
+    const head = { loopNodeId: loopId, iterationId, reason, nodeIds };
+    this.commit(run, [
+      {
+        type: 'loop.escalated',
+        payload:
+          policy.kind === 'raise_reasoning'
+            ? { ...head, policy: 'raise_reasoning', levels }
+            : { ...head, policy: 'upper_model', modelProfile: policy.modelProfile },
+      },
+    ]);
+    return true;
+  }
+
+  /** Whether this round of a Loop with stall detection resubmitted the previous round's work. */
+  private stalledRound(run: LiveRun, loopId: string): boolean {
     const loop = run.plan.loops[loopId];
     const entry = run.loopEntries.get(loopId);
     const round = run.rounds.get(loopId)?.iterationId;
-    if (!loop || !entry || !round) return null;
+    if (!loop || !entry || !round) return false;
     const { projection } = run;
     const thisRound = new Set<string>([round]);
     const under = (iterationId: string | null, roots: Set<string>): boolean => {
@@ -6488,9 +6679,9 @@ export class Coordinator {
       const previous = entry.previousWork;
       entry.previousWork = work;
       if (work.length > 0 && previous && JSON.stringify(previous) === JSON.stringify(work))
-        return 'stalled';
+        return true;
     }
-    return null;
+    return false;
   }
 
   /** The person's answer to a pending approval: once, for the exact subject. */
@@ -6720,6 +6911,23 @@ export class Coordinator {
       return;
     const status = run.projection.status;
     if (TERMINAL_RUN_STATUSES.has(status)) return;
+    // Other branches still live stop first, as on the person's cancel of the run; the run ends
+    // once they have, with this reason (api-contract, "구현에서 정한 검토·승인 규칙").
+    if (
+      Object.values(run.projection.executions).some(
+        (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+      )
+    ) {
+      run.endReason = reason;
+      this.submit({
+        schemaVersion: '0.1',
+        runId: run.runId,
+        commandId: `run_end_${run.runId}`,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason },
+      });
+      return;
+    }
     if (this.serviceRuns.has(run) || this.previewRuns.has(run) || this.stoppingServices.has(run)) {
       void this.stopOwnedServices(run).then(
         () => this.endRun(run, to, reason),
@@ -6732,7 +6940,6 @@ export class Coordinator {
       ...this.closeRounds(run),
       runState(status, to, reason),
     ]);
-    this.wakeApprovalWaiters(run);
   }
 
   /** Run-owned services outlive a tool call, but never a pause or confirmed Run ending. */

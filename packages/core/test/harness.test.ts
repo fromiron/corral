@@ -5,6 +5,7 @@ import {
   type CommandPlan,
   canonicalJson,
   type EffectiveHarnessSnapshot,
+  isWorkAgent,
   type LspReport,
   type ModelRequestRecord,
   type PermissionMode,
@@ -714,7 +715,7 @@ describe('Coordinator harness boundary (H2)', () => {
     definition.roles[0]!.harness = snapshot.binding;
 
     definition.roles[0]!.allowedCollaborationTools.push('spawn_subagents');
-    const writer = definition.nodes.find((n) => n.type === 'agent')!;
+    const writer = definition.nodes.find(isWorkAgent)!;
     definition.nodes.push({ ...writer, id: 'helper', invocation: 'callable' });
     definition.capabilityLinks.push({
       id: 'delegate',

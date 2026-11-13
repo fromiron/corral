@@ -1,11 +1,14 @@
-import type {
-  AgentRole,
-  CorralNode,
-  InputBinding,
-  InputBindingKind,
-  LoopNode,
-  OutputContract,
-  ReasoningCapabilities,
+import {
+  type AgentRole,
+  type CorralNode,
+  Identifier,
+  type InputBinding,
+  type InputBindingKind,
+  type LoopLimitPolicy,
+  type LoopNode,
+  type OutputContract,
+  type ReasoningCapabilities,
+  ReasoningLevel,
 } from '@corral/contracts';
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -14,6 +17,7 @@ import { ModelSelect, type ProfileChoice, profileChoices } from '../components/M
 import { ReasoningSelect } from '../components/ReasoningSelect.tsx';
 import {
   KitButton as Button,
+  Collapse,
   KitAccordion,
   KitAccordionContent,
   KitAccordionItem,
@@ -24,10 +28,14 @@ import {
   KitRadioItem,
   KitSwitch,
   Select,
+  TabItem,
+  Tabs,
+  TabsList,
   Textarea,
 } from '../design-kit/index.ts';
 import { connectCapability, type EditorDraft, withDefinition } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
+import { patchNode } from './commands.ts';
 
 // The settings of one step that the team editor's sheet shows: role, model, tools, inputs and
 // call links for agents, and the kind-specific fields of decisions, loops and outputs. Every
@@ -124,7 +132,7 @@ export function NodeSettings({
               aria-label={t('invocation')}
               value={node.invocation}
               onValueChange={(value) =>
-                update(node.id, { invocation: value as typeof node.invocation })
+                update(node.id, { invocation: value as 'scheduled' | 'callable' })
               }
             >
               {(['scheduled', 'callable'] as const).map((value, index) => (
@@ -324,19 +332,7 @@ export function NodeSettings({
       ) : null}
 
       {node.type === 'loop' ? (
-        <KitInputGroup className="w-full" {...session}>
-          <KitInputField
-            index={0}
-            label={t('maxIterations')}
-            type="number"
-            min={1}
-            value={String(node.maxIterations)}
-            onChange={(input) => {
-              const value = Number(input);
-              if (Number.isInteger(value) && value >= 1) update(node.id, { maxIterations: value });
-            }}
-          />
-        </KitInputGroup>
+        <LoopLimit editor={editor} node={node} profiles={profiles} draft={draft} />
       ) : null}
 
       {node.type === 'loop' ? loopSettings?.(node) : null}
@@ -359,6 +355,181 @@ export function NodeSettings({
         <Calls editor={editor} nodeId={node.id} draft={draft} />
       ) : null}
     </div>
+  );
+}
+
+type LimitChoice = Exclude<LoopLimitPolicy['kind'], 'unlimited'>;
+const LIMIT_CHOICES: LimitChoice[] = ['exhaust', 'raise_reasoning', 'upper_model'];
+const RAISE_LEVELS = ReasoningLevel.options.filter((level) => level !== 'off');
+const DEFAULT_ROUNDS = 3;
+
+/**
+ * A Loop's limit, read as a sentence: up to N rounds or no limit, and at the limit end, raise
+ * reasoning to a level or switch to another model. Each choice is one write, so the Loop never
+ * passes through a state that team-graph.md structure rule 4 rejects. Turning the cap back on
+ * starts from three rounds that end; undo brings back what was there.
+ */
+function LoopLimit({
+  editor,
+  node,
+  profiles,
+  draft,
+}: {
+  editor: EditorStore;
+  node: LoopNode;
+  profiles: ProfileOption[] | null;
+  draft: EditorDraft;
+}) {
+  const t = useTranslations('Inspector.loopLimit');
+  const level = useTranslations('Reasoning.level');
+  const tm = useTranslations('ModelSelect');
+  const ti = useTranslations('Inspector');
+  const id = useId();
+  const session = useEditSession(editor);
+  const write = (change: Record<string, unknown>) =>
+    editor.getState().applyDraft(patchNode(editor.getState().draft, node.id, change));
+
+  const policy = node.limitPolicy;
+  const unlimited = policy?.kind === 'unlimited';
+  const choice: LimitChoice = !policy || policy.kind === 'unlimited' ? 'exhaust' : policy.kind;
+  // A review recipe ends the Loop at its attempts, so the Loop can only end.
+  const recipe = node.reviewRecipe !== undefined;
+  const reason = recipe ? `${id}-recipe` : undefined;
+  // A runnable profile first; with no list, the model a role already uses.
+  const upperProfile = [
+    profiles?.find((profile) => profile.available)?.profileId,
+    profiles?.[0]?.profileId,
+    draft.definition.roles[0]?.modelProfile,
+  ].find((profile) => profile !== undefined && Identifier.safeParse(profile).success);
+  const unavailable = (value: LimitChoice) =>
+    (recipe && value !== 'exhaust') || (value === 'upper_model' && !upperProfile);
+
+  const toggleUnlimited = () =>
+    write(
+      unlimited
+        ? { maxIterations: DEFAULT_ROUNDS, limitPolicy: undefined }
+        : { maxIterations: undefined, limitPolicy: { kind: 'unlimited' } },
+    );
+  const choose = (next: string) => {
+    if (next === choice || unavailable(next as LimitChoice)) return;
+    write({
+      limitPolicy:
+        next === 'raise_reasoning'
+          ? { kind: 'raise_reasoning', level: 'high' }
+          : next === 'upper_model'
+            ? { kind: 'upper_model', modelProfile: upperProfile }
+            : undefined,
+    });
+  };
+
+  return (
+    // Named by its first line rather than a legend, so the switch can share that line.
+    <fieldset
+      aria-labelledby={`${id}-limit`}
+      aria-describedby={reason}
+      className="flex flex-col gap-2"
+    >
+      {/* The switch sits on the group's own line, so it stays put when the rows below go. */}
+      <div className="flex items-center justify-between gap-2">
+        <span id={`${id}-limit`} className="text-caption">
+          {t('group')}
+        </span>
+        <KitSwitch
+          label={t('unlimited')}
+          checked={unlimited}
+          disabled={recipe && !unlimited}
+          onToggle={toggleUnlimited}
+        />
+      </div>
+      {reason ? (
+        <span id={reason} className="sr-only">
+          {t('recipeOnly')}
+        </span>
+      ) : null}
+      {/* The kit's fold, as other rows that come and go with a choice; the margin keeps focus
+          rings outside its clip. */}
+      <Collapse
+        open={!unlimited}
+        hideWhenClosed
+        className="-m-1"
+        innerClassName="flex flex-col gap-2 p-1"
+      >
+        <div className="flex items-center gap-2 text-body">
+          <span aria-hidden="true">{t('upTo')}</span>
+          <KitInputGroup className="w-16" {...session}>
+            <KitInputField
+              index={0}
+              label={t('roundsField')}
+              labelHidden
+              type="number"
+              min={1}
+              value={String(node.maxIterations ?? '')}
+              onChange={(input) => {
+                const value = Number(input);
+                if (Number.isSafeInteger(value) && value >= 1)
+                  editor.getState().updateNode(node.id, { maxIterations: value });
+              }}
+            />
+          </KitInputGroup>
+          <span aria-hidden="true">{t('rounds', { count: node.maxIterations ?? 0 })}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body">
+          <span id={`${id}-at`}>{t('atLimit')}</span>
+          <Tabs value={choice} onValueChange={choose} size="compact">
+            <TabsList aria-labelledby={`${id}-at`} aria-describedby={reason}>
+              {LIMIT_CHOICES.map((value) => (
+                <TabItem
+                  key={value}
+                  value={value}
+                  label={t(`policy.${value}`)}
+                  disabled={unavailable(value)}
+                  // The kit's tabs draw no disabled state; this one matches its Switch.
+                  className={unavailable(value) ? 'pointer-events-none opacity-50' : undefined}
+                />
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+      </Collapse>
+      {!recipe && policy?.kind === 'raise_reasoning' ? (
+        <Select
+          label={t('level')}
+          value={policy.level}
+          onValueChange={(next) =>
+            write({ limitPolicy: { kind: 'raise_reasoning', level: ReasoningLevel.parse(next) } })
+          }
+          options={RAISE_LEVELS.map((value) => ({ value, label: level(value) }))}
+        />
+      ) : null}
+      {!recipe && policy?.kind === 'upper_model' ? (
+        profiles?.length ? (
+          <ModelSelect
+            label={t('model')}
+            value={policy.modelProfile}
+            onValueChange={(modelProfile) =>
+              write({ limitPolicy: { kind: 'upper_model', modelProfile } })
+            }
+            options={profileChoices(profiles, {
+              profiles: tm('profiles'),
+              unavailable: ti('profileSignIn'),
+            })}
+          />
+        ) : (
+          <KitInputGroup className="w-full" {...session}>
+            <KitInputField
+              index={0}
+              label={t('model')}
+              value={policy.modelProfile}
+              onChange={(modelProfile) => {
+                // As the role's model field: a blank or malformed id keeps the one before.
+                if (Identifier.safeParse(modelProfile).success)
+                  write({ limitPolicy: { kind: 'upper_model', modelProfile } });
+              }}
+            />
+          </KitInputGroup>
+        )
+      ) : null}
+    </fieldset>
   );
 }
 

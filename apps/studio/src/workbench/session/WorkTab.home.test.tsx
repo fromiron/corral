@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { SessionChat } from './SessionChat.tsx';
 import { WorkTab } from './WorkTab.tsx';
 
 type ComposerProps = {
@@ -159,4 +160,59 @@ it('offers the folder step in the composer row, and does not repeat it above the
   expect(fixture.composer.at(-1)?.onWorkFolder).toBeUndefined();
   // The notice lives in the composer. The conversation above does not repeat it.
   expect(container.textContent).not.toContain(messages.Sessions.agentNoFiles);
+});
+
+it('the session chat tells a lost connection from the composer, with nothing above the conversation', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  const retry = vi.fn();
+  const entry: SessionEntry = {
+    entryId: 'first',
+    intent: 'next',
+    text: 'First request',
+    state: 'started',
+    createdAt: '2026-11-09T00:00:00Z',
+    runId: null,
+    executionId: null,
+    detail: null,
+  };
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <SessionChat
+          connection={{ lost: true, retry }}
+          session={session([entry])}
+          team={null}
+          corrals={[]}
+          runs={[]}
+          active={null}
+          liveRunId={null}
+          selectedRunId={null}
+          onChange={() => {}}
+          reference={null}
+          onReferenceUsed={() => {}}
+          onPanel={() => {}}
+        />
+      </IntlProvider>,
+    ),
+  );
+  const alerts = container.querySelectorAll<HTMLElement>('[role="alert"]');
+  const view = container.querySelector('[data-chat-view]');
+  const timeline = container.querySelector('[data-testid="chat-timeline"]');
+  const composer = container.querySelector('[data-testid="chat-composer"]');
+  if (!view || !timeline || !composer) throw new Error('Session chat missing');
+  expect(alerts).toHaveLength(1);
+  const alert = alerts[0] as HTMLElement;
+  expect(alert.textContent).toContain(messages.Sessions.connectionLost);
+  expect(composer.contains(alert)).toBe(true);
+  expect(timeline.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Nothing is put above the conversation view.
+  expect(view.parentElement?.firstElementChild).toBe(view);
+  await act(async () => alert.querySelector('button')?.click());
+  expect(retry).toHaveBeenCalledOnce();
 });

@@ -1,5 +1,6 @@
 import type { RunEvent } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
+import type { RunFlowLoop } from '../run/flow.ts';
 
 // Words for run facts (roadmap UX-A4). Event types and reason codes stay visible where they are
 // precise (Timeline detail, filters); everywhere a person reads, they read a sentence.
@@ -67,6 +68,12 @@ export function describeEvent(
       return of('roundStarted', { no: num(p.no), loop: nodeLabel(str(p.loopNodeId)) });
     case 'loop.iteration_finished':
       return of('roundFinished', { outcome: str(p.outcome), loop: nodeLabel(str(p.loopNodeId)) });
+    case 'loop.escalated':
+      return of('loopEscalated', {
+        loop: nodeLabel(str(p.loopNodeId)),
+        policy: str(p.policy),
+        model: str(p.modelProfile),
+      });
     case 'approval.requested':
       return of('approvalRequested', { kind: str(p.kind) });
     case 'approval.resolved':
@@ -122,6 +129,10 @@ export function describeEvent(
       return of('observationLate', { what: str(p.originalEventType) });
     case 'output.finalized':
       return of('outputFinalized');
+    // Advice has no sentence yet (features/advisor.md).
+    case 'advice.admitted':
+    case 'advice.suppressed':
+      return null;
     default:
       return null;
   }
@@ -162,7 +173,7 @@ const REASONS = new Set([
   'internal_error',
   'needs_user',
   'runner_finished_without_output',
-  'loop_cap_declined',
+  'loop_exhausted',
   'rejected',
   'final_output_rejected',
 ]);
@@ -184,6 +195,27 @@ export function RunReason({
   const head = at < 0 ? code : code.slice(0, at);
   const rest = at < 0 ? '' : code.slice(at + 2);
   if (!REASONS.has(head)) return <>{code}</>;
-  const [first = ''] = rest.split(' ');
-  return <>{t(head, { detail: rest, node: nodeLabel(first) })}</>;
+  // `{node} {why}`: an exhausted Loop also names why it ran out (`cap_reached`, `stalled`).
+  const [first = '', second = ''] = rest.split(' ');
+  return <>{t(head, { detail: rest, node: nodeLabel(first), reason: second })}</>;
+}
+
+/** What a Loop's limit policy changed in its current entry, as one line of its group. */
+export function LoopEscalationText({
+  escalation,
+  modelName,
+}: {
+  escalation: RunFlowLoop['escalation'];
+  modelName: (profile: string) => string;
+}) {
+  const t = useTranslations('RunLoop');
+  const level = useTranslations('Reasoning.level');
+  if (!escalation) return null;
+  return (
+    <>
+      {escalation.policy === 'raise_reasoning'
+        ? t('raised', { level: level(escalation.level) })
+        : t('switched', { model: modelName(escalation.modelProfile) })}
+    </>
+  );
 }

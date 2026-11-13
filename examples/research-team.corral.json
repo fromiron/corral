@@ -272,6 +272,13 @@
       "sourcePort": "approve",
       "target": "output",
       "targetPort": "in"
+    },
+    {
+      "id": "e9",
+      "source": "review_loop",
+      "sourcePort": "exhausted",
+      "target": "approval",
+      "targetPort": "in"
     }
   ],
   "capabilityLinks": [

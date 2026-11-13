@@ -16,6 +16,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
+import { createPendingTrayStore, PendingTrayContext } from '../workbench/session/PendingTray.tsx';
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
@@ -183,6 +184,8 @@ async function mount(
   holdNavigation = false,
   agentIds = ['worker'],
   runDefinition?: CorralDefinition,
+  /** Beside a session's conversation, which answers what the run waits on. */
+  host?: { sessionId: string; respond: () => void },
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -229,6 +232,7 @@ async function mount(
       <RunDetail
         runId={projection.runId}
         {...(request ? { request } : {})}
+        {...(host ? { embedded: true, sessionId: host.sessionId } : {})}
         search={selection}
         setSearch={(patch, options) => {
           navigations.push({ patch, options });
@@ -237,10 +241,17 @@ async function mount(
       />
     );
   }
+  const tray = createPendingTrayStore();
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <Screen />
+        {host ? (
+          <PendingTrayContext.Provider value={{ store: tray, respond: host.respond }}>
+            <Screen />
+          </PendingTrayContext.Provider>
+        ) : (
+          <Screen />
+        )}
       </IntlProvider>,
     ),
   );
@@ -1089,7 +1100,7 @@ it('a failed one-agent run does not restate its state as that agent failing', as
   const definition = {
     ...base,
     nodes: base.nodes.map((node) =>
-      node.id === 'helper' && node.type === 'agent'
+      node.id === 'helper' && node.type === 'agent' && node.invocation !== 'observer'
         ? { ...node, invocation: 'callable' as const }
         : node,
     ),
@@ -1872,8 +1883,67 @@ it('turns the waiting status into the one way to respond', async () => {
   await act(async () => respond?.click());
   expect(side(container)?.hidden).toBe(false);
   expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+  // With the response area on screen, the header's state names the wait and no longer responds.
+  expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
+    messages.Status.awaiting_user,
+  );
   await waitFor(run, 0);
   expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
+});
+
+it('beside its session’s conversation, reads what waits and sends Respond to the conversation', async () => {
+  const respond = vi.fn();
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    {},
+    undefined,
+    false,
+    ['worker'],
+    undefined,
+    {
+      sessionId: 'session_layout',
+      respond,
+    },
+  );
+  await waitFor(run, 2);
+  const status = container.querySelector('[data-testid="run-status"]');
+  const header = status?.querySelector<HTMLButtonElement>('[data-testid="run-respond"]');
+  expect(header?.textContent).toContain('2');
+  // The header's Respond goes to the conversation's tray; no response area opens here.
+  await act(async () => header?.click());
+  expect(respond).toHaveBeenCalledTimes(1);
+  expect(side(container)?.hidden).not.toBe(false);
+  // Wherever the record draws the waiting requests, it draws them to read, with the way there.
+  const areas = vi.mocked(RunResponseArea).mock.calls.map(([props]) => props);
+  expect(areas.length).toBeGreaterThan(0);
+  expect(areas.every((props) => props.onRespond === respond)).toBe(true);
+});
+
+it('offers Respond once when the record opens with its response area beside the conversation', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const respond = vi.fn();
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    {},
+    undefined,
+    false,
+    ['worker'],
+    undefined,
+    { sessionId: 'session_layout', respond },
+  );
+  await waitFor(run, 2);
+  // Wide: the response area opens beside the run, with its own Respond to the conversation.
+  expect(side(container)?.hidden).toBe(false);
+  const areas = vi.mocked(RunResponseArea).mock.calls.map(([props]) => props);
+  expect(areas.at(-1)?.onRespond).toBe(respond);
+  // The header says the run waits, once, without a second Respond.
+  expect(container.querySelector('[data-testid="run-respond"]')).toBeNull();
+  expect(container.querySelector('[data-testid="run-status"]')?.textContent).toContain(
+    messages.Status.awaiting_user,
+  );
 });
 
 it('keeps the response area for what an extension says after its prompt is answered', async () => {

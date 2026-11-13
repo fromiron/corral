@@ -126,6 +126,7 @@
       "next": "next",
       "delegate": "delegate",
       "question": "ask",
+      "advise": "advise",
       "callable": "callable",
       "error": "error",
       "exhausted": "exhausted",
@@ -133,7 +134,8 @@
     },
     "linkLabel": {
       "delegate": "delegates",
-      "question": "asks"
+      "question": "asks",
+      "advise": "advises"
     },
     "nodeStatus": {
       "idle": "Not run",
@@ -192,6 +194,7 @@
     "invocation": "Runs",
     "scheduled": "In the flow",
     "callable": "Only when called",
+    "observer": "As an advisor",
     "prompt": "Role prompt",
     "contract": "Output",
     "contracts": {
@@ -208,7 +211,6 @@
       "approval": "Your approval",
       "rule": "Required tasks submitted"
     },
-    "maxIterations": "Automatic rounds (1–10)",
     "requireApproval": "Ask for final approval",
     "loopMembership": "Inside Loop",
     "notInLoop": "Not in a Loop",
@@ -252,10 +254,35 @@
     "editingModeHashline": "Hashline",
     "editingModeHint": "Existing runs keep their selection.",
     "inputVersion": "Result version",
-    "parentQuestions": "The called agent may ask this one"
+    "parentQuestions": "The called agent may ask this one",
+    "loopLimit": {
+      "group": "Limit",
+      "upTo": "Up to",
+      "rounds": "{count, plural, one {round} other {rounds}}",
+      "roundsField": "Most rounds",
+      "unlimited": "No limit",
+      "atLimit": "At the limit",
+      "policy": {
+        "exhaust": "End",
+        "raise_reasoning": "Raise reasoning",
+        "upper_model": "Switch model"
+      },
+      "level": "Level to raise to",
+      "model": "Model to switch to",
+      "recipeOnly": "A Loop with a review recipe ends at the recipe’s attempts."
+    }
   },
   "Validation": {
     "codes": {
+      "ADVISOR_NOT_SUPPORTED": "Advisors cannot run yet.",
+      "ADVISOR_OUTSIDE_FLOW": "An advisor stays outside the flow: no connections, no Loop or Team, and no delegating or asking.",
+      "ADVISOR_UNWATCHED": "{node} watches no one. Connect it to an agent it advises.",
+      "ADVISOR_ADVISE_SOURCE": "Only an advisor can watch an agent. Start this advise connection at an advisor.",
+      "ADVISOR_ADVISE_TARGET": "An advisor watches a scheduled or callable agent, not another advisor, a decision, a box, a Join or an Output.",
+      "ADVISOR_ADVISE_QUESTIONS": "An advise connection carries no parent questions.",
+      "ADVISOR_TOOLS": "An advisor only reads: search, documents, file lists and files, plus reading versions and giving advice.",
+      "ADVISE_TOOL_ADVISOR_ONLY": "Only an advisor can give advice. Remove advise from this agent’s role.",
+      "ADVISOR_NOT_A_STEP": "An advisor is not a step: the flow cannot start at one, and no input can read one.",
       "BINDING_SOURCE": "An input reads from a step that cannot provide it: {message}",
       "BOX_BOUNDARY": "This connection crosses a box boundary outside its ports.",
       "BOX_PARENT": "This node cannot sit in that box.",
@@ -273,6 +300,10 @@
       "INVALID_PORT": "This connection uses a port the node does not have.",
       "JOIN_SINGLE_INPUT": "A Join waits for two or more branches.",
       "LOOP_DEAD_END": "This path stops inside the Loop. Lead it to exit, repeat or an Output.",
+      "LOOP_MAX_ITERATIONS": "Set the Loop’s round limit, or make it run without one.",
+      "LOOP_LIMIT_RECIPE": "A Loop with a review recipe ends at the recipe’s attempts; it can only end.",
+      "LOOP_REASONING_OFF": "Choose a reasoning level above off to raise to.",
+      "LOOP_UPPER_MODEL": "The Loop switches to a model that is not configured.",
       "LOOP_NO_BODY": "Connect “body” to the first step inside the Loop.",
       "LOOP_NO_EXIT": "Connect a branch inside the Loop to “exit”.",
       "LOOP_NO_REPEAT": "Connect a decision inside the Loop to “repeat”.",
@@ -361,8 +392,7 @@
       }
     },
     "breakpoints": "Pause before steps",
-    "breakpointsCount": "Pause before steps · {count}",
-    "madeResults": "What it made is in its results."
+    "breakpointsCount": "Pause before steps · {count}"
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
@@ -584,15 +614,15 @@
       },
       "implement-review": {
         "name": "Implement and review",
-        "body": "Makes the change, then fixes it until the review passes, for up to two rounds."
+        "body": "Makes the change, then fixes it until the review passes, for up to two rounds, then goes on with the last change."
       },
       "plan-implement-review": {
         "name": "Plan, implement and review",
-        "body": "Plans the change first, then implements it until the review passes, for up to two rounds."
+        "body": "Plans the change first, then implements it until the review passes, for up to two rounds, then goes on with the last change."
       },
       "bug-fix": {
         "name": "Bug fix",
-        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds."
+        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds, then goes on with the last fix."
       },
       "parallel-review": {
         "name": "Parallel code review",
@@ -670,6 +700,7 @@
     "working": "Working now: {labels}",
     "idle": "Nothing is running",
     "loopRound": "{label}: round {round} of {max}",
+    "loopRoundUnlimited": "{label}: round {round}",
     "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
     "executions": "Executions",
     "nodeExecutions": "{label} executions",
@@ -854,18 +885,14 @@
     "heading": "Waiting for you",
     "kind": {
       "final_output": "Final output",
-      "loop_cap": "Another review round?",
       "user_action": "Your decision",
-      "loop_stalled": "Loop stopped changing",
       "route": "Choose a route",
       "check": "Checks gave no verdict",
       "breakpoint": "Paused before {step}"
     },
     "explain": {
       "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
-      "loop_cap": "The Loop reached its round limit. Approve to run one more round, or reject to stop the run.",
       "user_action": "Approve to continue with these versions, or reject to stop.",
-      "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run.",
       "route": "The router could not choose where the work goes next. Pick a route to continue, or stop the run.",
       "check": "The checks did not pass or fail: one errored, timed out, was stopped, or ran on a changed working copy. Approve to run them again, or reject to stop the run.",
       "breakpoint": "The step has not started. Continue starts it with the current settings."
@@ -885,8 +912,6 @@
     "then": {
       "user_action": "Approving continues the run with these versions; rejecting stops it.",
       "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
-      "loop_cap": "Approving runs the review once more; rejecting stops the run.",
-      "loop_stalled": "Approving runs one more round; rejecting stops the run.",
       "route": "Continues the run along this route.",
       "check": "Approving runs the checks again; rejecting stops the run.",
       "breakpoint": "Starts this step with the current settings; stopping cancels the run."
@@ -894,8 +919,6 @@
     "approveAs": {
       "user_action": "Continue with this version",
       "final_output": "Confirm as final result",
-      "loop_cap": "Review once more",
-      "loop_stalled": "Try once more",
       "route": "Continue along this route",
       "check": "Run checks again",
       "breakpoint": "Continue"
@@ -903,8 +926,6 @@
     "rejectAs": {
       "user_action": "Reject and stop",
       "final_output": "Do not confirm",
-      "loop_cap": "Stop here",
-      "loop_stalled": "Stop here",
       "route": "Stop here",
       "check": "Stop here",
       "breakpoint": "Stop the run"
@@ -957,7 +978,12 @@
       "foreground": "Foreground",
       "timeout": "Timeout",
       "editFile": "Edit file"
-    }
+    },
+    "continueHeading": "{count, plural, one {# decision} other {# decisions}}",
+    "continueAnswered": "Answered",
+    "continueRegion": "Continue or stop",
+    "continueRegionOfRun": "{run} · Continue or stop",
+    "continueStopped": "Stopped"
   },
   "Inbox": {
     "title": "Needs you",
@@ -1078,7 +1104,8 @@
     "loadingCriteria": "Loading current criteria…",
     "finished": "This run has ended. Its settings history remains available.",
     "snapshotsUnchanged": "Requests already prepared retain their recorded input snapshots.",
-    "reasoningModel": "Also change model profile (blank keeps current)"
+    "reasoningModel": "Also change model profile (blank keeps current)",
+    "unlimited": "No round limit"
   },
   "Demo": {
     "template": "Demo template",
@@ -1233,7 +1260,8 @@
     "reviewStale": "A review became stale",
     "roundStarted": "{loop}: round {no} started",
     "roundFinished": "{loop}: round finished ({outcome})",
-    "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} check {decision on the checks} route {decision on which way to go} loop_cap {decision on another round} other {decision}}",
+    "loopEscalated": "{loop}: {policy, select, raise_reasoning {reasoning raised for more rounds} upper_model {switched to {model} for more rounds} other {changed for more rounds}}",
+    "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} check {decision on the checks} route {decision on which way to go} other {decision}}",
     "approvalResolved": "You {decision, select, approve {approved} reject {rejected} other {decided}}",
     "approvalClosed": "Closed without a decision",
     "directiveAccepted": "Your instruction for {node} was accepted",
@@ -1266,7 +1294,7 @@
     "run_requested": "The run was requested",
     "validation_passed": "The Corral passed validation",
     "output_finalized": "The final output was produced",
-    "approval_requested": "{detail, select, final_output {Waiting for your approval of the final output} check {Waiting for your decision on the checks} route {Waiting for you to pick a route} loop_cap {Waiting for your decision on another round} other {Waiting for your decision}}",
+    "approval_requested": "{detail, select, final_output {Waiting for your approval of the final output} check {Waiting for your decision on the checks} route {Waiting for you to pick a route} other {Waiting for your decision}}",
     "pause_requested": "You asked to pause",
     "safe_boundary_reached": "Paused at a safe point",
     "resumed": "You resumed the run",
@@ -1282,7 +1310,7 @@
     "internal_error": "An internal error stopped the run",
     "needs_user": "{node} needs your decision",
     "runner_finished_without_output": "The graph ended without an output",
-    "loop_cap_declined": "You declined another round of {node}",
+    "loop_exhausted": "{node} ran out of rounds: {reason, select, cap_reached {it reached its round limit} stalled {it kept producing the same result} other {it stopped}}",
     "rejected": "You rejected {node}",
     "final_output_rejected": "You rejected the final output",
     "user_input_requested": "Waiting for you"
@@ -1977,7 +2005,8 @@
       "tooMany": "Completion criteria have up to {max} lines.",
       "tooLong": "Line {line} is longer than {max} characters.",
       "changedElsewhere": "The criteria were changed elsewhere. Saving replaces them with what you wrote."
-    }
+    },
+    "neededNow": "Needed now"
   },
   "Files": {
     "folderHeading": "Project source folder",
@@ -2822,6 +2851,9 @@
       "unknown": "Side effects not classified"
     },
     "userQuestions": "Waiting for you",
+    "userQuestionsNamed": "Waiting for you: {question}",
+    "answered": "Answered",
+    "answeredLine": "Answered: {answer}",
     "questionUnavailable": "The question could not be loaded. Try again or cancel the run.",
     "recommended": "Recommended",
     "yourAnswer": "Your answer",
@@ -5406,9 +5438,6 @@
     }
   },
   "Turn": {
-    "working": "Working · {time}",
-    "worked": "Worked {time}",
-    "workedSteps": "Worked {time} · {count, plural, one {# step} other {# steps}}",
     "seconds": "{s}s",
     "minutes": "{m}m {s}s",
     "think": "Think",
@@ -5453,7 +5482,14 @@
     "requestFinished": "Response complete",
     "requestUnconfirmed": "Response completion not recorded",
     "stepDetails": "Details of {step}",
-    "allowedForRun": "Allowed for this run"
+    "allowedForRun": "Allowed for this run",
+    "steps": "{count, plural, one {# step} other {# steps}}",
+    "failedCount": "{count} failed",
+    "logToggle": "Work log · {state}",
+    "changes": "{count, plural, one {# change} other {# changes}}",
+    "results": "{count, plural, one {# result} other {# results}}",
+    "resultKind": "{count, plural, one {Result} other {Results}}",
+    "partialKind": "{count, plural, one {Partial result} other {Partial results}}"
   },
   "RunMonitor": {
     "backToWork": "Back to work",
@@ -5507,6 +5543,7 @@
       "now": "Now"
     },
     "activity": "Activity",
+    "runWaiting": "{run} · Waiting for you",
     "respond": "{count, plural, =1 {Respond} other {Respond · #}}",
     "showPanel": "Show side panel",
     "hidePanel": "Hide side panel",
@@ -5679,6 +5716,7 @@
   "RunLoop": {
     "title": "{name} Loop",
     "summary": "{count} observed rounds · max {max}",
+    "summaryUnlimited": "{count} observed rounds · no round limit",
     "iterationLabel": "Round for {name}",
     "current": "Current: round {no} · {outcome}",
     "latest": "Follow latest round",
@@ -5687,7 +5725,9 @@
     "unavailable": "This round is unavailable",
     "metadataOnly": "Round selection shows relationships; current run controls stay active.",
     "repeat": "Repeat {name}",
-    "exit": "Exit {name}"
+    "exit": "Exit {name}",
+    "raised": "Reasoning raised to {level}",
+    "switched": "Switched to {model}"
   },
   "TeamEditor": {
     "canvas": "Team graph",
@@ -5702,6 +5742,7 @@
     "kinds": {
       "agent": "Agent",
       "callable": "Callable agent",
+      "observer": "Advisor",
       "review": "Review",
       "approval": "Approval",
       "rule": "Rule",
@@ -5725,6 +5766,7 @@
       "output": "Receives the final version"
     },
     "rounds": "up to {count, plural, one {# round} other {# rounds}}",
+    "roundsUnlimited": "no round limit",
     "inline": "Defined here",
     "reference": "Reference · v{revision}",
     "joinAll": "Waits for all",
@@ -5735,7 +5777,8 @@
     "retry": "Retry ×{count}",
     "links": {
       "delegate": "delegates",
-      "question": "asks"
+      "question": "asks",
+      "advise": "advises"
     },
     "rejected": {
       "unknownNode": "That step no longer exists.",
@@ -5772,6 +5815,7 @@
       "invocation": "Runs",
       "scheduled": "In the flow",
       "callable": "When called",
+      "observer": "As an advisor",
       "retry": "Retries after a failure",
       "maxIterations": "Most rounds",
       "stallDetection": "Stop when rounds stop improving",

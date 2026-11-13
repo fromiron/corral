@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TextAttachments } from './attachments.ts';
 import { AutoRoute } from './auto-team.ts';
-import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
+import { AdviceSeverity, CancelScope, ForkFrom, StartFrom } from './commands.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
 import {
   ReasoningObservedPayload,
@@ -22,7 +22,7 @@ import {
 import { Identifier, SchemaVersion } from './ids.ts';
 import { BinaryArtifact, ImageGenerationProfile } from './media-artifact.ts';
 import { MeetingRunOrigin } from './meeting.ts';
-import { ReasoningCapabilities } from './reasoning.ts';
+import { ReasoningCapabilities, ReasoningLevel } from './reasoning.ts';
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
 import { ResumedFrom, RuntimeCheckpointRecord } from './runtime-checkpoints.ts';
@@ -345,6 +345,31 @@ export const LoopIterationFinished = event(
     submittedVersionIds: Ids,
   }),
 );
+const loopEscalation = {
+  loopNodeId: Identifier,
+  /** The round that reached the limit; it ends as `revise` and the next round opens. */
+  iterationId: Identifier,
+  reason: z.enum(['cap_reached', 'stalled']),
+  /** The Agent nodes in the Loop this changes, for the rest of this entry. */
+  nodeIds: z.array(Identifier).min(1).max(1000),
+};
+/** A Loop's limit policy raised its Agents for more rounds instead of ending (features/team-graph.md). */
+export const LoopEscalated = event(
+  'loop.escalated',
+  z.discriminatedUnion('policy', [
+    z.strictObject({
+      ...loopEscalation,
+      policy: z.literal('raise_reasoning'),
+      /** The fixed level each changed node now asks for. */
+      levels: z.record(Identifier, ReasoningLevel),
+    }),
+    z.strictObject({
+      ...loopEscalation,
+      policy: z.literal('upper_model'),
+      modelProfile: Identifier,
+    }),
+  ]),
+);
 /** The run's whole breakpoint list after a start or a `set_breakpoints` command. */
 export const BreakpointsChanged = event(
   'breakpoints.changed',
@@ -354,11 +379,9 @@ export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check', 'breakpoint']),
+    kind: z.enum(['final_output', 'user_action', 'route', 'check', 'breakpoint']),
     /** The step a `breakpoint` approval holds before it starts. */
     nodeId: Identifier.optional(),
-    /** Why a Loop asks for another round: its round cap or a stall. */
-    loopStop: z.enum(['cap_reached', 'stalled']).optional(),
     /** The connected routes a person may pick for a router that could not choose. */
     routes: z
       .array(z.strictObject({ id: Identifier, label: z.string().min(1) }))
@@ -516,6 +539,34 @@ export const DirectiveUndelivered = event(
     directiveId: Identifier,
     status: z.enum(['not_delivered', 'expired', 'delivery_unknown']),
     reason: z.string().min(1),
+  }),
+);
+export const AdviceAdmitted = event(
+  'advice.admitted',
+  z
+    .strictObject({
+      adviceId: Identifier,
+      observerExecutionId: Identifier,
+      targetExecutionId: Identifier,
+      severity: AdviceSeverity,
+      /** `preserve`: the target had ended, so the advice is kept for the person, not delivered. */
+      delivery: z.enum(['next_request', 'interrupt', 'preserve']),
+      /** The `advice` directive that carries it; absent only when preserved. */
+      directiveId: Identifier.optional(),
+    })
+    .refine(
+      (value) => (value.delivery === 'preserve') === (value.directiveId === undefined),
+      'a delivered advice names its directive and a preserved one does not',
+    ),
+);
+/** A gatekept advice. It never carries the advice's text. */
+export const AdviceSuppressed = event(
+  'advice.suppressed',
+  z.strictObject({
+    observerExecutionId: Identifier,
+    targetExecutionId: Identifier,
+    severity: AdviceSeverity,
+    reason: z.enum(['noise', 'duplicate', 'over_budget', 'target_terminal']),
   }),
 );
 export const PatchCommitted = event(
@@ -855,6 +906,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ReviewStale,
   LoopIterationStarted,
   LoopIterationFinished,
+  LoopEscalated,
   ApprovalRequested,
   ApprovalResolved,
   BreakpointsChanged,
@@ -862,6 +914,8 @@ export const RunEvent = z.discriminatedUnion('type', [
   DirectiveAttached,
   DirectiveDispatched,
   DirectiveUndelivered,
+  AdviceAdmitted,
+  AdviceSuppressed,
   PatchCommitted,
   PatchActivated,
   EffectAdmitted,

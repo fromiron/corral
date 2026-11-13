@@ -11,21 +11,31 @@ export function availableResultLinks(
     .map((item) => ({ id: item.artifactVersionId, label: `${item.name} v${item.version}` }));
 }
 
+/** The tools that write, move or delete a file themselves. */
+const FILE_WRITES = new Set([
+  'write_file',
+  'delete_file',
+  'move_file',
+  'write',
+  'edit',
+  'edit_hashline',
+]);
+
+/**
+ * The finished calls of a run that changed a file, as the run's record knows them. A command may
+ * change files too, but the record cannot tell, so it is not counted.
+ */
+export function fileChangeCount(calls: readonly { name: string; phase?: string }[]) {
+  return calls.filter((call) => FILE_WRITES.has(call.name) && call.phase === 'finished').length;
+}
+
 /** Shell services can change files after the launch tool has already finished. */
 export function fileChangeSignals(
   calls: readonly { name: string; phase?: string }[],
   status: string | undefined,
   live: boolean,
 ) {
-  const mutations = new Set([
-    'write_file',
-    'delete_file',
-    'move_file',
-    'write',
-    'edit',
-    'edit_hashline',
-    'run_command',
-  ]);
+  const mutations = new Set([...FILE_WRITES, 'run_command']);
   return {
     revision: calls.filter(
       (call) => mutations.has(call.name) && (call.phase === 'finished' || call.phase === 'failed'),

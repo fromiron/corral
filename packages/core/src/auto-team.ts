@@ -192,7 +192,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     };
   });
   const nodes = definition.nodes.map((node) =>
-    node.type === 'agent' && node.roleId === 'reviewer'
+    node.type === 'agent' && node.invocation !== 'observer' && node.roleId === 'reviewer'
       ? {
           ...node,
           inputBindings: [...node.inputBindings, { kind: 'run_input' as const, name: 'brief' }],

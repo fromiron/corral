@@ -168,6 +168,28 @@ describe('event contract', () => {
         payload: { limitKind: 'spawns', used: 12, max: 12 },
       },
       {
+        type: 'loop.escalated',
+        payload: {
+          loopNodeId: 'loop_1',
+          iterationId: 'iteration_2',
+          reason: 'cap_reached',
+          policy: 'raise_reasoning',
+          nodeIds: ['write'],
+          levels: { write: 'high' },
+        },
+      },
+      {
+        type: 'loop.escalated',
+        payload: {
+          loopNodeId: 'loop_1',
+          iterationId: 'iteration_2',
+          reason: 'stalled',
+          policy: 'upper_model',
+          nodeIds: ['write', 'review'],
+          modelProfile: 'model-upper',
+        },
+      },
+      {
         type: 'review.recorded',
         payload: {
           reviewVersionId: 'artv_2',
@@ -186,6 +208,53 @@ describe('event contract', () => {
       const wrong = { ...event, payload: { ...event.payload, unexpected: true } };
       expect(RunEvent.safeParse(wrong).success, `${sample.type} extra field`).toBe(false);
       expect(generated(wrong), `${sample.type} extra field (generated)`).toBe(false);
+    }
+  });
+
+  it('records a Loop escalation with the fields its policy owns, and no loop_cap approval', () => {
+    const base = {
+      schemaVersion: '0.1',
+      eventId: 'evt_0001',
+      runId: 'run_0001',
+      runSeq: 1,
+      recordedAt: '2026-10-15T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'coordinator' },
+      causedByEventIds: [],
+    };
+    const generated = compiler().compile(generatedEvent);
+    const escalated = (payload: Record<string, unknown>) => ({
+      ...base,
+      type: 'loop.escalated',
+      payload: {
+        loopNodeId: 'loop_1',
+        iterationId: 'iteration_2',
+        reason: 'cap_reached',
+        nodeIds: ['write'],
+        ...payload,
+      },
+    });
+    const refused = [
+      // A level belongs to raise_reasoning, a model to upper_model.
+      escalated({ policy: 'raise_reasoning', modelProfile: 'model-upper' }),
+      escalated({ policy: 'upper_model', levels: { write: 'high' } }),
+      // Ending and having no cap change nothing, so they are never recorded.
+      escalated({ policy: 'exhaust' }),
+      escalated({ policy: 'upper_model', modelProfile: 'model-upper', nodeIds: [] }),
+      escalated({ policy: 'upper_model', modelProfile: 'model-upper', reason: 'pass' }),
+      {
+        ...base,
+        type: 'approval.requested',
+        payload: {
+          approvalId: 'approval_1',
+          kind: 'loop_cap',
+          subjectVersionIds: [],
+          criteriaVersionId: null,
+        },
+      },
+    ];
+    for (const event of refused) {
+      expect(RunEvent.safeParse(event).success, JSON.stringify(event.payload)).toBe(false);
+      expect(generated(event), JSON.stringify(event.payload)).toBe(false);
     }
   });
 });

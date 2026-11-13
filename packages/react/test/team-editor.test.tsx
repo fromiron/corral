@@ -15,6 +15,7 @@ import {
   patchNode,
   placeStep,
   type TeamReference,
+  wrapIn,
 } from '../src/team-editor/commands.ts';
 import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
 
@@ -82,7 +83,8 @@ describe('team editor', () => {
     const reviewer = draft.definition.nodes.find(
       (n) => n.type === 'agent' && contracts.get(n.roleId) === 'review',
     );
-    if (reviewer?.type !== 'agent') throw new Error('the pattern made no reviewer');
+    if (reviewer?.type !== 'agent' || reviewer.invocation === 'observer')
+      throw new Error('the pattern made no reviewer');
     renderEditor(
       patchNode(draft, reviewer.id, {
         inputBindings: reviewer.inputBindings.filter((b) => b.kind !== 'run_input'),
@@ -121,6 +123,27 @@ describe('team editor', () => {
       .at(0) as HTMLElement;
     await act(async () => fireEvent.click(item));
     expect(canvasNode(review.nodeId).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it.each([
+    [{ maxIterations: undefined }, messages.Validation.codes.LOOP_MAX_ITERATIONS],
+    [
+      { limitPolicy: { kind: 'raise_reasoning', level: 'off' } },
+      messages.Validation.codes.LOOP_REASONING_OFF,
+    ],
+  ])('names a Loop limit problem in its own words (%o)', async (change, words) => {
+    const wrapped = ok(wrapIn(chain(2), ['agent_1'], 'loop'));
+    renderEditor(patchNode(wrapped.draft, wrapped.nodeId, change));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /problems?$/ })));
+    const named = screen.getAllByRole('button').filter((b) => b.textContent?.includes(words));
+    expect(named.length).toBeGreaterThan(0);
+  });
+
+  it('has no problems after a check loop wraps the step before a parallel split', () => {
+    const chained = ok(placeStep(chain(4), 'output', { kind: 'after', nodeId: 'agent_4' })).draft;
+    const split = ok(applyPattern(chained, 'parallel', ['agent_3'])).draft;
+    renderEditor(ok(applyPattern(split, 'checkLoop', ['agent_2'])).draft);
+    expect(screen.getByRole('button', { name: /problems?$/ }).textContent).toBe('No problems');
   });
 
   it('offers only agents in the flow as input sources', async () => {
@@ -179,7 +202,9 @@ describe('team editor', () => {
     );
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Add' })));
     const node = editor.getState().draft.definition.nodes.find((n) => n.id === 'agent_1');
-    expect(node?.type === 'agent' && node.inputBindings.at(-1)).toMatchObject({
+    expect(
+      node?.type === 'agent' && node.invocation !== 'observer' && node.inputBindings.at(-1),
+    ).toMatchObject({
       kind: 'explicit_version',
       artifactVersionId: 'av_draft_2',
     });
