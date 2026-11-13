@@ -83,6 +83,23 @@ async function noDuplicates(page: Page, where: string) {
   expect.soft(await duplicateLabels(page), `${where}: a state name on screen twice`).toEqual({});
 }
 
+/** How many times a word is written on screen whole: drawn, in view, not for AT alone. */
+function writtenOnScreen(page: Page, word: string) {
+  return page.evaluate((word) => {
+    let count = 0;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (node.textContent?.trim() !== word || !parent) continue;
+      if (parent.closest('.sr-only, [inert], [aria-hidden="true"]')) continue;
+      if (!parent.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+      const box = parent.getBoundingClientRect();
+      if (box.width && box.height && box.bottom > 0 && box.top < innerHeight) count += 1;
+    }
+    return count;
+  }, word);
+}
+
 /** The largest shift of the conversation items alone. */
 function itemShift(result: ShiftResult) {
   const values = result.items
@@ -347,6 +364,10 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
     for (const [label, { count }] of Object.entries(open))
       expect.soft(count, `${label} on screen ${count} times`).toBe(1);
     await noDuplicates(page, 'panel open, rows away');
+    // A working role's spinner says it works: the word is written once, not once a row.
+    const working = await writtenOnScreen(page, 'Working');
+    record('panel-open-working', { working });
+    expect.soft(working, '"Working" written on screen').toBe(1);
 
     // View brings the role's row back from outside the conversation's window, with the focus,
     // and leaves the run record closed.

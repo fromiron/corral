@@ -358,7 +358,9 @@ function SessionComposer({
   const requestStop = () => {
     setConfirmStop(ownActive !== null);
   };
-  const runDeps = { services, newId: newCommandId, setError, onChange };
+  // A run command that could not be sent: the activity bar's line says so until the next try.
+  const [notSent, setNotSent] = useState<string | null>(null);
+  const runDeps = { services, newId: newCommandId, setError, onChange, onNotSent: setNotSent };
   // Stop asks first while two or more executions work, or while how many is not known yet: one
   // stop then ends them all.
   const activeExecutions = useActiveExecutionCount(going?.runId ?? null);
@@ -599,6 +601,7 @@ function SessionComposer({
           onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
           onViewRun={onViewRun}
           {...(revealRun ? { revealRun } : {})}
+          notice={going && notSent === going.runId ? tActivity('notSent') : null}
           request={
             ownActive
               ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)

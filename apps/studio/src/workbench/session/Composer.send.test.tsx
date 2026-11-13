@@ -1167,6 +1167,26 @@ describe('Stop in Send’s place', () => {
     );
   });
 
+  it('says on the activity bar when it could not be sent, and can be pressed again', async () => {
+    // The run's record is not read and cannot be: there is no run here to send to.
+    const f = await mount({
+      runState: {
+        runId: 'run_other',
+        projection: projection({ exec_other: 'active' }, 'run_other'),
+      },
+    });
+    await act(async () => stop(f.container)?.click());
+    const dialog = document.querySelector('[role="dialog"]');
+    const confirm = [...(dialog?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+      (button) => button.textContent === messages.Reins.confirmCancelRun,
+    );
+    await act(async () => confirm?.click());
+    expect(cancels(f.sendCommand)).toHaveLength(0);
+    const line = f.container.querySelector('[data-activity-bar] > div');
+    expect(line?.textContent).toContain(messages.Activity.notSent);
+    expect(stop(f.container)?.disabled).toBe(false);
+  });
+
   it('cannot be pressed while the run is being cancelled', async () => {
     const f = await mount({ active: { ...running, status: 'cancelling' } });
     expect(stop(f.container)?.disabled).toBe(true);

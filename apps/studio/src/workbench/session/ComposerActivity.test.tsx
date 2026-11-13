@@ -863,10 +863,10 @@ it('names the bar itself: one group, "Activity"', async () => {
 });
 
 it('does not say again on the line what an open panel row says', async () => {
-  // One assistant at work, its run row scrolled away: the line says it works.
+  // One assistant paused, its run row scrolled away: the line says it is paused.
   fixture.store = sessionStore({
     runId: 'run_plan',
-    projection: teamProjection({ exec_plan: { node: 'assistant', status: 'active' } }),
+    projection: teamProjection({ exec_plan: { node: 'assistant', status: 'paused' } }),
   });
   const view = await mount(live(), { ownActive: ownRun });
   const said = () =>
@@ -880,6 +880,59 @@ it('does not say again on the line what an open panel row says', async () => {
   // Folded again, the line says it again.
   await act(async () => view.toggle()?.click());
   expect(said()).toBe(1);
+});
+
+it("writes no state on a working role's row: its spinner says it; other states are written", async () => {
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'waiting_children' },
+      exec_writer: { node: 'writer', status: 'active' },
+      exec_review: { node: 'review', status: 'waiting_approval' },
+    }),
+  });
+  const view = await mount(live(), { ownActive: ownRun });
+  await act(async () => view.toggle()?.click());
+  const row = (id: string) => view.panel()?.querySelector(`[data-activity-role="${id}"]`);
+  // Name and what it does; the state stays in its name for a screen reader.
+  expect(visibleText(row('exec_lead'))).not.toContain(messages.Presence.state.working);
+  expect(visibleText(row('exec_lead'))).toContain(messages.Presence.detail.waiting_agents);
+  expect(visibleText(row('exec_writer'))).not.toContain(messages.Presence.state.working);
+  expect(row('exec_writer')?.textContent).toContain(messages.Presence.state.working);
+  expect(row('exec_writer')?.querySelector('[data-presence-label]')).toBeNull();
+  // Waiting for the person is written.
+  expect(
+    row('exec_review')?.querySelector('[data-presence-label="execution:exec_review"]')?.textContent,
+  ).toBe(messages.Presence.state.awaiting_user);
+});
+
+it('with the panel open, the waiting line leaves its state to the role row that writes it', async () => {
+  // The lead asks the person while two roles work, its question's card scrolled away.
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: teamProjection({
+      exec_lead: { node: 'lead', status: 'waiting_approval' },
+      exec_research: { node: 'research', status: 'active' },
+      exec_writer: { node: 'writer', status: 'active' },
+    }),
+  });
+  const approval = { ...noAction, visible: true, needsUser: true, count: 1, summary: 'approval' };
+  const view = await mount(
+    model(
+      { live: true, action: approval as ChatWidgetModel['action'] },
+      { runStatus: 'awaiting_user' },
+    ),
+    { ownActive: ownRun },
+  );
+  view.tray.setState({ waiting: 1 });
+  await act(async () => view.tray.setState({ placement: 'out-of-view' }));
+  expect(view.bar()?.dataset.line).toBe('waiting');
+  // Folded, the line says the run waits for the person.
+  expect(visibleText(view.line())).toContain(messages.Presence.state.awaiting_user);
+  await act(async () => view.toggle()?.click());
+  const words = visibleText(view.bar()).split(messages.Presence.state.awaiting_user).length - 1;
+  expect(words).toBe(1);
+  expect(visibleText(view.panel())).toContain(messages.Presence.state.awaiting_user);
 });
 
 it('tells executions of one role apart as the send menu does, and lists only live ones', async () => {

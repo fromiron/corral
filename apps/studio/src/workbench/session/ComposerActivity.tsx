@@ -44,6 +44,7 @@ export function ComposerActivity({
   onResume,
   onViewRun,
   revealRun,
+  notice = null,
   request,
   viewingOther,
 }: {
@@ -65,6 +66,8 @@ export function ComposerActivity({
    * conversation has no item for that run. `null` lets the place go once the row is reached.
    */
   revealRun?: (runId: string | null) => boolean;
+  /** What went wrong with a run command just pressed; the line says it where a refusal is said. */
+  notice?: string | null;
   /** The request that started the running run. */
   request?: string;
   /** Another run than the running one is presented. */
@@ -283,6 +286,8 @@ export function ComposerActivity({
             tone: role.presence.tone,
             ...(state ? { state } : {}),
             stateShown: !roleSeen(input, role),
+            // The spinner says a role works; any other state is written.
+            working: role.presence.kind === 'working',
             ...(role.activity ? { activity: role.activity } : {}),
             startedAt: toMs(role.startedAt),
             target: role.id === target,
@@ -291,6 +296,19 @@ export function ComposerActivity({
           };
         })
       : [];
+  // Open, a role row that writes its state says it: the line does not write the same words again.
+  const written = open
+    ? new Set(
+        roles.flatMap((role) =>
+          role.state && role.stateShown && !role.working ? [role.state.text] : [],
+        ),
+      )
+    : null;
+  const said = ((): ActivityBarLine | null => {
+    if (!closed?.state || !written?.has(closed.state.text)) return closed;
+    const { state: _written, ...rest } = closed;
+    return rest;
+  })();
   const status = projection?.status;
   // One command at a time, as the run record's controls send them.
   const sending = activity.sending;
@@ -303,7 +321,18 @@ export function ComposerActivity({
       data-line={line.kind}
     >
       <ActivityBar
-        line={closed}
+        line={
+          notice
+            ? {
+                glyph: said?.glyph ?? 'failed',
+                tone: 'warning',
+                warning: true,
+                ...(said?.state ? { state: said.state } : {}),
+                text: notice,
+                ...(said?.action ? { action: said.action } : {}),
+              }
+            : said
+        }
         end={model?.runId ? <OverviewAccess /> : undefined}
         roles={roles}
         plan={model?.runId ? <ComposerPlan variant="activity" /> : undefined}

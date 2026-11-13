@@ -68,6 +68,7 @@ const role = (change: Partial<ActivityBarRole> & Pick<ActivityBarRole, 'id' | 'n
     tone: 'active',
     state: { text: 'Working', target: `execution:${change.id}` },
     stateShown: true,
+    working: true,
     target: false,
     startedAt: started,
     onShow: fn(),
@@ -158,11 +159,20 @@ const team = [
     glyph: 'queued',
     tone: 'active',
     state: { text: 'Starting', target: 'execution:exec_review' },
+    working: false,
     startedAt: undefined,
+  }),
+  role({
+    id: 'exec_lead',
+    name: 'Lead',
+    glyph: 'waiting',
+    tone: 'warning',
+    state: { text: 'Waiting for you', target: 'execution:exec_lead' },
+    working: false,
   }),
 ];
 
-/** Three roles at work, the panel open: each role's row, the plan and the run controls. */
+/** Three roles at work and the lead waiting, the panel open: each role's row, the plan and the run controls. */
 export const ThreeRoles: Story = {
   args: {
     line: {
@@ -183,6 +193,14 @@ export const ThreeRoles: Story = {
     const canvas = within(canvasElement);
     const panel = canvas.getByRole('region', { name: 'Activity details' });
     await waitFor(() => expect(panel).toBeVisible());
+    // A working role's spinner says it works: no "Working" written on its row, though its name
+    // still carries the state. A role in any other state writes it.
+    const written = [...panel.querySelectorAll('[data-presence-label]')].map(
+      (node) => node.textContent,
+    );
+    await expect(written).toEqual(['Starting', 'Waiting for you']);
+    const researcher = panel.querySelector('[data-activity-role="exec_research"]');
+    await expect(researcher?.querySelector('.sr-only')?.textContent).toBe('Working');
     // Joining a role is a button on its row, reached by keyboard; the target says it is one.
     const join = within(panel).getByRole('button', { name: 'Join Researcher' });
     join.focus();

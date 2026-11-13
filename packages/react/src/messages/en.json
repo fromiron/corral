@@ -6196,6 +6196,7 @@
     "connectionLost": "Connection lost",
     "recordLost": "Run record unavailable",
     "retry": "Retry",
-    "controls": "Run controls"
+    "controls": "Run controls",
+    "notSent": "Not sent: run record unavailable"
   }
 }

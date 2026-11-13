@@ -84,6 +84,11 @@ export interface ActivityBarRole {
   state?: ActivityState;
   /** The state in words; false where its row on screen says it (the name stays for AT). */
   stateShown: boolean;
+  /**
+   * The role works: its spinning mark says so, and the row writes no state word (the name stays
+   * for AT). Any other state (waiting, pausing, stopping) is written.
+   */
+  working?: boolean;
   activity?: string;
   startedAt?: number;
   endedAt?: number;
@@ -465,7 +470,7 @@ function RoleRow({ role }: { role: ActivityBarRole }) {
       <span className="shrink-0" style={{ fontVariationSettings: fontWeights.semibold }}>
         {role.name}
       </span>
-      {!role.state ? null : role.stateShown ? (
+      {!role.state ? null : role.stateShown && !role.working ? (
         <span className="shrink-0 text-muted-foreground">
           <StateWords state={role.state} />
         </span>

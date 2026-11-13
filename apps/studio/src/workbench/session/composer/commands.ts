@@ -15,6 +15,8 @@ export interface RunCommandDeps {
   newId: () => string;
   setError: (message: string | null) => void;
   onChange: () => void;
+  /** The run a command could not be sent to (its record unread), or null once one is tried again. */
+  onNotSent?: (runId: string | null) => void;
 }
 
 /**
@@ -31,9 +33,13 @@ export async function runCommand(
   const store = deps.services.runFor(runId);
   // A press while a command is being sent is not another command.
   if ((store.getState().pendingCommandIds?.length ?? 0) > 0) return;
+  deps.onNotSent?.(null);
   if (store.getState().runId !== runId) await store.getState().open(runId);
-  // The record could not be read: there is no run here to send to.
-  if (store.getState().runId !== runId) return;
+  // The record could not be read: nothing is sent, and the activity bar says so.
+  if (store.getState().runId !== runId) {
+    deps.onNotSent?.(runId);
+    return;
+  }
   const receipt = await store
     .getState()
     .sendCommand(
