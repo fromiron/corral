@@ -59,6 +59,8 @@ export function Timeline({
   const events = useRunDisplay(session, (s) => s.events);
   const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
   const iterations = useRunDisplay(session, (s) => s.projection?.iterations);
+  const directives = useRunDisplay(session, (s) => s.projection?.directives);
+  const directiveOrigin = (directiveId: string) => directives?.[directiveId]?.origin;
   const definition = useStore(session, (s) => s.definition);
   const nodeLabel = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -277,7 +279,12 @@ export function Timeline({
                           {t(`actors.${event.actor.kind}`)}
                         </span>
                         <span className="min-w-0 truncate">
-                          <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
+                          <EventText
+                            event={event}
+                            labelOf={labelOf}
+                            nodeLabel={nodeLabel}
+                            directiveOrigin={directiveOrigin}
+                          />
                         </span>
                         <span className="ml-auto shrink-0 font-mono text-muted-foreground">
                           {event.type}
@@ -301,7 +308,12 @@ export function Timeline({
           <KitCardContent className="grid gap-4">
             <div className="grid gap-1">
               <p className="text-foreground">
-                <EventText event={selected} labelOf={labelOf} nodeLabel={nodeLabel} />
+                <EventText
+                  event={selected}
+                  labelOf={labelOf}
+                  nodeLabel={nodeLabel}
+                  directiveOrigin={directiveOrigin}
+                />
               </p>
               <p className="text-caption text-muted-foreground tabular-nums">
                 {format.dateTime(new Date(selected.recordedAt), {
@@ -327,7 +339,12 @@ export function Timeline({
                           #{cause.runSeq}
                         </span>
                         <span className="min-w-0 truncate">
-                          <EventText event={cause} labelOf={labelOf} nodeLabel={nodeLabel} />
+                          <EventText
+                            event={cause}
+                            labelOf={labelOf}
+                            nodeLabel={nodeLabel}
+                            directiveOrigin={directiveOrigin}
+                          />
                         </span>
                       </KitButton>
                     </li>

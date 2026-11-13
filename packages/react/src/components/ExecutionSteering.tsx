@@ -42,9 +42,11 @@ export function ExecutionSteering({
   const statusText = useTranslations('Status');
   const planText = useTranslations('WorkPlan');
   const activityText = useTranslations('RunPage.tabs');
+  const adviceText = useTranslations('Advice');
   const runId = useStore(session, (s) => s.runId);
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
+  const definition = useStore(session, (s) => s.definition);
   const execution = projection?.executions?.[target.executionId];
   const planRef =
     planSlot !== undefined
@@ -101,6 +103,15 @@ export function ExecutionSteering({
     const directive = projection?.directives[id];
     return directive?.targetExecutionId === target.executionId ? [directive] : [];
   });
+  /** An advice's directive names its advisor and severity; the person's names nobody. */
+  const adviceFrom = (advice: (typeof directives)[number]['advice']) => {
+    if (!advice) return null;
+    const nodeId = projection?.executions[advice.observerExecutionId]?.nodeId;
+    const advisor = nodeId
+      ? (definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId)
+      : adviceText('advisor');
+    return adviceText('from', { advisor, severity: adviceText(`severity.${advice.severity}`) });
+  };
   const model = execution
     ? (projection?.modelProfiles?.[execution.modelProfile]?.modelId ?? execution.modelProfile)
     : undefined;
@@ -152,6 +163,11 @@ export function ExecutionSteering({
         status: <StatusBadge status={d.status} />,
         detail: (
           <>
+            {d.advice ? (
+              <span data-directive-advice className="text-muted-foreground">
+                {adviceFrom(d.advice)}
+              </span>
+            ) : null}
             <span className="font-mono text-muted-foreground">{d.directiveId}</span>
             {d.reason ? <p className="text-warning">{d.reason}</p> : null}
             {d.modelCallId && d.contextSnapshotId ? (

@@ -62,6 +62,7 @@ export function InboxPage() {
   const tw = useTranslations('Workbench');
   const tr = useTranslations('Recipe');
   const tv = useTranslations('Review');
+  const ta = useTranslations('Advice');
   const { repository, transport, workspaces } = useServices();
   const navigate = useNavigate();
   const returnTo = workHref(
@@ -278,6 +279,9 @@ export function InboxPage() {
     }
     if (item.kind === 'integration' && tv.has(`integrationState.${detail}`))
       return tv(`integrationState.${detail}`);
+    // An advice by its severity's name, never its colour alone, and its first line as text.
+    if (item.kind === 'advice' && item.severity)
+      return t('summary.advice', { severity: ta(`severity.${item.severity}`), detail });
     return null;
   };
 
@@ -315,6 +319,14 @@ export function InboxPage() {
     });
     loadProject(entry.projectId);
     setFocusTarget(next ? { kind: 'row', key: next.key } : { kind: 'heading' });
+  };
+  /**
+   * Going to an advice's execution row is opening it: the server is told, and its next inbox read
+   * leaves the item out. The row is not dropped here, and a failed call keeps it listed.
+   */
+  const opened = ({ item }: InboxEntry) => {
+    if (item.kind !== 'advice' || !item.runId || !item.executionId || !workspaces) return;
+    void workspaces.executionOpened(item.runId, item.executionId).catch(() => {});
   };
   const onDetailKey = (event: KeyboardEvent<HTMLElement>) => {
     // Popups portal outside the detail and keep their own Escape.
@@ -539,7 +551,11 @@ export function InboxPage() {
                 />
               ) : destination ? (
                 // Every other kind: its row says what it is; the detail is the way to it.
-                <Button className="justify-self-start" render={destinationLink(destination)}>
+                <Button
+                  className="justify-self-start"
+                  render={destinationLink(destination)}
+                  onClick={() => opened(current)}
+                >
                   {t(`open.${destinationKind(destination)}`)}
                 </Button>
               ) : null}

@@ -33,10 +33,13 @@ export interface RunFlowEdge {
     | 'delegate'
     | 'review'
     | 'branch'
-    | 'output';
+    | 'output'
+    | 'advice';
   eventIds: string[];
   executionIds: string[];
   artifactVersionIds: string[];
+  /** `advice` only: the admitted advice it carries, in the order they were accepted. */
+  adviceIds?: string[];
   recordedAt: string | null;
   observed: true;
 }
@@ -273,6 +276,9 @@ export function buildRunFlow(
       case 'loop.iteration_finished':
         remember(`iteration-finished:${event.payload.iterationId}`, event);
         break;
+      case 'advice.admitted':
+        remember(`advice:${event.payload.adviceId}`, event);
+        break;
     }
   }
   const selectedByLoop = new Map(loops.map((loop) => [loop.nodeId, loop.selectedIterationId]));
@@ -371,8 +377,14 @@ export function buildRunFlow(
     }
     return key;
   };
+  // An advisor is a node only once it has given an advice (execution-monitor.md).
+  const advice = Object.values(projection.advice ?? {}).sort(
+    (a, b) => a.acceptedSeq - b.acceptedSeq,
+  );
+  const advised = new Set(advice.map((value) => value.observerExecutionId));
   const agent = (executionId: string): string | null => {
     const execution = projection.executions[executionId];
+    if (execution?.advisor && !advised.has(executionId)) return null;
     return execution && includesExecution(executionId) ? addNode(execution.nodeId) : null;
   };
   const artifact = (id: string): string | null =>
@@ -483,6 +495,18 @@ export function buildRunFlow(
         question.answer.evidenceRefs,
       );
     }
+  }
+  // Each admitted advice relates its advisor to its target; a dropped one relates nothing.
+  for (const value of advice) {
+    const from = agent(value.observerExecutionId);
+    const to = agent(value.targetExecutionId);
+    const before = edges.get(`advice:${from}:${to}`)?.adviceIds ?? [];
+    addEdge('advice', from, to, firstRecords.get(`advice:${value.adviceId}`), [
+      value.observerExecutionId,
+      value.targetExecutionId,
+    ]);
+    const edge = edges.get(`advice:${from}:${to}`);
+    if (edge) edge.adviceIds = [...before, value.adviceId];
   }
   for (const review of Object.values(projection.reviews)) {
     const recorded = firstRecords.get(`review:${review.reviewVersionId}`);

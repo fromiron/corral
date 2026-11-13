@@ -1124,6 +1124,43 @@ it('a failed one-agent run does not restate its state as that agent failing', as
   expect(failureEntry(container)).toBeDefined();
 });
 
+it('a failed one-agent run with an advisor still has one agent: the advisor is outside the flow', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const base = linearCorral(['worker'], 'inline_team');
+  const definition = {
+    ...base,
+    nodes: [
+      ...base.nodes,
+      {
+        id: 'watcher',
+        type: 'agent' as const,
+        label: 'Watcher',
+        roleId: 'worker_role',
+        invocation: 'observer' as const,
+        outputName: 'notes',
+      },
+    ],
+    capabilityLinks: [
+      { id: 'watch', kind: 'advise' as const, sourceNodeId: 'watcher', targetNodeId: 'worker' },
+    ],
+  };
+  const { container, run } = await mount(
+    'inline_team',
+    null,
+    {},
+    undefined,
+    false,
+    undefined,
+    definition,
+  );
+  await failRun(run, {
+    reason: 'execution_failed: worker',
+    error: 'the model request failed: HTTP 500 (SERVER)',
+  });
+  expect(endReason(container)).toBeNull();
+  expect(header(container)?.textContent).not.toContain('worker failed');
+});
+
 it('a failed execution of unknown cause keeps the recorded text verbatim under a localized label', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, run } = await mount('inline_team', null, { execution: 'exec_worker' });

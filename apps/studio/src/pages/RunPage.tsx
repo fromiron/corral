@@ -1084,11 +1084,15 @@ function RunHeader({
     recipeStopped &&
     Boolean(onOpenArtifact) &&
     Boolean(projection.statusReason?.startsWith('review_recipe:'));
-  // The run's agents: those it schedules, and any callable helper that actually ran.
+  // The run's agents: those it schedules, and any callable helper that actually ran. An advisor
+  // watches from outside the flow and is not one of them.
   const ran = new Set(Object.values(projection.executions).map((execution) => execution.nodeId));
   const soleAgent =
     definition.nodes.filter(
-      (node) => node.type === 'agent' && (node.invocation !== 'callable' || ran.has(node.id)),
+      (node) =>
+        node.type === 'agent' &&
+        node.invocation !== 'observer' &&
+        (node.invocation !== 'callable' || ran.has(node.id)),
     ).length <= 1;
   const endReason =
     projection.statusReason &&

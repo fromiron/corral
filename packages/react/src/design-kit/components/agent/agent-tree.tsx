@@ -74,6 +74,8 @@ interface AgentTreeNode {
   children?: AgentTreeNode[];
   /** Status word shown instead of the kit's default label (Corral: its finer status). */
   statusLabel?: string;
+  /** A short mark after the name, such as what kind of agent this is. */
+  tag?: ReactNode;
   /** Extra content under the task, above the footer (links, live text). */
   detail?: ReactNode;
   /** Attributes for the card element (ids, test hooks, data attributes). */
@@ -632,13 +634,16 @@ function NodeCard({ node, depth }: { node: AgentTreeNode; depth: number }) {
         <div className="flex min-w-0 flex-1 basis-24 items-center gap-2">
           <AgentAvatar name={node.name} logo={node.logo} size={22} />
           <span className="grid min-w-0 flex-1">
-            <span
-              dir="auto"
-              title={node.name}
-              className={cn(size.type.body, 'truncate text-foreground')}
-              style={{ fontVariationSettings: fontWeights.semibold }}
-            >
-              {node.name}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                dir="auto"
+                title={node.name}
+                className={cn(size.type.body, 'truncate text-foreground')}
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
+                {node.name}
+              </span>
+              {node.tag ? <span className="shrink-0">{node.tag}</span> : null}
             </span>
             {node.model && (
               <span

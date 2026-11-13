@@ -1013,7 +1013,8 @@
       "lsp_proposal": "언어 서버 제안",
       "integration": "반영이 깔끔하게 끝나지 않음",
       "queued": "대기 요청",
-      "recipe_stopped": "검토 중단: {reason}"
+      "recipe_stopped": "검토 중단: {reason}",
+      "advice": "조언"
     },
     "open": {
       "run": "실행 열기",
@@ -1026,7 +1027,8 @@
       "check_failed": "검사 실패: {name}",
       "uncertain_write": "{count, plural, other {결과를 모르는 파일 쓰기 #개}}",
       "unreviewed": "{count, plural, other {확인하지 않은 파일 쓰기 #개}}",
-      "lsp_proposal": "{count, plural, other {언어 서버 제안 #개}}"
+      "lsp_proposal": "{count, plural, other {언어 서버 제안 #개}}",
+      "advice": "{severity} · {detail}"
     },
     "close": "닫기",
     "backToList": "목록으로",
@@ -1168,7 +1170,8 @@
       "question": "질문",
       "answer": "응답",
       "read": "자료 읽음",
-      "input": "모델 입력"
+      "input": "모델 입력",
+      "advice": "조언"
     },
     "observedRelation": "{kind} · 관측 {count}개 · 진행 {active}개",
     "zoomIn": "확대",
@@ -1300,7 +1303,13 @@
     "cancelRequested": "취소 요청",
     "cancelConfirmed": "취소 확정",
     "observationLate": "늦게 온 {what}을(를) 무시함",
-    "outputFinalized": "최종 출력 준비됨"
+    "outputFinalized": "최종 출력 준비됨",
+    "adviceAdmitted": "{advisor}의 조언({severity, select, nit {참고} concern {우려} blocker {중단 권고} other {{severity}}}) → {node} · {delivery, select, next_request {다음 요청으로 전달} interrupt {끼어들어 전달} preserve {기록에만 보존} other {{delivery}}}",
+    "adviceSuppressed": "{advisor}의 조언을 버림({severity, select, nit {참고} concern {우려} blocker {중단 권고} other {{severity}}}): {reason, select, noise {빈말} duplicate {이미 낸 조언} over_budget {한 검토의 조언 수 초과} target_terminal {대상이 이미 끝남} other {{reason}}}",
+    "adviceDirectiveAccepted": "{node}에 대한 조언 접수",
+    "adviceDirectiveAttached": "조언이 요청에 첨부됨",
+    "adviceDirectiveDispatched": "조언을 보냄",
+    "adviceDirectiveUndelivered": "조언이 전달되지 않음({status})"
   },
   "RunReasons": {
     "run_requested": "실행 시작을 요청함",
@@ -5682,7 +5691,8 @@
       "delegate": "작업 위임",
       "review": "검토",
       "branch": "분기 선택",
-      "output": "최종 결과 확정"
+      "output": "최종 결과 확정",
+      "advice": "조언"
     },
     "port": {
       "out": "출력",
@@ -6185,5 +6195,19 @@
       "waiting_reply": "답 대기",
       "watching": "지켜보는 중"
     }
+  },
+  "Advice": {
+    "advisor": "감독",
+    "severity": {
+      "nit": "참고",
+      "concern": "우려",
+      "blocker": "중단 권고"
+    },
+    "delivery": {
+      "next_request": "다음 요청",
+      "interrupt": "끼어들기",
+      "preserve": "기록에만 보존"
+    },
+    "from": "{advisor} · {severity}"
   }
 }

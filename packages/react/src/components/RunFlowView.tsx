@@ -60,7 +60,8 @@ function relationshipGroups(flow: RunFlow): { groups: Relationship[]; remaining:
         : undefined;
     const from = author ? nodes.get(author.from) : source;
     if (from?.kind !== 'agent' || target.kind !== 'agent' || from.id === target.id) continue;
-    if (!['read', 'input', 'question', 'answer', 'delegate'].includes(edge.kind)) continue;
+    if (!['read', 'input', 'question', 'answer', 'delegate', 'advice'].includes(edge.kind))
+      continue;
     const id = `${from.id}:${target.id}`;
     const group = groups.get(id) ?? { id, from, to: target, cards: [] };
     const cardId = source.kind === 'artifact' ? source.id : edge.kind;
@@ -104,6 +105,8 @@ export function RunFlowView({
   const status = useTranslations('Canvas.nodeStatus');
   const loopText = useTranslations('RunLoop');
   const roundText = useTranslations('Run');
+  const adviceText = useTranslations('Advice');
+  const statusText = useTranslations('Status');
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
   const [roundChoices, setRoundChoices] = useState<{
@@ -177,11 +180,32 @@ export function RunFlowView({
       status: 'done',
       stateLabel: t('observed'),
       items: [
-        ...card.edges.map((edge) => ({
-          id: edge.id,
-          label: t(`relation.${edge.kind}`),
-          kind: 'link' as const,
-        })),
+        ...card.edges.flatMap((edge) =>
+          edge.kind === 'advice'
+            ? // Each advice by its severity, how it goes and where its delivery stands; a
+              // delivered advice is not shown as followed.
+              (edge.adviceIds ?? []).flatMap((id) => {
+                const advice = projection.advice?.[id];
+                if (!advice) return [];
+                const directive = advice.directiveId
+                  ? projection.directives[advice.directiveId]
+                  : undefined;
+                return [
+                  {
+                    id: `advice:${id}`,
+                    label: [
+                      adviceText(`severity.${advice.severity}`),
+                      adviceText(`delivery.${advice.delivery}`),
+                      directive ? statusText(directive.status) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · '),
+                    kind: 'link' as const,
+                  },
+                ];
+              })
+            : [{ id: edge.id, label: t(`relation.${edge.kind}`), kind: 'link' as const }],
+        ),
         ...(!card.artifact
           ? [...new Set(card.edges.flatMap((edge) => edge.artifactVersionIds))].map((id) => ({
               id: `attachment:${id}`,

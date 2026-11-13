@@ -16,6 +16,7 @@ const KINDS: InboxItemView['kind'][] = [
   'check_failed',
   'lsp_proposal',
   'integration',
+  'advice',
   'queued',
   'recipe_stopped',
 ];
@@ -28,9 +29,15 @@ const item = (
   kind,
   sessionId,
   sessionTitle: `Title ${sessionId}`,
-  runId: kind === 'decision' || kind === 'recipe_stopped' ? `run_${sessionId}` : null,
+  runId:
+    kind === 'decision' || kind === 'recipe_stopped' || kind === 'advice'
+      ? `run_${sessionId}`
+      : null,
   detail: null,
   ...(kind === 'uncertain_terminal' ? { terminalId: `pty_${sessionId}` } : {}),
+  ...(kind === 'advice'
+    ? { executionId: `exec_${sessionId}`, severity: 'concern' as const, detail: 'Check it' }
+    : {}),
   ...extra,
 });
 
@@ -71,7 +78,7 @@ it('files every server kind under exactly one group, in the spec’s order', () 
   );
   expect(groups.map((group) => [group.id, group.entries.map((e) => e.item.kind)])).toEqual([
     ['response', ['decision', 'uncertain_write', 'uncertain_terminal']],
-    ['review', ['unreviewed', 'check_failed', 'lsp_proposal', 'integration']],
+    ['review', ['unreviewed', 'check_failed', 'lsp_proposal', 'integration', 'advice']],
     ['waiting', ['queued', 'recipe_stopped']],
   ]);
 });
@@ -83,6 +90,17 @@ it('keys repeated items apart and keeps each key to its project, kind, session a
   expect(other[0]?.key).not.toBe(entries[2]?.key);
   const later = inboxEntries('alpha', [item('decision', 'session_a', { runId: 'run_later' })]);
   expect(later[0]?.key).not.toBe(entries[2]?.key);
+});
+
+it('keys an advice by the execution row it was for, so a refresh never moves it to another', () => {
+  const [first, second] = inboxEntries('alpha', [
+    item('advice', 'session_a', { executionId: 'exec_1' }),
+    item('advice', 'session_a', { executionId: 'exec_2' }),
+  ]);
+  // The second row's key does not depend on the first: once the first leaves, it stays the same.
+  const [alone] = inboxEntries('alpha', [item('advice', 'session_a', { executionId: 'exec_2' })]);
+  expect(first?.key).not.toBe(second?.key);
+  expect(alone?.key).toBe(second?.key);
 });
 
 it('opens the same exact targets as a desktop notification for every kind', async () => {
@@ -111,6 +129,12 @@ it('opens the same exact targets as a desktop notification for every kind', asyn
   expect(hrefOf(item('recipe_stopped'))).toBe(
     '/sessions/session_a?panel=run&view=run&run=run_session_a',
   );
+  // An advice opens its run's record on the execution row it was for.
+  expect(hrefOf(item('advice'))).toBe(
+    '/sessions/session_a?panel=run&view=run&run=run_session_a&execution=exec_session_a',
+  );
+  const { executionId: _row, ...rowless } = item('advice');
+  expect(hrefOf(rowless)).toBeNull();
   // A terminal item tied to a run is not a terminal's own control screen.
   expect(hrefOf(item('uncertain_terminal', 'session_a', { runId: 'run_x' }))).toBeNull();
 });

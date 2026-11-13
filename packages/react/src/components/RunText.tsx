@@ -11,15 +11,23 @@ type Described = { key: string; values: Values } | null;
 const str = (value: unknown) => (typeof value === 'string' ? value : '');
 const num = (value: unknown) => (typeof value === 'number' ? value : 0);
 
+/** Who made a directive: the person or an advisor's advice. */
+export type DirectiveOriginOf = (directiveId: string) => 'user' | 'advice' | undefined;
+
 /** Message key and values for an event, or null when there is no sentence for it. */
 export function describeEvent(
   event: RunEvent,
   labelOf: (executionId: string | undefined) => string,
   nodeLabel: (nodeId: string) => string,
+  directiveOrigin: DirectiveOriginOf = () => undefined,
 ): Described {
   const p = event.payload as Record<string, unknown>;
   const actor = labelOf(str(p.executionId) || event.executionId);
   const of = (key: string, values: Values = {}): Described => ({ key, values });
+  // An advice's directive is not the person's instruction (features/advisor.md).
+  const advice = directiveOrigin(str(p.directiveId)) === 'advice';
+  const directive = (key: string, values: Values = {}) =>
+    of(advice ? `advice${key[0]?.toUpperCase()}${key.slice(1)}` : key, values);
   switch (event.type) {
     case 'run.started':
       return of(p.mode === 'live' ? 'runStartedLive' : 'runStartedMock');
@@ -82,13 +90,15 @@ export function describeEvent(
         ? of('approvalClosed')
         : of('approvalResolved', { decision: str(p.decision) });
     case 'directive.accepted':
-      return of('directiveAccepted', { node: labelOf(str(p.targetExecutionId)) });
+      return of(p.origin === 'advice' ? 'adviceDirectiveAccepted' : 'directiveAccepted', {
+        node: labelOf(str(p.targetExecutionId)),
+      });
     case 'directive.attached':
-      return of('directiveAttached');
+      return directive('directiveAttached');
     case 'directive.dispatched':
-      return of('directiveDispatched');
+      return directive('directiveDispatched');
     case 'directive.undelivered':
-      return of('directiveUndelivered', { status: str(p.status) });
+      return directive('directiveUndelivered', { status: str(p.status) });
     case 'patch.committed':
       return of('patchCommitted', { kind: str(p.kind) });
     case 'patch.activated':
@@ -129,10 +139,21 @@ export function describeEvent(
       return of('observationLate', { what: str(p.originalEventType) });
     case 'output.finalized':
       return of('outputFinalized');
-    // Advice has no sentence yet (features/advisor.md).
+    // A relation from the advisor to its target; delivery says how it goes, not that it was
+    // followed. A dropped advice names its gatekeeper reason and no relation.
     case 'advice.admitted':
+      return of('adviceAdmitted', {
+        advisor: labelOf(str(p.observerExecutionId)),
+        node: labelOf(str(p.targetExecutionId)),
+        severity: str(p.severity),
+        delivery: str(p.delivery),
+      });
     case 'advice.suppressed':
-      return null;
+      return of('adviceSuppressed', {
+        advisor: labelOf(str(p.observerExecutionId)),
+        severity: str(p.severity),
+        reason: str(p.reason),
+      });
     default:
       return null;
   }
@@ -142,13 +163,15 @@ export function EventText({
   event,
   labelOf,
   nodeLabel,
+  directiveOrigin,
 }: {
   event: RunEvent;
   labelOf: (executionId: string | undefined) => string;
   nodeLabel: (nodeId: string) => string;
+  directiveOrigin?: DirectiveOriginOf;
 }) {
   const t = useTranslations('Events');
-  const described = describeEvent(event, labelOf, nodeLabel);
+  const described = describeEvent(event, labelOf, nodeLabel, directiveOrigin);
   return <>{described ? t(described.key, described.values) : event.type}</>;
 }
 

@@ -12,6 +12,7 @@ import {
   cn,
   fontWeights,
   formatClock,
+  KitBadge,
   Select,
 } from '../design-kit/index.ts';
 import { useIcon } from '../design-kit/lib/icon-context.tsx';
@@ -24,6 +25,7 @@ import {
 } from '../run/flow.ts';
 import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
+import { executionPresence } from '../run/presence.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { requestOpen } from '../run/transcript.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
@@ -315,6 +317,8 @@ export function ExecutionTree({
   const outcomeText = useTranslations('Canvas.nodeStatus.loopOutcome');
   const LoopIcon = useIcon('rotate-ccw');
   const status = useTranslations('Status');
+  const presenceText = useTranslations('Presence');
+  const adviceText = useTranslations('Advice');
   const projection = useRunDisplay(session, (s) => s.projection);
   const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
@@ -536,17 +540,25 @@ export function ExecutionTree({
       ];
     });
     const children = (childrenOf.get(id) ?? []).flatMap((child) => node(child) ?? []);
+    // An advisor stands outside the flow: it says so once, by its name, and rests between
+    // reviews watching, not waiting for an answer (features/advisor.md).
+    const presence = executionPresence({
+      status: execution.status,
+      observer: execution.advisor === true,
+    });
+    const watching = presence.detail === 'watching';
     return {
       id,
       name: labelOf(execution.nodeId),
+      ...(execution.advisor ? { tag: <KitBadge>{adviceText('advisor')}</KitBadge> } : {}),
       model: model?.modelId ?? execution.modelProfile,
       ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
       status: executionAgentStatus(execution.status),
-      statusLabel: statusLabel(execution.status),
+      statusLabel: watching ? presenceText('detail.watching') : statusLabel(execution.status),
       ...(task ? { task } : {}),
       ...(interval ? { startedAt: Date.parse(interval.startedAt) } : {}),
       ...(interval?.finished ? { endedAt: Date.parse(interval.endedAt) } : {}),
-      ...(execution.waitingOn
+      ...(execution.waitingOn && !watching
         ? {
             ask: t(`waiting.${execution.waitingOn.kind}`, {
               count: execution.waitingOn.targetIds.length,
@@ -574,6 +586,7 @@ export function ExecutionTree({
             projection={projection}
             streams={streams}
             compact={compact || priorRound}
+            watching={watching}
           />
         </>
       ),
@@ -642,17 +655,20 @@ function ExecutionDetail({
   projection,
   streams,
   compact,
+  watching = false,
 }: {
   id: string;
   projection: RunProjection;
   streams: Record<string, StreamText>;
   compact: boolean;
+  /** An advisor between reviews: its state already says it watches, so no wait line. */
+  watching?: boolean;
 }) {
   const t = useTranslations('Run');
   const execution = projection.executions[id];
   if (!execution) return null;
   const done = TERMINAL_EXECUTION_STATUSES.has(execution.status);
-  const waiting = execution.waitingOn;
+  const waiting = watching ? null : execution.waitingOn;
   const openCall = execution.modelCallIds.at(-1);
   const lastResponse = openCall ? streams[openCall] : undefined;
   const live =

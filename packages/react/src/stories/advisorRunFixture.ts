@@ -1,0 +1,213 @@
+import { type CorralDefinition, type EventOf, RunEvent } from '@corral/contracts';
+import { applyEvent, emptyProjection, type RunProjection } from '@corral/core';
+import { linearCorral } from '@corral/testkit';
+import { sessionStore } from './fixtures.tsx';
+
+// A run whose Reviewer advisor watches the Implementer (docs/specs/features/advisor.md): one
+// person's instruction, one admitted concern and one suppressed note. Stories and tests share it.
+
+export const ADVISOR_RUN = 'run_advisor';
+export const ADVICE_TEXT =
+  'The brief asks for two sources; the answer cites one.\nCheck the second claim before submitting.';
+
+export function advisorDefinition(): CorralDefinition {
+  const definition = linearCorral(['implementer']);
+  const role = definition.roles[0] as CorralDefinition['roles'][number];
+  definition.roles.push({
+    ...role,
+    id: 'reviewer_role',
+    name: 'Reviewer',
+    prompt: 'Watch the implementer.',
+  });
+  definition.nodes = [
+    ...definition.nodes.map((node) =>
+      node.id === 'implementer' ? { ...node, label: 'Implementer' } : node,
+    ),
+    {
+      id: 'reviewer',
+      type: 'agent',
+      label: 'Reviewer',
+      roleId: 'reviewer_role',
+      invocation: 'observer',
+      outputName: 'notes',
+    },
+  ];
+  definition.capabilityLinks = [
+    ...definition.capabilityLinks,
+    { id: 'watch', kind: 'advise', sourceNodeId: 'reviewer', targetNodeId: 'implementer' },
+  ];
+  return definition;
+}
+
+type Draft = { [K in RunEvent['type']]: [K, EventOf<K>['payload'], string?] }[RunEvent['type']];
+
+const usage = (outputTokens: number) => ({
+  inputTokens: outputTokens * 4,
+  outputTokens,
+  cachedInputTokens: null,
+  reasoningTokens: null,
+});
+
+/** The run's events; without `advised`, the advisor has reviewed once and said nothing. */
+export function advisorRunEvents({ advised = true }: { advised?: boolean } = {}): RunEvent[] {
+  const created = (executionId: string, nodeId: string, advisor = false): Draft => [
+    'execution.created',
+    {
+      executionId,
+      nodeId,
+      taskId: `task_${executionId}`,
+      attemptNo: 1,
+      parentExecutionId: null,
+      depth: 0,
+      iterationId: null,
+      modelProfile: 'model-a',
+      ...(advisor ? { advisor: true as const } : {}),
+    },
+  ];
+  const request = (executionId: string, modelCallId: string, tokens: number): Draft[] => [
+    [
+      'model.request_prepared',
+      {
+        executionId,
+        modelCallId,
+        contextSnapshotId: `snapshot_${modelCallId}`,
+        profile: 'model-a',
+        configRevision: 0,
+        directiveIds: [],
+        inputArtifactVersionIds: [],
+      },
+    ],
+    [
+      'model.finished',
+      {
+        executionId,
+        modelCallId,
+        responseRef: null,
+        rawUsage: null,
+        normalizedUsage: usage(tokens),
+        certainty: 'reported',
+      },
+    ],
+  ];
+  const drafts: Draft[] = [
+    created('impl_1', 'implementer'),
+    [
+      'execution.state_changed',
+      { executionId: 'impl_1', from: 'queued', to: 'active', activity: 'model', waitingOn: null },
+    ],
+    [
+      'directive.accepted',
+      {
+        directiveId: 'dir_user_1',
+        targetExecutionId: 'impl_1',
+        text: 'Keep the comparison to one page.',
+        delivery: 'next_request',
+        origin: 'user',
+      },
+      'impl_1',
+    ],
+    ...request('impl_1', 'call_impl_1', 300),
+    created('advisor_1', 'reviewer', true),
+    [
+      'execution.state_changed',
+      {
+        executionId: 'advisor_1',
+        from: 'queued',
+        to: 'active',
+        activity: 'model',
+        waitingOn: null,
+      },
+    ],
+    ...request('advisor_1', 'call_advisor_1', 120),
+    ...(advised
+      ? ([
+          [
+            'directive.accepted',
+            {
+              directiveId: 'dir_advice_1',
+              targetExecutionId: 'impl_1',
+              text: ADVICE_TEXT,
+              delivery: 'next_request',
+              origin: 'advice',
+            },
+            'impl_1',
+          ],
+          [
+            'advice.admitted',
+            {
+              adviceId: 'advice_1',
+              observerExecutionId: 'advisor_1',
+              targetExecutionId: 'impl_1',
+              severity: 'concern',
+              delivery: 'next_request',
+              directiveId: 'dir_advice_1',
+            },
+            'advisor_1',
+          ],
+          [
+            'advice.suppressed',
+            {
+              observerExecutionId: 'advisor_1',
+              targetExecutionId: 'impl_1',
+              severity: 'nit',
+              reason: 'duplicate',
+            },
+            'advisor_1',
+          ],
+        ] satisfies Draft[])
+      : []),
+    [
+      'execution.state_changed',
+      {
+        executionId: 'advisor_1',
+        from: 'active',
+        to: 'waiting_message',
+        activity: null,
+        waitingOn: {
+          kind: 'message',
+          targetIds: ['implementer'],
+          reasonCode: 'advisor_between_reviews',
+          since: '2026-11-13T00:00:10.000Z',
+          deadline: null,
+          required: false,
+        },
+      },
+    ],
+  ];
+  return drafts.map(([type, payload, executionId], index) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `event_${index + 1}`,
+      runId: ADVISOR_RUN,
+      runSeq: index + 1,
+      recordedAt: new Date(Date.UTC(2026, 10, 13, 0, 0, index + 1)).toISOString(),
+      actor:
+        type === 'directive.accepted' && payload.origin === 'user'
+          ? { kind: 'user', id: 'user' }
+          : type.startsWith('advice.') || type === 'directive.accepted'
+            ? { kind: 'agent', id: 'advisor_1' }
+            : { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      ...(executionId ? { executionId } : {}),
+      type,
+      payload,
+    }),
+  );
+}
+
+export function advisorRunProjection(events = advisorRunEvents()): RunProjection {
+  return {
+    ...events.reduce(applyEvent, emptyProjection(ADVISOR_RUN)),
+    status: 'running',
+  };
+}
+
+export function advisorRunSession(options: { advised?: boolean } = {}) {
+  const events = advisorRunEvents(options);
+  return sessionStore({
+    runId: ADVISOR_RUN,
+    definition: advisorDefinition(),
+    events,
+    projection: advisorRunProjection(events),
+  });
+}
