@@ -106,6 +106,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/ChatView.tsx',
     'apps/studio/src/workbench/RunMessage.tsx',
     'apps/studio/src/workbench/TurnProcess.tsx',
+    'apps/studio/src/workbench/RunRow.tsx',
     'apps/studio/src/workbench/MessageBranch.tsx',
     'apps/studio/src/workbench/RefusalHelp.tsx',
     'apps/studio/src/workbench/RunChanges.tsx',

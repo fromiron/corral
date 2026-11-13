@@ -541,9 +541,13 @@ test('a waiting approval shows its state once (the pill) and its decision once (
   await expect(card.getByRole('button', { name: 'Continue with this version' })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole('banner').getByTestId('dock-open-active-run')).toContainText(
-    'Waiting for you',
-  );
+  // The pill names the wait to assistive tech; the run row's head says it in words, once.
+  await expect(
+    page
+      .getByRole('banner')
+      .getByTestId('dock-open-active-run')
+      .locator('button[data-pill-toggle]'),
+  ).toHaveAttribute('aria-label', /Waiting for you/);
   const shown = await mainText(page);
   // "Waiting for you", not the start of "Waiting for your decision".
   expect(shown.match(/Waiting for you(?!r)/g)).toHaveLength(1);
@@ -591,7 +595,10 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
   const action = page.getByTestId('dock-open-active-run');
-  await expect(action).toContainText('Waiting for you');
+  await expect(action.locator('button[data-pill-toggle]')).toHaveAttribute(
+    'aria-label',
+    /Waiting for you/,
+  );
   await expect(action).not.toContainText('Respond');
   await action.click();
   // The waiting pill leads to the response area, which opens and takes focus by itself.
@@ -644,7 +651,10 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),
     ).toHaveCount(1);
-    await expect(action).toContainText('Waiting for you');
+    await expect(action.locator('button[data-pill-toggle]')).toHaveAttribute(
+      'aria-label',
+      /Waiting for you/,
+    );
     await expect(input).toHaveValue('Keep typing while the run continues');
     await expect(input).toBeFocused();
   } finally {
@@ -773,6 +783,13 @@ test.describe('cancel recovery', () => {
         .toBe('cancelled');
       for (const reload of [false, true]) {
         if (reload) await page.reload();
+        // The steps that went wrong are in the work log the run row's head opens.
+        const head = page
+          .getByTestId('chat-timeline')
+          .locator('[data-chat-part="head"] button[aria-expanded]')
+          .last();
+        await expect(head).toHaveAttribute('aria-expanded', 'false');
+        await head.click();
         const tool = page
           .getByTestId('chat-timeline')
           .locator('li > code')

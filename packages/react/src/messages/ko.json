@@ -384,8 +384,7 @@
       }
     },
     "breakpoints": "시작 전에 멈출 단계",
-    "breakpointsCount": "시작 전에 멈출 단계 · {count}",
-    "madeResults": "만든 것은 결과에서 볼 수 있습니다."
+    "breakpointsCount": "시작 전에 멈출 단계 · {count}"
   },
   "Reins": {
     "executionNumber": "에이전트 실행 {number}",
@@ -5403,9 +5402,6 @@
     }
   },
   "Turn": {
-    "working": "작업 중 · {time}",
-    "worked": "작업 {time}",
-    "workedSteps": "작업 {time} · {count}단계",
     "seconds": "{s}초",
     "minutes": "{m}분 {s}초",
     "think": "생각",
@@ -5450,7 +5446,14 @@
     "requestFinished": "응답 완료",
     "requestUnconfirmed": "응답 완료 기록 없음",
     "stepDetails": "{step} 상세",
-    "allowedForRun": "이 실행 동안 허용됨"
+    "allowedForRun": "이 실행 동안 허용됨",
+    "steps": "{count}단계",
+    "failedCount": "실패 {count}",
+    "logToggle": "작업 기록 · {state}",
+    "changes": "변경 {count}",
+    "results": "결과 {count}",
+    "resultKind": "{count, plural, other {결과}}",
+    "partialKind": "{count, plural, other {부분 결과}}"
   },
   "RunMonitor": {
     "backToWork": "작업으로 돌아가기",

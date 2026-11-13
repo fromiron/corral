@@ -121,8 +121,9 @@ export function DockRunControls({
               name={t('activeRun')}
               logo={Bot}
               state={pillState(projection.status, waiting > 0)}
-              label={brief ?? label}
-              detail={brief ? undefined : runLabel}
+              // The run row in the conversation says the state in words (presence.md, once a
+              // screen); the pill shows its mark and keeps the words in its accessible name.
+              label={brief ?? runLabel ?? ''}
               startedAt={pill === 'full' && startedAt ? Date.parse(startedAt) : undefined}
               endedAt={
                 pill === 'full' && projection.endedAt ? Date.parse(projection.endedAt) : undefined

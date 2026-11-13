@@ -243,14 +243,19 @@ it("the process line's run part opens the run record; no separate link floats be
   ).toBeTruthy();
 });
 
-it('the answer has its own icon row: copy and open in results, by accessible name', async () => {
+it('the answer’s icons sit on its run row’s tail: copy and open in results, by accessible name', async () => {
   const writeText = vi.fn(async () => {});
   vi.stubGlobal('navigator', { clipboard: { writeText } });
   const f = await show(entry());
   const row = f.container.querySelector<HTMLElement>(
-    '[data-testid="chat-result"] [data-testid="turn-actions"]',
+    '[data-chat-part="tail"] [data-testid="turn-actions"]',
   );
   expect(row).not.toBeNull();
+  // The answer takes no icon line of its own under it.
+  expect(f.container.querySelectorAll('[data-testid="turn-actions"]')).toHaveLength(1);
+  expect(
+    f.container.querySelector('[data-testid="chat-result"] [data-testid="turn-actions"]'),
+  ).toBeNull();
   const copy = row?.querySelector<HTMLButtonElement>(
     `button[aria-label="${messages.MessageBody.copyMessage}"]`,
   );

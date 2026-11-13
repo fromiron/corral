@@ -384,8 +384,7 @@
       }
     },
     "breakpoints": "Pause before steps",
-    "breakpointsCount": "Pause before steps · {count}",
-    "madeResults": "What it made is in its results."
+    "breakpointsCount": "Pause before steps · {count}"
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
@@ -5403,9 +5402,6 @@
     }
   },
   "Turn": {
-    "working": "Working · {time}",
-    "worked": "Worked {time}",
-    "workedSteps": "Worked {time} · {count, plural, one {# step} other {# steps}}",
     "seconds": "{s}s",
     "minutes": "{m}m {s}s",
     "think": "Think",
@@ -5450,7 +5446,14 @@
     "requestFinished": "Response complete",
     "requestUnconfirmed": "Response completion not recorded",
     "stepDetails": "Details of {step}",
-    "allowedForRun": "Allowed for this run"
+    "allowedForRun": "Allowed for this run",
+    "steps": "{count, plural, one {# step} other {# steps}}",
+    "failedCount": "{count} failed",
+    "logToggle": "Work log · {state}",
+    "changes": "{count, plural, one {# change} other {# changes}}",
+    "results": "{count, plural, one {# result} other {# results}}",
+    "resultKind": "{count, plural, one {Result} other {Results}}",
+    "partialKind": "{count, plural, one {Partial result} other {Partial results}}"
   },
   "RunMonitor": {
     "backToWork": "Back to work",

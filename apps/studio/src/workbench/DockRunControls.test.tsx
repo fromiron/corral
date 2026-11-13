@@ -160,10 +160,12 @@ it('a waiting run shows its state like any other, with the count from two, and o
   pendingApproval(projection, 'approval_a');
   const session = sessionStore({ runId: 'active-run', projection });
   const view = await mount({ session });
-  expect(view.pill()?.textContent).toContain(messages.Status.awaiting_user);
+  // The run row says the state in words; the pill shows its mark and names it to assistive tech.
+  expect(view.pill()?.textContent).not.toContain(messages.Status.awaiting_user);
+  expect(view.pill()?.getAttribute('aria-label')).toContain(messages.Status.awaiting_user);
   expect(view.pill()?.textContent).toContain('Run #1');
-  expect(view.pill()?.textContent).not.toContain('(1)');
-  // The notice above the composer is the one Respond; the pill states the run's state.
+  expect(view.pill()?.getAttribute('aria-label')).not.toContain('(1)');
+  // The notice above the composer is the one Respond.
   expect(view.pill()?.textContent).not.toContain('Respond');
   await act(async () => view.pill()?.click());
   // A request to respond: the run view opens its response area, whatever its width.
@@ -173,7 +175,8 @@ it('a waiting run shows its state like any other, with the count from two, and o
   pendingApproval(two, 'approval_a');
   pendingApproval(two, 'approval_b');
   await act(async () => session.setState({ projection: two }));
-  expect(view.pill()?.textContent).toContain(`${messages.Status.awaiting_user} (2)`);
+  expect(view.pill()?.getAttribute('aria-label')).toContain(`${messages.Status.awaiting_user} (2)`);
+  expect(view.pill()?.textContent).not.toContain(messages.Status.awaiting_user);
   expect(view.pill()?.textContent).not.toContain('Respond');
 });
 
@@ -228,8 +231,9 @@ it('a narrower bar turns Pause and Cancel into icons that keep their names and t
       true,
     );
   }
-  // The pill is untouched by this first step.
-  expect(view.pill()?.textContent).toContain('Running');
+  // The pill is untouched by this first step: its state in its name, its number and clock shown.
+  expect(view.pill()?.getAttribute('aria-label')).toContain('Running');
+  expect(view.pill()?.textContent).not.toContain('Running');
   expect(view.pill()?.textContent).toContain('Run #1');
   expect(view.pill()?.textContent).toMatch(/\d:\d\d/);
   await act(async () => button(view.container, messages.Reins.cancelRun)?.click());
@@ -246,7 +250,7 @@ it('the pill then drops its clock, then its words, keeping the state and the run
   const session = sessionStore({ runId: 'active-run', projection: running() });
   fixture.tier = 2;
   const noClock = await mount({ session });
-  expect(noClock.pill()?.textContent).toContain('Running');
+  expect(noClock.pill()?.getAttribute('aria-label')).toContain('Running');
   expect(noClock.pill()?.textContent).toContain('Run #1');
   expect(noClock.pill()?.textContent).not.toMatch(/\d:\d\d/);
   await cleanup.splice(0)[0]?.();

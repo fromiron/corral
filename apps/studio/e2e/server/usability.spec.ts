@@ -218,11 +218,13 @@ test.describe('long multi-agent output', () => {
     test.setTimeout(60_000);
     const template = templateForWorkspace('research-team', 'audit_team');
     const { runId } = await graphSession(page, corral, template);
-    await expect(timeline(page).getByTestId('run-ended')).toBeVisible({ timeout: 20000 });
+    // The run row's head says the run failed; the end of its body says why.
+    await expect(
+      timeline(page).locator(`[data-chat-part="head"] [data-presence-label="run:${runId}"]`),
+    ).toHaveText('Failed', { timeout: 20000 });
     const projection = corral.server.coordinator.getSnapshot(runId).projection;
     expect(Object.keys(projection.reviews).length).toBeGreaterThan(0);
-    await expect(timeline(page).getByTestId('run-ended')).toContainText('failed');
-    await expect(timeline(page).getByTestId('run-ended')).toHaveAttribute('role', 'note');
+    await expect(timeline(page).getByTestId('turn-end')).toContainText('failed');
     await expect(timeline(page).getByTestId('review-verdict')).toContainText(
       'Cite a primary source',
     );

@@ -64,6 +64,10 @@ test('a completed run explains failed file steps and opens their reasons', async
   assert(failed);
   // chat-widgets-contract: a completed run's failed-steps notice shows once, in its turn, beside
   // those steps; nothing above the input repeats it or counts the steps as items to answer.
+  // The run row's head counts the failed steps; the steps are in the log the head opens.
+  const head = page.locator('[data-chat-part="head"]');
+  await expect(head).toContainText(/\d+ failed/);
+  await head.getByRole('button', { expanded: false }).click();
   const tools = page.getByRole('list', { name: /^Tools · \d+$/ });
   await expect(tools).toContainText('The run completed, but some tool steps failed.');
   await expect(page.getByTestId('action-required')).toHaveCount(0);

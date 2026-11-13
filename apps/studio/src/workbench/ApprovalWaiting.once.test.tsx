@@ -176,11 +176,19 @@ const count = (text: string, pattern: RegExp) => text.match(pattern)?.length ?? 
 it('says the run waits once (the pill) and shows the decision once (the card)', async () => {
   const container = await mainArea();
   const visible = visibleText(container);
-  // "Waiting for you", not the start of "Waiting for your decision".
+  // "Waiting for you", not the start of "Waiting for your decision": once, on the run row's head.
   expect(count(visible, /Waiting for you(?!r)/g)).toBe(1);
-  expect(container.querySelector('[data-testid="dock-open-active-run"]')?.textContent).toContain(
-    messages.Approvals.heading,
-  );
+  const state = container.querySelectorAll('[data-presence-label="run:run_team"]');
+  expect(state).toHaveLength(1);
+  expect(state[0]?.closest('[data-chat-part="head"]')).not.toBeNull();
+  expect(state[0]?.textContent).toBe(messages.Status.awaiting_user);
+  // The pill keeps its mark and says the state to assistive tech only.
+  const pill = container.querySelector('[data-testid="dock-open-active-run"]');
+  expect(pill?.textContent).not.toContain(messages.Approvals.heading);
+  expect(
+    pill?.querySelector('[aria-label]')?.getAttribute('aria-label') ??
+      pill?.getAttribute('aria-label'),
+  ).toContain(messages.Approvals.heading);
   // The decision: its card's title and its two buttons, each once.
   expect(count(visible, new RegExp(messages.Approvals.kind.user_action, 'g'))).toBe(1);
   expect(count(visible, new RegExp(messages.Approvals.approveAs.user_action, 'g'))).toBe(1);

@@ -5,6 +5,7 @@ export default defineProject({
   test: {
     name: 'studio',
     include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: ['./src/vitest.setup.ts'],
     passWithNoTests: true,
   },
 });
