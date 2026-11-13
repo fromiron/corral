@@ -133,9 +133,10 @@ describe('closedLine', () => {
       kind: 'summary',
       stateShown: true,
     });
-    expect(closedLine(input({ run: ended, roles: [], visible: new Set(['run:run_a']) }))).toEqual(
-      { kind: 'summary', stateShown: false },
-    );
+    expect(closedLine(input({ run: ended, roles: [], visible: new Set(['run:run_a']) }))).toEqual({
+      kind: 'summary',
+      stateShown: false,
+    });
   });
 
   it('falls to the summary while the live run has no target to speak of', () => {

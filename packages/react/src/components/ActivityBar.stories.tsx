@@ -58,7 +58,9 @@ const context = (
   </div>
 );
 
-const contextEnd = <span className="px-2 text-caption tabular-nums text-muted-foreground">about 41%</span>;
+const contextEnd = (
+  <span className="px-2 text-caption tabular-nums text-muted-foreground">about 41%</span>
+);
 
 const role = (change: Partial<ActivityBarRole> & Pick<ActivityBarRole, 'id' | 'name'>) =>
   ({

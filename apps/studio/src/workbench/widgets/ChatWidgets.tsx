@@ -42,7 +42,7 @@ const number = (value: number) => value.toLocaleString();
  * "Last run" for the newest finished run, whose turn already links it by number; an older one
  * names its position (#72).
  */
-function viewedLabel(
+export function viewedLabel(
   viewed: NonNullable<ChatWidgetModel['viewed']>,
   t: ReturnType<typeof useTranslations<'Widgets'>>,
 ) {
@@ -718,11 +718,7 @@ export function ComposerPlan({
           ...model.plan.choices.map((choice) => ({
             value: choice.key,
             label: choice.key === 'team' ? t('teamPlan') : choice.label,
-            hint: choice.lastTeam
-              ? t('teamLast')
-              : choice.status
-                ? ts(choice.status)
-                : undefined,
+            hint: choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : undefined,
           })),
         ]}
       />

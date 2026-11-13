@@ -7,7 +7,7 @@ import approvalDefinition from '../../../../examples/research-team.corral.json' 
   type: 'json',
 };
 import { expect, test } from '../server/harness.ts';
-import { newConversation, requestBox } from '../workbench.ts';
+import { newConversation, requestBox, runGoing } from '../workbench.ts';
 import {
   type ChromeMeasure,
   createProbe,
@@ -156,7 +156,7 @@ test.describe('conversation', () => {
     await expect.poll(() => status(0), { timeout: 30_000 }).toBe('succeeded');
     await expect(page.getByTestId('chat-result')).toBeVisible();
     // The page itself has seen the run end, so the next request starts a run, not a queue.
-    await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+    await expect(runGoing(page)).toHaveCount(0);
     // The sidebar row says its run ended through its mark's name, not in words (presence.md).
     await expect(
       page
@@ -179,7 +179,7 @@ test.describe('conversation', () => {
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => runs().length).toBe(2);
       await reply.reached;
-      await expect(page.getByRole('region', { name: 'Active run controls' })).toBeVisible();
+      await expect(runGoing(page)).toBeVisible();
     });
 
     // (2) The reply streams in and its text grows, up to the held next response.
@@ -195,7 +195,7 @@ test.describe('conversation', () => {
       finish.open();
       await expect.poll(() => status(1), { timeout: 30_000 }).toBe('succeeded');
       await expect(page.getByTestId('live-text')).toHaveCount(0);
-      await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+      await expect(runGoing(page)).toHaveCount(0);
     });
     expect(corral.errors).toEqual([]);
   });

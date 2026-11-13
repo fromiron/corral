@@ -1,4 +1,4 @@
-import { requestBox, slash } from '../workbench.ts';
+import { requestBox, slash, stopRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('saved requests with a stale instruction draft', () => {
@@ -41,14 +41,7 @@ test.describe('saved requests with a stale instruction draft', () => {
         await slash(page, 'steer');
         await expect(page.getByTestId('composer-destination')).toContainText('instruction');
         await box.fill('Keep this  stale instruction');
-        await page
-          .getByRole('region', { name: 'Active run controls', exact: true })
-          .getByRole('button', { name: 'Cancel whole run', exact: true })
-          .click();
-        await page
-          .getByRole('dialog')
-          .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-          .click();
+        await stopRun(page);
         release();
         hold();
         await expect

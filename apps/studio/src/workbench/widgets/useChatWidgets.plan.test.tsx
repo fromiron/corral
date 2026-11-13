@@ -6,7 +6,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { ComposerDock } from './ChatWidgets.tsx';
+import { ComposerActivity } from '../session/ComposerActivity.tsx';
 import { type ChatWidgetModel, ChatWidgetProvider, useChatWidget } from './useChatWidgets.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -110,7 +110,19 @@ async function settle(done: () => boolean) {
 }
 function Probe() {
   seen = useChatWidget();
-  return <ComposerDock />;
+  return (
+    <ComposerActivity
+      sessionId="session_plan"
+      ownActive={null}
+      target={null}
+      targets={[]}
+      onJoin={vi.fn()}
+      onStop={vi.fn()}
+      onPause={vi.fn()}
+      onResume={vi.fn()}
+      viewingOther={false}
+    />
+  );
 }
 
 async function mount(live: boolean) {
@@ -162,7 +174,7 @@ it('shows no plan chip, and never a load error, for an ended run whose plan body
   await settle(() => false);
   expect(seen?.readState).toBe('ready');
   expect(seen?.plan.status.state).toBe('hidden');
-  expect(view.container.querySelector('[data-testid="work-plan-toggle"]')).toBeNull();
+  expect(view.container.querySelector('[data-testid="activity-plan"]')).toBeNull();
   expect(view.container.textContent).not.toContain(messages.Widgets.planError);
 });
 
@@ -181,10 +193,11 @@ it('keeps the last known done count once the run ends and its plan body is relea
   fixture.archived = await projection('succeeded');
   await act(async () => store.setState({ runId: 'run_next', projection: null }));
   await view.repaint(false);
-  const toggle = () => view.container.querySelector('[data-testid="work-plan-toggle"]');
+  // The activity bar's idle summary keeps the plan's count.
+  const planCount = () => view.container.querySelector('[data-testid="activity-plan"]');
   await settle(() => seen?.readState === 'ready');
   await settle(() => false);
   expect(seen?.readState).toBe('ready');
-  expect(toggle()?.textContent).toContain('1/2 done');
+  expect(planCount()?.textContent).toContain('1/2 done');
   expect(view.container.textContent).not.toContain(messages.Widgets.planError);
 });

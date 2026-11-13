@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { closeSettings, openFolderSettings, requestBox, slash } from '../workbench.ts';
+import { closeSettings, openFolderSettings, requestBox, slash, stopRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('file and line references remain independent and Escape clears only an empty command trigger', async ({
@@ -144,11 +144,7 @@ test.describe('viewed and active execution', () => {
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
       const first = corral.server.coordinator.listRuns()[0];
       if (!first) throw new Error('First run missing');
-      await page.getByRole('button', { name: 'Cancel whole run', exact: true }).first().click();
-      await page
-        .getByRole('dialog')
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+      await stopRun(page);
       releaseReply();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
       const sessionUrl = new URL(page.url());
@@ -197,11 +193,7 @@ test.describe('viewed and active execution', () => {
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
       const first = corral.server.coordinator.listRuns()[0];
       if (!first) throw new Error('First run missing');
-      await page.getByRole('button', { name: 'Cancel whole run', exact: true }).first().click();
-      await page
-        .getByRole('dialog')
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+      await stopRun(page);
       releaseReply();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
 

@@ -685,9 +685,7 @@ export function ChatView({
           </div>
         ) : null}
         <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">
-          <div className="mx-auto w-full max-w-(--chat-composer-width)">
-            {composer}
-          </div>
+          <div className="mx-auto w-full max-w-(--chat-composer-width)">{composer}</div>
         </div>
       </div>
       {aside === undefined ? null : (

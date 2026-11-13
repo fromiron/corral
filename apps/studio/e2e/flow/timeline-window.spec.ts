@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fauxAssistantMessage } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { expect, type Harness, test } from '../server/harness.ts';
-import { newConversation, requestBox } from '../workbench.ts';
+import { newConversation, requestBox, runGoing } from '../workbench.ts';
 import { waitForStill } from './probe.ts';
 
 // The windowed timeline under a reader (docs/specs/features/composer-flow.md, "튐 없는 본문"
@@ -352,7 +352,7 @@ test.describe('tall runs above the end', () => {
       await requestBox(page).fill(`Tall reply ${index}`);
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await finished(index);
-      await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+      await expect(runGoing(page)).toHaveCount(0);
     }
     const tallest = await timeline(page)
       .locator('[data-chat-item]')

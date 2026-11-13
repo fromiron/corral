@@ -6,21 +6,23 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { useQuestionNotice, type WaitingQuestion } from './questionNotice.ts';
+import { ComposerActivity } from './session/ComposerActivity.tsx';
 import {
   createPendingTrayStore,
   PendingTrayContext,
   type PendingTrayStore,
 } from './session/pendingTrayState.ts';
-import { ComposerDock } from './widgets/ChatWidgets.tsx';
+import { presentContext } from './widgets/selectors.ts';
 import type { ChatWidgetModel } from './widgets/useChatWidgets.tsx';
 
-// The notice above the composer names a waiting question while the conversation's needed-now
-// tray, where it is answered, is out of view (ComposerStatusLine). Its words come from here: the
-// first question's own line, the count beside it from two, and the body read when the run's texts
-// do not hold it yet.
+// The activity bar names a waiting question while the conversation's needed-now tray, where it
+// is answered, is out of view (composer-flow.md "활동 바"). Its words come from here: the first
+// question's own line, the count beside it from two, and the body read when the run's texts do
+// not hold it yet.
 
 const fixture = vi.hoisted(() => ({ model: null as ChatWidgetModel | null }));
 vi.mock('./widgets/useChatWidgets.tsx', () => ({ useChatWidget: () => fixture.model }));
+vi.mock('../services.tsx', () => ({ useServices: () => ({ runFor: () => null }) }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, className }: { children: ReactNode; className?: string }) => (
     <a href="#run" className={className}>
@@ -137,6 +139,7 @@ const waitingOnQuestion = {
     unclearCauses: [],
   },
   questionNotice: 'Question: Which layout should I keep?',
+  context: presentContext({ calls: [], compactions: [], selectedExecutionId: null }),
   failedExecutionId: null,
   activity: null,
   plan: {
@@ -155,9 +158,25 @@ const waitingOnQuestion = {
   },
 } as unknown as ChatWidgetModel;
 
-/** The composer's notice on a session screen whose conversation holds the needed-now tray. */
+/** The composer's activity bar on a session screen whose conversation holds the needed-now tray. */
 async function dock(tray: PendingTrayStore) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  // Reduced motion: the bar's words swap at once, with nothing left fading out.
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('reduced-motion'),
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  Element.prototype.getAnimations ??= () => [];
   fixture.model = waitingOnQuestion;
   const respond = vi.fn();
   const container = document.createElement('div');
@@ -171,18 +190,31 @@ async function dock(tray: PendingTrayStore) {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <PendingTrayContext.Provider value={{ store: tray, respond }}>
-          <ComposerDock />
+          <ComposerActivity
+            sessionId="session_chat"
+            ownActive={null}
+            target={null}
+            targets={[]}
+            onJoin={vi.fn()}
+            onStop={vi.fn()}
+            onPause={vi.fn()}
+            onResume={vi.fn()}
+            viewingOther={false}
+          />
         </PendingTrayContext.Provider>
       </IntlProvider>,
     ),
   );
+  const bar = () => container.querySelector<HTMLElement>('[data-testid="activity-bar"]');
   return {
-    notice: () => container.querySelector<HTMLElement>('[data-testid="action-required"]'),
+    // The bar's line while it tells what waits; otherwise no notice.
+    notice: () => (bar()?.dataset.line === 'waiting' ? bar() : null),
+    bar,
     respond,
   };
 }
 
-it('shows the question notice only once the tray is measured out of view', async () => {
+it('says the waiting question on the activity bar only once the tray is measured out of view', async () => {
   const tray = createPendingTrayStore();
   tray.setState({ waiting: 1 });
   const view = await dock(tray);
@@ -198,6 +230,8 @@ it('shows the question notice only once the tray is measured out of view', async
   // Gone again (nothing waits there, or another conversation): not known, so no notice.
   await act(async () => tray.setState({ placement: 'unknown' }));
   expect(view.notice()).toBeNull();
+  // The bar itself keeps its place all along.
+  expect(view.bar()).not.toBeNull();
 });
 
 // The screen's respond brings the tray into view and focuses it (PendingTray.test.tsx).
@@ -206,7 +240,7 @@ it('sends Respond to the conversation’s tray, not to the run record', async ()
   tray.setState({ waiting: 1, placement: 'out-of-view' });
   const view = await dock(tray);
   const respond = [...(view.notice()?.querySelectorAll('button') ?? [])].find(
-    (button) => button.textContent === messages.Widgets.actionOpen,
+    (button) => button.textContent === messages.Activity.view,
   );
   expect(respond).toBeDefined();
   // Not a way to the run record: the conversation's tray answers it.

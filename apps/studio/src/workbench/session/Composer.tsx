@@ -609,7 +609,10 @@ function SessionComposer({
         <>
           {/* The next request's own notes, only while there are any: the pre-run auto choice, the
             result a question is about, what this send does not carry. */}
-          <div className="flex min-w-0 flex-nowrap items-center gap-1 px-1.5 empty:hidden">
+          <div
+            data-slot="composer-notes"
+            className="flex min-w-0 flex-nowrap items-center gap-1 px-1.5 empty:hidden"
+          >
             <ComposerHeader
               choosingAuto={choosingAuto}
               onCancelAuto={cancelAuto}

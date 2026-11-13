@@ -1,7 +1,7 @@
 import type { RunEvent } from '@corral/contracts';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { panelTab, requestBox } from '../workbench.ts';
+import { activityBar, panelTab, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Deterministic provider responses exercise the production adapter, Coordinator,
@@ -94,11 +94,11 @@ test('plain completion is announced once and opening history is silent', async (
   try {
     await session(page, corral);
     await send(page, 'Review the current state.');
-    const dock = page.getByTestId('composer-dock');
-    // The pill names the state to assistive tech; the run row says it in words.
-    await expect(
-      page.getByTestId('active-run-status').locator('button[data-pill-toggle]'),
-    ).toHaveAttribute('aria-label', /Running/);
+    const dock = activityBar(page);
+    // The run row says the state in words; the activity bar, with the row on screen, does not.
+    await expect(dock).toHaveAttribute('data-run', 'working');
+    await expect(page.getByRole('banner')).not.toContainText('Working');
+    await expect(dock.getByText('Working', { exact: true })).toHaveCount(0);
     await expect(dock.getByText('Running', { exact: true })).toHaveCount(0);
     await expect(
       page.getByTestId('chat-timeline').getByText('Created', { exact: true }),
@@ -119,9 +119,9 @@ test('plain completion is announced once and opening history is silent', async (
     await expect(page.getByTestId('chat-timeline')).toContainText(
       'The requested review is complete.',
     );
-    await expect(
-      page.getByTestId('composer-dock').locator('[aria-live="polite"]'),
-    ).not.toContainText(['Run status: Succeeded']);
+    await expect(activityBar(page).locator('[aria-live="polite"]')).not.toContainText([
+      'Run status: Succeeded',
+    ]);
     expect(corral.errors).toEqual([]);
   } finally {
     finish.release();
@@ -175,18 +175,20 @@ test('live plans, context, manual collapse and an answer use the primary session
     ).toHaveAttribute('aria-description', /^From next request · /);
     await send(page, 'Review and update the chat layout in several steps.');
     const plan = page.getByTestId('composer-work-plan');
-    const toggle = page.getByTestId('work-plan-toggle');
-    await expect(toggle).toContainText('0/7 done');
-    const pills = page.getByTestId('composer-status-pills');
-    await expect(pills).toBeVisible();
-    await expect(pills.getByRole('link')).toHaveCount(0);
-    await page.getByTestId('dock-open-active-run').click();
+    const bar = activityBar(page);
+    const count = bar.getByTestId('activity-plan');
+    const toggle = bar.locator('[data-activity-toggle]');
+    await expect(count).toContainText('0/7 done');
+    await expect(bar).toBeVisible();
+    await expect(bar.getByRole('link')).toHaveCount(0);
+    // The run's record opens from its turn, not from the top bar.
+    await page.getByTestId('turn-run').last().click();
     await expect(page).toHaveURL(new RegExp(`run=${current(corral).runId}`));
     await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
     await panelTab(page, 'Conversation');
     // A new plan is one line: its count and current step. The person expands it.
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(toggle).toContainText(titles[0] ?? '');
+    await expect(bar.getByTestId('activity-step')).toContainText(titles[0] ?? '');
     await expect(plan.getByRole('listitem')).toHaveCount(0);
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -232,7 +234,7 @@ test('live plans, context, manual collapse and an answer use the primary session
       element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
     });
     next.release();
-    await expect(toggle).toContainText('1/7 done');
+    await expect(count).toContainText('1/7 done');
     expect(await originalInput?.evaluate((element) => element.isConnected)).toBe(true);
     await expect(input).toHaveValue('다음 요청 日本語');
     expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(3);
@@ -252,7 +254,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(plan.getByRole('listitem')).toHaveCount(0);
     later.release();
-    await expect(toggle).toContainText('2/7 done');
+    await expect(count).toContainText('2/7 done');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     // Verify the unfinished checklist while its operational body is still owned by the live run.
     const liveSnapshot = current(corral);
@@ -268,9 +270,9 @@ test('live plans, context, manual collapse and an answer use the primary session
     expect(liveBody.items[2].status).toBe('in_progress');
     ask.release();
     const question = page.getByRole('form', { name: 'Waiting for you' });
-    // The question comes to the conversation's needed-now tray, in view: no notice repeats it.
+    // The question comes to the conversation's needed-now tray, in view: the bar does not repeat it.
     await expect(page.locator('[data-pending-tray]').getByRole('form')).toBeVisible();
-    await expect(page.getByTestId('action-required')).toHaveCount(0);
+    await expect(bar).not.toHaveAttribute('data-line', 'waiting');
     // Faux responses do not serialize a provider request or invoke onPayload.
     // Their assembled context must not be promoted to a complete measurement.
     await expect((await openOverview(page)).getByTestId('context-usage-chip')).not.toContainText(
@@ -285,9 +287,9 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(page.getByTestId('chat-result')).toContainText('ready for review');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-    await expect(toggle).toContainText('2/7 done');
+    await expect(count).toContainText('2/7 done');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(page.getByTestId('action-required')).toHaveCount(0);
+    await expect(bar).not.toHaveAttribute('data-line', 'waiting');
     await expect(input).toHaveValue('다음 요청 日本語');
 
     // Settlement retains the reference metadata, without keeping a historical plan-body archive.
@@ -424,7 +426,7 @@ test('inspecting the current result preserves the draft while a newer result rep
   ]);
   try {
     await send(page, 'Update the layout with a new result.');
-    const toggle = page.getByTestId('work-plan-toggle');
+    const toggle = activityBar(page).getByTestId('activity-plan');
     await expect(toggle).toContainText('0/7 done');
     const activeRunId = current(corral).runId;
     expect(activeRunId).not.toBe(earlierRunId);
@@ -509,18 +511,19 @@ test('a finished checklist does not finish its run, and the plan stays one line 
     await session(page, corral);
     await send(page, 'Complete the checklist and then submit its result.');
     const plan = page.getByTestId('composer-work-plan');
-    const toggle = page.getByTestId('work-plan-toggle');
-    await expect(toggle).toContainText('0/7 done');
+    const count = activityBar(page).getByTestId('activity-plan');
+    const toggle = activityBar(page).locator('[data-activity-toggle]');
+    await expect(count).toContainText('0/7 done');
     completePlan.release();
-    await expect(toggle).toContainText('7/7');
+    await expect(count).toContainText('7/7');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(toggle).toContainText('run still going');
+    await expect(count).toContainText('run still going');
     expect(current(corral).projection.status).toBe('running');
     completeRun.release();
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     await expect(page.getByTestId('chat-result')).toContainText('final result');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(toggle).toContainText('7/7 done');
+    await expect(count).toContainText('7/7 done');
     await expect(plan.getByRole('listitem')).toHaveCount(0);
     expect(corral.errors).toEqual([]);
   } finally {

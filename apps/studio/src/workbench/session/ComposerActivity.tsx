@@ -6,6 +6,7 @@ import {
   type ActivityTarget,
   type Presence,
 } from '@corral/react';
+import { MetaDot } from '@corral/react/design-kit';
 import { type RefObject, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SteerTarget } from '../composerIntent.ts';
@@ -18,6 +19,7 @@ import {
   planCount,
   RunLink,
   unansweredAttention,
+  viewedLabel,
 } from '../widgets/ChatWidgets.tsx';
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { revealPendingTray, useRespondInConversation, useTrayStore } from './pendingTrayState.ts';
@@ -75,24 +77,53 @@ export function ComposerActivity({
   const respond = useRespondInConversation();
   const run = input.run;
   const word = (presence: Presence) => tp(presence.labelKey);
-  const stateOf = (presence: Presence, of: ActivityTarget) => ({ text: word(presence), target: of });
+  const stateOf = (presence: Presence, of: ActivityTarget) => ({
+    text: word(presence),
+    target: of,
+  });
   const many = (run?.roles ?? 0) > 1;
   const showTray = () => (respond ? respond() : revealPendingTray(tray, sessionId));
 
-  // The parts kept whole after the words: the plan's count, the change summary.
+  // The parts after the words: which ended run this is, the plan's count and its step in
+  // progress, the change summary. The counts stay whole; as the line narrows (container queries)
+  // the step leaves first, then the change summary's line count, then the run's place.
   const planStatus = model?.runId ? model.plan.status : null;
+  const counted = planStatus && 'completed' in planStatus ? planStatus : null;
+  const plan = planStatus && 'plan' in planStatus ? planStatus.plan : null;
+  // Collapsed, the line names the step in progress; open, the Todo shows it.
+  const step =
+    plan && model?.plan.selectedChoice?.live && !open
+      ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
+      : null;
+  const viewed = model?.runId && !run?.live && model.viewed ? viewedLabel(model.viewed, tw) : null;
+  const changes = Boolean(model?.runId && model.chips.includes('changes'));
   const parts =
-    model?.runId && ((planStatus && 'completed' in planStatus) || model.chips.includes('changes')) ? (
+    viewed || counted || changes ? (
       <>
-        {planStatus && 'completed' in planStatus ? (
-          <span data-testid="activity-plan" className="whitespace-nowrap tabular-nums">
-            {planCount(planStatus, tw)}
+        {viewed ? (
+          // The run's place leaves with the dot after it.
+          <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap @max-2xl/composer-surface:hidden">
+            {viewed}
+            {counted || changes ? <MetaDot /> : null}
           </span>
         ) : null}
-        {planStatus && 'completed' in planStatus && model.chips.includes('changes') ? (
-          <span aria-hidden>·</span>
+        {counted ? (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span data-testid="activity-plan" className="shrink-0 whitespace-nowrap tabular-nums">
+              {planCount(counted, tw)}
+            </span>
+            {step ? (
+              <span
+                data-testid="activity-step"
+                className="min-w-0 max-w-64 truncate @max-xl/composer-surface:hidden"
+              >
+                {step}
+              </span>
+            ) : null}
+          </span>
         ) : null}
-        {model.chips.includes('changes') ? <ChangesChip model={model} /> : null}
+        {counted && changes ? <MetaDot /> : null}
+        {changes && model ? <ChangesChip model={model} /> : null}
       </>
     ) : null;
 
@@ -108,7 +139,9 @@ export function ComposerActivity({
     return {
       glyph: role.presence.glyph,
       tone: role.presence.tone,
-      ...(stateShown && !doing && !others ? { state: stateOf(role.presence, `execution:${role.id}`) } : {}),
+      ...(stateShown && !doing && !others
+        ? { state: stateOf(role.presence, `execution:${role.id}`) }
+        : {}),
       ...(text
         ? { text: others ? `${t('rolesWorking', { count: others + 1 })} · ${text}` : text }
         : {}),
@@ -252,7 +285,17 @@ export function ComposerActivity({
               }
             : undefined
         }
-        announcements={<ActivityAnnouncements model={model} />}
+        announcements={
+          <>
+            <ActivityAnnouncements model={model} />
+            {/* A lost link is said at once; the line itself keeps saying it. */}
+            <p role="alert" className="sr-only">
+              {line.kind === 'disconnected'
+                ? t(line.reason === 'lost' ? 'connectionLost' : 'recordLost')
+                : ''}
+            </p>
+          </>
+        }
         open={open}
         onOpenChange={setOpen}
       />

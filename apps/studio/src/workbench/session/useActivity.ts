@@ -1,4 +1,4 @@
-import { TERMINAL_EXECUTION_STATUSES, type RunEvent } from '@corral/contracts';
+import { type RunEvent, TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import {
   type InteractionView,
   pendingInteractions,
@@ -88,9 +88,7 @@ const WORKING = new Set<Presence['kind']>(['working', 'starting']);
 export function roleSeen(input: Pick<ActivityInput, 'run' | 'visible'>, role: { id: string }) {
   return (
     input.visible.has(`execution:${role.id}`) ||
-    Boolean(
-      input.run && role.id === input.run.lead && input.visible.has(`run:${input.run.runId}`),
-    )
+    Boolean(input.run && role.id === input.run.lead && input.visible.has(`run:${input.run.runId}`))
   );
 }
 
@@ -327,14 +325,24 @@ export function useActivity({
   const roleName = (id: string | undefined) =>
     roles.length > 1 ? roles.find((role) => role.id === id)?.name : undefined;
   const firstItem = ((): WaitingItem | null => {
-    if (!first) return null;
+    // A run the session has open but not this composer's: what its widgets say waits.
+    if (!first)
+      return model?.action.needsUser && model.action.summary === 'question'
+        ? { kind: 'question', subject: model.questionNotice ?? tw('actionQuestion') }
+        : null;
     if (first.kind === 'approval') {
       const { approval } = first;
       const call = approval.tool ? projection?.toolCalls[approval.tool.toolCallId] : undefined;
       const what = approval.tool
         ? call
           ? toolName(call.name)
-          : ta(approval.tool.purpose === 'lsp' ? 'lspHeading' : approval.tool.purpose === 'check' ? 'checkHeading' : 'toolHeading')
+          : ta(
+              approval.tool.purpose === 'lsp'
+                ? 'lspHeading'
+                : approval.tool.purpose === 'check'
+                  ? 'checkHeading'
+                  : 'toolHeading',
+            )
         : ta(`kind.${approval.kind}`, { step: approval.nodeId ?? '' });
       const who = roleName(approval.tool?.executionId);
       return {

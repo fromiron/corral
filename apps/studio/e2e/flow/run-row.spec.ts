@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { templateForWorkspace } from '../../src/demo/templates.ts';
 import { expect, test } from '../server/harness.ts';
-import { newConversation, requestBox } from '../workbench.ts';
+import { newConversation, requestBox, runGoing } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
 // The run row's fixed parts (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 3): the
@@ -213,7 +213,7 @@ test('the run row holds its lines from the first words to the end', async ({ pag
     await expect.poll(status, { timeout: 30_000 }).toBe('succeeded');
     await expect(row.getByTestId('live-text')).toHaveCount(0);
     await expect(row.getByTestId('chat-result')).toContainText(line);
-    await expect(page.getByRole('region', { name: 'Active run controls' })).toHaveCount(0);
+    await expect(runGoing(page)).toHaveCount(0);
   });
 
   // (d) The head keeps one line's height whatever it holds: squeezed far narrower than its

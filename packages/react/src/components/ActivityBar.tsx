@@ -1,10 +1,11 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { type KeyboardEvent, type ReactElement, type ReactNode, useId, useRef } from 'react';
 import { useTranslations } from 'use-intl';
+import { useControllable } from '../design-kit/hooks/use-controllable.ts';
 import { Check } from '../design-kit/icons.ts';
 import {
-  AgentStatusIcon,
   type AgentStatus,
+  AgentStatusIcon,
   Button,
   Collapse,
   cn,
@@ -14,7 +15,6 @@ import {
   MetaDot,
   useNow,
 } from '../design-kit/index.ts';
-import { useControllable } from '../design-kit/hooks/use-controllable.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
 import type { PresenceTone } from '../run/presence.ts';
@@ -40,7 +40,7 @@ export interface ActivityBarLine {
   state?: ActivityState;
   /** The line's words: what waits, or a role's activity. They give way first. */
   text?: string;
-  /** Kept whole after the words: the plan count, the change summary. */
+  /** After the words: the plan count and step, the change summary. Each part says what of it may shrink or leave. */
   parts?: ReactNode;
   /** Elapsed clock (ms epoch); never announced. */
   startedAt?: number;
@@ -141,6 +141,21 @@ function Clock({ startedAt, endedAt }: { startedAt?: number; endedAt?: number })
   );
 }
 
+/** The line's words: the state where no row says it, then what it does. */
+function LineWords({ line }: { line: ActivityBarLine }) {
+  return (
+    <>
+      {line.state ? <StateWords state={line.state} /> : null}
+      {line.state && line.text ? <MetaDot /> : null}
+      {line.text ? (
+        <span className="min-w-0 truncate" title={line.text}>
+          {line.text}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function StateWords({ state }: { state: ActivityState }) {
   return (
     <span data-presence-label={state.target} className="shrink-0 whitespace-nowrap">
@@ -199,28 +214,29 @@ export function ActivityBar({
               )}
             >
               <Mark glyph={line.glyph} tone={line.tone} />
-              {/* The words crossfade when they change; the clock and counts tick in place. */}
+              {/* The words crossfade when they change, and swap at once with reduced motion;
+                  the clock and counts tick in place. */}
               <span className="relative flex min-w-0 items-center overflow-hidden">
-                <AnimatePresence mode="popLayout" initial={false}>
-                  <motion.span
-                    key={words}
-                    className="flex min-w-0 items-center gap-1.5"
-                    initial={{ opacity: 0, y: reduce ? 0 : 6 }}
-                    animate={{ opacity: 1, y: 0, transition: spring.moderate }}
-                    exit={{ opacity: 0, y: reduce ? 0 : -6, transition: spring.moderate.exit }}
-                  >
-                    {line.state ? <StateWords state={line.state} /> : null}
-                    {line.state && line.text ? <MetaDot /> : null}
-                    {line.text ? (
-                      <span className="min-w-0 truncate" title={line.text}>
-                        {line.text}
-                      </span>
-                    ) : null}
-                  </motion.span>
-                </AnimatePresence>
+                {reduce ? (
+                  <span key={words} className="flex min-w-0 items-center gap-1.5">
+                    <LineWords line={line} />
+                  </span>
+                ) : (
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    <motion.span
+                      key={words}
+                      className="flex min-w-0 items-center gap-1.5"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0, transition: spring.moderate }}
+                      exit={{ opacity: 0, y: -6, transition: spring.moderate.exit }}
+                    >
+                      <LineWords line={line} />
+                    </motion.span>
+                  </AnimatePresence>
+                )}
               </span>
               {line.parts ? (
-                <span className="relative z-10 flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                <span className="relative z-10 flex min-w-0 items-center gap-1.5 text-muted-foreground">
                   {line.state || line.text ? <MetaDot /> : null}
                   {line.parts}
                 </span>
@@ -313,7 +329,7 @@ export function ActivityBar({
 function RoleRow({ role }: { role: ActivityBarRole }) {
   const t = useTranslations('Activity');
   return (
-    <li className="flex min-h-8 min-w-0 items-center gap-2 text-ui">
+    <li data-activity-role={role.id} className="flex min-h-8 min-w-0 items-center gap-2 text-ui">
       <Mark glyph={role.glyph} tone={role.tone} />
       <span className="shrink-0" style={{ fontVariationSettings: fontWeights.semibold }}>
         {role.name}
@@ -375,12 +391,22 @@ function Controls({ controls }: { controls: ActivityBarControls }) {
       {controls.note}
       {controls.paused ? (
         controls.onResume ? (
-          <Button size="compact" variant="tertiary" disabled={controls.disabled} onClick={controls.onResume}>
+          <Button
+            size="compact"
+            variant="tertiary"
+            disabled={controls.disabled}
+            onClick={controls.onResume}
+          >
             {t('resume')}
           </Button>
         ) : null
       ) : controls.onPause ? (
-        <Button size="compact" variant="tertiary" disabled={controls.disabled} onClick={controls.onPause}>
+        <Button
+          size="compact"
+          variant="tertiary"
+          disabled={controls.disabled}
+          onClick={controls.onPause}
+        >
           {t('pause')}
         </Button>
       ) : null}

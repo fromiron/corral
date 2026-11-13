@@ -3,12 +3,15 @@ import type { Page } from '@playwright/test';
 import { type DemoTemplate, templateForWorkspace } from '../../src/demo/templates.ts';
 import { approvalResearchTeam } from '../../src/demo/testing/approval-team.ts';
 import {
+  activityBar,
   newConversationFromSidebar,
+  openActivity,
   openConversationDetails,
   openLibrary,
   openLibraryTeams,
   panelTab,
   requestBox,
+  runControls,
   selectSessionTeam,
   showResults,
 } from '../workbench.ts';
@@ -168,8 +171,12 @@ test.describe('instruction delivery', () => {
     await session(page, corral);
     await request(page).fill('Draft a release plan');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await page.getByRole('button', { name: 'Pause run', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Resume run', exact: true })).toBeVisible();
+    // The run's controls are in the activity bar's panel.
+    await openActivity(page);
+    await runControls(page).getByRole('button', { name: 'Pause', exact: true }).click();
+    await expect(
+      runControls(page).getByRole('button', { name: 'Resume', exact: true }),
+    ).toBeVisible();
     await expect(timeline(page).getByText('Working…', { exact: true })).toHaveCount(0);
     // The sidebar row names its latest run's state through its mark.
     await expect(
@@ -187,7 +194,8 @@ test.describe('instruction delivery', () => {
     await expect.poll(status).toBe('queued');
     // The first UI poll must observe queued before the run resumes (the reproduced stale-state bug).
     await expect(page.getByTestId('delivery')).toContainText('Waiting for the next model request');
-    await page.getByRole('button', { name: 'Resume run', exact: true }).click();
+    await openActivity(page);
+    await runControls(page).getByRole('button', { name: 'Resume', exact: true }).click();
     await expect.poll(status).toBe('delivered');
     await expect(page.getByTestId('delivery')).toContainText('Included in a model request');
     expect(
@@ -353,12 +361,11 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   const tray = timeline(page).locator('[data-pending-tray]');
   const decision = tray.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15000 });
-  // The top bar's waiting pill brings that tray into view (the composer has no notice for an
-  // approval the conversation already shows).
-  const pill = page.getByRole('banner').getByTestId('dock-open-active-run');
-  await expect(pill).toHaveAttribute('data-state', 'waiting');
-  await pill.click();
-  await expect(tray).toBeFocused();
+  // The tray is on screen, so the activity bar does not repeat it; the top bar has no run state.
+  await expect(tray).toBeInViewport();
+  await expect(activityBar(page)).toHaveAttribute('data-run', 'awaiting_user');
+  await expect(activityBar(page)).not.toHaveAttribute('data-line', 'waiting');
+  await expect(page.getByRole('banner')).not.toContainText('Waiting for you');
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
   await expect(
     page

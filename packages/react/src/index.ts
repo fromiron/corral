@@ -1,4 +1,13 @@
 export { type DiffLine, diffLines } from './artifacts/diff.ts';
+export {
+  ActivityBar,
+  type ActivityBarControls,
+  type ActivityBarLine,
+  type ActivityBarProps,
+  type ActivityBarRole,
+  type ActivityState,
+  type ActivityTarget,
+} from './components/ActivityBar.tsx';
 export { ApprovalPanel } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
@@ -29,15 +38,6 @@ export { ReasoningSelect } from './components/ReasoningSelect.tsx';
 export { ReasoningLevelLabel, ReasoningSummary } from './components/ReasoningSummary.tsx';
 export { RecipeStatusPanel } from './components/RecipeStatusPanel.tsx';
 export { ReinsPanel, type SteerTarget } from './components/ReinsPanel.tsx';
-export {
-  ActivityBar,
-  type ActivityBarControls,
-  type ActivityBarLine,
-  type ActivityBarProps,
-  type ActivityBarRole,
-  type ActivityState,
-  type ActivityTarget,
-} from './components/ActivityBar.tsx';
 export { RequestAreaContext, RequestRunContext } from './components/RequestCard.tsx';
 export { RoutingTally } from './components/RoutingTally.tsx';
 export { RunActions } from './components/RunActions.tsx';

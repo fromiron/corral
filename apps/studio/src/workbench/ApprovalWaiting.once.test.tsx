@@ -8,17 +8,18 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
-import { DockRunControls } from './DockRunControls.tsx';
 import { RunMessage } from './RunMessage.tsx';
+import { ComposerActivity } from './session/ComposerActivity.tsx';
 import { PendingTray } from './session/PendingTray.tsx';
+import { createPendingTrayStore, PendingTrayContext } from './session/pendingTrayState.ts';
+import { stubViewport } from './session/viewport.testing.ts';
 import { topbarLayout } from './topbarTier.ts';
-import { ComposerDock } from './widgets/ChatWidgets.tsx';
-import { actionRequired } from './widgets/selectors.ts';
+import { actionRequired, presentContext } from './widgets/selectors.ts';
 import type { ChatWidgetModel } from './widgets/useChatWidgets.tsx';
 
-// The main area of a session conversation whose team run waits on one approval: the top bar's
-// run pill, the run's turn, the needed-now tray at the timeline's end with the approval card, and
-// the notice line above the composer.
+// The main area of a session conversation whose team run waits on one approval: the run's turn,
+// the needed-now tray at the timeline's end with the approval card, and the composer's activity
+// bar. The top bar has no run state (composer-flow.md "화면 틀").
 
 const fixture = vi.hoisted(() => ({
   store: null as RunSessionStore | null,
@@ -50,10 +51,13 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 const cleanup: (() => void)[] = [];
+let viewport: ReturnType<typeof stubViewport>;
 beforeEach(() => {
+  viewport = stubViewport();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    // Reduced motion: the activity bar's words swap at once, with nothing left fading out.
+    matches: query.includes('reduced-motion'),
     media: query,
     addEventListener() {},
     removeEventListener() {},
@@ -107,6 +111,7 @@ function waitingModel(): ChatWidgetModel {
       runStatus: 'awaiting_user',
     }),
     questionNotice: null,
+    context: presentContext({ calls: [], compactions: [], selectedExecutionId: null }),
     failedExecutionId: null,
     plan: {
       open: false,
@@ -146,26 +151,45 @@ async function mainArea(projection = waitingOnApproval()) {
     root.unmount();
     container.remove();
   });
+  const tray = createPendingTrayStore();
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <header>
-          <DockRunControls runId="run_team" runs={runs} onOpen={vi.fn()} />
-        </header>
-        <RunMessage
-          runId="run_team"
-          sessionId="session_team"
-          live
-          onOpenArtifact={vi.fn()}
-          runLine={<button type="button">Run #1</button>}
-        />
-        <PendingTray sessionId="session_team" runs={runs} onOpenArtifact={vi.fn()} />
-        <ComposerDock />
+        <PendingTrayContext.Provider value={{ store: tray }}>
+          <div data-chat-view>
+            <div data-testid="chat-timeline">
+              <RunMessage
+                runId="run_team"
+                sessionId="session_team"
+                live
+                onOpenArtifact={vi.fn()}
+                runLine={<button type="button">Run #1</button>}
+              />
+              <PendingTray sessionId="session_team" runs={runs} onOpenArtifact={vi.fn()} />
+            </div>
+            <div data-testid="chat-composer">
+              <ComposerActivity
+                sessionId="session_team"
+                ownActive={runs[0] ?? null}
+                target={null}
+                targets={[]}
+                onJoin={vi.fn()}
+                onStop={vi.fn()}
+                onPause={vi.fn()}
+                onResume={vi.fn()}
+                viewingOther={false}
+              />
+            </div>
+          </div>
+        </PendingTrayContext.Provider>
       </IntlProvider>,
     ),
   );
   return container;
 }
+
+const bar = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="activity-bar"]');
 
 /** What a person sees: the text outside screen-reader-only elements. */
 function visibleText(container: HTMLElement) {
@@ -176,7 +200,7 @@ function visibleText(container: HTMLElement) {
 
 const count = (text: string, pattern: RegExp) => text.match(pattern)?.length ?? 0;
 
-it('says the run waits once (the pill) and shows the decision once (the card)', async () => {
+it('says the run waits once (the run row) and shows the decision once (the card)', async () => {
   const container = await mainArea();
   const visible = visibleText(container);
   // "Waiting for you", not the start of "Waiting for your decision": once, on the run row's head.
@@ -185,13 +209,12 @@ it('says the run waits once (the pill) and shows the decision once (the card)', 
   expect(state).toHaveLength(1);
   expect(state[0]?.closest('[data-chat-part="head"]')).not.toBeNull();
   expect(state[0]?.textContent).toBe(messages.Status.awaiting_user);
-  // The pill keeps its mark and says the state to assistive tech only.
-  const pill = container.querySelector('[data-testid="dock-open-active-run"]');
-  expect(pill?.textContent).not.toContain(messages.Approvals.heading);
-  expect(
-    pill?.querySelector('[aria-label]')?.getAttribute('aria-label') ??
-      pill?.getAttribute('aria-label'),
-  ).toContain(messages.Approvals.heading);
+  // The activity bar keeps its mark and repeats neither the state nor the decision while the
+  // row and the card are on screen.
+  const line = visibleText(bar(container) as HTMLElement);
+  expect(line).not.toContain(messages.Status.awaiting_user);
+  expect(line).not.toContain(messages.Approvals.approveAs.user_action);
+  expect(bar(container)?.dataset.line).toBe('summary');
   // The decision: its card's title and its two buttons, each once.
   expect(count(visible, new RegExp(messages.Approvals.kind.user_action, 'g'))).toBe(1);
   expect(count(visible, new RegExp(messages.Approvals.approveAs.user_action, 'g'))).toBe(1);
@@ -263,4 +286,40 @@ it.each([
   expect(buttons.some((button) => !button.disabled)).toBe(true);
   // The composer adds no notice beside it.
   expect(container.querySelector('[data-testid="action-required"]')).toBeNull();
+});
+
+it('says what waits and decides it from the activity bar once the card is off screen', async () => {
+  const container = await mainArea();
+  const resolve = vi.spyOn(
+    fixture.store?.getState() as ReturnType<RunSessionStore['getState']>,
+    'resolveApproval',
+  );
+  // The tray scrolled away; the run row with it.
+  await viewport.scroll(() => false);
+  const line = bar(container);
+  expect(line?.dataset.line).toBe('waiting');
+  const text = visibleText(line as HTMLElement);
+  expect(text).toContain(messages.Approvals.kind.user_action);
+  // The run row is off screen too, so the bar says the state, once.
+  expect(count(text, /Waiting for you(?!r)/g)).toBe(1);
+  const approve = [...(line?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent === messages.Approvals.approveAs.user_action,
+  );
+  const deny = [...(line?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent === messages.Approvals.rejectAs.user_action,
+  );
+  expect(approve).toBeDefined();
+  expect(deny).toBeDefined();
+  // Enter and Escape on the bar decide nothing: only the buttons do.
+  const toggle = line?.querySelector<HTMLElement>('[data-activity-toggle]');
+  for (const key of ['Enter', 'Escape'])
+    await act(async () => {
+      toggle?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    });
+  expect(resolve).not.toHaveBeenCalled();
+  await act(async () => approve?.click());
+  expect(resolve).toHaveBeenCalledExactlyOnceWith('approval_1', 'approve');
+  // Back on screen, the card says it again and the bar lets it go.
+  await viewport.scroll(() => true);
+  expect(bar(container)?.dataset.line).toBe('summary');
 });

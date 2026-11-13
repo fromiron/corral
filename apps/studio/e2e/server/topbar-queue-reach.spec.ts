@@ -1,9 +1,9 @@
 import type { Locator, Page } from '@playwright/test';
-import { panelTab, requestBox } from '../workbench.ts';
+import { openActivity, panelTab, requestBox, runControls, runGoing } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
-// A held run keeps its controls in the top bar and its saved requests in the queue; both stay
-// reachable on a phone-width screen and from the keyboard.
+// A held run keeps its controls in the composer's activity bar, never in the top bar, and its
+// saved requests in the queue; all stay reachable on a phone-width screen and from the keyboard.
 
 /** On top at its centre, and drawn: no ancestor fades it out. */
 async function shown(target: Locator) {
@@ -39,21 +39,23 @@ test.describe('a held run', () => {
   });
   test.afterEach(() => release());
 
-  test('keeps the top bar inside a 390px screen with Pause and Cancel reachable', async ({
+  test('keeps the top bar inside a 390px screen with Pause and Stop reachable', async ({
     page,
     corral,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await holdRun(page, corral);
-    const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
-    const pause = controls.getByRole('button', { name: 'Pause run', exact: true });
-    const cancel = controls.getByRole('button', { name: 'Cancel whole run', exact: true });
-    await expect(page.getByTestId('dock-open-active-run')).toBeVisible();
+    await expect(runGoing(page)).toBeVisible();
+    // The top bar has no run state or run control.
+    const top = page.getByRole('banner');
+    await expect(top.getByRole('button', { name: /Pause|Stop|Cancel whole run/ })).toHaveCount(0);
+    await openActivity(page);
+    const pause = runControls(page).getByRole('button', { name: 'Pause', exact: true });
+    const stop = runControls(page).getByRole('button', { name: 'Stop', exact: true });
     if (process.env.CORRAL_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.CORRAL_SCREENSHOT_DIR}/topbar-390.png` });
     await expect.poll(() => shown(pause)).toBe(true);
-    await expect.poll(() => shown(cancel)).toBe(true);
-    await expect.poll(() => shown(page.getByTestId('dock-open-active-run'))).toBe(true);
+    await expect.poll(() => shown(stop)).toBe(true);
     const overflow = await page.evaluate(() => {
       const bar = document.querySelector<HTMLElement>('.app-topbar');
       const parts = [...(bar?.querySelectorAll<HTMLElement>('button, a, [role="status"]') ?? [])]
@@ -67,13 +69,14 @@ test.describe('a held run', () => {
       };
     });
     expect(overflow).toEqual({ page: 0, bar: 0, outside: 0 });
-    // Icon-only at this width, the controls still say what they do.
-    await pause.hover();
-    await expect(page.getByRole('tooltip')).toContainText('Pause run');
-    await cancel.click();
-    await expect(
-      page.getByRole('button', { name: 'Confirm whole run cancellation', exact: true }),
-    ).toBeVisible();
+    // The controls say what they do in words at this width too.
+    await expect(pause).toHaveText('Pause');
+    // One execution works, so Stop stops at once.
+    await stop.click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect
+      .poll(() => corral.server.coordinator.listRuns()[0]?.status)
+      .toMatch(/^(cancelling|cancelled)$/);
     expect(corral.errors).toEqual([]);
   });
 
@@ -94,14 +97,13 @@ test.describe('a held run', () => {
     await page.setViewportSize({ width: 1600, height: 800 });
     await holdRun(page, corral);
     const bar = page.getByRole('banner');
-    const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
     const name = bar.getByRole('heading', { level: 2 });
     const search = bar.getByRole('button', { name: 'Search', exact: true });
     const tier = async () => tiers.indexOf((await bar.getAttribute('data-topbar-tier')) ?? '');
     await expect(bar).toHaveAttribute('data-topbar-tier', 'full');
-    await expect(controls.getByRole('button', { name: 'Pause run', exact: true })).toHaveText(
-      'Pause run',
-    );
+    // The run's controls stay with the composer, open at every width.
+    await openActivity(page);
+    const pause = runControls(page).getByRole('button', { name: 'Pause', exact: true });
     const title = (await name.innerText()).trim();
     // The bar is fitted to its own width: beside the sidebar from 1024, full width below.
     const seen: { bar: number; tier: number }[] = [];
@@ -126,10 +128,8 @@ test.describe('a held run', () => {
       await expect(name, `${width}px`).toContainText(title.slice(0, 8));
       expect((await name.boundingBox())?.width ?? 0, `${width}px`).toBeGreaterThan(80);
       await expect.poll(() => shown(search), { message: `${width}px` }).toBe(true);
-      await expect.poll(() => shown(page.getByTestId('dock-open-active-run'))).toBe(true);
-      await expect
-        .poll(() => shown(controls.getByRole('button', { name: 'Pause run', exact: true })))
-        .toBe(true);
+      await expect.poll(() => shown(pause), { message: `${width}px` }).toBe(true);
+      await expect(bar.getByRole('button', { name: /Pause|Stop/ })).toHaveCount(0);
     }
     // A narrower bar never brings back what a wider one had already given up.
     const byWidth = [...seen].sort((a, b) => b.bar - a.bar).map((entry) => entry.tier);

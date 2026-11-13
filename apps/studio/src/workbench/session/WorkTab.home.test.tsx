@@ -6,6 +6,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { SessionChat } from './SessionChat.tsx';
+import type { SessionConnection } from './SessionConnection.tsx';
 import { WorkTab } from './WorkTab.tsx';
 
 type ComposerProps = {
@@ -16,6 +17,7 @@ type ComposerProps = {
 };
 const fixture = vi.hoisted(() => ({
   composer: [] as ComposerProps[],
+  connection: [] as (SessionConnection | null)[],
   workspaces: null as object | null,
   access: 'unknown' as 'unknown' | 'unlinked' | 'copy',
 }));
@@ -37,12 +39,17 @@ vi.mock('./SessionEntries.tsx', () => ({
   RunChecks: createContext(null),
   useRunChecks: () => null,
 }));
-vi.mock('./Composer.tsx', () => ({
-  Composer: (props: ComposerProps) => {
-    fixture.composer.push(props);
-    return <textarea data-testid="composer" aria-label="Request" />;
-  },
-}));
+vi.mock('./Composer.tsx', async () => {
+  const { useSessionConnection } = await import('./SessionConnection.tsx');
+  return {
+    Composer: (props: ComposerProps) => {
+      fixture.composer.push(props);
+      // The link to the server, as the composer's activity bar reads it.
+      fixture.connection.push(useSessionConnection());
+      return <textarea data-testid="composer" aria-label="Request" />;
+    },
+  };
+});
 
 const cleanup: (() => void)[] = [];
 beforeEach(() => {
@@ -56,6 +63,7 @@ beforeEach(() => {
     },
   );
   fixture.composer = [];
+  fixture.connection = [];
   fixture.workspaces = null;
   fixture.access = 'unknown';
 });
@@ -162,7 +170,7 @@ it('offers the folder step in the composer row, and does not repeat it above the
   expect(container.textContent).not.toContain(messages.Sessions.agentNoFiles);
 });
 
-it('the session chat tells a lost connection from the composer, with nothing above the conversation', async () => {
+it('the session chat leaves a lost connection to the composer’s activity bar, with nothing above or in the conversation', async () => {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -201,18 +209,19 @@ it('the session chat tells a lost connection from the composer, with nothing abo
       </IntlProvider>,
     ),
   );
-  const alerts = container.querySelectorAll<HTMLElement>('[role="alert"]');
   const view = container.querySelector('[data-chat-view]');
   const timeline = container.querySelector('[data-testid="chat-timeline"]');
   const composer = container.querySelector('[data-testid="chat-composer"]');
   if (!view || !timeline || !composer) throw new Error('Session chat missing');
-  expect(alerts).toHaveLength(1);
-  const alert = alerts[0] as HTMLElement;
-  expect(alert.textContent).toContain(messages.Sessions.connectionLost);
-  expect(composer.contains(alert)).toBe(true);
-  expect(timeline.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // Nothing is put above the conversation view.
+  // The conversation itself says nothing of it: no alert, no notice in or above the timeline.
+  expect(container.querySelectorAll('[role="alert"]')).toHaveLength(0);
+  expect(container.textContent).not.toContain(messages.Activity.connectionLost);
+  expect(container.textContent).not.toContain(messages.Sessions.connectionLost);
   expect(view.parentElement?.firstElementChild).toBe(view);
-  await act(async () => alert.querySelector('button')?.click());
+  // The composer, in the composer's place, reads the lost link and its retry.
+  expect(composer.querySelector('[data-testid="composer"]')).not.toBeNull();
+  const seen = fixture.connection.at(-1);
+  expect(seen?.lost).toBe(true);
+  seen?.retry();
   expect(retry).toHaveBeenCalledOnce();
 });

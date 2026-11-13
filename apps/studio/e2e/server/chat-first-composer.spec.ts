@@ -1,7 +1,13 @@
 import type { CorralSummary, WorkSession } from '@corral/core';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { newConversation, openLibrary, openProject, requestBox } from '../workbench.ts';
+import {
+  activityBar,
+  newConversation,
+  openLibrary,
+  openProject,
+  requestBox,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Use the real browser entry, server, adapter and Coordinator. Only the
@@ -221,12 +227,12 @@ test('a request typed while the lead waits is queued, not started', async ({ pag
   await requestBox(page).fill('Ask me before continuing with this review.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('awaiting_user');
-  // The question stands in the conversation's needed-now tray, in view: the composer adds no
-  // notice of its own.
+  // The question stands in the conversation's needed-now tray, in view: the activity bar does
+  // not repeat it.
   await expect(
     page.locator('[data-pending-tray]').getByText('What should I review next?', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  await expect(activityBar(page)).not.toHaveAttribute('data-line', 'waiting');
   // composer-flow.md "전송": while the run waits on the person, Send joins (read after the
   // decision) and Alt+Enter sends a next request, which waits behind the run.
   const draft = 'Keep this queued request while I decide the next step.';
@@ -243,7 +249,7 @@ test('a request typed while the lead waits is queued, not started', async ({ pag
   expect(corral.errors).toEqual([]);
 });
 
-test('the composer tells of a waiting question only while its tray is out of view', async ({
+test('the activity bar tells of a waiting question only while its tray is out of view', async ({
   page,
   corral,
 }) => {
@@ -274,9 +280,10 @@ test('the composer tells of a waiting question only while its tray is out of vie
     .toBeTruthy();
   const tray = page.locator('[data-pending-tray]');
   await expect(tray.getByText('What should I review next?', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  const bar = activityBar(page);
+  await expect(bar).not.toHaveAttribute('data-line', 'waiting');
   // The person wheels up to the earlier answer, in the margin beside the column: the tray leaves
-  // the view, and only now does the composer tell of it.
+  // the view, and only now does the activity bar tell of it.
   const timeline = page.getByTestId('chat-timeline');
   await timeline.hover({ position: { x: 16, y: 120 } });
   for (let step = 0; step < 40; step += 1) {
@@ -285,9 +292,23 @@ test('the composer tells of a waiting question only while its tray is out of vie
     await page.waitForTimeout(30);
   }
   await expect(tray).not.toBeInViewport();
-  await expect(page.getByTestId('action-required')).toBeVisible();
+  await expect(bar).toHaveAttribute('data-line', 'waiting');
+  await expect(bar).toContainText('What should I review next?');
+  // Its View brings the tray into view and gives it focus; the bar lets the question go.
+  await bar.getByRole('button', { name: 'View', exact: true }).click();
+  await expect(tray).toBeInViewport();
+  await expect(tray).toBeFocused();
+  await expect(bar).not.toHaveAttribute('data-line', 'waiting');
+  // Away again, and back by Jump to latest.
+  await timeline.hover({ position: { x: 16, y: 120 } });
+  for (let step = 0; step < 40; step += 1) {
+    if (await timeline.evaluate((box) => box.scrollTop === 0)) break;
+    await page.mouse.wheel(0, -3000);
+    await page.waitForTimeout(30);
+  }
+  await expect(bar).toHaveAttribute('data-line', 'waiting');
   await page.getByRole('button', { name: 'Jump to latest' }).click();
   await expect(tray).toBeInViewport();
-  await expect(page.getByTestId('action-required')).toHaveCount(0);
+  await expect(bar).not.toHaveAttribute('data-line', 'waiting');
   expect(corral.errors).toEqual([]);
 });
