@@ -376,9 +376,11 @@ const adviceHead = (d: Delivered) =>
 
 /**
  * An advice's text under its heading, every line quoted: the advisor model wrote it, so no line
- * of it can read as a directive heading.
+ * of it can read as a directive heading. A form feed, vertical tab or next-line starts a line
+ * too, since a model may read it as a break.
  */
-const adviceBody = (d: Delivered) => `${adviceHead(d)}:\n${d.text.replace(/^/gm, '> ')}`;
+const adviceBody = (d: Delivered) =>
+  `${adviceHead(d)}:\n${d.text.replace(/(^|\r\n|[\n\r\v\f\u0085\u2028\u2029])/g, '$1> ')}`;
 
 /** The core worker's form of one delivered directive; each directive is its own message. */
 export const directiveText = (d: Delivered) =>
