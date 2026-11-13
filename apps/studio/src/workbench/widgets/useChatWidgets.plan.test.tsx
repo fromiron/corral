@@ -201,3 +201,84 @@ it('keeps the last known done count once the run ends and its plan body is relea
   expect(planCount()?.textContent).toContain('1/2 done');
   expect(view.container.textContent).not.toContain(messages.Widgets.planError);
 });
+
+it('keeps the plan it read while a newer revision of it loads, and says the first load', async () => {
+  const running = await projection('running');
+  // Bodies are read slowly: each read waits until its text is in the store.
+  const store = runStore({
+    runId: 'run_plan',
+    projection: running,
+    artifactTexts: {},
+    loadArtifact: vi.fn(() => new Promise(() => {})),
+  });
+  fixture.services = services(store);
+  await mount(true);
+  // Nothing read yet: the first load says so.
+  await settle(() => seen?.plan.status.state === 'loading');
+  expect(seen?.plan.status.state).toBe('loading');
+  await act(async () => store.setState({ artifactTexts: { body_plan: JSON.stringify(plan) } }));
+  await settle(() => seen?.plan.status.state === 'ready');
+  const revision = () => {
+    const status = seen?.plan.status;
+    return status && 'plan' in status ? status.plan.revision : null;
+  };
+  expect(revision()).toBe(1);
+  // The next revision of the same plan, its body not read yet.
+  const next = {
+    ...plan,
+    revision: 2,
+    items: [
+      { id: 'read', title: 'Read the layout', status: 'completed' },
+      { id: 'write', title: 'Write the change', status: 'completed' },
+    ],
+  };
+  const revised = structuredClone(running);
+  revised.workPlans = {
+    plan: {
+      ...(running.workPlans?.plan as NonNullable<RunProjection['workPlans']>[string]),
+      revision: 2,
+      bodyRef: 'body_plan_2',
+      bodyHash: await hashOf(next),
+    },
+  };
+  await act(async () => store.setState({ projection: revised }));
+  await settle(() => false);
+  // Still the plan it read, in place: never a loading line between.
+  expect(seen?.plan.status.state).toBe('ready');
+  expect(revision()).toBe(1);
+  await act(async () =>
+    store.setState({
+      artifactTexts: { body_plan: JSON.stringify(plan), body_plan_2: JSON.stringify(next) },
+    }),
+  );
+  await settle(() => revision() === 2);
+  expect(revision()).toBe(2);
+});
+
+it('says another plan is loading rather than show the one before in its place', async () => {
+  const running = await projection('running');
+  const store = runStore({
+    runId: 'run_plan',
+    projection: running,
+    artifactTexts: { body_plan: JSON.stringify(plan) },
+    loadArtifact: vi.fn(() => new Promise(() => {})),
+  });
+  fixture.services = services(store);
+  await mount(true);
+  await settle(() => seen?.plan.status.state === 'ready');
+  expect(seen?.plan.status.state).toBe('ready');
+  // The role's next attempt writes its own plan, its body not read yet.
+  const retried = structuredClone(running);
+  (retried.executions.exec_plan as { attemptNo: number }).attemptNo = 2;
+  retried.workPlans = {
+    plan: {
+      ...(running.workPlans?.plan as NonNullable<RunProjection['workPlans']>[string]),
+      attemptNo: 2,
+      bodyRef: 'body_plan_attempt_2',
+      bodyHash: await hashOf({ ...plan, attemptNo: 2 }),
+    },
+  };
+  await act(async () => store.setState({ projection: retried }));
+  await settle(() => seen?.plan.status.state === 'loading');
+  expect(seen?.plan.status.state).toBe('loading');
+});

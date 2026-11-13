@@ -681,6 +681,7 @@ it('takes no press for a while when the next approval comes to the same place', 
     expect(approve()?.disabled).toBe(true);
     await act(async () => approve()?.click());
     expect(resolve).toHaveBeenCalledTimes(1);
+    await frame();
     await act(async () => vi.advanceTimersByTime(599));
     expect(approve()?.disabled).toBe(true);
     await act(async () => vi.advanceTimersByTime(1));
@@ -709,6 +710,7 @@ it('holds the next approval from when its buttons appear, and the View that come
     const approve = () => lineButton(container, messages.Approvals.approveTool);
     expect(approve()).toBeUndefined();
     expect(view()?.disabled).toBe(true);
+    await frame();
     await act(async () => vi.advanceTimersByTime(600));
     expect(view()?.disabled).toBe(false);
     // The body comes late: its buttons wait from when they appear, not from when the line changed.
@@ -721,6 +723,7 @@ it('holds the next approval from when its buttons appear, and the View that come
     expect(approve()?.disabled).toBe(true);
     await act(async () => approve()?.click());
     expect(resolve).toHaveBeenCalledTimes(1);
+    await frame();
     await act(async () => vi.advanceTimersByTime(599));
     expect(approve()?.disabled).toBe(true);
     await act(async () => vi.advanceTimersByTime(1));
@@ -761,6 +764,7 @@ it('holds the first approval too when its buttons come late where View was, by t
     expect(approve()?.disabled).toBe(true);
     await act(async () => approve()?.click());
     expect(resolve).not.toHaveBeenCalled();
+    await frame();
     await act(async () => vi.advanceTimersByTime(599));
     expect(approve()?.disabled).toBe(true);
     await act(async () => vi.advanceTimersByTime(1));
@@ -787,6 +791,7 @@ it('holds the first approval when its buttons come where View was drawn, before 
     expect(approve()?.disabled).toBe(true);
     await act(async () => approve()?.click());
     expect(resolve).not.toHaveBeenCalled();
+    await frame();
     await act(async () => vi.advanceTimersByTime(599));
     expect(approve()?.disabled).toBe(true);
     await act(async () => vi.advanceTimersByTime(1));
@@ -827,6 +832,7 @@ it('holds the one approval left where a count line’s View was', async () => {
     expect(approve()?.disabled).toBe(true);
     await act(async () => approve()?.click());
     expect(resolve).not.toHaveBeenCalled();
+    await frame();
     await act(async () => vi.advanceTimersByTime(600));
     expect(approve()?.disabled).toBe(false);
   } finally {
