@@ -1259,7 +1259,10 @@ describe('the activity bar', () => {
     const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
     await openBar(f.container);
     const row = () => '[data-activity-role="exec_review"]';
-    await act(async () => barButton(f.container, messages.Activity.join, row())?.click());
+    const join = barButton(f.container, messages.Activity.join, row());
+    // Pressed with the focus on it, as a click or a key gives it.
+    join?.focus();
+    await act(async () => join?.click());
     expect(document.activeElement).toBe(f.box());
     expect(f.container.querySelector(row())?.textContent).toContain(messages.Activity.joinTarget);
     await f.type('Check the tests');

@@ -615,9 +615,13 @@ it('names a waiting role by its presence detail, not by the tool it waits in', a
     ownActive: ownRun,
     rowShown: true,
   });
+  // Folded, the line says what the role does.
+  expect(visibleText(view.line())).toContain(messages.Presence.detail.waiting_agents);
   await act(async () => view.toggle()?.click());
   const row = view.panel()?.querySelector('[data-activity-role="exec_plan"]');
   expect(row?.textContent).toContain(messages.Presence.detail.waiting_agents);
+  // Open, its row says it: the line does not say it again.
+  expect(visibleText(view.line())).not.toContain(messages.Presence.detail.waiting_agents);
   expect(row?.textContent).not.toMatch(new RegExp(`\\b${messages.Turn.tool.await_tasks}\\b`));
 });
 

@@ -442,12 +442,11 @@ export function useActivity({
         subject: who ? `${who}: ${what}` : what,
         // Decided on the line only when the line says all an approve allows: a call with its
         // whole one-line subject, or a paused step by its name. A final output, a check, a
-        // person's decision, a route and a limit are decided on their cards.
-        decidable: approval.limit
-          ? false
-          : approval.tool
-            ? approval.tool.purpose === 'tool' && Boolean(call?.whole)
-            : approval.kind === 'breakpoint' && Boolean(step),
+        // person's decision, a route and a limit (which only a person's decision carries) are
+        // decided on their cards.
+        decidable: approval.tool
+          ? approval.tool.purpose === 'tool' && Boolean(call?.whole)
+          : approval.kind === 'breakpoint' && Boolean(step),
         ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
       };
     }
@@ -502,8 +501,8 @@ export function useActivity({
         ? () => void store.getState().open(runId)
         : (model?.retryRead ?? null)
       : null;
-  // Open, the panel's role rows say their roles' states, so the line does not say them again. The
-  // rows themselves still go by what the conversation shows.
+  // Open, the panel's role rows say their roles' states and activities, so the line does not say
+  // them again. The rows themselves still go by what the conversation shows.
   const shown = useMemo(
     () =>
       open && roles.length
@@ -511,9 +510,13 @@ export function useActivity({
         : visible,
     [open, visible, roles],
   );
+  const said = useMemo(
+    () => (shown === visible ? roles : roles.map((role) => ({ ...role, activity: null }))),
+    [shown, visible, roles],
+  );
   return {
     input,
-    line: closedLine(shown === visible ? input : { ...input, visible: shown }),
+    line: closedLine(shown === visible ? input : { ...input, visible: shown, roles: said }),
     store,
     projection,
     sending: Boolean(runId && state.runId === runId && state.sending),
