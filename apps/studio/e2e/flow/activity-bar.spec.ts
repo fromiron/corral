@@ -1111,3 +1111,101 @@ test('⑨ on a slow machine with reduced motion, a press where View stood alone 
     await session.cleanup();
   }
 });
+
+test('⑩ open, the work plan keeps its height as its steps go from waiting to working to done', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(240_000);
+  const gates = [hold(), hold(), hold(), hold()];
+  const projection = () => {
+    const run = corral.server.coordinator.listRuns()[0];
+    return run ? corral.server.coordinator.getSnapshot(run.runId).projection : null;
+  };
+  type Step = 'pending' | 'in_progress' | 'completed';
+  const plan = (revision: number, look: Step, fix: Step) =>
+    fauxToolCall('update_plan', {
+      scope: 'execution',
+      expectedRevision: revision,
+      criteriaVersionId: projection()?.currentCriteriaVersionId ?? null,
+      items: [
+        { id: 'look', title: 'Look at the login path', status: look },
+        { id: 'fix', title: 'Fix the slow call', status: fix },
+      ],
+    });
+  const states: [Step, Step][] = [
+    ['pending', 'pending'],
+    ['in_progress', 'pending'],
+    ['completed', 'in_progress'],
+    ['completed', 'completed'],
+  ];
+  // Each request writes the plan's next state, then the next request is held until it is let go.
+  corral.fake?.setResponses([
+    ...states.map(([look, fix], index) => async () => {
+      if (index > 0) {
+        gates[index - 1]?.reach();
+        await gates[index - 1]?.opened;
+      }
+      return fauxAssistantMessage([plan(index, look, fix)], { stopReason: 'toolUse' });
+    }),
+    async () => {
+      gates[3]?.reach();
+      await gates[3]?.opened;
+      return fauxAssistantMessage('Done.');
+    },
+    fauxAssistantMessage('Done.'),
+  ] as never);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await corral.open('/projects/default');
+  await newConversation(page);
+  await requestBox(page).fill('Find why login is slow');
+  await requestBox(page).press('Enter');
+  await gates[0]?.reached;
+  await openActivity(page);
+  const section = activityBar(page).getByTestId('composer-work-plan');
+  const items = section.locator('[data-plan-item]');
+  await expect(items).toHaveCount(2, { timeout: 30_000 });
+  await waitForStill(page);
+  // Every frame from here: the plan's height, and the whole bar's.
+  await page.evaluate(() => {
+    const w = window as unknown as { planFrames: { plan: number; bar: number; text: string }[] };
+    w.planFrames = [];
+    const tick = () => {
+      const bar = document.querySelector('[data-testid="activity-bar"]');
+      const plan = bar?.querySelector('[data-testid="composer-work-plan"]');
+      w.planFrames.push({
+        plan: plan?.getBoundingClientRect().height ?? -1,
+        bar: bar?.getBoundingClientRect().height ?? -1,
+        text: (plan?.textContent ?? '').slice(0, 120),
+      });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  const statuses = () => items.evaluateAll((nodes) => nodes.map((node) => node.dataset.status));
+  for (const [index, want] of [
+    ['active', 'pending'],
+    ['done', 'active'],
+    ['done', 'done'],
+  ].entries()) {
+    gates[index]?.open();
+    await expect.poll(statuses, { timeout: 30_000 }).toEqual(want);
+    await gates[index + 1]?.reached;
+    await waitForStill(page);
+  }
+  const frames = await page.evaluate(
+    () =>
+      (window as unknown as { planFrames: { plan: number; bar: number; text: string }[] })
+        .planFrames,
+  );
+  const heights = [...new Set(frames.map((frame) => frame.plan))];
+  const bars = [...new Set(frames.map((frame) => frame.bar))];
+  const odd = frames.filter((frame) => frame.plan !== frames[0]?.plan).slice(0, 5);
+  record('plan-height', { heights, bars, frames: frames.length, odd });
+  expect(frames.length).toBeGreaterThan(30);
+  expect(heights, 'the plan section kept one height').toHaveLength(1);
+  expect(bars, 'the bar kept one height').toHaveLength(1);
+  gates[3]?.open();
+  await expect(activityBar(page)).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
+  expect(corral.errors).toEqual([]);
+});
