@@ -350,6 +350,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 - `resolve_approval`의 `subjectVersionId`는 `subjectVersions[0]`이어야 한다. 검사 순서: 없는 승인 `TARGET_NOT_FOUND` → 이미 해결 `APPROVAL_STALE` → `expectedControlRevision` 불일치 `STALE_CONTROL_REVISION` → 다른 버전 `APPROVAL_STALE`. 같은 commandId 재전송은 처음 receipt를 돌려준다.
 - 검토 본문이 `review.schema.json`이 아니거나, 대상이 검토자가 받은 입력이 아니거나, 기준이 Run의 `criteriaVersionId`가 아니면 `review.recorded.verdict`는 `inconclusive`이고 `user_action` 승인으로 넘어간다. 통과로 처리하지 않는다.
 - 거절한 `route`·`check`·`final_output`·`breakpoint`는 Run을 취소로 끝낸다.
+- Run이 끝나면(성공·실패·취소) 그때까지 기다리던 승인은 종류와 관계없이 런타임이 닫는다. 승인마다 `approval.resolved`(decision `reject`, runtime actor, reason은 취소로 끝나면 `cancelled`, 그 밖에는 `execution_ended`)를 한 번 남긴다. 취소에서는 `cancel.confirmed` 앞에, 실패와 성공에서는 종료 상태와 같은 커밋 안에서 그 앞에 쓴다. 끝난 Run의 투영에는 `pending` 승인이 없고, 닫힌 뒤의 응답은 `APPROVAL_STALE`이다. 실행 단위 하나를 취소하거나 한 시도가 실패해 다시 시도하는 것은 Run의 승인을 닫지 않는다. 화면은 런타임이 닫은 승인을 사람의 결정(승인함·반려함)으로 적지 않는다.
 - 같은 Agent가 다음 Loop 라운드에 쓴 버전은 같은 artifactId의 다음 version이다. 투영의 `parentVersionId`가 이전 버전을 가리킨다.
 
 ## 5. timeout·재연결·다중 탭
