@@ -91,8 +91,7 @@ export type DiagnosticCode =
   | 'ADVISOR_ADVISE_QUESTIONS'
   | 'ADVISOR_TOOLS'
   | 'ADVISE_TOOL_ADVISOR_ONLY'
-  | 'ADVISOR_NOT_A_STEP'
-  | 'ADVISOR_NOT_SUPPORTED';
+  | 'ADVISOR_NOT_A_STEP';
 
 export interface Diagnostic {
   code: DiagnosticCode;
@@ -245,11 +244,6 @@ export interface CompileOptions {
    * Without it no reference resolves.
    */
   resolveTeam?: (corralId: string, definitionRevision: number) => unknown;
-  /**
-   * What a definition with advisors gets: `refuse` (the default) until advisors run, `plan`
-   * compiles it with its advisors in `plan.advisors`.
-   */
-  advisors?: 'refuse' | 'plan';
 }
 
 export function compileDefinition(input: unknown, options: CompileOptions = {}): CompileResult {
@@ -279,7 +273,6 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
   checkReviewRecipes(context);
   checkLoopLimits(context, options);
   checkModelProfiles(context, options);
-  refuseAdvisorsUntilTheyRun(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkSpawnCap(context);
 
@@ -373,17 +366,6 @@ function checkAdvisors(c: Context) {
           },
         );
   }
-}
-
-/**
- * The door until advisors run (features/advisor.md): a definition with an advisor that passes
- * every rule is still refused, so no Run goes on without the advisor it was drawn with.
- */
-function refuseAdvisorsUntilTheyRun(c: Context, options: CompileOptions) {
-  if (options.advisors === 'plan') return;
-  for (const node of c.definition.nodes)
-    if (c.isObserver(node.id))
-      c.error('ADVISOR_NOT_SUPPORTED', 'advisors cannot run yet', { nodeId: node.id });
 }
 
 function checkReviewRecipes(c: Context) {

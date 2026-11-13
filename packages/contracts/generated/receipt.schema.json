@@ -124,6 +124,60 @@
         "message"
       ],
       "additionalProperties": false
+    },
+    "advice": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "const": "admitted"
+            },
+            "adviceId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "next_request",
+                "interrupt",
+                "preserve"
+              ]
+            }
+          },
+          "required": [
+            "outcome",
+            "adviceId",
+            "delivery"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "const": "suppressed"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "noise",
+                "duplicate",
+                "over_budget",
+                "target_terminal"
+              ]
+            }
+          },
+          "required": [
+            "outcome",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "required": [

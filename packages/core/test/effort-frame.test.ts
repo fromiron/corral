@@ -92,6 +92,19 @@ describe('the call snapshot and frame', () => {
         { questionId: 'q_1', artifactVersionId: 'art_b', text: null },
       ],
     });
+    // An applied advice is named as the advisor's, never as the person's instruction.
+    const advised = callSnapshot(input(), {
+      directives: [
+        { directiveId: 'dir_1', text: 'Keep the API.', origin: 'user' },
+        { directiveId: 'dir_2', text: 'The tokenizer is the cause.', origin: 'advice' },
+      ],
+      questions: [],
+    });
+    expect(
+      advised.sources
+        .filter((source) => source.id.startsWith('directive:'))
+        .map((source) => source.label),
+    ).toEqual(['instruction dir_1', 'advisor advice dir_2']);
     expect(await packFrame(snapshot, bytesMeter(), question, never)).toMatchObject({
       kind: 'insufficient',
       reason: 'required-source-missing',

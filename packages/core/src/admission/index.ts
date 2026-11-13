@@ -320,6 +320,7 @@ const roleAllowlist: Gate<ToolGateView> = {
         'ask',
         'reply',
         'read_artifact',
+        'advise',
         'ask_user',
         'update_plan',
       ].includes(proposal.name)
@@ -512,7 +513,7 @@ const roleAllowlist: Gate<ToolGateView> = {
     if (proposal.name !== 'write_artifact' && proposal.name !== 'submit_result') {
       if (!collaboration.includes(proposal.name)) {
         return denied(
-          ['spawn_subagents', 'await_tasks', 'ask', 'reply', 'read_artifact'].includes(
+          ['spawn_subagents', 'await_tasks', 'ask', 'reply', 'read_artifact', 'advise'].includes(
             proposal.name,
           )
             ? `role may not use ${proposal.name}`
@@ -667,6 +668,15 @@ const roleAllowlist: Gate<ToolGateView> = {
           args.evidenceRefs.some((id) => typeof id !== 'string' || !view.readable().has(id))
         )
           return denied('answer evidence must be readable by the responder');
+        return allow;
+      }
+      case 'advise': {
+        // Only an advisor's own execution advises; the Coordinator checks the review it names.
+        if (input.assignment.kind !== 'advisor') return denied('only an advisor gives advice');
+        if (!['nit', 'concern', 'blocker'].includes(String(args.severity)))
+          return refuse('SCHEMA_INVALID', 'severity is nit, concern or blocker');
+        if (typeof args.note !== 'string' || !args.note.trim() || args.note.length > 1000)
+          return refuse('SCHEMA_INVALID', 'note must be 1 to 1000 characters');
         return allow;
       }
       case 'read_artifact': {

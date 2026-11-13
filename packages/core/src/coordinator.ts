@@ -1,5 +1,6 @@
 import type { McpChallenge } from '@corral/contracts';
 import {
+  type AdvisorReviewRequest,
   type AgentAdapter,
   type AgentHandle,
   type AgentHost,
@@ -118,6 +119,21 @@ import {
   runGates,
   type ToolGateView,
 } from './admission/index.ts';
+import { resolveDelivery } from './advisor/channel.ts';
+import { buildReviewInput, countsForReview, type ReviewCursor } from './advisor/delta.ts';
+import { type AdviceGuardState, admit, beginReview, emptyGuard } from './advisor/guard.ts';
+import {
+  type AdvisorAction,
+  type AdvisorSchedule,
+  type AdvisorStep,
+  advisorSchedule,
+  advisorsSettled,
+  onAdvisorStopped,
+  onExecutionEnded,
+  onFlowEnded,
+  onModelFinished,
+  onReviewEnded,
+} from './advisor/service.ts';
 import {
   canReadArtifactBody,
   canReleaseArtifactBodies,
@@ -133,7 +149,7 @@ import {
 import { type AutoStart, autoDefinition } from './auto-team.ts';
 import { canonicalJson } from './canonical-json.ts';
 import { BuiltInCheckRunner, CHECK_ROLE_ID, CHECKS_INPUT, checkRole } from './check-runner.ts';
-import type { CompiledPlan } from './compiler/index.ts';
+import type { AdvisorPlan, CompiledPlan } from './compiler/index.ts';
 import { type InstallationPolicy, limitViolations, SPEC_HARD_CAPS } from './config.ts';
 import {
   checkpointReferences,
@@ -585,6 +601,35 @@ interface LiveRun {
   boundaryWaiters: Set<() => void>;
   cancelListeners: Map<string, Set<() => void>>;
   toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
+  /** The run's advisors (features/advisor.md); empty when the definition has none. */
+  advisors: AdvisorRuntime;
+}
+
+/** What the Coordinator keeps of its advisors while the run is open; never in the event log. */
+interface AdvisorRuntime {
+  schedule: AdvisorSchedule;
+  /** By advisor node. */
+  advisors: Map<string, AdvisorState>;
+  /** What each watched execution's last review read up to; a retried execution has none. */
+  cursors: Map<string, ReviewCursor>;
+  /** Advisor executions, by execution id, to their node. */
+  byExecution: Map<string, string>;
+}
+
+interface AdvisorState {
+  plan: AdvisorPlan;
+  executionId: string | null;
+  attemptNo: number;
+  /** Keyed by the advice's normalized text, which no event carries: kept in memory only. */
+  guard: AdviceGuardState;
+  /** The review the advisor is working on, with the model requests it made for it. */
+  review: { request: AdvisorReviewRequest; requests: number; ended: boolean } | null;
+  /** A review handed over before the advisor asked for it. */
+  pending: AdvisorReviewRequest | null;
+  /** The advisor waiting in `nextReview`. */
+  waiter: ((review: AdvisorReviewRequest | null) => void) | null;
+  /** The flow ended with nothing left to review: the next ask ends the advisor. */
+  done: boolean;
 }
 
 interface OpenQuestion {
@@ -640,12 +685,49 @@ const WORKING: ReadonlySet<RunProjection['status']> = new Set(['running', 'await
 const deliveredText = (directive: DirectiveView) =>
   directiveWithAttachments(directive.text, directive.attachments);
 
-/** A directive as a worker receives it: its id, delivered text and origin. */
-const delivered = (directive: DirectiveView): DeliveredDirective => ({
+/**
+ * A directive as a worker receives it: its id, delivered text and origin, and for an advice its
+ * severity and the advisor's name.
+ */
+const delivered = (
+  directive: DirectiveView,
+  advisorName: (observerExecutionId: string) => string,
+): DeliveredDirective => ({
   directiveId: directive.directiveId,
   text: deliveredText(directive),
   origin: directive.origin,
+  ...(directive.advice
+    ? {
+        advice: {
+          severity: directive.advice.severity,
+          from: advisorName(directive.advice.observerExecutionId),
+        },
+      }
+    : {}),
 });
+
+function advisorRuntime(plans: Readonly<Record<string, AdvisorPlan>>): AdvisorRuntime {
+  return {
+    schedule: advisorSchedule(plans),
+    advisors: new Map(
+      Object.values(plans).map((plan) => [
+        plan.nodeId,
+        {
+          plan,
+          executionId: null,
+          attemptNo: 0,
+          guard: emptyGuard(),
+          review: null,
+          pending: null,
+          waiter: null,
+          done: false,
+        },
+      ]),
+    ),
+    cursors: new Map(),
+    byExecution: new Map(),
+  };
+}
 
 /** Error text handed to a model: a retry's last error, or what an error path is told. */
 const clip = (text: string) => text.slice(0, 2000);
@@ -2157,6 +2239,7 @@ export class Coordinator {
       boundaryWaiters: new Set(),
       cancelListeners: new Map(),
       toolOutcomes: new Map(),
+      advisors: advisorRuntime(planned.plan.advisors),
     };
 
     const { events, projection } = this.prepare(run, [
@@ -2596,11 +2679,12 @@ export class Coordinator {
     }
     try {
       if (command.type === 'steer') return this.steer(command, payloadHash);
-      // Advice is in the contract; its handling (features/advisor.md) is not built yet.
+      // Only an advisor's `advise` tool gives advice (features/advisor.md); the refusal is not
+      // stored, so it cannot take the command id of a later advice.
       if (command.type === 'submit_advice')
-        return this.refuseControl(command, payloadHash, {
-          code: 'COMMAND_NOT_SUPPORTED',
-          message: 'advice is not handled yet',
+        return rejected(command.commandId, command.runId, {
+          code: 'CAPABILITY_DENIED',
+          message: "advice comes only from an advisor's advise tool",
         });
       if (command.type === 'resolve_approval') return this.resolveApproval(command, payloadHash);
       if (command.type === 'compact_context') return this.compactContext(command, payloadHash);
@@ -2857,7 +2941,7 @@ export class Coordinator {
     else if (
       target &&
       run.projection.tasks[target.taskId]?.status !== 'completed' &&
-      run.assignments.get(target.executionId)?.assignment.kind !== 'question' &&
+      this.requiredTask(run, target.executionId) &&
       !['pausing', 'paused'].includes(run.projection.status)
     )
       drafts.push(runState(run.projection.status, 'awaiting_user', 'required_task_cancelling'));
@@ -2983,7 +3067,7 @@ export class Coordinator {
         else if (
           target &&
           run.projection.tasks[target.taskId]?.status !== 'completed' &&
-          run.assignments.get(target.executionId)?.assignment.kind !== 'question'
+          this.requiredTask(run, target.executionId)
         ) {
           confirmed.push({
             type: 'task.blocked',
@@ -3279,6 +3363,546 @@ export class Coordinator {
     void outcome.then(() => this.wake(run));
     this.wake(run);
     return receipt;
+  }
+
+  // ── advisors (features/advisor.md) ───────────────────────────────────────
+
+  /** Reads a commit for the advisors' schedule. It only reads: a failure never reaches the run. */
+  private observeForAdvisors(run: LiveRun, events: readonly RunEvent[]) {
+    const advisors = run.advisors;
+    if (advisors.advisors.size === 0) return;
+    try {
+      for (const event of events) {
+        if (event.type === 'model.finished') {
+          const execution = run.projection.executions[event.payload.executionId];
+          if (!execution || !this.watched(run, execution.nodeId)) continue;
+          this.stepAdvisors(
+            run,
+            onModelFinished(advisors.schedule, {
+              nodeId: execution.nodeId,
+              executionId: execution.executionId,
+              counts: countsForReview(
+                this.store.readEvents(run.runId, 0),
+                event.payload.modelCallId,
+              ),
+            }),
+          );
+        } else if (event.type === 'execution.settled') {
+          const executionId = event.payload.executionId;
+          const advisor = advisors.byExecution.get(executionId);
+          if (advisor) {
+            this.advisorStopped(run, advisor);
+            continue;
+          }
+          const execution = run.projection.executions[executionId];
+          if (execution && this.watched(run, execution.nodeId))
+            this.stepAdvisors(
+              run,
+              onExecutionEnded(advisors.schedule, { nodeId: execution.nodeId, executionId }),
+            );
+        }
+      }
+    } catch {
+      // The schedule is the advisors' own; the commit it read stands.
+    }
+  }
+
+  /** Whether an advisor watches this node; advisors never watch one another. */
+  private watched(run: LiveRun, nodeId: string): boolean {
+    for (const state of run.advisors.advisors.values())
+      if (state.plan.watches.includes(nodeId)) return true;
+    return false;
+  }
+
+  /** Keeps the schedule's new state and runs what it decided, each on its own. */
+  private stepAdvisors(run: LiveRun, step: AdvisorStep) {
+    const settled = advisorsSettled(run.advisors.schedule);
+    run.advisors.schedule = step.state;
+    for (const action of step.actions) this.advisorAction(run, action);
+    // The run's end waits on the advisors settling; tell it when they do.
+    if (advisorsSettled(step.state) !== settled) this.wake(run);
+  }
+
+  private advisorAction(run: LiveRun, action: AdvisorAction) {
+    void Promise.resolve()
+      .then(() =>
+        action.kind === 'review'
+          ? this.startReview(run, action.advisorNodeId, action.executionId)
+          : this.finishAdvisor(run, action.advisorNodeId),
+      )
+      .catch(() => {
+        // A review that could not start stops its advisor, never the run.
+        if (!run.stop.aborted && !TERMINAL_RUN_STATUSES.has(run.projection.status))
+          this.advisorStopped(run, action.advisorNodeId);
+      });
+  }
+
+  /** Builds one review of a watched execution and hands it to its advisor. */
+  private async startReview(run: LiveRun, nodeId: string, targetExecutionId: string) {
+    const advisors = run.advisors;
+    const state = advisors.advisors.get(nodeId);
+    if (!state) return;
+    await this.boundary(run);
+    if (advisors.schedule.advisors[nodeId]?.current !== targetExecutionId) return;
+    const cursor = advisors.cursors.get(targetExecutionId) ?? null;
+    const built = buildReviewInput({
+      run: run.projection,
+      events: this.store.readEvents(run.runId, 0),
+      executionId: targetExecutionId,
+      cursor,
+      taskInput: cursor ? null : this.reviewTaskInput(run, targetExecutionId),
+      readResponse: (ref) => this.store.getArtifactText(run.runId, ref),
+      partialOutputs: readPartialOutputs(this.store, run.runId, run.projection),
+    });
+    if (built.cursor) advisors.cursors.set(targetExecutionId, built.cursor);
+    // Nothing new to read: no review, and the next one may start.
+    if (!built.text) {
+      this.stepAdvisors(run, onReviewEnded(advisors.schedule, nodeId));
+      return;
+    }
+    const request: AdvisorReviewRequest = {
+      reviewId: this.ids.next('review'),
+      targetExecutionId,
+      text: built.text,
+      maxRequests: state.plan.review.maxRequestsPerReview,
+    };
+    state.guard = beginReview(state.guard);
+    if (state.waiter) {
+      const wake = state.waiter;
+      state.waiter = null;
+      wake(request);
+      return;
+    }
+    state.pending = request;
+    if (state.executionId === null) this.startAdvisor(run, state);
+  }
+
+  /** The task a watched execution was given, as its first review reads it. */
+  private reviewTaskInput(run: LiveRun, executionId: string): string | null {
+    const input = run.startInputs.get(executionId);
+    if (!input) return null;
+    const assignment = input.assignment;
+    const text = [
+      ...(assignment.kind === 'delegated' ? [`## brief\n\n${assignment.brief}`] : []),
+      ...(assignment.kind === 'question' ? [`## question\n\n${assignment.body}`] : []),
+      ...input.inputs.map((source) => `## ${source.name}\n\n${source.text}`),
+    ].join('\n\n');
+    return text.trim() ? text : null;
+  }
+
+  /** The advisor's one execution, made at its first review. */
+  private startAdvisor(run: LiveRun, state: AdvisorState) {
+    const prepared = this.prepareExecution(run, {
+      nodeId: state.plan.nodeId,
+      iterationId: null,
+      parentExecutionId: null,
+      depth: 0,
+      assignment: { kind: 'advisor', watches: [...state.plan.watches] },
+      given: [],
+      inputs: [],
+    });
+    state.executionId = prepared.input.executionId;
+    state.attemptNo = prepared.input.attemptNo;
+    run.advisors.byExecution.set(prepared.input.executionId, state.plan.nodeId);
+    this.commit(run, prepared.drafts);
+    void this.launch(run, prepared);
+  }
+
+  /** The flow ended with this advisor's queue empty: its next ask for a review ends it. */
+  private finishAdvisor(run: LiveRun, nodeId: string) {
+    const state = run.advisors.advisors.get(nodeId);
+    if (!state) return;
+    state.done = true;
+    const wake = state.waiter;
+    state.waiter = null;
+    wake?.(null);
+    this.wake(run);
+  }
+
+  /** The advisor ended or failed: it does not review again in this run. */
+  private advisorStopped(run: LiveRun, nodeId: string) {
+    const state = run.advisors.advisors.get(nodeId);
+    if (!state) return;
+    state.review = null;
+    state.pending = null;
+    const wake = state.waiter;
+    state.waiter = null;
+    wake?.(null);
+    this.stepAdvisors(run, onAdvisorStopped(run.advisors.schedule, nodeId));
+  }
+
+  /**
+   * The advisor's side of a review: the review in progress ends, and the advisor rests in
+   * `waiting_message` until the next one, or is told it is done (null).
+   */
+  private async nextReview(
+    run: LiveRun,
+    input: AgentStartInput,
+  ): Promise<AdvisorReviewRequest | null> {
+    const { executionId } = input;
+    const state = run.advisors.advisors.get(input.nodeId);
+    if (!state || state.executionId !== executionId) return null;
+    if (state.review) {
+      state.review = null;
+      this.stepAdvisors(run, onReviewEnded(run.advisors.schedule, input.nodeId));
+    }
+    const open = () => {
+      const status = run.projection.executions[executionId]?.status;
+      return (
+        status !== undefined &&
+        !TERMINAL_EXECUTION_STATUSES.has(status) &&
+        !run.stop.aborted &&
+        !run.cancelRequested.has(executionId) &&
+        !run.closingExecutions.has(executionId) &&
+        !TERMINAL_RUN_STATUSES.has(run.projection.status)
+      );
+    };
+    const resume = (from: 'active' | 'waiting_message', to: 'active' | 'waiting_message') => {
+      if (!open() || run.projection.executions[executionId]?.status !== from) return;
+      this.commit(run, [
+        {
+          type: 'execution.state_changed',
+          executionId,
+          payload: {
+            executionId,
+            from,
+            to,
+            activity: to === 'active' ? 'model' : null,
+            waitingOn:
+              to === 'waiting_message'
+                ? {
+                    kind: 'message',
+                    targetIds: [...state.plan.watches],
+                    reasonCode: 'advisor_between_reviews',
+                    since: this.clock.nowIso(),
+                    deadline: null,
+                    required: false,
+                  }
+                : null,
+          },
+        },
+      ]);
+      this.maybePaused(run);
+    };
+    let request = state.pending;
+    state.pending = null;
+    if (!request) {
+      if (state.done || !open()) return null;
+      resume('active', 'waiting_message');
+      request = await new Promise<AdvisorReviewRequest | null>((resolve) => {
+        const listeners = run.cancelListeners.get(executionId) ?? new Set<() => void>();
+        run.cancelListeners.set(executionId, listeners);
+        const stop = () => {
+          listeners.delete(stop);
+          if (state.waiter === wake) state.waiter = null;
+          resolve(null);
+        };
+        const wake = (review: AdvisorReviewRequest | null) => {
+          listeners.delete(stop);
+          resolve(review);
+        };
+        listeners.add(stop);
+        state.waiter = wake;
+        if (!open()) stop();
+      });
+      resume('waiting_message', 'active');
+      if (!request || !open()) return null;
+    }
+    state.review = { request, requests: 0, ended: false };
+    return request;
+  }
+
+  /**
+   * Holds the run's end until every advisor is done: branches still stopping end first so their
+   * last reviews are scheduled, then each advisor finishes once its queue is empty.
+   */
+  private async advisorsFinished(run: LiveRun): Promise<boolean> {
+    const advisors = run.advisors;
+    if (advisors.advisors.size === 0) return true;
+    const over = () => run.stop.aborted || TERMINAL_RUN_STATUSES.has(run.projection.status);
+    const live = (e: RunProjection['executions'][string]) =>
+      !TERMINAL_EXECUTION_STATUSES.has(e.status);
+    const ending = () =>
+      Object.values(run.projection.executions).some(
+        (e) =>
+          live(e) &&
+          !advisors.byExecution.has(e.executionId) &&
+          run.cancelRequested.has(e.executionId),
+      );
+    while (ending()) {
+      await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
+      if (over()) return false;
+    }
+    this.stepAdvisors(run, onFlowEnded(advisors.schedule));
+    const busy = () =>
+      !advisorsSettled(advisors.schedule) ||
+      [...advisors.byExecution.keys()].some((id) => {
+        const execution = run.projection.executions[id];
+        return execution !== undefined && live(execution);
+      });
+    while (busy()) {
+      await new Promise<void>((resolve) => run.boundaryWaiters.add(resolve));
+      if (over()) return false;
+    }
+    return true;
+  }
+
+  /** The advisor role's name, as the model and the person see it. */
+  private advisorName(run: LiveRun, observerExecutionId: string): string {
+    const nodeId = run.projection.executions[observerExecutionId]?.nodeId;
+    const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
+    const roleId = node?.type === 'agent' ? node.roleId : undefined;
+    return run.snapshot.definition.roles.find((r) => r.id === roleId)?.name ?? nodeId ?? 'advisor';
+  }
+
+  /** A question's responder and an advisor have no required Task of the run. */
+  private requiredTask(run: LiveRun, executionId: string): boolean {
+    const kind = run.assignments.get(executionId)?.assignment.kind;
+    return kind !== 'question' && kind !== 'advisor';
+  }
+
+  /** The `advise` tool: the advisor's `submit_advice` for the execution under review. */
+  private async adviseTool(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    tool: ToolFrame,
+  ): Promise<ToolOutcome> {
+    const { args } = proposal;
+    const review = run.advisors.advisors.get(input.nodeId)?.review;
+    const command = RunCommand.safeParse({
+      schemaVersion: '0.1',
+      commandId: typeof args.commandId === 'string' ? args.commandId : `advice_${tool.toolCallId}`,
+      runId: run.runId,
+      type: 'submit_advice',
+      payload: {
+        observerExecutionId: input.executionId,
+        attemptNo: input.attemptNo,
+        targetExecutionId:
+          typeof args.targetExecutionId === 'string'
+            ? args.targetExecutionId
+            : (review?.request.targetExecutionId ?? input.executionId),
+        severity: args.severity,
+        note: args.note,
+      },
+    });
+    this.commit(run, tool.opening);
+    const receipt =
+      command.success && command.data.type === 'submit_advice'
+        ? this.submitAdvice(command.data)
+        : rejected(`advice_${tool.toolCallId}`, run.runId, schemaError(command.error!));
+    const error = receipt.error;
+    this.commit(
+      run,
+      tool.closing(
+        null,
+        error ? `${error.code}: ${error.message}` : null,
+        undefined,
+        undefined,
+        error?.code,
+      ),
+    );
+    if (error) return { ok: false, toolCallId: tool.toolCallId, error };
+    return {
+      ok: true,
+      toolCallId: tool.toolCallId,
+      result: {
+        commandId: receipt.commandId,
+        status: receipt.status,
+        ...(receipt.advice ? { advice: receipt.advice } : {}),
+      },
+    };
+  }
+
+  /**
+   * `submit_advice` (features/advisor.md, 계약): from the advisor's current attempt, about the
+   * execution under review. The gatekeeper first, then the delivery; a delivered advice is an
+   * `advice` directive on the same path as a person's, and a sent-again command gets its first
+   * result.
+   */
+  private submitAdvice(command: SubmitAdviceCommand): Receipt {
+    const payloadHash = hashOf(command);
+    const previous = this.store.getCommand(command.runId, command.commandId);
+    if (previous)
+      return previous.payloadHash === payloadHash
+        ? this.currentReceipt(previous)
+        : conflict(command.commandId, command.runId);
+    if (this.storageError) return unavailable(command.commandId, command.runId, this.storageError);
+    const { runId, commandId, payload } = command;
+    const target = `execution:${payload.targetExecutionId}`;
+    const stored = (receipt: Receipt, directiveId: string | null = null): StoredCommand => ({
+      scope: runId,
+      commandId,
+      payloadHash,
+      receipt,
+      runId,
+      directiveId,
+    });
+    const refuse = (code: CommandError['code'], message: string) => {
+      const receipt = rejected(commandId, runId, { code, message }, target);
+      this.persist(() => this.store.putCommand(stored(receipt)));
+      return receipt;
+    };
+    try {
+      const run = this.live.get(runId);
+      if (
+        !run ||
+        TERMINAL_RUN_STATUSES.has(run.projection.status) ||
+        run.projection.status === 'cancelling'
+      )
+        return refuse('TARGET_TERMINAL', 'the run has ended or is cancelling');
+      if (
+        command.expectedControlRevision !== undefined &&
+        command.expectedControlRevision !== run.projection.controlRevision
+      )
+        return refuse(
+          'STALE_CONTROL_REVISION',
+          `control revision is ${run.projection.controlRevision}`,
+        );
+      const nodeId = run.advisors.byExecution.get(payload.observerExecutionId);
+      const state = nodeId ? run.advisors.advisors.get(nodeId) : undefined;
+      const observer = run.projection.executions[payload.observerExecutionId];
+      if (
+        !state ||
+        !observer ||
+        state.executionId !== observer.executionId ||
+        observer.attemptNo !== payload.attemptNo ||
+        TERMINAL_EXECUTION_STATUSES.has(observer.status) ||
+        run.cancelRequested.has(observer.executionId)
+      )
+        return refuse('TARGET_TERMINAL', "this is not the advisor's current attempt");
+      if (state.review?.request.targetExecutionId !== payload.targetExecutionId)
+        return refuse('CAPABILITY_DENIED', 'advice names only the execution under review');
+      const execution = run.projection.executions[payload.targetExecutionId];
+      if (!execution)
+        return refuse('TARGET_NOT_FOUND', `execution ${payload.targetExecutionId} does not exist`);
+      const actor = { kind: 'agent' as const, id: observer.executionId };
+      const base = {
+        observerExecutionId: observer.executionId,
+        targetExecutionId: execution.executionId,
+        severity: payload.severity,
+      };
+      const record = (
+        drafts: EventDraft[],
+        receipt: Omit<Receipt, 'acceptedSeq' | 'relatedEventIds'>,
+        directiveId: string | null = null,
+      ) => {
+        this.commit(
+          run,
+          drafts.map((draft) => ({ ...draft, actor, commandId })),
+          (events) =>
+            this.store.putCommand(
+              stored(
+                {
+                  ...receipt,
+                  acceptedSeq: events[0]?.runSeq ?? null,
+                  relatedEventIds: events.map((event) => event.eventId),
+                },
+                directiveId,
+              ),
+            ),
+        );
+        const saved = this.store.getCommand(runId, commandId);
+        if (!saved) throw new Error(`command ${commandId} was not recorded`);
+        return this.currentReceipt(saved);
+      };
+      const suppress = (reason: 'noise' | 'duplicate' | 'over_budget' | 'target_terminal') =>
+        record(
+          [
+            {
+              type: 'advice.suppressed',
+              executionId: observer.executionId,
+              payload: { ...base, reason },
+            },
+          ],
+          {
+            commandId,
+            runId,
+            status: 'rejected',
+            target,
+            requestedBoundary: 'immediate',
+            advice: { outcome: 'suppressed', reason },
+          },
+        );
+      const admitted = admit(state.guard, payload);
+      if (admitted.outcome !== 'admitted') return suppress(admitted.outcome);
+      const handle = run.handles.get(execution.executionId);
+      const channel = resolveDelivery({
+        severity: payload.severity,
+        target: {
+          terminal:
+            TERMINAL_EXECUTION_STATUSES.has(execution.status) ||
+            run.cancelRequested.has(execution.executionId),
+          // The same lowering as a person's interrupt: an adapter that cannot cut a response.
+          interruptible: Boolean(handle?.interrupt),
+        },
+      });
+      // A note to an ended target is dropped without taking the gatekeeper's history or budget.
+      if ('suppressed' in channel) return suppress(channel.suppressed);
+      state.guard = admitted.state;
+      const adviceId = this.ids.next('advice');
+      if (channel.delivery === 'preserve')
+        return record(
+          [
+            {
+              type: 'advice.admitted',
+              executionId: observer.executionId,
+              payload: { ...base, adviceId, delivery: 'preserve', note: payload.note },
+            },
+          ],
+          {
+            commandId,
+            runId,
+            status: 'accepted',
+            target,
+            requestedBoundary: 'immediate',
+            advice: { outcome: 'admitted', adviceId, delivery: 'preserve' },
+          },
+        );
+      const { delivery } = channel;
+      const directiveId = this.ids.next('directive');
+      const receipt = record(
+        [
+          {
+            type: 'directive.accepted',
+            executionId: execution.executionId,
+            payload: {
+              directiveId,
+              targetExecutionId: execution.executionId,
+              text: payload.note,
+              delivery,
+              origin: 'advice',
+            },
+          },
+          {
+            type: 'advice.admitted',
+            executionId: observer.executionId,
+            payload: { ...base, adviceId, delivery, directiveId },
+          },
+        ],
+        {
+          commandId,
+          runId,
+          status: 'queued',
+          target,
+          requestedBoundary: delivery === 'interrupt' ? 'immediate' : 'next_request',
+          advice: { outcome: 'admitted', adviceId, delivery },
+        },
+        directiveId,
+      );
+      const directive: DeliveredDirective = {
+        directiveId,
+        text: payload.note,
+        origin: 'advice',
+        advice: { severity: payload.severity, from: this.advisorName(run, observer.executionId) },
+      };
+      if (delivery === 'interrupt' && handle?.interrupt && execution.status === 'active')
+        handle.interrupt(directive);
+      else handle?.pushDirective?.(directive);
+      return receipt;
+    } catch {
+      return unavailable(commandId, runId, this.storageError);
+    }
   }
 
   private wake(run: LiveRun) {
@@ -4037,6 +4661,7 @@ export class Coordinator {
           if (subscriber.runId === released.runId)
             void Promise.resolve().then(() => this.pump(subscriber));
     notifyObservers(this.observers, committedProjection, events, () => this.observerContext(run));
+    this.observeForAdvisors(run, events);
     return events;
   }
 
@@ -5031,9 +5656,12 @@ export class Coordinator {
     const node = definition.nodes.find((n) => n.id === spec.nodeId);
     const baseRole =
       spec.role ?? (node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId));
-    if (!node || !('inputBindings' in node) || node.type === 'output' || !baseRole) {
+    const advisor = node?.type === 'agent' && node.invocation === 'observer';
+    if (!node || (!('inputBindings' in node) && !advisor) || node.type === 'output' || !baseRole) {
       throw new Error(`plan references missing agent ${spec.nodeId}`);
     }
+    // An advisor takes no input bindings: what it reads comes with each review.
+    const bindings = 'inputBindings' in node ? (node.inputBindings ?? []) : [];
     const patch = run.nodePatches.get(spec.nodeId);
     // A router's or check's own role is not an Agent's: no patch or Loop policy reaches it.
     const { role, model } = spec.role
@@ -5071,9 +5699,7 @@ export class Coordinator {
       !contextRef &&
       !item &&
       spec.assignment.kind === 'scheduled' &&
-      (node.inputBindings ?? []).some(
-        (binding) => binding.kind === 'run_input' && binding.name === 'brief',
-      )
+      bindings.some((binding) => binding.kind === 'run_input' && binding.name === 'brief')
         ? SessionConversation.parse(
             JSON.parse(this.store.getArtifactText(run.runId, SESSION_CONVERSATION) ?? 'null'),
           )
@@ -5132,7 +5758,7 @@ export class Coordinator {
         ...spec.given,
         ...this.resolveInputs(
           run,
-          item ? [{ kind: 'run_input', name: 'criteria' }] : (node.inputBindings ?? []),
+          item ? [{ kind: 'run_input', name: 'criteria' }] : bindings,
           spec.iterationId,
         ),
       ],
@@ -5456,7 +6082,13 @@ export class Coordinator {
       return { ok: false, reason: 'the execution had already ended' };
     }
     const task = run.projection.tasks[input.taskId];
-    const submitted = task?.status === 'completed';
+    // An advisor submits nothing: it is done once the flow ended and it was told so.
+    const advisorDone =
+      input.assignment.kind === 'advisor' &&
+      settlement.outcome === 'succeeded' &&
+      run.advisors.advisors.get(input.nodeId)?.done === true &&
+      !run.cancelRequested.has(input.executionId);
+    const submitted = task?.status === 'completed' || advisorDone;
     // The Coordinator decides: an execution it cancelled ends cancelled unless it finished.
     const cancelled = run.cancelRequested.has(input.executionId) && !submitted;
     const outcome =
@@ -5471,11 +6103,19 @@ export class Coordinator {
       !cancelled && settlement.outcome === 'succeeded' && !submitted
         ? input.assignment.kind === 'question'
           ? 'the responder finished without reply'
-          : 'the agent finished without submit_result'
+          : input.assignment.kind === 'advisor'
+            ? 'the advisor finished before the flow ended'
+            : 'the agent finished without submit_result'
         : settlement.error;
     this.releaseSlots(run, input.executionId, settlement.terminationMode !== 'unconfirmed');
 
     const drafts: EventDraft[] = [];
+    if (advisorDone && outcome === 'succeeded')
+      drafts.push({
+        type: 'task.completed',
+        taskId: input.taskId,
+        payload: { taskId: input.taskId, completionEvidence: 'advisor finished its reviews' },
+      });
     drafts.push(
       {
         type: 'execution.settled',
@@ -5807,6 +6447,9 @@ export class Coordinator {
 
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
     await this.boundary(run);
+    // The run does not end while a review is queued or running: advisors finish first.
+    if (!(await this.advisorsFinished(run))) return;
+    await this.boundary(run);
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
     if (output?.type !== 'output') throw new Error('plan references a missing output node');
     const versions = output.inputBindings.flatMap((b) =>
@@ -5896,13 +6539,15 @@ export class Coordinator {
     });
     if (mode === 'rule') {
       const p = run.projection;
-      const unfinished = Object.values(p.tasks).some(
+      // An advisor's Task is not one of the run's required tasks.
+      const required = Object.values(p.tasks).filter((t) => !run.advisors.advisors.has(t.nodeId));
+      const unfinished = required.some(
         (t) => t.status !== 'completed' && !TERMINAL_TASK.has(t.status),
       );
       return choice(
         unfinished ? 'no' : 'yes',
         unfinished ? 'tasks_unfinished' : 'required_tasks_completed',
-        Object.keys(p.tasks).map((id) => ({ kind: 'task', id })),
+        required.map((t) => ({ kind: 'task', id: t.taskId })),
       );
     }
     const bound = (node?.type === 'decision' ? node.inputBindings : []).flatMap((b) =>
@@ -7590,7 +8235,13 @@ export class Coordinator {
           // Attachments are named here, like references; their bodies travel in the request.
           const attachments = directive.attachments?.map(namedTextAttachment);
           return [
-            { directiveId: id, text: directive.text, ...(attachments ? { attachments } : {}) },
+            {
+              directiveId: id,
+              text: directive.text,
+              origin: directive.origin,
+              ...(directive.advice ? { severity: directive.advice.severity } : {}),
+              ...(attachments ? { attachments } : {}),
+            },
           ];
         }),
         artifactReads: run.projection.artifactReads[executionId] ?? [],
@@ -7756,7 +8407,8 @@ export class Coordinator {
             ...(proposal.parentToolCallId ? { parentToolCallId: proposal.parentToolCallId } : {}),
             validatedArgs: error
               ? {}
-              : harness || ['ask_user', 'update_plan'].includes(proposal.name)
+              : // An advice's text is kept only where it is delivered or preserved, never here.
+                harness || ['ask_user', 'update_plan', 'advise'].includes(proposal.name)
                 ? {
                     hash: hashOf(proposal.args),
                     bytes: utf8ToBytes(canonicalJson(proposal.args)).length,
@@ -8089,6 +8741,8 @@ export class Coordinator {
           return this.replyTool(run, input, call.proposal, tool);
         case 'read_artifact':
           return this.readTool(run, input, call.proposal, tool);
+        case 'advise':
+          return this.adviseTool(run, input, call.proposal, tool);
       }
       if (call.proposal.name === 'submit_result') {
         let reason = this.recipeSubmission(
@@ -8418,7 +9072,7 @@ export class Coordinator {
         run.projection.directiveOrder.flatMap((id) => {
           const d = run.projection.directives[id];
           return d?.targetExecutionId === executionId && d.status === 'queued'
-            ? [delivered(d)]
+            ? [delivered(d, (id) => this.advisorName(run, id))]
             : [];
         }),
       checkpointContext: async (raw) => {
@@ -8681,6 +9335,13 @@ export class Coordinator {
             await this.boundary(run, executionId);
           } while (!WORKING.has(run.projection.status));
           requireActive();
+          // An advisor asks the model only inside a review, and at most its cap per review.
+          if (input.assignment.kind === 'advisor') {
+            const review = run.advisors.advisors.get(input.nodeId)?.review;
+            if (!review || review.ended || review.requests >= review.request.maxRequests)
+              throw new Error('the advisor has no review open for another model request');
+            review.requests += 1;
+          }
           const view: ModelGateView = { projection: run.projection, limits: run.limits, input };
           const request = runGates(this.gates['model.request'], view);
           if (request.kind === 'refuse') this.refuseModelRequest(run, request);
@@ -8880,7 +9541,7 @@ export class Coordinator {
                 d.status === 'queued' &&
                 (!record || record.directiveIds.includes(d.directiveId)),
             )
-            .flatMap((d) => (d ? [delivered(d)] : []));
+            .flatMap((d) => (d ? [delivered(d, (id) => this.advisorName(run, id))] : []));
           const directiveIds = queued.map((d) => d.directiveId);
           this.commit(run, [
             ...(record
@@ -9169,8 +9830,21 @@ export class Coordinator {
           if (responseRef) this.store.putArtifactText(run.runId, responseRef, observation.text);
           if (warningRef) this.store.putArtifactText(run.runId, warningRef, warning);
         });
+        // A review that used its requests ends here; the advisor asks for the next one.
+        const review =
+          input.assignment.kind === 'advisor'
+            ? run.advisors.advisors.get(input.nodeId)?.review
+            : undefined;
+        if (review && !review.ended && review.requests >= review.request.maxRequests) {
+          review.ended = true;
+          run.handles.get(executionId)?.endReview?.(review.request.reviewId);
+        }
         this.maybePaused(run);
       },
+
+      ...(input.assignment.kind === 'advisor'
+        ? { nextReview: () => this.nextReview(run, input) }
+        : {}),
 
       // a meeting answer or a final-reply role's last reply needs no extra model
       // call; the runtime's tool requests retain provenance.

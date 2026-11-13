@@ -1,4 +1,5 @@
 import type {
+  AdviceSeverity,
   DirectiveOrigin,
   DirectiveStatus,
   EventOf,
@@ -71,6 +72,8 @@ export interface DirectiveView {
   contextSnapshotId: string | null;
   modelCallId: string | null;
   reason: string | null;
+  /** An `advice` directive's advice: its severity and the advisor execution that gave it. */
+  advice?: { adviceId: string; severity: AdviceSeverity; observerExecutionId: string };
 }
 
 /** How a judgment's engine call ended physically, possibly after its request went out. */
@@ -289,6 +292,32 @@ export interface RunProjection {
   workflowBranches?: Record<string, WorkflowBranchView>;
   /** The latest `limit.reached` fact and its sequence, so the approval right after can name it. */
   lastLimit?: { runSeq: number } & EventPayload<'limit.reached'>;
+  /** Admitted advice by id (features/advisor.md); absent until an advisor gives one. */
+  advice?: Record<string, AdviceView>;
+  /** Dropped advice, in order: severity and reason only, never its text. */
+  suppressedAdvice?: SuppressedAdviceView[];
+}
+
+/** An admitted advice: delivered through its `advice` directive, or preserved with its note. */
+export interface AdviceView {
+  adviceId: string;
+  observerExecutionId: string;
+  targetExecutionId: string;
+  severity: AdviceSeverity;
+  delivery: 'next_request' | 'interrupt' | 'preserve';
+  /** The directive that carries it; null when preserved. */
+  directiveId: string | null;
+  /** A preserved advice's text; a delivered one's is its directive's. */
+  note: string | null;
+  acceptedSeq: number;
+}
+
+export interface SuppressedAdviceView {
+  observerExecutionId: string;
+  targetExecutionId: string;
+  severity: AdviceSeverity;
+  reason: EventPayload<'advice.suppressed'>['reason'];
+  runSeq: number;
 }
 
 export class ProjectionGapError extends Error {
@@ -940,10 +969,35 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'cancel.confirmed':
     case 'observation.late':
       return p;
-    // Advice is recorded but not projected yet (features/advisor.md).
-    case 'advice.admitted':
+    case 'advice.admitted': {
+      const { adviceId, observerExecutionId, targetExecutionId, severity, delivery } =
+        event.payload;
+      const directiveId = event.payload.delivery === 'preserve' ? null : event.payload.directiveId;
+      const advice: AdviceView = {
+        adviceId,
+        observerExecutionId,
+        targetExecutionId,
+        severity,
+        delivery,
+        directiveId,
+        note: event.payload.delivery === 'preserve' ? event.payload.note : null,
+        acceptedSeq: event.runSeq,
+      };
+      const next = { ...p, advice: { ...p.advice, [adviceId]: advice } };
+      return directiveId
+        ? updateDirective(next, directiveId, {
+            advice: { adviceId, severity, observerExecutionId },
+          })
+        : next;
+    }
     case 'advice.suppressed':
-      return p;
+      return {
+        ...p,
+        suppressedAdvice: [
+          ...(p.suppressedAdvice ?? []),
+          { ...event.payload, runSeq: event.runSeq },
+        ],
+      };
     default:
       // A stored log can hold event types this version no longer records (e.g. `budget.*`).
       return p;

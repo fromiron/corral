@@ -45,7 +45,12 @@ function play(start: AdvisorSchedule, inputs: Input[]) {
 
 const one = (interval = 3) =>
   advisorSchedule({
-    adv: { nodeId: 'adv', roleId: 'r', review: { interval, maxRequestsPerReview: 8 }, watches: ['w', 'x'] },
+    adv: {
+      nodeId: 'adv',
+      roleId: 'r',
+      review: { interval, maxRequestsPerReview: 8 },
+      watches: ['w', 'x'],
+    },
   });
 const review = (executionId: string): AdvisorAction => ({
   kind: 'review',
@@ -163,11 +168,7 @@ describe('advisor review schedule', () => {
       ],
       [[], [], [], []],
     ],
-    [
-      'the flow ending finishes an idle advisor',
-      [['flow']],
-      [[finish]],
-    ],
+    ['the flow ending finishes an idle advisor', [['flow']], [[finish]]],
     [
       'the flow ending waits for the queue and the running review',
       [
@@ -213,8 +214,18 @@ describe('advisor review schedule', () => {
 
   it('settles once every advisor finished or stopped', () => {
     const two = advisorSchedule({
-      a: { nodeId: 'a', roleId: 'r', review: { interval: 1, maxRequestsPerReview: 8 }, watches: ['w'] },
-      b: { nodeId: 'b', roleId: 'r', review: { interval: 1, maxRequestsPerReview: 8 }, watches: ['w'] },
+      a: {
+        nodeId: 'a',
+        roleId: 'r',
+        review: { interval: 1, maxRequestsPerReview: 8 },
+        watches: ['w'],
+      },
+      b: {
+        nodeId: 'b',
+        roleId: 'r',
+        review: { interval: 1, maxRequestsPerReview: 8 },
+        watches: ['w'],
+      },
     });
     let state = onModelFinished(two, { nodeId: 'w', executionId: 'e1', counts: true }).state;
     expect(advisorsSettled(state)).toBe(false);

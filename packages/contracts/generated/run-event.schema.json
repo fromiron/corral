@@ -8936,49 +8936,96 @@
           "const": "advice.admitted"
         },
         "payload": {
-          "type": "object",
-          "properties": {
-            "adviceId": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "adviceId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "observerExecutionId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "targetExecutionId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "nit",
+                    "concern",
+                    "blocker"
+                  ]
+                },
+                "delivery": {
+                  "type": "string",
+                  "enum": [
+                    "next_request",
+                    "interrupt"
+                  ]
+                },
+                "directiveId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                }
+              },
+              "required": [
+                "adviceId",
+                "observerExecutionId",
+                "targetExecutionId",
+                "severity",
+                "delivery",
+                "directiveId"
+              ],
+              "additionalProperties": false
             },
-            "observerExecutionId": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-            },
-            "targetExecutionId": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-            },
-            "severity": {
-              "type": "string",
-              "enum": [
-                "nit",
-                "concern",
-                "blocker"
-              ]
-            },
-            "delivery": {
-              "type": "string",
-              "enum": [
-                "next_request",
-                "interrupt",
-                "preserve"
-              ]
-            },
-            "directiveId": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            {
+              "type": "object",
+              "properties": {
+                "adviceId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "observerExecutionId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "targetExecutionId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "nit",
+                    "concern",
+                    "blocker"
+                  ]
+                },
+                "delivery": {
+                  "type": "string",
+                  "const": "preserve"
+                },
+                "note": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "adviceId",
+                "observerExecutionId",
+                "targetExecutionId",
+                "severity",
+                "delivery",
+                "note"
+              ],
+              "additionalProperties": false
             }
-          },
-          "required": [
-            "adviceId",
-            "observerExecutionId",
-            "targetExecutionId",
-            "severity",
-            "delivery"
-          ],
-          "additionalProperties": false
+          ]
         }
       },
       "required": [

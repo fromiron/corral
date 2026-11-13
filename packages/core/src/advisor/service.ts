@@ -99,7 +99,10 @@ export function onModelFinished(
       const count = (slot.counts[call.executionId] ?? 0) + 1;
       if (count < slot.interval)
         return { ...slot, counts: { ...slot.counts, [call.executionId]: count } };
-      return enqueue({ ...slot, counts: { ...slot.counts, [call.executionId]: 0 } }, call.executionId);
+      return enqueue(
+        { ...slot, counts: { ...slot.counts, [call.executionId]: 0 } },
+        call.executionId,
+      );
     },
     (slot) => slot.watches.includes(call.nodeId),
   );

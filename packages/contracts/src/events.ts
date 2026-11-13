@@ -541,23 +541,30 @@ export const DirectiveUndelivered = event(
     reason: z.string().min(1),
   }),
 );
+const AdmittedAdvice = {
+  adviceId: Identifier,
+  observerExecutionId: Identifier,
+  targetExecutionId: Identifier,
+  severity: AdviceSeverity,
+};
+/**
+ * A delivered advice's text is in its `advice` directive; a preserved one (its target had ended)
+ * is kept for the person in `note`, with no directive.
+ */
 export const AdviceAdmitted = event(
   'advice.admitted',
-  z
-    .strictObject({
-      adviceId: Identifier,
-      observerExecutionId: Identifier,
-      targetExecutionId: Identifier,
-      severity: AdviceSeverity,
-      /** `preserve`: the target had ended, so the advice is kept for the person, not delivered. */
-      delivery: z.enum(['next_request', 'interrupt', 'preserve']),
-      /** The `advice` directive that carries it; absent only when preserved. */
-      directiveId: Identifier.optional(),
-    })
-    .refine(
-      (value) => (value.delivery === 'preserve') === (value.directiveId === undefined),
-      'a delivered advice names its directive and a preserved one does not',
-    ),
+  z.discriminatedUnion('delivery', [
+    z.strictObject({
+      ...AdmittedAdvice,
+      delivery: z.enum(['next_request', 'interrupt']),
+      directiveId: Identifier,
+    }),
+    z.strictObject({
+      ...AdmittedAdvice,
+      delivery: z.literal('preserve'),
+      note: z.string().min(1).max(1000),
+    }),
+  ]),
 );
 /** A gatekept advice. It never carries the advice's text. */
 export const AdviceSuppressed = event(

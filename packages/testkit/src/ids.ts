@@ -19,6 +19,8 @@ const PREFIX: Record<IdKind, string> = {
   preparation: 'prep',
   route: 'route',
   decision: 'dec',
+  advice: 'adv',
+  review: 'rev',
 };
 
 /**

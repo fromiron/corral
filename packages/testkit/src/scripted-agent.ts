@@ -1,4 +1,5 @@
 import type {
+  AdvisorReviewRequest,
   AgentAdapter,
   AgentHandle,
   AgentHost,
@@ -6,6 +7,7 @@ import type {
   AgentStartInput,
   ParentQuestionMessage,
   RequestPermit,
+  ToolOutcome,
 } from '@corral/contracts';
 
 export interface ScriptedAgentOptions {
@@ -37,6 +39,23 @@ export interface ScriptedAgentOptions {
    * or raw text. Default: revise in round 1, pass after (demos and tests only).
    */
   review?: (input: AgentStartInput) => 'pass' | 'revise' | 'inconclusive' | string;
+  /**
+   * An advisor's advice in one review, given after its model requests. Default: none, so a
+   * review leaves nothing behind.
+   */
+  advise?: (review: AdvisorReviewRequest, input: AgentStartInput) => ScriptedAdvice[];
+  /** Model requests an advisor makes in one review. Default 1. */
+  reviewTurns?: (review: AdvisorReviewRequest, input: AgentStartInput) => number;
+  /** What each `advise` call returned. */
+  onAdvised?: (outcome: ToolOutcome, review: AdvisorReviewRequest) => void;
+}
+
+/** One `advise` call; the target defaults to the execution under review. */
+export interface ScriptedAdvice {
+  severity: 'nit' | 'concern' | 'blocker';
+  note: string;
+  targetExecutionId?: string;
+  commandId?: string;
 }
 
 export function defaultReply(turn: number, input: AgentStartInput, permit: RequestPermit): string {
@@ -105,11 +124,33 @@ export class ScriptedAgentAdapter implements AgentAdapter {
       return text;
     };
 
+    // The review the Coordinator ended because it used up its model requests.
+    let endedReview: string | null = null;
+
     const run = async (): Promise<AgentSettlement> => {
       try {
         const scripted = await this.options.script?.(input, host);
         if (scripted) return scripted;
         const notes: string[] = [];
+
+        // An advisor reviews what it is handed, one review at a time, until it is told it is done.
+        if (input.assignment.kind === 'advisor' && host.nextReview) {
+          for (;;) {
+            const review = await host.nextReview();
+            checkpoint();
+            if (!review) return { outcome: 'succeeded' };
+            const turns = this.options.reviewTurns?.(review, input) ?? 1;
+            for (let turn = 1; turn <= turns && endedReview !== review.reviewId; turn++)
+              await request(turn, [review.text]);
+            checkpoint();
+            if (endedReview === review.reviewId) continue;
+            for (const advice of this.options.advise?.(review, input) ?? []) {
+              const outcome = await host.invokeTool({ name: 'advise', args: { ...advice } });
+              this.options.onAdvised?.(outcome, review);
+              checkpoint();
+            }
+          }
+        }
 
         // A responder answers its question and is done.
         if (collaboration && input.assignment.kind === 'question' && tools.includes('reply')) {
@@ -244,6 +285,9 @@ export class ScriptedAgentAdapter implements AgentAdapter {
         cancelled = true;
       },
       waitForSettlement: () => settlement,
+      endReview: (reviewId) => {
+        endedReview = reviewId;
+      },
     };
   }
 }

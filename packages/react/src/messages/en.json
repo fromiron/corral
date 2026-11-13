@@ -274,7 +274,6 @@
   },
   "Validation": {
     "codes": {
-      "ADVISOR_NOT_SUPPORTED": "Advisors cannot run yet.",
       "ADVISOR_OUTSIDE_FLOW": "An advisor stays outside the flow: no connections, no Loop or Team, and no delegating or asking.",
       "ADVISOR_UNWATCHED": "{node} watches no one. Connect it to an agent it advises.",
       "ADVISOR_ADVISE_SOURCE": "Only an advisor can watch an agent. Start this advise connection at an advisor.",
