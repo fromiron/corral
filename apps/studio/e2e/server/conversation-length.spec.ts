@@ -39,9 +39,15 @@ test('a long conversation restores the request anchor without mounting the whole
   const timeline = page.getByTestId('chat-timeline');
   await expect(timeline).toContainText('Request 999');
   await expect.poll(() => timeline.locator('[data-testid^="entry-"]').count()).toBeLessThan(40);
-  await timeline.evaluate((box) => {
-    box.scrollTop = box.scrollHeight / 2;
-  });
+  // The person wheels up to the middle of the history: only their gesture leaves the end. In
+  // the margin beside the column, so no capped message box keeps the wheel to itself.
+  await timeline.hover({ position: { x: 16, y: 200 } });
+  const middle = () => timeline.evaluate((box) => box.scrollTop <= box.scrollHeight / 2);
+  for (let step = 0; step < 200 && !(await middle()); step += 1) {
+    await page.mouse.wheel(0, -3000);
+    await page.waitForTimeout(30);
+  }
+  expect(await middle()).toBe(true);
   await expect(page.getByRole('button', { name: 'Jump to latest' })).toBeVisible();
   const anchor = await timeline.evaluate((box) => {
     const top = box.getBoundingClientRect().top;
