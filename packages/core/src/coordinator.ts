@@ -2939,10 +2939,18 @@ export class Coordinator {
       return refuse('TARGET_NOT_FOUND', 'the cancellation target does not exist');
     if (target && TERMINAL_EXECUTION_STATUSES.has(target.status))
       return refuse('TARGET_TERMINAL', 'the cancellation target has ended');
+    // A run with only its last review left is not cancelled: its advisors alone stop, and the run
+    // ends as it would have without the review (features/advisor.md).
+    const advisorsOnly = scope.kind === 'run' && this.lastReviewOnly(run);
+    const stopsRun = scope.kind === 'run' && !advisorsOnly;
     const affected = new Set<string>(
       scope.kind === 'run'
         ? Object.values(run.projection.executions)
-            .filter((e) => !TERMINAL_EXECUTION_STATUSES.has(e.status))
+            .filter(
+              (e) =>
+                !TERMINAL_EXECUTION_STATUSES.has(e.status) &&
+                !(advisorsOnly && run.cancelRequested.has(e.executionId)),
+            )
             .map((e) => e.executionId)
         : target
           ? [target.executionId]
@@ -2959,7 +2967,7 @@ export class Coordinator {
       },
     ];
     // A cancel a rejection asked for gives the rejection as the reason; the person did not cancel.
-    if (scope.kind === 'run')
+    if (stopsRun)
       drafts.push(
         runState(run.projection.status, 'cancelling', run.endReason ?? 'cancel_requested'),
       );
@@ -3004,7 +3012,7 @@ export class Coordinator {
       'accepted',
       'safe_boundary',
     );
-    if (scope.kind === 'run') run.stop.aborted = true;
+    if (stopsRun) run.stop.aborted = true;
     for (const id of affected) this.requestCancel(run, id, command.payload.reason);
     for (const [questionId, q] of run.questions)
       if (affected.has(q.askerExecutionId) || affected.has(q.responderExecutionId)) {
@@ -3013,7 +3021,7 @@ export class Coordinator {
         this.commit(run, this.askerResumes(run, q.askerExecutionId, questionId, 'cancelled'));
         q.wake({ questionId, outcome: 'cancelled' });
       }
-    if (scope.kind === 'run') {
+    if (stopsRun) {
       // Every approval still waiting closes with the run, before the cancellation is confirmed.
       const closings = this.storageError ? [] : this.runEndClosings(run, 'cancelled');
       if (closings.length && !TERMINAL_RUN_STATUSES.has(run.projection.status))
@@ -3057,7 +3065,7 @@ export class Coordinator {
     });
     void Promise.all([
       ...ids.map((id) => run.executionOutcomes.get(id)),
-      ...(scope.kind === 'run' ? [this.stopOwnedServices(run)] : []),
+      ...(stopsRun ? [this.stopOwnedServices(run)] : []),
     ])
       .then(() => {
         cancelTimeout();
@@ -3084,7 +3092,7 @@ export class Coordinator {
             },
           },
         ];
-        if (scope.kind === 'run')
+        if (stopsRun)
           confirmed.push(
             ...this.closeRounds(run),
             runState(run.projection.status, 'cancelled', run.endReason ?? 'cancel_confirmed'),
@@ -3677,6 +3685,20 @@ export class Coordinator {
       if (over()) return false;
     }
     return true;
+  }
+
+  /**
+   * Only the last review holds the run's end: the flow reached its Output, every execution but the
+   * advisors has ended, an advisor is still at work, and nothing waits for the person (a run with
+   * an open approval or question is not `running`; a paused one is not either).
+   */
+  private lastReviewOnly(run: LiveRun): boolean {
+    const advisors = run.advisors;
+    if (!advisors.schedule.flowEnded || run.projection.status !== 'running') return false;
+    const live = Object.values(run.projection.executions).filter(
+      (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status),
+    );
+    return live.length > 0 && live.every((e) => advisors.byExecution.has(e.executionId));
   }
 
   /** The advisor role's name as its advice's heading carries it (features/advisor.md, 조언). */
