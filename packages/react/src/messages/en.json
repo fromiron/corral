@@ -273,6 +273,10 @@
       "INVALID_PORT": "This connection uses a port the node does not have.",
       "JOIN_SINGLE_INPUT": "A Join waits for two or more branches.",
       "LOOP_DEAD_END": "This path stops inside the Loop. Lead it to exit, repeat or an Output.",
+      "LOOP_MAX_ITERATIONS": "Set the Loop’s round limit, or make it run without one.",
+      "LOOP_LIMIT_RECIPE": "A Loop with a review recipe ends at the recipe’s attempts; it can only finish.",
+      "LOOP_REASONING_OFF": "Choose a reasoning level above off to raise to.",
+      "LOOP_UPPER_MODEL": "The Loop switches to a model that is not configured.",
       "LOOP_NO_BODY": "Connect “body” to the first step inside the Loop.",
       "LOOP_NO_EXIT": "Connect a branch inside the Loop to “exit”.",
       "LOOP_NO_REPEAT": "Connect a decision inside the Loop to “repeat”.",
@@ -584,15 +588,15 @@
       },
       "implement-review": {
         "name": "Implement and review",
-        "body": "Makes the change, then fixes it until the review passes, for up to two rounds."
+        "body": "Makes the change, then fixes it until the review passes, for up to two rounds, then goes on with the last change."
       },
       "plan-implement-review": {
         "name": "Plan, implement and review",
-        "body": "Plans the change first, then implements it until the review passes, for up to two rounds."
+        "body": "Plans the change first, then implements it until the review passes, for up to two rounds, then goes on with the last change."
       },
       "bug-fix": {
         "name": "Bug fix",
-        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds."
+        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds, then goes on with the last fix."
       },
       "parallel-review": {
         "name": "Parallel code review",
@@ -670,6 +674,7 @@
     "working": "Working now: {labels}",
     "idle": "Nothing is running",
     "loopRound": "{label}: round {round} of {max}",
+    "loopRoundUnlimited": "{label}: round {round}",
     "requests": "{count, plural, one {# model request} other {# model requests}} in flight",
     "executions": "Executions",
     "nodeExecutions": "{label} executions",
@@ -854,18 +859,14 @@
     "heading": "Waiting for you",
     "kind": {
       "final_output": "Final output",
-      "loop_cap": "Another review round?",
       "user_action": "Your decision",
-      "loop_stalled": "Loop stopped changing",
       "route": "Choose a route",
       "check": "Checks gave no verdict",
       "breakpoint": "Paused before {step}"
     },
     "explain": {
       "final_output": "Approve to make this exact version the output. A newer version would need its own approval.",
-      "loop_cap": "The Loop reached its round limit. Approve to run one more round, or reject to stop the run.",
       "user_action": "Approve to continue with these versions, or reject to stop.",
-      "loop_stalled": "This round submitted the same work as the round before. Approve to run one more round anyway, or reject to stop the run.",
       "route": "The router could not choose where the work goes next. Pick a route to continue, or stop the run.",
       "check": "The checks did not pass or fail: one errored, timed out, was stopped, or ran on a changed working copy. Approve to run them again, or reject to stop the run.",
       "breakpoint": "The step has not started. Continue starts it with the current settings."
@@ -885,8 +886,6 @@
     "then": {
       "user_action": "Approving continues the run with these versions; rejecting stops it.",
       "final_output": "Approving makes this version the run's final result; rejecting leaves the run without one.",
-      "loop_cap": "Approving runs the review once more; rejecting stops the run.",
-      "loop_stalled": "Approving runs one more round; rejecting stops the run.",
       "route": "Continues the run along this route.",
       "check": "Approving runs the checks again; rejecting stops the run.",
       "breakpoint": "Starts this step with the current settings; stopping cancels the run."
@@ -894,8 +893,6 @@
     "approveAs": {
       "user_action": "Continue with this version",
       "final_output": "Confirm as final result",
-      "loop_cap": "Review once more",
-      "loop_stalled": "Try once more",
       "route": "Continue along this route",
       "check": "Run checks again",
       "breakpoint": "Continue"
@@ -903,8 +900,6 @@
     "rejectAs": {
       "user_action": "Reject and stop",
       "final_output": "Do not confirm",
-      "loop_cap": "Stop here",
-      "loop_stalled": "Stop here",
       "route": "Stop here",
       "check": "Stop here",
       "breakpoint": "Stop the run"
@@ -1233,7 +1228,8 @@
     "reviewStale": "A review became stale",
     "roundStarted": "{loop}: round {no} started",
     "roundFinished": "{loop}: round finished ({outcome})",
-    "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} check {decision on the checks} route {decision on which way to go} loop_cap {decision on another round} other {decision}}",
+    "loopEscalated": "{loop}: {policy, select, raise_reasoning {reasoning raised for more rounds} upper_model {switched to {model} for more rounds} other {changed for more rounds}}",
+    "approvalRequested": "Waiting for your {kind, select, user_action {decision} final_output {approval of the final output} check {decision on the checks} route {decision on which way to go} other {decision}}",
     "approvalResolved": "You {decision, select, approve {approved} reject {rejected} other {decided}}",
     "approvalClosed": "Closed without a decision",
     "directiveAccepted": "Your instruction for {node} was accepted",
@@ -1266,7 +1262,7 @@
     "run_requested": "The run was requested",
     "validation_passed": "The Corral passed validation",
     "output_finalized": "The final output was produced",
-    "approval_requested": "{detail, select, final_output {Waiting for your approval of the final output} check {Waiting for your decision on the checks} route {Waiting for you to pick a route} loop_cap {Waiting for your decision on another round} other {Waiting for your decision}}",
+    "approval_requested": "{detail, select, final_output {Waiting for your approval of the final output} check {Waiting for your decision on the checks} route {Waiting for you to pick a route} other {Waiting for your decision}}",
     "pause_requested": "You asked to pause",
     "safe_boundary_reached": "Paused at a safe point",
     "resumed": "You resumed the run",
@@ -1282,7 +1278,7 @@
     "internal_error": "An internal error stopped the run",
     "needs_user": "{node} needs your decision",
     "runner_finished_without_output": "The graph ended without an output",
-    "loop_cap_declined": "You declined another round of {node}",
+    "loop_exhausted": "{node} ran out of rounds: {reason, select, cap_reached {it reached its round limit} stalled {it kept producing the same result} other {it stopped}}",
     "rejected": "You rejected {node}",
     "final_output_rejected": "You rejected the final output",
     "user_input_requested": "Waiting for you"
@@ -5660,6 +5656,7 @@
   "RunLoop": {
     "title": "{name} Loop",
     "summary": "{count} observed rounds · max {max}",
+    "summaryUnlimited": "{count} observed rounds · no round limit",
     "iterationLabel": "Round for {name}",
     "current": "Current: round {no} · {outcome}",
     "latest": "Follow latest round",
@@ -5706,6 +5703,7 @@
       "output": "Receives the final version"
     },
     "rounds": "up to {count, plural, one {# round} other {# rounds}}",
+    "roundsUnlimited": "no round limit",
     "inline": "Defined here",
     "reference": "Reference · v{revision}",
     "joinAll": "Waits for all",

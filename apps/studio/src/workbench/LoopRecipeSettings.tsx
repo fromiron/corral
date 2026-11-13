@@ -31,8 +31,9 @@ export function LoopRecipeSettings({ node, projectId }: { node: LoopNode; projec
         evaluatorRoleId: reviewers[0]?.roleId ?? '',
         checkIds: [],
         criteriaFiles: [],
-        maxAttempts: node.maxIterations,
-        maxRepairs: Math.max(0, node.maxIterations - 1),
+        // A recipe Loop exhausts at its cap; an unlimited one starts from one attempt.
+        maxAttempts: Math.min(10, node.maxIterations ?? 1),
+        maxRepairs: Math.max(0, Math.min(10, node.maxIterations ?? 1) - 1),
       },
   );
   const [paths, setPaths] = useState(

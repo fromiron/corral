@@ -74,8 +74,8 @@ export class LangGraphRunner implements GraphRunner {
     }
 
     const app = graph.compile();
-    // Loops have no system round cap, and a person may approve more rounds, so a run with a
-    // Loop has no step limit; without one, each step runs once.
+    // Loops have no system round cap, may have none of their own, and a limit policy may run
+    // more rounds, so a run with a Loop has no step limit; without one, each step runs once.
     const looping = Object.keys(plan.loops).length > 0;
     const final = (await app.invoke(
       { target: entryTarget(plan), rounds: {}, result: null },

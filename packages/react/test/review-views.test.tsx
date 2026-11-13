@@ -91,7 +91,7 @@ describe('approvals and reviews in Studio', () => {
     // UX-11: the approve button names what approving this step does.
     fireEvent.click(
       within(card).getByRole('button', {
-        name: /^(Continue with this version|Confirm as final result|Review once more)$/,
+        name: /^(Continue with this version|Confirm as final result)$/,
       }),
     );
     await until(session, (p) => p.approvals[approval?.approvalId ?? '']?.status === 'approved');

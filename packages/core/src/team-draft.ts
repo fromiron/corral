@@ -433,6 +433,14 @@ export function draftFromPlan(
       targetPort: 'exit',
     },
     { id: 'e6', source: 'review_loop', sourcePort: 'next', target: 'output', targetPort: 'in' },
+    // At the round cap nobody is asked: the last draft goes on with its review.
+    {
+      id: 'e7',
+      source: 'review_loop',
+      sourcePort: 'exhausted',
+      target: 'output',
+      targetPort: 'in',
+    },
   ];
   const definition: CorralDefinition = {
     ...base,

@@ -31,12 +31,6 @@ import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
 import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
-/** A Loop that stopped for a stall is asked about in its own words. */
-const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
-  approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
-    ? `loop_${approval.loopStop}`
-    : approval.kind;
-
 /** One line of a call's main subject: the command it runs or the file it touches. */
 function callSubject(plan: ToolPermissionPlan): string | null {
   if (plan.descriptor.source !== 'corral') return null;
@@ -240,7 +234,7 @@ export function ApprovalPanel({
   const kindText = (approval: ApprovalView) =>
     approval.limit
       ? limitText(approval.limit)
-      : t(`kind.${copyKey(approval)}`, {
+      : t(`kind.${approval.kind}`, {
           step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
         });
   const toolLabel = (name: string) => (tTurn.has(`tool.${name}`) ? tTurn(`tool.${name}`) : name);
@@ -320,7 +314,7 @@ export function ApprovalPanel({
             )
           : approval.limit
             ? t('limit.reject')
-            : t(`rejectAs.${copyKey(approval)}`)}
+            : t(`rejectAs.${approval.kind}`)}
       </Button>
       {approval.tool?.purpose === 'tool' ? (
         // The same call again needs no answer until the run ends; a command is matched by its
@@ -357,7 +351,7 @@ export function ApprovalPanel({
               )
             : approval.limit
               ? t('limit.then')
-              : t(`then.${copyKey(approval)}`)
+              : t(`then.${approval.kind}`)
         }
         onClick={() => void decide(approval.approvalId, 'approve')}
       >
@@ -371,7 +365,7 @@ export function ApprovalPanel({
             )
           : approval.limit
             ? t('limit.approve')
-            : t(`approveAs.${copyKey(approval)}`)}
+            : t(`approveAs.${approval.kind}`)}
       </Button>
     </>
   );
@@ -555,7 +549,7 @@ export function ApprovalPanel({
               ) : null}
               {compact || approval.tool ? null : (
                 <p className="text-muted-foreground">
-                  {approval.limit ? t('limit.explain') : t(`explain.${copyKey(approval)}`)}
+                  {approval.limit ? t('limit.explain') : t(`explain.${approval.kind}`)}
                 </p>
               )}
               {/* A run limit is about the run, not a version: it names no subject or criteria. */}

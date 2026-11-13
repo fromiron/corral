@@ -211,8 +211,6 @@ const tool = (purpose: 'tool' | 'lsp' | 'check') => ({
 // leave for each: the card is drawn in the conversation, with native buttons the keyboard reaches.
 it.each([
   ['final output', { kind: 'final_output' }],
-  ['another round', { kind: 'loop_cap', loopStop: 'cap_reached' }],
-  ['stalled loop', { kind: 'loop_cap', loopStop: 'stalled' }],
   ['decision', { kind: 'user_action' }],
   [
     'route',

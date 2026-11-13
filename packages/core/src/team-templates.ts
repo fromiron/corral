@@ -300,6 +300,14 @@ class Shape {
       .edge('review_decision', 'revise', 'review_loop', 'repeat')
       .edge('review_decision', 'pass', 'review_loop', 'exit');
   }
+
+  /**
+   * The review Loop goes on to `target` whether its review passed or its rounds ran out: at the
+   * cap nobody is asked, and the last round's candidate goes on with its review.
+   */
+  afterReviewLoop(target: string) {
+    return this.edge('review_loop', 'next', target).edge('review_loop', 'exhausted', target);
+  }
 }
 
 interface Built {
@@ -318,10 +326,7 @@ const SHAPES: Record<TeamTemplateId, (shape: Shape) => Built> = {
   // The implementer works in the review Loop, so a sent-back change is fixed and reviewed again.
   'implement-review': (shape) =>
     done(
-      shape
-        .reviewLoop('implement', [brief])
-        .output('implement')
-        .edge('review_loop', 'next', 'output'),
+      shape.reviewLoop('implement', [brief]).output('implement').afterReviewLoop('output'),
       'review_loop',
     ),
   'plan-implement-review': (shape) =>
@@ -331,7 +336,7 @@ const SHAPES: Record<TeamTemplateId, (shape: Shape) => Built> = {
         .reviewLoop('implement', [brief, read('plan', 'plan')])
         .output('implement')
         .edge('plan', 'out', 'review_loop', 'enter')
-        .edge('review_loop', 'next', 'output'),
+        .afterReviewLoop('output'),
       'plan',
     ),
   'bug-fix': (shape) =>
@@ -341,7 +346,7 @@ const SHAPES: Record<TeamTemplateId, (shape: Shape) => Built> = {
         .reviewLoop('fix', [brief, read('investigate', 'cause')], [read('investigate', 'cause')])
         .output('fix')
         .edge('investigate', 'out', 'review_loop', 'enter')
-        .edge('review_loop', 'next', 'output'),
+        .afterReviewLoop('output'),
       'investigate',
     ),
   // The scope's one output fans out to both reviews; the Join waits for both.

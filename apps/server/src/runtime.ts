@@ -38,6 +38,7 @@ export const systemTimers: Scheduler = {
     timer.unref?.();
     return () => clearTimeout(timer);
   },
+  turn: () => new Promise((resolve) => setImmediate(resolve)),
 };
 
 export const systemClock: Clock = {

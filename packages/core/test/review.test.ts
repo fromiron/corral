@@ -289,17 +289,27 @@ describe('review loop and approvals', () => {
     }
   });
 
-  it('at the Loop cap no third round starts without the person, who is told why', async () => {
+  it('at the Loop cap no third round starts: the last draft goes on to the team approval', async () => {
     const alwaysRevise = { review: () => 'revise' as const };
     const transport = runtime(alwaysRevise);
     const { runId } = await start(transport);
-    const atCap = await waitForProjection(transport, runId, (p) => pending(p) !== null);
-    expect(pending(atCap)).toMatchObject({ kind: 'loop_cap', loopStop: 'cap_reached' });
-    expect(executionsOf(atCap, 'write')).toHaveLength(2);
+    const atApproval = await waitForProjection(transport, runId, (p) => pending(p) !== null);
+    // The first question is the team's own approval step, about the last round's draft.
+    expect(Object.keys(atApproval.approvals)).toHaveLength(1);
+    const [, write2] = executionsOf(atApproval, 'write');
+    expect(pending(atApproval)?.subjectVersionIds[0]).toBe(
+      submittedBy(atApproval, write2?.executionId),
+    );
+    const [, round2] = atApproval.loopIterations.review_loop ?? [];
+    expect(atApproval.iterations[round2 ?? '']?.outcome).toBe('cap_reached');
+    // Then the Output's own final approval.
+    await resolve(transport, runId, 'approve');
+    await resolve(transport, runId, 'approve');
+    const final = await waitForProjection(transport, runId, done);
+    expect(final.status).toBe('succeeded');
+    expect(executionsOf(final, 'write')).toHaveLength(2);
     await drain();
     expect(executionsOf((await transport.getSnapshot(runId)).projection, 'write')).toHaveLength(2);
-    await resolve(transport, runId, 'approve');
-    await waitForProjection(transport, runId, (p) => executionsOf(p, 'write').length === 3);
   });
 
   it('an approval applies once and refuses a stale subject', async () => {
