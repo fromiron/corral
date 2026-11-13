@@ -131,8 +131,9 @@ export function WorkTab({
         composer={
           <Composer
             key={session.sessionId}
+            // The run view showing the running run asks its own confirmation.
             runControlsOwnConfirmation={
-              currentSearch.panel !== 'run' || selectedRunId === active?.runId
+              currentSearch.panel === 'run' && selectedRunId === active?.runId
             }
             session={session}
             team={team}

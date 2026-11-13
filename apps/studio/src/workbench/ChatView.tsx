@@ -14,7 +14,6 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { changePreferences, preferences } from './preferences.ts';
-import { ConnectionNotice } from './session/SessionConnection.tsx';
 
 /**
  * How much of each reply the conversation shows; a display preference kept in the page's menu
@@ -652,7 +651,7 @@ export function ChatView({
         data-testid="chat-composer"
         data-composer-surface={floating ? 'floating' : 'inline'}
         className={cn(
-          'chat-composer flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-4 sm:px-6',
+          'chat-composer flex min-h-0 max-h-[calc(100%_-_3rem)] shrink-0 flex-col px-3 pb-3 sm:px-6',
           floating
             ? // The bottom edge of the conversation, over its scrolling area and inside the view,
               // on the page's own floor; the scrollbar beside it stays uncovered.
@@ -687,8 +686,6 @@ export function ChatView({
         ) : null}
         <div className="-m-1 min-h-0 overflow-y-auto overscroll-contain p-1">
           <div className="mx-auto w-full max-w-(--chat-composer-width)">
-            {/* Where the activity bar will say it (U7); until then the same line, first. */}
-            <ConnectionNotice />
             {composer}
           </div>
         </div>

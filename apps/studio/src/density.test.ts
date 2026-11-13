@@ -179,6 +179,8 @@ const keptSmall: { file: string; near: RegExp }[] = [
     near: /'attachmentActions'/,
   },
   { file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx', near: /'workFolder'/ },
+  // Stop in Send's place: the kit composer's own Stop is its icon-sm send button.
+  { file: 'apps/studio/src/workbench/session/Composer.tsx', near: /composer-stop/ },
   { file: 'apps/studio/src/workbench/WorkFolderNotice.tsx', near: /working-copy-chip/ },
   { file: 'apps/studio/src/workbench/LiveVoice.tsx', near: /ref=\{trigger\}/ },
   // The copy button over a code block: an icon button inside a field.

@@ -6,7 +6,7 @@ import {
 } from '@corral/contracts';
 import type { CorralSummary, RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { useCancelConfirmation } from '@corral/react';
-import { InputMessage, Tooltip } from '@corral/react/design-kit';
+import { Elevated, InputMessage, KitButton, Tooltip, useShape } from '@corral/react/design-kit';
 import { useRouter } from '@tanstack/react-router';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -28,8 +28,7 @@ import { clearSentComposerDraft, readComposerDraft } from '../sessionDraft.ts';
 import { useMentionSearch } from '../useMentionSearch.ts';
 import { useModelProfiles, useTeamRoles } from '../useModels.ts';
 import type { FolderAccess } from '../WorkFolderNotice.tsx';
-import { ComposerDock, ComposerPlan } from '../widgets/ChatWidgets.tsx';
-import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
+import { ComposerActivity } from './ComposerActivity.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 import { composerAvailability } from './composer/availability.ts';
@@ -61,6 +60,7 @@ import { useComposerIntent } from './composer/useIntent.ts';
 import { useLatestResult, useSteerTargets } from './composer/useRunState.ts';
 import { useSessionSettings } from './composer/useSessionSettings.ts';
 import { useVoiceTranscript } from './composer/voice.ts';
+import { useActiveExecutionCount } from './useActivity.ts';
 
 export function Composer({
   session,
@@ -109,11 +109,11 @@ export function Composer({
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
   const format = useFormatter();
-  // The Todo the one-line status expands, inside the input surface.
-  const planRegion = useId();
   const destinationId = useId();
   const tr = useTranslations('Reins');
   const tStatus = useTranslations('RunStatus');
+  const tActivity = useTranslations('Activity');
+  const shape = useShape();
   const services = useServices();
   const { mode, live } = services;
   const prefs = usePreferences();
@@ -170,8 +170,6 @@ export function Composer({
     'none',
   );
   const roles = useTeamRoles(team);
-  // A plan can move between the steering shell and the next-request surface at settlement.
-  const [planAllKey, setPlanAllKey] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (session.entries.length === 0) input.current?.focus();
@@ -356,6 +354,13 @@ export function Composer({
     setConfirmStop(ownActive !== null);
   };
   const runDeps = { services, newId: newCommandId, setError, onChange };
+  // Stop asks first only while two or more executions work: one stop then ends them all.
+  const activeExecutions = useActiveExecutionCount(going?.runId ?? null);
+  const stopRun = () => {
+    if (!ownActive) return;
+    if (activeExecutions >= 2) setConfirmStop(true);
+    else void runCommand(runDeps, 'cancel', ownActive.runId);
+  };
   const queue = useQueuedRequests({
     deps: {
       ...startDeps,
@@ -441,6 +446,8 @@ export function Composer({
     <InputMessage
       toolbar="single"
       data-slot="composer-host"
+      className="gap-0 bg-transparent pt-0 shadow-none"
+      style={{ boxShadow: 'none' }}
       role="region"
       aria-label={t('requestLabel')}
       inputRef={input}
@@ -452,20 +459,37 @@ export function Composer({
       sendDisabled={busy || !text.trim() || unavailable}
       sendLabel={t('send')}
       sendDescription={sendMeaning}
-      renderAction={(action) => (
-        <>
-          <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
-            {action}
+      renderAction={(action) =>
+        going && !text.trim() ? (
+          // Send's place while nothing is written and the run goes (composer-flow.md "활동 바").
+          <Tooltip content={tActivity('stop')}>
+            <KitButton
+              type="button"
+              variant="primary"
+              size="icon-sm"
+              data-testid="composer-stop"
+              aria-label={tActivity('stop')}
+              disabled={going.status === 'cancelling'}
+              onClick={stopRun}
+            >
+              <span aria-hidden className="h-3 w-3 rounded-sm bg-current" />
+            </KitButton>
           </Tooltip>
-          <SendMenu
-            situation={situation}
-            sendKey={prefs.sendKey}
-            disabled={busy || !text.trim()}
-            onSend={(choice) => void send({ choice })}
-            onClose={backToInput}
-          />
-        </>
-      )}
+        ) : (
+          <>
+            <Tooltip content={sendMeaning} shortcut={sendKeyLabel(prefs.sendKey)}>
+              {action}
+            </Tooltip>
+            <SendMenu
+              situation={situation}
+              sendKey={prefs.sendKey}
+              disabled={busy || !text.trim()}
+              onSend={(choice) => void send({ choice })}
+              onClose={backToInput}
+            />
+          </>
+        )
+      }
       contentSlot={
         <ComposerNotices
           sessionId={session.sessionId}
@@ -585,49 +609,64 @@ export function Composer({
   );
   return (
     <ComposerSurface.Shell>
-      {/* One line above the input: intent, an ended run, plan, changes, activity, held items,
-          Overview; the Todo it expands sits directly under it. */}
-      <ComposerDock
-        planId={planRegion}
-        plan={
-          <ComposerPlan
-            id={planRegion}
-            showAllKey={planAllKey}
-            onShowAllKeyChange={setPlanAllKey}
-          />
-        }
-        lead={
+      {/* The one raised surface, the column's width: the activity bar, what waits to start, the
+          notes for the next request, and the input with its tool line. */}
+      <Elevated
+        offset={2}
+        data-slot="composer-card"
+        className={`${shape.container} flex min-w-0 flex-col transition-shadow has-[textarea:focus-visible]:ring-1 has-[textarea:focus-visible]:ring-focus-ring`}
+      >
+        <ComposerActivity
+          sessionId={session.sessionId}
+          ownActive={going}
+          target={going ? steerTarget || null : null}
+          targets={targets}
+          onJoin={(id) => {
+            chooseTarget(id);
+            input.current?.focus();
+          }}
+          onStop={stopRun}
+          onPause={() => void runCommand(runDeps, 'pause', ownActive?.runId)}
+          onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
+          onViewRun={onViewRun}
+          request={
+            ownActive
+              ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)
+              : undefined
+          }
+          viewingOther={Boolean(viewingOtherRun)}
+        />
+        {/* The next request's own notes, only while there are any: the pre-run auto choice, the
+            result a question is about, what this send does not carry. */}
+        <div className="flex min-w-0 flex-nowrap items-center gap-1 px-1.5 empty:hidden">
           <ComposerHeader
             choosingAuto={choosingAuto}
             onCancelAuto={cancelAuto}
             intent={intent}
             about={latest?.label ?? null}
           />
-        }
-        note={
-          heldForNew.length ? (
+          {heldForNew.length ? (
             <span role="status" className="min-w-0 truncate px-2 text-caption text-warning">
               {tc('heldForNew', {
                 items: format.list(heldForNew.map((item) => tc(`held.${item}`))),
               })}
             </span>
-          ) : null
-        }
-        summary={<OverviewAccess />}
-      />
-      <PreRun session={session} team={team} isAuto={isAuto} runMode={runMode} intent={intent} />
-      <ComposerQueue
-        queued={queued}
-        autoStart={autoStart}
-        // Auto start is the server's; the browser demo has none, so it has no such setting.
-        autoStartShown={services.mode !== 'browser'}
-        onAutoStartChange={(value) => void updateAutoStart(value)}
-        startDisabled={Boolean(active) || busy || savedRequestUnavailable}
-        onStart={(entry) => void queue.start(entry)}
-        onEdit={(entry) => void queue.edit(entry)}
-        onRemove={(entry) => void queue.remove(entry)}
-      />
-      {compose}
+          ) : null}
+        </div>
+        <PreRun session={session} team={team} isAuto={isAuto} runMode={runMode} intent={intent} />
+        <ComposerQueue
+          queued={queued}
+          autoStart={autoStart}
+          // Auto start is the server's; the browser demo has none, so it has no such setting.
+          autoStartShown={services.mode !== 'browser'}
+          onAutoStartChange={(value) => void updateAutoStart(value)}
+          startDisabled={Boolean(active) || busy || savedRequestUnavailable}
+          onStart={(entry) => void queue.start(entry)}
+          onEdit={(entry) => void queue.edit(entry)}
+          onRemove={(entry) => void queue.remove(entry)}
+        />
+        {compose}
+      </Elevated>
       {home && corrals.length > 0 ? (
         <StartSuggestions
           corrals={corrals}

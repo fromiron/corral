@@ -166,6 +166,7 @@ async function mount({
     definition: definition(),
     streamError: null,
     missingRunId: null,
+    events: [],
     open: vi.fn(async () => {}),
     ...runState,
   }));
@@ -530,9 +531,16 @@ describe('the key line', () => {
 
   it('keeps the send button named Send and describes the send', async () => {
     const f = await mount();
+    // With nothing written while the run goes, Stop takes Send's place (composer-flow.md "활동 바").
+    expect(f.container.querySelector('button[aria-label="Send"]')).toBeNull();
+    expect(
+      f.container.querySelector(`button[aria-label="${messages.Activity.stop}"]`),
+    ).not.toBeNull();
+    await f.type('Keep going');
     const send = f.container.querySelector('button[aria-label="Send"]');
     expect(send).not.toBeNull();
     expect(send?.getAttribute('aria-description')).toContain(messages.Composer.sendAs.join);
+    expect(f.container.querySelector('[data-testid="composer-stop"]')).toBeNull();
   });
 });
 
@@ -641,7 +649,10 @@ describe('a queued request taken back to edit', () => {
 describe('auto start', () => {
   it('has no switch in the browser demo, which has no server to start a saved request', async () => {
     const f = await mount({ queued: [saved], mode: 'browser' });
-    expect(f.container.querySelector('section')?.textContent).toContain(saved.text);
+    expect(
+      f.container.querySelector(`section[aria-label="${messages.Sessions.queueHeading}"]`)
+        ?.textContent,
+    ).toContain(saved.text);
     expect(f.container.querySelector('[role="switch"]')).toBeNull();
   });
 
@@ -682,8 +693,11 @@ describe('while the run’s record is read', () => {
       f.container.querySelector(`[aria-label="${messages.Composer.permissionMode.label}"]`),
     ];
     expect(settings()).toEqual([null, null]);
-    // The send button keeps its place.
+    // Send's place keeps its button: Stop while nothing is written, Send once something is.
+    expect(f.container.querySelector('[data-testid="composer-stop"]')).not.toBeNull();
+    await f.type('Keep going');
     expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    expect(settings()).toEqual([null, null]);
     // A next request, the send key's fallback, does show them once nothing can take a join.
     await act(async () =>
       f.store.setState({ runId: 'run_live', projection: projection({ exec_writer: 'succeeded' }) }),
