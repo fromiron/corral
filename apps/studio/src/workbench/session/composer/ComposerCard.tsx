@@ -51,6 +51,23 @@ export interface ComposerStop {
   onStop: () => void;
 }
 
+/**
+ * A menu or notice of the composer, once used, gives the focus back to the box: after the menu
+ * has put it back on its trigger, or let it fall to the page. A click that moved it elsewhere
+ * keeps it there.
+ */
+export function backToInput(input: RefObject<HTMLTextAreaElement | null>) {
+  requestAnimationFrame(() => {
+    const focused = document.activeElement;
+    if (
+      !focused ||
+      focused === document.body ||
+      focused.closest('[role="menu"], [data-slot="composer-host"]')
+    )
+      input.current?.focus();
+  });
+}
+
 const noMentions = async () => [];
 const same = (item: MentionItem) => item;
 
@@ -136,7 +153,8 @@ export function ComposerCard({
       }}
       sendDisabled={target.sendDisabled}
       sendLabel={sendLabel}
-      sendDescription={target.meaning}
+      // A description that only repeats the name is not read twice.
+      sendDescription={target.meaning === sendLabel ? undefined : target.meaning}
       renderAction={(action) => (
         // Stop takes Send's place alone: the menu beside it keeps its own, so the line holds still.
         <>

@@ -32,8 +32,8 @@ vi.mock('../workbench/MeetingEvidence.tsx', () => ({
 vi.mock('../workbench/ChatView.tsx', () => ({
   ChatDensityMenu: () => null,
   // The real view hides its timeline while a long header (the widened records) is read.
-  ChatView: ({ items, composer, header, children, expandedHeader }: any) => (
-    <div>
+  ChatView: ({ items, composer, header, children, expandedHeader, sent }: any) => (
+    <div data-sent={sent}>
       {header}
       <section data-testid="chat-timeline" hidden={expandedHeader}>
         {children}
@@ -66,6 +66,7 @@ vi.mock('@corral/react/design-kit', async (importOriginal) => ({
 }));
 
 const { MeetingPage } = await import('./MeetingPage.tsx');
+const { writeComposerDraft } = await import('../workbench/sessionDraft.ts');
 const { preferences } = await import('../workbench/preferences.ts');
 const { TopbarSlotContext } = await import('../workbench/TopbarSlot.tsx');
 const { registeredCommands } = await import('../commandRegistry.ts');
@@ -178,7 +179,7 @@ afterEach(async () => {
 async function mount(
   current: MeetingView,
   sessionChange: Partial<WorkSession> = {},
-  { narrow = false }: { narrow?: boolean } = {},
+  { narrow = false, compact = false }: { narrow?: boolean; compact?: boolean } = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   // Under 1024px the records open as a drawer over the conversation; `resize` crosses it.
@@ -186,6 +187,7 @@ async function mount(
   const listeners = new Set<() => void>();
   vi.stubGlobal('matchMedia', (query: string) => ({
     get matches() {
+      if (query === '(max-width: 639px)') return compact;
       return query === '(max-width: 1023px)' ? screen.narrow : false;
     },
     media: query,
@@ -748,7 +750,9 @@ it('a late refresh cannot replace a newer round view', async () => {
 });
 
 it('slow polling waits for the pending response before requesting another', async () => {
-  vi.useFakeTimers();
+  // Only the poll's clock: jsdom's animation frames run on intervals, and a faked one would not
+  // come back for the tests after this.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   const f = await mount(view({ rounds: [{ ...view().rounds[0]!, active: true }] }));
   let finish: (value: MeetingView) => void = () => {};
   f.meetings.view.mockReturnValueOnce(
@@ -866,12 +870,20 @@ it('keeps the meeting draft across navigation and remounts, isolated from other 
   expect(f.container.querySelector('[aria-label="evidenceSelected"]')?.textContent).toContain(
     'brief.txt',
   );
-  await act(async () => f.button('clearDraft')?.click());
+  // Each part of the draft is cleared where it is: the text in the box, the recipients by
+  // Auto, the evidence by its chip's ×. There is no separate Clear draft.
+  expect(f.button('clearDraft')).toBeUndefined();
+  await fill(must(f.container.querySelector('textarea'), 'the box'), '');
+  await f.chooseRecipient('recipients.auto');
+  await act(async () => f.button('removeEvidence')?.click());
   expect(f.container.querySelector('textarea')?.value).toBe('');
   expect(f.recipients()?.textContent).toBe('recipients.auto');
+  expect(f.container.querySelector('[aria-label="evidenceSelected"]')).toBeNull();
   await f.hide();
   await f.show();
   expect(f.container.querySelector('textarea')?.value).toBe('');
+  expect(f.recipients()?.textContent).toBe('recipients.auto');
+  expect(f.container.querySelector('[aria-label="evidenceSelected"]')).toBeNull();
   // No one is a choice kept with the draft, like the names.
   await f.chooseRecipient('recipients.none');
   await f.hide();
@@ -1021,15 +1033,16 @@ it('every send key sends to the meeting, Alt+Enter too, and an IME composition n
   });
   expect(f.meetings.send).toHaveBeenCalledTimes(3);
   expect(f.box.value).toBe('한글');
-  // One meaning, said once: the key hint names the send key alone, and the send menu has no
-  // other send to offer.
+  // One meaning, said once: the key hint names the send key alone, and there is no send menu
+  // (it would never open); its place beside Send is kept, so Send sits where a conversation's does.
   const keys = [...f.container.querySelectorAll('[data-slot="composer-key"]')];
   expect(keys).toHaveLength(1);
   expect(keys[0]?.textContent).toContain('keyHint.meeting');
-  expect(
-    f.container.querySelector('[data-slot="composer-send-menu"]')?.hasAttribute('disabled'),
-  ).toBe(true);
-  expect(f.button('send')?.getAttribute('aria-description')).toBe('sendAs.meeting');
+  expect(f.container.querySelector('[data-slot="composer-send-menu"]')).toBeNull();
+  expect(f.button('sendMenu')).toBeUndefined();
+  expect(f.container.querySelector('[data-slot="composer-send-menu-place"]')).not.toBeNull();
+  // Send says only its name: no description repeating it.
+  expect(f.button('send')?.hasAttribute('aria-description')).toBe(false);
   // A meeting has no `/` command or `@` reference menu: its box is a plain text box, and
   // `/반론` or `@name` is text the meeting reads.
   expect(f.box.getAttribute('role')).toBeNull();
@@ -1445,4 +1458,203 @@ it('uses the shared recovery explanation for recorded provider failures', async 
   expect(f.container.querySelector('[data-testid="provider-failure"]')?.textContent).toContain(
     'HTTP 401 (AUTH)',
   );
+});
+
+it('a recipients menu gives the focus back to the box, picked by pointer or closed by Escape', async () => {
+  const f = await mount(view());
+  const frame = () =>
+    act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  // The box has the focus, and keeps it once the menu has played its exit and gone.
+  const focusedBox = async (when: string) => {
+    await vi.waitFor(() => expect(document.body.querySelector('[role="menu"]')).toBeNull());
+    await vi.waitFor(() => expect(document.activeElement === f.box, when).toBe(true), {
+      timeout: 1000,
+    });
+    for (let frames = 0; frames < 5; frames++) await frame();
+    expect(document.activeElement === f.box, `${when}, after the menu left`).toBe(true);
+  };
+  for (const label of ['recipients.none', 'recipients.auto']) {
+    f.recipients()?.focus();
+    await f.chooseRecipient(label);
+    await focusedBox(label);
+  }
+  f.recipients()?.focus();
+  await act(async () => f.recipients()?.click());
+  await vi.waitFor(() => expect(f.recipientItem('recipients.auto')).toBeDefined());
+  await f.closeMenu();
+  await focusedBox('Escape');
+});
+
+it('calling on a participant from the row takes a message for no one back to Auto', async () => {
+  const f = await mount(view());
+  await f.chooseRecipient('recipients.none');
+  await f.type('A note');
+  await act(async () => participant('p2')?.querySelector('button')?.click());
+  expect(f.box.value).toBe('A note @Builder ');
+  expect(f.recipients()?.textContent).toContain('recipients.auto');
+  await act(async () => f.button('send')?.click());
+  const request = f.meetings.send.mock.calls.at(-1)?.[1];
+  expect(request).not.toHaveProperty('recipients');
+  expect(request).toMatchObject({ text: 'A note @Builder' });
+  // With names chosen, calling on someone leaves them as they are.
+  await f.chooseRecipient('Architect');
+  await f.closeMenu();
+  await act(async () => participant('p2')?.querySelector('button')?.click());
+  expect(f.recipients()?.textContent).toContain('Architect');
+  expect(f.recipients()?.textContent).not.toContain('recipients.auto');
+});
+
+it('a waiting message is edited for Auto or names, never for no one', async () => {
+  const f = await mount(
+    view({
+      rounds: [{ ...firstRound(), active: true }],
+      queued: { commandId: 'queued_1', mode: 'mock', text: 'First draft', mentions: ['p1'] },
+      rebuttal: null,
+    }),
+  );
+  await act(async () => f.button('editQueued')?.click());
+  const editor = must(
+    f.container
+      .querySelector<HTMLTextAreaElement>('textarea[aria-label="queued"]')
+      ?.closest('[data-slot="textarea-control"]')?.parentElement,
+    'the waiting message editor',
+  );
+  await act(async () => f.recipients(editor)?.click());
+  await vi.waitFor(() => expect(f.recipientItem('recipients.auto')).toBeDefined());
+  expect(f.recipientItem('recipients.none')).toBeUndefined();
+  await f.closeMenu();
+});
+
+it('a kept draft forgets recipients the meeting no longer has', async () => {
+  const kept = (text: string, meetingMentions: string[]) => ({
+    text,
+    meetingMentions,
+    intent: null,
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  writeComposerDraft('session_1', kept('Still for Builder', ['gone', 'p2']));
+  const f = await mount(view());
+  expect(f.recipients()?.textContent).toContain('Builder');
+  expect(f.recipients()?.textContent).not.toContain('recipients.count');
+  await act(async () => f.button('send')?.click());
+  expect(f.meetings.send.mock.calls.at(-1)?.[1]).toMatchObject({ mentions: ['p2'] });
+  await f.hide();
+  writeComposerDraft('session_2', kept('For no one left', ['gone']));
+  const other = await mount(view({ sessionId: 'session_2' }));
+  expect(other.box.value).toBe('For no one left');
+  expect(other.recipients()?.textContent).toContain('recipients.auto');
+  await act(async () => other.button('send')?.click());
+  expect(other.meetings.send.mock.calls.at(-1)?.[1]).not.toHaveProperty('mentions');
+});
+
+it('the box is described by its recipients, holds 20,000 characters, and opens no list', async () => {
+  const f = await mount(view());
+  const described = f.box.getAttribute('aria-describedby');
+  expect(described).toBeTruthy();
+  expect(document.getElementById(described ?? '')).toBe(f.recipients());
+  expect(f.box.maxLength).toBe(20000);
+  // `/` and `@` are text here: typed in the focused box, they open no command or reference list.
+  await act(async () => f.box.focus());
+  for (const text of ['/', '/반론', '@', '@Bui']) {
+    await f.type(text);
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull();
+  }
+});
+
+it('Send waits for text; the recipients hold still while a send is in flight', async () => {
+  const f = await mount(view());
+  expect(f.button('send')?.hasAttribute('disabled')).toBe(true);
+  await f.type('   ');
+  expect(f.button('send')?.hasAttribute('disabled')).toBe(true);
+  await f.type('Ready');
+  expect(f.button('send')?.hasAttribute('disabled')).toBe(false);
+  let finish!: (result: { ok: boolean; outcome: string }) => void;
+  f.meetings.send.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => f.button('send')?.click());
+  const held = () => {
+    const badge = f.recipients();
+    return Boolean(
+      badge?.hasAttribute('disabled') ||
+        badge?.getAttribute('aria-disabled') === 'true' ||
+        badge?.hasAttribute('data-disabled'),
+    );
+  };
+  expect(held()).toBe(true);
+  await act(async () => f.recipients()?.click());
+  expect(document.body.querySelector('[role="menu"]')).toBeNull();
+  await act(async () => finish({ ok: true, outcome: 'started' }));
+  expect(held()).toBe(false);
+});
+
+it('the recipients menu: Auto closes it, its radios say which is chosen, and unticking the last name is Auto', async () => {
+  const f = await mount(view());
+  await act(async () => f.recipients()?.click());
+  await vi.waitFor(() => expect(f.recipientItem('recipients.auto')).toBeDefined());
+  expect(f.recipientItem('recipients.auto')?.getAttribute('aria-checked')).toBe('true');
+  expect(f.recipientItem('recipients.none')?.getAttribute('aria-checked')).toBe('false');
+  await f.chooseRecipient('recipients.none');
+  await vi.waitFor(() => expect(document.body.querySelector('[role="menu"]')).toBeNull());
+  await act(async () => f.recipients()?.click());
+  await vi.waitFor(() => expect(f.recipientItem('recipients.none')).toBeDefined());
+  expect(f.recipientItem('recipients.none')?.getAttribute('aria-checked')).toBe('true');
+  expect(f.recipientItem('recipients.auto')?.getAttribute('aria-checked')).toBe('false');
+  // Auto, picked, closes the menu at once.
+  await f.chooseRecipient('recipients.auto');
+  await vi.waitFor(() => expect(document.body.querySelector('[role="menu"]')).toBeNull());
+  expect(f.recipients()?.textContent).toContain('recipients.auto');
+  // A name ticked and unticked again leaves the meeting's pick, not an empty list.
+  await f.chooseRecipient('Builder');
+  expect(f.recipientItem('recipients.auto')?.getAttribute('aria-checked')).toBe('false');
+  await f.chooseRecipient('Builder');
+  expect(f.recipientItem('recipients.auto')?.getAttribute('aria-checked')).toBe('true');
+  await f.closeMenu();
+  expect(f.recipients()?.textContent).toContain('recipients.auto');
+  await f.type('Whoever fits');
+  await act(async () => f.button('send')?.click());
+  expect(f.meetings.send.mock.calls.at(-1)?.[1]).not.toHaveProperty('mentions');
+});
+
+it('a send follows the end of the conversation again, and Stop is offered only while someone answers', async () => {
+  const f = await mount(view());
+  const sent = () => Number(f.container.querySelector('[data-sent]')?.getAttribute('data-sent'));
+  const before = sent();
+  await f.type('Follow me');
+  await act(async () => f.button('send')?.click());
+  expect(sent()).toBe(before + 1);
+  await act(async () => f.button('summarise')?.click());
+  expect(sent()).toBe(before + 2);
+  expect(f.button('stopRound')).toBeUndefined();
+});
+
+it('on a narrow tool line the tools keep one width whatever the meeting is doing', async () => {
+  const idle = await mount(view(), {}, { compact: true });
+  // Nobody answers: Stop's place is kept, empty. The plan request is an icon with its name.
+  expect(idle.button('stopRound')).toBeUndefined();
+  expect(idle.container.querySelector('[data-slot="meeting-stop-place"]')).not.toBeNull();
+  const plan = must(idle.button('summarise'), 'the plan request');
+  expect(plan.textContent?.trim()).toBe('');
+  // A chosen name reads as a count there, so the badge does not grow with names.
+  await idle.chooseRecipient('Builder');
+  await idle.closeMenu();
+  expect(idle.recipients()?.textContent).toContain('recipients.count');
+  expect(idle.recipients()?.textContent).not.toContain('Builder');
+  expect(idle.recipients()?.closest('[data-slot="composer-target-place"]')).not.toBeNull();
+  await idle.hide();
+  const answering = await mount(
+    view({ rounds: [{ ...firstRound(), active: true, answers: [answer('p1', 'running')] }] }),
+    {},
+    { compact: true },
+  );
+  const stop = must(answering.button('stopRound'), 'Stop');
+  expect(stop.textContent?.trim()).toBe('');
+  expect(answering.container.querySelector('[data-slot="meeting-stop-place"]')).toBeNull();
+  await act(async () => stop.click());
+  expect(answering.meetings.stop).toHaveBeenCalledWith('session_1', 'round_1');
 });

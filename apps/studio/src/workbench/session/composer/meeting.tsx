@@ -26,15 +26,17 @@ import {
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { FileText, Plus, Square, X } from '@corral/react/icons';
+import { FileText, ListChecks, Plus, Square, X } from '@corral/react/icons';
 import {
   type Ref,
   useEffect,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useTranslations } from 'use-intl';
 import { newCommandId } from '../../../sessionActions.ts';
@@ -48,8 +50,8 @@ import {
   writeComposerDraft,
 } from '../../sessionDraft.ts';
 import { TextAttachmentList } from '../../TextAttachments.tsx';
-import { ComposerCard, type SendTarget } from './ComposerCard.tsx';
-import { RecipientChip, type Recipients, SendMenu } from './SendControls.tsx';
+import { backToInput, ComposerCard, type SendTarget } from './ComposerCard.tsx';
+import { RecipientChip, type Recipients } from './SendControls.tsx';
 
 // A meeting's send target (features/composer-flow.md, the send table's meeting row): every key
 // sends to the meeting, and the badge in the target's place chooses the recipients — whoever
@@ -98,12 +100,28 @@ function recipientsOf(config: MeetingConfig, secretary: string) {
   ];
 }
 
-const restoredRecipients = (draft: ReturnType<typeof readComposerDraft>): Recipients =>
-  draft.meetingRecipients === 'none'
-    ? 'none'
-    : draft.meetingMentions?.length
-      ? draft.meetingMentions
-      : 'auto';
+/** A kept draft's recipients; names the meeting no longer has are dropped. */
+function restoredRecipients(
+  draft: ReturnType<typeof readComposerDraft>,
+  config: MeetingConfig,
+): Recipients {
+  if (draft.meetingRecipients === 'none') return 'none';
+  const known = new Set(recipientsOf(config, '').map((person) => person.id));
+  const kept = (draft.meetingMentions ?? []).filter((id) => known.has(id));
+  return kept.length ? kept : 'auto';
+}
+
+// Under the kit toolbar's `sm` the tool line may wrap. There the meeting's tools take a width
+// that does not change with its state, so the line count, and the input's edges, stay put.
+const COMPACT = '(max-width: 639px)';
+const compactNow = () =>
+  typeof window.matchMedia === 'function' && window.matchMedia(COMPACT).matches;
+function onCompactChange(change: () => void) {
+  if (typeof window.matchMedia !== 'function') return () => {};
+  const media = window.matchMedia(COMPACT);
+  media.addEventListener?.('change', change);
+  return () => media.removeEventListener?.('change', change);
+}
 
 /** A meeting's composer: the conversation's card with the recipients as its send target. */
 export function MeetingSend({
@@ -120,17 +138,15 @@ export function MeetingSend({
   editQueued,
 }: MeetingComposerProps) {
   const t = useTranslations('Meetings');
-  const tc = useTranslations('Composer');
   const { sendKey } = usePreferences();
+  const compact = useSyncExternalStore(onCompactChange, compactNow, () => false);
+  const badgeId = useId();
   const [restored] = useState(() => readComposerDraft(view.sessionId));
   const [text, setText] = useState(restored.text);
-  const [recipients, setRecipients] = useState<Recipients>(() => restoredRecipients(restored));
+  const [recipients, setRecipients] = useState<Recipients>(() =>
+    restoredRecipients(restored, view.config),
+  );
   const [attachments, setAttachments] = useState(restored.attachments ?? []);
-  const clear = () => {
-    setText('');
-    setRecipients('auto');
-    setAttachments([]);
-  };
   const draft = useMemo(
     () => ({
       text,
@@ -210,9 +226,11 @@ export function MeetingSend({
         const token = `${before && !/\s$/.test(before) ? ' ' : ''}@${name} `;
         setText(`${before}${token}${text.slice(end)}`);
         setMentionCaret({ at: start + token.length });
+        // Calling on someone is speaking to them: a message for no one goes back to Auto.
+        if (recipients === 'none') setRecipients('auto');
       },
     }),
-    [text],
+    [text, recipients],
   );
   useLayoutEffect(() => {
     if (!mentionCaret || !input.current) return;
@@ -236,28 +254,29 @@ export function MeetingSend({
   const requestPlan = () =>
     void dispatch({ kind: 'message', text: t('summaryRequest'), mentions: [SECRETARY_ID] });
   const held = sending || attachmentLoading;
-  // A menu of the composer, once used, gives the focus back to the box.
-  const backToInput = () =>
-    requestAnimationFrame(() => {
-      const focused = document.activeElement;
-      if (!focused || focused === document.body || focused.closest('[role="menu"]'))
-        input.current?.focus();
-    });
+  const toInput = () => backToInput(input);
   const meeting: SendTarget = {
     badge: (
       <RecipientChip
+        id={badgeId}
         value={recipients}
         people={recipientsOf(view.config, t('secretary'))}
         alone={SECRETARY_ID}
+        compact={compact}
         disabled={sending}
         onChange={setRecipients}
-        onClose={backToInput}
+        onClose={toInput}
       />
     ),
     row: 'meeting',
     keys: { send: 'meeting', interrupt: 'meeting', queue: 'meeting' },
-    meaning: tc('sendAs.meeting'),
-    menu: <SendMenu situation="meeting" sendKey={sendKey} disabled onSend={() => {}} />,
+    // Send sends to the meeting and says nothing more than its name.
+    meaning: t('send'),
+    // Every key sends the same, so there is no send menu; its place is kept, and Send stands
+    // where a conversation's does.
+    menu: (
+      <span aria-hidden="true" data-slot="composer-send-menu-place" className="size-7 shrink-0" />
+    ),
     sendDisabled: held || !text.trim(),
     send: () => void submit(),
   };
@@ -290,6 +309,8 @@ export function MeetingSend({
       <ComposerCard
         label={t('message')}
         placeholder={t('placeholder')}
+        // The box is described by whom it goes to, as a conversation's is by its target.
+        describedBy={badgeId}
         maxLength={20000}
         inputRef={input}
         text={text}
@@ -318,7 +339,7 @@ export function MeetingSend({
           ) : null
         }
         attach={
-          <Menu onOpenChange={(open) => (open ? undefined : backToInput())}>
+          <Menu onOpenChange={(open) => (open ? undefined : toInput())}>
             <Tooltip content={t('attachmentActions')}>
               <MenuTrigger
                 render={
@@ -335,32 +356,60 @@ export function MeetingSend({
             </MenuPopup>
           </Menu>
         }
-        afterTarget={
-          text || recipients !== 'auto' || attachments.length ? (
-            <Button size="compact" variant="ghost" disabled={sending} onClick={clear}>
-              {t('clearDraft')}
-            </Button>
-          ) : null
-        }
         // Stop and the secretary's plan come before the keys, as a conversation's request
         // settings do: the key hint stays right beside Send.
+        // Narrow, both are icons with their names, and Stop's place is kept while nothing answers.
         settings={
-          <>
-            {onStop ? (
-              <Button size="compact" variant="tertiary" onClick={onStop}>
-                <Square size={12} aria-hidden />
-                {t('stopRound')}
+          compact ? (
+            <>
+              {onStop ? (
+                <Tooltip content={t('stopRound')}>
+                  <Button
+                    size="icon-compact"
+                    variant="tertiary"
+                    aria-label={t('stopRound')}
+                    onClick={onStop}
+                  >
+                    <Square aria-hidden />
+                  </Button>
+                </Tooltip>
+              ) : (
+                <span
+                  aria-hidden="true"
+                  data-slot="meeting-stop-place"
+                  className="size-7 shrink-0"
+                />
+              )}
+              <Tooltip content={t('summarise')}>
+                <Button
+                  size="icon-compact"
+                  variant="ghost"
+                  aria-label={t('summarise')}
+                  disabled={held || view.rounds.length === 0}
+                  onClick={requestPlan}
+                >
+                  <ListChecks aria-hidden />
+                </Button>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              {onStop ? (
+                <Button size="compact" variant="tertiary" onClick={onStop}>
+                  <Square size={12} aria-hidden />
+                  {t('stopRound')}
+                </Button>
+              ) : null}
+              <Button
+                size="compact"
+                variant="ghost"
+                disabled={held || view.rounds.length === 0}
+                onClick={requestPlan}
+              >
+                {t('summarise')}
               </Button>
-            ) : null}
-            <Button
-              size="compact"
-              variant="ghost"
-              disabled={held || view.rounds.length === 0}
-              onClick={requestPlan}
-            >
-              {t('summarise')}
-            </Button>
-          </>
+            </>
+          )
         }
       />
       {error ? (
@@ -465,6 +514,7 @@ function QueuedMessage({
           value={mentions.length ? mentions : 'auto'}
           people={recipientsOf(config, t('secretary'))}
           alone={SECRETARY_ID}
+          none={false}
           disabled={saving}
           onChange={(next) => setMentions(typeof next === 'string' ? [] : [...next])}
         />

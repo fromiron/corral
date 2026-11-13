@@ -165,11 +165,22 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'sessionActions'/ },
   // The meeting composer's action row: the kit composer's slot controls are compact.
   { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'attachmentActions'/ },
-  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /onClick=\{clear\}/ },
-  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /onClick=\{onStop\}/ },
   {
     file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
-    near: /view\.rounds\.length === 0/,
+    near: /variant="tertiary" onClick=\{onStop\}/,
+  },
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /size="compact"\s+variant="ghost"/,
+  },
+  // Narrow, Stop and the plan request are the kit composer's icon slot controls.
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /aria-label=\{t\('stopRound'\)\}/,
+  },
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /aria-label=\{t\('summarise'\)\}/,
   },
   // An icon button inside a chip.
   { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'removeEvidence'/ },

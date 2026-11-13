@@ -159,9 +159,12 @@ test('role and secretary selection survive reopening without more calls', async 
   await page.keyboard.press('Space');
   await expect(secretary).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('Escape');
+  // Narrow, the chosen read as a count, so the badge keeps its width.
   await expect(
-    page.getByRole('button', { name: 'Recipients: Secretary', exact: true }),
+    page.getByRole('button', { name: 'Recipients: 1 person', exact: true }),
   ).toBeVisible();
+  // Escape gave the focus back to the box.
+  await expect(page.getByRole('textbox', { name: 'Meeting message', exact: true })).toBeFocused();
   await send(page, 'Record the remaining disagreement');
   await finishReplies(page, id, 2);
   await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Secretary');
@@ -527,9 +530,14 @@ test('unsent meeting drafts survive navigation, reload and closing their tab', a
   await second.close();
   await page.reload();
   await expect(box).toHaveValue('Saved before closing this tab');
-  await page.getByRole('button', { name: 'Clear draft', exact: true }).click();
+  // The draft is cleared where each part is: the text in the box, the recipients by Auto.
+  await expect(page.getByRole('button', { name: 'Clear draft', exact: true })).toHaveCount(0);
+  await box.fill('');
+  await page.getByRole('button', { name: 'Recipients: Participant 2', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Auto', exact: true }).click();
   await page.reload();
   await expect(box).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Recipients: Auto', exact: true })).toBeVisible();
   expect((await meeting(page, id)).rounds).toHaveLength(0);
   expect(corral.errors).toEqual([]);
 });

@@ -100,8 +100,7 @@ export function usableRoles(keys: Record<SendKeyRole, KeyMeaning>, situation: Se
 }
 
 /** Which sends the send menu offers now; the others stay listed, disabled. */
-export function menuSends(situation: SendRow): Record<SendChoice, boolean> {
-  if (situation === 'meeting') return { join: false, interrupt: false, queue: false };
+export function menuSends(situation: Situation): Record<SendChoice, boolean> {
   return {
     join: situation === 'join' || situation === 'joinOnly' || situation === 'awaiting',
     interrupt: situation === 'join',
@@ -109,10 +108,7 @@ export function menuSends(situation: SendRow): Record<SendChoice, boolean> {
   };
 }
 
-/**
- * The menu beside Send: the same three sends as the keys, by pointer. Where every key sends the
- * same (nothing runs, or a meeting) there is nothing to choose and the menu does not open.
- */
+/** The menu beside Send: the same three sends as the keys, by pointer. */
 export function SendMenu({
   situation,
   sendKey,
@@ -120,7 +116,7 @@ export function SendMenu({
   onSend,
   onClose,
 }: {
-  situation: SendRow;
+  situation: Situation;
   sendKey: Preferences['sendKey'];
   /** Nothing to send, or sending is held. */
   disabled: boolean;
@@ -139,7 +135,7 @@ export function SendMenu({
   return (
     <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
       <MenuTrigger
-        disabled={situation === 'idle' || situation === 'meeting'}
+        disabled={situation === 'idle'}
         render={
           <Button
             variant="ghost"
@@ -285,16 +281,27 @@ const NAMES_SHOWN = 2;
  * than two. `alone` (the secretary) is only ever chosen on its own.
  */
 export function RecipientChip({
+  id,
   value,
   people,
   alone,
+  none = true,
+  compact = false,
   disabled,
   onChange,
   onClose,
 }: {
+  id?: string;
   value: Recipients;
   people: readonly { id: string; name: string }[];
   alone?: string;
+  /** No one is offered; a waiting message always has someone to answer it. */
+  none?: boolean;
+  /**
+   * A narrow tool line: the chosen read as a count and the badge keeps one width, so a change
+   * of recipients never moves the line's wrapping.
+   */
+  compact?: boolean;
   disabled: boolean;
   onChange: (next: Recipients) => void;
   /** The menu closed, by a pick or Escape. */
@@ -306,7 +313,7 @@ export function RecipientChip({
   const shown =
     typeof value === 'string'
       ? t(`recipients.${value}`)
-      : chosen.length > NAMES_SHOWN
+      : compact || chosen.length > NAMES_SHOWN
         ? t('recipients.count', { count: chosen.length })
         : chosen.map(name).join(', ');
   const tick = (id: string) => {
@@ -317,16 +324,27 @@ export function RecipientChip({
         : [...chosen.filter((item) => item !== alone), id];
     onChange(next.length ? next : 'auto');
   };
+  const trigger = (
+    <MenuTrigger
+      id={id}
+      data-slot="composer-target"
+      disabled={disabled}
+      aria-label={t('recipients.label', { name: shown })}
+      className={BADGE_TRIGGER}
+    >
+      <TargetBadge label={shown} choosable />
+    </MenuTrigger>
+  );
   return (
     <Menu onOpenChange={(open) => (open ? undefined : onClose?.())}>
-      <MenuTrigger
-        data-slot="composer-target"
-        disabled={disabled}
-        aria-label={t('recipients.label', { name: shown })}
-        className={BADGE_TRIGGER}
-      >
-        <TargetBadge label={shown} choosable />
-      </MenuTrigger>
+      {/* Narrow, the badge sits in a place of one width, whatever it says. */}
+      {compact ? (
+        <span data-slot="composer-target-place" className="inline-flex w-28 shrink-0">
+          {trigger}
+        </span>
+      ) : (
+        trigger
+      )}
       <MenuPopup align="start" side="top">
         <MenuRadioGroup
           value={typeof value === 'string' ? value : 'chosen'}
@@ -335,9 +353,11 @@ export function RecipientChip({
           <MenuRadioItem value="auto" closeOnClick>
             {t('recipients.auto')}
           </MenuRadioItem>
-          <MenuRadioItem value="none" closeOnClick>
-            {t('recipients.none')}
-          </MenuRadioItem>
+          {none ? (
+            <MenuRadioItem value="none" closeOnClick>
+              {t('recipients.none')}
+            </MenuRadioItem>
+          ) : null}
         </MenuRadioGroup>
         <MenuSeparator />
         {people.map((person) => (

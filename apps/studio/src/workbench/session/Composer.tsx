@@ -29,7 +29,11 @@ import { ComposerActivity } from './ComposerActivity.tsx';
 import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 import { composerAvailability } from './composer/availability.ts';
-import { ComposerCard, type SendTarget } from './composer/ComposerCard.tsx';
+import {
+  backToInput as backToInputOf,
+  ComposerCard,
+  type SendTarget,
+} from './composer/ComposerCard.tsx';
 import { ComposerNotices } from './composer/ComposerNotices.tsx';
 import {
   AttachMenu,
@@ -347,18 +351,7 @@ function SessionComposer({
     if (mounted.current) setLowered(outcome.lowered);
   };
 
-  // A menu or notice of the composer, once used, gives the focus back to the box; a click that
-  // moved it elsewhere keeps it there.
-  const backToInput = () =>
-    requestAnimationFrame(() => {
-      const focused = document.activeElement;
-      if (
-        !focused ||
-        focused === document.body ||
-        focused.closest('[role="menu"], [data-slot="composer-host"]')
-      )
-        input.current?.focus();
-    });
+  const backToInput = () => backToInputOf(input);
 
   const requestStop = () => {
     setConfirmStop(ownActive !== null);

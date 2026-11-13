@@ -134,6 +134,7 @@ async function mount({
   sendKey,
   mode = 'server',
   runState = {},
+  folderAccess,
 }: {
   active?: RunSummary | null;
   executions?: Record<string, string>;
@@ -143,6 +144,7 @@ async function mount({
   mode?: 'server' | 'browser';
   /** The run's record as the store holds it at first. */
   runState?: Partial<RunState>;
+  folderAccess?: 'copy' | 'unlinked';
 } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -238,6 +240,7 @@ async function mount({
             onChange={() => {}}
             reference={null}
             onReferenceUsed={() => {}}
+            {...(folderAccess ? { folderAccess } : {})}
           />
         </IntlProvider>,
       ),
@@ -1104,4 +1107,23 @@ describe('Stop in Send’s place', () => {
     expect(stop(f.container)).toBeNull();
     expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
   });
+});
+
+it('the tool line keeps the folder notice before where a send goes, and voice right before Send', async () => {
+  const f = await mount({ folderAccess: 'copy' });
+  const line = [
+    ...f.container.querySelectorAll<HTMLElement>(
+      '[data-testid="folder-access"], [data-slot="composer-target"], button',
+    ),
+  ];
+  const notice = line.findIndex((node) => node.dataset.testid === 'folder-access');
+  const target = line.findIndex((node) => node.dataset.slot === 'composer-target');
+  expect(notice).toBeGreaterThanOrEqual(0);
+  expect(notice).toBeLessThan(target);
+  const voice = line.findIndex(
+    (node) => node.getAttribute('aria-label') === messages.LiveVoice.title,
+  );
+  const send = line.findIndex((node) => node.getAttribute('aria-label') === 'Send');
+  expect(voice).toBeGreaterThan(target);
+  expect(voice).toBeLessThan(send);
 });
