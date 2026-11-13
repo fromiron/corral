@@ -1,66 +1,34 @@
-import {
-  type MeetingConfig,
-  type MeetingRoundRequest,
-  type MeetingView,
-  type QueuedMeetingMessage,
-  SECRETARY_ID,
-  type TextAttachment,
-  textAttachmentKey,
-} from '@corral/contracts';
+import { type MeetingConfig, type MeetingView, SECRETARY_ID } from '@corral/contracts';
 import type { MeetingResult, WorkSession } from '@corral/core';
 import { CopyTextButton, FailureNotice, SafeMarkdown } from '@corral/react';
 import {
   AgentIdentity,
   type AgentStatus,
   AgentStatusLabel,
-  Banner,
-  BannerActions,
-  BannerTitle,
   Button,
   cn,
-  Dialog,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
   fontWeights,
-  InputMessage,
   KitChatMessage,
   Menu,
   MenuItem,
   MenuPopup,
   MenuSeparator,
   MenuTrigger,
-  Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Ellipsis, FileText, PanelRight, Plus, Square, X } from '@corral/react/icons';
+import { Ellipsis, PanelRight } from '@corral/react/icons';
 import { Link, useRouter } from '@tanstack/react-router';
-import {
-  type KeyboardEvent,
-  type Ref,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useId,
-  useImperativeHandle,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useRegisterCommands } from '../commandRegistry.ts';
 import { projectsChanged } from '../projects.ts';
 import { useServices } from '../services.tsx';
-import { newCommandId } from '../sessionActions.ts';
 import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
 import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
 import { MeetingDiagnostics } from '../workbench/MeetingDiagnostics.tsx';
-import { MeetingEvidencePicker } from '../workbench/MeetingEvidence.tsx';
 import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
 import { MeetingParticipants } from '../workbench/MeetingParticipants.tsx';
 import {
@@ -68,16 +36,16 @@ import {
   MeetingRecordsPanel,
   useNarrowScreen,
 } from '../workbench/MeetingRecords.tsx';
-import { isSendKey, preferences } from '../workbench/preferences.ts';
+import { preferences } from '../workbench/preferences.ts';
 import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
 import { TurnActions } from '../workbench/RunMessage.tsx';
 import { SessionDeletionDialog } from '../workbench/SessionDeletionDialog.tsx';
+import { Composer } from '../workbench/session/Composer.tsx';
 import {
-  COMPOSER_DRAFT_SENT,
-  clearSentComposerDraft,
-  readComposerDraft,
-  writeComposerDraft,
-} from '../workbench/sessionDraft.ts';
+  FAILED_ANSWER,
+  type MeetingComposerHandle,
+  nameOf,
+} from '../workbench/session/composer/meeting.tsx';
 import { TextAttachmentList } from '../workbench/TextAttachments.tsx';
 import { TopbarActions } from '../workbench/TopbarSlot.tsx';
 import { useCorralRun } from '../workbench/useCorralChat.ts';
@@ -85,17 +53,6 @@ import { useRemembered } from './Workbench.tsx';
 
 type RoundView = MeetingView['rounds'][number];
 type AnswerView = RoundView['answers'][number];
-
-const nameOf = (config: MeetingConfig, id: string, secretary: string) =>
-  id === SECRETARY_ID
-    ? secretary
-    : (config.participants.find((p) => p.participantId === id)?.name ?? id);
-
-/** What the participant row asks of the composer. */
-interface ComposerHandle {
-  /** Puts `@name ` at the caret and focuses the input, without sending. */
-  mention(name: string): void;
-}
 
 /**
  * The meeting room: participants on top, the conversation, then the composer. The minutes,
@@ -111,7 +68,7 @@ export function MeetingPage({ session }: { session: WorkSession }) {
   const [loadError, setLoadError] = useState('');
   const refreshId = useRef(0);
   const sessionId = session.sessionId;
-  const composer = useRef<ComposerHandle>(null);
+  const composer = useRef<MeetingComposerHandle>(null);
   const [sent, setSent] = useState(0);
   const narrow = useNarrowScreen();
   // The side panel's open state is this meeting's; the drawer opens only when asked.
@@ -293,23 +250,24 @@ export function MeetingPage({ session }: { session: WorkSession }) {
               ])
               .sort((a, b) => a.order - b.order)}
             composer={
-              <MeetingComposer
+              // The conversation's composer, with the recipients as its send target.
+              <Composer
                 key={sessionId}
-                handle={composer}
-                projectId={session.projectId}
-                view={view}
-                mode={mode}
-                error={error || loadError}
-                onStop={
-                  active
+                meeting={{
+                  handle: composer,
+                  projectId: session.projectId,
+                  view,
+                  mode,
+                  error: error || loadError,
+                  onStop: active
                     ? () => void act(() => meetings.stop(sessionId, active.roundId))
-                    : undefined
-                }
-                onSent={() => setSent((count) => count + 1)}
-                send={(request) => act(() => meetings.send(sessionId, request))}
-                sendQueued={() => act(() => meetings.sendQueued(sessionId))}
-                dropQueued={() => act(() => meetings.dropQueued(sessionId))}
-                editQueued={(message) => act(() => meetings.editQueued(sessionId, message))}
+                    : undefined,
+                  onSent: () => setSent((count) => count + 1),
+                  send: (request) => act(() => meetings.send(sessionId, request)),
+                  sendQueued: () => act(() => meetings.sendQueued(sessionId)),
+                  dropQueued: () => act(() => meetings.dropQueued(sessionId)),
+                  editQueued: (message) => act(() => meetings.editQueued(sessionId, message)),
+                }}
               />
             }
           >
@@ -573,7 +531,6 @@ function MeetingMessage({ round, config }: { round: RoundView; config: MeetingCo
   );
 }
 
-const FAILED_ANSWER = new Set(['failed', 'refused', 'interrupted', 'not_started']);
 /** The kit's status glyph for an answer that is not (yet) a reply. */
 const ANSWER_GLYPH: Record<string, AgentStatus> = {
   running: 'running',
@@ -683,503 +640,4 @@ function StreamingAnswer({ runId }: { runId: string }) {
     })
     .at(-1)?.[1].text;
   return text ? <SafeMarkdown text={text} size="chat" /> : null;
-}
-
-function MeetingComposer({
-  handle,
-  projectId,
-  view,
-  mode,
-  error,
-  onStop,
-  send,
-  onSent,
-  sendQueued,
-  dropQueued,
-  editQueued,
-}: {
-  handle: Ref<ComposerHandle>;
-  projectId: string;
-  view: MeetingView;
-  mode: 'mock' | 'live';
-  error: string;
-  onStop?: (() => void) | undefined;
-  send(request: MeetingRoundRequest): Promise<MeetingResult | null>;
-  /** The person sent. The conversation follows the end again. */
-  onSent?: () => void;
-  sendQueued(): Promise<MeetingResult | null>;
-  dropQueued(): Promise<MeetingResult | null>;
-  editQueued(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
-}) {
-  const t = useTranslations('Meetings');
-  const sendKey = useStore(preferences, (state) => state.sendKey);
-  const [restored] = useState(() => readComposerDraft(view.sessionId));
-  const [text, setText] = useState(restored.text);
-  const [mentions, setMentions] = useState(restored.meetingMentions ?? []);
-  const [attachments, setAttachments] = useState(restored.attachments ?? []);
-  const draft = useMemo(
-    () => ({
-      text,
-      meetingMentions: mentions,
-      attachments,
-      intent: null,
-      target: null,
-      targetLabel: null,
-      references: [],
-    }),
-    [text, mentions, attachments],
-  );
-  const draftRevision = useRef(0);
-  useEffect(() => {
-    draftRevision.current = writeComposerDraft(view.sessionId, draft);
-  }, [view.sessionId, draft]);
-  useEffect(() => {
-    const sent = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId: string; revision: number }>).detail;
-      if (detail.sessionId !== view.sessionId || detail.revision !== draftRevision.current) return;
-      setText('');
-      setMentions([]);
-      setAttachments([]);
-    };
-    window.addEventListener(COMPOSER_DRAFT_SENT, sent);
-    return () => window.removeEventListener(COMPOSER_DRAFT_SENT, sent);
-  }, [view.sessionId]);
-  const [attachmentLoading, setAttachmentLoading] = useState(false);
-  const [sending, setSending] = useState(false);
-  const inFlight = useRef(false);
-  // A message whose answer was lost keeps its command ID, so sending it again is the same command.
-  const pending = useRef<{ key: string; commandId: string } | null>(null);
-  const active = view.rounds.some((round) => round.active);
-  const dispatch = async (
-    request: Omit<Extract<MeetingRoundRequest, { kind: 'message' }>, 'commandId' | 'mode'>,
-  ) => {
-    if (inFlight.current || attachmentLoading) return;
-    onSent?.();
-    const key = JSON.stringify([request, mode]);
-    if (pending.current?.key !== key) pending.current = { key, commandId: newCommandId() };
-    inFlight.current = true;
-    setSending(true);
-    try {
-      const result = await send({ ...request, commandId: pending.current.commandId, mode });
-      if (result?.ok) pending.current = null;
-      return result;
-    } finally {
-      inFlight.current = false;
-      setSending(false);
-    }
-  };
-  const submit = async (message: string, chosen: string[]) => {
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    const submittedRevision = writeComposerDraft(view.sessionId, draft);
-    const result = await dispatch({
-      kind: 'message',
-      text: trimmed,
-      ...(chosen.length ? { mentions: chosen } : {}),
-      ...(attachments.length ? { attachments } : {}),
-    });
-    if (result?.ok) clearSentComposerDraft(view.sessionId, submittedRevision);
-  };
-  const input = useRef<HTMLTextAreaElement>(null);
-  // The kit's field sends on any unshifted Enter and checks only `isComposing`. The meeting owns
-  // Enter before it: the chosen send key decides, and an IME's confirming Enter (keyCode 229 in
-  // Safari) never sends.
-  const onEnterCapture = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== input.current || event.key !== 'Enter') return;
-    event.stopPropagation();
-    if (event.nativeEvent.isComposing || event.keyCode === 229 || !isSendKey(event, sendKey))
-      return;
-    event.preventDefault();
-    void submit(text, mentions);
-  };
-  // Where the caret goes once an inserted mention is in the field (a new object each time).
-  const [mentionCaret, setMentionCaret] = useState<{ at: number } | null>(null);
-  useImperativeHandle(
-    handle,
-    () => ({
-      mention(name) {
-        const box = input.current;
-        const start = box?.selectionStart ?? text.length;
-        const end = box?.selectionEnd ?? start;
-        const before = text.slice(0, start);
-        const token = `${before && !/\s$/.test(before) ? ' ' : ''}@${name} `;
-        setText(`${before}${token}${text.slice(end)}`);
-        setMentionCaret({ at: start + token.length });
-      },
-    }),
-    [text],
-  );
-  useLayoutEffect(() => {
-    if (!mentionCaret || !input.current) return;
-    input.current.focus();
-    input.current.setSelectionRange(mentionCaret.at, mentionCaret.at);
-  }, [mentionCaret]);
-  const latestMinutes = view.minutes?.at(-1);
-  const latestSecretary = view.rounds
-    .findLast((round) => round.kind === 'secretary')
-    ?.answers.find((answer) => answer.participantId === SECRETARY_ID);
-  const summaryFailed = Boolean(
-    latestMinutes?.error || (latestSecretary && FAILED_ANSWER.has(latestSecretary.status)),
-  );
-  // Evidence is chosen in a dialog the add menu opens; what is chosen stays in the composer.
-  const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const showEvidence = (open: boolean) => {
-    setEvidenceOpen(open);
-    // Closing ends the picker and drops its pending read, so nothing is loading any more.
-    if (!open) setAttachmentLoading(false);
-  };
-  const requestPlan = () =>
-    void dispatch({ kind: 'message', text: t('summaryRequest'), mentions: [SECRETARY_ID] });
-  return (
-    <div
-      className="mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2"
-      onKeyDownCapture={onEnterCapture}
-    >
-      <InputMessage
-        data-slot="composer-host"
-        inputRef={input}
-        value={text}
-        onValueChange={setText}
-        // Sending never waits for the answers: no `status`, so the kit never queues or swaps Send.
-        onSend={() => void submit(text, mentions)}
-        placeholder={t('placeholder')}
-        minRows={2}
-        sendLabel={t('send')}
-        sendDisabled={sending || attachmentLoading}
-        textareaProps={{ 'aria-label': t('message'), maxLength: 20000 }}
-        contentSlot={
-          <>
-            {summaryFailed ? (
-              <Banner role="alert" status="error" contrast="high">
-                <BannerTitle>{t('summaryFailed')}</BannerTitle>
-                <BannerActions>
-                  <Button variant="tertiary" disabled={sending || active} onClick={requestPlan}>
-                    {t('retrySummary')}
-                  </Button>
-                </BannerActions>
-              </Banner>
-            ) : null}
-            {view.queued ? (
-              <div
-                role="status"
-                className="flex flex-col gap-1 rounded-lg fill-control p-2 text-caption"
-              >
-                <span style={{ fontVariationSettings: fontWeights.semibold }}>{t('queued')}</span>
-                <QueuedMessage
-                  key={view.queued.commandId}
-                  queued={view.queued}
-                  config={view.config}
-                  projectId={projectId}
-                  edit={editQueued}
-                />
-                <span className="text-muted-foreground">
-                  {active ? t('queuedHint') : t('queuedIdle')}
-                </span>
-                <div className="flex gap-2">
-                  {active ? null : (
-                    <Button onClick={() => void sendQueued()}>{t('sendQueued')}</Button>
-                  )}
-                  <Button variant="tertiary" onClick={() => void dropQueued()}>
-                    {t('dropQueued')}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-            <MeetingRecipients
-              config={view.config}
-              selected={mentions}
-              onChange={setMentions}
-              disabled={sending}
-            />
-            {attachments.length ? (
-              <EvidenceChips
-                value={attachments}
-                onChange={setAttachments}
-                disabled={sending || attachmentLoading}
-              />
-            ) : null}
-          </>
-        }
-        leftSlot={
-          <>
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button variant="ghost" size="icon-compact" aria-label={t('attachmentActions')} />
-                }
-              >
-                <Plus />
-              </MenuTrigger>
-              <MenuPopup align="start">
-                <MenuItem
-                  disabled={sending || attachmentLoading}
-                  onClick={() => showEvidence(true)}
-                >
-                  {t('evidence')}
-                </MenuItem>
-              </MenuPopup>
-            </Menu>
-            {text || mentions.length || attachments.length ? (
-              <Button
-                size="compact"
-                variant="ghost"
-                disabled={sending}
-                onClick={() => {
-                  setText('');
-                  setMentions([]);
-                  setAttachments([]);
-                }}
-              >
-                {t('clearDraft')}
-              </Button>
-            ) : null}
-          </>
-        }
-        rightSlot={
-          <>
-            {onStop ? (
-              <Button size="compact" variant="tertiary" onClick={onStop}>
-                <Square size={12} aria-hidden />
-                {t('stopRound')}
-              </Button>
-            ) : null}
-            <Button
-              size="compact"
-              variant="ghost"
-              disabled={sending || attachmentLoading || view.rounds.length === 0}
-              onClick={requestPlan}
-            >
-              {t('summarise')}
-            </Button>
-          </>
-        }
-      />
-      {error ? (
-        <p role="alert" className="px-1 text-caption text-danger wrap-anywhere">
-          {error}
-        </p>
-      ) : null}
-      <Dialog open={evidenceOpen} onOpenChange={showEvidence}>
-        <DialogPopup>
-          <DialogHeader>
-            <DialogTitle>{t('evidence')}</DialogTitle>
-          </DialogHeader>
-          <DialogPanel>
-            {evidenceOpen ? (
-              <MeetingEvidencePicker
-                projectId={projectId}
-                value={attachments}
-                onChange={(next) => {
-                  setAttachments(next);
-                  // A new item is the choice made; the composer shows it from here.
-                  if (next.length > attachments.length) showEvidence(false);
-                }}
-                onLoading={setAttachmentLoading}
-                disabled={sending}
-              />
-            ) : null}
-          </DialogPanel>
-        </DialogPopup>
-      </Dialog>
-    </div>
-  );
-}
-
-/** The evidence chosen for the next message, each removable before it is sent. */
-function EvidenceChips({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: TextAttachment[];
-  onChange(next: TextAttachment[]): void;
-  disabled: boolean;
-}) {
-  const t = useTranslations('Meetings');
-  return (
-    <ul
-      aria-label={t('evidenceSelected', { count: value.length })}
-      className="flex flex-wrap gap-1"
-    >
-      {value.map((item) => (
-        <li
-          key={textAttachmentKey(item)}
-          className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-caption"
-        >
-          <FileText size={12} aria-hidden className="shrink-0 text-muted-foreground" />
-          <span className="truncate" title={item.name}>
-            {item.name}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon-tiny"
-            disabled={disabled}
-            aria-label={t('removeEvidence', { name: item.name })}
-            onClick={() =>
-              onChange(
-                value.filter((entry) => textAttachmentKey(entry) !== textAttachmentKey(item)),
-              )
-            }
-          >
-            <X />
-          </Button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function QueuedMessage({
-  queued,
-  config,
-  projectId,
-  edit,
-}: {
-  queued: QueuedMeetingMessage;
-  config: MeetingConfig;
-  projectId: string;
-  edit(message: QueuedMeetingMessage): Promise<MeetingResult | null>;
-}) {
-  const t = useTranslations('Meetings');
-  const [text, setText] = useState(queued.text);
-  const [mentions, setMentions] = useState(queued.mentions);
-  const [attachments, setAttachments] = useState(queued.attachments ?? []);
-  const [attachmentLoading, setAttachmentLoading] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  return editing ? (
-    <div className="flex flex-col gap-2">
-      <MeetingRecipients
-        config={config}
-        selected={mentions}
-        onChange={setMentions}
-        disabled={saving}
-      />
-      <Textarea
-        aria-label={t('queued')}
-        value={text}
-        maxLength={20000}
-        rows={2}
-        disabled={saving}
-        className="w-full"
-        onChange={(event) => setText(event.target.value)}
-      />
-      <MeetingEvidencePicker
-        projectId={projectId}
-        value={attachments}
-        onChange={setAttachments}
-        onLoading={setAttachmentLoading}
-        disabled={saving}
-      />
-      <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={saving || attachmentLoading || !text.trim()}
-          onClick={async () => {
-            setSaving(true);
-            try {
-              const result = await edit({
-                ...queued,
-                text: text.trim(),
-                mentions,
-                ...(attachments.length || queued.attachments ? { attachments } : {}),
-              });
-              if (result?.ok) setEditing(false);
-            } finally {
-              setSaving(false);
-            }
-          }}
-        >
-          {t('saveQueued')}
-        </Button>
-        <Button variant="tertiary" disabled={saving} onClick={() => setEditing(false)}>
-          {t('cancel')}
-        </Button>
-      </div>
-    </div>
-  ) : (
-    <>
-      <p className="whitespace-pre-wrap wrap-anywhere">{queued.text}</p>
-      {queued.mentions.length ? (
-        <p>
-          {t('to', {
-            names: queued.mentions.map((id) => nameOf(config, id, t('secretary'))).join(', '),
-          })}
-        </p>
-      ) : null}
-      {queued.attachments?.length ? <TextAttachmentList attachments={queued.attachments} /> : null}
-      <div>
-        <Button
-          variant="tertiary"
-          onClick={() => {
-            setText(queued.text);
-            setMentions(queued.mentions);
-            setAttachments(queued.attachments ?? []);
-            setEditing(true);
-          }}
-        >
-          {t('editQueued')}
-        </Button>
-      </div>
-    </>
-  );
-}
-
-function MeetingRecipients({
-  config,
-  selected,
-  onChange,
-  disabled,
-}: {
-  config: MeetingConfig;
-  selected: string[];
-  onChange(next: string[]): void;
-  disabled: boolean;
-}) {
-  const t = useTranslations('Meetings');
-  const rule = useId();
-  const people = [
-    ...config.participants.map((participant) => ({
-      id: participant.participantId,
-      name: participant.name,
-    })),
-    { id: SECRETARY_ID, name: t('secretary') },
-  ];
-  return (
-    <fieldset
-      className="flex flex-wrap items-center gap-1 text-caption"
-      disabled={disabled}
-      aria-describedby={rule}
-    >
-      <legend className="sr-only">{t('mentions')}</legend>
-      {/* Who answers a message that names no one: once, on the label, not as a sentence. */}
-      <span id={rule} className="sr-only">
-        {t('everyone')}
-      </span>
-      <Tooltip content={t('everyone')}>
-        <span aria-hidden className="cursor-default px-1 text-muted-foreground">
-          {t('mentions')}
-        </span>
-      </Tooltip>
-      {/* The chosen recipients take the kit's selected treatment. */}
-      {people.map((person) => (
-        <Button
-          key={person.id}
-          type="button"
-          variant={selected.includes(person.id) ? 'secondary' : 'ghost'}
-          aria-pressed={selected.includes(person.id)}
-          onClick={() =>
-            onChange(
-              selected.includes(person.id)
-                ? selected.filter((id) => id !== person.id)
-                : person.id === SECRETARY_ID
-                  ? [SECRETARY_ID]
-                  : [...selected.filter((id) => id !== SECRETARY_ID), person.id],
-            )
-          }
-        >
-          @{person.name}
-        </Button>
-      ))}
-    </fieldset>
-  );
 }

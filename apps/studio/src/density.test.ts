@@ -89,6 +89,7 @@ const panels: Record<string, string[]> = {
   ],
   meeting: [
     'apps/studio/src/pages/MeetingPage.tsx',
+    'apps/studio/src/workbench/session/composer/meeting.tsx',
     'apps/studio/src/workbench/MeetingRecords.tsx',
     'apps/studio/src/workbench/MeetingEvidence.tsx',
     'apps/studio/src/workbench/MeetingDecisions.tsx',
@@ -162,12 +163,26 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /ref=\{recordsToggle\}/ },
   { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'sessionActions'/ },
   // The meeting composer's action row: the kit composer's slot controls are compact.
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'attachmentActions'/ },
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /setMentions\(\[\]\)/ },
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /onClick=\{onStop\}/ },
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /view\.rounds\.length === 0/ },
+  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'attachmentActions'/ },
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /variant="tertiary" onClick=\{onStop\}/,
+  },
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /size="compact"\s+variant="ghost"/,
+  },
+  // Narrow, Stop and the plan request are the kit composer's icon slot controls.
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /aria-label=\{t\('stopRound'\)\}/,
+  },
+  {
+    file: 'apps/studio/src/workbench/session/composer/meeting.tsx',
+    near: /aria-label=\{t\('summarise'\)\}/,
+  },
   // An icon button inside a chip.
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'removeEvidence'/ },
+  { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'removeEvidence'/ },
   {
     file: 'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
     near: /'removeReference'/,

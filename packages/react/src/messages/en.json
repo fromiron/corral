@@ -2611,7 +2611,8 @@
       "new": "Send",
       "join": "Join",
       "interrupt": "Interrupt",
-      "queue": "Next"
+      "queue": "Next",
+      "meeting": "Send"
     },
     "sendMenu": "Send as",
     "targetLabel": "Send to {name}",
@@ -5216,7 +5217,6 @@
     "requestFailed": "The model provider returned HTTP {status}. Check the model connection or try again.",
     "answerFailedHint": "The model could not complete this reply. Try again or open diagnostics for the reported cause.",
     "participantDefault": "Participant {number}",
-    "clearDraft": "Clear draft",
     "summaryFailed": "The secretary could not prepare the minutes. Request them again before adopting a decision.",
     "retrySummary": "Request minutes again",
     "heading": "Meeting",
@@ -5276,8 +5276,6 @@
     "stopRound": "Stop answering",
     "message": "Meeting message",
     "placeholder": "Write a message",
-    "mentions": "To",
-    "everyone": "Without a mention, whoever the message calls answers. If it calls no one, one participant who fits the context answers.",
     "send": "Send",
     "summarise": "Ask secretary for a plan",
     "summaryRequest": "Please organise our conversation into meeting minutes and an implementation plan based on the conclusions we have reached. Keep unresolved questions separate from agreed work.",
@@ -5315,7 +5313,13 @@
     "expandRecords": "Expand records",
     "compactRecords": "Compact records",
     "closeRecords": "Close records",
-    "mentionParticipant": "Add @{name} to the message"
+    "mentionParticipant": "Add @{name} to the message",
+    "recipients": {
+      "auto": "Auto",
+      "none": "No one",
+      "count": "{count, plural, one {# person} other {# people}}",
+      "label": "Recipients: {name}"
+    }
   },
   "MeetingsDecisions": {
     "decisionLabel": "Decision v{number} · {goal}",
