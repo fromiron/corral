@@ -605,7 +605,6 @@ function SessionComposer({
       <PreRun session={session} team={team} isAuto={isAuto} runMode={runMode} intent={intent} />
       <ComposerQueue
         queued={queued}
-        imageUrl={(imageId) => services.workspaces?.imageUrl(session.sessionId, imageId) ?? ''}
         autoStart={autoStart}
         // Auto start is the server's; the browser demo has none, so it has no such setting.
         autoStartShown={services.mode !== 'browser'}
