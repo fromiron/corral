@@ -50,7 +50,10 @@ export interface ScriptedAgentOptions {
   onAdvised?: (outcome: ToolOutcome, review: AdvisorReviewRequest) => void;
 }
 
-/** One `advise` call; the target defaults to the execution under review. */
+/**
+ * One `advise` call. The tool takes only the severity and the note; the other fields are sent as
+ * written, to show that the Coordinator refuses a target or command id the model names.
+ */
 export interface ScriptedAdvice {
   severity: 'nit' | 'concern' | 'blocker';
   note: string;

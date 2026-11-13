@@ -134,6 +134,7 @@ import {
   onModelFinished,
   onReviewEnded,
 } from './advisor/service.ts';
+import { advisorRole } from './advisor/tools.ts';
 import {
   canReadArtifactBody,
   canReleaseArtifactBodies,
@@ -612,8 +613,6 @@ interface AdvisorRuntime {
   schedule: AdvisorSchedule;
   /** By advisor node. */
   advisors: Map<string, AdvisorState>;
-  /** What each watched execution's last review read up to; a retried execution has none. */
-  cursors: Map<string, ReviewCursor>;
   /** Advisor executions, by execution id, to their node. */
   byExecution: Map<string, string>;
 }
@@ -624,6 +623,11 @@ interface AdvisorState {
   attemptNo: number;
   /** Keyed by the advice's normalized text, which no event carries: kept in memory only. */
   guard: AdviceGuardState;
+  /**
+   * What this advisor's last review of each watched execution read up to; a retried execution
+   * has none. Another advisor watching the same execution keeps its own.
+   */
+  cursors: Map<string, ReviewCursor>;
   /** The review the advisor is working on, with the model requests it made for it. */
   review: { request: AdvisorReviewRequest; requests: number; ended: boolean } | null;
   /** A review handed over before the advisor asked for it. */
@@ -719,6 +723,7 @@ function advisorRuntime(plans: Readonly<Record<string, AdvisorPlan>>): AdvisorRu
           executionId: null,
           attemptNo: 0,
           guard: emptyGuard(),
+          cursors: new Map(),
           review: null,
           pending: null,
           waiter: null,
@@ -726,13 +731,26 @@ function advisorRuntime(plans: Readonly<Record<string, AdvisorPlan>>): AdvisorRu
         },
       ]),
     ),
-    cursors: new Map(),
     byExecution: new Map(),
   };
 }
 
 /** Error text handed to a model: a retry's last error, or what an error path is told. */
 const clip = (text: string) => text.slice(0, 2000);
+
+/** What the advisor's `advise` call returns: its receipt, or the error it carries. */
+function adviceOutcome(receipt: Receipt, toolCallId: string): ToolOutcome {
+  if (receipt.error) return { ok: false, toolCallId, error: receipt.error };
+  return {
+    ok: true,
+    toolCallId,
+    result: {
+      commandId: receipt.commandId,
+      status: receipt.status,
+      ...(receipt.advice ? { advice: receipt.advice } : {}),
+    },
+  };
+}
 
 type RouterNode = Extract<CorralDefinition['nodes'][number], { mode: 'router' }>;
 
@@ -3448,7 +3466,7 @@ export class Coordinator {
     if (!state) return;
     await this.boundary(run);
     if (advisors.schedule.advisors[nodeId]?.current !== targetExecutionId) return;
-    const cursor = advisors.cursors.get(targetExecutionId) ?? null;
+    const cursor = state.cursors.get(targetExecutionId) ?? null;
     const built = buildReviewInput({
       run: run.projection,
       events: this.store.readEvents(run.runId, 0),
@@ -3462,7 +3480,7 @@ export class Coordinator {
         (a, b) => b.length - a.length,
       ),
     });
-    if (built.cursor) advisors.cursors.set(targetExecutionId, built.cursor);
+    if (built.cursor) state.cursors.set(targetExecutionId, built.cursor);
     // Nothing new to read: no review, and the next one may start.
     if (!built.text) {
       this.stepAdvisors(run, onReviewEnded(advisors.schedule, nodeId));
@@ -3676,29 +3694,8 @@ export class Coordinator {
     proposal: ToolProposal,
     tool: ToolFrame,
   ): Promise<ToolOutcome> {
-    const { args } = proposal;
-    const review = run.advisors.advisors.get(input.nodeId)?.review;
-    const command = RunCommand.safeParse({
-      schemaVersion: '0.1',
-      commandId: typeof args.commandId === 'string' ? args.commandId : `advice_${tool.toolCallId}`,
-      runId: run.runId,
-      type: 'submit_advice',
-      payload: {
-        observerExecutionId: input.executionId,
-        attemptNo: input.attemptNo,
-        targetExecutionId:
-          typeof args.targetExecutionId === 'string'
-            ? args.targetExecutionId
-            : (review?.request.targetExecutionId ?? input.executionId),
-        severity: args.severity,
-        note: args.note,
-      },
-    });
     this.commit(run, tool.opening);
-    const receipt =
-      command.success && command.data.type === 'submit_advice'
-        ? this.submitAdvice(command.data)
-        : rejected(`advice_${tool.toolCallId}`, run.runId, schemaError(command.error!));
+    const receipt = this.adviceReceipt(run, input, proposal, tool.toolCallId);
     const error = receipt.error;
     this.commit(
       run,
@@ -3710,16 +3707,38 @@ export class Coordinator {
         error?.code,
       ),
     );
-    if (error) return { ok: false, toolCallId: tool.toolCallId, error };
-    return {
-      ok: true,
-      toolCallId: tool.toolCallId,
-      result: {
-        commandId: receipt.commandId,
-        status: receipt.status,
-        ...(receipt.advice ? { advice: receipt.advice } : {}),
+    return adviceOutcome(receipt, tool.toolCallId);
+  }
+
+  /**
+   * The `submit_advice` an `advise` call stands for. Its target is the execution under review and
+   * its command id comes from the tool call, so a retransmission of the same call gets the first
+   * receipt; the model names neither.
+   */
+  private adviceReceipt(
+    run: LiveRun,
+    input: AgentStartInput,
+    proposal: ToolProposal,
+    toolCallId: string,
+  ): Receipt {
+    const review = run.advisors.advisors.get(input.nodeId)?.review;
+    const commandId = `advice_${toolCallId}`;
+    const command = RunCommand.safeParse({
+      schemaVersion: '0.1',
+      commandId,
+      runId: run.runId,
+      type: 'submit_advice',
+      payload: {
+        observerExecutionId: input.executionId,
+        attemptNo: input.attemptNo,
+        targetExecutionId: review?.request.targetExecutionId ?? input.executionId,
+        severity: proposal.args.severity,
+        note: proposal.args.note,
       },
-    };
+    });
+    return command.success && command.data.type === 'submit_advice'
+      ? this.submitAdvice(command.data)
+      : rejected(commandId, run.runId, schemaError(command.error!));
   }
 
   /**
@@ -5672,9 +5691,12 @@ export class Coordinator {
     const bindings = 'inputBindings' in node ? (node.inputBindings ?? []) : [];
     const patch = run.nodePatches.get(spec.nodeId);
     // A router's or check's own role is not an Agent's: no patch or Loop policy reaches it.
-    const { role, model } = spec.role
+    const settings = spec.role
       ? { role: spec.role, model: run.snapshot.models[spec.role.modelProfile] }
       : this.agentSettings(run, spec.nodeId, baseRole);
+    const { model } = settings;
+    // An advisor's tools are the Coordinator's, and it runs without its role's work style.
+    const role = advisor ? advisorRole(settings.role) : settings.role;
     if (!model) throw new Error('the pinned model is unavailable');
     const label = (id: string) => {
       const target = definition.nodes.find((n) => n.id === id);
@@ -5738,7 +5760,9 @@ export class Coordinator {
       nodeId: spec.nodeId,
       attemptNo,
       role,
-      ...(run.snapshot.harnesses?.[role.id] ? { harness: run.snapshot.harnesses[role.id] } : {}),
+      ...(!advisor && run.snapshot.harnesses?.[role.id]
+        ? { harness: run.snapshot.harnesses[role.id] }
+        : {}),
       modelProfile: role.modelProfile,
       mode: run.snapshot.mode,
       model: JSON.parse(canonicalJson(model)) as ModelProfileSnapshot,
@@ -8559,6 +8583,12 @@ export class Coordinator {
           toolCallId,
           error: { code: 'CAPABILITY_DENIED', message: 'native calls execute in their worker' },
         };
+      // A retransmitted `advise` call gets the receipt its first delivery recorded.
+      const replayed =
+        call?.ran && call.proposal.name === 'advise'
+          ? this.store.getCommand(run.runId, `advice_${toolCallId}`)
+          : null;
+      if (replayed) return adviceOutcome(this.currentReceipt(replayed), toolCallId);
       if (!call || call.ran || call.claimed) {
         return {
           ok: false,

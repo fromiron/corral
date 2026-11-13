@@ -3,7 +3,6 @@ import {
   type AgentNode,
   advisorReview,
   type CapabilityLink,
-  type CollaborationTool,
   type ControlEdge,
   CorralDefinition,
   type CorralNode,
@@ -17,6 +16,7 @@ import {
   type TargetPort,
   type WorkTool,
 } from '@corral/contracts';
+import { ADVISOR_COLLABORATION_TOOLS, ADVISOR_WORK_TOOLS } from '../advisor/tools.ts';
 import { SPEC_HARD_CAPS } from '../config.ts';
 import { recipeAttempts, reviewCriteriaHash } from '../review-recipe.ts';
 import { vertexOf } from './cycles.ts';
@@ -292,14 +292,6 @@ const BLOCKING = new Set<DiagnosticCode>([
   'ADVISOR_OUTSIDE_FLOW',
   'ADVISOR_NOT_A_STEP',
 ]);
-
-const ADVISOR_WORK_TOOLS: readonly WorkTool[] = [
-  'search',
-  'read_document',
-  'list_files',
-  'read_file',
-];
-const ADVISOR_COLLABORATION_TOOLS: readonly CollaborationTool[] = ['read_artifact', 'advise'];
 
 /** Advisors (features/team-graph.md, "구조 규칙" 11), one code per line of the rule. */
 function checkAdvisors(c: Context) {

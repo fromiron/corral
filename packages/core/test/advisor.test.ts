@@ -7,11 +7,14 @@ import type {
   AgentStartInput,
   CorralDefinition,
   DeliveredDirective,
+  EffectiveHarnessSnapshot,
   ModelRequestRecord,
   RunEvent,
   ToolOutcome,
 } from '@corral/contracts';
+import { DEFAULT_LIMITS } from '@corral/contracts';
 import {
+  collaborationCorral,
   FakeClock,
   Gate,
   linearCorral,
@@ -23,10 +26,15 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   Coordinator,
+  DEFAULT_GATES,
   type DefinitionSource,
+  emptyProjection,
   type FileTools,
+  type HarnessResolver,
   InMemoryRunStore,
   type RunProjection,
+  SPEC_HARD_CAPS,
+  type ToolGateView,
   unreadAdvice,
 } from '../src/index.ts';
 
@@ -48,8 +56,15 @@ async function idle(turns = 50) {
   for (let i = 0; i < turns; i++) await new Promise<void>((resolve) => host.setImmediate(resolve));
 }
 
-/** writer → editor → Output, with an advisor watching the writer. */
-function advised(review = { interval: 3, maxRequestsPerReview: 8 }, watches = ['writer']) {
+/**
+ * writer → editor → Output, with an advisor watching the writer. Its role lists no collaboration
+ * tools: `advise` and `read_artifact` are the Coordinator's to give.
+ */
+function advised(
+  review = { interval: 3, maxRequestsPerReview: 8 },
+  watches = ['writer'],
+  collaboration: CorralDefinition['roles'][number]['allowedCollaborationTools'] = [],
+) {
   const definition = linearCorral(['writer', 'editor']);
   definition.roles.push({
     id: 'advisor_role',
@@ -57,7 +72,7 @@ function advised(review = { interval: 3, maxRequestsPerReview: 8 }, watches = ['
     prompt: 'Watch the writer and advise only when it matters.',
     modelProfile: 'model-a',
     allowedWorkTools: ['read_file'],
-    allowedCollaborationTools: ['advise'],
+    allowedCollaborationTools: collaboration,
     outputContract: 'notes',
   });
   definition.nodes.push({
@@ -94,6 +109,8 @@ interface Setup {
   /** The file tools a writer may use. */
   files?: FileTools;
   store?: InMemoryRunStore;
+  /** Work styles the roles are bound to. */
+  harnesses?: HarnessResolver;
   /** Scripts that take over a scheduled agent, by node. */
   scripts?: Record<string, ScriptedAgentOptions['script']>;
   /** Real-model mode with fixture models, for request records. */
@@ -154,6 +171,7 @@ function setup(options: Setup = {}) {
     ...(options.corrals ? { corrals: options.corrals } : {}),
     ...(options.workspaceRoots ? { workspaceRoots: () => options.workspaceRoots ?? [] } : {}),
     ...(options.files ? { files: options.files } : {}),
+    ...(options.harnesses ? { harnesses: options.harnesses } : {}),
     ...(options.live
       ? {
           models: {
@@ -301,6 +319,47 @@ describe('reviews', () => {
     expect(second?.text).not.toContain('writer answer 1\n');
     // Then only the writer's end is left to read: never one review per call.
     expect(s.reviews.length).toBeLessThanOrEqual(3);
+  });
+
+  it('two advisors watching one execution each read every answer and the task input', async () => {
+    const definition = advised({ interval: 1, maxRequestsPerReview: 8 });
+    definition.nodes.push({
+      id: 'advisor_b',
+      type: 'agent',
+      label: 'advisor b',
+      roleId: 'advisor_role',
+      invocation: 'observer',
+      outputName: 'notes',
+      review: { interval: 1, maxRequestsPerReview: 8 },
+    } as CorralDefinition['nodes'][number]);
+    definition.capabilityLinks.push({
+      id: 'watch_b',
+      kind: 'advise',
+      sourceNodeId: 'advisor_b',
+      targetNodeId: 'writer',
+    });
+    const read: Record<string, string[]> = { advisor: [], advisor_b: [] };
+    const s = setup({
+      definition,
+      turns: { writer: 3 },
+      // Each writer request waits for the reviews of the one before to be handed out.
+      work: async (turn, input) => {
+        if (input.nodeId === 'writer' && turn > 1) await idle(40);
+      },
+      advisor: {
+        reviewTurns: (review, input) => {
+          read[input.nodeId]?.push(review.text);
+          return 1;
+        },
+      },
+    });
+    await s.ended();
+    expect(s.projection().status).toBe('succeeded');
+    for (const nodeId of ['advisor', 'advisor_b']) {
+      const texts = read[nodeId] ?? [];
+      expect(texts[0]).toContain('Compare two options using primary sources.');
+      for (const turn of [1, 2, 3]) expect(texts.join('\n')).toContain(`writer answer ${turn}`);
+    }
   });
 
   it('reviews of two watched executions run one after the other', async () => {
@@ -615,25 +674,85 @@ describe('advice', () => {
     ).toEqual(['c']);
   });
 
-  it('a retransmission returns the first result and records the advice once', async () => {
-    const s = adviseOnce([
-      { severity: 'concern', note: 'The 2024 figure is from 2019.', commandId: 'advice_same' },
-      { severity: 'concern', note: 'The 2024 figure is from 2019.', commandId: 'advice_same' },
-    ]);
+  it('a role that lists advise itself advises the same way', async () => {
+    const s = adviseOnce([{ severity: 'concern', note: 'The 2024 figure is from 2019.' }], {
+      definition: advised({ interval: 1, maxRequestsPerReview: 8 }, ['writer'], ['advise']),
+    });
     await s.ended();
-    const [first, again] = advice(s);
+    expect(fates(s)).toEqual(['next_request']);
+  });
+
+  it('a retransmission of the same advise call returns the first result and records it once', async () => {
+    const results: ToolOutcome[] = [];
+    const s = setup({
+      definition: advised({ interval: 1, maxRequestsPerReview: 8 }),
+      advisor: {
+        script: async (_input, host) => {
+          for (;;) {
+            const review = await host.nextReview?.();
+            if (!review) return { outcome: 'succeeded' };
+            if (results.length > 0) continue;
+            await call(host, 'reviewing');
+            const authorized = await host.authorizeTool({
+              name: 'advise',
+              args: { severity: 'concern', note: 'The 2024 figure is from 2019.' },
+            });
+            if (!authorized.ok) throw new Error(authorized.error.message);
+            results.push(await host.executeTool(authorized.toolCallId));
+            results.push(await host.executeTool(authorized.toolCallId));
+          }
+        },
+      },
+    });
+    await s.ended();
+    const [first, again] = results;
+    expect(first?.ok).toBe(true);
     expect(again).toEqual(first);
     expect(s.events().filter((e) => e.type === 'advice.admitted')).toHaveLength(1);
     expect(s.events().filter((e) => e.type === 'advice.suppressed')).toHaveLength(0);
   });
 
-  it('refuses advice about an execution that is not under review', async () => {
+  it('the same note from another advise call is a duplicate', async () => {
+    const note = 'The 2024 figure is from 2019.';
     const s = adviseOnce([
-      { severity: 'concern', note: 'About someone else.', targetExecutionId: 'exec_9999' },
+      { severity: 'concern', note },
+      { severity: 'concern', note },
     ]);
     await s.ended();
-    expect(advice(s)).toEqual([{ error: 'CAPABILITY_DENIED' }]);
+    expect(fates(s)).toEqual(['next_request', 'duplicate']);
+  });
+
+  it('refuses advice outside a review: there is no execution under review', async () => {
+    const results: ToolOutcome[] = [];
+    const s = setup({
+      definition: advised({ interval: 1, maxRequestsPerReview: 8 }),
+      advisor: {
+        script: async (_input, host) => {
+          results.push(
+            await host.invokeTool({
+              name: 'advise',
+              args: { severity: 'concern', note: 'Before any review.' },
+            }),
+          );
+          while (await host.nextReview?.()) {}
+          return { outcome: 'succeeded' };
+        },
+      },
+    });
+    await s.ended();
+    expect(results.map((o) => (o.ok ? null : o.error.code))).toEqual(['CAPABILITY_DENIED']);
     expect(s.events().some((e) => e.type.startsWith('advice.'))).toBe(false);
+  });
+
+  it('the model names neither the target nor the command id of its advice', async () => {
+    const s = adviseOnce([
+      { severity: 'concern', note: 'About someone else.', targetExecutionId: 'exec_9999' },
+      { severity: 'concern', note: 'With a command id.', commandId: 'advice_forged' },
+    ]);
+    await s.ended();
+    expect(advice(s)).toEqual([{ error: 'SCHEMA_INVALID' }, { error: 'SCHEMA_INVALID' }]);
+    expect(s.events().some((e) => e.type.startsWith('advice.'))).toBe(false);
+    expect(s.store.getCommand(s.runId, 'advice_forged')).toBeFalsy();
   });
 
   it('advice never reaches approvals, cancellation, patches or permissions', async () => {
@@ -690,9 +809,8 @@ describe('the advisor’s own record', () => {
   });
 
   it('reads what a watched role wrote; another role’s artifact is refused', async () => {
+    // The role lists no collaboration tools; reading is the Coordinator's to give.
     const definition = advised({ interval: 1, maxRequestsPerReview: 8 }, ['editor']);
-    const role = definition.roles.find((r) => r.id === 'advisor_role');
-    role?.allowedCollaborationTools.push('read_artifact');
     const reads: Record<string, ToolOutcome> = {};
     const versionOf = (nodeId: string) => {
       const p = s.projection();
@@ -1087,4 +1205,231 @@ describe('advice and the session queue', () => {
     expect(expired.map((d) => d.origin)).toEqual(['advice']);
     expect(carriedDirectives(s.projection())).toEqual([]);
   });
+});
+
+describe('the advisor’s tools', () => {
+  const descriptor = {
+    name: 'echo',
+    source: 'extension:fixture@1.0.0',
+    schemaHash: 'b'.repeat(64),
+    exposure: 'direct',
+    sideEffect: 'external',
+    annotations: { readOnlyHint: false, openWorldHint: true },
+  } as unknown as NonNullable<ToolGateView['descriptor']>;
+  const workStyle = {
+    binding: { profileId: 'writing', revision: 1 },
+    snapshotHash: 'a'.repeat(64),
+    piVersion: '1.3.0',
+    policyRevision: 1,
+    policy: 'trusted-native',
+    resources: [
+      {
+        hash: 'c'.repeat(64),
+        name: 'fixture',
+        version: '1.0.0',
+        kind: 'extension',
+        required: true,
+      },
+    ],
+    allowedTools: ['echo', 'run_check', 'advise', 'read_artifact', 'write_artifact'],
+    tools: [],
+    diagnostics: [],
+    projectTools: {
+      projectId: 'default',
+      revision: 1,
+      hash: 'c'.repeat(64),
+      checkIds: ['types'],
+      lspServerIds: [],
+    },
+  } as unknown as EffectiveHarnessSnapshot;
+
+  /** What the role allowlist decides for an advisor's call, its role bound to a work style. */
+  function decide(
+    name: string,
+    args: Record<string, unknown>,
+    extra: Partial<ToolGateView> = {},
+    role: Partial<AgentStartInput['role']> = {},
+  ) {
+    const gate = DEFAULT_GATES['tool.authorize'].find((g) => g.id === 'role_allowlist');
+    if (!gate) throw new Error('no role allowlist');
+    const input = {
+      executionId: 'exec_advisor',
+      nodeId: 'advisor',
+      attemptNo: 1,
+      assignment: { kind: 'advisor', watches: ['writer'] },
+      role: {
+        id: 'advisor_role',
+        name: 'Reviewer',
+        prompt: 'Watch.',
+        modelProfile: 'model-a',
+        allowedWorkTools: ['read_file'],
+        allowedCollaborationTools: [],
+        outputContract: 'notes',
+        ...role,
+      },
+      harness: workStyle,
+      inputs: [],
+      capabilities: { delegateTo: [], askTo: [] },
+    } as unknown as AgentStartInput;
+    const decision = gate.check({
+      projection: emptyProjection('run_1'),
+      limits: DEFAULT_LIMITS,
+      input,
+      proposal: { name, args },
+      policy: SPEC_HARD_CAPS,
+      callables: { delegate: [], question: [] },
+      externalTools: true,
+      fileTools: true,
+      responderOf: () => undefined,
+      readable: () => new Set<string>(),
+      ...extra,
+    } as ToolGateView);
+    return decision.kind === 'refuse' ? decision.code : decision.kind;
+  }
+
+  it('an advisor whose role lists no collaboration tools may advise', () => {
+    expect(decide('advise', { severity: 'concern', note: 'Name the source.' })).toBe('allow');
+    expect(decide('read_file', { path: 'a.txt' })).toBe('allow');
+  });
+
+  it('whatever its role or work style lists, the rest is refused', () => {
+    const role = {
+      allowedWorkTools: ['read_file', 'write_artifact', 'run_command'],
+      allowedCollaborationTools: ['submit_result', 'update_plan', 'spawn_subagents'],
+    } as unknown as Partial<AgentStartInput['role']>;
+    expect(decide('echo', { text: 'side effect' }, { descriptor }, role)).toBe('CAPABILITY_DENIED');
+    expect(decide('run_check', { commandId: 'types' }, {}, role)).toBe('CAPABILITY_DENIED');
+    for (const name of ['write_artifact', 'submit_result', 'update_plan', 'spawn_subagents'])
+      expect(decide(name, {}, {}, role)).toBe('CAPABILITY_DENIED');
+    // A read tool its role did not pick stays closed.
+    expect(decide('list_files', {}, {}, role)).toBe('CAPABILITY_DENIED');
+  });
+
+  it('advice takes only a severity and a note', () => {
+    expect(decide('advise', { severity: 'nit', note: 'x', targetExecutionId: 'exec_1' })).toBe(
+      'SCHEMA_INVALID',
+    );
+    expect(decide('advise', { severity: 'nit', note: 'x', commandId: 'c' })).toBe('SCHEMA_INVALID');
+  });
+
+  it('an advisor starts without its role’s work style and with only its own tools', async () => {
+    const definition = advised({ interval: 1, maxRequestsPerReview: 8 });
+    const role = definition.roles.find((r) => r.id === 'advisor_role');
+    if (!role) throw new Error('no advisor role');
+    role.harness = workStyle.binding;
+    let started: AgentStartInput | undefined;
+    const s = setup({
+      definition,
+      harnesses: {
+        resolve: () => JSON.parse(JSON.stringify(workStyle)) as EffectiveHarnessSnapshot,
+        readSkill: () => ({ text: 'x', sha256: 'e'.repeat(64) }),
+      } as unknown as HarnessResolver,
+      advisor: {
+        script: async (input, host) => {
+          started = input;
+          while (await host.nextReview?.()) {}
+          return { outcome: 'succeeded' };
+        },
+      },
+    });
+    await s.ended();
+    expect(s.projection().status).toBe('succeeded');
+    expect(started?.harness).toBeUndefined();
+    expect(started?.role.harness).toBeUndefined();
+    expect(started?.role.allowedCollaborationTools).toEqual(['read_artifact', 'advise']);
+    expect(started?.role.allowedWorkTools).toEqual(['read_file']);
+  });
+});
+
+describe('the advisor and item delegation', () => {
+  for (const reviewing of [false, true])
+    it(`an advisor ${reviewing ? 'in a review' : 'resting between reviews'} does not hold item delegation`, async () => {
+      const definition = collaborationCorral();
+      definition.roles.push({
+        id: 'advisor_role',
+        name: 'Reviewer',
+        prompt: 'Watch.',
+        modelProfile: 'model-a',
+        allowedWorkTools: [],
+        allowedCollaborationTools: [],
+        outputContract: 'notes',
+      });
+      definition.nodes.push({
+        id: 'advisor',
+        type: 'agent',
+        label: 'advisor',
+        roleId: 'advisor_role',
+        invocation: 'observer',
+        outputName: 'notes',
+        review: { interval: 1, maxRequestsPerReview: 8 },
+      } as CorralDefinition['nodes'][number]);
+      definition.capabilityLinks.push({
+        id: 'watch_research',
+        kind: 'advise',
+        sourceNodeId: 'advisor',
+        targetNodeId: 'research',
+      });
+      const held = new Gate();
+      let reviews = 0;
+      let spawned: ToolOutcome | undefined;
+      const store = new InMemoryRunStore();
+      const agents = new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: false,
+        appendNotes: false,
+        reply: () => 'done',
+        beforeReply: async (_turn, input) => {
+          if (reviewing && input.assignment.kind === 'advisor') await held.wait();
+        },
+        reviewTurns: () => {
+          reviews += 1;
+          return 1;
+        },
+        script: async (input, host) => {
+          if (input.nodeId === 'research') {
+            await call(host, 'research first answer');
+            await until(() => reviews > 0, 'the first review');
+            if (!reviewing) await idle(60);
+            spawned = await host.invokeTool({
+              name: 'spawn_subagents',
+              args: {
+                mode: 'items',
+                tasks: [
+                  { targetNodeId: 'helper', brief: 'Only alpha' },
+                  { targetNodeId: 'helper', brief: 'Only beta' },
+                ],
+              },
+            });
+            held.open();
+            return submit(host, 'notes');
+          }
+          if (input.nodeId === 'helper') return submit(host, 'part');
+          return null;
+        },
+      });
+      const clock = new FakeClock();
+      const coordinator = new Coordinator({
+        store,
+        clock,
+        timers: clock,
+        ids: new SequentialIdFactory(),
+        agents,
+      });
+      const started = coordinator.startRun({
+        schemaVersion: '0.1',
+        commandId: 'start',
+        mode: 'mock',
+        definition,
+      });
+      const runId = started.runId ?? '';
+      await until(
+        () =>
+          ['succeeded', 'failed', 'cancelled'].includes(
+            coordinator.getSnapshot(runId).projection.status,
+          ),
+        'the run to end',
+      );
+      expect(spawned?.ok ? 'ok' : spawned?.error.message).toBe('ok');
+      expect(coordinator.getSnapshot(runId).projection.status).toBe('succeeded');
+    });
 });
