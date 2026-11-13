@@ -269,6 +269,7 @@ function WorkSessionPage() {
           selectedRunId={presentationRunId}
           onChange={refresh}
           sessionReads={sessionReads}
+          runsListed={listed}
           reference={reference}
           onReferenceUsed={() => setReference(null)}
           onPanel={(value, run) => showPanel({ panel: value, ...run })}

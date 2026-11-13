@@ -8,6 +8,8 @@ import type { RunRecord } from './entryMeta.ts';
 import {
   forgetRunRecords,
   RECORD_READS_AT_ONCE,
+  RECORD_RETRY,
+  recordRetry,
   useRecordRead,
   useRunRecords,
   type WatchedExpiry,
@@ -69,6 +71,8 @@ interface Shown {
   list: RunSummary[];
   /** Runs whose message is drawn (in the window). */
   drawn: string[];
+  /** Whether the run list has been read (false right after the app starts). */
+  listed?: boolean;
   started?: () => number;
   onWatchedExpiry?: () => void;
 }
@@ -77,14 +81,14 @@ async function mount(initial: Shown) {
     records: ReadonlyMap<string, RunRecord>;
     watched: ReadonlyMap<string, WatchedExpiry>;
   }[] = [];
-  function Row({ runId }: { runId: string }) {
-    useRecordRead(runId, true);
+  function Row({ runId, shown }: { runId: string; shown: Shown }) {
+    useRecordRead(runId, shown.list, shown.listed ?? true);
     return null;
   }
   function Probe({ shown }: { shown: Shown }) {
     seen.push(
       useRunRecords(
-        shown.list.map((run) => run.runId),
+        [...shown.list.map((run) => run.runId), ...shown.drawn],
         shown.list,
         {
           started: shown.started ?? (() => 0),
@@ -92,7 +96,7 @@ async function mount(initial: Shown) {
         },
       ),
     );
-    return shown.drawn.map((runId) => <Row key={runId} runId={runId} />);
+    return shown.drawn.map((runId) => <Row key={runId} runId={runId} shown={shown} />);
   }
   const container = document.createElement('div');
   const root = createRoot(container);
@@ -181,7 +185,7 @@ it('a running run is followed through its live store, not polled', async () => {
   fixture.store.setState({ runId: 'run_live', projection });
   const f = await mount({ list: [summary('run_live', 'running')], drawn: [] });
   expect(f.last().records.get('run_live')?.projection).toBe(projection);
-  const next = { ...projection, seq: 9 };
+  const next = { ...projection, lastSeq: 9 };
   await act(async () => fixture.store.setState({ projection: next }));
   expect(f.last().records.get('run_live')?.projection).toBe(next);
   expect(fixture.getSnapshot).not.toHaveBeenCalled();
@@ -227,4 +231,159 @@ it('an instruction already expired when first seen is not held', async () => {
   const f = await mount({ list: [summary('run_live', 'running')], drawn: [], onWatchedExpiry });
   expect(f.last().watched.size).toBe(0);
   expect(onWatchedExpiry).not.toHaveBeenCalled();
+});
+
+// Right after the app starts the run list is not read yet: a run missing from it may be going.
+const steerAt = (status: DirectiveView['status']) =>
+  ({
+    directiveId: 'directive_a',
+    status,
+    commandId: 'cmd_a',
+    targetExecutionId: 'exec_a',
+  }) as DirectiveView;
+function projectionOf(
+  runStatus: RunSummary['status'],
+  directive: DirectiveView['status'],
+  seq: number,
+) {
+  const projection = emptyProjection('run_live');
+  projection.status = runStatus;
+  projection.lastSeq = seq;
+  projection.directives.directive_a = steerAt(directive);
+  return projection;
+}
+
+for (const [ending, runStatus, last] of [
+  ['read', 'succeeded', 'delivered'],
+  ['carried', 'succeeded', 'expired'],
+  ['failed', 'failed', 'expired'],
+] as const) {
+  it(`drawn before the run list is read, a going run's instruction ends ${ending} as its ended record says`, async () => {
+    // The server's record: going, the instruction waiting; later, ended.
+    let server = projectionOf('running', 'queued', 3);
+    fixture.getSnapshot.mockImplementation(async () => ({ projection: server }));
+    const f = await mount({ list: [], listed: false, drawn: ['run_live'] });
+    // Not known to have ended: not read as ended.
+    expect(fixture.getSnapshot).not.toHaveBeenCalled();
+    // The list comes: going, followed through its live store.
+    fixture.store.setState({ runId: 'run_live', projection: projectionOf('running', 'queued', 4) });
+    await f.rerender({ list: [summary('run_live', 'running')], drawn: ['run_live'] });
+    expect(f.last().records.get('run_live')?.projection.lastSeq).toBe(4);
+    // It ends; its live store last showed the instruction still waiting.
+    server = projectionOf(runStatus, last, 9);
+    await f.rerender({ list: [summary('run_live', runStatus)], drawn: ['run_live'] });
+    expect(fixture.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(f.last().records.get('run_live')?.projection.directives.directive_a?.status).toBe(
+      last,
+    );
+  });
+}
+
+it('a run gone from a read list is read as ended, so its instruction does not stay unknown', async () => {
+  const f = await mount({ list: [], listed: true, drawn: ['run_gone'] });
+  expect(fixture.getSnapshot.mock.calls).toEqual([['run_gone']]);
+  expect(f.last().records.get('run_gone')?.projection.status).toBe('succeeded');
+});
+
+it('a read record not newer than the live store’s last does not replace it', async () => {
+  fixture.store.setState({
+    runId: 'run_live',
+    projection: projectionOf('running', 'delivered', 8),
+  });
+  fixture.getSnapshot.mockImplementation(async () => ({
+    projection: projectionOf('succeeded', 'queued', 5),
+  }));
+  const f = await mount({ list: [summary('run_live', 'running')], drawn: ['run_live'] });
+  await f.rerender({ list: [summary('run_live', 'succeeded')], drawn: ['run_live'] });
+  expect(f.last().records.get('run_live')?.projection.lastSeq).toBe(8);
+});
+
+it('a read that comes back with the run still going is not kept as its ended record', async () => {
+  fixture.getSnapshot.mockImplementation(async () => ({
+    projection: projectionOf('running', 'queued', 2),
+  }));
+  const f = await mount({ list: [summary('run_live', 'succeeded')], drawn: ['run_live'] });
+  expect(f.last().records.has('run_live')).toBe(false);
+});
+
+function fakeLater() {
+  const waits: { ms: number; run: () => void; cancelled: boolean }[] = [];
+  const original = recordRetry.later;
+  recordRetry.later = (ms, run) => {
+    const wait = { ms, run, cancelled: false };
+    waits.push(wait);
+    return () => {
+      wait.cancelled = true;
+    };
+  };
+  cleanup.push(() => {
+    recordRetry.later = original;
+  });
+  return waits;
+}
+
+it('a failed read is asked again while its row is drawn, later each time, a few times', async () => {
+  const waits = fakeLater();
+  fixture.getSnapshot.mockRejectedValue(new Error('offline'));
+  const list = [summary('run_a', 'succeeded')];
+  const f = await mount({ list, drawn: ['run_a'] });
+  for (let attempt = 0; attempt < RECORD_RETRY.attempts; attempt += 1) {
+    const wait = waits.at(-1);
+    expect(wait?.ms).toBe(RECORD_RETRY.firstMs * 2 ** attempt);
+    await act(async () => wait?.run());
+  }
+  expect(fixture.getSnapshot).toHaveBeenCalledTimes(RECORD_RETRY.attempts + 1);
+  // No more after the last; the line stays as it is.
+  expect(waits).toHaveLength(RECORD_RETRY.attempts);
+  expect(f.last().records.has('run_a')).toBe(false);
+  // Drawn again later, asked again; it comes back.
+  fixture.getSnapshot.mockImplementation(async (runId: string) => ended(runId));
+  await f.rerender({ list, drawn: [] });
+  await f.rerender({ list, drawn: ['run_a'] });
+  expect(f.last().records.get('run_a')?.projection.status).toBe('succeeded');
+});
+
+it('a row no longer drawn does not ask again', async () => {
+  const waits = fakeLater();
+  fixture.getSnapshot.mockRejectedValueOnce(new Error('offline'));
+  const list = [summary('run_a', 'succeeded')];
+  const f = await mount({ list, drawn: ['run_a'] });
+  expect(waits).toHaveLength(1);
+  await f.rerender({ list, drawn: [] });
+  expect(waits.map((wait) => wait.cancelled)).toEqual([true]);
+});
+
+it('an ended run keeps only what its meta lines read', async () => {
+  const projection = projectionOf('succeeded', 'delivered', 9);
+  projection.directives.directive_a = {
+    ...steerAt('delivered'),
+    delivery: 'interrupt',
+    modelCallId: 'call_2',
+  } as DirectiveView;
+  projection.executionOrder = ['exec_other', 'exec_a'];
+  projection.executions = {
+    exec_a: { executionId: 'exec_a', nodeId: 'writer', status: 'succeeded' },
+    exec_other: { executionId: 'exec_other', nodeId: 'reviewer', status: 'succeeded' },
+  } as unknown as typeof projection.executions;
+  projection.modelCalls = {
+    call_1: { modelCallId: 'call_1', executionId: 'exec_a', interrupted: true },
+    call_2: { modelCallId: 'call_2', executionId: 'exec_a' },
+    call_3: { modelCallId: 'call_3', executionId: 'exec_other' },
+  } as unknown as typeof projection.modelCalls;
+  fixture.getSnapshot.mockImplementation(async () => ({ projection }));
+  fixture.getRunDefinition.mockImplementation(
+    async () =>
+      ({
+        nodes: [
+          { id: 'writer', type: 'agent', label: 'Writer', instructions: 'long' },
+          { id: 'reviewer', type: 'agent', label: 'Reviewer' },
+        ],
+      }) as never,
+  );
+  const f = await mount({ list: [summary('run_live', 'succeeded')], drawn: ['run_live'] });
+  const kept = f.last().records.get('run_live');
+  expect(Object.keys(kept?.projection.executions ?? {})).toEqual(['exec_a']);
+  expect(Object.keys(kept?.projection.modelCalls ?? {})).toEqual(['call_1', 'call_2']);
+  expect(kept?.projection.directives.directive_a?.status).toBe('delivered');
+  expect(kept?.definition?.nodes).toEqual([{ id: 'writer', type: 'agent', label: 'Writer' }]);
 });
