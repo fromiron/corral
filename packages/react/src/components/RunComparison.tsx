@@ -23,6 +23,7 @@ import {
 import { type CompareKey, compareRuns } from '../run/compare.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
 import { requestOpen } from '../run/transcript.ts';
+import { usePresenceWord } from './PresenceBadge.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
@@ -46,7 +47,7 @@ export function RunComparison({
 }) {
   const t = useTranslations('Compare');
   const tr = useTranslations('Reasoning');
-  const tStatus = useTranslations('Status');
+  const tStatus = usePresenceWord();
   const format = useFormatter();
   const tableId = useId();
   const outputsId = useId();

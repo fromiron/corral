@@ -1,4 +1,5 @@
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
+import { usePresenceWord } from '@corral/react';
 import { Button, fontWeights, Kbd } from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
@@ -376,7 +377,7 @@ export function Palette({
   const tp = useTranslations('Projects');
   const ts = useTranslations('SessionSearch');
   const ti = useTranslations('RunIdentity');
-  const status = useTranslations('Status');
+  const status = usePresenceWord();
   const format = useFormatter();
   const templateText = useTemplateText();
   const navigate = useNavigate();

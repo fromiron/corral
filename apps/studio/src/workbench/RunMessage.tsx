@@ -5,9 +5,14 @@ import {
   buildTurnProcess,
   CopyTextButton,
   ExecutionTranscript,
+  executionViewPresence,
   FailureNotice,
   GeneratedImage,
   MessageBody,
+  PresenceBadge,
+  type PresenceKind,
+  presenceTextClass,
+  projectionPresence,
   ReasoningSummary,
   type ResultItem,
   ReviewSummary,
@@ -16,7 +21,6 @@ import {
   requestOpen,
   runResults,
   SafeMarkdown,
-  StatusBadge,
   WorkPlanPanel,
 } from '@corral/react';
 import {
@@ -57,6 +61,9 @@ import { RunHead, RunRow, RunTail, TurnEnd } from './RunRow.tsx';
 import { TurnProcess, useStepName } from './TurnProcess.tsx';
 import { useCorralRun } from './useCorralChat.ts';
 import { fileChangeCount, toolRows } from './widgets/selectors.ts';
+
+/** An execution that ended without its work: failed or cancelled. */
+const ENDED_SHORT = new Set<PresenceKind>(['failed', 'cancelled']);
 
 /**
  * A height-capped reply keeps its own end in view until the person scrolls up inside it.
@@ -149,7 +156,7 @@ export function RunMessage({
   const tt = useTranslations('Transcript');
   const tw = useTranslations('Widgets');
   const tm = useTranslations('MessageBody');
-  const ts = useTranslations('Status');
+  const tp = useTranslations('Presence');
   const tturn = useTranslations('Turn');
   const stepName = useStepName();
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
@@ -316,6 +323,9 @@ export function RunMessage({
     );
   const working = !TERMINAL_RUN_STATUSES.has(projection.status);
   if (working && !watched) setWatched(true);
+  // The run's state, as every screen says it (docs/specs/features/presence.md): every open
+  // request once, by the order the record holds them.
+  const presence = projectionPresence(projection, state.events);
   // In a conversation the process opens only by the detailed density or by the person; the
   // run starting or ending neither opens nor folds it.
   const processOpen = chosen ?? chatDensity === 'detailed';
@@ -328,8 +338,8 @@ export function RunMessage({
       : [];
   const summary = agentSummary(busy.map((execution) => execution.status));
   // Failures and cancellations stay in view. An ordinary success folds them.
-  const exposed = executions.filter(
-    (execution) => execution.status === 'failed' || execution.status === 'cancelled',
+  const exposed = executions.filter((execution) =>
+    ENDED_SHORT.has(executionViewPresence(execution).kind),
   );
   const name = (executionId: string) => {
     const execution = projection.executions[executionId];
@@ -433,7 +443,7 @@ export function RunMessage({
   // does not animate.
   const replyPending =
     Boolean(sessionId) &&
-    ['created', 'validating', 'running'].includes(projection.status) &&
+    (presence.kind === 'starting' || presence.kind === 'working') &&
     interactions.length === 0 &&
     !streams.some(([, stream]) => stream.text) &&
     stopped.length === 0 &&
@@ -442,10 +452,10 @@ export function RunMessage({
   // state. A model request's name says nothing to the person, so it waits with the mark alone.
   const activeStep = process.rows.filter((row) => row.active).at(-1);
   const pendingStep = activeStep && activeStep.kind !== 'model' ? stepName(activeStep) : null;
-  const pendingWord = tw(projection.status === 'running' ? 'activityWorking' : 'activityStarting');
+  const pendingWord = tw(presence.kind === 'working' ? 'activityWorking' : 'activityStarting');
   // A turn that did not finish says so once: its readable cause, whether it made anything,
   // and what to do next. One agent's failure is the turn's failure; a team lists its agents.
-  const unfinished = Boolean(sessionId) && !working && projection.status !== 'succeeded';
+  const unfinished = Boolean(sessionId) && !working && presence.kind !== 'succeeded';
   const soleFailure = unfinished && executions.length <= 1 ? exposed[0] : undefined;
   const listed = soleFailure ? [] : exposed;
   // An unfinished conversation turn always ends with its cause: the answering role's failure,
@@ -476,13 +486,10 @@ export function RunMessage({
       >
         {name(execution.executionId)}
       </Link>
-      {sessionId ? (
-        <span data-presence-label={`execution:${execution.executionId}`}>
-          <StatusBadge status={execution.status} />
-        </span>
-      ) : (
-        <StatusBadge status={execution.status} />
-      )}
+      <PresenceBadge
+        presence={executionViewPresence(execution)}
+        target={sessionId ? `execution:${execution.executionId}` : undefined}
+      />
       {execution.modelCallIds.at(-1) ? (
         <ReasoningSummary
           call={projection.modelCalls[execution.modelCallIds.at(-1)!]!}
@@ -497,7 +504,10 @@ export function RunMessage({
         </span>
       ) : null}
       {execution.error ? (
-        <FailureNotice message={execution.error} cancelled={execution.status === 'cancelled'} />
+        <FailureNotice
+          message={execution.error}
+          cancelled={executionViewPresence(execution).kind === 'cancelled'}
+        />
       ) : null}
     </li>
   );
@@ -506,7 +516,7 @@ export function RunMessage({
       className="flex flex-col gap-1 text-caption"
       aria-label={t('toolActivity', { count: attention.length })}
     >
-      {projection.status === 'succeeded' && attention.some((row) => row.tone === 'failed') ? (
+      {presence.kind === 'succeeded' && attention.some((row) => row.tone === 'failed') ? (
         <li>{tw('actionCompletedWithFailures')}</li>
       ) : null}
       {attention.map((row) => {
@@ -532,8 +542,8 @@ export function RunMessage({
     projection.statusReason &&
     !unfinished &&
     !(sessionId && interactions.length) &&
-    projection.status !== 'running' &&
-    projection.status !== 'succeeded' ? (
+    presence.kind !== 'working' &&
+    presence.kind !== 'succeeded' ? (
       <p data-testid="run-reason" className="text-caption text-muted-foreground">
         {trun('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={label} />
       </p>
@@ -567,22 +577,29 @@ export function RunMessage({
       attention.filter((row) => row.tone === 'failed' || row.tone === 'cancelled').length +
       exposed.filter((execution) => execution.executionId !== lead).length;
     const leadExecution = lead ? projection.executions[lead] : undefined;
+    // The state's name alone is the run's label; its detail (a loop that ran out of rounds
+    // before the run completed) stands beside it, so the row tells it without its log open.
     const status = (
-      <span
-        data-presence-label={`run:${runId}`}
-        className={
-          // A working run's word shimmers as the kit's work does; reduced motion stills it.
-          ['created', 'validating', 'running'].includes(projection.status)
-            ? 'shimmer-text'
-            : projection.status === 'failed'
-              ? 'text-danger'
-              : projection.status === 'interrupted'
-                ? 'text-warning'
+      <>
+        <span
+          data-presence-label={`run:${runId}`}
+          data-presence={presence.kind}
+          className={
+            // A working run's word shimmers as the kit's work does; reduced motion stills it.
+            // Otherwise a state that needs a look takes its tone's colour.
+            presence.tone === 'active'
+              ? 'shimmer-text'
+              : presence.tone === 'danger' || presence.tone === 'warning'
+                ? presenceTextClass(presence.tone)
                 : undefined
-        }
-      >
-        {ts.has(projection.status) ? ts(projection.status) : projection.status}
-      </span>
+          }
+        >
+          {tp(presence.labelKey)}
+        </span>
+        {presence.detailKey ? (
+          <span data-presence-detail>{` · ${tp(presence.detailKey)}`}</span>
+        ) : null}
+      </>
     );
     const liveWords = writing && chatDensity !== 'results' ? writing : undefined;
     // The store may let a finished reply's words go before its answer is read: the words it
@@ -787,7 +804,7 @@ export function RunMessage({
               endFailure?.error ? (
                 <FailureNotice
                   message={endFailure.error}
-                  cancelled={endFailure.status === 'cancelled'}
+                  cancelled={executionViewPresence(endFailure).kind === 'cancelled'}
                 />
               ) : null
             }
@@ -819,7 +836,7 @@ export function RunMessage({
           {busy.length ? (
             <details className="group/agents">
               <summary className="flex cursor-pointer list-none items-center gap-2 py-0.5 text-muted-foreground hover:text-foreground">
-                {summary.working > 0 && projection.status === 'running' ? (
+                {summary.working > 0 && presence.kind === 'working' ? (
                   <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" />
                 ) : (
                   <Pause size={13} />
@@ -865,18 +882,24 @@ export function RunMessage({
                   <ThinkingStep
                     key={id}
                     label={name(id)}
-                    status={execution.status === 'active' ? 'active' : 'complete'}
+                    status={
+                      // Working on its own, not waiting on others (no detail).
+                      executionViewPresence(execution).kind === 'working' &&
+                      !executionViewPresence(execution).detail
+                        ? 'active'
+                        : 'complete'
+                    }
                     icon={
-                      execution.status === 'succeeded'
+                      executionViewPresence(execution).kind === 'succeeded'
                         ? 'check'
-                        : execution.status === 'failed' || execution.status === 'cancelled'
+                        : ENDED_SHORT.has(executionViewPresence(execution).kind)
                           ? 'x'
                           : 'dot'
                     }
                     isLast={index === projection.executionOrder.length - 1}
                   >
                     <span className="flex flex-wrap items-center gap-2 text-caption">
-                      <StatusBadge status={execution.status} />
+                      <PresenceBadge presence={executionViewPresence(execution)} />
                       {call ? (
                         <ReasoningSummary
                           call={projection.modelCalls[call]!}

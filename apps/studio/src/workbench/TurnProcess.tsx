@@ -1,13 +1,17 @@
-import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { ExecutionStatus, type RunEvent } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
   buildTurnProcess,
   ExecutionToolGroup,
+  executionViewPresence,
   FailureNotice,
+  type Presence,
   type ProcessRow,
+  projectionPresence,
   ReasoningLevelLabel,
   ReasoningSummary,
   type RunSessionState,
+  statusPresence,
   type TurnProcess as TurnProcessModel,
   turnSummary,
 } from '@corral/react';
@@ -52,7 +56,16 @@ const ICONS: Record<string, IconName> = {
 };
 const ASKS = new Set(['ask_user', 'ask']);
 /** The states in which a turn is working: its time runs. */
-const WORKING = new Set(['created', 'validating', 'running']);
+/** A model request's phase as the state it names (pausing, paused, stopping, ended). */
+const PHASE_STATUS = {
+  pausing: 'pausing',
+  paused: 'paused',
+  cancelling: 'cancelling',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+const ENDED_SHORT = new Set<Presence['kind']>(['failed', 'cancelled']);
+const ENDED = new Set<Presence['kind']>(['succeeded', 'failed', 'interrupted', 'cancelled']);
 function useElapsed(from: string | null, to: string | null, active: boolean) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -71,11 +84,14 @@ function useElapsed(from: string | null, to: string | null, active: boolean) {
 function StepDetails({
   step,
   description,
+  detail,
   target,
   children,
 }: {
   step: string;
   description: string;
+  /** What the state's detail says, beside it (presence.md). */
+  detail?: string;
   /** What the description's state words speak of, when they name a state. */
   target?: `execution:${string}`;
   children: ReactNode;
@@ -90,7 +106,9 @@ function StepDetails({
         type="button"
         aria-expanded={open}
         aria-controls={id}
-        aria-label={t('stepDetails', { step: [step, description].filter(Boolean).join(' · ') })}
+        aria-label={t('stepDetails', {
+          step: [step, description, detail].filter(Boolean).join(' · '),
+        })}
         onClick={() => setOpen((value) => !value)}
         className={cn(
           size.type.body,
@@ -99,8 +117,9 @@ function StepDetails({
         )}
       >
         {description ? (
-          <span className="min-w-0" data-presence-label={target}>
-            {description}
+          <span className="min-w-0">
+            <span data-presence-label={target}>{description}</span>
+            {detail ? ` · ${detail}` : null}
           </span>
         ) : null}
         <DisclosureChevron open={open} size={12} className="text-current" />
@@ -182,8 +201,25 @@ export function TurnProcess({
   children?: ReactNode;
 }) {
   const t = useTranslations('Turn');
-  const ts = useTranslations('Status');
+  const tp = useTranslations('Presence');
   const tt = useTranslations('Transcript');
+  // A bare status's presence; an execution's, when the status is one, knows whether it is an
+  // advisor (its wait for a message is watching).
+  const presenceOf = (status: string, executionId?: string) => {
+    const parsed = ExecutionStatus.safeParse(status);
+    if (!parsed.success) return statusPresence(status);
+    const advisor = executionId ? projection.executions[executionId]?.advisor : undefined;
+    return executionViewPresence({ status: parsed.data, ...(advisor ? { advisor } : {}) });
+  };
+  // A state's name with its detail beside it, never instead of it (presence.md).
+  const words = (presence: Presence | null) =>
+    presence
+      ? [tp(presence.labelKey), presence.detailKey ? tp(presence.detailKey) : null]
+          .filter(Boolean)
+          .join(' · ')
+      : null;
+  const named = (status: string, executionId?: string) =>
+    words(presenceOf(status, executionId)) ?? status;
   const size = useSize();
   const panel = useId();
   const stepName = useStepName();
@@ -203,14 +239,20 @@ export function TurnProcess({
     [events, projection, lead],
   );
   // A waiting turn's time stops at its last record, as the run's timeline does.
-  const waiting = projection.status === 'awaiting_user';
+  const presence = projectionPresence(projection, events);
+  // The Run itself waits (its own state), not one of its executions on an approval.
+  const waiting = statusPresence(projection.status)?.kind === 'awaiting_user';
   const until = summary.endedAt ?? (waiting ? (events.at(-1)?.recordedAt ?? null) : null);
-  const seconds = useElapsed(summary.startedAt, until, WORKING.has(projection.status));
+  const seconds = useElapsed(
+    summary.startedAt,
+    until,
+    presence.kind === 'starting' || presence.kind === 'working',
+  );
   const clock = (value: number) =>
     value < 60
       ? t('seconds', { s: value })
       : t('minutes', { m: Math.floor(value / 60), s: value % 60 });
-  const terminal = TERMINAL_RUN_STATUSES.has(projection.status);
+  const terminal = ENDED.has(presence.kind);
   // The head opens the log only when it holds something; its mark keeps its place either way.
   // A past turn's steps load when its log first opens, so the record's counts also say so.
   const canOpen =
@@ -277,25 +319,25 @@ export function TurnProcess({
             : row.phase === 'unconfirmed'
               ? t('requestUnconfirmed')
               : row.phase === 'waiting'
-                ? ts.has(row.state)
-                  ? ts(row.state)
-                  : row.state
-                : ts(row.phase);
+                ? named(row.state)
+                : named(PHASE_STATUS[row.phase]);
     return [row.model, phase].filter(Boolean).join(' · ');
   };
-  const activityState = (active: boolean, executionState?: string) => {
+  const activityState = (active: boolean, executionState?: string, executionId?: string) => {
     if (active) return undefined;
     const state =
-      projection.status === 'running'
+      presence.kind === 'working'
         ? (executionState ??
           projection.executions[projection.executionOrder[0] ?? '']?.status ??
           projection.status)
         : projection.status;
+    const owner = executionState ? executionId : projection.executionOrder[0];
+    const kind = statusPresence(state)?.kind;
     return {
-      status: (terminal || state === 'cancelled' || state === 'failed' ? 'stopped' : 'waiting') as
+      status: (terminal || (kind && ENDED_SHORT.has(kind)) ? 'stopped' : 'waiting') as
         | 'waiting'
         | 'stopped',
-      label: ts.has(state) ? ts(state) : state,
+      label: named(state, owner),
     };
   };
   return (
@@ -314,7 +356,7 @@ export function TurnProcess({
             aria-label={t('logToggle', {
               state: [
                 role,
-                ts.has(projection.status) ? ts(projection.status) : projection.status,
+                words(presence),
                 summary.steps ? t('steps', { count: summary.steps }) : null,
                 failed ? t('failedCount', { count: failed }) : null,
               ]
@@ -414,35 +456,41 @@ export function TurnProcess({
               );
             }
             // A team role's row says its own state once, by its execution, and keeps its failure.
-            const state = ts.has(row.status) ? ts(row.status) : row.status;
+            const rowPresence = presenceOf(row.status, row.id);
+            const state = rowPresence ? tp(rowPresence.labelKey) : row.status;
+            const rowDetail = rowPresence?.detailKey ? tp(rowPresence.detailKey) : undefined;
+            const rowKind = rowPresence?.kind;
             const target = `execution:${row.id}` as const;
             const error = projection.executions[row.id]?.error;
             return (
               <div key={`agent:${row.id}`} data-chat-part={`role:${row.id}`}>
                 <ThinkingStep
-                  icon={row.status === 'failed' || row.status === 'cancelled' ? 'x' : 'users'}
+                  icon={rowKind && ENDED_SHORT.has(rowKind) ? 'x' : 'users'}
                   label={row.label}
                   status={row.active ? 'active' : 'complete'}
                   isLast={last}
                   className="turn-process-row"
                 >
                   {row.tools.length ? (
-                    <StepDetails step={row.label} description={state} target={target}>
+                    <StepDetails
+                      step={row.label}
+                      description={state}
+                      detail={rowDetail}
+                      target={target}
+                    >
                       <ExecutionToolGroup
                         tools={row.tools}
-                        activityState={activityState(row.active, row.status)}
+                        activityState={activityState(row.active, row.status, row.id)}
                       />
                     </StepDetails>
                   ) : (
-                    <span
-                      data-presence-label={target}
-                      className={cn(size.type.body, 'text-muted-foreground')}
-                    >
-                      {state}
+                    <span className={cn(size.type.body, 'text-muted-foreground')}>
+                      <span data-presence-label={target}>{state}</span>
+                      {rowDetail ? ` · ${rowDetail}` : null}
                     </span>
                   )}
                   {error ? (
-                    <FailureNotice message={error} cancelled={row.status === 'cancelled'} />
+                    <FailureNotice message={error} cancelled={rowKind === 'cancelled'} />
                   ) : null}
                   <Sources sources={row.sources} />
                 </ThinkingStep>

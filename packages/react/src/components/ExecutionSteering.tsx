@@ -9,6 +9,7 @@ import { buildTranscript } from '../run/transcript.ts';
 import { useWorkPlanSnapshot } from '../run/work-plan-snapshot.ts';
 import { executionAgentStatus } from './agentStatus.ts';
 import { ExecutionToolGroup } from './ExecutionTranscript.tsx';
+import { usePresenceWord } from './PresenceBadge.tsx';
 import type { SteerTarget } from './ReinsPanel.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
@@ -39,7 +40,7 @@ export function ExecutionSteering({
   className,
 }: ExecutionSteeringProps) {
   const t = useTranslations('Reins');
-  const statusText = useTranslations('Status');
+  const statusText = usePresenceWord();
   const planText = useTranslations('WorkPlan');
   const activityText = useTranslations('RunPage.tabs');
   const runId = useStore(session, (s) => s.runId);

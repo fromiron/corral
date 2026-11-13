@@ -54,8 +54,8 @@ it.each(['en', 'ko'] as const)(
   'the send keys during a run do not repeat a run state word in %s',
   async (locale) => {
     const messages = locale === 'en' ? en : ko;
-    const states = ['running', 'pausing', 'paused', 'awaiting_user'] as const;
-    const stateWords = new Set(states.flatMap((state) => words(messages.Status[state])));
+    const states = ['working', 'pausing', 'paused', 'awaiting_user'] as const;
+    const stateWords = new Set(states.flatMap((state) => words(messages.Presence.state[state])));
     for (const targets of [[writer], [{ ...writer, interruptible: false }], []]) {
       const { keys, situation } = resolveIntent({
         running: true,

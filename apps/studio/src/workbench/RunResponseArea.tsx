@@ -43,7 +43,7 @@ export function RunResponseArea({
   policySettingsAction?: ReactNode;
   onRespond?: () => void;
 }) {
-  const status = useTranslations('Status');
+  const tp = useTranslations('Presence');
   const m = useTranslations('RunMonitor');
   const runId = useStore(session, (s) => s.projection?.runId);
   // Where several runs' areas stand together (the tray), each is named by its run.
@@ -52,7 +52,7 @@ export function RunResponseArea({
   return (
     <section
       data-testid="run-needs-you"
-      aria-label={run ? m('runWaiting', { run }) : status('awaiting_user')}
+      aria-label={run ? m('runWaiting', { run }) : tp('state.awaiting_user')}
     >
       <RequestAreaContext.Provider value={true}>
         <div ref={focusRef} data-run-response={runId} tabIndex={-1} className="outline-none">

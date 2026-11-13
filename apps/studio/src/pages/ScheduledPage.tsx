@@ -6,7 +6,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { StatusBadge } from '@corral/react';
+import { PresenceBadge, runPresence } from '@corral/react';
 import {
   Button,
   EmptyState,
@@ -325,7 +325,11 @@ export function ScheduledPage() {
   /** The run's own current or final status; unknown when it cannot be read, never assumed. */
   const runStatus = (occurrence: ScheduledOccurrence) => {
     const status = scheduleHistoryStatus(occurrence, runs ?? []);
-    return status ? <StatusBadge status={status} /> : <span>{t('unavailable')}</span>;
+    return status ? (
+      <PresenceBadge presence={runPresence({ status }, [], [])} />
+    ) : (
+      <span>{t('unavailable')}</span>
+    );
   };
   const lastResult = (schedule: Schedule) => {
     const latest = histories[schedule.id]?.[0];

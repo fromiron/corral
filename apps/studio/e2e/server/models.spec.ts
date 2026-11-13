@@ -194,7 +194,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   await openTestRun(page);
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Live answer from the model.');
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   expect(corral.fake?.seen.tokens.every((token) => token === 'access-1-secret')).toBe(true);
 });
 

@@ -1,4 +1,4 @@
-import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
+import { type ExecutionStatus, TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import {
   canReadArtifactBody,
   canReleaseArtifactBodies,
@@ -7,6 +7,8 @@ import {
 } from '@corral/core';
 import {
   estimateRunCost,
+  type Presence,
+  projectionPresence,
   type RunCostEstimate,
   type RunSessionState,
   type RunSessionStore,
@@ -58,6 +60,8 @@ import {
 export interface ChatWidgetModel {
   sessionId: string;
   runId: string | null;
+  /** The presented run's shown state: the one its row's head shows (presence.md). */
+  presence?: Presence | null;
   runNumber: number | null;
   live: boolean;
   /** The finished run on screen and its place among the session's runs. */
@@ -75,7 +79,7 @@ export interface ChatWidgetModel {
   changeDeletions: number | null;
   agents: { total: number; working: number; waiting: number; failed: number } | null;
   /** Current attempts only; the execution view retains retry history. */
-  agentRows: { id: string; name: string; status: string }[];
+  agentRows: { id: string; name: string; status: ExecutionStatus }[];
   tools: { id: string; name: string; tone: string }[];
   results: { id: string; label: string }[];
   environment: 'simulated' | 'restricted' | null;
@@ -519,7 +523,7 @@ function useChatWidgetState(
     .filter((execution) => currentIds.has(execution.executionId))
     .map((execution) =>
       execution.status === 'active' && awaitingApproval.has(execution.executionId)
-        ? { ...execution, status: 'waiting_approval' }
+        ? { ...execution, status: 'waiting_approval' as const }
         : execution,
     );
   const agents = agentActivity(currentAgents);
@@ -554,6 +558,7 @@ function useChatWidgetState(
   return {
     sessionId,
     runId: presentationRunId,
+    presence: projection ? projectionPresence(projection, view?.events ?? []) : null,
     live,
     runNumber: presentationRunId ? runIds.indexOf(presentationRunId) + 1 || null : null,
     viewed: viewedRun({ runIds, presentationRunId, live }),

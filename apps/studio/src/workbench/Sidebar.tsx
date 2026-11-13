@@ -1,6 +1,6 @@
 import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { CorralSymbol, CorralWordmark, sessionGroupOf } from '@corral/react';
+import { CorralSymbol, CorralWordmark, sessionGroupOf, usePresenceWord } from '@corral/react';
 import {
   Button,
   cn,
@@ -102,7 +102,7 @@ export function useCorralSidebar() {
   const { repository, transport, workspaces, terminals } = useServices();
   const td = useTranslations('Desktop');
   const scheduledText = useTranslations('Schedules');
-  const statusText = useTranslations('Status');
+  const statusText = usePresenceWord();
   const navigate = useNavigate();
   const href = useRouterState({ select: (s) => workHref(s.location.href) ?? s.location.href });
   const version = useProjectsVersion();

@@ -466,7 +466,7 @@ it.each(['en', 'ko'] as const)(
     const ask = rows.find((row) => row.includes(messages.Turn.tool.ask_user));
     const plan = rows.find((row) => row.includes(messages.Turn.tool.update_plan));
     // The pill and the notice above the composer say the run waits; the turn does not.
-    expect(ask).not.toContain(messages.Status.awaiting_user);
+    expect(ask).not.toContain(messages.Presence.state.awaiting_user);
     expect(ask).not.toContain(locale === 'en' ? 'Waiting for your answer' : '답을 기다리는 중');
     expect(ask).not.toContain(messages.Transcript.tool.allowed);
     // Nor does it open the question: its text shows only in that notice.
@@ -477,7 +477,7 @@ it.each(['en', 'ko'] as const)(
     expect(plan).toContain(locale === 'en' ? 'Done' : '완료');
     // Like any other state, the head's time is the time the turn worked, to its last record.
     const header = container.querySelector('[data-testid="turn-process-header"]')?.textContent;
-    expect(header).not.toContain(messages.Status.awaiting_user);
+    expect(header).not.toContain(messages.Presence.state.awaiting_user);
     expect(header).toBe(locale === 'en' ? '5s' : '5초');
   },
 );

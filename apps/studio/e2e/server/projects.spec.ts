@@ -27,7 +27,7 @@ test('a run stays in the project it started in when its Corral moves', async ({ 
   await newTeam(page);
   await addAgentAndOutput(page);
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 15_000 });
   await openProject(page, 'Client A');
   await expect(page).toHaveURL(new RegExp(`${projectPath}$`));
   const runs = page.getByRole('region', { name: 'Runs' });

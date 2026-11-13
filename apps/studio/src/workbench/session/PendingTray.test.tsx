@@ -1353,7 +1353,7 @@ it('names each run’s area by its run while several wait, and each card by its 
   // Inside, nothing says the area's name again.
   for (const area of areas)
     for (const named of area.querySelectorAll('[aria-label]'))
-      expect(named.getAttribute('aria-label')).not.toBe(messages.Status.awaiting_user);
+      expect(named.getAttribute('aria-label')).not.toBe(messages.Presence.state.awaiting_user);
   // Each card is named by its own title; the screen's words stay as they were.
   const name = (card: Element | null) =>
     document.getElementById(card?.getAttribute('aria-labelledby') ?? '')?.textContent;
@@ -1446,7 +1446,7 @@ it('names a lone run’s area by the wait alone', async () => {
   const { container } = await show(['run_a']);
   expect(
     trayOf(container)?.querySelector('[data-testid="run-needs-you"]')?.getAttribute('aria-label'),
-  ).toBe(messages.Status.awaiting_user);
+  ).toBe(messages.Presence.state.awaiting_user);
 });
 
 it('measures again when the composer grows, so a covered tray reads as out of view', async () => {

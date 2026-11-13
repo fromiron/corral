@@ -29,9 +29,9 @@ test('save a disabled schedule, run through Auto, and reopen its persisted histo
   await page.getByRole('button', { name: 'Run now', exact: true }).click();
   const history = page.getByRole('region', { name: 'Run history' });
   await expect(history.getByRole('link', { name: 'Open run', exact: true })).toBeVisible();
-  await expect(history.getByText('Succeeded', { exact: true })).toBeVisible();
+  await expect(history.getByText('Completed', { exact: true })).toBeVisible();
   // The schedule's own row and history show the result, so no banner repeats it here.
-  await expect(page.getByText('Scheduled run: Succeeded', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Scheduled run: Completed', { exact: true })).toHaveCount(0);
   await history.getByRole('link', { name: 'Open run', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_.*run=run_/);
   await automation.click();

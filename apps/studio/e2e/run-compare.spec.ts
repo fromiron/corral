@@ -17,7 +17,7 @@ test('compares runs with readable narrow figures and accessible identities', asy
       await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
     await settings.getByRole('textbox', { name: 'Brief', exact: true }).fill(brief);
     await startTestRun(page);
-    await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
+    await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
   }
   // In-app navigation (in the browser runtime, runs last until a reload), after saving the
   // edited brief so the editor lets the page go.

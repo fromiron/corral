@@ -1,5 +1,5 @@
 import type { RunSummary, WorkSession } from '@corral/core';
-import { StatusDot } from '@corral/react';
+import { PresenceDot } from '@corral/react';
 import {
   Button,
   fontWeights,
@@ -15,7 +15,6 @@ import { ChevronDown } from '@corral/react/icons';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useRegisteredCommands } from '../commandRegistry.ts';
 import { PresenceMark } from './PresenceMark.tsx';
-import { presenceDot } from './presenceDot.ts';
 import { latestSessionRun, listedRunPresence } from './sessionList.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
 
@@ -144,7 +143,6 @@ export function RunMenu({
   const presenceText = useTranslations('Presence');
   const format = useFormatter();
   const label = (run: RunSummary) => presenceText(listedRunPresence(run).labelKey);
-  const dot = (run: RunSummary) => presenceDot(listedRunPresence(run).tone);
   const number = (id: string) => runs.findIndex((run) => run.runId === id) + 1;
   const runName = (id: string) => {
     const name = names[id];
@@ -170,7 +168,7 @@ export function RunMenu({
           />
         }
       >
-        {chosen ? <StatusDot status={dot(chosen)} label={label(chosen)} /> : null}
+        {chosen ? <PresenceDot presence={listedRunPresence(chosen)} label /> : null}
         {word ? (
           // With no room for "Run #1", the number stands alone ("#1"), never a cut word: the
           // label is one line tall, and the word wraps above that line, out of sight.

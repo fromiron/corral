@@ -137,9 +137,9 @@ test.describe('extension input during an SDK run', () => {
         // Back in the run's record, the answer stands as received.
         await page.getByRole('tab', { name: 'Runs', exact: true }).click();
         await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
-        await expect(page.getByTestId('run-status').first()).toContainText('Running');
+        await expect(page.getByTestId('run-status').first()).toContainText('Working');
         release();
-        await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+        await expect(page.getByTestId('run-status').first()).toContainText('Completed');
         await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
       } finally {
         release();

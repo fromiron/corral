@@ -38,7 +38,7 @@ async function singleAgentRun(page: Page) {
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open execution page', exact: true }).click();
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(
     projectLocation,

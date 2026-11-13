@@ -133,6 +133,8 @@ describe('presence table', () => {
       waiting_agents: ['하위 에이전트 대기', 'Waiting for agents'],
       waiting_reply: ['답 대기', 'Waiting for a reply'],
       watching: ['지켜보는 중', 'Watching'],
+      round_limit: ['회차 한도 도달', 'Round limit reached'],
+      rounds_stalled: ['회차 정체', 'Rounds stalled'],
     };
     for (const [detail, [k, e]] of Object.entries(details)) {
       expect(lookup(ko, `detail.${detail}`)).toBe(k);
@@ -373,4 +375,35 @@ describe('settle', () => {
     expect(first.presence).toEqual(succeeded);
     expect(first.holdUntil).toBeNull();
   });
+});
+
+// A completed Run whose loop ran out and went on with its last candidate says why beside its state.
+describe('a completed run’s loop detail', () => {
+  const ended = (status: RunStatus, loops: readonly (string | null)[]) =>
+    runPresence(run(status), [], [], loops as never);
+
+  it.each([
+    [['cap_reached'], 'round_limit'],
+    [['stalled'], 'rounds_stalled'],
+    // The first loop to start that ran out decides; one that passed says nothing.
+    [['cap_reached', 'pass'], 'round_limit'],
+    [['pass', 'stalled'], 'rounds_stalled'],
+    [['stalled', 'cap_reached'], 'rounds_stalled'],
+    [['pass'], undefined],
+    [[null], undefined],
+    [[], undefined],
+  ] as const)('a succeeded run whose loops last ended %j has detail %s', (loops, detail) => {
+    const presence = ended('succeeded', loops);
+    expect(presence.kind).toBe('succeeded');
+    expect(presence.detail).toBe(detail);
+    expect(presence.detailKey).toBe(detail ? `detail.${detail}` : undefined);
+  });
+
+  it.each(['failed', 'cancelled', 'interrupted', 'running', 'awaiting_user', 'paused'] as const)(
+    'a %s run has no loop detail',
+    (status) => {
+      expect(ended(status, ['cap_reached']).detail).toBeUndefined();
+      expect(ended(status, ['stalled']).detail).toBeUndefined();
+    },
+  );
 });

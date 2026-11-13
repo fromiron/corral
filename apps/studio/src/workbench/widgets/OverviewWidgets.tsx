@@ -1,3 +1,4 @@
+import { executionPresence, type PresenceKind, usePresenceWord } from '@corral/react';
 import {
   AgentCard,
   AgentIdentity,
@@ -38,6 +39,7 @@ import {
 import { useNavigate } from '@tanstack/react-router';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useFormatter, useLocale, useTranslations } from 'use-intl';
+import { PresenceMark } from '../PresenceMark.tsx';
 import {
   AgentsDetail,
   ContextDetail,
@@ -609,20 +611,25 @@ function ChangesWidget({ model }: { model: ChatWidgetModel }) {
   );
 }
 
+// An agent stopped by the person, or on its way there; and an agent whose turn is over.
+const STOPPED_KINDS = new Set<PresenceKind>(['cancelled', 'stopping', 'paused', 'pausing']);
+const ENDED_KINDS = new Set<PresenceKind>(['succeeded', 'failed', 'cancelled']);
+
 function AgentsWidget({ model, open }: { model: ChatWidgetModel; open: () => void }) {
   const t = useTranslations('Widgets.overview');
   const tw = useTranslations('Widgets');
-  const status = useTranslations('Status');
+  const word = usePresenceWord();
   if (!model.agents) return null;
-  const counts = [
-    tw('agents', model.agents),
-    tw('agentsWaiting', { count: model.agents.waiting }),
-    tw('agentsFailed', { count: model.agents.failed }),
-  ].join(' · ');
+  // What is zero is not counted (presence.md, "한 화면에 한 번").
+  const others = [
+    model.agents.waiting ? tw('agentsWaiting', { count: model.agents.waiting }) : null,
+    model.agents.failed ? tw('agentsFailed', { count: model.agents.failed }) : null,
+  ].filter(Boolean);
+  const counts = [tw('agents', model.agents), ...others].join(' · ');
   const rows = model.agentRows ?? [];
+  const kinds = rows.map((row) => ({ row, presence: executionPresence({ status: row.status }) }));
   const allStopped =
-    rows.length > 0 &&
-    rows.every((row) => ['cancelled', 'cancelling', 'paused', 'pausing'].includes(row.status));
+    kinds.length > 0 && kinds.every(({ presence }) => STOPPED_KINDS.has(presence.kind));
   const summaryStatus: AgentStatus =
     model.agents.failed > 0
       ? 'failed'
@@ -633,8 +640,8 @@ function AgentsWidget({ model, open }: { model: ChatWidgetModel; open: () => voi
           : allStopped
             ? 'stopped'
             : 'done';
-  const active = rows.filter((row) => !['succeeded', 'failed', 'cancelled'].includes(row.status));
-  const visible = (active.length ? active : rows).slice(0, 2);
+  const active = kinds.filter(({ presence }) => !ENDED_KINDS.has(presence.kind));
+  const visible = (active.length ? active : kinds).slice(0, 2);
   return (
     <AgentCard className="grid gap-3 p-3">
       <Button
@@ -648,38 +655,23 @@ function AgentsWidget({ model, open }: { model: ChatWidgetModel; open: () => voi
         <ChevronRight size={14} aria-hidden="true" />
       </Button>
       {model.live ? (
-        visible.map((row) => (
+        // Each row tells its state by the kit mark and its accessible name only: the
+        // conversation's role row and the activity bar say it in words (presence.md).
+        visible.map(({ row, presence }) => (
           <AgentIdentity
             key={row.id}
             name={row.name}
-            model={
-              <AgentStatusLabel
-                status={agentStatus(row.status)}
-                label={status.has(row.status) ? status(row.status) : row.status}
-              />
-            }
+            trailing={<PresenceMark presence={presence} name={word(row.status)} />}
           />
         ))
       ) : (
         <AgentStatusLabel status={summaryStatus} label={tw('agents', model.agents)} />
       )}
-      <p className="text-caption text-muted-foreground">
-        {model.live
-          ? counts
-          : [
-              tw('agentsWaiting', { count: model.agents.waiting }),
-              tw('agentsFailed', { count: model.agents.failed }),
-            ].join(' · ')}
-      </p>
+      {model.live || others.length ? (
+        <p className="text-caption text-muted-foreground">
+          {model.live ? counts : others.join(' · ')}
+        </p>
+      ) : null}
     </AgentCard>
   );
-}
-
-function agentStatus(status: string): AgentStatus {
-  if (status === 'queued' || status === 'ready') return 'queued';
-  if (status === 'active') return 'running';
-  if (status === 'succeeded') return 'done';
-  if (status === 'failed') return 'failed';
-  if (['cancelled', 'cancelling', 'paused', 'pausing'].includes(status)) return 'stopped';
-  return 'waiting';
 }
