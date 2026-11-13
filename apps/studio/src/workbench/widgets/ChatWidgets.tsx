@@ -365,9 +365,11 @@ export function AgentsDetail({ model }: { model: ChatWidgetModel }) {
       <p className="mt-2 text-caption text-muted-foreground">
         {[
           t('agents', model.agents),
-          t('agentsWaiting', { count: model.agents.waiting }),
-          t('agentsFailed', { count: model.agents.failed }),
-        ].join(' · ')}
+          model.agents.waiting ? t('agentsWaiting', { count: model.agents.waiting }) : null,
+          model.agents.failed ? t('agentsFailed', { count: model.agents.failed }) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       </p>
       {model.plan.choices.length ? (
         <ul className="mt-3 space-y-1">

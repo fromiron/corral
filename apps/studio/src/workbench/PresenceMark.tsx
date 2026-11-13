@@ -8,7 +8,14 @@ import { useTranslations } from 'use-intl';
  * rows, the path's menus), this keeps the name to once a screen (docs/specs/features/presence.md).
  * The slot keeps its size without a mark, so a line never shifts with the state.
  */
-export function PresenceMark({ presence }: { presence: Presence | null | undefined }) {
+export function PresenceMark({
+  presence,
+  name,
+}: {
+  presence: Presence | null | undefined;
+  /** The accessible name when it says more than the state (its detail beside it). */
+  name?: string;
+}) {
   const t = useTranslations('Presence');
   const glyph = presence?.glyph;
   return (
@@ -16,9 +23,9 @@ export function PresenceMark({ presence }: { presence: Presence | null | undefin
       {presence && glyph ? (
         <span
           role="img"
-          aria-label={t(presence.labelKey)}
+          aria-label={name ?? t(presence.labelKey)}
           // The shape alone cannot tell a pause from a cancel: hovering names it, as a dot did.
-          title={t(presence.labelKey)}
+          title={name ?? t(presence.labelKey)}
           data-presence={presence.kind}
           className={cn('inline-flex', presenceTextClass(presence.tone))}
         >

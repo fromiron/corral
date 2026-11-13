@@ -3876,7 +3876,7 @@
     "selectedRunUnordered": "Selected run",
     "rail": "This run",
     "agentsHeading": "Agents",
-    "agents": "{total} agents, {working} working",
+    "agents": "{total} agents{working, plural, =0 {} other {, # working}}",
     "changesHeading": "Changes",
     "activityHeading": "Recent activity",
     "resultsHeading": "Results",

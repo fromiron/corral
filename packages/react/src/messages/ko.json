@@ -3876,7 +3876,7 @@
     "selectedRunUnordered": "선택한 실행",
     "rail": "이번 실행",
     "agentsHeading": "에이전트",
-    "agents": "에이전트 {total} · 작업 중 {working}",
+    "agents": "에이전트 {total}{working, plural, =0 {} other { · 작업 중 #}}",
     "changesHeading": "변경",
     "activityHeading": "최근 활동",
     "resultsHeading": "결과",
