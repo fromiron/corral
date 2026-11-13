@@ -264,6 +264,9 @@ test.describe('approval', () => {
       approvalHold.point.open();
       await expect(decide).toBeVisible({ timeout: 30_000 });
     });
+    // Decided, so nothing is left waiting past the scene.
+    await decide.click();
+    await expect(decide).toHaveCount(0, { timeout: 30_000 });
     expect(corral.errors).toEqual([]);
   });
 });

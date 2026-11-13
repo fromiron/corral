@@ -211,6 +211,10 @@ function visibleText(container: HTMLElement) {
 
 const count = (text: string, pattern: RegExp) => text.match(pattern)?.length ?? 0;
 
+/** One real animation frame: what is drawn now is painted. */
+const frame = () =>
+  act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
 it('says the run waits once (the run row) and shows the decision once (the card)', async () => {
   const container = await mainArea();
   const visible = visibleText(container);
@@ -749,6 +753,7 @@ it('holds the first approval too when its buttons come late where View was, by t
     const resolve = vi.spyOn(store.getState(), 'resolveApproval');
     await viewport.scroll(() => false);
     // View alone first: nothing was there before it, so it takes a press.
+    await frame();
     await act(async () => vi.advanceTimersByTime(900));
     expect(lineButton(container, messages.Activity.view)?.disabled).toBe(false);
     await act(async () => store.setState({ artifactTexts: { body_1: JSON.stringify(command) } }));
@@ -759,6 +764,70 @@ it('holds the first approval too when its buttons come late where View was, by t
     await act(async () => vi.advanceTimersByTime(599));
     expect(approve()?.disabled).toBe(true);
     await act(async () => vi.advanceTimersByTime(1));
+    expect(approve()?.disabled).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('holds the first approval when its buttons come where View was drawn, before any timer runs', async () => {
+  // View alone is painted, then the buttons come before a timer could run: no timer marks it.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const container = await mainArea(waitingOnCommand());
+    const store = fixture.store as RunSessionStore;
+    const resolve = vi.spyOn(store.getState(), 'resolveApproval');
+    await viewport.scroll(() => false);
+    expect(lineButton(container, messages.Activity.view)).toBeDefined();
+    await frame();
+    await act(async () => store.setState({ artifactTexts: { body_1: JSON.stringify(command) } }));
+    // A render on the way clears any timer set before it; the hold stays.
+    await act(async () => store.setState({ artifactTexts: { ...store.getState().artifactTexts } }));
+    const approve = () => lineButton(container, messages.Approvals.approveTool);
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => approve()?.click());
+    expect(resolve).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(599));
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(approve()?.disabled).toBe(false);
+    await act(async () => approve()?.click());
+    expect(resolve).toHaveBeenCalledExactlyOnceWith('approval_1', 'approve');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('holds the one approval left where a count line’s View was', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    const second = commandPlan('echo second');
+    const both = waitingOnCommand();
+    both.approvals.approval_2 = waitingOnCommand(second, 'approval_2', 'call_2', 'body_2').approvals
+      .approval_2 as RunProjection['approvals'][string];
+    const container = await mainArea(both, {
+      body_1: JSON.stringify(command),
+      body_2: JSON.stringify(second),
+    });
+    const store = fixture.store as RunSessionStore;
+    const resolve = vi.spyOn(store.getState(), 'resolveApproval');
+    await viewport.scroll(() => false);
+    // Two wait: the line counts them and has View alone.
+    expect(visibleText(bar(container) as HTMLElement)).toContain(
+      messages.Activity.waiting.replace('{count}', '2'),
+    );
+    expect(decisions(container)).toEqual([]);
+    await frame();
+    await act(async () => vi.advanceTimersByTime(900));
+    // One is decided elsewhere; the other's buttons come where View was.
+    const left = waitingOnCommand(second, 'approval_2', 'call_2', 'body_2');
+    await act(async () => store.setState({ projection: left }));
+    await viewport.scroll(() => false);
+    const approve = () => lineButton(container, messages.Approvals.approveTool);
+    expect(approve()?.disabled).toBe(true);
+    await act(async () => approve()?.click());
+    expect(resolve).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(600));
     expect(approve()?.disabled).toBe(false);
   } finally {
     vi.useRealTimers();

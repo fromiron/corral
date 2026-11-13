@@ -23,7 +23,7 @@ import {
 } from '../widgets/ChatWidgets.tsx';
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { revealPendingTray, useRespondInConversation, useTrayStore } from './pendingTrayState.ts';
-import { useSettled } from './settle.ts';
+import { useHeldAfterView, useSettled } from './settle.ts';
 import { type ActivityRole, roleSeen, useActivity } from './useActivity.ts';
 
 const toMs = (value: string | null | undefined) => (value ? Date.parse(value) : undefined);
@@ -188,27 +188,23 @@ export function ComposerActivity({
   };
   // The approval on the line. One that takes another's place waits a moment before a press,
   // counted from when its buttons appear, and so does the View that comes there before them. The
-  // first approval on the line is taken at once when it is drawn with its buttons; its buttons
-  // coming late where its View was drawn wait too. The wait is the clock's, reduced motion or not.
+  // first approval on the line is taken at once when it is drawn with its buttons; buttons coming
+  // where a View was drawn (its own, or a count line's) wait too. The wait is the clock's, reduced
+  // motion or not.
   const lineApproval =
     line.kind === 'waiting' && line.item?.kind === 'approval' ? line.item.approvalId : null;
   const [decisionsShown, setDecisionsShown] = useState(false);
   const [firstApproval, setFirstApproval] = useState<string | null>(null);
   if (lineApproval && firstApproval === null) setFirstApproval(lineApproval);
-  // The approval whose View alone was drawn: seen once the task that drew it is over, so a line
-  // whose buttons are judged in before the page is drawn never counts as View first.
-  const viewing = lineApproval && !decisionsShown ? lineApproval : null;
-  const [viewDrawn, setViewDrawn] = useState<string | null>(null);
-  useEffect(() => {
-    if (!viewing) return;
-    const timer = setTimeout(() => setViewDrawn(viewing), 0);
-    return () => clearTimeout(timer);
-  }, [viewing]);
   const held = !useSettled(
     lineApproval ? `${lineApproval}:${decisionsShown ? 'decide' : 'view'}` : null,
   );
-  const settled =
-    !held || (lineApproval === (firstApproval ?? lineApproval) && viewDrawn !== lineApproval);
+  const afterView = useHeldAfterView({
+    viewAlone: line.kind === 'waiting' && !decisionsShown,
+    there: line.kind === 'waiting',
+    key: lineApproval && decisionsShown ? lineApproval : null,
+  });
+  const settled = (!held || lineApproval === (firstApproval ?? lineApproval)) && !afterView;
 
   const closed = ((): ActivityBarLine | null => {
     switch (line.kind) {

@@ -930,8 +930,135 @@ test('⑧ at the edge of fitting, a twentieth of a pixel at a time, the buttons 
     }
     record('edge', { edge, scan });
     expect(scan.filter((step) => step.flips > 0)).toEqual([]);
+    // The call is decided and the run ends: nothing is left waiting on a timer past the scene.
+    await pad(12);
+    const allow = activityLine(page).getByRole('button', {
+      name: `Allow once · Run · ${BUILD}`,
+      exact: true,
+    });
+    await expect(allow).toBeEnabled();
+    await allow.click();
+    await expect(bar).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
     expect(corral.errors).toEqual([]);
   } finally {
+    await session.cleanup();
+  }
+});
+
+test('⑨ on a slow machine with reduced motion, a press where View stood alone decides nothing for a moment', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(240_000);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  corral.fake?.setResponses([
+    fauxAssistantMessage([fauxToolCall('run_command', { command: 'echo tray-ok' })], {
+      stopReason: 'toolUse',
+    }),
+    fauxAssistantMessage('Done.'),
+    fauxAssistantMessage('Done.'),
+    fauxAssistantMessage('Done.'),
+  ]);
+  const session = await commandSession(page, corral);
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await requestBox(page).fill('Check the folder.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    const tray = page.locator('[data-pending-tray]');
+    const card = tray.locator('[data-testid^="approval-"]');
+    await expect(card).toHaveCount(1, { timeout: 30_000 });
+    await waitForStill(page);
+    const bar = activityBar(page);
+    const pending = () => {
+      const run = corral.server.coordinator.listRuns()[0];
+      return run
+        ? Object.values(corral.server.coordinator.getSnapshot(run.runId).projection.approvals)
+            .filter((approval) => approval.status === 'pending')
+            .map((approval) => approval.approvalId)
+        : [];
+    };
+    const before = pending();
+    expect(before).toHaveLength(1);
+    // Six times slower. Every frame of the line is watched. From the first frame View stands
+    // alone on the waiting line, and for the next 0.6 s, the spot it stood on is pressed as soon
+    // as a decision button stands there.
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+    await page.evaluate(() => {
+      type Press = { after: number; name: string | null; disabled: boolean };
+      const w = window as unknown as {
+        viewAt: number | null;
+        press: Press | null;
+        frames: string[];
+      };
+      w.viewAt = null;
+      w.press = null;
+      w.frames = [];
+      let spot: { x: number; y: number } | null = null;
+      const named = (button: Element | null) =>
+        / · /.test(button?.getAttribute('aria-label') ?? '') ? (button as HTMLButtonElement) : null;
+      const tick = () => {
+        const line = document.querySelector(
+          '[data-testid="activity-bar"][data-line="waiting"] [data-activity-bar] > div',
+        );
+        const buttons = [...(line?.querySelectorAll('button') ?? [])].filter(
+          (button) => !button.closest('[inert]'),
+        );
+        const frame = buttons
+          .map((button) => `${button.textContent}${button.disabled ? ' (off)' : ''}`)
+          .join(' | ');
+        if (w.frames.at(-1) !== frame) w.frames.push(frame);
+        const view = buttons.find((button) => button.textContent === 'View');
+        if (!spot && view && !buttons.some((button) => named(button))) {
+          const box = view.getBoundingClientRect();
+          spot = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+          w.viewAt = performance.now();
+        }
+        if (spot && w.viewAt !== null && !w.press && performance.now() - w.viewAt < 600) {
+          const under = named(document.elementFromPoint(spot.x, spot.y)?.closest('button') ?? null);
+          if (under) {
+            w.press = {
+              after: Math.round(performance.now() - w.viewAt),
+              name: under.getAttribute('aria-label'),
+              disabled: under.disabled,
+            };
+            under.click();
+          }
+        }
+        requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    // The reader leaves the card already read.
+    const timeline = page.getByTestId('chat-timeline');
+    await timeline.hover({ position: { x: 16, y: 120 } });
+    for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { viewAt: unknown }).viewAt), {
+        timeout: 10_000,
+      })
+      .not.toBeNull()
+      .catch(() => undefined);
+    await page.waitForTimeout(2_000);
+    const seen = await page.evaluate(() => {
+      const w = window as unknown as { viewAt: number | null; press: unknown; frames: string[] };
+      return { viewAlone: w.viewAt !== null, press: w.press, frames: w.frames };
+    });
+    const after = pending();
+    record('slow-reduced', { seen, before, after });
+    // Whatever came where View stood alone, a press there in the next 0.6 s decided nothing.
+    expect(after).toEqual(before);
+    // And the call, whole beside its buttons, came with them in its first frame: never View alone.
+    expect(seen.viewAlone).toBe(false);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    // The call is decided on its card and the run ends.
+    await card.scrollIntoViewIfNeeded();
+    await card.getByRole('button', { name: 'Allow once', exact: true }).click();
+    await expect.poll(pending, { timeout: 30_000 }).toEqual([]);
+    await expect(bar).toHaveAttribute('data-run', 'succeeded', { timeout: 30_000 });
+    expect(corral.errors).toEqual([]);
+  } finally {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => undefined);
     await session.cleanup();
   }
 });

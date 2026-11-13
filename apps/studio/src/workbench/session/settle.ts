@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * How long a button that just took another's place stays unpressable (features/composer-flow.md
@@ -51,4 +51,44 @@ export function useSettled(key: Key): boolean {
   }, [held, ms]);
   if (fresh) return state.last === null;
   return held === null || held !== key;
+}
+
+/**
+ * True for the settle wait after `key` (what came to a place: an approval's buttons) turns to a
+ * new value where a frame was painted with only View there (`viewAlone`) since the place was last
+ * empty (`there` false). What a frame paints is read before it is painted, from the frame's own
+ * callback, which a later render does not take back: a View judged away in the same task is not
+ * counted, and one painted, however briefly and however slow the device, always is.
+ */
+export function useHeldAfterView({
+  viewAlone,
+  there,
+  key,
+}: {
+  viewAlone: boolean;
+  there: boolean;
+  key: Key;
+}): boolean {
+  const ms = useContext(SettleContext);
+  const now = useRef({ viewAlone, there });
+  const painted = useRef(false);
+  const last = useRef<Key>(null);
+  const [held, setHeld] = useState<Key>(null);
+  useLayoutEffect(() => {
+    now.current = { viewAlone, there };
+    if (key !== null && key !== last.current && painted.current) setHeld(key);
+    last.current = key;
+    if (typeof requestAnimationFrame === 'undefined') return;
+    // Never cancelled: the frame reads what it is about to paint, whatever rendered since.
+    requestAnimationFrame(() => {
+      if (now.current.viewAlone) painted.current = true;
+      else if (!now.current.there) painted.current = false;
+    });
+  });
+  useEffect(() => {
+    if (held === null) return;
+    const timer = setTimeout(() => setHeld(null), ms);
+    return () => clearTimeout(timer);
+  }, [held, ms]);
+  return held !== null && held === key;
 }

@@ -180,9 +180,9 @@ function LineWords({ line }: { line: ActivityBarLine }) {
         // Cut at its end; the whole of it is on the card the line's View goes to.
         <span
           data-activity-text={present ? '' : undefined}
-          className={cn('min-w-0 truncate', line.approval && 'flex-1')}
+          className={cn('min-w-0 truncate transition-none', line.approval && 'flex-1')}
         >
-          <span>{line.text}</span>
+          <span className="transition-none">{line.text}</span>
         </span>
       ) : null}
     </>
@@ -227,7 +227,7 @@ function StateWords({ state, said = true }: { state: ActivityState; said?: boole
   return (
     <span
       data-presence-label={said ? state.target : undefined}
-      className="shrink-0 whitespace-nowrap"
+      className="shrink-0 whitespace-nowrap transition-none"
     >
       {state.text}
     </span>
@@ -349,13 +349,19 @@ export function ActivityBar({
       onKeyDownCapture={onKeyDownCapture}
     >
       {/* The line comes first in the document, so focus reaches it before the panel it opens
-          above itself. One height, whatever it says. */}
-      <div ref={row} className="group/activity relative flex h-8 min-w-0 items-center gap-2 px-3">
+          above itself. One height, whatever it says. The line and its words' boxes never
+          transition: reduced motion gives every property a near-zero transition, which lands a
+          changed box a frame late, and the buttons judged on it would leave View alone for a
+          frame. */}
+      <div
+        ref={row}
+        className="group/activity relative flex h-8 min-w-0 items-center gap-2 px-3 transition-none"
+      >
         {line ? (
           <>
             <span
               className={cn(
-                'flex min-w-0 flex-1 items-center gap-1.5 text-ui',
+                'flex min-w-0 flex-1 items-center gap-1.5 text-ui transition-none',
                 line.warning ? 'text-warning' : 'text-foreground',
               )}
             >
@@ -364,7 +370,7 @@ export function ActivityBar({
                   the clock and counts tick in place. */}
               <span
                 className={cn(
-                  'relative flex min-w-0 items-center overflow-hidden',
+                  'relative flex min-w-0 items-center overflow-hidden transition-none',
                   // With decisions, the words take the room left, so it can be measured.
                   approval && 'flex-1',
                 )}
@@ -372,7 +378,10 @@ export function ActivityBar({
                 {reduce ? (
                   <span
                     key={words}
-                    className={cn('flex min-w-0 items-center gap-1.5', approval && 'flex-1')}
+                    className={cn(
+                      'flex min-w-0 items-center gap-1.5 transition-none',
+                      approval && 'flex-1',
+                    )}
                   >
                     <LineWords line={line} />
                   </span>
@@ -380,7 +389,10 @@ export function ActivityBar({
                   <AnimatePresence mode="popLayout" initial={false}>
                     <motion.span
                       key={words}
-                      className={cn('flex min-w-0 items-center gap-1.5', approval && 'flex-1')}
+                      className={cn(
+                        'flex min-w-0 items-center gap-1.5 transition-none',
+                        approval && 'flex-1',
+                      )}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0, transition: spring.moderate }}
                       exit={{ opacity: 0, y: -6, transition: spring.moderate.exit }}
