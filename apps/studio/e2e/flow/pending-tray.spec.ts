@@ -408,20 +408,29 @@ test('a question out of view is told above the composer, and Respond brings its 
   expect(corral.errors).toEqual([]);
 });
 
-type ComposerFrame = { notice: boolean; height: number | null; tray: boolean };
+type ComposerFrame = {
+  notice: boolean;
+  height: number | null;
+  /** The composer's height without its request box, which sizes itself to its own lines. */
+  around: number | null;
+  tray: boolean;
+};
 
 /**
- * Every frame from now on: whether the composer tells of a wait, the composer's height, and
- * whether the tray is there.
+ * Every frame from now on: whether the composer tells of a wait, the composer's height (whole,
+ * and around its request box), and whether the tray is there.
  */
 const sampleComposer = () => {
   const frames: ComposerFrame[] = [];
   (window as unknown as { composerFrames: ComposerFrame[] }).composerFrames = frames;
   const sample = () => {
     const composer = document.querySelector('[data-testid="chat-composer"]');
+    const height = composer ? composer.getBoundingClientRect().height : null;
+    const box = composer?.querySelector('textarea')?.getBoundingClientRect().height ?? 0;
     frames.push({
       notice: Boolean(document.querySelector('[data-testid="action-required"]')),
-      height: composer ? composer.getBoundingClientRect().height : null,
+      height,
+      around: height ? height - box : null,
       tray: Boolean(document.querySelector('[data-pending-tray]')),
     });
     requestAnimationFrame(sample);
@@ -495,4 +504,96 @@ test('a question arriving at the followed end, or there on load, brings no notic
   await form.getByRole('button', { name: 'Send answer' }).click();
   await expect(page.getByTestId('chat-result')).toContainText('Done.', { timeout: 30_000 });
   expect(corral.errors).toEqual([]);
+});
+
+test('coming back to a conversation whose question is in view brings no notice and keeps the composer still', async ({
+  page,
+  corral,
+}) => {
+  test.setTimeout(150_000);
+  corral.fake?.setResponses([question(), fauxAssistantMessage('Done.')]);
+  const { cleanup } = await conversationWithWorkingCopy(page, corral);
+  try {
+    await requestBox(page).fill('Ask me how to report it.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    const form = tray(page).getByRole('form', { name: 'Waiting for you' });
+    await expect(form).toBeVisible({ timeout: 30_000 });
+    await waitForStill(page);
+    await expect(tray(page)).toBeInViewport();
+    const composer = page.getByTestId('chat-composer');
+    const height = (await composer.boundingBox())?.height;
+    const around = await composer.evaluate(
+      (element) =>
+        element.getBoundingClientRect().height -
+        (element.querySelector('textarea')?.getBoundingClientRect().height ?? 0),
+    );
+
+    /** Away to another view and back, every frame sampled from just before leaving. */
+    const roundTrip = async (
+      name: string,
+      away: () => Promise<void>,
+      back: () => Promise<void>,
+    ) => {
+      await page.evaluate(sampleComposer);
+      await away();
+      await expect(composer).toBeHidden();
+      await waitForStill(page, { stillMs: 600 }).catch(() => undefined);
+      await back();
+      await expect(form).toBeVisible();
+      await waitForStill(page);
+      await expect(tray(page)).toBeInViewport();
+      const frames = await composerFrames(page);
+      expect(frames.length, `${name}: frames`).toBeGreaterThan(10);
+      expect(
+        frames.filter((frame) => frame.notice),
+        `${name}: notice`,
+      ).toEqual([]);
+      // While shown, the composer around its request box keeps the one height it settled at (the
+      // request box sizes itself again to its lines when shown, which is the box's own doing),
+      // and the whole composer never grows past where it settled.
+      expect(
+        [...new Set(frames.flatMap((frame) => (frame.around ? [frame.around] : [])))],
+        `${name}: composer around its request box`,
+      ).toEqual([around]);
+      expect(
+        Math.max(...frames.map((frame) => frame.height ?? 0)),
+        `${name}: composer height`,
+      ).toBe(height);
+      await expect(page.getByTestId('action-required')).toHaveCount(0);
+    };
+
+    // The run record in front, then back by the Conversation tab.
+    await roundTrip(
+      'record, by the tab',
+      () => panelTab(page, 'Runs'),
+      () => panelTab(page, 'Conversation'),
+    );
+    // The run record in front, then back by its response area's Respond.
+    await roundTrip(
+      'record, by Respond',
+      async () => {
+        await panelTab(page, 'Runs');
+        await expect(
+          page.getByTestId('run-monitor').getByTestId('respond-in-conversation'),
+        ).toBeVisible();
+      },
+      async () => {
+        await page.getByTestId('run-monitor').getByTestId('respond-in-conversation').click();
+        await expect(tray(page)).toBeFocused();
+      },
+    );
+    // The files in front, then back by the Conversation tab.
+    await roundTrip(
+      'files, by the tab',
+      () => panelTab(page, 'Files'),
+      () => panelTab(page, 'Conversation'),
+    );
+
+    await form.getByRole('textbox', { name: 'Your answer' }).fill('A table');
+    await form.getByRole('button', { name: 'Send answer' }).click();
+    await expect(page.getByTestId('chat-result')).toContainText('Done.', { timeout: 30_000 });
+    expect(corral.errors).toEqual([]);
+  } finally {
+    await cleanup();
+  }
 });

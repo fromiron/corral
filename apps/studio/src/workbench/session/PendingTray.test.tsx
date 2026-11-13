@@ -501,6 +501,58 @@ it('never brings back the lines of an earlier wait when the run waits again', as
   expect(lines(record())).toEqual([]);
 });
 
+it('keeps every line of a wait whose requests overlapped, as long as something waited throughout', async () => {
+  const store = waitingRun('run_a', { approvals: [decision('a1'), decision('a2')] });
+  const recorded = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `event_overlap_${runSeq}`,
+      runId: 'run_a',
+      runSeq,
+      recordedAt: '2026-11-09T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const asked = (runSeq: number, approvalId: string) =>
+    recorded(runSeq, 'approval.requested', {
+      approvalId,
+      kind: 'user_action',
+      subjectVersionIds: [],
+      criteriaVersionId: null,
+    });
+  const resolved = (runSeq: number, approvalId: string) =>
+    recorded(runSeq, 'approval.resolved', {
+      approvalId,
+      decision: 'approve',
+      actor: 'person',
+      subjectVersionIds: [],
+    });
+  const advance = (event: RunEvent, approvals: Record<string, ApprovalView>) => {
+    const { events, projection } = store.getState();
+    if (!projection) throw new Error('missing projection');
+    store.setState({
+      events: [...events, event],
+      projection: { ...projection, approvals: { ...projection.approvals, ...approvals } },
+    });
+  };
+  store.setState({ events: [asked(1, 'a1'), asked(2, 'a2')] });
+  const { container } = await show(['run_a']);
+  const lines = () =>
+    [...(trayOf(container)?.querySelectorAll('[data-testid^="approved-"]') ?? [])].map((line) =>
+      line.getAttribute('data-testid'),
+    );
+  // a1 approved while a2 waits; a3 asked while a2 still waits; then a2 approved while a3 waits.
+  await act(async () => advance(resolved(3, 'a1'), { a1: decision('a1', { status: 'approved' }) }));
+  expect(lines()).toEqual(['approved-a1']);
+  await act(async () => advance(asked(4, 'a3'), { a3: decision('a3') }));
+  expect(lines()).toEqual(['approved-a1']);
+  await act(async () => advance(resolved(5, 'a2'), { a2: decision('a2', { status: 'approved' }) }));
+  // The run never waited on nothing in between: both lines stand.
+  expect(lines()).toEqual(['approved-a1', 'approved-a2']);
+});
+
 it('never brings back an answered question’s line when the run waits again', async () => {
   const store = waitingRun('run_a', {
     approvals: [decision('approval_1')],
@@ -920,6 +972,104 @@ it('tells whether the tray is on screen and how much waits in it', async () => {
   expect(probe()).toBe('false:2');
 });
 
+/** What the tray's current observer reports. */
+async function report(container: HTMLElement, entry: Partial<IntersectionObserverEntry>) {
+  const observed = observers.find((item) => item.target === trayOf(container));
+  if (!observed) throw new Error('no observer for the tray');
+  await act(async () =>
+    observed.callback([entry as IntersectionObserverEntry], {} as IntersectionObserver),
+  );
+}
+
+const box = (height: number) => ({ top: 0, bottom: height, height, width: 600 }) as DOMRectReadOnly;
+
+it('is neither in nor out of view while the conversation is hidden behind another view', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_1')] });
+  const { container, tray } = await show(['run_a']);
+  await report(container, {
+    isIntersecting: true,
+    boundingClientRect: box(120),
+    rootBounds: box(400),
+  });
+  expect(tray.getState().placement).toBe('in-view');
+  // Another view in front: the hidden conversation has no size, and its tray intersects nothing.
+  await report(container, {
+    isIntersecting: false,
+    boundingClientRect: box(0),
+    rootBounds: box(0),
+  });
+  expect(tray.getState().placement).toBe('unknown');
+  await report(container, { isIntersecting: false, boundingClientRect: box(0), rootBounds: null });
+  expect(tray.getState().placement).toBe('unknown');
+  // Shown and measured again.
+  await report(container, {
+    isIntersecting: false,
+    boundingClientRect: box(120),
+    rootBounds: box(400),
+  });
+  expect(tray.getState().placement).toBe('out-of-view');
+});
+
+it('measures the conversation afresh when it is shown again', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_1')] });
+  const { container } = await show(['run_a']);
+  const timeline = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
+  if (!timeline) throw new Error('missing timeline');
+  const resizer = resizers.find((item) => item.targets.includes(timeline));
+  expect(resizer).toBeDefined();
+  const before = observers.find((item) => item.target === trayOf(container));
+  // The conversation comes back into view with a size: a new observer reports where the tray is.
+  vi.spyOn(timeline, 'clientHeight', 'get').mockReturnValue(400);
+  await act(async () => resizer?.callback([], {} as ResizeObserver));
+  const after = observers.find((item) => item.target === trayOf(container));
+  expect(after).toBeDefined();
+  expect(after).not.toBe(before);
+});
+
+it('goes back to neither when it leaves, and stays so when it comes back until measured', async () => {
+  const store = waitingRun('run_a', { approvals: [decision('approval_1')] });
+  const { container, tray } = await show(['run_a']);
+  await report(container, { isIntersecting: false });
+  expect(tray.getState().placement).toBe('out-of-view');
+  await act(async () => closeApproval(store, 'approval_1', 'approve'));
+  expect(trayOf(container)).toBeNull();
+  expect(tray.getState().placement).toBe('unknown');
+  // The run waits again: the tray is back, not yet measured.
+  await act(async () => {
+    const projection = store.getState().projection;
+    if (!projection) throw new Error('missing projection');
+    store.setState({
+      projection: {
+        ...projection,
+        status: 'awaiting_user',
+        approvals: { ...projection.approvals, approval_2: decision('approval_2') },
+      },
+    });
+  });
+  expect(trayOf(container)).not.toBeNull();
+  expect(tray.getState().placement).toBe('unknown');
+});
+
+it('does not come into view or take focus for a request to respond older than its window', async () => {
+  waitingRun('run_a', { approvals: [decision('approval_1')] });
+  let now = 1_000;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  const { container, tray } = await show(['run_a']);
+  const input = container.ownerDocument.querySelector<HTMLTextAreaElement>(
+    'textarea[aria-label="Request"]',
+  );
+  input?.focus();
+  // Asked more than 5s ago (a link followed long after it was made): the tray does not take it.
+  await act(async () => tray.setState({ reveal: { sessionId: SESSION, at: now - 5_001 } }));
+  await settleFrames();
+  expect(document.activeElement).toBe(input);
+  now += 100;
+  // One made inside the window does.
+  await act(async () => tray.setState({ reveal: { sessionId: SESSION, at: now - 4_900 } }));
+  await settleFrames();
+  expect(document.activeElement).toBe(trayOf(container));
+});
+
 /** Types into a controlled field as a person does. */
 async function typeInto(input: HTMLInputElement, value: string) {
   const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
@@ -1217,6 +1367,24 @@ it('names each run’s area by its run while several wait, and each card by its 
     'Run #2 · Waiting for you: Which layout should I keep?',
   );
   expect(visibleText(tray)).not.toContain('Run #1 · Waiting for you');
+});
+
+it('names each run’s continue-or-stop stack by its run when several stand at their limits', async () => {
+  waitingRun('run_a', { approvals: [decision('limit_a', { limit: roundLimit })] });
+  waitingRun('run_b', { approvals: [decision('limit_b', { limit: roundLimit })] });
+  const { container } = await show(['run_a', 'run_b']);
+  const named = [
+    ...(trayOf(container)?.querySelectorAll('section[aria-label], [role="region"][aria-label]') ??
+      []),
+  ].map((element) => element.getAttribute('aria-label'));
+  expect(named).toEqual(
+    expect.arrayContaining([
+      `Run #1 · ${messages.Approvals.continueRegion}`,
+      `Run #2 · ${messages.Approvals.continueRegion}`,
+    ]),
+  );
+  // No two landmarks in the tray share a name.
+  expect(new Set(named).size).toBe(named.length);
 });
 
 it('names a lone run’s area by the wait alone', async () => {

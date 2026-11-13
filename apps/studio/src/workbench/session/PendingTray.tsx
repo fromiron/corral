@@ -134,25 +134,32 @@ export function PendingTray({
     const coveredBy = () =>
       composer?.dataset.composerSurface === 'floating' ? composer.offsetHeight : 0;
     let observer: IntersectionObserver | null = null;
-    let margin = -1;
+    let key = '';
     const observe = () => {
       const covered = coveredBy();
-      if (covered === margin) return;
-      margin = covered;
+      // The conversation hidden (another view in front) and shown again also makes a new
+      // observer, so a conversation coming back is measured afresh.
+      const next = `${covered}:${timeline?.clientHeight ? 'shown' : 'hidden'}`;
+      if (next === key) return;
+      key = next;
       observer?.disconnect();
       observer = new IntersectionObserver(
         (entries) => {
           const entry = entries.at(-1);
-          if (entry) place(entry.isIntersecting ? 'in-view' : 'out-of-view');
+          if (!entry) return;
+          // A conversation not on screen at all (another view in front, no size) says nothing of
+          // where the tray stands in it: neither, until it is shown and measured again.
+          const unseen = entry.boundingClientRect?.height === 0 || entry.rootBounds?.height === 0;
+          place(unseen ? 'unknown' : entry.isIntersecting ? 'in-view' : 'out-of-view');
         },
         { root: timeline, rootMargin: `0px 0px -${covered}px 0px` },
       );
       observer.observe(element);
     };
     observe();
-    const resized =
-      composer && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(observe) : null;
+    const resized = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(observe) : null;
     if (composer) resized?.observe(composer);
+    if (timeline) resized?.observe(timeline);
     return () => {
       resized?.disconnect();
       observer?.disconnect();
