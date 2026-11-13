@@ -1,5 +1,7 @@
 import type { DirectiveStatus, Receipt } from '@corral/contracts';
+import { linearCorral } from '@corral/testkit';
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { projectionWith, sessionStore } from '../stories/fixtures.tsx';
 import { ReinsPanel } from './ReinsPanel.tsx';
 
@@ -90,5 +92,38 @@ export const LongKoreanAndJapanese: Story = {
       { text: '一次資料のみを根拠とし、未確認の項目は区別してください。', status: 'queued' },
     ]),
     target,
+  },
+};
+
+const roundsTeam = linearCorral(['writer']);
+roundsTeam.nodes = roundsTeam.nodes.map((node) =>
+  node.id === 'writer' ? { ...node, parentId: 'rounds' } : node,
+);
+roundsTeam.nodes.push({
+  id: 'rounds',
+  type: 'loop',
+  label: 'Rounds',
+  limitPolicy: { kind: 'unlimited' },
+});
+export const UnlimitedLoopRounds: Story = {
+  args: {
+    session: sessionStore({
+      runId: 'run_story',
+      definition: roundsTeam,
+      projection: projectionWith({ controlRevision: 1 }),
+    }),
+    target: null,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Change settings' }));
+    await userEvent.click(canvas.getByRole('combobox', { name: 'Change scope' }));
+    const body = within(canvasElement.ownerDocument.body);
+    await userEvent.click(await body.findByRole('option', { name: 'Future loop rounds' }));
+    await expect(await canvas.findByText('No round limit')).toBeVisible();
+    // The list has closed before the accessibility check reads the page.
+    await waitFor(() =>
+      expect(canvasElement.ownerDocument.querySelector('[data-base-ui-focus-guard]')).toBeNull(),
+    );
   },
 };

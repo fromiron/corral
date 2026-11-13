@@ -368,7 +368,16 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     next = { ...next, maxIterations: change.maxIterations };
   if (next.type === 'loop' && change.reviewRecipe !== undefined) {
     const { reviewRecipe: _prior, ...rest } = next;
-    next = change.reviewRecipe ? { ...rest, reviewRecipe: change.reviewRecipe } : rest;
+    if (change.reviewRecipe) {
+      // A recipe Loop can only end at its cap (team-graph.md structure rule 4): the recipe drops
+      // any other limit policy, and an unlimited Loop takes the recipe's attempts as its cap.
+      const { limitPolicy: _policy, ...capped } = rest;
+      next = {
+        ...capped,
+        maxIterations: capped.maxIterations ?? change.reviewRecipe.maxAttempts,
+        reviewRecipe: change.reviewRecipe,
+      };
+    } else next = rest;
   }
   if (next.type === 'output' && change.requireApproval !== undefined)
     next = { ...next, requireApproval: change.requireApproval };

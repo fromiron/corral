@@ -25,6 +25,7 @@ import {
 } from '../run/flow.ts';
 import { nodeRunSummary } from '../run/selectors.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import { LoopEscalationText } from './RunText.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
 /** Only named verification facts cross the host boundary; output text stays in Checks. */
@@ -233,12 +234,22 @@ export function RunFlowView({
                     </h3>
                     <p className="text-caption text-muted-foreground">
                       {loop.maxIterations === null
-                        ? loopText('summaryUnlimited', { count: loop.iterations.length })
+                        ? loopText('summaryUnlimited', { count: loop.rounds })
                         : loopText('summary', {
-                            count: loop.iterations.length,
+                            count: loop.rounds,
                             max: loop.maxIterations,
                           })}
                     </p>
+                    {loop.escalation ? (
+                      <p className="text-caption" data-testid="run-flow-loop-escalation">
+                        <LoopEscalationText
+                          escalation={loop.escalation}
+                          modelName={(profile) =>
+                            projection.modelProfiles[profile]?.modelId ?? profile
+                          }
+                        />
+                      </p>
+                    ) : null}
                     <p className="text-caption">
                       {latest
                         ? loopText('current', {

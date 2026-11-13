@@ -1,4 +1,4 @@
-import definition from '../../../../examples/research-team.corral.json' with { type: 'json' };
+import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import { expectTeamSaved, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -6,6 +6,15 @@ test('pins a review recipe in the Loop editor and explains its stop in the Run a
   page,
   corral,
 }) => {
+  // Without its exhausted path, the Loop's recipe stop fails the Run instead of going on to the
+  // approval with the last candidate.
+  const definition = {
+    ...researchTeam,
+    controlEdges: researchTeam.controlEdges.filter(
+      (edge) => !(edge.source === 'review_loop' && edge.sourcePort === 'exhausted'),
+    ),
+  };
+  expect(definition.controlEdges).toHaveLength(researchTeam.controlEdges.length - 1);
   await corral.open('/');
   const ids = await page.evaluate(
     async ({ definition }) => {

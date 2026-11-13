@@ -11,7 +11,7 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | S0 | 명세 변경(오케스트레이터) | 완료 |
-| 백본 | B1–B12 | 진행 중(B11b만 남음) |
+| 백본 | B1–B13 | 진행 중(B13만 남음) |
 | 화면 | K1, U1–U14 | 진행 중(K1·U1·U8·U10 병합) |
 | 회의 | M1–M4 | 진행 중(M1·M2 병합) |
 | 감독 | A1–A9 | 진행 중(A1 병합) |
@@ -437,15 +437,15 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 완료 |
 | B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 완료 |
-| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 디자인 검수 통과, 코드 리뷰 중(`flow/b11b-loop-limit-editor`) |
+| B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 완료 |
 | B13 | 다음 요청에 이미지·참조 싣기 | U5 | `core/repository`, `apps/server/src/session-queue.ts`, 컴포저 전송 모듈 | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
 | U2 | 타임라인 틀과 끝 추적 | V1 | `workbench/ChatView.tsx` | 네 번째 리뷰 중(`flow/u2-timeline-frame-2`) |
 | U3 | 실행 행 고정 구조 | U2 | `workbench/RunMessage.tsx`, `TurnProcess.tsx` | 세 번째 리뷰 통과(`flow/u3-run-row-2`). U2 수정이 병합된 뒤 병합 |
-| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 디자인 검수 통과, 재리뷰 중(`flow/u4-pending-tray`, U3 브랜치 위) |
-| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 디자인 검수 통과, 코드 리뷰 중(`flow/u5-send-model`) |
+| U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 리뷰 통과(`flow/u4-pending-tray`, U3 브랜치 위). U2·U3가 병합된 뒤 병합 |
+| U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 디자인 검수 통과, 코드 리뷰 수정 중(`flow/u5-send-model`) |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 대기 |
 | U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 대기 |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
@@ -460,7 +460,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 대기 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
 | A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 완료 |
-| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 구현 중(`flow/a2-advisor-compile`) |
+| A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 리뷰 중(`flow/a2-advisor-compile`) |
 | A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 대기 |
 | A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 대기 |
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 대기 |
@@ -793,6 +793,9 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U6 (끼어듦의 표시).** 메타 줄의 "끼어듦 · 응답을 끊고 전달됨"은 지시의 `delivery`가 `interrupt`이고, 그 지시를 실은 호출 바로 앞의 같은 실행 단위 호출이 `interrupted`일 때만 쓴다. 아니면(끊을 응답이 없어 그냥 실린 경우) "읽힘"이다.
 
 - **U5 (디자인 검수에서 정한 것).** 키 안내는 통째로 보이거나 통째로 없다. 자리가 모자라면 폴더 안내가 먼저 아이콘만 남게 줄어든다. 대상 배지는 대상이 둘 이상일 때만 여는 표식이 있는 메뉴이고 하나면 고정 배지다. 남기는 한계: 실행이 막 시작돼 컴포저가 아직 그 실행을 모르는 짧은 사이에 보내면 새 요청으로 나가 같은 세션에 Run이 둘 열린다(서버는 한 세션의 열린 Run 수를 막지 않는다. 사람의 입력 속도로는 드물어 고치지 않았다).
+- **B11b (리뷰에서 정한 것).** 감싸기는 `next`가 한 곳으로 이어질 때만 `exhausted`를 그곳에 잇는다(여러 곳으로 갈라지면 합류가 한 포트의 갈래만 모으므로 잇지 않는다). 제한 없음을 끄면 기본값(3회, 끝내기)이고 전 값은 되돌리기로 찾는다. 레시피를 붙이면 같은 쓰기에서 정책이 끝내기로 정리되고, 제한 없는 Loop는 레시피의 최대 시도 수를 상한으로 받는다(`editor/model.ts`의 `updateNode`). 실행 화면의 회차 수·유효한 상한·현재 상태는 가장 최근 진입의 것이다. 남긴 것: 패치 패널의 "현재 값"은 정책 적용 뒤에도 원래 상한을 보인다. 회차 요약 문구에 단수형이 없다("1 observed rounds", U14).
+- **평가(B11a가 남긴 한계).** `packages/core/src/evaluation.ts`의 품질 셈은 레시피 중단으로 실패한 Run만 반려로 센다. `exhausted`가 이어진 검토 루프(기본 제공 팀의 새 기본값)에서 레시피가 거절한 후보가 마지막 후보로 이어 가 성공하면 반려로 세지 않고, 틀린 후보였다면 잘못된 통과로 센다. `docs/guides/evaluation.md`의 "불필요한 반려" 정의도 레시피 중단이 Run을 멈춘다고 전제한다. 평가용 정의(`examples/eval/`)는 `exhausted`를 잇지 않아 영향이 없다. 이 계획에서는 고치지 않고 끝에 보고한다.
+- **U4 (재리뷰에서 정한 것).** 가려진 대화의 트레이 자리는 "모름"이고 다시 보일 때 새로 잰다. 답한 줄은 그 뒤로 기다리는 것이 하나도 없던 순간이 있으면 떠난다(겹쳐 이어진 대기에서는 남는다). 실행 기록 화면에서 응답 영역이 보이면 머리 알약은 상태만 말한다. 여러 Run이 기다리면 영역 이름에 Run 이름이 붙는다.
 - **U5 (디자인 검수 2·3차).** 키 안내는 어느 상태에서나 마이크·보내기 바로 왼쪽이다(모델·권한 칩이 보이면 그 뒤). 막힌 전송의 키는 키 안내에서 뺀다. "대상 없음" 이유 한 줄은 폴더 안내보다 자리를 먼저 갖고 키 안내보다 먼저 줄어든다.
 - **B13 (U5가 찾은 명세와 코드의 차이).** 명세(`composer-flow.md` "합류 대상")는 이미지와 참조가 새 요청과 다음 요청에 실린다고 하지만, 저장소는 대기 항목(`queue`)의 이미지를 거절하고 서버가 대기 요청을 시작할 때도 넘기지 않는다(U5 이전부터). 명세가 맞다: 대기 항목이 이미지와 참조를 갖고, 서버의 시작 요청에 실리며, 그 뒤 "새 요청에만 적용" 한 줄은 합류·끼어들기에서만 보인다. U5는 그 줄을 다음 요청에도 그대로 둔다(지금 코드에서는 사실이다). U5가 병합된 뒤 한다.
 - **A5 (A1 리뷰가 남긴 것).** `refuseControl`이 거절을 `(runId, commandId)`로 저장하므로 같은 commandId의 재전송은 처리를 켠 뒤에도 옛 거절 receipt를 돌려준다(도구가 commandId를 새로 만들면 문제없다). `submit_advice`의 `expectedControlRevision`을 볼지 정한다. `advice.admitted`의 "`preserve`가 아닐 때만 `directiveId`"는 zod에만 있고 JSON Schema에는 없다.
@@ -801,6 +804,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **A5 (A1이 남긴 것).** 서버의 HTTP 명령 경로는 `RunCommand`를 그대로 받으므로 사람이 `submit_advice`를 보낼 수 있다(지금은 Coordinator가 `COMMAND_NOT_SUPPORTED`로 거절). 명세는 감독의 도구만 보낸다고 하니 A5가 화면·API 경로를 닫아 둔다. A2 전까지 컴파일러는 `observer` 노드와 `advise` 연결을 `ADVISOR_NOT_SUPPORTED`로 거절한다(A2가 규칙으로 바꾼다). 역할이 `advise`를 협업 도구로 가질 수 있는지의 검사도 A2다.
 - **U5 (U3가 병합된 뒤).** `apps/studio/e2e/flow/send-model.spec.ts`는 실행 종료와 끼어들기 단계에서 끝난 실행 아래 항목을 측정에서 뺐다(U3 이전에는 과정이 접히며 306px 움직였다). U3가 통합 브랜치에 들어오면 그 제외를 없앤다.
 - **U6 (U5가 남긴 것).** 지시의 전달 방식은 `directive.accepted`와 receipt의 `requestedBoundary`에만 있고 `DirectiveView`와 세션의 steer 항목에는 없다. 메타 줄이 "끼어듦"을 말하려면 투영이 전달 방식을 가져야 한다. 합류에 실은 텍스트 첨부는 지시(`DirectiveView.attachments`)에만 남으니 보낸 메시지에 첨부 이름을 그 값으로 보인다(지금은 보낸 뒤 첨부가 보이지 않는다). 낮춰진 끼어들기(receipt의 `requestedBoundary`)는 지금 sr-only 알림뿐이다. `SessionEntries.tsx`의 `DeliveryStatus`는 끼어들기여도 "at its next model request"라고 쓴다.
+- **M3 (U5 리뷰가 남긴 것).** 회의 행에서 Alt+Enter는 보내지 않는다(`MeetingPage.tsx:790`, `preferences.ts:114-121`). 명세(`composer-flow.md` 입력 규칙 표의 회의 행)는 세 키 모두 회의에 보낸다고 한다. M3가 맞춘다.
 - **U7 (U5가 남긴 것).** 대상 목록은 `composer/useRunState.ts`의 `useSteerTargets`, "여기에 합류"는 `composer/useIntent.ts`의 `chooseTarget(id)`, 자동 시작은 `composer/useSessionSettings.ts`의 `autoStart`·`updateAutoStart`다. 브라우저 데모 모드에는 서버 대기열이 없어 자동 시작 스위치가 듣지 않는다.
 - **U7 (U4가 남긴 것).** `usePendingTray().waiting`(기다리는 수)과 `visible`을 활동 바가 읽는다. 트레이가 측정되기 전에는 "화면 밖"으로 보지 않는다.
 - **U13 (U4·U5가 남긴 것).** Run에 본문이 아직 없을 때 실행 행 머리와 트레이 카드 사이가 약 100px 빈다(U3의 행 자리 예약). 도구 줄의 폴더 안내("에이전트가 파일을 읽거나 바꿀 수 없습니다")는 늘 떠 있는 설명 글이다. 이미지가 붙은 다음 요청을 서버가 시작할 때 이미지가 실리지 않는다(명세는 실린다고 한다).

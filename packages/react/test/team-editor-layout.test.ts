@@ -105,7 +105,8 @@ describe('team editor layout', () => {
     expect(l.items.has('agent_2')).toBe(false);
     expect(rect(l, loop).w).toBe(GEOMETRY.tile.w);
     const ends = l.edges.map((e) => `${e.from}>${e.to}`).sort();
-    expect(ends).toEqual([`agent_1>${loop}`, `${loop}>agent_3`]);
+    // Its next and exhausted connections both lead to agent_3.
+    expect(ends).toEqual([`agent_1>${loop}`, `${loop}>agent_3`, `${loop}>agent_3`]);
   });
 
   it('puts callable agents in a row under the flow', () => {
