@@ -1203,9 +1203,20 @@ describe('Stop in Send’s place', () => {
     // Said once, on the line, not again under the input.
     expect(f.container.textContent?.split(refused).length).toBe(2);
     expect(stop(f.container)?.disabled).toBe(false);
-    // Pressed again, it is sent again and the line lets the refusal go.
+    // Pressed again, it is sent again and the line lets the refusal go as it is pressed, before
+    // the answer comes.
+    let answer = () => {};
+    f.sendCommand.mockImplementationOnce(
+      (command: { commandId: string }) =>
+        new Promise((done) => {
+          answer = () =>
+            done({ commandId: command.commandId, runId: 'run_live', status: 'accepted' } as never);
+        }),
+    );
     await act(async () => stop(f.container)?.click());
     expect(cancels(f.sendCommand)).toHaveLength(2);
+    expect(line(f.container)?.textContent ?? '').not.toContain(refused);
+    await act(async () => answer());
     expect(line(f.container)?.textContent ?? '').not.toContain(refused);
   });
 
