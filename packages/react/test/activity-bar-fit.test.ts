@@ -170,9 +170,33 @@ describe('callLine: decided on the line only when it holds every argument of the
     ['a vertical tab', '\u000B'],
     ['a form feed', '\u000C'],
   ])('counts a command split by %s as several lines: View alone', (_name, separator) => {
-    for (const command of [`echo ok${separator}rm -rf build`, `echo ok${separator}`])
-      expect(line(resolved({ command })).whole).toBe(false);
+    expect(line(resolved({ command: `echo ok${separator}rm -rf build` })).whole).toBe(false);
+    expect(line(resolved({ command: `echo ok${separator}${separator}` })).subject).toBe('echo ok');
+    // A command's line break at its end ends no line of its: the shell runs the one line.
+    expect(line(resolved({ command: `echo ok${separator}` })).whole).toBe(true);
+    expect(line(resolved({ command: `echo ok${separator} \t${separator}` })).whole).toBe(true);
+    // A path's is part of the name the line cannot show.
+    expect(line(call('delete_file', { path: `src/index.ts${separator}` })).whole).toBe(false);
   });
+
+  it.each([
+    ['Hebrew letters', 'echo שלום'],
+    ['Arabic letters', 'echo مرحبا'],
+    ['Arabic-Indic digits', 'echo ١٢٣'],
+    ['Syriac letters', 'echo ܫܠܡܐ'],
+    ['Thaana letters', 'echo ދިވެހި'],
+    ['NKo letters', 'echo ߒߞߏ'],
+    ['Adlam letters', 'echo 𞤀𞤁'],
+    ['Phoenician letters', 'echo 𐤀𐤁'],
+  ])(
+    'leaves a subject with %s to its card: right-to-left text reorders the line around it',
+    (_name, command) => {
+      expect(line(resolved({ command })).whole).toBe(false);
+      expect(line(call('delete_file', { path: command.replace('echo ', 'src/') })).whole).toBe(
+        false,
+      );
+    },
+  );
 
   it.each([
     ['a right-to-left override', '\u202E'],
@@ -183,6 +207,17 @@ describe('callLine: decided on the line only when it holds every argument of the
     ['a soft hyphen', '\u00AD'],
     ['an escape', '\u001B'],
     ['a null', '\u0000'],
+    ['an emoji presentation selector', '️'],
+    ['a variation selector supplement', '\u{E0100}'],
+    ['a combining grapheme joiner', '͏'],
+    ['a Hangul filler', 'ㅤ'],
+    ['a Hangul choseong filler', 'ᅟ'],
+    ['a Hangul jungseong filler', 'ᅠ'],
+    ['a halfwidth Hangul filler', 'ﾠ'],
+    ['a blank braille pattern', '⠀'],
+    ['a Mongolian free variation selector', '᠋'],
+    ['a Khmer inherent vowel', '឴'],
+    ['a musical null notehead', '\u{1D159}'],
   ])('leaves a subject with %s to its card: the line cannot show all of it', (_name, hidden) => {
     expect(line(resolved({ command: `echo ${hidden}ok` })).whole).toBe(false);
     expect(line(call('delete_file', { path: `src/${hidden}index.ts` })).whole).toBe(false);

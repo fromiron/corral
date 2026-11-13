@@ -73,9 +73,19 @@ const SUBJECT_MAX = 80;
 const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
 /**
  * Characters a line draws as nothing or reorders (controls but a tab, format characters such as
- * direction overrides and zero-width ones): with one, the line cannot say all of its subject.
+ * direction overrides and zero-width ones, the default-ignorable ones such as variation selectors
+ * and Hangul fillers, and those drawn blank: the empty braille pattern, the null notehead): with
+ * one, the line cannot say all of its subject. An emoji with a variation selector is one of them.
  */
-const UNSEEN = /[^\P{Cc}\t]|\p{Cf}/u;
+const UNSEEN = /[^\P{Cc}\t]|\p{Cf}|\p{Default_Ignorable_Code_Point}|[\u2800\u{1D159}]/u;
+/**
+ * Right-to-left text, letters and digits alike (Hebrew, Arabic, Syriac, Thaana, NKo and the rest
+ * of their blocks): the line lays it out in another order than it is run.
+ */
+const RIGHT_TO_LEFT =
+  /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
+/** Line breaks, with the blanks between them, at a command's end: the shell runs the one line. */
+const TRAILING_BREAKS = /[\n\r\v\f\u0085\u2028\u2029][\n\r\v\f\u0085\u2028\u2029\t ]*$/;
 
 /**
  * The call's main subject in one line, and whether the line holds all its arguments. Judged by
@@ -93,9 +103,10 @@ function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean }
     : typeof args.from === 'string' && typeof args.to === 'string'
       ? ['from', 'to']
       : ['path'];
-  const parts = said.map((key) => args[key]);
-  if (!parts.every((part): part is string => typeof part === 'string' && Boolean(part.trim())))
+  const given = said.map((key) => args[key]);
+  if (!given.every((part): part is string => typeof part === 'string' && Boolean(part.trim())))
     return null;
+  const parts = command ? given.map((part) => part.replace(TRAILING_BREAKS, '')) : given;
   const oneLine = parts.every((part) => !LINE_BREAK.test(part));
   const text = parts.map((part) => part.trim().split(LINE_BREAK)[0]?.trim() ?? '').join(' → ');
   if (text.length > SUBJECT_MAX || !oneLine)
@@ -103,7 +114,7 @@ function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean }
   return {
     text,
     whole:
-      parts.every((part) => !UNSEEN.test(part)) &&
+      parts.every((part) => !UNSEEN.test(part) && !RIGHT_TO_LEFT.test(part)) &&
       Object.keys(args).every((key) => said.includes(key)),
   };
 }
