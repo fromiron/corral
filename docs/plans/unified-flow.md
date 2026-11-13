@@ -435,7 +435,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
 | B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 리뷰 수정 중(`flow/b9-request-budget`, Run이 끝나면 승인을 모두 닫기) |
-| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 구현 중(`flow/b11-loop-limit`) |
+| B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 리뷰 중(`flow/b11-loop-limit`, B9 브랜치 위) |
 | B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
@@ -544,7 +544,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 - B11a 대상: `packages/contracts/src/definition.ts`(`LoopNode`), `events.ts`(`loop.escalated`, 승인 종류), 생성 스키마, `packages/core/src/compiler/index.ts`(구조 규칙 4의 새 줄과 진단 code), `runner.ts`(다시 돌기), `coordinator.ts`(한도 정책 적용, 상위 모델 고정, 실패 이유), `projection.ts`, `team-draft.ts`·`team-templates.ts`, `maxIterations`를 읽는 화면(`R/components/RunFlowView.tsx`·`RunView.tsx`·`SettingsPatchPanel.tsx`·`ApprovalPanel.tsx`·`RunText.tsx`, `R/team-editor/NodeSettings.tsx`·`TeamGraphCanvas.tsx`, `W/LoopRecipeSettings.tsx`, `S/pages/RunPage.tsx`)과 문구.
 - B11a 구현: 올린 값은 사람의 `node_future` 패치와 다른 자리에 둔다(진입이 끝나면 사라지고, 사람이 정한 항목이 앞선다). 실행 단위의 모델·추론을 정하는 한 곳(`coordinator.ts`의 `nodePatches.get(spec.nodeId)` 자리)에서 사람의 패치 → Loop가 올린 값 → 역할 순서로 읽는다. 상위 모델의 snapshot은 역할의 모델처럼 Run 시작 때 고정한다. 재개·호스트 재시작 뒤에도 `loop.escalated`에서 같은 상태가 다시 만들어진다. 편집기에는 새 설정 UI를 만들지 않는다(타입과 기존 "최대 회차" 입력이 깨지지 않게만).
 - B11a 완료 체크: 명세 시나리오 각각, 그리고 반례: 한 진입에 한 번만 / 다시 들어오면 새로 / 사람의 패치가 앞섬(앞·뒤 순서 둘 다) / 진행 중인 실행은 안 바뀜 / 지원하지 않는 수준은 아래로 맞춤 / 바뀌는 Agent 없음 → 이벤트 없이 소진 / 안쪽 Loop의 정책은 바깥 Agent를 안 바꿈, 바깥 것은 안쪽을 바꿈 / `inline` Team 포함, `reference` Team 제외 / `unlimited`에 `loop_limit` 패치 / 연결 없는 소진은 실패이고 승인 요청이 없음 / 재시작 뒤 같은 상태.
-- B11b: 설정 시트 Loop의 "한도" 줄. 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 브리프는 B11a가 병합된 뒤 쓴다.
+- B11b: 설정 시트 Loop의 "한도" 줄. B11a가 남긴 것도 함께: 실행 흐름의 "n / 최대"가 올린 뒤의 허용 회차를 반영하지 않는다(3/2처럼 보인다), `SettingsPatchPanel`이 상한 없는 Loop의 현재 값을 비워 보인다, `NodeSettings`는 `unlimited`일 때 최대 회차 입력만 숨긴다(정책을 고르는 UI가 없다). 킷 컴포넌트로 조합하고 스키마 폼처럼 보이지 않게 한다. 닫힌 상자 타일의 요약(최대 회차 또는 제한 없음). 브리프는 B11a가 병합된 뒤 쓴다.
 - 나중에(감독이 들어온 뒤): 사람에게 묻는 나머지 승인(무진전, router가 고르지 못한 route, 판정 없는 check, 회의 연쇄 확인)을 같은 눈으로 한 번 본다. 이 계획의 범위 밖이면 따로 묻는다.
 
 ### B10 응답 중간 끊김의 재시도 분류
