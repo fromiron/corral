@@ -26,7 +26,8 @@ export interface PortableApplication {
       | 'settings'
       | 'nav.back'
       | 'nav.forward'
-      | 'run.stop',
+      | 'run.stop'
+      | 'reply.quote',
       {
         key: string;
         mod?: boolean;

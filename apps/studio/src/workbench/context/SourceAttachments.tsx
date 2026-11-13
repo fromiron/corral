@@ -44,6 +44,7 @@ export function SourceAttachments(props: {
   const services = useServices();
   const navigation = useContext(SourceNavigationContext);
   const t = useTranslations('Context');
+  const tc = useTranslations('Composer');
   const current = useRef({ services, props });
   current.current = { services, props };
   const alive = useRef(true);
@@ -128,7 +129,7 @@ export function SourceAttachments(props: {
   return (
     <>
       {quotes.length ? (
-        <ul className="flex flex-wrap gap-1">
+        <ul aria-label={tc('quotes')} className="flex flex-wrap gap-1">
           {quotes.map((item) => (
             <QuoteChip
               key={textAttachmentKey(item)}

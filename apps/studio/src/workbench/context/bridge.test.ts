@@ -196,3 +196,40 @@ it('keeps one chip for the same passage of the same reply, even when the text ar
     expect(appendComposerAttachment(capture, value)).toEqual({ ok: true });
   expect(readComposerDraft('quote_twice').attachments).toEqual([quote, other]);
 });
+
+// A later capture of the same passage whose words changed (a reply still streaming) replaces
+// the chip in its place.
+it('replaces the chip of the same passage when its text changed, keeping its place', () => {
+  writeComposerDraft('quote_changed', draft(''));
+  const capture = beginAttachmentCapture(target('quote_changed'));
+  const other = createTextAttachment('quote.txt', 'text/plain', 'jumps', {
+    ...replySource,
+    start: 20,
+    end: 25,
+    prefix: 'The quick brown fox ',
+    suffix: '',
+  });
+  const rewritten = createTextAttachment('quote.txt', 'text/plain', 'quick red', replySource);
+  for (const value of [quote, other, rewritten])
+    expect(appendComposerAttachment(capture, value)).toEqual({ ok: true });
+  expect(readComposerDraft('quote_changed').attachments).toEqual([rewritten, other]);
+});
+
+it.each([
+  ['runId', { runId: 'run_other' }],
+  ['modelCallId', { modelCallId: 'call_other' }],
+  ['start', { start: 5 }],
+  ['end', { end: 14 }],
+] as const)('a passage differing only in %s is another chip', (field, change) => {
+  const sessionId = `quote_${field}`;
+  writeComposerDraft(sessionId, draft(''));
+  const capture = beginAttachmentCapture(target(sessionId));
+  // The same words, so only the compared field tells the passages apart.
+  const twin = createTextAttachment('quote.txt', 'text/plain', 'quick brown', {
+    ...replySource,
+    ...change,
+  });
+  expect(appendComposerAttachment(capture, quote)).toEqual({ ok: true });
+  expect(appendComposerAttachment(capture, twin)).toEqual({ ok: true });
+  expect(readComposerDraft(sessionId).attachments).toEqual([quote, twin]);
+});
