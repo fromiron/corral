@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { Activity, act, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useLineHold } from './settle.ts';
@@ -11,19 +11,24 @@ function Probe(line: Line) {
   return <output>{held ? 'held' : 'free'}</output>;
 }
 
-// Frames run by hand: a frame is what paints, and each runs the callbacks waiting for it.
-let frames: FrameRequestCallback[] = [];
+// Frames run by hand: a frame is what paints, and each runs the callbacks waiting for it. A
+// cancelled callback is taken out, as the browser does.
+let frames = new Map<number, FrameRequestCallback>();
+let nextFrame = 0;
+let strict = false;
 let root: Root;
 let container: HTMLElement;
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  frames = [];
+  frames = new Map();
+  strict = false;
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-    frames.push(callback);
-    return frames.length;
+    nextFrame += 1;
+    frames.set(nextFrame, callback);
+    return nextFrame;
   });
-  vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   container = document.createElement('div');
   document.body.append(container);
@@ -37,11 +42,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const show = (line: Line) => act(() => root.render(<Probe {...line} />));
+// Under StrictMode, as the app runs in development: effects are cleaned up and run again on mount.
+const show = (line: Line) =>
+  act(() =>
+    root.render(
+      strict ? (
+        <StrictMode>
+          <Probe {...line} />
+        </StrictMode>
+      ) : (
+        <Probe {...line} />
+      ),
+    ),
+  );
 const paint = () =>
   act(() => {
-    const waiting = frames;
-    frames = [];
+    const waiting = [...frames.values()];
+    frames = new Map();
     for (const callback of waiting) callback(performance.now());
   });
 const wait = (ms: number) => act(() => vi.advanceTimersByTime(ms));
@@ -97,7 +114,7 @@ it('waits for one frame at a time, however often it renders before the frame', a
   for (let render = 0; render < 10; render += 1) show({ ...view, approval: 'a' });
   show(buttons);
   show(view);
-  expect(frames).toHaveLength(1);
+  expect(frames.size).toBe(1);
 });
 
 it('takes buttons at once where the line was elsewhere for a painted frame since its View', async () => {
@@ -115,5 +132,57 @@ it('takes the first buttons at once when no frame painted View alone before them
   show(view);
   show(buttons);
   paint();
+  expect(held()).toBe(false);
+});
+
+it('under StrictMode, lets another approval go a frame and the wait after it comes', async () => {
+  strict = true;
+  show(buttons);
+  paint();
+  show({ approval: 'b', decide: true, waiting: true });
+  expect(held()).toBe(true);
+  paint();
+  wait(599);
+  expect(held()).toBe(true);
+  wait(1);
+  expect(held()).toBe(false);
+});
+
+it('under StrictMode, holds buttons that come where View was painted', async () => {
+  strict = true;
+  show(view);
+  paint();
+  show(buttons);
+  expect(held()).toBe(true);
+});
+
+it('counts a wait that was counting again from the frame that paints it shown again', async () => {
+  const place = (line: Line, visible: boolean) =>
+    act(() =>
+      root.render(
+        <Activity mode={visible ? 'visible' : 'hidden'}>
+          <Probe {...line} />
+        </Activity>,
+      ),
+    );
+  const next: Line = { approval: 'b', decide: true, waiting: true };
+  place(buttons, true);
+  paint();
+  place(next, true);
+  paint();
+  wait(300);
+  // Hidden while it counts: its effects are cleaned up, and nothing of it is on screen.
+  place(next, false);
+  paint();
+  wait(1000);
+  // Shown again: held, and the whole wait counts from the frame that paints it.
+  place(next, true);
+  expect(held()).toBe(true);
+  wait(1000);
+  expect(held()).toBe(true);
+  paint();
+  wait(599);
+  expect(held()).toBe(true);
+  wait(1);
   expect(held()).toBe(false);
 });

@@ -66,6 +66,18 @@ export function useLineHold({
   const painted = useRef(false);
   const frame = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Attached and detached: on mount, and again whenever the effects are cleaned up and run again
+  // (StrictMode's second mount, a hidden tree shown again). Detached, nothing waits for a frame or
+  // a clock; attached again, a wait that was counting counts anew from the next painted frame.
+  useLayoutEffect(() => {
+    setHold((current) => (current?.counting ? { ...current, counting: false } : current));
+    return () => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = null;
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+    };
+  }, []);
   useLayoutEffect(() => {
     now.current = { waiting, viewAlone: waiting && !decide, hold };
     if (approval && first.current === null) first.current = approval;
@@ -93,12 +105,5 @@ export function useLineHold({
       }, ms);
     });
   });
-  useEffect(
-    () => () => {
-      if (frame.current !== null) cancelAnimationFrame(frame.current);
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
   return hold !== null;
 }
