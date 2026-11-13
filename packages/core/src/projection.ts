@@ -28,6 +28,8 @@ import { applyUsageRecord, type UsageRecordView } from './usage.ts';
 
 export interface ExecutionView {
   item?: ItemRef;
+  /** An advisor's execution: its replies are not the run's work. */
+  advisor?: true;
   executionId: string;
   nodeId: string;
   taskId: string;
@@ -1015,6 +1017,7 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
     parentExecutionId,
     previousExecutionId: event.payload.previousExecutionId ?? null,
     ...(event.payload.item ? { item: event.payload.item } : {}),
+    ...(event.payload.advisor ? { advisor: true as const } : {}),
     depth,
     iterationId,
     modelProfile: event.payload.modelProfile,

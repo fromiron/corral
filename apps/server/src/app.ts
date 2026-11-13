@@ -717,6 +717,7 @@ async function createCorralServer(
     store,
     tools: inputs,
     files,
+    workspaceRoots: (runId) => files.runWorkspaceRoots(runId),
     harnesses,
     runner: new LangGraphRunner(),
     corrals,

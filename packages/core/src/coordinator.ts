@@ -400,6 +400,8 @@ export interface CoordinatorDeps {
   images?: { read(sessionId: string, reference: ImageAttachment): ImageInput | null };
   tools?: ExternalTools;
   files?: FileTools;
+  /** The work folders a Run's paths may name; a review shows them as `[workspace]`. */
+  workspaceRoots?: (runId: string) => readonly string[];
   harnesses?: HarnessResolver;
   clock: Clock;
   ids: IdFactory;
@@ -872,6 +874,7 @@ export class Coordinator {
   private readonly timers: Scheduler;
   private readonly tools: ExternalTools | undefined;
   private readonly files: FileTools | undefined;
+  private readonly workspaceRoots: CoordinatorDeps['workspaceRoots'];
   private readonly images: CoordinatorDeps['images'];
   private readonly imageGeneration: CoordinatorDeps['imageGeneration'];
   private readonly previewTools: CoordinatorDeps['previewTools'];
@@ -913,6 +916,7 @@ export class Coordinator {
     this.timers = deps.timers ?? NO_DEADLINES;
     this.tools = deps.tools;
     this.files = deps.files;
+    this.workspaceRoots = deps.workspaceRoots;
     this.images = deps.images;
     this.imageGeneration = deps.imageGeneration;
     this.previewTools = deps.previewTools;
@@ -3453,6 +3457,10 @@ export class Coordinator {
       taskInput: cursor ? null : this.reviewTaskInput(run, targetExecutionId),
       readResponse: (ref) => this.store.getArtifactText(run.runId, ref),
       partialOutputs: readPartialOutputs(this.store, run.runId, run.projection),
+      // The longest root first, so a copy inside its project folder keeps its own name.
+      workspaceRoots: [...(this.workspaceRoots?.(run.runId) ?? [])].sort(
+        (a, b) => b.length - a.length,
+      ),
     });
     if (built.cursor) advisors.cursors.set(targetExecutionId, built.cursor);
     // Nothing new to read: no review, and the next one may start.
@@ -5856,6 +5864,7 @@ export class Coordinator {
           modelProfile: role.modelProfile,
           configRevision: patch?.revision ?? run.projection.controlRevision,
           criteriaVersionId: run.criteriaVersionId,
+          ...(spec.assignment.kind === 'advisor' ? { advisor: true as const } : {}),
         },
       },
       {
@@ -9808,6 +9817,7 @@ export class Coordinator {
         const warningRef =
           !late &&
           !observation.interrupted &&
+          input.assignment.kind !== 'advisor' &&
           run.projection.progress.turns === NO_PROGRESS_TURNS - 1
             ? `notice_${observation.modelCallId}`
             : null;
@@ -10007,8 +10017,14 @@ export class Coordinator {
     const ids = new Set<string>(
       (input.resumeContext?.sources ?? []).map((source) => source.sourceRef),
     );
+    // An advisor reads what the roles it watches wrote in this run (features/advisor.md).
+    const watches = input.assignment.kind === 'advisor' ? input.assignment.watches : [];
     for (const a of Object.values(p.artifacts))
-      if (a.authorExecutionId === input.executionId) ids.add(a.artifactVersionId);
+      if (
+        a.authorExecutionId === input.executionId ||
+        watches.includes(p.executions[a.authorExecutionId]?.nodeId ?? '')
+      )
+        ids.add(a.artifactVersionId);
     for (const i of input.inputs) {
       if (i.artifactVersionId) ids.add(i.artifactVersionId);
       if (i.sourceRef) ids.add(i.sourceRef);

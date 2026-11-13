@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import {
   Coordinator,
   type DefinitionSource,
+  type FileTools,
   InMemoryRunStore,
   type RunProjection,
   unreadAdvice,
@@ -88,8 +89,11 @@ interface Setup {
   advisor?: Partial<ScriptedAgentOptions>;
   /** Changes a worker's handle (an interrupt, say). */
   handle?: (handle: AgentHandle, input: AgentStartInput) => AgentHandle;
-  /** Approve no-progress pauses on the way (long scripted workers). */
-  approveLimits?: boolean;
+  /** The work folders the Coordinator is told of. */
+  workspaceRoots?: readonly string[];
+  /** The file tools a writer may use. */
+  files?: FileTools;
+  store?: InMemoryRunStore;
   /** Scripts that take over a scheduled agent, by node. */
   scripts?: Record<string, ScriptedAgentOptions['script']>;
   /** Real-model mode with fixture models, for request records. */
@@ -141,13 +145,15 @@ function setup(options: Setup = {}) {
       return options.handle ? options.handle(handle, input) : handle;
     },
   };
-  const store = new InMemoryRunStore();
+  const store = options.store ?? new InMemoryRunStore();
   const coordinator = new Coordinator({
     store,
     clock: new FakeClock(),
     ids: new SequentialIdFactory(),
     agents,
     ...(options.corrals ? { corrals: options.corrals } : {}),
+    ...(options.workspaceRoots ? { workspaceRoots: () => options.workspaceRoots ?? [] } : {}),
+    ...(options.files ? { files: options.files } : {}),
     ...(options.live
       ? {
           models: {
@@ -174,29 +180,8 @@ function setup(options: Setup = {}) {
   const runId = started.runId;
   const projection = (): RunProjection => coordinator.getSnapshot(runId).projection;
   const events = (): RunEvent[] => store.readEvents(runId, 0);
-  const approve = () => {
-    if (!options.approveLimits) return;
-    const p = projection();
-    for (const approval of Object.values(p.approvals))
-      if (approval.status === 'pending')
-        coordinator.submit({
-          schemaVersion: '0.1',
-          commandId: `approve_${approval.approvalId}`,
-          runId,
-          type: 'resolve_approval',
-          expectedControlRevision: p.controlRevision,
-          payload: {
-            approvalId: approval.approvalId,
-            decision: 'approve',
-            subjectVersionId: approval.subjectVersionIds[0] ?? '',
-          },
-        });
-  };
   const wait = (done: (p: RunProjection) => boolean, what?: string) =>
-    until(() => {
-      approve();
-      return done(projection());
-    }, what);
+    until(() => done(projection()), what);
   const ended = () =>
     wait((p) => ['succeeded', 'failed', 'cancelled'].includes(p.status), 'the run to end');
   const advisorExecution = () =>
@@ -284,14 +269,15 @@ describe('reviews', () => {
     expect(s.reviews.length).toBeGreaterThan(0);
   });
 
-  it('six calls finished during a review are read by one next review', async () => {
+  it('calls finished during a review are read by one next review', async () => {
     const reviewing = new Gate();
+    // Five calls in all: the writer's own count stays below the no-progress pause.
     const s = setup({
-      turns: { writer: 9 },
-      approveLimits: true,
+      definition: advised({ interval: 1, maxRequestsPerReview: 8 }),
+      turns: { writer: 5 },
       work: async (turn, input) => {
-        // The writer waits for the first review to be under way before its fourth call.
-        if (input.nodeId === 'writer' && turn === 4) await until(() => s.reviews.length === 1);
+        // The writer waits for the first review to be under way before its second call.
+        if (input.nodeId === 'writer' && turn === 2) await until(() => s.reviews.length === 1);
       },
       advisor: {
         beforeReply: async () => {
@@ -299,13 +285,20 @@ describe('reviews', () => {
         },
       },
     });
-    await s.wait((p) => Object.values(p.modelCalls).filter((c) => c.finished).length >= 9);
+    await s.wait(
+      (p) =>
+        Object.values(p.modelCalls).filter(
+          (c) => c.finished && p.executions[c.executionId]?.nodeId === 'writer',
+        ).length >= 5,
+    );
+    await idle();
     expect(s.reviews).toHaveLength(1);
     reviewing.open();
     await s.ended();
+    expect(s.projection().status).toBe('succeeded');
     const second = s.reviews[1];
-    for (const turn of [4, 5, 6, 7, 8, 9]) expect(second?.text).toContain(`writer answer ${turn}`);
-    expect(second?.text).not.toContain('writer answer 3\n');
+    for (const turn of [2, 3, 4, 5]) expect(second?.text).toContain(`writer answer ${turn}`);
+    expect(second?.text).not.toContain('writer answer 1\n');
     // Then only the writer's end is left to read: never one review per call.
     expect(s.reviews.length).toBeLessThanOrEqual(3);
   });
@@ -668,6 +661,105 @@ describe('the advisor’s own record', () => {
     expect(advisor?.modelCallIds.length).toBe(2 * s.reviews.length);
   });
 
+  it('long reviews never bring the run to the no-progress pause', async () => {
+    const s = setup({
+      definition: advised({ interval: 1, maxRequestsPerReview: 8 }),
+      turns: { writer: 3 },
+      advisor: { reviewTurns: () => 8 },
+    });
+    await s.ended();
+    expect(s.projection().status).toBe('succeeded');
+    // Several reviews of eight requests each, more than the six of the pause.
+    expect(s.advisorExecution()?.modelCallIds.length).toBeGreaterThanOrEqual(16);
+    expect(Object.values(s.projection().approvals)).toEqual([]);
+    expect(
+      s.events().some((e) => e.type === 'limit.reached' || e.type === 'extension.ui_notified'),
+    ).toBe(false);
+  });
+
+  it('with an advisor, the watched role’s own replies still bring the pause', async () => {
+    const s = setup({ turns: { writer: 8 } });
+    await s.wait((p) => Object.values(p.approvals).some((a) => a.status === 'pending'));
+    const p = s.projection();
+    expect(Object.values(p.approvals).map((a) => a.limit)).toEqual([
+      { kind: 'no_progress', used: 6, max: 6 },
+    ]);
+    const writer = s.executionOf('writer')?.executionId;
+    expect(p.progress.observedCalls).toHaveLength(6);
+    for (const id of p.progress.observedCalls) expect(p.modelCalls[id]?.executionId).toBe(writer);
+  });
+
+  it('reads what a watched role wrote; another role’s artifact is refused', async () => {
+    const definition = advised({ interval: 1, maxRequestsPerReview: 8 }, ['editor']);
+    const role = definition.roles.find((r) => r.id === 'advisor_role');
+    role?.allowedCollaborationTools.push('read_artifact');
+    const reads: Record<string, ToolOutcome> = {};
+    const versionOf = (nodeId: string) => {
+      const p = s.projection();
+      return Object.values(p.artifacts).find(
+        (a) => p.executions[a.authorExecutionId]?.nodeId === nodeId,
+      )?.artifactVersionId;
+    };
+    const s = setup({
+      definition,
+      scripts: {
+        editor: async (_input, host) => {
+          await call(host, 'editor answer 1');
+          await host.invokeTool({ name: 'write_artifact', args: { text: 'editor draft' } });
+          await call(host, 'editor answer 2');
+          await until(() => 'watched' in reads, 'the advisor to read');
+          return submit(host, 'editor answer 2');
+        },
+      },
+      advisor: {
+        script: async (_input, host) => {
+          for (;;) {
+            const review = await host.nextReview?.();
+            if (!review) return { outcome: 'succeeded' };
+            const watched = versionOf('editor');
+            const other = versionOf('writer');
+            if (!watched || !other || 'watched' in reads) continue;
+            reads.other = await host.invokeTool({
+              name: 'read_artifact',
+              args: { artifactVersionId: other },
+            });
+            reads.watched = await host.invokeTool({
+              name: 'read_artifact',
+              args: { artifactVersionId: watched },
+            });
+          }
+        },
+      },
+    });
+    await s.ended();
+    expect(s.projection().status).toBe('succeeded');
+    expect(reads.watched?.ok).toBe(true);
+    expect(reads.other?.ok ? null : reads.other?.error.code).toBe('CAPABILITY_DENIED');
+  });
+
+  it('a path inside the run’s work folder reaches the review as [workspace]', async () => {
+    const definition = advised({ interval: 1, maxRequestsPerReview: 8 });
+    definition.roles.find((r) => r.id === 'writer_role')?.allowedWorkTools.push('read_file');
+    const s = setup({
+      definition,
+      workspaceRoots: ['/work/project'],
+      files: { available: () => true, execute: async () => ({ text: 'one line' }) },
+      scripts: {
+        writer: async (_input, host) => {
+          // The tool follows the request that asked for it.
+          await call(host, 'writer answer 1');
+          await host.invokeTool({ name: 'read_file', args: { path: '/work/project/src/app.ts' } });
+          await call(host, 'writer answer 2');
+          return submit(host, 'writer answer 2');
+        },
+      },
+    });
+    await s.ended();
+    const text = s.reviews.map((r) => r.text).join('\n');
+    expect(text).toContain('[workspace]/src/app.ts');
+    expect(text).not.toContain('/work/project');
+  });
+
   it('the advisor’s usage is recorded on its own execution', async () => {
     const s = setup({ turns: { writer: 3 } });
     await s.ended();
@@ -895,6 +987,21 @@ describe('the advisor’s own record', () => {
     expect(
       Object.values(s.projection().executions).filter((e) => e.nodeId === 'advisor'),
     ).toHaveLength(1);
+  });
+
+  it('a review that cannot be built stops its advisor, never the run', async () => {
+    // A store whose saved replies cannot be read back: the first review never starts.
+    class UnreadableReplies extends InMemoryRunStore {
+      override getArtifactText(runId: string, ref: string) {
+        if (ref.startsWith('response_')) throw new Error('the saved reply cannot be read');
+        return super.getArtifactText(runId, ref);
+      }
+    }
+    const s = setup({ store: new UnreadableReplies(), turns: { writer: 3 } });
+    await s.ended();
+    expect(s.projection().status).toBe('succeeded');
+    expect(s.projection().output).not.toBeNull();
+    expect(s.reviews).toEqual([]);
   });
 });
 

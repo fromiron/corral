@@ -151,6 +151,8 @@ export const ExecutionCreated = event(
     modelProfile: Identifier,
     configRevision: z.int().min(0).optional(),
     criteriaVersionId: Identifier.optional(),
+    /** An advisor's execution (features/advisor.md): it watches and does no work of the run. */
+    advisor: z.literal(true).optional(),
   }),
 );
 export const ExecutionStateChanged = event(
