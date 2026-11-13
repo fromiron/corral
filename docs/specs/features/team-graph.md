@@ -33,7 +33,7 @@
 
 - `controlEdges`는 `{ id, source, sourcePort, target, targetPort }`다. `sourcePort`는 아래 포트 표의 이름이거나 router의 route id다.
 - `capabilityLinks`(`delegate`, `question`, `advise`)는 허용 관계이며 순서가 아니다. `delegate`와 `question`의 의미는 [제품 계약](../product-contract.md) §7을, `advise`의 의미는 [감독](advisor.md)을 따른다.
-- `limits.maxDelegationDepth`는 1 이상의 정수다(기본 2). `limits.maxSpawns`는 1 이상의 정수다. `limits.requestBudget`은 [무인 실행 예산](../product-contract.md#9-사용량과-자원-정책)이다.
+- `limits.maxDelegationDepth`는 1 이상의 정수다(기본 2). `limits.maxSpawns`는 1 이상의 정수다.
 - `entryNodeId`는 최상위의 유일한 시작 노드다. 시작 노드는 scheduled Agent, Loop, Team 중 하나다.
 
 ### 포트 표
@@ -178,7 +178,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 ### 실행 한도
 
-런타임은 위 모델 전체를 실행한다. `limits.maxSpawns`가 설치 정책의 하위 실행 상한([제품 계약](../product-contract.md) §9)보다 크면 실행은 설치 상한까지만 하위 실행을 만든다. compiler는 제품 상한(32)을 넘는 값에 `SPAWNS_CAPPED` 경고를 낸다. Run이 실제로 쓰는 한도는 `run.started`의 `limits`에 남고 실행 정보에 보인다. 실행 단위의 모델 요청 예산과 그 예산에 닿았을 때의 동작은 [제품 계약 §9](../product-contract.md#9-사용량과-자원-정책)가 정한다.
+런타임은 위 모델 전체를 실행한다. `limits.maxSpawns`가 설치 정책의 하위 실행 상한([제품 계약](../product-contract.md) §9)보다 크면 실행은 설치 상한까지만 하위 실행을 만든다. compiler는 제품 상한(32)을 넘는 값에 `SPAWNS_CAPPED` 경고를 낸다. Run이 실제로 쓰는 한도는 `run.started`의 `limits`에 남고 실행 정보에 보인다.
 
 ### 계획 IR
 

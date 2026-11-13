@@ -309,7 +309,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `workflow.joined` | nodeId,policy,iterationId,cancelledNodeIds. Join이 길을 이었다. `any`가 멈춘 분기의 단계를 남긴다([병렬 실행](features/team-graph.md#병렬-실행)) |
 | `approval.requested` | approvalId,kind,subjectVersions,criteriaVersion. `breakpoint`는 nodeId |
 | `approval.resolved` | decision,actor,subjectVersions. 사람이 승인한 도구 승인은 `scope`(`once`\|`run`). 등록 검사 승인 종료는 선택 reason(cancelled/timeout/execution_ended)과 runtime actor로 기록한다. "이 실행 동안 허용"이 함께 닫은 도구 승인은 reason `allowed_for_run`과 runtime actor로 기록한다 |
-| `directive.accepted` | directiveId,targetExecutionId,text,delivery(`next_request`·`interrupt`),origin(`user`·`advice`·`system`),attachments(선택, 텍스트 첨부 전체). 명령 ID는 envelope에 있다 |
+| `directive.accepted` | directiveId,targetExecutionId,text,delivery(`next_request`·`interrupt`),origin(`user`·`advice`),attachments(선택, 텍스트 첨부 전체). 명령 ID는 envelope에 있다 |
 | `directive.attached` | contextSnapshotId,modelCallId |
 | `directive.dispatched` | modelCallId,executionEpoch |
 | `directive.undelivered` | reason |
@@ -331,7 +331,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `model.finished` | responseRef(완료된 확정 응답일 때만. 끼어들기로 끊겼거나 오류로 끝난 호출은 null이고 받은 글은 [부분 출력](#부분-모델-출력-읽기)으로만 읽는다),rawUsage,normalizedUsage,certainty,interrupted(끼어들기로 끊긴 호출일 때만 true) |
 | `model.usage_reconciled` | executionId,modelCallId,rawUsage,normalizedUsage,certainty. 종료 후 새로 확인된 사용량만 보충하며 응답 본문·실행 상태는 바꾸지 않음 |
 | `usage.recorded` | usageId,kind(`auto_route`·`image`),profileId,inputTokens,outputTokens,costMicros. Run의 모델 호출 밖에서 쓴 사용량(팀 선택 호출, 이미지 생성)을 호출마다 기록한다. 모르는 값은 null이며 0으로 두지 않는다. 나중에 확인된 값은 같은 usageId로 null이던 값만 채운다. 시작하지 않은 이미지 호출은 기록하지 않는다 |
-| `limit.reached` | limitKind,used,max. `request_budget`은 executionId를 함께 남긴다 |
+| `limit.reached` | limitKind,used,max |
 | `cancel.requested` | scope,fenceSeq,reason |
 | `cancel.confirmed` | scope,settlementRefs |
 | `observation.late` | originalEvent,whyIgnored |
@@ -343,7 +343,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 
 구현에서 정한 검토·승인 규칙:
 
-- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop가 멈출 때 한 라운드 더, 이유는 `loopStop`), `route`(router가 고르지 못한 route, 고를 수 있는 route는 `routes`), `check`(check Decision의 검사에 판정이 없음, 승인하면 다시 실행), `final_output`(Output의 `requireApproval`), `breakpoint`(중단점이 걸린 단계가 시작 전 멈춤, [중단점](features/fork-and-breakpoints.md#중단점)), `request_budget`(무인 실행 예산에 닿은 실행 단위의 계속 여부, [제품 계약 §9](product-contract.md#9-사용량과-자원-정책). envelope의 executionId가 기다리는 실행 단위다) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
+- `approval.requested.kind`는 `user_action`(approval 모드 Decision, 또는 판정할 수 없는 검토), `loop_cap`(Loop가 멈출 때 한 라운드 더, 이유는 `loopStop`), `route`(router가 고르지 못한 route, 고를 수 있는 route는 `routes`), `check`(check Decision의 검사에 판정이 없음, 승인하면 다시 실행), `final_output`(Output의 `requireApproval`), `breakpoint`(중단점이 걸린 단계가 시작 전 멈춤, [중단점](features/fork-and-breakpoints.md#중단점)) 중 하나다. `subjectVersions`의 첫 항목이 승인 대상 버전이고, 뒤에 마지막 검토 버전이 붙는다.
 - `route` 승인을 승인할 때 `resolve_approval.routeId`는 그 승인의 `routes` 중 하나여야 하고, 다른 승인과 거절에는 `routeId`를 보내지 않는다. 어기면 `SCHEMA_INVALID`다. 고른 route는 `approval.resolved.routeId`에 남는다. 의미는 [팀 그래프 모델](features/team-graph.md#router-실행)을 따른다.
 - 도구 승인(`tool.purpose: tool`)을 승인할 때 `resolve_approval.scope`는 `once`(기본) 또는 `run`이다. `run`은 [하네스 계약](harness-contract.md)의 "이 실행 동안 허용"이며, 도구 승인이 아닌 승인이나 거절에 `scope: run`을 보내면 `SCHEMA_INVALID`다. `approval.resolved`는 `scope`를 남기고, 그 허용으로 다시 묻지 않고 넘어간 호출은 `tool.authorized`(executionId, toolCallId, 근거가 된 `approvalId`, fingerprint)를 남긴다. 허용 목록은 따로 저장하지 않고 이 이벤트들에서 만든다. 명령 실행의 승인 요청(`approval.requested.tool`)은 호출별 지문 `fingerprint`와 함께 Run 범위 허용을 대조하는 `grantFingerprint`를 담는다. `grantFingerprint`는 명령 계획의 `launchFingerprint`(호출별 식별자와 트리 내용을 뺀 실행 지문)에 도구 등록 hash와 정책 revision을 더한 것이어서, 도구 등록이나 정책이 달라지면 다시 묻는다. 다른 도구는 `fingerprint`로 대조한다. 한 승인을 `run`으로 승인하면 같은 Run에서 같은 대조 값으로 기다리던 다른 도구 승인도 함께 닫힌다: 각각 `approval.resolved`(decision `approve`, runtime actor, reason `allowed_for_run`)와 사람의 승인을 가리키는 `tool.authorized`를 남긴다.
 - `resolve_approval`의 `subjectVersionId`는 `subjectVersions[0]`이어야 한다. 검사 순서: 없는 승인 `TARGET_NOT_FOUND` → 이미 해결 `APPROVAL_STALE` → `expectedControlRevision` 불일치 `STALE_CONTROL_REVISION` → 다른 버전 `APPROVAL_STALE`. 같은 commandId 재전송은 처음 receipt를 돌려준다.
