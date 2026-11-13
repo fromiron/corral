@@ -235,7 +235,7 @@ it('keeps the plan it read while a newer revision of it loads, and says the firs
   const revised = structuredClone(running);
   revised.workPlans = {
     plan: {
-      ...(running.workPlans.plan as RunProjection['workPlans'][string]),
+      ...(running.workPlans?.plan as NonNullable<RunProjection['workPlans']>[string]),
       revision: 2,
       bodyRef: 'body_plan_2',
       bodyHash: await hashOf(next),
@@ -272,7 +272,7 @@ it('says another plan is loading rather than show the one before in its place', 
   (retried.executions.exec_plan as { attemptNo: number }).attemptNo = 2;
   retried.workPlans = {
     plan: {
-      ...(running.workPlans.plan as RunProjection['workPlans'][string]),
+      ...(running.workPlans?.plan as NonNullable<RunProjection['workPlans']>[string]),
       attemptNo: 2,
       bodyRef: 'body_plan_attempt_2',
       bodyHash: await hashOf({ ...plan, attemptNo: 2 }),
