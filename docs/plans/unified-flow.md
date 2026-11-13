@@ -464,10 +464,10 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 완료 |
 | A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 완료 |
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 완료 |
-| A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 구현 중(`flow/a6-advisor-worker`) |
+| A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 구현 끝, 리뷰 중(`flow/a6-advisor-worker`) |
 | A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 완료 |
 | A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 대기 |
-| A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 계약·코어·서버 구현 중(`flow/a9-session-advisor`). 화면(도구 줄의 켜고 끄기)은 U7 뒤 |
+| A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 계약·코어·서버 구현 끝, 리뷰 중(`flow/a9-session-advisor`). 화면(도구 줄의 켜고 끄기)은 U7 뒤 |
 | V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
 
 백본 신뢰 게이트: B2가 통과하기 전에는 U5·U6·A5를 병합하지 않는다. 지금 테스트가 하나도 없는 경로(실행이 돌지 않을 때 버려지는 지시, 승인·질문 대기 중의 지시, 대기열 자동 시작, 관찰자 연결, 조각이 나온 뒤 끊긴 스트림) 위에 화면을 얹지 않기 위해서다.
