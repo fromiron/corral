@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { WorkPlan } from '@corral/contracts';
+import { type RunEvent, WorkPlan } from '@corral/contracts';
 import { emptyProjection, type RunProjection, type RunSummary } from '@corral/core';
 import type { RunSessionStore } from '@corral/react';
 import { act, type ReactNode } from 'react';
@@ -501,16 +501,32 @@ it('tells a lost connection on the bar alone, with Retry, before anything else',
   expect(view.container.querySelector('[role="alert"]')?.textContent).toBe('');
 });
 
+const readRequested = {
+  type: 'tool.requested',
+  actor: { kind: 'agent', id: 'exec_plan' },
+  payload: {
+    executionId: 'exec_plan',
+    toolCallId: 'call_1',
+    name: 'read_file',
+    validatedArgs: { path: 'src/session.ts' },
+  },
+} as unknown as RunEvent;
+
 it("says a live run's tool as the work log names it, and its state only off screen", async () => {
-  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection: runningProjection(),
+    events: [readRequested],
+  });
   const view = await mount(model({ live: true }, { runStatus: 'running' }), {
     ownActive: ownRun,
     rowShown: true,
   });
   expect(view.bar()?.dataset.live).toBe('');
-  // The run row on screen already says Working; the line says what the role does.
+  // The run row on screen already says Working; the line says what the role does, with what it
+  // works on, as the work log's row names it.
   const text = visibleText(view.line());
-  expect(text).toContain(messages.Turn.tool.read_file);
+  expect(text).toContain(`${messages.Turn.tool.read_file} · src/session.ts`);
   expect(text).not.toContain('read_file');
   expect(text).not.toContain(messages.Presence.state.working);
   // The open panel has its run controls.
@@ -518,6 +534,48 @@ it("says a live run's tool as the work log names it, and its state only off scre
   const controls = view.panel()?.querySelector('[aria-label="Run controls"]');
   expect(controls?.textContent).toContain(messages.Activity.pause);
   expect(controls?.textContent).toContain(messages.Activity.stop);
+});
+
+it('says nothing of a bare tool name, or of a call whose approval card tells it', async () => {
+  // No target: a tool name alone is not an activity, and the line keeps no orphan dot.
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const view = await mount(model({ live: true }, { runStatus: 'running' }), {
+    ownActive: ownRun,
+    rowShown: true,
+  });
+  expect(visibleText(view.line())).not.toContain(messages.Turn.tool.read_file);
+  expect(view.line()?.textContent).not.toContain('·');
+  // A call waiting on its approval: its card says it.
+  const projection = runningProjection();
+  projection.approvals.approval_1 = {
+    approvalId: 'approval_1',
+    kind: 'tool',
+    status: 'pending',
+    tool: { toolCallId: 'call_1', executionId: 'exec_plan', purpose: 'tool' },
+  } as unknown as RunProjection['approvals'][string];
+  await act(async () => fixture.store?.setState({ projection, events: [readRequested] }));
+  expect(visibleText(view.line())).not.toContain('src/session.ts');
+});
+
+it('names a waiting role by its presence detail, not by the tool it waits in', async () => {
+  const projection = runningProjection();
+  projection.executions.exec_plan = {
+    ...projection.executions.exec_plan,
+    status: 'waiting_children',
+  } as RunProjection['executions'][string];
+  projection.toolCalls.call_1 = {
+    ...projection.toolCalls.call_1,
+    name: 'await_tasks',
+  } as RunProjection['toolCalls'][string];
+  fixture.store = sessionStore({ runId: 'run_plan', projection });
+  const view = await mount(model({ live: true }, { runStatus: 'running' }), {
+    ownActive: ownRun,
+    rowShown: true,
+  });
+  await act(async () => view.toggle()?.click());
+  const row = view.panel()?.querySelector('[data-activity-role="exec_plan"]');
+  expect(row?.textContent).toContain(messages.Presence.detail.waiting_agents);
+  expect(row?.textContent).not.toMatch(new RegExp(`\\b${messages.Turn.tool.await_tasks}\\b`));
 });
 
 it('opens the failed steps of the exact run for a failure no card answers', async () => {

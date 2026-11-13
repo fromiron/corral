@@ -416,7 +416,7 @@ export function ChangesChip({ model }: { model: ChatWidgetModel }) {
     >
       <FileDiff size={14} className="shrink-0" />
       <span className="whitespace-nowrap">{text}</span>
-      {model.changeLines != null ? (
+      {model.changeLines ? (
         <span className="whitespace-nowrap text-micro @max-lg/composer-surface:hidden">
           {t('changesLines', { count: model.changeLines })}
         </span>

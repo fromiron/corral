@@ -6,11 +6,14 @@ import {
   type RunSummary,
 } from '@corral/core';
 import {
+  callLine,
   executionPresence,
   type Presence,
   type RunSessionState,
   type RunSessionStore,
   runPresence,
+  toolTarget,
+  waitingToolPlan,
 } from '@corral/react';
 import { type RefObject, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -215,14 +218,30 @@ function executionTimes(events: readonly RunEvent[]) {
   return times;
 }
 
+/**
+ * What a role is doing, in words (features/presence.md "세부"): its presence detail (waiting for
+ * agents, for a reply, watching) or the call it runs with what that call works on, as the work log
+ * names it. A bare tool name says nothing, and a call waiting on its approval card is the card's
+ * to tell, so neither is an activity.
+ */
 function rolesOf(
   projection: RunProjection,
   definition: RunSessionState['definition'],
   events: readonly RunEvent[],
   toolName: (name: string) => string,
+  detailText: (key: NonNullable<Presence['detailKey']>) => string,
 ): ActivityRole[] {
   const times = executionTimes(events);
   const calls = Object.values(projection.toolCalls);
+  const args = new Map<string, Record<string, unknown>>();
+  for (const event of events)
+    if (event.type === 'tool.requested')
+      args.set(event.payload.toolCallId, event.payload.validatedArgs);
+  const awaited = new Set(
+    Object.values(projection.approvals).flatMap((approval) =>
+      approval.status === 'pending' && approval.tool ? [approval.tool.toolCallId] : [],
+    ),
+  );
   return currentAgentExecutions(projection).map((execution) => {
     const node = definition?.nodes.find((item) => item.id === execution.nodeId);
     const running = toolRows(
@@ -239,11 +258,21 @@ function rolesOf(
       .at(-1);
     const time = times.get(execution.executionId);
     const ended = TERMINAL_EXECUTION_STATUSES.has(execution.status);
+    const presence = executionPresence({ status: execution.status });
+    const target =
+      running && !awaited.has(running.id) ? toolTarget(args.get(running.id) ?? {}) : null;
+    const activity = ended
+      ? null
+      : presence.detailKey
+        ? detailText(presence.detailKey)
+        : running && target
+          ? `${toolName(running.name)} · ${target}`
+          : null;
     return {
       id: execution.executionId,
       name: node?.label ?? execution.nodeId,
-      presence: executionPresence({ status: execution.status }),
-      activity: running && !ended ? toolName(running.name) : null,
+      presence,
+      activity,
       startedAt: time?.first ?? null,
       endedAt: ended ? (time?.last ?? null) : null,
     };
@@ -288,6 +317,7 @@ export function useActivity({
   const tt = useTranslations('Turn');
   const ta = useTranslations('Approvals');
   const tw = useTranslations('Widgets');
+  const tp = useTranslations('Presence');
   const model = useChatWidget();
   const connection = useSessionConnection();
   const tray = usePendingTray();
@@ -311,17 +341,45 @@ export function useActivity({
   const roles = useMemo(
     () =>
       projection
-        ? rolesOf(projection, state.definition, state.events, (name) =>
-            tt.has(`tool.${name}`) ? tt(`tool.${name}`) : name,
+        ? rolesOf(
+            projection,
+            state.definition,
+            state.events,
+            (name) => (tt.has(`tool.${name}`) ? tt(`tool.${name}`) : name),
+            (key) => tp(key),
           )
         : [],
-    [projection, state.definition, state.events, tt],
+    [projection, state.definition, state.events, tt, tp],
   );
   const interactions: InteractionView[] = useMemo(
     () => (projection ? pendingInteractions(state.events, projection) : []),
     [projection, state.events],
   );
   const first = interactions[0];
+  // A waiting call is named as its card names it, from the same body read the same way.
+  const waitingTool =
+    first?.kind === 'approval' && first.approval.tool?.purpose === 'tool'
+      ? first.approval.tool
+      : null;
+  const body = useStore(store ?? EMPTY_STORE, (value) =>
+    waitingTool ? value.artifactTexts?.[waitingTool.bodyRef] : undefined,
+  );
+  const bodyRef = waitingTool?.bodyRef ?? null;
+  useEffect(() => {
+    if (!store || !bodyRef || body !== undefined) return;
+    void Promise.resolve(store.getState().loadArtifact(bodyRef)).catch(() => undefined);
+  }, [store, bodyRef, body]);
+  const fingerprint = waitingTool?.fingerprint ?? null;
+  const call = useMemo(() => {
+    if (!fingerprint || body === undefined) return null;
+    try {
+      return callLine(waitingToolPlan(body, fingerprint), (name) =>
+        tt.has(`tool.${name}`) ? tt(`tool.${name}`) : name,
+      );
+    } catch {
+      return null;
+    }
+  }, [fingerprint, body, tt]);
   const roleName = (id: string | undefined) =>
     roles.length > 1 ? roles.find((role) => role.id === id)?.name : undefined;
   const firstItem = ((): WaitingItem | null => {
@@ -332,24 +390,31 @@ export function useActivity({
         : null;
     if (first.kind === 'approval') {
       const { approval } = first;
-      const call = approval.tool ? projection?.toolCalls[approval.tool.toolCallId] : undefined;
-      const what = approval.tool
-        ? call
-          ? toolName(call.name)
-          : ta(
-              approval.tool.purpose === 'lsp'
-                ? 'lspHeading'
-                : approval.tool.purpose === 'check'
-                  ? 'checkHeading'
-                  : 'toolHeading',
-            )
-        : ta(`kind.${approval.kind}`, { step: approval.nodeId ?? '' });
+      const named = approval.tool ? projection?.toolCalls[approval.tool.toolCallId] : undefined;
+      const what = call
+        ? call.text
+        : approval.tool
+          ? named
+            ? toolName(named.name)
+            : ta(
+                approval.tool.purpose === 'lsp'
+                  ? 'lspHeading'
+                  : approval.tool.purpose === 'check'
+                    ? 'checkHeading'
+                    : 'toolHeading',
+              )
+          : ta(`kind.${approval.kind}`, { step: approval.nodeId ?? '' });
       const who = roleName(approval.tool?.executionId);
       return {
         kind: 'approval',
         approvalId: approval.approvalId,
         subject: who ? `${who}: ${what}` : what,
-        decidable: approval.kind !== 'route' && !approval.limit,
+        // Decided on the line only when the line says what it allows: a call with what it works
+        // on, or a step's own approval. Anything else is decided on its card.
+        decidable:
+          approval.kind !== 'route' &&
+          !approval.limit &&
+          (approval.tool ? Boolean(call?.subject) : true),
         ...(approval.tool ? { executionId: approval.tool.executionId } : {}),
       };
     }

@@ -39,6 +39,27 @@ import {
 import { nextResponseTarget } from './responseFocus.ts';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
+/**
+ * A waiting call's plan as its card reads it from the call's body: null when the body is not
+ * a valid plan for this very approval (another fingerprint, or a plan the core refuses).
+ */
+export function waitingToolPlan(text: string | undefined, fingerprint: string) {
+  const plan = ToolPermissionPlan.parse(JSON.parse(text ?? 'null'));
+  if (plan.fingerprint !== fingerprint || !validToolPermissionPlan(plan))
+    throw new Error('permission changed');
+  return plan;
+}
+
+/**
+ * A call in one line, as its card and the activity bar name it: its tool, then its main subject
+ * (the command it runs or the file it touches) when it has one.
+ */
+export function callLine(plan: ToolPermissionPlan, toolLabel: (name: string) => string) {
+  const subject = callSubject(plan);
+  const tool = toolLabel(plan.descriptor.name);
+  return { tool, subject, text: subject ? `${tool} · ${subject}` : tool };
+}
+
 /** One line of a call's main subject: the command it runs or the file it touches. */
 function callSubject(plan: ToolPermissionPlan): string | null {
   if (plan.descriptor.source !== 'corral') return null;
@@ -169,9 +190,7 @@ export function ApprovalPanel({
             await session.getState().loadArtifact(bodyRef);
           const text = session.getState().artifactTexts[bodyRef];
           if (approval.tool?.purpose === 'tool') {
-            const plan = ToolPermissionPlan.parse(JSON.parse(text ?? 'null'));
-            if (plan.fingerprint !== fingerprint || !validToolPermissionPlan(plan))
-              throw new Error('permission changed');
+            const plan = waitingToolPlan(text, fingerprint);
             if (active) setToolPlans((previous) => ({ ...previous, [bodyRef]: plan }));
             return;
           }
@@ -290,10 +309,12 @@ export function ApprovalPanel({
     if (approval.limit) return t('doneLimit', { limit: limitText(approval.limit) });
     if (approval.tool?.purpose === 'tool') {
       const plan = toolPlans[approval.tool.bodyRef];
-      const name = plan?.descriptor.name ?? toolCalls?.[approval.tool.toolCallId]?.name;
-      const subject = plan ? callSubject(plan) : null;
-      const tool = name ? toolLabel(name) : t('toolHeading');
-      const call = subject ? `${tool} · ${subject}` : tool;
+      const name = toolCalls?.[approval.tool.toolCallId]?.name;
+      const call = plan
+        ? callLine(plan, toolLabel).text
+        : name
+          ? toolLabel(name)
+          : t('toolHeading');
       return t(approval.scope === 'run' ? 'doneToolRun' : 'doneTool', { call });
     }
     if (approval.tool) {

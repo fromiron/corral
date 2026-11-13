@@ -1085,6 +1085,8 @@ describe('Stop in Send’s place', () => {
   it('stops a run with one working execution at once', async () => {
     const f = await mount();
     expect(stop(f.container)?.getAttribute('aria-label')).toBe(messages.Activity.stop);
+    // What a send would do is not read out on Stop.
+    expect(stop(f.container)?.hasAttribute('aria-description')).toBe(false);
     // Only Send's place: the send menu keeps its own beside it.
     expect(f.container.querySelector('[data-slot="composer-send-menu"]')).not.toBeNull();
     await act(async () => stop(f.container)?.click());
@@ -1111,6 +1113,8 @@ describe('Stop in Send’s place', () => {
 
 it('the tool line keeps the folder notice before where a send goes, and voice right before Send', async () => {
   const f = await mount({ folderAccess: 'copy' });
+  // Written, so Send holds its place (while a run goes and nothing is written, Stop does).
+  await f.type('Look at session.ts');
   const line = [
     ...f.container.querySelectorAll<HTMLElement>(
       '[data-testid="folder-access"], [data-slot="composer-target"], button',

@@ -47,7 +47,7 @@ export interface ActivityBarLine {
   endedAt?: number;
   /** The line speaks of something that went wrong. */
   warning?: boolean;
-  /** One waiting approval, decided on the line by its buttons alone. */
+  /** One waiting approval, decided on the line by its buttons; `action` (View) opens its card. */
   approval?: {
     subject: string;
     approveLabel: string;
@@ -148,9 +148,8 @@ function LineWords({ line }: { line: ActivityBarLine }) {
       {line.state ? <StateWords state={line.state} /> : null}
       {line.state && line.text ? <MetaDot /> : null}
       {line.text ? (
-        <span className="min-w-0 truncate" title={line.text}>
-          {line.text}
-        </span>
+        // Cut at its end; the whole of it is on the card the line's View goes to.
+        <span className="min-w-0 truncate">{line.text}</span>
       ) : null}
     </>
   );
@@ -243,6 +242,17 @@ export function ActivityBar({
               ) : null}
               <Clock startedAt={line.startedAt} endedAt={line.endedAt} />
             </span>
+            {line.action ? (
+              <Button
+                size="compact"
+                variant="tertiary"
+                className="relative z-10 shrink-0"
+                onClick={line.action.onClick}
+                {...(line.action.render ? { render: line.action.render } : {})}
+              >
+                {line.action.label}
+              </Button>
+            ) : null}
             {line.approval ? (
               <span className="relative z-10 flex shrink-0 items-center gap-1.5">
                 <Button
@@ -270,16 +280,6 @@ export function ActivityBar({
                   {line.approval.approveLabel}
                 </Button>
               </span>
-            ) : line.action ? (
-              <Button
-                size="compact"
-                variant="tertiary"
-                className="relative z-10 shrink-0"
-                onClick={line.action.onClick}
-                {...(line.action.render ? { render: line.action.render } : {})}
-              >
-                {line.action.label}
-              </Button>
             ) : null}
             {end ? <span className="relative z-10 flex shrink-0 items-center">{end}</span> : null}
             {foldable ? (

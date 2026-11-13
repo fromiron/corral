@@ -88,7 +88,9 @@ export function ComposerActivity({
   // progress, the change summary. The counts stay whole; as the line narrows (container queries)
   // the step leaves first, then the change summary's line count, then the run's place.
   const planStatus = model?.runId ? model.plan.status : null;
-  const counted = planStatus && 'completed' in planStatus ? planStatus : null;
+  // A part says something or is left out: no empty plan, no change summary of nothing.
+  const counted =
+    planStatus && 'completed' in planStatus && planStatus.total > 0 ? planStatus : null;
   const plan = planStatus && 'plan' in planStatus ? planStatus.plan : null;
   // Collapsed, the line names the step in progress; open, the Todo shows it.
   const step =
@@ -96,7 +98,11 @@ export function ComposerActivity({
       ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
       : null;
   const viewed = model?.runId && !run?.live && model.viewed ? viewedLabel(model.viewed, tw) : null;
-  const changes = Boolean(model?.runId && model.chips.includes('changes'));
+  const changes = Boolean(
+    model?.runId &&
+      model.chips.includes('changes') &&
+      (model.changesLabel === 'error' || model.changeFiles !== 0),
+  );
   const parts =
     viewed || counted || changes ? (
       <>
@@ -196,7 +202,9 @@ export function ComposerActivity({
                   disabled: deciding,
                 },
               }
-            : { action: { label: t('view'), onClick: showTray } }),
+            : {}),
+          // The whole request is on its card.
+          action: { label: t('view'), onClick: showTray },
         };
       }
       case 'role':

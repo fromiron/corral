@@ -64,20 +64,15 @@ function hold() {
 async function barHeights(page: Page) {
   const heights: Record<string, number> = {};
   for (const scheme of ['light', 'dark'] as const) {
-    // The app's dark theme is a class on the root (Settings > Appearance).
+    // The app follows the system theme (its default) with the dark class on the root.
     await page.emulateMedia({ colorScheme: scheme });
-    await page.evaluate(
-      (dark) => document.documentElement.classList.toggle('dark', dark),
-      scheme === 'dark',
-    );
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')))
+      .toBe(scheme === 'dark');
     await waitForStill(page, { stillMs: 600 });
-    expect(await page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(
-      scheme === 'dark',
-    );
     heights[scheme] = (await activityLine(page).boundingBox())?.height ?? 0;
   }
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.evaluate(() => document.documentElement.classList.remove('dark'));
   return heights;
 }
 
@@ -149,9 +144,28 @@ test('① the bar keeps one height with and without a run, in both themes, and m
     await reply.reached;
     await expect(runGoing(page)).toBeVisible();
   });
-  // Nothing written while the run goes: Stop is in Send's place, Send's name unchanged.
-  await expect(page.getByTestId('composer-stop')).toBeVisible();
+  // Nothing written while the run goes: Stop is in Send's place, by that name, with its square
+  // drawn inside it in the button's own contrasting colour.
+  const stop = page
+    .getByRole('button', { name: 'Stop', exact: true })
+    .and(page.getByTestId('composer-stop'));
+  await expect(stop).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  const glyph = await stop.evaluate((button) => {
+    const mark = [...button.querySelectorAll<HTMLElement>('span')].find(
+      (span) => !span.children.length,
+    );
+    const box = mark?.getBoundingClientRect();
+    return {
+      width: box?.width ?? 0,
+      height: box?.height ?? 0,
+      mark: mark ? getComputedStyle(mark).backgroundColor : '',
+      button: getComputedStyle(button).backgroundColor,
+    };
+  });
+  expect(glyph.width).toBeGreaterThanOrEqual(10);
+  expect(glyph.height).toBeGreaterThanOrEqual(10);
+  expect(glyph.mark).not.toBe(glyph.button);
   const running = await barHeights(page);
   await noDuplicates(page, 'running');
   // The top bar says nothing of the run.

@@ -1,5 +1,5 @@
-import { Elevated, InputMessage, KitButton, Tooltip, useShape } from '@corral/react/design-kit';
-import type { KeyboardEvent, ReactNode, RefObject } from 'react';
+import { Elevated, InputMessage, Tooltip, useShape } from '@corral/react/design-kit';
+import { cloneElement, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { AppCommand } from '../../../commandRegistry.ts';
 import { sendKeyLabel } from '../../../shortcuts.ts';
 import { ComposerInput } from '../../ComposerInput.tsx';
@@ -129,7 +129,6 @@ export function ComposerCard({
   /** Send's place while nothing is written: Stop, for as long as this is set. */
   stop?: ComposerStop | null;
 }) {
-  const shape = useShape();
   const framed = activity !== undefined || above !== undefined;
   const stopping = stop && !text.trim() ? stop : null;
   const input = (
@@ -152,6 +151,9 @@ export function ComposerCard({
         ...(maxLength ? { maxLength } : {}),
       }}
       sendDisabled={target.sendDisabled}
+      // The kit's own Stop takes Send's place while nothing is written and the work goes.
+      status={stopping ? 'streaming' : 'idle'}
+      {...(stopping ? { onStop: stopping.onStop } : {})}
       sendLabel={sendLabel}
       // A description that only repeats the name is not read twice.
       sendDescription={target.meaning === sendLabel ? undefined : target.meaning}
@@ -160,17 +162,12 @@ export function ComposerCard({
         <>
           {stopping ? (
             <Tooltip content={stopping.label}>
-              <KitButton
-                type="button"
-                variant="primary"
-                size="icon-sm"
-                data-testid="composer-stop"
-                aria-label={stopping.label}
-                disabled={stopping.disabled}
-                onClick={stopping.onStop}
-              >
-                <span aria-hidden className="h-3 w-3 rounded-sm bg-current" />
-              </KitButton>
+              {cloneElement(action, {
+                'aria-label': stopping.label,
+                'aria-description': undefined,
+                'data-testid': 'composer-stop',
+                disabled: stopping.disabled,
+              } as Record<string, unknown>)}
             </Tooltip>
           ) : (
             <Tooltip content={target.meaning} shortcut={sendKeyLabel(sendKey)}>
@@ -220,14 +217,24 @@ export function ComposerCard({
   );
   if (!framed) return input;
   return (
+    <ComposerFrame>
+      {activity}
+      {above}
+      {input}
+    </ComposerFrame>
+  );
+}
+
+/** The one raised surface the column's width around the activity bar, what waits and the input. */
+function ComposerFrame({ children }: { children: ReactNode }) {
+  const shape = useShape();
+  return (
     <Elevated
       offset={2}
       data-slot="composer-card"
       className={`${shape.container} flex min-w-0 flex-col transition-shadow has-[textarea:focus-visible]:ring-1 has-[textarea:focus-visible]:ring-focus-ring`}
     >
-      {activity}
-      {above}
-      {input}
+      {children}
     </Elevated>
   );
 }

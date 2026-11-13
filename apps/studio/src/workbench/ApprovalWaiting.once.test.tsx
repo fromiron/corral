@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-import { emptyProjection, type RunProjection, type RunSummary } from '@corral/core';
+import {
+  emptyProjection,
+  type RunProjection,
+  type RunSummary,
+  toolPermissionPlan,
+} from '@corral/core';
 import type { RunSessionStore } from '@corral/react';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -141,8 +146,11 @@ const runs: RunSummary[] = [
   },
 ];
 
-async function mainArea(projection = waitingOnApproval()) {
-  fixture.store = sessionStore({ runId: 'run_team', projection });
+async function mainArea(
+  projection = waitingOnApproval(),
+  artifactTexts: Record<string, string> = {},
+) {
+  fixture.store = sessionStore({ runId: 'run_team', projection, artifactTexts });
   fixture.model = waitingModel();
   const container = document.createElement('div');
   document.body.append(container);
@@ -322,4 +330,80 @@ it('says what waits and decides it from the activity bar once the card is off sc
   // Back on screen, the card says it again and the bar lets it go.
   await viewport.scroll(() => true);
   expect(bar(container)?.dataset.line).toBe('summary');
+});
+
+// A waiting command, as its card reads it from its body.
+const command = toolPermissionPlan(
+  { snapshotHash: 'c'.repeat(64), policyRevision: 1 },
+  {
+    name: 'run_command',
+    source: 'corral',
+    schemaHash: 'd'.repeat(64),
+    exposure: 'direct',
+    sideEffect: 'external',
+  },
+  {
+    operationId: 'command_1',
+    hostId: 'local',
+    sessionId: 'session_team',
+    workspaceBindingId: 'binding_1',
+    worktreeId: 'worktree_1',
+    rootIdentity: 'a'.repeat(64),
+    tree: 'b'.repeat(40),
+    shellId: 'bash',
+    command: 'echo tray-ok',
+    executable: 'bash',
+    argv: ['-lc', 'echo tray-ok'],
+    cwd: '.',
+    environmentHash: 'c'.repeat(64),
+    timeoutMs: 120000,
+    mode: 'foreground',
+    launchFingerprint: 'e'.repeat(64),
+    fingerprint: 'd'.repeat(64),
+    request: { command: 'echo tray-ok' },
+  },
+);
+
+function waitingOnCommand() {
+  const projection = waitingOnApproval();
+  projection.approvals.approval_1 = {
+    ...projection.approvals.approval_1,
+    tool: { ...tool('tool'), fingerprint: command.fingerprint },
+  } as RunProjection['approvals'][string];
+  return projection;
+}
+
+it('names a waiting call off screen as its card does, and decides it there with View beside', async () => {
+  const container = await mainArea(waitingOnCommand(), { body_1: JSON.stringify(command) });
+  const card = container.querySelector('[data-testid="approval-approval_1"]');
+  expect(card?.textContent).toContain('echo tray-ok');
+  await viewport.scroll(() => false);
+  const line = bar(container);
+  expect(line?.dataset.line).toBe('waiting');
+  // The card's own words for the call: its tool, then what it runs.
+  expect(visibleText(line as HTMLElement)).toContain(
+    `${messages.Turn.tool.run_command} · echo tray-ok`,
+  );
+  const names = [...(line?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
+  expect(names).toEqual(
+    expect.arrayContaining([
+      messages.Activity.view,
+      messages.Approvals.rejectTool,
+      messages.Approvals.approveTool,
+    ]),
+  );
+  // Cut at its end, never shown whole as a tooltip: the whole is on the card View opens.
+  expect(line?.querySelector('[title*="echo"]')).toBeNull();
+});
+
+it('leaves a waiting call it cannot name to its card: View only', async () => {
+  // The body is not read yet (or no longer matches): nothing says what would be allowed.
+  const container = await mainArea(waitingOnCommand());
+  await viewport.scroll(() => false);
+  const line = bar(container);
+  expect(line?.dataset.line).toBe('waiting');
+  const names = [...(line?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
+  expect(names).toContain(messages.Activity.view);
+  expect(names).not.toContain(messages.Approvals.approveTool);
+  expect(names).not.toContain(messages.Approvals.rejectTool);
 });
