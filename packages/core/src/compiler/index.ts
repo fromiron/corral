@@ -85,7 +85,10 @@ export type DiagnosticCode =
   | 'UNKNOWN_MODEL_PROFILE'
   | 'SPAWNS_CAPPED'
   | 'ADVISOR_OUTSIDE_FLOW'
-  | 'ADVISOR_ADVISE_LINK'
+  | 'ADVISOR_UNWATCHED'
+  | 'ADVISOR_ADVISE_SOURCE'
+  | 'ADVISOR_ADVISE_TARGET'
+  | 'ADVISOR_ADVISE_QUESTIONS'
   | 'ADVISOR_TOOLS'
   | 'ADVISE_TOOL_ADVISOR_ONLY'
   | 'ADVISOR_NOT_A_STEP'
@@ -242,6 +245,11 @@ export interface CompileOptions {
    * Without it no reference resolves.
    */
   resolveTeam?: (corralId: string, definitionRevision: number) => unknown;
+  /**
+   * What a definition with advisors gets: `refuse` (the default) until advisors run, `plan`
+   * compiles it with its advisors in `plan.advisors`.
+   */
+  advisors?: 'refuse' | 'plan';
 }
 
 export function compileDefinition(input: unknown, options: CompileOptions = {}): CompileResult {
@@ -271,7 +279,7 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
   checkReviewRecipes(context);
   checkLoopLimits(context, options);
   checkModelProfiles(context, options);
-  refuseAdvisorsUntilTheyRun(context);
+  refuseAdvisorsUntilTheyRun(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkSpawnCap(context);
 
@@ -316,7 +324,7 @@ function checkAdvisors(c: Context) {
     if (node.parentId)
       c.error('ADVISOR_OUTSIDE_FLOW', 'an advisor stays outside every Loop and Team', at);
     if (!links.some((link) => link.kind === 'advise' && link.sourceNodeId === node.id))
-      c.error('ADVISOR_ADVISE_LINK', 'connect this advisor to an agent it watches', at);
+      c.error('ADVISOR_UNWATCHED', 'connect this advisor to an agent it watches', at);
     const tools = [
       ...(role?.allowedWorkTools.filter((tool) => !ADVISOR_WORK_TOOLS.includes(tool)) ?? []),
       ...(role?.allowedCollaborationTools.filter(
@@ -343,9 +351,11 @@ function checkAdvisors(c: Context) {
       continue;
     }
     if (!c.isObserver(link.sourceNodeId))
-      c.error('ADVISOR_ADVISE_LINK', 'advice comes from an advisor', at);
+      c.error('ADVISOR_ADVISE_SOURCE', 'advice comes from an advisor', at);
     if (!isWorkAgent(c.nodes.get(link.targetNodeId)))
-      c.error('ADVISOR_ADVISE_LINK', 'an advisor watches a scheduled or callable agent', at);
+      c.error('ADVISOR_ADVISE_TARGET', 'an advisor watches a scheduled or callable agent', at);
+    if (link.parentQuestions)
+      c.error('ADVISOR_ADVISE_QUESTIONS', 'an advise link carries no parent questions', at);
   }
   for (const node of definition.nodes) {
     if (!('inputBindings' in node)) continue;
@@ -369,7 +379,8 @@ function checkAdvisors(c: Context) {
  * The door until advisors run (features/advisor.md): a definition with an advisor that passes
  * every rule is still refused, so no Run goes on without the advisor it was drawn with.
  */
-function refuseAdvisorsUntilTheyRun(c: Context) {
+function refuseAdvisorsUntilTheyRun(c: Context, options: CompileOptions) {
+  if (options.advisors === 'plan') return;
   for (const node of c.definition.nodes)
     if (c.isObserver(node.id))
       c.error('ADVISOR_NOT_SUPPORTED', 'advisors cannot run yet', { nodeId: node.id });
@@ -955,12 +966,9 @@ function analyzeGraph(c: Context): Graph | null {
   const reached = new Set<string>();
   for (const vertex of state.keys()) reached.add(nodeOfVertex(vertex));
 
-  // An advisor is not isolated when it watches someone (features/team-graph.md, "구조 규칙" 10).
-  const watching = new Set(
-    definition.capabilityLinks.flatMap((l) => (l.kind === 'advise' ? [l.sourceNodeId] : [])),
-  );
+  // Advisors are outside the reach check (features/team-graph.md, "구조 규칙" 10).
   for (const node of definition.nodes) {
-    if (c.isObserver(node.id) && watching.has(node.id)) continue;
+    if (c.isObserver(node.id)) continue;
     if (!c.isCallable(node.id) && !reached.has(node.id)) {
       c.error('UNREACHABLE', 'the flow from the entry never reaches this node', {
         nodeId: node.id,
@@ -1253,7 +1261,7 @@ function checkBindings(c: Context, graph: Graph) {
     c.definition.capabilityLinks.flatMap((link) =>
       link.kind === 'question'
         ? [link.sourceNodeId]
-        : link.parentQuestions
+        : link.kind === 'delegate' && link.parentQuestions
           ? [link.targetNodeId]
           : [],
     ),
@@ -1386,14 +1394,14 @@ function lower(c: Context, graph: Graph): CompiledPlan {
     };
     switch (node.type) {
       case 'agent':
-        if (node.invocation === 'observer') break;
+        // Only scheduled Agents are in the order; advisors are in `advisors`.
         steps[id] = {
           ...base,
           kind: 'agent',
           roleId: node.roleId,
           next: targetsOf(id, 'out'),
           error: targetsOf(id, 'error'),
-          retry: node.retry?.maxAttempts ?? 0,
+          retry: (isWorkAgent(node) && node.retry?.maxAttempts) || 0,
         };
         break;
       case 'decision':

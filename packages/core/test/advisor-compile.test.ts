@@ -1,6 +1,14 @@
-import type { AgentRole, CorralDefinition, CorralNode } from '@corral/contracts';
+import {
+  type AgentRole,
+  type CorralDefinition,
+  type CorralNode,
+  isWorkAgent,
+} from '@corral/contracts';
 import { linearCorral } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
+import en from '../../react/src/messages/en.json' with { type: 'json' };
+import ko from '../../react/src/messages/ko.json' with { type: 'json' };
 import { expandReferences } from '../src/expand-teams.ts';
 import {
   advisorPlans,
@@ -10,6 +18,7 @@ import {
   inputPortsOf,
   outputPortsOf,
   parseMarkdownAgent,
+  planRun,
 } from '../src/index.ts';
 
 // Advisor compile rules (docs/specs/features/team-graph.md, "구조 규칙" 10 and 11). Until
@@ -47,6 +56,32 @@ function watched(): CorralDefinition {
     kind: 'advise',
     sourceNodeId: 'advisor',
     targetNodeId: 'writer',
+  });
+  return definition;
+}
+
+/** watched(), plus a callable helper the writer delegates to. */
+function withCalledHelper(): CorralDefinition {
+  const definition = watched();
+  definition.roles = definition.roles.map((r) =>
+    r.id === 'writer_role'
+      ? { ...r, allowedCollaborationTools: [...r.allowedCollaborationTools, 'spawn_subagents'] }
+      : r,
+  );
+  definition.nodes.push({
+    id: 'helper',
+    type: 'agent',
+    label: 'helper',
+    roleId: 'editor_role',
+    invocation: 'callable',
+    inputBindings: [],
+    outputName: 'help',
+  });
+  definition.capabilityLinks.push({
+    id: 'call',
+    kind: 'delegate',
+    sourceNodeId: 'writer',
+    targetNodeId: 'helper',
   });
   return definition;
 }
@@ -184,29 +219,29 @@ describe('rule 11: an advisor stays outside the flow', () => {
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: 'CAPABILITY_TARGET' }));
   });
 
-  it('refuses a question link to an advisor', () => {
-    const definition = watched();
+  it.each([
+    ['to', 'writer', 'advisor'],
+    ['from', 'advisor', 'helper'],
+  ])('refuses a question link %s an advisor', (_way, source, target) => {
+    const definition = withCalledHelper();
     definition.capabilityLinks.push({
       id: 'ask',
       kind: 'question',
-      sourceNodeId: 'writer',
-      targetNodeId: 'advisor',
+      sourceNodeId: source,
+      targetNodeId: target,
     });
     expectOne(definition, { code: 'ADVISOR_OUTSIDE_FLOW', linkId: 'ask' });
   });
 });
 
 describe('rule 11: advise links', () => {
-  it('refuses an advisor that watches no one, which is also isolated', () => {
+  it('refuses an advisor that watches no one, once: it is outside the reach check', () => {
     const definition = watched();
     definition.capabilityLinks = [];
-    const diagnostics = diagnosticsOf(definition);
-    expect(diagnostics).toContainEqual(
-      expect.objectContaining({ code: 'ADVISOR_ADVISE_LINK', nodeId: 'advisor' }),
-    );
-    expect(diagnostics).toContainEqual(
-      expect.objectContaining({ code: 'UNREACHABLE', nodeId: 'advisor' }),
-    );
+    expect(diagnosticsOf(definition)).toEqual([
+      expect.objectContaining({ code: 'ADVISOR_NOT_SUPPORTED', nodeId: 'advisor' }),
+      expect.objectContaining({ code: 'ADVISOR_UNWATCHED', nodeId: 'advisor' }),
+    ]);
   });
 
   it('refuses a definition whose only agent is an advisor', () => {
@@ -222,7 +257,7 @@ describe('rule 11: advise links', () => {
     definition.capabilityLinks = [];
     const found = codes(diagnosticsOf(definition));
     expect(found).toEqual(
-      expect.arrayContaining(['ADVISOR_ADVISE_LINK', 'ADVISOR_NOT_A_STEP', 'ADVISOR_OUTSIDE_FLOW']),
+      expect.arrayContaining(['ADVISOR_UNWATCHED', 'ADVISOR_NOT_A_STEP', 'ADVISOR_OUTSIDE_FLOW']),
     );
     expect(found).not.toContain('ENTRY_INVALID');
   });
@@ -237,7 +272,7 @@ describe('rule 11: advise links', () => {
     });
     const diagnostics = diagnosticsOf(definition);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ code: 'ADVISOR_ADVISE_LINK', linkId: 'peer' }),
+      expect.objectContaining({ code: 'ADVISOR_ADVISE_SOURCE', linkId: 'peer' }),
     );
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: 'CAPABILITY_TARGET' }));
   });
@@ -245,14 +280,92 @@ describe('rule 11: advise links', () => {
   it.each([
     ['an Output', 'output'],
     ['another advisor', 'second'],
+    ['itself', 'advisor'],
+    ['a Decision', 'gate'],
+    ['a Loop', 'loop'],
+    ['a Team', 'team'],
+    ['a Join', 'join'],
   ])('refuses an advisor that watches %s', (_what, target) => {
     const definition = watched();
-    definition.nodes.push(advisorNode('second'));
+    definition.nodes.push(
+      advisorNode('second'),
+      {
+        id: 'gate',
+        type: 'decision',
+        label: 'gate',
+        mode: 'approval',
+        rule: 'human_approval',
+        inputBindings: [{ kind: 'task_output', name: 'text', sourceNodeId: 'writer' }],
+      },
+      { id: 'loop', type: 'loop', label: 'loop', maxIterations: 2 },
+      { id: 'team', type: 'team', label: 'team', source: { kind: 'inline' } },
+      { id: 'join', type: 'join', label: 'join', policy: 'all' },
+    );
     definition.capabilityLinks.push(
       { id: 'second_watch', kind: 'advise', sourceNodeId: 'second', targetNodeId: 'writer' },
       { id: 'bad', kind: 'advise', sourceNodeId: 'advisor', targetNodeId: target },
     );
-    expectOne(definition, { code: 'ADVISOR_ADVISE_LINK', linkId: 'bad' });
+    const diagnostics = diagnosticsOf(definition);
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'ADVISOR_ADVISE_TARGET', linkId: 'bad' }),
+    );
+    expect(diagnostics).not.toContainEqual(
+      expect.objectContaining({ code: 'ADVISOR_ADVISE_TARGET', linkId: 'second_watch' }),
+    );
+  });
+
+  it('accepts a callable agent as what an advisor watches', () => {
+    const definition = withCalledHelper();
+    definition.capabilityLinks.push({
+      id: 'watch_helper',
+      kind: 'advise',
+      sourceNodeId: 'advisor',
+      targetNodeId: 'helper',
+    });
+    expect(codes(diagnosticsOf(definition))).toEqual(['ADVISOR_NOT_SUPPORTED']);
+    const result = compileDefinition(definition, { advisors: 'plan' });
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.plan.advisors.advisor?.watches).toEqual(['writer', 'helper']);
+  });
+
+  it('refuses parent questions on an advise link', () => {
+    const definition = watched();
+    definition.capabilityLinks = [
+      {
+        id: 'watch',
+        kind: 'advise',
+        sourceNodeId: 'advisor',
+        targetNodeId: 'writer',
+        parentQuestions: true,
+      },
+    ];
+    expect(diagnosticsOf(definition)).toEqual([
+      expect.objectContaining({ code: 'ADVISOR_ADVISE_QUESTIONS', linkId: 'watch' }),
+      expect.objectContaining({ code: 'ADVISOR_NOT_SUPPORTED', nodeId: 'advisor' }),
+    ]);
+  });
+
+  it('an advise link with parent questions opens no question path for its target', () => {
+    const definition = watched();
+    definition.capabilityLinks = [
+      {
+        id: 'watch',
+        kind: 'advise',
+        sourceNodeId: 'advisor',
+        targetNodeId: 'writer',
+        parentQuestions: true,
+      },
+    ];
+    definition.nodes = definition.nodes.map((n) =>
+      n.id === 'writer' && isWorkAgent(n)
+        ? { ...n, inputBindings: [...n.inputBindings, { kind: 'question_answer', name: 'reply' }] }
+        : n,
+    );
+    const result = compileDefinition(definition, { advisors: 'plan' });
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'BINDING_SOURCE', nodeId: 'writer' }),
+    );
   });
 
   it('an advise link drawn from a working agent does not count as calling its target', () => {
@@ -274,7 +387,7 @@ describe('rule 11: advise links', () => {
     });
     const diagnostics = diagnosticsOf(definition);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ code: 'ADVISOR_ADVISE_LINK', linkId: 'peer' }),
+      expect.objectContaining({ code: 'ADVISOR_ADVISE_SOURCE', linkId: 'peer' }),
     );
     expect(diagnostics).toContainEqual(
       expect.objectContaining({ code: 'UNREACHABLE', nodeId: 'helper' }),
@@ -311,6 +424,11 @@ describe('rule 11: tools', () => {
       { allowedCollaborationTools: ['read_artifact', 'advise', 'submit_result'] },
     ],
     ['a delegator', { allowedCollaborationTools: ['advise', 'spawn_subagents'] }],
+    ['asking the person', { allowedCollaborationTools: ['advise', 'ask_user'] }],
+    ['a plan keeper', { allowedCollaborationTools: ['advise', 'update_plan'] }],
+    ['a replier', { allowedCollaborationTools: ['advise', 'reply'] }],
+    ['an asker', { allowedCollaborationTools: ['advise', 'ask'] }],
+    ['a waiter on tasks', { allowedCollaborationTools: ['advise', 'await_tasks'] }],
   ])('refuses an advisor role that is %s', (_what, change) => {
     const definition = watched();
     definition.roles = definition.roles.map((r) =>
@@ -408,6 +526,38 @@ describe('rule 11: an advisor is not a step', () => {
     );
     expect(codes(diagnostics)).not.toContain('BINDING_SOURCE');
   });
+
+  it.each([
+    ['a Decision', 'gate'],
+    ['an Output', 'output'],
+    ['a referenced Team', 'team'],
+  ])('refuses %s that reads an advisor', (_what, reader) => {
+    const definition = watched();
+    const reads = { kind: 'task_output' as const, name: 'notes', sourceNodeId: 'advisor' };
+    definition.nodes.push(
+      {
+        id: 'gate',
+        type: 'decision',
+        label: 'gate',
+        mode: 'approval',
+        rule: 'human_approval',
+        inputBindings: [{ kind: 'task_output', name: 'text', sourceNodeId: 'writer' }],
+      },
+      {
+        id: 'team',
+        type: 'team',
+        label: 'team',
+        source: { kind: 'reference', corralId: 'saved', definitionRevision: 1 },
+        inputBindings: [{ kind: 'run_input', name: 'brief' }],
+      },
+    );
+    definition.nodes = definition.nodes.map((n) =>
+      n.id === reader && 'inputBindings' in n
+        ? ({ ...n, inputBindings: [...(n.inputBindings ?? []), reads] } as CorralNode)
+        : n,
+    );
+    expectOne(definition, { code: 'ADVISOR_NOT_A_STEP', nodeId: reader });
+  });
 });
 
 describe('a referenced Team with an advisor', () => {
@@ -434,5 +584,140 @@ describe('a referenced Team with an advisor', () => {
       targetNodeId: 'team.writer',
     });
     expect(advisorPlans(expanded)['team.advisor']?.watches).toEqual(['team.writer']);
+  });
+});
+
+describe('the plan of advisors, with the door open', () => {
+  const plan = (definition: unknown) => {
+    const result = compileDefinition(definition, { advisors: 'plan' });
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    return result.plan;
+  };
+  const withoutAdvisors = (definition: CorralDefinition): CorralDefinition => ({
+    ...definition,
+    roles: definition.roles.filter((r) => r.id !== 'advisor_role'),
+    nodes: definition.nodes.filter((n) => n.type !== 'agent' || n.invocation !== 'observer'),
+    capabilityLinks: definition.capabilityLinks.filter((l) => l.kind !== 'advise'),
+  });
+  /** The research team (a Loop and callables), with two advisors watching inside and out. */
+  function researchWithAdvisors(): CorralDefinition {
+    const definition = JSON.parse(JSON.stringify(researchTeam)) as CorralDefinition;
+    definition.roles.push(advisorRole());
+    definition.nodes.push(advisorNode('advisor'), {
+      ...advisorNode('second'),
+      review: { interval: 5, maxRequestsPerReview: 2 },
+    } as CorralNode);
+    definition.capabilityLinks.push(
+      { id: 'watch_write', kind: 'advise', sourceNodeId: 'advisor', targetNodeId: 'write' },
+      { id: 'watch_helper', kind: 'advise', sourceNodeId: 'advisor', targetNodeId: 'helper' },
+      { id: 'watch_review', kind: 'advise', sourceNodeId: 'second', targetNodeId: 'review' },
+      { id: 'watch_review_2', kind: 'advise', sourceNodeId: 'second', targetNodeId: 'review' },
+    );
+    return definition;
+  }
+
+  it('the default still refuses a definition that keeps every rule', () => {
+    expect(codes(diagnosticsOf(researchWithAdvisors()))).toEqual([
+      'ADVISOR_NOT_SUPPORTED',
+      'ADVISOR_NOT_SUPPORTED',
+    ]);
+  });
+
+  it('lists the advisors and leaves every other part of the plan as it is without them', () => {
+    const definition = researchWithAdvisors();
+    const { advisors, ...rest } = plan(definition);
+    expect(advisors).toEqual({
+      advisor: {
+        nodeId: 'advisor',
+        roleId: 'advisor_role',
+        review: { interval: 3, maxRequestsPerReview: 8 },
+        watches: ['write', 'helper'],
+      },
+      second: {
+        nodeId: 'second',
+        roleId: 'advisor_role',
+        review: { interval: 5, maxRequestsPerReview: 2 },
+        watches: ['review'],
+      },
+    });
+    const { advisors: none, ...base } = plan(withoutAdvisors(definition));
+    expect(none).toEqual({});
+    expect(rest).toEqual(base);
+    expect(rest.order).not.toContain('advisor');
+    expect(Object.keys(rest.steps)).not.toContain('advisor');
+    expect(Object.keys(rest.callables)).not.toContain('advisor');
+    expect(rest.loops.review_loop?.agents).toEqual(['write', 'review']);
+    expect(rest.summary).toMatchObject({ scheduledAgents: 3, callableAgents: 2 });
+  });
+
+  it('puts the advisors of a referenced and a nested referenced Team at the top, renamed', () => {
+    const around = (id: string, corralId: string) => {
+      const definition = linearCorral(['lead'], id);
+      definition.nodes.push({
+        id: 'team',
+        type: 'team',
+        label: 'team',
+        source: { kind: 'reference', corralId, definitionRevision: 1 },
+      });
+      definition.controlEdges = [
+        { id: 'e1', source: 'lead', sourcePort: 'out', target: 'team', targetPort: 'enter' },
+        { id: 'e2', source: 'team', sourcePort: 'next', target: 'output', targetPort: 'in' },
+      ];
+      return definition;
+    };
+    const saved = watched();
+    saved.id = 'saved';
+    const middle = around('middle', 'saved');
+    middle.roles.push(advisorRole());
+    middle.nodes.push(advisorNode());
+    middle.capabilityLinks.push({
+      id: 'watch',
+      kind: 'advise',
+      sourceNodeId: 'advisor',
+      targetNodeId: 'lead',
+    });
+    const teams: Record<string, unknown> = { saved, middle };
+    const top = around('top', 'middle');
+    expect(planRun(top, { resolveTeam: (id) => teams[id] })).toMatchObject({ ok: false });
+    const run = planRun(top, { resolveTeam: (id) => teams[id], advisors: 'plan' });
+    if (!run.ok) throw new Error(JSON.stringify(run.issues));
+    expect(run.plan.advisors).toEqual({
+      'team.advisor': {
+        nodeId: 'team.advisor',
+        roleId: 'team.advisor_role',
+        review: { interval: 3, maxRequestsPerReview: 8 },
+        watches: ['team.lead'],
+      },
+      'team.team.advisor': {
+        nodeId: 'team.team.advisor',
+        roleId: 'team.team.advisor_role',
+        review: { interval: 3, maxRequestsPerReview: 8 },
+        watches: ['team.team.writer'],
+      },
+    });
+    for (const id of ['team.advisor', 'team.team.advisor'])
+      expect(run.definition.nodes.find((n) => n.id === id)?.parentId).toBeUndefined();
+    expect(run.plan.order.filter((id) => id.endsWith('advisor'))).toEqual([]);
+  });
+});
+
+describe('advisor diagnostics in the editor', () => {
+  const ADVISOR_CODES: Diagnostic['code'][] = [
+    'ADVISOR_OUTSIDE_FLOW',
+    'ADVISOR_UNWATCHED',
+    'ADVISOR_ADVISE_SOURCE',
+    'ADVISOR_ADVISE_TARGET',
+    'ADVISOR_ADVISE_QUESTIONS',
+    'ADVISOR_TOOLS',
+    'ADVISE_TOOL_ADVISOR_ONLY',
+    'ADVISOR_NOT_A_STEP',
+    'ADVISOR_NOT_SUPPORTED',
+  ];
+  it.each([
+    ['en', en],
+    ['ko', ko],
+  ])('every advisor code has a %s sentence', (_lang, messages) => {
+    const catalog = messages.Validation.codes as Record<string, string>;
+    for (const code of ADVISOR_CODES) expect(catalog[code], code).toBeTruthy();
   });
 });
