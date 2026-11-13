@@ -195,6 +195,19 @@
     "scheduled": "In the flow",
     "callable": "Only when called",
     "observer": "As an advisor",
+    "watches": "Watches",
+    "addWatched": "Add an agent to watch",
+    "removeWatched": "Stop watching {target}",
+    "readTools": "Reads",
+    "readTool": {
+      "search": "Search",
+      "read_document": "Read documents",
+      "list_files": "List files",
+      "read_file": "Read files"
+    },
+    "reviewEvery": "Reviews every",
+    "reviewField": "Model requests between reviews",
+    "reviewRequests": "{count, plural, one {model request} other {model requests}}",
     "prompt": "Role prompt",
     "contract": "Output",
     "contracts": {
@@ -5762,7 +5775,8 @@
       "loop": "Repeats the steps inside it",
       "team": "Groups steps into a sub-team",
       "join": "Waits for parallel branches",
-      "output": "Receives the final version"
+      "output": "Receives the final version",
+      "observer": "Watches agents and advises them"
     },
     "rounds": "up to {count, plural, one {# round} other {# rounds}}",
     "roundsUnlimited": "no round limit",
@@ -5794,7 +5808,11 @@
       "notABox": "Only a Loop or a Team defined here can hold steps.",
       "noPredecessor": "Only a step that something leads to can be split.",
       "oneAgentOnly": "Split one agent in the flow at a time.",
-      "roleNeedsAgent": "Choose one agent to copy a role onto."
+      "roleNeedsAgent": "Choose one agent to copy a role onto.",
+      "advisorOutsideBoxes": "An advisor stays outside Loops and Teams.",
+      "watchNeedsAdvisor": "Only an advisor watches agents.",
+      "watchNeedsAgent": "An advisor watches an agent in the flow or a callable agent.",
+      "advisorRole": "An advisor’s role is not copied onto an agent."
     },
     "outline": "Team structure",
     "addStep": "Add a step",
@@ -5811,10 +5829,6 @@
       "note": "Note",
       "prompt": "Instructions",
       "model": "Model",
-      "invocation": "Runs",
-      "scheduled": "In the flow",
-      "callable": "When called",
-      "observer": "As an advisor",
       "retry": "Retries after a failure",
       "maxIterations": "Most rounds",
       "stallDetection": "Stop when rounds stop improving",
@@ -5863,6 +5877,8 @@
     "addAfter": "after {name}",
     "addInto": "into {name}",
     "addOnEdge": "on this connection",
+    "addWatching": "watching {name}",
+    "watchLink": "{advisor} watches {agent}",
     "collapseAll": "Collapse every box",
     "expandAll": "Expand every box",
     "undo": "Undo",

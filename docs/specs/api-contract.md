@@ -33,6 +33,7 @@
 | GET /runs/:id/events?after=N | cursor | commit된 domain events의 SSE; token frames 별도 type |
 | GET /runs/:id/artifact-versions/:versionId | — | 현재 조회 가능한 본문은 `{text}`. 기록된 ID지만 본문 수명이 끝나 조회할 수 없으면 HTTP 200 `{text:null, bodyAvailable:false}`를 반환한다. 실행 중 발견한 참조가 조회 전에 해제돼도 정상적인 부재로 처리하며, 없는 Run·다른 Run·알 수 없는 ID는 404다 |
 | POST /runs/:id/commands | `packages/contracts/generated/command.schema.json` | accepted receipt 또는 4xx; HTTP202는 적용 완료가 아님 |
+| POST /runs/:id/executions/:executionId/opened | — | 204. 그 실행 행을 사람이 열어 봤음을 기록한다(전달하지 못한 [감독](features/advisor.md)의 조언이 [확인 필요](features/inbox.md)에서 빠진다). 모르는 실행 단위는 404 |
 | GET /runs/:id/commands/:commandId | — | command 상태·관련 events·적용 scope |
 | GET /runs/:id/artifacts/:artifactId/versions/:version | — | 현재 보관 중인 본문·생성/읽기/지시/검토 경로. 해제된 본문은 조회 불가 |
 | GET /model-profiles | — | public profileId·지원 capability·keyConfigured, secret 없음 |
@@ -241,7 +242,7 @@ SSE event는 `id: runSeq`, `event: domain`을 가진다. SnapshotSeq 이하 even
 
 receipt는 commandId, runId, status, acceptedSeq, target, requestedBoundary, relatedEventIds, error를 갖는다. status는 `accepted / queued / applied / rejected / superseded / expired / cancelled`다. 일부 target에만 적용하는 다중 대상 steer는 MVP에 제공하지 않아 부분 적용 모델을 미룬다.
 
-`steer` 명령의 payload는 `targetExecutionId`, `text`, `delivery`(`next_request` 또는 `interrupt`), 선택적 `attachments`(텍스트 첨부만)다. 대상의 어댑터가 끼어들기를 받지 못하거나 Coordinator가 그 실행 단위의 worker를 아직 넘겨받지 못했으면 Coordinator가 `next_request`로 낮추고 receipt의 `requestedBoundary`와 `directive.accepted`의 `delivery`에 실제 방식을 남긴다. `submit_advice` 명령은 감독 실행 단위의 `advise` 도구만 보내며 사람의 화면은 보내지 않는다([감독](features/advisor.md)). 의미는 [Reins](features/reins.md)가 정한다.
+`steer` 명령의 payload는 `targetExecutionId`, `text`, `delivery`(`next_request` 또는 `interrupt`), 선택적 `attachments`(텍스트 첨부만)다. 대상의 어댑터가 끼어들기를 받지 못하거나 Coordinator가 그 실행 단위의 worker를 아직 넘겨받지 못했으면 Coordinator가 `next_request`로 낮추고 receipt의 `requestedBoundary`와 `directive.accepted`의 `delivery`에 실제 방식을 남긴다. `submit_advice` 명령은 감독 실행 단위의 `advise` 도구만 보내며 사람의 화면은 보내지 않는다([감독](features/advisor.md)). 사람이 보낸 `submit_advice`는 저장하지 않고 거절한다(HTTP 403). 감독의 `submit_advice` receipt는 `advice`에 접수 결과(`admitted`와 `adviceId`·`delivery`) 또는 버린 이유(`suppressed`와 `reason`)를 싣는다. 버려진 조언의 receipt는 오류 없는 `rejected`다. 의미는 [Reins](features/reins.md)가 정한다.
 
 steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준수 여부는 review로 별도 표시한다. 설정 patch의 applied는 policy commit이며, 미래 execution이 실제 사용한 patch.activated와 구분한다.
 
@@ -289,7 +290,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `breakpoints.changed` | nodeIds. Run의 중단점 목록 전체([중단점](features/fork-and-breakpoints.md#중단점)) |
 | `run.state_changed` | from,to,reasonCode |
 | `run.interrupted` | previousStatus,backendSessionId |
-| `execution.created` | parentExecutionId,nodeId,taskId,attemptNo,depth,iterationId |
+| `execution.created` | parentExecutionId,nodeId,taskId,attemptNo,depth,iterationId,advisor(감독 실행 단위일 때만 `true`) |
 | `execution.state_changed` | from,to,activity,waitingOn |
 | `execution.settled` | outcome,terminationMode,error |
 | `task.created` | role,node,contract,dependencies |

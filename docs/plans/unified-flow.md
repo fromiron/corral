@@ -14,7 +14,7 @@
 | 백본 | B1–B13 | 진행 중(B13만 남음) |
 | 화면 | K1, U1–U14 | 진행 중(K1·U1–U5·U8·U10·U12 병합) |
 | 회의 | M1–M4 | 진행 중(M1·M2 병합) |
-| 감독 | A1–A9 | 진행 중(A1–A4 병합) |
+| 감독 | A1–A9 | 진행 중(A1–A4·A7 병합) |
 | 검증 | V1(기준선), V2(최종 장면) | 진행 중(V1 병합) |
 
 태스크별 상태는 §7 표의 마지막 열에 적는다. 단계를 끝낸 커밋에서 이 표를 고친다.
@@ -438,7 +438,7 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 완료 |
 | B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 완료 |
 | B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 완료 |
-| B13 | 다음 요청에 이미지·참조 싣기 | U5 | `core/repository`, `apps/server/src/session-queue.ts`, 컴포저 전송 모듈 | 대기 |
+| B13 | 다음 요청에 이미지·참조 싣기 | U5 | `core/repository`, `apps/server/src/session-queue.ts`, 컴포저 전송 모듈 | 구현 중(`flow/b13-queued-images`) |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
 | K1 | 킷 `DecisionInbox` 이식 | S0 | `packages/react/src/design-kit` | 완료 |
 | U1 | 컴포저 분해(동작 유지) | S0 | `workbench/session/Composer.tsx` | 완료 |
@@ -451,21 +451,21 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 대기 |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
-| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 디자인 수정 중(`flow/u11-reply-selection`). 실행 행 수정(`flow/u3-interrupt-shift`) 뒤 |
+| U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 디자인 검수 통과, 코드 리뷰 중(`flow/u11-reply-selection`) |
 | U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 완료 |
 | U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
 | U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
 | M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 완료 |
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 완료 |
-| M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 구현 중(`flow/m3-meeting-shared`) |
+| M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 리뷰 통과. 병합 전 수정 중(`flow/m3-meeting-shared`): 메뉴 뒤 포커스, 좁은 폭의 입력 이동, "없음"과 참가자 줄 |
 | M4 | 회의 선택 기록 표시, 계속 카드 | M2, M3, K1 | `pages/MeetingPage.tsx` | 대기 |
 | A1 | 감독 계약 | B9 | `contracts/definition.ts`, `commands.ts`, `events.ts` | 완료 |
 | A2 | 감독 컴파일 규칙 | A1 | `core/compiler` | 완료 |
 | A3 | 조언 문지기와 전달 채널(순수) | A1 | `core/src/advisor/guard.ts`, `channel.ts` | 완료 |
 | A4 | 검토 입력 작성기 | A1 | `core/src/advisor/delta.ts` | 완료 |
-| A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 구현 중(`flow/a5-advisor-run`) |
+| A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 구현 끝, 리뷰 중(`flow/a5-advisor-run`) |
 | A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 대기 |
-| A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 디자인 검수 통과(이름표 제거만), 코드 리뷰 중(`flow/a7-advisor-editor`) |
+| A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 완료 |
 | A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 대기 |
 | A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 대기 |
 | V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
@@ -834,6 +834,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **U3 (U5가 찾은 것).** 끼어들기로 끊긴 뒤 실행이 끝나면 끊긴 부분 응답이 최종 답으로 바뀌며 본문이 22px 줄어든다(본문은 아래로만 자란다는 규칙과 끊긴 응답이 제자리에 남는다는 규칙에 어긋난다). `flow/u3-interrupt-shift`에서 고친다. 장면 ③의 끼어들기 단계는 붙잡은 응답 위에서 잰다.
 - **M3·U7 (같은 파일).** 둘 다 `Composer.tsx`를 고친다(M3은 전송 대상 어댑터, U7은 활동 바가 든 한 장의 카드). 나중에 병합하는 쪽이 통합 브랜치를 먼저 받아 맞춘다. 참가자 줄을 활동 바의 역할 행 부품으로 바꾸는 일은 M4로 옮겼다.
 - **A7 (디자인 검수에서 정한 것).** 감독 연결에는 이름표를 달지 않는다(종류가 하나뿐이라 연결마다 같은 낱말이 되풀이된다). 선 모양과 화살표로 구별한다.
+- **A7 (병합하며 남긴 것).** 감독 연결은 곧은 곡선이 다른 카드와 겹칠 때만 대상 열 옆 틈으로 돌아간다(`layout.ts`의 `routeAdvise`·`around`). 양쪽 틈이 모두 막히면(한 에이전트가 호출 전용 둘을 나란히 부르고 감독이 둘째를 지켜볼 때처럼 틈이 24px뿐인 배치) 곧은 곡선으로 남는다. 일반 경로 탐색은 넣지 않았다. 감독을 지켜보는 대상의 시트는 자기를 지켜보는 감독을 나열하지 않는다. 에이전트 하나와 감독만 있는 팀은 `SCHEMA_INVALID`로 보인다. `RequestCard.tsx`와 `RunPage.tsx`의 `invocation !== 'callable'` 셈은 감독을 흐름 안 에이전트로 센다(A8에서 고친다). 감독으로 바꾸면 역할의 `harness`·`imageProfile`·`editingMode`·`answer`가 지워지고 `outputContract`가 `notes`가 된다. 시작점이던 에이전트를 감독으로 바꿨는데 시작할 곳이 없으면 `entryNodeId`가 빈 값이 된다. 다른 팀의 역할을 가져올 때 감독의 역할(`advise` 도구를 가진 역할)은 목록에 없다(`importableRoles`).
 - **검사 출력(A4가 바꾼 것).** 가리기 규칙을 `packages/core/src/redact.ts` 한 곳으로 옮기면서 작업 폴더 안의 경로가 `[workspace][path]`가 아니라 `[workspace]/src/a.ts`로 남는다(검사·LSP·디버그 출력도 같다).
 - **A7 (A2가 정한 진단).** 감독의 컴파일 진단은 `ADVISOR_OUTSIDE_FLOW`, `ADVISOR_UNWATCHED`(감독 노드), `ADVISOR_ADVISE_SOURCE`·`ADVISOR_ADVISE_TARGET`·`ADVISOR_ADVISE_QUESTIONS`(연결), `ADVISOR_TOOLS`, `ADVISE_TOOL_ADVISOR_ONLY`, `ADVISOR_NOT_A_STEP`, 그리고 문 `ADVISOR_NOT_SUPPORTED`다. 편집기 문구 카탈로그는 `{message}`와 `{node}`만 받아 걸린 도구나 입력의 이름을 말하지 못한다.
 - **U2 (네 번째 리뷰가 남긴 것).** 통합 브랜치에도 있던 것이라 병합을 막지 않았다. (1) 스트리밍 중 끝에서의 첫 휠이 가끔 먹지 않는다(대기하던 scroll 이벤트가 `gap < 1`로 따라가기를 다시 켠다, `ChatView.tsx`). (2) 실행이 끝나 스트리밍 행이 줄어들 때 끝에서 약 1,350px 안쪽을 읽던 사람은 끝으로 끌려간다. (3) 링크·복원된 행에서 아래 키가 40–151px 샜다가 다음 콘텐츠 변화 때 돌아온다. (4) 끝에서 Shift+Space는 끝을 떠나지 못한다. 터치·스크롤바 드래그·WebKit은 재지 못했다.

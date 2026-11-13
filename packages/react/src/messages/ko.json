@@ -195,6 +195,19 @@
     "scheduled": "흐름 안에서",
     "callable": "호출될 때만",
     "observer": "감독으로",
+    "watches": "지켜볼 에이전트",
+    "addWatched": "지켜볼 에이전트 추가",
+    "removeWatched": "{target} 지켜보지 않기",
+    "readTools": "읽기 도구",
+    "readTool": {
+      "search": "검색",
+      "read_document": "문서 읽기",
+      "list_files": "파일 목록",
+      "read_file": "파일 읽기"
+    },
+    "reviewEvery": "모델 요청",
+    "reviewField": "검토 간격",
+    "reviewRequests": "{count, plural, other {번마다 검토}}",
     "prompt": "역할 프롬프트",
     "contract": "출력",
     "contracts": {
@@ -5762,7 +5775,8 @@
       "loop": "안의 단계를 반복합니다",
       "team": "단계를 하위 팀으로 묶습니다",
       "join": "병렬 갈래를 기다립니다",
-      "output": "최종 버전을 받습니다"
+      "output": "최종 버전을 받습니다",
+      "observer": "에이전트를 지켜보고 조언합니다"
     },
     "rounds": "최대 {count}회",
     "roundsUnlimited": "회차 제한 없음",
@@ -5794,7 +5808,11 @@
       "notABox": "이 팀 안에서 정의한 Loop나 팀만 단계를 담을 수 있습니다.",
       "noPredecessor": "앞 단계가 있는 단계만 나눌 수 있습니다.",
       "oneAgentOnly": "흐름 안의 에이전트 하나씩만 나눌 수 있습니다.",
-      "roleNeedsAgent": "역할을 복사할 에이전트 하나를 고르세요."
+      "roleNeedsAgent": "역할을 복사할 에이전트 하나를 고르세요.",
+      "advisorOutsideBoxes": "감독은 Loop나 팀 밖에 둡니다.",
+      "watchNeedsAdvisor": "에이전트를 지켜보는 것은 감독뿐입니다.",
+      "watchNeedsAgent": "감독은 흐름 안의 에이전트나 호출 전용 에이전트를 지켜봅니다.",
+      "advisorRole": "감독의 역할은 에이전트로 가져오지 않습니다."
     },
     "outline": "팀 구조",
     "addStep": "단계 추가",
@@ -5811,10 +5829,6 @@
       "note": "메모",
       "prompt": "지시",
       "model": "모델",
-      "invocation": "실행 방식",
-      "scheduled": "흐름 안에서",
-      "callable": "호출될 때",
-      "observer": "감독으로",
       "retry": "실패 후 재시도",
       "maxIterations": "최대 회차",
       "stallDetection": "회차가 나아지지 않으면 멈추기",
@@ -5863,6 +5877,8 @@
     "addAfter": "{name} 다음에",
     "addInto": "{name} 안에",
     "addOnEdge": "이 연결 위에",
+    "addWatching": "{name} 지켜보기",
+    "watchLink": "{advisor} → {agent} 지켜봄",
     "collapseAll": "모든 상자 접기",
     "expandAll": "모든 상자 펼치기",
     "undo": "실행 취소",
