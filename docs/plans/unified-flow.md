@@ -434,7 +434,8 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | B6 | 끼어들기 전달 | B3, B7 | `contracts`, `coordinator.ts`, `adapter-pi` | 완료 |
 | B7 | 자동 압축의 이벤트 | S0 | `adapter-pi/worker.ts`, `sdk-worker.ts` | 완료 |
 | B8 | 재시도 안전 판정 | S0 | `adapter-pi/request-retry.ts` | 완료 |
-| B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 리뷰 수정 중(`flow/b9-request-budget`, Run이 끝나면 승인을 모두 닫기) |
+| B9 | 지시의 출처와 끝난 실행의 승인 닫기(무인 실행 예산은 뺐다) | B5 | `contracts/events.ts`, `coordinator.ts`, `adapter-pi` | 완료 |
+| B12 | 거절로 끝나는 Run이 다른 갈래를 멈춘다 | B9 | `coordinator.ts` | 구현 중(`flow/b12-reject-stops-branches`) |
 | B11a | Loop 한도 정책(계약·실행) | B9 | `contracts/definition.ts`, `core/compiler`, `runner.ts`, `coordinator.ts` | 리뷰 중(`flow/b11-loop-limit`, B9 브랜치 위) |
 | B11b | Loop 한도 정책(팀 편집기) | B11a | `R/team-editor/NodeSettings.tsx` | 대기 |
 | B10 | 응답 중간 끊김의 재시도 분류 | B8 | `adapter-pi/ported/dsh/retry.ts`, `model-bridge.ts`, `apps/server/src/models/registry.ts` | 완료 |
@@ -776,7 +777,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 - **B5 (리뷰에서 정한 것과 남긴 한계).** 넘겨받은 뒤에 사람이 그 Run을 취소하면 넘겨받은 요청은 보통 대기 요청처럼 자동 시작 설정을 따른다(중지를 눌렀는데 자동 시작을 꺼 둔 세션에서 새 실행이 시작되지 않게). 판정은 그 지시가 속한 Run이 취소됐는지로 한다(세션의 마지막 Run이 아니다). 그 지시를 가진 Run을 찾지 못하면 특권은 그대로다. 남긴 한계: 맨 앞 항목의 시작이 거절되면 그 살피기는 거기서 끝나고 나머지는 다음 Run 종료나 새 대기 항목 때 움직인다(B4부터 같은 동작). 만료 커밋과 항목 저장 사이에 서버가 죽으면 그 지시는 넘겨받지 않은 `expired`로 남아 "전달되지 않음 · 다시 보내기"가 된다. 항목 수준의 `harness`·`taskScope`·`verificationScope`는 복사하지 않고 `start` 안의 값만 따라간다.
 - **A1 (B5·B9가 남긴 것).** 지시 기록의 출처(`directive.accepted.origin`, `DirectiveView.origin`)는 B9가 타입 있는 필수 필드로 넣었다(`user`·`advice`). A1은 `advice` 지시를 만드는 쪽만 더하고, 실제 조언 지시로 "조언은 넘겨받지 않는다"를 테스트한다. 모델에 실리는 머리말(`ADVICE_DIRECTIVE_PREFIX`)은 `packages/adapter-pi/src/worker-tools.ts`에 있다.
 - **B9 (리뷰에서 정한 것).** 끝난 Run의 승인은 종류별로 따로 닫지 않고 한 규칙으로 닫는다: Run이 끝나면(성공·실패·취소) 기다리던 승인을 모두 런타임이 닫는다(`api-contract.md` "구현에서 정한 검토·승인 규칙"). 무진전 승인만 닫던 것, 기준 패치로 다시 물은 무진전 승인이 남던 것, 성공이나 승인 거절로 끝난 Run에 주인 없는 승인이 남던 것이 이 규칙에 든다. 남기는 한계: 실행 단위 하나만 취소돼 기다리는 쪽이 없어진 무진전 승인은 Run이 끝날 때까지 열려 있다(다음 시도가 같은 승인에 합류할 수 있어 닫지 않는다). `origin` 없는 옛 `directive.accepted`가 저장된 Run은 화면의 이벤트 스트림이 멈춘다(개발 중이라 옮기지 않는다. 옛 데이터를 지울지는 사용자가 정한다).
-- **B12 후보 (B9 리뷰가 찾은 기존 문제).** 사람이 승인을 거절해 Run이 끝날 때(`endRun`) 살아 있는 다른 갈래를 멈추지 않는다. 취소된 Run에 실행이 `active`로 남고, 종료 상태 뒤에 `execution.state_changed`가 붙을 수 있다. 그 갈래의 도구 호출은 `scope cancelled`로 거절되고 새 승인은 열리지 않는다. B9를 병합한 뒤 같은 빌더가 고친다.
+- **B12 (B9 리뷰가 찾은 기존 문제).** 사람이 승인을 거절해 Run이 끝날 때(`endRun`) 살아 있는 다른 갈래를 멈추지 않았다. 취소된 Run에 실행이 `active`로 남고 종료 상태 뒤에 `execution.state_changed`가 붙을 수 있었다. 명세(`api-contract.md` "거절한 …는 Run을 취소로 끝낸다")에 멈추는 규칙을 적고 B9 빌더가 `flow/b12-reject-stops-branches`에서 고친다.
 - **A1·A6 (B9 리뷰가 남긴 것).** `advice` 지시를 만드는 태스크가 함께 고친다: `packages/adapter-pi/src/call-snapshot.ts`의 `isRequest`가 조언 머리말을 지시로 알아보게 하고(지금은 조언이 마지막 user 메시지면 판정 입력의 현재 요청이 조언 문장이 된다), `corral_state`의 `directives` 목록과 판정 입력의 적용 지시에 출처를 싣고, `packages/react/src/run/transcript.ts`와 `apps/server/src/session-search.ts`가 조언을 사람의 말로 보이지 않게 한다.
 - **U6 (B9가 남긴 것).** 대화 기록·지시 목록(`ExecutionSteering.tsx`)·기록 내보내기(`transcript.ts`)·세션 검색은 지시를 출처 표시 없이 사람의 지시처럼 보인다. 감독(A 작업)이 `advice` 지시를 만들기 시작하면 U6·A7이 `origin`이 `user`가 아닌 지시를 사람의 메시지로 그리지 않게 한다.
 - **U5·U6 (B5가 남긴 것).** 화면이 대기 요청을 늘어놓을 때 기록 순서가 아니라 `queuedEntriesInStartOrder`를 쓴다. 넘겨받은 항목은 보통 대기 항목처럼 편집·삭제할 수 있다.
