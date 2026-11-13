@@ -76,14 +76,14 @@ export interface ReviewInput {
  * compaction summaries and extension requests are not; turns, retries and unrecorded calls are.
  */
 export function countsForReview(events: readonly RunEvent[], modelCallId: string): boolean {
-  for (const event of events)
-    if (
-      event.type === 'model.request_recorded' &&
-      event.payload.modelCallId === modelCallId &&
-      NOT_ANSWERS.has(event.payload.purpose)
-    )
-      return false;
-  return true;
+  return !events.some((event) => notAnAnswer(event) === modelCallId);
+}
+
+/** The model call this event records as no answer (compaction, extension), if it is one. */
+export function notAnAnswer(event: RunEvent): string | null {
+  return event.type === 'model.request_recorded' && NOT_ANSWERS.has(event.payload.purpose)
+    ? event.payload.modelCallId
+    : null;
 }
 
 interface ToolRow {

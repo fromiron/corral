@@ -1,12 +1,15 @@
 export {
+  ADVISOR_NAME_MAX_LENGTH,
   type AdviceChannel,
   type AdviceDelivery,
   type AdviceTarget,
+  adviceSender,
   resolveDelivery,
 } from './channel.ts';
 export {
   buildReviewInput,
   countsForReview,
+  notAnAnswer,
   REVIEW_ANSWER_MAX_LENGTH,
   REVIEW_INPUT_MAX_LENGTH,
   REVIEW_SHORT_ANSWER_LENGTH,

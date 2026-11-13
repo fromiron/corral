@@ -3196,11 +3196,14 @@ async function createCorralServer(
   app.get('/api/v1/terminals/attention', async () => review.terminalAttention());
   app.get<ProjectParams>('/api/v1/projects/:projectId/inbox', async (request) => {
     const sessions = await corrals.listSessions(request.params.projectId);
+    // Approvals and questions come from each run's status; advice needs the projection, so only
+    // runs that recorded advice are read.
+    const advised = review.runsWithAdvice();
     return review.inbox(
       sessions.filter((x) => !x.archivedAt),
       coordinator.listRuns(),
       (runId) => {
-        const projection = coordinator.findSnapshot(runId)?.projection;
+        const projection = advised.has(runId) ? coordinator.findSnapshot(runId)?.projection : null;
         return projection ? unreadAdvice(projection) : [];
       },
     );

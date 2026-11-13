@@ -368,6 +368,73 @@ describe('loop execution', () => {
     expect(pendingApproval(final)).toBeNull();
   });
 
+  it('an exhausted Loop ends the run without waiting for an advisor’s review', async () => {
+    const body = reviewedBody('loop', 'l');
+    const definition = Definition.parse({
+      ...team(
+        [research, loop('loop', { maxIterations: 1 }), ...body.nodes, output('l_write')],
+        [edge('research', 'out', 'loop', 'enter'), ...body.edges, edge('loop', 'next', 'output')],
+      ),
+      roles: [
+        ...base.roles,
+        {
+          id: 'advisor_role',
+          name: 'Reviewer',
+          prompt: 'Watch.',
+          modelProfile: base.roles[0]?.modelProfile ?? 'model-a',
+          allowedWorkTools: [],
+          allowedCollaborationTools: [],
+          outputContract: 'notes',
+        },
+      ],
+      capabilityLinks: [
+        { id: 'watch', kind: 'advise', sourceNodeId: 'advisor', targetNodeId: 'l_write' },
+      ],
+    });
+    definition.nodes.push({
+      id: 'advisor',
+      type: 'agent',
+      label: 'advisor',
+      roleId: 'advisor_role',
+      invocation: 'observer',
+      outputName: 'notes',
+      review: { interval: 1, maxRequestsPerReview: 8 },
+    } as CorralNode);
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const transport = runtime(scripted({}), {
+      beforeReply: async (_turn, input) => {
+        if (input.assignment.kind === 'advisor') await held;
+      },
+      advise: () => [{ severity: 'concern', note: 'The draft cites no source.' }],
+    });
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('failed');
+    expect(final.statusReason).toBe('loop_exhausted: loop cap_reached');
+    release();
+    for (let i = 0; i < 300; i++) await Promise.resolve();
+    const end = events.find((e) => e.type === 'run.state_changed' && e.payload.to === 'failed');
+    const advisor = Object.values(final.executions).find((e) => e.nodeId === 'advisor');
+    // Its review was under way when the run failed: the advisor stops with the run.
+    const stopped = await waitForProjection(
+      transport,
+      runId,
+      (p) => p.executions[advisor?.executionId ?? '']?.status === 'cancelled',
+    );
+    expect(stopped.status).toBe('failed');
+    const later = events.filter((e) => end && e.runSeq > end.runSeq);
+    expect(
+      later.filter(
+        (e) => e.type === 'model.request_prepared' && e.executionId === advisor?.executionId,
+      ),
+    ).toEqual([]);
+    expect(later.filter((e) => e.type.startsWith('advice.'))).toEqual([]);
+    expect(events.some((e) => e.type.startsWith('advice.'))).toBe(false);
+  });
+
   it('counts a round that resubmits the same work as stalled', async () => {
     const body = reviewedBody('loop', 'l');
     const definition = team(

@@ -168,6 +168,33 @@ describe('advisor review schedule', () => {
       ],
       [[], [], [], []],
     ],
+    [
+      'the count starts again once a review is scheduled',
+      [
+        ['call', 'w', 'e1'],
+        ['call', 'w', 'e1'],
+        ['call', 'w', 'e1'],
+        ['reviewed', 'adv'],
+        ['call', 'w', 'e1'],
+        ['call', 'w', 'e1'],
+        ['call', 'w', 'e1'],
+      ],
+      [[], [], [review('e1')], [], [], [], [review('e1')]],
+    ],
+    [
+      'queued reviews start in the order they were scheduled',
+      [
+        ['call', 'w', 'e1'],
+        ['call', 'w', 'e1'],
+        ['call', 'w', 'e1'],
+        ['ended', 'x', 'e2'],
+        ['ended', 'x', 'e3'],
+        ['reviewed', 'adv'],
+        ['reviewed', 'adv'],
+        ['reviewed', 'adv'],
+      ],
+      [[], [], [review('e1')], [], [], [review('e2')], [review('e3')], []],
+    ],
     ['the flow ending finishes an idle advisor', [['flow']], [[finish]]],
     [
       'the flow ending waits for the queue and the running review',

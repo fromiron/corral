@@ -346,6 +346,7 @@ function removeRows(db: Db, sessionId: string, runIds: string[], title: string) 
     'image_generation_operations',
     'artifact_body_retention',
     'conversation_turns',
+    'execution_views',
   ])
     deleteMatching(db, byRun(table), runIds);
   deleteMatching(db, byRun('commands'), runIds);

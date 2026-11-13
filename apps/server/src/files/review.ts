@@ -687,6 +687,17 @@ export class ReviewService {
     );
   }
 
+  /**
+   * Runs that recorded any advice. Only their projections can hold an inbox advice item, so the
+   * inbox reads no other run's projection.
+   */
+  runsWithAdvice(): Set<string> {
+    const rows = this.db
+      .prepare("SELECT id FROM runs WHERE json_type(projection_json, '$.advice') = 'object'")
+      .all() as { id: string }[];
+    return new Set(rows.map((row) => row.id));
+  }
+
   inbox(
     sessions: { sessionId: string; title: string; entries: { state: string; text: string }[] }[],
     runs: { runId: string; status: string; sessionId: string | null }[],

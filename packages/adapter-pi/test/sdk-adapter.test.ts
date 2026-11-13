@@ -1863,7 +1863,7 @@ it("an advice steered beside a person's directive keeps its own heading and the 
     ),
   ).toEqual([
     `${SDK_DIRECTIVE_PREFIX}dir_user):\nKeep sources.`,
-    `${ADVICE_DIRECTIVE_PREFIX}dir_adv):\nCheck the dates.`,
+    `${ADVICE_DIRECTIVE_PREFIX}dir_adv):\n> Check the dates.`,
   ]);
 });
 

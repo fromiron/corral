@@ -119,8 +119,8 @@ import {
   runGates,
   type ToolGateView,
 } from './admission/index.ts';
-import { resolveDelivery } from './advisor/channel.ts';
-import { buildReviewInput, countsForReview, type ReviewCursor } from './advisor/delta.ts';
+import { adviceSender, resolveDelivery } from './advisor/channel.ts';
+import { buildReviewInput, notAnAnswer, type ReviewCursor } from './advisor/delta.ts';
 import { type AdviceGuardState, admit, beginReview, emptyGuard } from './advisor/guard.ts';
 import {
   type AdvisorAction,
@@ -615,6 +615,8 @@ interface AdvisorRuntime {
   advisors: Map<string, AdvisorState>;
   /** Advisor executions, by execution id, to their node. */
   byExecution: Map<string, string>;
+  /** Model calls recorded as no answer (compaction, extension) and not yet finished. */
+  uncounted: Set<string>;
 }
 
 interface AdvisorState {
@@ -732,6 +734,7 @@ function advisorRuntime(plans: Readonly<Record<string, AdvisorPlan>>): AdvisorRu
       ]),
     ),
     byExecution: new Map(),
+    uncounted: new Set(),
   };
 }
 
@@ -3395,18 +3398,19 @@ export class Coordinator {
     if (advisors.advisors.size === 0) return;
     try {
       for (const event of events) {
+        // A compaction or extension call is recorded before it finishes; it is no answer.
+        const uncounted = notAnAnswer(event);
+        if (uncounted) advisors.uncounted.add(uncounted);
         if (event.type === 'model.finished') {
           const execution = run.projection.executions[event.payload.executionId];
+          const counts = !advisors.uncounted.delete(event.payload.modelCallId);
           if (!execution || !this.watched(run, execution.nodeId)) continue;
           this.stepAdvisors(
             run,
             onModelFinished(advisors.schedule, {
               nodeId: execution.nodeId,
               executionId: execution.executionId,
-              counts: countsForReview(
-                this.store.readEvents(run.runId, 0),
-                event.payload.modelCallId,
-              ),
+              counts,
             }),
           );
         } else if (event.type === 'execution.settled') {
@@ -3612,6 +3616,8 @@ export class Coordinator {
     };
     let request = state.pending;
     state.pending = null;
+    // A review handed over earlier is not given to an advisor that is being stopped.
+    if (request && !open()) return null;
     if (!request) {
       if (state.done || !open()) return null;
       resume('active', 'waiting_message');
@@ -3673,12 +3679,14 @@ export class Coordinator {
     return true;
   }
 
-  /** The advisor role's name, as the model and the person see it. */
+  /** The advisor role's name as its advice's heading carries it (features/advisor.md, 조언). */
   private advisorName(run: LiveRun, observerExecutionId: string): string {
     const nodeId = run.projection.executions[observerExecutionId]?.nodeId;
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const roleId = node?.type === 'agent' ? node.roleId : undefined;
-    return run.snapshot.definition.roles.find((r) => r.id === roleId)?.name ?? nodeId ?? 'advisor';
+    return adviceSender(
+      run.snapshot.definition.roles.find((r) => r.id === roleId)?.name ?? nodeId ?? 'advisor',
+    );
   }
 
   /** A question's responder and an advisor have no required Task of the run. */
