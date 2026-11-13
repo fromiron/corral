@@ -7,6 +7,28 @@ import type { ProfileInfo, RoleModel } from '../../useModels.ts';
 // Whether the composer can send now, and why not: models, the team, the live runtime, and the
 // items this intent cannot carry.
 
+/** A run starts with at most this many references, text attachments and images together. */
+export const START_ITEMS_MAX = 20;
+
+/**
+ * How many references, text attachments and images a new or next request has over the limit
+ * (features/composer-flow.md "합류 대상"); 0 for any other send, which starts no run.
+ */
+export function startItemsOver(
+  intent: SessionIntent,
+  draft: {
+    references: readonly unknown[];
+    attachments: readonly unknown[];
+    images: readonly unknown[];
+  },
+): number {
+  if (intent !== 'next' && intent !== 'queue') return 0;
+  return Math.max(
+    0,
+    draft.references.length + draft.attachments.length + draft.images.length - START_ITEMS_MAX,
+  );
+}
+
 export function composerAvailability({
   intent,
   runMode,
@@ -35,6 +57,7 @@ export function composerAvailability({
     imagesBusy: boolean;
     attachments: readonly unknown[];
     images: readonly unknown[];
+    references: readonly unknown[];
     chips: readonly unknown[];
     missingChips: readonly unknown[];
   };
@@ -86,14 +109,17 @@ export function composerAvailability({
     notReady.length > 0 ||
     blocked !== null ||
     missingChipCount > 0 ||
+    startItemsOver(intent, draft) > 0 ||
     (missingTeam && (intent === 'next' || intent === 'explain')) ||
     (intent === 'explain' && !hasLatest) ||
     (intent === 'steer' && !steerTarget);
   // Items this intent does not carry share one notice and one wording (#89). Text attachments
-  // ride every send (features/composer-flow.md "합류 대상").
+  // ride every send; references and images a new or a next request (features/composer-flow.md
+  // "합류 대상").
+  const forNewRun = intent === 'next' || intent === 'queue';
   const heldForNew = [
-    ...(chipCount && intent !== 'next' ? (['references'] as const) : []),
-    ...(imageCount > 0 && intent !== 'next' ? (['images'] as const) : []),
+    ...(chipCount && !forNewRun ? (['references'] as const) : []),
+    ...(imageCount > 0 && !forNewRun ? (['images'] as const) : []),
   ];
   return {
     notReady,

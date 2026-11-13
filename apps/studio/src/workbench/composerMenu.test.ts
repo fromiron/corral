@@ -1,3 +1,4 @@
+import type { RunReference } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   type MentionItem,
@@ -6,6 +7,7 @@ import {
   pickedReferences,
   removeMention,
   replaceTrigger,
+  restoredMentions,
   selectMention,
   triggerAt,
 } from './composerMenu.ts';
@@ -197,5 +199,102 @@ describe('composer menu placement (#93)', () => {
   });
   it('never collapses to nothing in a tiny window', () => {
     expect(menuPlacement({ ...input, top: 40, bottom: 80 }, 100).maxHeight).toBe(96);
+  });
+});
+
+// A saved request's references come back as chips bound to their own tokens
+// (features/composer-flow.md "대기 요청과 넘겨받기").
+describe('restored references', () => {
+  const run: RunReference = { kind: 'run', runId: 'run_two' };
+  const role: RunReference = { kind: 'role', roleId: 'writer' };
+  const file: RunReference = { kind: 'file', path: 'src/a.ts', lines: { start: 2, end: 4 } };
+  const resultOf = (id: string): RunReference => ({
+    kind: 'result',
+    runId: 'run_one',
+    artifactVersionId: id,
+  });
+  const names = {
+    run: (runId: string) => (runId === 'run_two' ? 'Run #2' : null),
+    role: (roleId: string) => (roleId === 'writer' ? 'Writer' : null),
+  };
+  const tokenOf = (items: MentionItem[], reference: RunReference) => {
+    const item = items.find(
+      (value) => JSON.stringify(value.reference) === JSON.stringify(reference),
+    );
+    return item ? mentionToken(item) : null;
+  };
+
+  it('binds a run and a role by their names, whatever order they were picked in', () => {
+    const text = 'For @Writer read @"Run #2" first';
+    const items = restoredMentions(text, [run, role], names);
+    expect(tokenOf(items, role)).toBe('@Writer');
+    expect(tokenOf(items, run)).toBe('@"Run #2"');
+    expect(pickedReferences(text, items)).toEqual([run, role]);
+  });
+
+  it('leaves a word that names nothing as text', () => {
+    const text = 'Ask @bob, then @Writer';
+    const items = restoredMentions(text, [role], names);
+    expect(items).toHaveLength(1);
+    expect(tokenOf(items, role)).toBe('@Writer');
+    // A run or role whose name is not known is not made a chip from another word.
+    expect(
+      restoredMentions('Ask @bob now', [role, run], { run: () => null, role: () => null }),
+    ).toEqual([]);
+  });
+
+  it('never gives a new result the number of one removed, so the numbers keep the picked order', () => {
+    const item = (id: string): MentionItem => ({
+      id: `result:${id}`,
+      kind: 'result',
+      label: `${id} v1`,
+      reference: resultOf(id),
+    });
+    const a = selectMention(item('a'), []);
+    const b = selectMention(item('b'), [a]);
+    // The first is removed before the third is picked.
+    const c = selectMention(item('c'), [b]);
+    expect([mentionToken(a), mentionToken(b), mentionToken(c)]).toEqual([
+      '@result:1',
+      '@result:2',
+      '@result:3',
+    ]);
+    // Saved in the picked order, they come back to their own numbers, wherever the text puts them.
+    const text = 'Compare @result:3 with @result:2';
+    const items = restoredMentions(text, [resultOf('b'), resultOf('c')], names);
+    expect(tokenOf(items, resultOf('b'))).toBe('@result:2');
+    expect(tokenOf(items, resultOf('c'))).toBe('@result:3');
+    expect(pickedReferences(text, items)).toEqual([resultOf('b'), resultOf('c')]);
+  });
+
+  it('a path named twice is one chip, and two ranges of one path are two', () => {
+    const text = 'See @src/a.ts:L2-L4 and again @src/a.ts:L2-L4 then @src/a.ts:L9';
+    const other: RunReference = { kind: 'file', path: 'src/a.ts', lines: { start: 9, end: 9 } };
+    const items = restoredMentions(text, [file, other], names);
+    expect(items).toHaveLength(2);
+    expect(tokenOf(items, file)).toBe('@src/a.ts:L2-L4');
+    expect(tokenOf(items, other)).toBe('@src/a.ts:L9');
+    expect(pickedReferences(text, items)).toEqual([file, other]);
+  });
+
+  it('removing one restored chip, or its word, drops only that reference', () => {
+    const text = 'For @Writer read @"Run #2" and @src/a.ts:L2-L4';
+    const all = [run, role, file];
+    const items = restoredMentions(text, all, names);
+    expect(items).toHaveLength(3);
+    const words: [RunReference, string][] = [
+      [role, '@Writer'],
+      [run, '@"Run #2"'],
+      [file, '@src/a.ts:L2-L4'],
+    ];
+    for (const [reference, word] of words) {
+      const item = items.find(
+        (value) => JSON.stringify(value.reference) === JSON.stringify(reference),
+      );
+      if (!item) throw new Error('chip missing');
+      const others = all.filter((value) => value !== reference);
+      expect(pickedReferences(removeMention(text, item, items), items)).toEqual(others);
+      expect(pickedReferences(text.replace(word, ''), items)).toEqual(others);
+    }
   });
 });

@@ -2502,6 +2502,7 @@
       "steer": "지시로 보내기"
     },
     "missingReferences": "더 이상 없는 참조가 {count}개 있습니다. 보내기 전에 빼세요.",
+    "tooManyItems": "한 요청에는 참조·텍스트 첨부·이미지를 합쳐 {max}개까지 실을 수 있습니다. 보내기 전에 {over}개를 빼세요.",
     "referenceGone": "(더 이상 없음)",
     "models": {
       "title": "이 팀의 모델",

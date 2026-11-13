@@ -232,11 +232,18 @@ describe('composer send paths', () => {
     );
   });
 
-  it('queues a request with its text attachments and permission mode, starting nothing', async () => {
+  it('queues a request with its references, attachments, images and permission mode, starting nothing', async () => {
     const h = harness();
+    const references = [{ kind: 'folder' as const, path: 'docs' }];
     await sendRequest(
       h.deps,
-      input({ intent: 'queue', attachments: [attachment], permissionMode: 'ask' }),
+      input({
+        intent: 'queue',
+        references,
+        attachments: [attachment],
+        images: [image],
+        permissionMode: 'ask',
+      }),
     );
 
     expect(h.addSessionEntry).toHaveBeenCalledTimes(1);
@@ -244,7 +251,9 @@ describe('composer send paths', () => {
       intent: 'queue',
       text: 'Write the plan',
       state: 'queued',
+      references,
       attachments: [attachment],
+      images: [image],
       permissionMode: 'ask',
       // The server starts it with this snapshot when the run ends (features/composer-flow.md).
       start: {
@@ -256,7 +265,8 @@ describe('composer send paths', () => {
     });
     expect(h.startAuto).not.toHaveBeenCalled();
     expect(h.sendCommand).not.toHaveBeenCalled();
-    expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, true);
+    // Sent with the request, its images leave the box (features/composer-flow.md "합류 대상").
+    expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, false);
   });
 
   it('sends an instruction to the chosen execution for its next request boundary', async () => {

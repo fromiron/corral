@@ -226,6 +226,7 @@ function SessionComposer({
   const draft = useComposerDraft({
     session,
     team,
+    runs,
     restored,
     busy,
     input,
@@ -534,7 +535,7 @@ function SessionComposer({
         <AttachMenu
           onAddReference={() => insertMentionTrigger(input.current, text, write)}
           serverMode={mode === 'server'}
-          imagesDisabled={attachBusy || intent !== 'next' || images.length >= IMAGE_MAX_COUNT}
+          imagesDisabled={attachBusy || images.length >= IMAGE_MAX_COUNT}
           textDisabled={attachBusy || !textAttachable}
           onAttachImages={() => imageFiles.current?.click()}
           onAttachText={() => textFiles.current?.click()}

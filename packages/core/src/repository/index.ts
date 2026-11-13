@@ -16,6 +16,8 @@ import {
   MeetingState,
   PermissionMode,
   RunInput,
+  type RunReference,
+  RunReferences,
   StartFrom,
   type TextAttachment,
 } from '@corral/contracts';
@@ -77,6 +79,8 @@ export interface SessionEntry {
   permissionMode?: PermissionMode;
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
+  /** What the person pointed at with `@`; attachments and images keep their own fields. */
+  references?: RunReference[];
   taskScope?: RunInput['taskScope'];
   verificationScope?: RunInput['verificationScope'];
   entryId: string;
@@ -224,6 +228,7 @@ export interface NewSessionEntry {
   permissionMode?: PermissionMode;
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
+  references?: RunReference[];
   taskScope?: RunInput['taskScope'];
   verificationScope?: RunInput['verificationScope'];
   intent: SessionIntent;
@@ -481,14 +486,30 @@ export function planSessionEntry(
       !['next', 'queue'].includes(entry.intent))
   )
     return { ok: false, error: 'invalid', message: 'permission mode requires a next request' };
+  // Images and references are for a new run: a new request and a next request carry them.
   if (
     entry.images &&
-    (!ImageAttachments.safeParse(entry.images).success || entry.intent !== 'next')
+    (!ImageAttachments.safeParse(entry.images).success || !['next', 'queue'].includes(entry.intent))
   )
     return {
       ok: false,
       error: 'invalid',
-      message: 'images require valid immutable references and next intent',
+      message: 'images require valid immutable references and next or queue intent',
+    };
+  if (
+    entry.references &&
+    (!['next', 'queue'].includes(entry.intent) ||
+      !Array.isArray(entry.references) ||
+      entry.references.some(
+        (reference) =>
+          reference?.kind === 'text_attachment' || reference?.kind === 'image_attachment',
+      ) ||
+      !RunReferences.safeParse(entryStartReferences(entry)).success)
+  )
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'references require a valid start list and next or queue intent',
     };
   if (
     entry.attachments &&
@@ -548,6 +569,7 @@ export function planSessionEntry(
           executionId: value.executionId ?? null,
           attachments: value.attachments ?? [],
           images: value.images ?? [],
+          references: value.references ?? [],
           ...(value.permissionMode ? { permissionMode: value.permissionMode } : {}),
           ...(value.harness ? { harness: value.harness } : {}),
           taskScope: value.taskScope ?? null,
@@ -616,6 +638,9 @@ export function planSessionEntry(
           ...(entry.images?.length
             ? { images: JSON.parse(canonicalJson(entry.images)) as ImageAttachment[] }
             : {}),
+          ...(entry.references?.length
+            ? { references: JSON.parse(canonicalJson(entry.references)) as RunReference[] }
+            : {}),
         },
       ],
     },
@@ -629,6 +654,17 @@ export function planSessionEntry(
 export function queuedEntriesInStartOrder(session: WorkSession): SessionEntry[] {
   const queued = session.entries.filter((entry) => entry.state === 'queued');
   return [...queued.filter((entry) => entry.carriedFrom), ...queued.filter((e) => !e.carriedFrom)];
+}
+
+/**
+ * The references a request's run starts with: what the person pointed at, then its text
+ * attachments, then its images. The server and a screen start a saved request with this one
+ * list, so the same command has the same body (features/composer-flow.md "합류 대상").
+ */
+export function entryStartReferences(
+  entry: Pick<SessionEntry, 'references' | 'attachments' | 'images'>,
+): RunReference[] {
+  return [...(entry.references ?? []), ...(entry.attachments ?? []), ...(entry.images ?? [])];
 }
 
 /** The queued request the server starts next. */

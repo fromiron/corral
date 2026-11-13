@@ -3,6 +3,7 @@ import type {
   HarnessBindingRef,
   ImageAttachment,
   PermissionMode,
+  RunReference,
   TextAttachment,
 } from '@corral/contracts';
 import { Button } from '@corral/react/design-kit';
@@ -22,6 +23,7 @@ export function editRequest(
     permissionMode?: PermissionMode;
     attachments?: TextAttachment[];
     images?: ImageAttachment[];
+    references?: RunReference[];
     taskScope?: 'work' | 'review_only';
     verificationScope?: 'targeted' | 'release';
   },

@@ -373,6 +373,8 @@ const NewEntry = z.strictObject({
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
   attachments: TextAttachments.optional(),
+  // What the person pointed at with `@`; the repository checks it against the attachments.
+  references: RunReferences.optional(),
   intent: z.enum(['next', 'queue', 'steer', 'explain']),
   text: z.string().max(20_000),
   state: EntryState,
