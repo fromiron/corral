@@ -99,10 +99,10 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
    - 연결 안 된 Decision 출구는 경고한다.
    - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 `needs_user`로 실패한다. 이유에 노드와 출구가 남는다. 연결 안 된 `reject`가 선택되면 Run은 취소된다. Loop의 `exhausted`는 [루프 실행](#루프-실행)의 소진을 따른다.
    - router는 route가 둘 미만이면 오류다.
-10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다. observer Agent는 `advise` 연결이 있으면 고립으로 보지 않는다.
+10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다. observer Agent는 도달 검사의 대상이 아니다(`advise` 연결이 없는 observer는 규칙 11이 거절한다).
 11. **감독.**
     - observer Agent는 control edge를 갖지 않고 어느 상자에도 속하지 않는다. `delegate`·`question` 연결의 출발이나 대상이 될 수 없다.
-    - observer Agent는 `advise` 연결을 하나 이상 갖는다. `advise` 연결의 출발은 observer Agent, 대상은 scheduled 또는 callable Agent다. 다른 observer, Decision, 상자, Join, Output을 대상으로 할 수 없다.
+    - observer Agent는 `advise` 연결을 하나 이상 갖는다. `advise` 연결의 출발은 observer Agent, 대상은 scheduled 또는 callable Agent다. 다른 observer, Decision, 상자, Join, Output을 대상으로 할 수 없다. `advise` 연결은 `parentQuestions`를 갖지 않는다.
     - observer 역할의 작업 도구는 `search`, `read_document`, `list_files`, `read_file` 가운데에서만 고르고, 협업 도구는 `read_artifact`와 `advise`로 고정한다. 다른 도구를 가진 역할을 observer 노드에 쓰면 오류다.
     - 다른 호출 방식의 Agent 역할은 `advise` 도구를 가질 수 없다.
     - 시작 노드가 될 수 없고, `task_output` 입력의 생산자가 될 수 없다.
