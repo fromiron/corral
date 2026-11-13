@@ -7,6 +7,7 @@ import {
   type DecisionNodeMode,
   type DecisionRule,
   type JoinNode,
+  type LoopLimitPolicy,
   type LoopNode,
   type RouterRoute,
   type TargetPort,
@@ -52,6 +53,10 @@ export type DiagnosticCode =
   | 'LOOP_NO_REPEAT'
   | 'REPEAT_NEEDS_DECISION'
   | 'LOOP_DEAD_END'
+  | 'LOOP_MAX_ITERATIONS'
+  | 'LOOP_LIMIT_RECIPE'
+  | 'LOOP_REASONING_OFF'
+  | 'LOOP_UPPER_MODEL'
   | 'TEAM_NO_MEMBERS'
   | 'TEAM_NO_BODY'
   | 'TEAM_NO_EXIT'
@@ -117,7 +122,6 @@ export type PlanStep =
     })
   | (StepBase & {
       kind: 'loop';
-      maxIterations: number;
       body: PlanTarget[];
       next: PlanTarget[];
       exhausted: PlanTarget[];
@@ -143,7 +147,14 @@ export type PlanStep =
 export interface LoopPlan {
   nodeId: string;
   parentId: string | null;
-  maxIterations: number;
+  /** The round cap (a review recipe's attempts at most); null when the Loop has none. */
+  maxIterations: number | null;
+  limitPolicy: LoopLimitPolicy;
+  /**
+   * The Agents a limit policy changes: every Agent whose `parentId` chain reaches this Loop,
+   * inner Loops and inline Teams included, never those of a reference Team. In definition order.
+   */
+  agents: string[];
   stallDetection: boolean;
   body: PlanTarget[];
   /** Direct members in execution order. */
@@ -235,6 +246,7 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
   checkBindings(context, graph);
   checkReviewerCriteria(context);
   checkReviewRecipes(context);
+  checkLoopLimits(context, options);
   checkModelProfiles(context, options);
   if (context.hasErrors()) return fail(context.diagnostics);
   checkSpawnCap(context);
@@ -312,6 +324,33 @@ function checkReviewRecipes(c: Context) {
         'recipe requires a candidate, criteria-bound reviewer and review decision in this Loop',
         { nodeId: loop.id },
       );
+  }
+}
+
+/** The round cap and limit policy of each Loop (features/team-graph.md, "구조 규칙" 4). */
+function checkLoopLimits(c: Context, options: CompileOptions) {
+  for (const loop of c.definition.nodes) {
+    if (loop.type !== 'loop') continue;
+    const policy = loop.limitPolicy ?? { kind: 'exhaust' };
+    const at = { nodeId: loop.id };
+    if (policy.kind === 'unlimited' && loop.maxIterations !== undefined)
+      c.error('LOOP_MAX_ITERATIONS', 'a Loop without a round cap takes no maxIterations', at);
+    if (policy.kind !== 'unlimited' && loop.maxIterations === undefined)
+      c.error('LOOP_MAX_ITERATIONS', 'set the round cap of this Loop, or make it unlimited', at);
+    if (loop.reviewRecipe && policy.kind !== 'exhaust')
+      c.error(
+        'LOOP_LIMIT_RECIPE',
+        'a Loop with a review recipe ends at its attempts; its limit policy is exhaust',
+        at,
+      );
+    if (policy.kind === 'raise_reasoning' && policy.level === 'off')
+      c.error('LOOP_REASONING_OFF', 'raising reasoning needs a level above off', at);
+    if (
+      policy.kind === 'upper_model' &&
+      options.knownModelProfiles &&
+      !options.knownModelProfiles.includes(policy.modelProfile)
+    )
+      c.error('LOOP_UPPER_MODEL', `model profile ${policy.modelProfile} is not configured`, at);
   }
 }
 
@@ -1183,10 +1222,12 @@ function checkModelProfiles(c: Context, options: CompileOptions) {
 
 // ── what this runtime executes ──────────────────────────────────────────────
 
-const roundsOf = (loop: LoopNode) =>
-  loop.reviewRecipe
-    ? Math.min(loop.maxIterations, recipeAttempts(loop.reviewRecipe))
-    : loop.maxIterations;
+const roundsOf = (loop: LoopNode): number | null =>
+  loop.maxIterations === undefined
+    ? null
+    : loop.reviewRecipe
+      ? Math.min(loop.maxIterations, recipeAttempts(loop.reviewRecipe))
+      : loop.maxIterations;
 
 /** A warning for every construct the definition may hold but this runtime does not run yet. */
 function checkSpawnCap(c: Context) {
@@ -1245,7 +1286,6 @@ function lower(c: Context, graph: Graph): CompiledPlan {
         steps[id] = {
           ...base,
           kind: 'loop',
-          maxIterations: roundsOf(node),
           body: targetsOf(id, 'body'),
           next: targetsOf(id, 'next'),
           exhausted: targetsOf(id, 'exhausted'),
@@ -1254,6 +1294,10 @@ function lower(c: Context, graph: Graph): CompiledPlan {
           nodeId: id,
           parentId: base.parentId,
           maxIterations: roundsOf(node),
+          limitPolicy: node.limitPolicy ?? { kind: 'exhaust' },
+          agents: definition.nodes.flatMap((n) =>
+            n.type === 'agent' && c.loopsAround(n.id).includes(id) ? [n.id] : [],
+          ),
           stallDetection: node.stallDetection ?? false,
           body: targetsOf(id, 'body'),
           members: membersInOrder(id),

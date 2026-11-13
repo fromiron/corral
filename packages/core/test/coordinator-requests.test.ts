@@ -26,6 +26,7 @@ async function drain() {
 async function setup(definition = linearCorral(['writer']), cancelSettles = true) {
   const clock = new FakeClock();
   const hosts: AgentHost[] = [];
+  const settles: ((result: AgentSettlement) => void)[] = [];
   const agents: AgentAdapter = {
     async start(_input, host) {
       hosts.push(host);
@@ -33,6 +34,7 @@ async function setup(definition = linearCorral(['writer']), cancelSettles = true
       const done = new Promise<AgentSettlement>((resolve) => {
         settle = resolve;
       });
+      settles.push(settle);
       return {
         cancel: async () => {
           if (cancelSettles) settle({ outcome: 'cancelled' });
@@ -75,7 +77,7 @@ async function setup(definition = linearCorral(['writer']), cancelSettles = true
     if (!found) throw new Error('agent not started');
     return found;
   };
-  return { clock, hosts, host, coordinator, transport, runId, events, send, projection };
+  return { clock, hosts, settles, host, coordinator, transport, runId, events, send, projection };
 }
 
 const observe = (host: AgentHost, id: string, outputTokens: number | null) =>
@@ -275,6 +277,82 @@ describe('Coordinator model requests', () => {
     expect(Object.keys(s.projection().modelCalls)).toHaveLength(7);
     s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
     await drain();
+  });
+
+  describe('a no-progress pause when its run ends', () => {
+    /** Six message-only turns, then a request that waits on the person. */
+    const stalled = async (s: Awaited<ReturnType<typeof setup>>) => {
+      const host = s.host();
+      for (let turn = 0; turn < 6; turn++) {
+        const permit = await host.prepareModelRequest();
+        await observe(host, permit.modelCallId, 1);
+      }
+      const waiting = host.prepareModelRequest().then(
+        () => 'permitted',
+        () => 'stopped',
+      );
+      await drain();
+      const approval = Object.values(s.projection().approvals).find((a) => a.status === 'pending');
+      expect(approval?.limit?.kind).toBe('no_progress');
+      if (!approval) throw new Error('no-progress approval not created');
+      return { approval, waiting };
+    };
+    const lateAnswers = (
+      s: Awaited<ReturnType<typeof setup>>,
+      approval: { approvalId: string; subjectVersionIds: string[] },
+    ) =>
+      (['approve', 'reject'] as const).map(
+        (decision) =>
+          s.send(
+            'resolve_approval',
+            {
+              approvalId: approval.approvalId,
+              decision,
+              subjectVersionId: approval.subjectVersionIds[0],
+            },
+            `late_${decision}`,
+            s.projection().controlRevision,
+          ).error?.code,
+      );
+
+    it('closes as rejected by the runtime when the run is cancelled', async () => {
+      const s = await setup();
+      const { approval, waiting } = await stalled(s);
+      s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
+      await drain();
+      expect(s.projection().status).toBe('cancelled');
+      expect(await waiting).toBe('stopped');
+      expect(s.projection().approvals[approval.approvalId]).toMatchObject({
+        status: 'rejected',
+        reason: 'cancelled',
+      });
+      const closed = s.events.findIndex(
+        (e) => e.type === 'approval.resolved' && e.payload.approvalId === approval.approvalId,
+      );
+      const resolved = s.events[closed];
+      expect(resolved?.type === 'approval.resolved' && resolved.payload).toMatchObject({
+        decision: 'reject',
+        actor: 'coordinator',
+      });
+      // Closed before the cancellation is confirmed.
+      expect(closed).toBeLessThan(s.events.findIndex((e) => e.type === 'cancel.confirmed'));
+      expect(lateAnswers(s, approval)).toEqual(['APPROVAL_STALE', 'APPROVAL_STALE']);
+    });
+
+    it('closes with the run when the run fails', async () => {
+      const s = await setup();
+      const { approval, waiting } = await stalled(s);
+      s.settles[0]?.({ outcome: 'failed', error: 'worker crashed' });
+      await drain();
+      expect(s.projection().status).toBe('failed');
+      // Whoever waited on it is told no.
+      expect(await Promise.race([waiting, drain().then(() => 'still waiting')])).toBe('stopped');
+      expect(s.projection().approvals[approval.approvalId]).toMatchObject({
+        status: 'rejected',
+        reason: 'execution_ended',
+      });
+      expect(lateAnswers(s, approval)).toEqual(['APPROVAL_STALE', 'APPROVAL_STALE']);
+    });
   });
 
   it('a paused question consumes only its remaining logical timeout after resume', async () => {

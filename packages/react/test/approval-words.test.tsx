@@ -19,11 +19,12 @@ function show(
     toolCalls?: Record<string, unknown>;
     locale?: 'en' | 'ko';
     resolveApproval?: () => Promise<Receipt>;
+    status?: 'awaiting_user' | 'cancelled' | 'failed' | 'succeeded';
   } = {},
 ) {
   const session = sessionStore({
     projection: projectionWith({
-      status: 'awaiting_user',
+      status: options.status ?? 'awaiting_user',
       currentCriteriaVersionId: 'crit_0001',
       approvals: approvals as never,
       toolCalls: (options.toolCalls ?? {}) as never,
@@ -109,6 +110,17 @@ describe('an approval a run limit asked for', () => {
       ),
     );
     expect(container.textContent).not.toMatch(RAW_ID);
+  });
+
+  it('an ended run whose approvals the runtime closed draws no card to answer', () => {
+    for (const status of ['cancelled', 'failed', 'succeeded'] as const) {
+      const view = show({ appr_0001: { ...noProgress, status: 'rejected' } }, { status });
+      expect(view.queryByTestId('approval-appr_0001')).toBeNull();
+      expect(
+        view.queryAllByRole('button').filter((b) => !(b as HTMLButtonElement).disabled),
+      ).toEqual([]);
+      view.unmount();
+    }
   });
 });
 

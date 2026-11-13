@@ -1217,17 +1217,16 @@ function RunFacts({
   const requests = Object.values(projection.modelCalls);
   const inFlight = requests.filter((c) => !c.finished).length;
   const ended = TERMINAL_RUN_STATUSES.has(projection.status);
-  const loops = definition.nodes.flatMap((node) =>
-    node.type === 'loop' && projection.loopIterations[node.id]?.length
-      ? [
-          t('loopRound', {
-            label: node.label,
-            round: projection.loopIterations[node.id]?.length ?? 0,
-            max: loopLimit(projection, node.id) ?? node.maxIterations,
-          }),
-        ]
-      : [],
-  );
+  const loops = definition.nodes.flatMap((node) => {
+    if (node.type !== 'loop' || !projection.loopIterations[node.id]?.length) return [];
+    const round = projection.loopIterations[node.id]?.length ?? 0;
+    const max = loopLimit(projection, node.id) ?? node.maxIterations;
+    return [
+      max === undefined
+        ? t('loopRoundUnlimited', { label: node.label, round })
+        : t('loopRound', { label: node.label, round, max }),
+    ];
+  });
   const team = definition.sourceTeam
     ? `${definition.sourceTeam.name} · r${definition.sourceTeam.revision}`
     : definition.name;

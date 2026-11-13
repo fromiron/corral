@@ -22,7 +22,7 @@ import {
 import { Identifier, SchemaVersion } from './ids.ts';
 import { BinaryArtifact, ImageGenerationProfile } from './media-artifact.ts';
 import { MeetingRunOrigin } from './meeting.ts';
-import { ReasoningCapabilities } from './reasoning.ts';
+import { ReasoningCapabilities, ReasoningLevel } from './reasoning.ts';
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
 import { ResumedFrom, RuntimeCheckpointRecord } from './runtime-checkpoints.ts';
@@ -345,6 +345,31 @@ export const LoopIterationFinished = event(
     submittedVersionIds: Ids,
   }),
 );
+const loopEscalation = {
+  loopNodeId: Identifier,
+  /** The round that reached the limit; it ends as `revise` and the next round opens. */
+  iterationId: Identifier,
+  reason: z.enum(['cap_reached', 'stalled']),
+  /** The Agent nodes in the Loop this changes, for the rest of this entry. */
+  nodeIds: z.array(Identifier).min(1).max(1000),
+};
+/** A Loop's limit policy raised its Agents for more rounds instead of ending (features/team-graph.md). */
+export const LoopEscalated = event(
+  'loop.escalated',
+  z.discriminatedUnion('policy', [
+    z.strictObject({
+      ...loopEscalation,
+      policy: z.literal('raise_reasoning'),
+      /** The fixed level each changed node now asks for. */
+      levels: z.record(Identifier, ReasoningLevel),
+    }),
+    z.strictObject({
+      ...loopEscalation,
+      policy: z.literal('upper_model'),
+      modelProfile: Identifier,
+    }),
+  ]),
+);
 /** The run's whole breakpoint list after a start or a `set_breakpoints` command. */
 export const BreakpointsChanged = event(
   'breakpoints.changed',
@@ -354,11 +379,9 @@ export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check', 'breakpoint']),
+    kind: z.enum(['final_output', 'user_action', 'route', 'check', 'breakpoint']),
     /** The step a `breakpoint` approval holds before it starts. */
     nodeId: Identifier.optional(),
-    /** Why a Loop asks for another round: its round cap or a stall. */
-    loopStop: z.enum(['cap_reached', 'stalled']).optional(),
     /** The connected routes a person may pick for a router that could not choose. */
     routes: z
       .array(z.strictObject({ id: Identifier, label: z.string().min(1) }))
@@ -479,6 +502,8 @@ export const OutputFinalized = event(
 );
 
 // ── Reins ────────────────────────────────────────────────────────────────────
+export const DirectiveOrigin = z.enum(['user', 'advice']);
+export type DirectiveOrigin = z.infer<typeof DirectiveOrigin>;
 export const DirectiveAccepted = event(
   'directive.accepted',
   z.strictObject({
@@ -487,6 +512,8 @@ export const DirectiveAccepted = event(
     text: z.string().min(1).max(12000),
     /** The delivery actually used: an interrupt the target cannot take is next_request. */
     delivery: z.enum(['next_request', 'interrupt']),
+    /** Who made it: the person or an accepted advice (features/reins.md). */
+    origin: DirectiveOrigin,
     attachments: TextAttachments.optional(),
   }),
 );
@@ -851,6 +878,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ReviewStale,
   LoopIterationStarted,
   LoopIterationFinished,
+  LoopEscalated,
   ApprovalRequested,
   ApprovalResolved,
   BreakpointsChanged,

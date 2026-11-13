@@ -40,7 +40,8 @@ function figures(p: RunProjection): Record<CompareKey, string | number | null> {
     outputTokens: usage.outputTokens,
     executions: p.executionOrder.length,
     reviewRounds: Object.keys(p.iterations).length,
-    approvals: Object.values(p.approvals).filter((a) => a.status !== 'pending').length,
+    // Decisions the person made: the runtime's closings and allow-for-run passes are not theirs.
+    approvals: Object.values(p.approvals).filter((a) => a.resolvedBy === 'person').length,
   };
 }
 

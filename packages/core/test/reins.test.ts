@@ -1,9 +1,12 @@
-import type {
-  AgentAdapter,
-  AgentHost,
-  AgentSettlement,
-  DeliveredDirective,
-  RunCommand,
+import {
+  type AgentAdapter,
+  type AgentHost,
+  type AgentSettlement,
+  canonicalJson,
+  type DeliveredDirective,
+  type DirectiveOrigin,
+  type RunCommand,
+  type RunEvent,
 } from '@corral/contracts';
 import {
   collaborationCorral,
@@ -15,9 +18,11 @@ import {
 } from '@corral/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  applyEvent,
   Coordinator,
   InMemoryRunStore,
   InProcessTransport,
+  sha256Hex,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -391,7 +396,7 @@ describe('interrupt delivery', () => {
     expect(receipt).toMatchObject({ status: 'queued', requestedBoundary: 'immediate' });
     expect(s.accepted().map((event) => event.payload)).toMatchObject([{ delivery: 'interrupt' }]);
     const directiveId = Object.keys(s.coordinator.getSnapshot(s.runId).projection.directives)[0];
-    expect(s.interrupts).toEqual([{ directiveId, text: 'Stop and cite sources.' }]);
+    expect(s.interrupts).toEqual([{ directiveId, text: 'Stop and cite sources.', origin: 'user' }]);
     expect(s.pushed).toEqual([]);
     // The same command sent again is the same intent: one directive, one interrupt.
     expect(s.steer(executionId)).toEqual(receipt);
@@ -523,5 +528,89 @@ describe('interrupt delivery', () => {
     expect(
       s.coordinator.getSnapshot(s.runId).projection.directives[directiveId ?? '']?.status,
     ).toBe('delivered');
+  });
+});
+
+describe('a runtime checkpoint and newer directives', () => {
+  it("is held back by the person's newer directive, not by an advice", async () => {
+    const store = new InMemoryRunStore();
+    const clock = new FakeClock();
+    let host: AgentHost | undefined;
+    const coordinator = new Coordinator({
+      store,
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      models: {
+        resolve: (profile: string) => ({
+          ok: true as const,
+          snapshot: { profile, provider: 'fixture', modelId: 'fixture', auth: 'api_key' as const },
+        }),
+      },
+      runtimeRecovery: { confirm: async () => {} },
+      agents: {
+        async start(_input, started) {
+          host = started;
+          return { cancel: async () => {}, waitForSettlement: () => new Promise(() => {}) };
+        },
+      },
+    });
+    const runId =
+      coordinator.startRun({
+        schemaVersion: '0.1',
+        commandId: 'start',
+        mode: 'live',
+        definition: linearCorral(['writer']),
+      }).runId ?? '';
+    for (let i = 0; i < 100; i++) await Promise.resolve();
+    const context = { messages: [{ role: 'user', content: 'Request', timestamp: 1 }] };
+    const permit = await host?.prepareModelRequest();
+    await host?.modelRequestDispatched?.(permit?.modelCallId ?? '');
+    await host?.observe({
+      kind: 'model_completed',
+      modelCallId: permit?.modelCallId ?? '',
+      text: 'reply',
+      usage: { inputTokens: null, outputTokens: 1 },
+    });
+    expect(
+      await host?.checkpointContext?.({
+        version: 1,
+        piVersion: '1.3.0',
+        runtime: 'pi-core',
+        context,
+        contextHash: sha256Hex(canonicalJson(context)),
+      }),
+    ).toBeTruthy();
+    const blockers = async () => (await coordinator.runtimeCheckpoints(runId))[0]?.blockers ?? [];
+    expect(await blockers()).not.toContain('newer_instruction');
+    // A directive accepted after the checkpoint, recorded as the Coordinator records one.
+    const accept = (origin: DirectiveOrigin, directiveId: string) => {
+      const stored = store.getRun(runId);
+      const last = store.readEvents(runId, 0).at(-1);
+      const target = stored?.projection.executionOrder[0];
+      if (!stored || !last || !target) throw new Error('run not stored');
+      const event = {
+        ...last,
+        eventId: `evt_${directiveId}`,
+        runSeq: last.runSeq + 1,
+        type: 'directive.accepted',
+        actor: { id: 'local_user', kind: 'user' },
+        causedByEventIds: [],
+        executionId: target,
+        payload: {
+          directiveId,
+          targetExecutionId: target,
+          text: 'Shorter.',
+          delivery: 'next_request',
+          origin,
+        },
+      } as RunEvent;
+      store.appendEvents(runId, [event]);
+      store.saveProjection(runId, applyEvent(stored.projection, event));
+    };
+    accept('advice', 'dir_advice');
+    expect(await blockers()).not.toContain('newer_instruction');
+    accept('user', 'dir_user');
+    expect(await blockers()).toContain('newer_instruction');
   });
 });

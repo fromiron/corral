@@ -178,7 +178,7 @@ test('parallel branches meet at a Join, and a router that cannot choose asks the
   expect(corral.errors).toEqual([]);
 });
 
-test('a check Decision runs a registered check in the working copy, and a Loop that stops changing asks', async ({
+test('a check Decision runs a registered check in the working copy, and a Loop that stops changing ends the run', async ({
   page,
   corral,
 }) => {
@@ -250,28 +250,31 @@ test('a check Decision runs a registered check in the working copy, and a Loop t
     const runId = await startRun(page, definition, true);
     await page.goto(`${corral.server.url}/runs/${runId}`);
 
-    // A check command not run before needs the person's approval; the Loop then stops changing.
-    const waiting = page.locator('[data-pending-tray]');
-    const stalled = waiting
-      .locator('[data-testid^="approval-"]')
-      .filter({ hasText: 'Loop stopped changing' });
-    const check = waiting.getByRole('button', { name: 'Run this check once', exact: true });
-    for (let step = 0; step < 4 && !(await stalled.isVisible()); step++) {
-      await expect(page.getByTestId('run-status').first()).toContainText('Waiting for you', {
-        timeout: 15_000,
-      });
+    // A check command not run before needs the person's approval; the Loop then stops changing,
+    // and with no exhausted path the run fails without asking.
+    const status = page.getByTestId('run-status').first();
+    // Each launch is answered in the conversation's needed-now tray.
+    const check = page
+      .locator('[data-pending-tray]')
+      .getByRole('button', { name: 'Run this check once', exact: true });
+    for (let step = 0; step < 4; step++) {
+      await expect(status).toContainText(/Waiting for you|Failed/, { timeout: 15_000 });
+      if (!(await page.getByTestId('run-respond').isVisible())) break;
       await needsYou(page);
-      await expect(check.or(stalled).first()).toBeVisible();
-      if (await check.isVisible()) {
-        await check.first().click();
-        await expect(page.getByTestId('run-status').first()).not.toContainText('Waiting for you');
-      }
+      await check.first().click();
+      await expect(status).not.toContainText('Waiting for you');
     }
-    await expect(stalled).toBeVisible();
-    await expect(stalled).toContainText('This round submitted the same work as the round before.');
-    await stalled.getByRole('button', { name: 'Stop here', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Cancelled');
+    await expect(status).toContainText('Failed');
+    await expect(page.getByTestId('run-end-reason')).toHaveText(
+      'Rounds ran out of rounds: it kept producing the same result',
+    );
 
+    const { projection } = corral.server.coordinator.getSnapshot(runId);
+    expect(projection.statusReason).toBe('loop_exhausted: rounds stalled');
+    // The only approvals were the check launches; none asked about the Loop.
+    expect(new Set(Object.values(projection.approvals).map((a) => a.kind))).toEqual(
+      new Set(['user_action']),
+    );
     const verdicts = branchesOf(corral.server.coordinator, runId, 'types');
     expect(verdicts.length).toBe(2);
     for (const verdict of verdicts)

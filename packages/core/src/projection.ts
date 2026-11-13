@@ -1,4 +1,5 @@
 import type {
+  DirectiveOrigin,
   DirectiveStatus,
   EventOf,
   EventPayload,
@@ -60,6 +61,8 @@ export interface DirectiveView {
   directiveId: string;
   targetExecutionId: string;
   text: string;
+  /** Who made it: the person or an accepted advice. */
+  origin: DirectiveOrigin;
   /** Text attachments carried after the text when a request delivers it. */
   attachments?: TextAttachment[];
   status: DirectiveStatus;
@@ -173,8 +176,6 @@ export interface QuestionView {
 export interface ApprovalView {
   approvalId: string;
   kind: EventPayload<'approval.requested'>['kind'];
-  /** Why a Loop asks for another round. */
-  loopStop?: EventPayload<'approval.requested'>['loopStop'];
   routes?: EventPayload<'approval.requested'>['routes'];
   /** The step a `breakpoint` approval holds before it starts. */
   nodeId?: string;
@@ -194,6 +195,11 @@ export interface ApprovalView {
    */
   limit?: { kind: EventPayload<'limit.reached'>['limitKind']; used: number; max: number };
   status: 'pending' | 'approved' | 'rejected' | 'stale';
+  /**
+   * Who closed it, from the `approval.resolved` envelope actor: the person, or the runtime (the
+   * run or step ended, a deadline passed, or the person's allow-for-run covered it).
+   */
+  resolvedBy?: 'person' | 'runtime';
 }
 
 export interface PatchView extends EventPayload<'patch.committed'> {
@@ -211,6 +217,9 @@ export interface ReviewView {
   verdict: 'pass' | 'revise' | 'inconclusive';
   issues: { criterionId: string; reason: string; severity: 'required' | 'advisory' }[];
 }
+
+/** One `loop.escalated` fact and where it sits in the run. */
+export type LoopEscalationView = EventPayload<'loop.escalated'> & { runSeq: number };
 
 export interface WorkflowBranchView extends EventPayload<'workflow.branch_selected'> {
   eventId: string;
@@ -271,6 +280,8 @@ export interface RunProjection {
   artifactReads: Record<string, string[]>;
   /** Iteration ids per Loop node, in round order. */
   loopIterations: Record<string, string[]>;
+  /** What each Loop's limit policy changed, in order (`loop.escalated`). */
+  loopEscalations?: Record<string, LoopEscalationView[]>;
   /** Set when a backend restart ended the run (RUN-007). */
   interruptedBy: string | null;
   output: { nodeId: string; artifactVersionIds: string[] } | null;
@@ -333,6 +344,7 @@ export function emptyProjection(runId: string): RunProjection {
     startedAt: null,
     endedAt: null,
     workflowBranches: {},
+    loopEscalations: {},
   };
 }
 
@@ -514,11 +526,12 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       });
     }
     case 'directive.accepted': {
-      const { directiveId, targetExecutionId, text, attachments } = event.payload;
+      const { directiveId, targetExecutionId, text, origin, attachments } = event.payload;
       const directive: DirectiveView = {
         directiveId,
         targetExecutionId,
         text,
+        origin,
         ...(attachments?.length ? { attachments } : {}),
         status: 'queued',
         commandId: event.commandId ?? null,
@@ -674,7 +687,6 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         criteriaVersionId,
         status: 'pending',
         ...(event.payload.tool ? { tool: event.payload.tool } : {}),
-        ...(event.payload.loopStop ? { loopStop: event.payload.loopStop } : {}),
         ...(event.payload.routes ? { routes: event.payload.routes } : {}),
         ...(event.payload.nodeId ? { nodeId: event.payload.nodeId } : {}),
         ...(limit ? { limit } : {}),
@@ -696,6 +708,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           [approval.approvalId]: {
             ...approval,
             status,
+            resolvedBy: event.actor.kind === 'user' ? 'person' : 'runtime',
             ...(event.payload.routeId ? { routeId: event.payload.routeId } : {}),
             ...(event.payload.scope ? { scope: event.payload.scope } : {}),
             ...(event.payload.reason ? { reason: event.payload.reason } : {}),
@@ -783,6 +796,17 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       if (!iteration) return p;
       const finished: IterationView = { ...iteration, outcome: event.payload.outcome };
       return { ...p, iterations: { ...p.iterations, [iteration.iterationId]: finished } };
+    }
+    case 'loop.escalated': {
+      const { loopNodeId } = event.payload;
+      const escalation: LoopEscalationView = { ...event.payload, runSeq: event.runSeq };
+      return {
+        ...p,
+        loopEscalations: {
+          ...p.loopEscalations,
+          [loopNodeId]: [...(p.loopEscalations?.[loopNodeId] ?? []), escalation],
+        },
+      };
     }
     case 'message.question_created': {
       const { questionId, ...rest } = event.payload;

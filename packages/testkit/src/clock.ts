@@ -27,6 +27,19 @@ export class FakeClock implements Clock, Scheduler {
     for (const timer of due.sort((a, b) => a.dueMs - b.dueMs)) timer.fn();
   }
 
+  /** A real macrotask, never fake time: other queued work runs, the clock does not move. */
+  turn(): Promise<void> {
+    const host = globalThis as {
+      setImmediate?: (fn: () => void) => unknown;
+      setTimeout?: (fn: () => void, ms: number) => unknown;
+    };
+    return new Promise((resolve) => {
+      if (host.setImmediate) host.setImmediate(resolve);
+      else if (host.setTimeout) host.setTimeout(resolve, 0);
+      else resolve();
+    });
+  }
+
   after(ms: number, fn: () => void): () => void {
     const timer = { dueMs: this.elapsedMs + ms, fn };
     this.timers.push(timer);

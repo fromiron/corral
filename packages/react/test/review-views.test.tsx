@@ -91,7 +91,7 @@ describe('approvals and reviews in Studio', () => {
     // UX-11: the approve button names what approving this step does.
     fireEvent.click(
       within(card).getByRole('button', {
-        name: /^(Continue with this version|Confirm as final result|Review once more)$/,
+        name: /^(Continue with this version|Confirm as final result)$/,
       }),
     );
     await until(session, (p) => p.approvals[approval?.approvalId ?? '']?.status === 'approved');
@@ -228,6 +228,7 @@ describe('Reins artifact input paths', () => {
             directiveId: 'dir_late',
             targetExecutionId: artifact.authorExecutionId,
             text: 'Late instruction must stay out',
+            origin: 'user',
             status: 'queued',
             commandId: 'cmd_late',
             acceptedSeq: projection.lastSeq,
@@ -269,6 +270,7 @@ describe('Reins artifact input paths', () => {
             directiveId: 'dir_indirect',
             targetExecutionId: first.authorExecutionId,
             text: 'Earlier instruction',
+            origin: 'user',
             status: 'delivered',
             commandId: 'cmd_indirect',
             acceptedSeq: 1,
@@ -280,6 +282,7 @@ describe('Reins artifact input paths', () => {
             directiveId: 'dir_direct',
             targetExecutionId: second.authorExecutionId,
             text: 'Current instruction',
+            origin: 'user',
             status: 'delivered',
             commandId: 'cmd_direct',
             acceptedSeq: 2,

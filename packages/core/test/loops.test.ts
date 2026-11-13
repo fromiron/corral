@@ -352,39 +352,20 @@ describe('loop execution', () => {
     expect(final.nodeExecutions.fallback).toHaveLength(1);
   });
 
-  it('asks with the reason when the cap is reached and exhausted is unconnected', async () => {
+  it('fails the run without asking when the cap is reached and exhausted is unconnected', async () => {
     const body = reviewedBody('loop', 'l');
     const definition = team(
       [research, loop('loop', { maxIterations: 1 }), ...body.nodes, output('l_write')],
       [edge('research', 'out', 'loop', 'enter'), ...body.edges, edge('loop', 'next', 'output')],
     );
     const transport = runtime(scripted({}));
-    const { runId } = await run(transport, definition);
-    const answer = async (decision: 'approve' | 'reject') => {
-      const waiting = await waitForProjection(transport, runId, (p) => pendingApproval(p) !== null);
-      const approval = pendingApproval(waiting);
-      expect(approval).toMatchObject({ kind: 'loop_cap', loopStop: 'cap_reached' });
-      await transport.sendCommand({
-        schemaVersion: '0.1',
-        commandId: `cmd_${++edgeNo}`,
-        runId,
-        type: 'resolve_approval',
-        expectedControlRevision: waiting.controlRevision,
-        payload: {
-          approvalId: approval?.approvalId ?? '',
-          decision,
-          subjectVersionId: approval?.subjectVersionIds[0] ?? '',
-        },
-      });
-    };
-    await answer('approve');
-    await answer('reject');
+    const { runId, events } = await run(transport, definition);
     const final = await waitForProjection(transport, runId, finished);
-    expect(final.status).toBe('cancelled');
-    expect(rounds(final, 'loop')).toEqual([
-      [1, 'revise'],
-      [2, 'cap_reached'],
-    ]);
+    expect(final.status).toBe('failed');
+    expect(final.statusReason).toBe('loop_exhausted: loop cap_reached');
+    expect(rounds(final, 'loop')).toEqual([[1, 'cap_reached']]);
+    expect(events.some((e) => e.type === 'approval.requested')).toBe(false);
+    expect(pendingApproval(final)).toBeNull();
   });
 
   it('counts a round that resubmits the same work as stalled', async () => {

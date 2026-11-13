@@ -1,3 +1,5 @@
+import type { RunEvent } from '@corral/contracts';
+import { applyEvent, emptyProjection } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import { compareRuns } from '../src/run/compare.ts';
 import { projectionWith } from '../src/stories/fixtures.tsx';
@@ -66,6 +68,76 @@ describe('compareRuns', () => {
       b: 'model-a: openai/gpt-b',
       differs: true,
     });
+  });
+
+  it('counts only the decisions a person made, not approvals the runtime closed', () => {
+    let seq = 0;
+    const envelope = (actor: 'user' | 'runtime') => ({
+      schemaVersion: '0.1',
+      eventId: `evt_${++seq}`,
+      runId: 'run_a',
+      runSeq: seq,
+      recordedAt: '2026-10-16T00:00:00.000Z',
+      causedByEventIds: [],
+      actor: { kind: actor, id: actor === 'user' ? 'local_user' : 'coordinator' },
+    });
+    const asked = (approvalId: string) =>
+      ({
+        ...envelope('runtime'),
+        type: 'approval.requested',
+        payload: {
+          approvalId,
+          kind: 'user_action',
+          subjectVersionIds: ['v1'],
+          criteriaVersionId: null,
+        },
+      }) as RunEvent;
+    const closed = (
+      approvalId: string,
+      actor: 'user' | 'runtime',
+      decision: 'approve' | 'reject',
+      reason?: string,
+    ) =>
+      ({
+        ...envelope(actor),
+        type: 'approval.resolved',
+        payload: {
+          approvalId,
+          decision,
+          actor: actor === 'user' ? 'local_user' : 'coordinator',
+          subjectVersionIds: ['v1'],
+          ...(reason ? { reason } : {}),
+        },
+      }) as RunEvent;
+    const replay = (events: RunEvent[]) => {
+      const projection = events
+        .map((event, index) => ({ ...event, runSeq: index + 1 }))
+        .reduce(applyEvent, emptyProjection('run_a'));
+      return { ...run({ runId: 'run_a' }), approvals: projection.approvals };
+    };
+    // A cancelled run whose two approvals the runtime closed: the person decided nothing.
+    const cancelled = replay([
+      asked('a1'),
+      asked('a2'),
+      closed('a1', 'runtime', 'reject', 'cancelled'),
+      closed('a2', 'runtime', 'reject', 'cancelled'),
+    ]);
+    // One call allowed for the run: the two waiting like it pass with it, still one decision.
+    const allowed = replay([
+      asked('a1'),
+      asked('a2'),
+      asked('a3'),
+      closed('a1', 'user', 'approve'),
+      closed('a2', 'runtime', 'approve', 'allowed_for_run'),
+      closed('a3', 'runtime', 'approve', 'allowed_for_run'),
+    ]);
+    const row = compareRuns(cancelled, allowed).find((r) => r.key === 'approvals');
+    expect(row).toMatchObject({ a: 0, b: 1 });
+    expect(Object.values(allowed.approvals).map((a) => a.resolvedBy)).toEqual([
+      'person',
+      'runtime',
+      'runtime',
+    ]);
   });
 
   it('an unfinished run has no elapsed time rather than a made-up one', () => {

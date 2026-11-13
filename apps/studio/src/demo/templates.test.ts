@@ -31,7 +31,7 @@ import { approvalResearchTeam } from './testing/approval-team.ts';
 const HANGUL = /[ㄱ-ㆎ가-힣]/;
 
 /** A Run of `definition` with the demo's simulated agents, without their delays. */
-async function demoRun(definition: CorralDefinition) {
+async function demoRun(definition: CorralDefinition, review?: () => string) {
   const transport = new InProcessTransport(
     new Coordinator({
       clock: new FakeClock(),
@@ -40,6 +40,7 @@ async function demoRun(definition: CorralDefinition) {
         turns: DEMO_TURNS,
         reply: createDemoReply(),
         appendNotes: false,
+        ...(review ? { review } : {}),
       }),
     }),
   );
@@ -111,6 +112,28 @@ describe('demo templates', () => {
     expect(run.output?.artifactVersionIds).toHaveLength(1);
   });
 
+  it('a review that never passes ends the research team with its last draft, asking nobody', async () => {
+    const { events, settled } = await demoRun(
+      demoTemplate('research-team').definition,
+      () => 'revise',
+    );
+    const run = await settled();
+    expect(run.status).toBe('succeeded');
+    expect(Object.keys(run.approvals)).toEqual([]);
+    expect(events.some((event) => event.type === 'approval.requested')).toBe(false);
+    const rounds = (run.loopIterations.review_loop ?? []).map((id) => run.iterations[id]?.outcome);
+    expect(rounds).toEqual(['revise', 'cap_reached']);
+    // The last review stays with the result, which is the last round's draft.
+    expect(Object.values(run.reviews).map((review) => review.verdict)).toEqual([
+      'revise',
+      'revise',
+    ]);
+    const last = run.nodeExecutions.write?.at(-1) ?? '';
+    expect(run.output?.artifactVersionIds).toEqual(
+      run.tasks[run.executions[last]?.taskId ?? '']?.submittedArtifactVersionIds,
+    );
+  });
+
   it('the research team’s card and the demo guide do not tell the person to approve the result', () => {
     for (const [messages, approve] of [
       [en, /approv/i],
@@ -150,6 +173,11 @@ describe('the research team with approvals, for tests of approvals', () => {
     expect(fixture.controlEdges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ source: 'review_loop', sourcePort: 'next', target: 'approval' }),
+        expect.objectContaining({
+          source: 'review_loop',
+          sourcePort: 'exhausted',
+          target: 'approval',
+        }),
         expect.objectContaining({ source: 'approval', sourcePort: 'approve', target: 'output' }),
       ]),
     );
@@ -326,7 +354,11 @@ describe('demo replies', () => {
 
   it('shows a directive from the request it was delivered in, and only for that execution', () => {
     const input = startInput('write', { round: 2, executionId: 'exec_0007' });
-    const directive = { directiveId: 'dir_0001', text: 'Lead with the cost difference.' };
+    const directive = {
+      directiveId: 'dir_0001',
+      text: 'Lead with the cost difference.',
+      origin: 'user' as const,
+    };
     expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
     expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);
     // Delivered once, it stays in that execution's context for later requests ...
@@ -582,6 +614,7 @@ describe('demo replies', () => {
     const directive = {
       directiveId: 'dir_0009',
       text: 'Keyboard instructions reach the next request.',
+      origin: 'user' as const,
     };
     expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
     expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);

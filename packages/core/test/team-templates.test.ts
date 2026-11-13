@@ -6,6 +6,7 @@ import {
 import { FakeClock, Gate, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import {
+  autoDefinition,
   CHANGE_TOOLS,
   Coordinator,
   compileDefinition,
@@ -244,7 +245,7 @@ describe('team templates', () => {
 // Mock runs: the scripted adapter answers every step; a reviewer in a Loop sends the work back
 // in round 1 and passes after, unless the test scripts it otherwise.
 
-function runtime(held: Record<string, Gate> = {}) {
+function runtime(held: Record<string, Gate> = {}, review?: () => string) {
   const clock = new FakeClock();
   return new InProcessTransport(
     new Coordinator({
@@ -255,6 +256,7 @@ function runtime(held: Record<string, Gate> = {}) {
         turns: 1,
         appendNotes: false,
         beforeReply: async (_turn, input) => held[input.nodeId]?.wait(),
+        ...(review ? { review } : {}),
       }),
     }),
   );
@@ -299,6 +301,44 @@ describe('mock runs of the templates', () => {
       expect(ran(final, worker)).toEqual(['succeeded', 'succeeded']);
       expect(ran(final, 'review')).toEqual(['succeeded', 'succeeded']);
       expect(finalized(events)).toHaveLength(1);
+    },
+  );
+
+  // docs/specs/features/library.md: a review Loop of a template, a draft or an auto team goes on
+  // at its round cap to the step `next` leads to, without asking, with the last candidate.
+  const auto = (template: 'write_review' | 'research_write_review') =>
+    autoDefinition({
+      id: `auto_${template}`,
+      template,
+      brief: 'Do the task.',
+      choice: { modelProfile: 'model-a' },
+      fileTools: false,
+    });
+  it.each([
+    ['implement-review', () => build('implement-review'), 'implement'],
+    ['plan-implement-review', () => build('plan-implement-review'), 'implement'],
+    ['bug-fix', () => build('bug-fix'), 'fix'],
+    ['auto write_review', () => auto('write_review'), 'write'],
+    ['auto research_write_review', () => auto('research_write_review'), 'write'],
+  ] as const)(
+    '%s: a review that never passes ends with the last candidate, asking nobody',
+    async (_name, definition, worker) => {
+      const transport = runtime({}, () => 'revise');
+      const { runId, events } = await start(transport, definition());
+      const final = await waitForProjection(transport, runId, finished);
+      expect(final.status).toBe('succeeded');
+      expect(rounds(final, 'review_loop')).toEqual(['revise', 'cap_reached']);
+      expect(Object.keys(final.approvals)).toEqual([]);
+      expect(events.some((e) => e.type === 'approval.requested')).toBe(false);
+      // The last review stays with the result.
+      expect(ran(final, 'review')).toEqual(['succeeded', 'succeeded']);
+      const last = final.nodeExecutions[worker]?.at(-1) ?? '';
+      const candidate =
+        final.tasks[final.executions[last]?.taskId ?? '']?.submittedArtifactVersionIds ?? [];
+      const [output] = finalized(events);
+      expect(output?.type === 'output.finalized' && output.payload.artifactVersionIds).toEqual(
+        candidate,
+      );
     },
   );
 

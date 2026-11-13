@@ -224,8 +224,6 @@ const tool = (purpose: 'tool' | 'lsp' | 'check') => ({
 // stack.
 it.each([
   ['final output', { kind: 'final_output' }],
-  ['another round', { kind: 'loop_cap', loopStop: 'cap_reached' }],
-  ['stalled loop', { kind: 'loop_cap', loopStop: 'stalled' }],
   ['run limit', { kind: 'user_action', limit: { kind: 'loop_iterations', used: 3, max: 3 } }],
   ['decision', { kind: 'user_action' }],
   [

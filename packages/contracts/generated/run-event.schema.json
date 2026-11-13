@@ -7252,6 +7252,202 @@
         },
         "type": {
           "type": "string",
+          "const": "loop.escalated"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "loopNodeId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "iterationId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "cap_reached",
+                    "stalled"
+                  ]
+                },
+                "nodeIds": {
+                  "minItems": 1,
+                  "maxItems": 1000,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                },
+                "policy": {
+                  "type": "string",
+                  "const": "raise_reasoning"
+                },
+                "levels": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "loopNodeId",
+                "iterationId",
+                "reason",
+                "nodeIds",
+                "policy",
+                "levels"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "loopNodeId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "iterationId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "cap_reached",
+                    "stalled"
+                  ]
+                },
+                "nodeIds": {
+                  "minItems": 1,
+                  "maxItems": 1000,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                },
+                "policy": {
+                  "type": "string",
+                  "const": "upper_model"
+                },
+                "modelProfile": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                }
+              },
+              "required": [
+                "loopNodeId",
+                "iterationId",
+                "reason",
+                "nodeIds",
+                "policy",
+                "modelProfile"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "eventId",
+        "runId",
+        "runSeq",
+        "recordedAt",
+        "actor",
+        "causedByEventIds",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "0.1"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "runSeq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "recordedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "actor": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "user",
+                "runtime",
+                "agent"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "executionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "causedByEventIds": {
+          "maxItems": 30,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+          }
+        },
+        "type": {
+          "type": "string",
           "const": "approval.requested"
         },
         "payload": {
@@ -7265,7 +7461,6 @@
               "type": "string",
               "enum": [
                 "final_output",
-                "loop_cap",
                 "user_action",
                 "route",
                 "check",
@@ -7275,13 +7470,6 @@
             "nodeId": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
-            },
-            "loopStop": {
-              "type": "string",
-              "enum": [
-                "cap_reached",
-                "stalled"
-              ]
             },
             "routes": {
               "minItems": 1,
@@ -7740,6 +7928,13 @@
               "enum": [
                 "next_request",
                 "interrupt"
+              ]
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "user",
+                "advice"
               ]
             },
             "attachments": {
@@ -8321,7 +8516,8 @@
             "directiveId",
             "targetExecutionId",
             "text",
-            "delivery"
+            "delivery",
+            "origin"
           ],
           "additionalProperties": false
         }

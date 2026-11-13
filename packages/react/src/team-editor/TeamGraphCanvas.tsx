@@ -486,7 +486,9 @@ export function TeamGraphCanvas({
       case 'decision':
         return kindName(node);
       case 'loop':
-        return t('rounds', { count: node.maxIterations });
+        return node.maxIterations === undefined
+          ? t('roundsUnlimited')
+          : t('rounds', { count: node.maxIterations });
       case 'team':
         return node.source.kind === 'inline'
           ? t('inline')

@@ -83,7 +83,27 @@ describe('auto mode is frozen while drafts widen', () => {
               fileTools,
               ...extra,
             });
-            expect(hash(definition), key).toBe(recorded[key]);
+            // The one deliberate change since the recording: a review Loop at its round cap goes
+            // on, without asking, to the step its `next` leads to (library.md, "계약").
+            const loopEdges = definition.controlEdges.filter((e) => e.source === 'review_loop');
+            const next = loopEdges.filter((e) => e.sourcePort === 'next').map((e) => e.target);
+            const exhausted = loopEdges.filter((e) => e.sourcePort === 'exhausted');
+            expect(exhausted, key).toEqual(
+              template === 'single'
+                ? []
+                : next.map((target) => ({
+                    id: 'e7',
+                    source: 'review_loop',
+                    sourcePort: 'exhausted',
+                    target,
+                    targetPort: 'in',
+                  })),
+            );
+            const recordedShape = {
+              ...definition,
+              controlEdges: definition.controlEdges.filter((e) => !exhausted.includes(e)),
+            };
+            expect(hash(recordedShape), key).toBe(recorded[key]);
             checked += 1;
           }
     expect(checked).toBe(Object.keys(recorded).length);

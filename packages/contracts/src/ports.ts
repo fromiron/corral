@@ -7,7 +7,7 @@ import type {
   SettledBasis,
 } from './effort-routing.ts';
 import type { CommandError } from './errors.ts';
-import type { ModelProfileSnapshot } from './events.ts';
+import type { DirectiveOrigin, ModelProfileSnapshot } from './events.ts';
 import type {
   CompactionReport,
   EffectiveHarnessSnapshot,
@@ -66,6 +66,11 @@ export interface IdFactory {
 export interface Scheduler {
   /** Runs `fn` once after `ms`; the returned function cancels it. */
   after(ms: number, fn: () => void): () => void;
+  /**
+   * Lets other queued work (timers, I/O, commands) run once, without waiting real time: one
+   * macrotask. Without it the Coordinator yields with the host's own macrotask.
+   */
+  turn?(): Promise<void>;
 }
 
 // Agent adapter port. Workers never decide domain state;
@@ -136,6 +141,8 @@ export interface AgentStartInput {
 export interface DeliveredDirective {
   directiveId: string;
   text: string;
+  /** Who made it; a worker wraps each origin in its own heading (features/reins.md). */
+  origin: DirectiveOrigin;
 }
 
 /** Agent-originated questions; they never carry human directive or approval authority. */
@@ -179,6 +186,8 @@ export type AgentObservation = {
   rawUsage?: Record<string, unknown>;
   /** The response was cut by an interrupt; its text is interrupted output, not an answer. */
   interrupted?: true;
+  /** The response ended in an error or abort, uncut; its text is partial output, not an answer. */
+  failed?: true;
 };
 
 export interface ToolProposal {

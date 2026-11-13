@@ -232,10 +232,12 @@ export function RunFlowView({
                       {loopText('title', { name: loop.label })}
                     </h3>
                     <p className="text-caption text-muted-foreground">
-                      {loopText('summary', {
-                        count: loop.iterations.length,
-                        max: loop.maxIterations,
-                      })}
+                      {loop.maxIterations === null
+                        ? loopText('summaryUnlimited', { count: loop.iterations.length })
+                        : loopText('summary', {
+                            count: loop.iterations.length,
+                            max: loop.maxIterations,
+                          })}
                     </p>
                     <p className="text-caption">
                       {latest

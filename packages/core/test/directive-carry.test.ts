@@ -1,4 +1,4 @@
-import type { AgentAdapter, RunCommand } from '@corral/contracts';
+import type { AgentAdapter, DirectiveOrigin, RunCommand } from '@corral/contracts';
 import {
   FakeClock,
   Gate,
@@ -204,21 +204,20 @@ it('does not carry a directive a cancelled run left undelivered', async () => {
   expect(s.resolved).toEqual([]);
 });
 
-it('does not carry a directive from advice or the system', async () => {
+it('does not carry a directive from advice', async () => {
   const s = setup();
   await s.steer('From the advisor.', 'steer_advice');
   s.gate.open();
   const projection = await waitForProjection(s.transport, s.runId, ended);
   const [directiveId] = projection.directiveOrder;
-  const withOrigin = (origin: string) =>
+  const withOrigin = (origin: DirectiveOrigin) =>
     ({
       ...projection,
       directives: {
         [directiveId ?? '']: { ...projection.directives[directiveId ?? ''], origin },
       },
-    }) as unknown as RunProjection;
+    }) as RunProjection;
   expect(carriedDirectives(withOrigin('advice'))).toEqual([]);
-  expect(carriedDirectives(withOrigin('system'))).toEqual([]);
   expect(carriedDirectives(withOrigin('user'))).toHaveLength(1);
 });
 
@@ -263,6 +262,7 @@ it('carries each directive as it expires, in send order, without waiting for ear
     directiveId: id,
     targetExecutionId: target,
     text: `text ${id}`,
+    origin: 'user',
     status,
     commandId: null,
     acceptedSeq: 1,
