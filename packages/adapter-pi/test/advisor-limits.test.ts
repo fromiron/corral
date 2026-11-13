@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import type { CorralDefinition, RunEvent } from '@corral/contracts';
 import {
   Coordinator,
@@ -294,13 +295,31 @@ describe('the request cap of a review', () => {
         expect(r.advisorSeen[1] && said(r.advisorSeen[1])).toContain('Check the dates too.');
     });
 
-  for (const cap of [1, 2])
-    it(`a retried request counts against a cap of ${cap}, and the cap is no failure`, async () => {
+  const fatal = () =>
+    fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'HTTP 400 bad request' });
+  for (const [label, cap, steps, outcome] of [
+    ['a retryable failure is the one request of a cap of 1', 1, [failing], 'failed'],
+    ['a fatal failure is the one request of a cap of 1', 1, [fatal], 'failed'],
+    ['a failure and a successful retry fill a cap of 2', 2, [failing], 'succeeded'],
+    ['a failure and a failed retry fill a cap of 2', 2, [failing, failing], 'failed'],
+    ['a fatal second request of a cap of 2', 2, ['advise', fatal], 'failed'],
+  ] as const)
+    it(`${label}: the advisor has ${outcome}`, async () => {
       let runId = '';
+      const replies: FauxResponseStep[] = steps.map((step) =>
+        step === 'advise' ? advising('The cheese claim has no source.') : step,
+      );
       const r = runtime(
-        [failing, advising('The cheese claim has no source.')],
+        [...replies, advising('The cheese claim has no source.')],
         [
           writing('Draft: the moon is made of cheese.'),
+          async () => {
+            await until(
+              advisorRests(r, () => runId),
+              8000,
+            );
+            return writing('Draft two.');
+          },
           async (context) => {
             await until(
               advisorRests(r, () => runId),
@@ -313,13 +332,15 @@ describe('the request cap of a review', () => {
       const s = await start(r, definition(cap));
       runId = s.runId;
       const final = await waitForProjection(r.transport, runId, settled);
+      // The advisor's end never changes the run's.
       expect(final.status).toBe('succeeded');
-      expect(executionOf(final, 'advisor')?.status).toBe('succeeded');
-      expect(r.toAdvisor()).not.toContain('refused');
-      const first = r.fromAdvisor().indexOf('next_review', 1);
-      const firstReview = r.fromAdvisor().slice(0, first);
-      // cap 1: the failed attempt is the review's one request; cap 2: it and its retry.
+      const advisor = executionOf(final, 'advisor');
+      expect(advisor?.status).toBe(outcome);
+      const firstReview = r.fromAdvisor().slice(0, r.fromAdvisor().indexOf('next_review', 1));
+      // A retry counts: the review's requests are its cap.
       expect(firstReview.filter((f) => f.startsWith('prepare_request:')).length).toBe(cap);
+      // A failed advisor reviews no more: its requests are the first review's.
+      if (outcome === 'failed') expect(advisor?.modelCallIds).toHaveLength(cap);
     });
 
   it('a cap of 1 and a compaction: the summary does not count, the review request goes out', async () => {
@@ -491,4 +512,157 @@ describe('what the advisor is given, in a real worker process', () => {
       await endpoint.close();
     }
   }, 60_000);
+});
+
+describe('a failing advisor model, in a real worker process', () => {
+  for (const status of [400, 500])
+    it(`HTTP ${status} on the one request of a cap of 1: the advisor has failed, the run has not`, async () => {
+      let transport: InProcessTransport | null = null;
+      let runId = '';
+      let writerCalls = 0;
+      let advisorAsked = 0;
+      const rests = async () => {
+        if (!transport || !runId) return false;
+        const p = (await transport.getSnapshot(runId)).projection;
+        const a = executionOf(p, 'advisor');
+        return (
+          !!a &&
+          (['succeeded', 'failed', 'cancelled'].includes(a.status) ||
+            (a.status === 'waiting_message' && a.modelCallIds.length > 0))
+        );
+      };
+      const server = createServer((request, response) => {
+        let raw = '';
+        request.on('data', (chunk) => {
+          raw += chunk;
+        });
+        request.on('end', async () => {
+          const body = JSON.parse(raw || '{}') as { model?: string };
+          const text = JSON.stringify(body);
+          if (text.includes('You are an advisor in a Corral run')) {
+            advisorAsked += 1;
+            response.writeHead(status, { 'content-type': 'application/json' });
+            response.end(
+              JSON.stringify({
+                error: {
+                  message: 'scripted failure',
+                  type: status === 400 ? 'invalid_request_error' : 'server_error',
+                },
+              }),
+            );
+            return;
+          }
+          writerCalls += 1;
+          const n = writerCalls;
+          if (n > 1) {
+            await until(rests);
+            await idle(50);
+          }
+          const chunk = (delta: unknown, finish: string | null, usage?: unknown) =>
+            `data: ${JSON.stringify({
+              id: `chatcmpl-${n}`,
+              object: 'chat.completion.chunk',
+              created: 0,
+              model: body.model,
+              choices: [{ index: 0, delta, finish_reason: finish }],
+              ...(usage ? { usage } : {}),
+            })}\n\n`;
+          const usage = { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 };
+          response.writeHead(200, { 'content-type': 'text/event-stream' });
+          const call = (name: string, args: unknown) => {
+            response.write(
+              chunk(
+                {
+                  role: 'assistant',
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `call_${n}`,
+                      type: 'function',
+                      function: { name, arguments: JSON.stringify(args) },
+                    },
+                  ],
+                },
+                null,
+              ),
+            );
+            response.write(chunk({}, 'tool_calls', usage));
+          };
+          if (n <= 3) call('write_artifact', { text: `Draft ${n}` });
+          else if (n === 4)
+            call('submit_result', {
+              artifactVersionIds: [[...text.matchAll(/artv_[A-Za-z0-9]+/g)].at(-1)?.[0]],
+            });
+          else {
+            response.write(chunk({ role: 'assistant', content: 'Done.' }, null));
+            response.write(chunk({}, 'stop', usage));
+          }
+          response.end('data: [DONE]\n\n');
+        });
+      });
+      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      const spec = {
+        name: 'Local',
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        keyless: true,
+        models: [
+          {
+            id: 'llama3.2',
+            contextWindow: 8000,
+            maxOutput: 512,
+            reasoning: false,
+            imageInput: false,
+          },
+        ],
+      };
+      try {
+        transport = new InProcessTransport(
+          new Coordinator({
+            clock: new FakeClock(),
+            ids: new SequentialIdFactory(),
+            agents: new PiAgentAdapter({
+              spawn: () => processChannel(WORKER_ENTRY),
+              credentials: async () => 'per-request-key',
+              endpoint: (model) => (model.provider === 'local' ? spec : null),
+            }),
+            models: {
+              resolve: (profile, mode) =>
+                mode === 'live'
+                  ? {
+                      ok: true,
+                      snapshot: {
+                        profile,
+                        provider: 'local',
+                        modelId: 'llama3.2',
+                        auth: 'api_key',
+                      },
+                    }
+                  : {
+                      ok: true,
+                      snapshot: { profile, provider: null, modelId: null, auth: 'mock' },
+                    },
+            },
+          }),
+        );
+        const result = await transport.startRun({
+          schemaVersion: '0.1',
+          commandId: 'cmd_real_failure',
+          sessionId: 'session_real',
+          definition: definition(1),
+          mode: 'live',
+        });
+        if (!result.runId) throw new Error(JSON.stringify(result.receipt.error));
+        runId = result.runId;
+        const final = await waitForProjection(transport, runId, settled);
+        expect(final.status).toBe('succeeded');
+        const advisor = executionOf(final, 'advisor');
+        expect(advisor?.status).toBe('failed');
+        expect(advisor?.modelCallIds).toHaveLength(1);
+        expect(advisorAsked).toBe(1);
+      } finally {
+        await new Promise<void>((done) => server.close(() => done()));
+      }
+    }, 60_000);
 });
