@@ -58,9 +58,16 @@ describe('advisor nodes', () => {
     expect(parsed.nodes.filter(isWorkAgent).map((n) => n.id)).toEqual(['writer']);
   });
 
+  it('takes a request cap of 64, the most a review may make', () => {
+    const doc = withAdvisor({ ...observer, review: { interval: 1, maxRequestsPerReview: 64 } });
+    expect(CorralDefinition.safeParse(doc).success).toBe(true);
+    expect(definitionJson(doc)).toBe(true);
+  });
+
   it.each([
     ['an interval of 0', { review: { interval: 0, maxRequestsPerReview: 8 } }],
     ['a request cap of 0', { review: { interval: 3, maxRequestsPerReview: 0 } }],
+    ['a request cap of 65', { review: { interval: 3, maxRequestsPerReview: 65 } }],
     ['a fractional interval', { review: { interval: 1.5, maxRequestsPerReview: 8 } }],
     ['input bindings', { inputBindings: [] }],
     ['a retry', { retry: { maxAttempts: 1 } }],
