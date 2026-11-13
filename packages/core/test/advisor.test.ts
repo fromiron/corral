@@ -2186,3 +2186,47 @@ describe('a branch an any Join stops', () => {
     expect(finalized).toBeGreaterThan(Math.max(bSettled, admitted));
   });
 });
+
+describe('a review’s request cap', () => {
+  it('a request over the cap ends the review first, then is refused', async () => {
+    const order: string[] = [];
+    let reviewId = '';
+    const s = setup({
+      definition: advised({ interval: 1, maxRequestsPerReview: 1 }),
+      handle: (handle, input) =>
+        input.assignment.kind === 'advisor'
+          ? {
+              ...handle,
+              endReview: (id) => {
+                order.push(`end ${id}`);
+                handle.endReview?.(id);
+              },
+            }
+          : handle,
+      advisor: {
+        script: async (_input, host) => {
+          for (;;) {
+            const review = await host.nextReview?.();
+            if (!review) return { outcome: 'succeeded' };
+            if (reviewId) continue;
+            reviewId = review.reviewId;
+            const permit = await host.prepareModelRequest();
+            await host.modelRequestDispatched?.(permit.modelCallId);
+            // A second request before the first one's answer is in: over the cap of one.
+            await host.prepareModelRequest().catch(() => order.push('refused'));
+            await host.observe({
+              kind: 'model_completed',
+              modelCallId: permit.modelCallId,
+              text: 'reviewing',
+              usage: { inputTokens: 10, outputTokens: 5 },
+            });
+          }
+        },
+      },
+    });
+    await s.ended();
+    expect(order).toEqual([`end ${reviewId}`, 'refused']);
+    expect(s.advisorExecution()?.status).toBe('succeeded');
+    expect(s.advisorExecution()?.modelCallIds).toHaveLength(1);
+  });
+});

@@ -1,4 +1,5 @@
 import type { AgentRole, CollaborationTool, CorralNode, WorkTool } from '@corral/contracts';
+import { adviceSender } from './channel.ts';
 
 // The advisor's tools are the Coordinator's (docs/specs/features/advisor.md, 계약): the read tools
 // its role picked from this list, reading what the watched roles wrote, and `advise`.
@@ -22,6 +23,8 @@ export function advisorRole(role: AgentRole): AgentRole {
   const { harness: _workStyle, answer: _answer, ...rest } = role;
   return {
     ...rest,
+    // The name its advice is headed with, so its instructions name it the same way.
+    name: adviceSender(role.name),
     allowedWorkTools: role.allowedWorkTools.filter((tool) => ADVISOR_WORK_TOOLS.includes(tool)),
     allowedCollaborationTools: [...ADVISOR_COLLABORATION_TOOLS],
   };

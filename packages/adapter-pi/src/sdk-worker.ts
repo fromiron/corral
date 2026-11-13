@@ -225,7 +225,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         if (preparingRequest) deferredSteers.set(frame.directiveId, frame);
         else void steer(frame);
       }
-    } else {
+    } else if ('requestId' in frame) {
       waiting.get(frame.requestId)?.(frame);
       waiting.delete(frame.requestId);
     }
