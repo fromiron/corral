@@ -99,7 +99,7 @@ ID는 주입 가능한 UUID 생성기로 만들고 순서는 ID가 아니라 run
 
 참조 팀은 주입한 정의 출처(`CompileOptions.resolveTeam`)에서 읽어 따로 컴파일하고, 그 계획을 팀 노드 아래에 둔다. compiler는 저장소를 직접 열지 않는다. 사용자가 넣은 코드/함수를 eval하지 않는다. `review`·`approval`·`rule` Decision의 rule은 `review_verdict`, `required_tasks_submitted`, `human_approval`의 enum으로만 선택한다. `check`는 등록 검사, `router`는 이름 붙인 route 중 모델의 선택으로 분기한다. 수식 언어는 없다.
 
-상자 소속은 `parentId`로 묶고, 경계·순환·루프 완결성·병렬 합류 규칙은 [팀 그래프 모델의 구조 규칙](features/team-graph.md#구조-규칙)을 따른다. `repeat`가 회차 상한·정체에 걸리면 `exhausted`로 가고, 연결이 없으면 새 본문을 호출하기 전에 Approval을 생성한다([루프 실행](features/team-graph.md#루프-실행)).
+상자 소속은 `parentId`로 묶고, 경계·순환·루프 완결성·병렬 합류 규칙은 [팀 그래프 모델의 구조 규칙](features/team-graph.md#구조-규칙)을 따른다. `repeat`가 회차 상한·정체에 걸리면 Loop의 한도 정책을 따르고, 소진되면 `exhausted`로 간다. 연결이 없으면 Run이 실패한다([루프 실행](features/team-graph.md#루프-실행)).
 
 GraphRunner의 node callback은 `requestExecution(runId,nodeId,iterationId)`를 요청한다. 동일 계획 활성화가 실수로 재진입해도 activationKey의 unique 제약으로 Task를 중복 생성하지 않는다. LangGraph node retry는 MVP에서 비활성화하고 재시도는 Corral의 시도 계약으로만 처리한다.
 
