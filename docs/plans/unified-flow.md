@@ -810,7 +810,7 @@ S0에서 명세를 쓰면서 브리프와 달라진 곳이다. 이 줄과 명세
 
 - **A5 (A2·A3가 남긴 것).** 감독의 문은 컴파일 옵션 `CompileOptions.advisors`(`refuse`가 기본, `plan`이면 `plan.advisors`를 가진 plan)다. A5는 감독 실행을 만드는 같은 커밋에서 기본값을 바꾼다(`compiler/index.ts`의 `refuseAdvisorsUntilTheyRun`). 대상이 끝난 뒤의 참고(`target_terminal`)는 문지기의 이력과 예산을 차지하지 않는다: `admit`이 돌려준 상태는 `resolveDelivery`가 버리지 않을 때만 반영한다. 문지기 상태는 조언의 정규화한 글을 키로 가지므로 이벤트만으로는 다시 만들 수 없다(이벤트는 글을 싣지 않는다). 감독 실행 단위와 함께 메모리에 둔다.
 - **A7 (A2가 정한 진단).** 감독의 컴파일 진단은 `ADVISOR_OUTSIDE_FLOW`, `ADVISOR_UNWATCHED`(감독 노드), `ADVISOR_ADVISE_SOURCE`·`ADVISOR_ADVISE_TARGET`·`ADVISOR_ADVISE_QUESTIONS`(연결), `ADVISOR_TOOLS`, `ADVISE_TOOL_ADVISOR_ONLY`, `ADVISOR_NOT_A_STEP`, 그리고 문 `ADVISOR_NOT_SUPPORTED`다. 편집기 문구 카탈로그는 `{message}`와 `{node}`만 받아 걸린 도구나 입력의 이름을 말하지 못한다.
-- **U2 (네 번째 리뷰가 남긴 것).** 통합 브랜치에도 있던 것이라 병합을 막지 않았다. (1) 스트리밍 중 끝에서의 첫 휠이 가끔 먹지 않는다(대기하던 scroll 이벤트가 `gap < 1`로 따라가기를 다시 켠다, `ChatView.tsx`). (2) 실행이 끝나 스트리밍 행이 줄어들 때 끝에서 약 1,350px 안쪽을 읽던 사람은 끝으로 끌려간다. (3) 링크·복원된 행에서 아래 키가 40–151px 샜다가 다음 콘텐츠 변화 때 돌아온다. (4) 끝에서 Shift+Space는 끝을 떠나지 못한다. (5) Home·End(Ctrl·Cmd 포함)가 첫 행과 끝에 닿는다는 문장을 가진 명세가 없다. 터치·스크롤바 드래그·WebKit은 재지 못했다.
+- **U2 (네 번째 리뷰가 남긴 것).** 통합 브랜치에도 있던 것이라 병합을 막지 않았다. (1) 스트리밍 중 끝에서의 첫 휠이 가끔 먹지 않는다(대기하던 scroll 이벤트가 `gap < 1`로 따라가기를 다시 켠다, `ChatView.tsx`). (2) 실행이 끝나 스트리밍 행이 줄어들 때 끝에서 약 1,350px 안쪽을 읽던 사람은 끝으로 끌려간다. (3) 링크·복원된 행에서 아래 키가 40–151px 샜다가 다음 콘텐츠 변화 때 돌아온다. (4) 끝에서 Shift+Space는 끝을 떠나지 못한다. 터치·스크롤바 드래그·WebKit은 재지 못했다.
 
 ### V2 최종 장면
 - 대상: `apps/studio/e2e/flow/{idle,multi-agent,join-interrupt,awaiting,citation,sidebar,meeting}.spec.ts`.
