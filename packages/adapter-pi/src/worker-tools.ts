@@ -368,15 +368,27 @@ export const SDK_DIRECTIVE_PREFIX = 'Corral instruction (';
 /** How both workers open an accepted advice; it does not carry the person's authority. */
 export const ADVICE_DIRECTIVE_PREFIX = "Advice from this run's advisor, not from the person (";
 
-type Delivered = Pick<DeliveredDirective, 'directiveId' | 'text' | 'origin'>;
+type Delivered = Pick<DeliveredDirective, 'directiveId' | 'text' | 'origin' | 'advice'>;
+
+/** An advice's heading names its severity and the advisor, then the directive. */
+const adviceHead = (d: Delivered) =>
+  `${ADVICE_DIRECTIVE_PREFIX}${d.advice ? `${d.advice.severity} from ${d.advice.from}, ` : ''}${d.directiveId})`;
+
+/**
+ * An advice's text under its heading, every line quoted: the advisor model wrote it, so no line
+ * of it can read as a directive heading. A form feed, vertical tab or next-line starts a line
+ * too, since a model may read it as a break.
+ */
+const adviceBody = (d: Delivered) =>
+  `${adviceHead(d)}:\n${d.text.replace(/(^|\r\n|[\n\r\v\f\u0085\u2028\u2029])/g, '$1> ')}`;
 
 /** The core worker's form of one delivered directive; each directive is its own message. */
 export const directiveText = (d: Delivered) =>
-  `${d.origin === 'user' ? DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}`;
+  d.origin === 'user' ? `${DIRECTIVE_PREFIX}${d.directiveId}): ${d.text}` : adviceBody(d);
 
 /** The SDK worker's form of one delivered directive. */
 export const sdkDirectiveText = (d: Delivered) =>
-  `${d.origin === 'user' ? SDK_DIRECTIVE_PREFIX : ADVICE_DIRECTIVE_PREFIX}${d.directiveId}):\n${d.text}`;
+  d.origin === 'user' ? `${SDK_DIRECTIVE_PREFIX}${d.directiveId}):\n${d.text}` : adviceBody(d);
 
 export function parentQuestionsText(questions: readonly ParentQuestionMessage[]): string {
   return (

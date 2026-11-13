@@ -31,6 +31,7 @@ describe('advisor names', () => {
     expect(messages.TeamEditor.links.advise).toBe(link);
     expect(messages.Canvas.linkLabel.advise).toBe(link);
     expect(messages.Canvas.ports.advise).toBeTruthy();
-    expect(messages.Validation.codes.ADVISOR_NOT_SUPPORTED).toBeTruthy();
+    expect(messages.Validation.codes.ADVISOR_UNWATCHED).toBeTruthy();
+    expect(messages.Validation.codes).not.toHaveProperty('ADVISOR_NOT_SUPPORTED');
   });
 });

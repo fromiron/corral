@@ -13,8 +13,7 @@ import type { ProfileOption } from './NodeSettings.tsx';
 import { TeamEditor } from './TeamEditor.tsx';
 
 // An advisor in the team editor: a row above the flow, watching two agents through dash-dot
-// advise links (docs/specs/features/canvas.md rules 2, 4 and 11). Until advisors run, the
-// compiler marks every advisor with ADVISOR_NOT_SUPPORTED, so its problem mark shows here.
+// advise links (docs/specs/features/canvas.md rules 2, 4 and 11).
 
 function ok(result: EditResult): { draft: EditorDraft; nodeId: string } {
   if (!result.ok) throw new Error(`refused: ${result.reason}`);

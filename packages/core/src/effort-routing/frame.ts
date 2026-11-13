@@ -96,7 +96,8 @@ const bytes = (text: string) => utf8ToBytes(text).length;
 export function callSnapshot(
   input: CallSnapshotInput | undefined,
   fixed: {
-    directives: readonly { directiveId: string; text: string }[];
+    /** An advice is named as one: it is not the person's instruction. */
+    directives: readonly { directiveId: string; text: string; origin?: 'user' | 'advice' }[];
     questions: readonly ParentQuestionMessage[];
     attachments?: readonly QuestionAttachment[];
   },
@@ -117,7 +118,7 @@ export function callSnapshot(
   for (const directive of fixed.directives)
     add({
       id: `directive:${directive.directiveId}`,
-      label: `instruction ${directive.directiveId}`,
+      label: `${directive.origin === 'advice' ? 'advisor advice' : 'instruction'} ${directive.directiveId}`,
       text: directive.text,
       required: true,
       group: null,

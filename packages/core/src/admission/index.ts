@@ -20,6 +20,7 @@ import {
   workPlanProblem,
 } from '@corral/contracts';
 import { utf8ToBytes } from '@noble/hashes/utils.js';
+import { ADVISOR_COLLABORATION_TOOLS, advisorMayUse } from '../advisor/tools.ts';
 import type { InstallationPolicy } from '../config.ts';
 import { createsWaitCycle, NO_PROGRESS_TURNS, noProgressReached } from '../limits.ts';
 import type { RunProjection } from '../projection.ts';
@@ -281,7 +282,13 @@ const roleAllowlist: Gate<ToolGateView> = {
   check: (view) => {
     const { input, proposal, projection: p, callables } = view;
     const { args } = proposal;
-    const collaboration = input.role.allowedCollaborationTools as readonly string[];
+    const advisor = input.assignment.kind === 'advisor';
+    // An advisor's tools are the Coordinator's, whatever its role lists (features/advisor.md).
+    if (advisor && !advisorMayUse(input.role, proposal.name))
+      return denied('an advisor only reads and advises');
+    const collaboration: readonly string[] = advisor
+      ? ADVISOR_COLLABORATION_TOOLS
+      : input.role.allowedCollaborationTools;
     const allow: GateDecision = { kind: 'allow' };
     if (
       (proposal.name === 'spawn_subagents' && args.mode === 'items') ||
@@ -295,7 +302,11 @@ const roleAllowlist: Gate<ToolGateView> = {
       }
       if (
         Object.values(p.executions).some(
-          (e) => !TERMINAL_EXECUTION_STATUSES.has(e.status) && !ancestors.has(e.executionId),
+          // An advisor's execution is not a step of the flow (features/advisor.md, 계약).
+          (e) =>
+            !TERMINAL_EXECUTION_STATUSES.has(e.status) &&
+            !ancestors.has(e.executionId) &&
+            !e.advisor,
         )
       )
         return denied('item delegation requires all other executions to settle');
@@ -320,6 +331,7 @@ const roleAllowlist: Gate<ToolGateView> = {
         'ask',
         'reply',
         'read_artifact',
+        'advise',
         'ask_user',
         'update_plan',
       ].includes(proposal.name)
@@ -330,11 +342,14 @@ const roleAllowlist: Gate<ToolGateView> = {
       view.hostAnswer === true &&
       input.role.answer === 'final_reply' &&
       (proposal.name === 'write_artifact' || proposal.name === 'submit_result');
-    if (input.harness && !view.descriptor && !view.simulation && !hostPublishes)
+    // An advisor starts without its role's work style; none of it applies.
+    const harness = advisor ? undefined : input.harness;
+    if (harness && !view.descriptor && !view.simulation && !hostPublishes)
       return denied('tool is absent from the loaded harness');
-    if (input.harness && !input.harness.allowedTools.includes(proposal.name) && !hostPublishes)
+    if (harness && !harness.allowedTools.includes(proposal.name) && !hostPublishes)
       return denied('tool is not allowed by this harness');
     if (view.descriptor?.source.startsWith('extension:')) {
+      if (advisor) return denied('an advisor only reads and advises');
       return input.harness?.policy === 'trusted-native' &&
         input.harness.allowedTools.includes(proposal.name)
         ? allow
@@ -512,7 +527,7 @@ const roleAllowlist: Gate<ToolGateView> = {
     if (proposal.name !== 'write_artifact' && proposal.name !== 'submit_result') {
       if (!collaboration.includes(proposal.name)) {
         return denied(
-          ['spawn_subagents', 'await_tasks', 'ask', 'reply', 'read_artifact'].includes(
+          ['spawn_subagents', 'await_tasks', 'ask', 'reply', 'read_artifact', 'advise'].includes(
             proposal.name,
           )
             ? `role may not use ${proposal.name}`
@@ -667,6 +682,18 @@ const roleAllowlist: Gate<ToolGateView> = {
           args.evidenceRefs.some((id) => typeof id !== 'string' || !view.readable().has(id))
         )
           return denied('answer evidence must be readable by the responder');
+        return allow;
+      }
+      case 'advise': {
+        // Only an advisor's own execution advises; the Coordinator checks the review it names.
+        if (input.assignment.kind !== 'advisor') return denied('only an advisor gives advice');
+        // The target and the command id are the Coordinator's, never the model's.
+        if (Object.keys(args).some((key) => key !== 'severity' && key !== 'note'))
+          return refuse('SCHEMA_INVALID', 'advice takes only a severity and a note');
+        if (!['nit', 'concern', 'blocker'].includes(String(args.severity)))
+          return refuse('SCHEMA_INVALID', 'severity is nit, concern or blocker');
+        if (typeof args.note !== 'string' || !args.note.trim() || args.note.length > 1000)
+          return refuse('SCHEMA_INVALID', 'note must be 1 to 1000 characters');
         return allow;
       }
       case 'read_artifact': {

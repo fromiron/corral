@@ -5946,6 +5946,19 @@ export class WorkspaceService implements FileTools {
     });
   }
 
+  /** The work folders a Run's paths may name: its copy and its project's folder. */
+  runWorkspaceRoots(runId: string): string[] {
+    const sessionId =
+      this.runAccess.get(runId)?.session_id ?? this.directRuns.get(runId)?.sessionId;
+    if (!sessionId) return [];
+    const roots: string[] = [];
+    const row = this.worktree(sessionId);
+    if (row) roots.push(row.worktree_path);
+    const binding = this.bindingOfSession(sessionId);
+    if (binding) roots.push(binding.root_path);
+    return roots;
+  }
+
   worktreeScope(sessionId: string): string | null {
     const row = this.worktree(sessionId);
     if (!row) return null;

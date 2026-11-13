@@ -21,8 +21,7 @@ import {
   planRun,
 } from '../src/index.ts';
 
-// Advisor compile rules (docs/specs/features/team-graph.md, "구조 규칙" 10 and 11). Until
-// advisors run, a definition that keeps every rule is still refused by ADVISOR_NOT_SUPPORTED.
+// Advisor compile rules (docs/specs/features/team-graph.md, "구조 규칙" 10 and 11).
 
 const advisorRole = (change: Partial<AgentRole> = {}): AgentRole => ({
   id: 'advisor_role',
@@ -96,14 +95,11 @@ const expectOne = (definition: unknown, expected: Partial<Diagnostic>) =>
   expect(diagnosticsOf(definition)).toContainEqual(expect.objectContaining(expected));
 
 describe('an advisor that keeps every rule', () => {
-  it('is refused only because advisors cannot run yet', () => {
-    expect(diagnosticsOf(watched())).toEqual([
-      expect.objectContaining({
-        code: 'ADVISOR_NOT_SUPPORTED',
-        severity: 'error',
-        nodeId: 'advisor',
-      }),
-    ]);
+  it('compiles, with its advisor in the plan and out of the run order', () => {
+    const result = compileDefinition(watched());
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.plan.advisors.advisor?.watches).toEqual(['writer']);
+    expect(result.plan.order).not.toContain('advisor');
   });
 
   it('a definition without advisors still compiles, with no advisors in its plan', () => {
@@ -239,7 +235,6 @@ describe('rule 11: advise links', () => {
     const definition = watched();
     definition.capabilityLinks = [];
     expect(diagnosticsOf(definition)).toEqual([
-      expect.objectContaining({ code: 'ADVISOR_NOT_SUPPORTED', nodeId: 'advisor' }),
       expect.objectContaining({ code: 'ADVISOR_UNWATCHED', nodeId: 'advisor' }),
     ]);
   });
@@ -322,8 +317,7 @@ describe('rule 11: advise links', () => {
       sourceNodeId: 'advisor',
       targetNodeId: 'helper',
     });
-    expect(codes(diagnosticsOf(definition))).toEqual(['ADVISOR_NOT_SUPPORTED']);
-    const result = compileDefinition(definition, { advisors: 'plan' });
+    const result = compileDefinition(definition);
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
     expect(result.plan.advisors.advisor?.watches).toEqual(['writer', 'helper']);
   });
@@ -341,7 +335,6 @@ describe('rule 11: advise links', () => {
     ];
     expect(diagnosticsOf(definition)).toEqual([
       expect.objectContaining({ code: 'ADVISOR_ADVISE_QUESTIONS', linkId: 'watch' }),
-      expect.objectContaining({ code: 'ADVISOR_NOT_SUPPORTED', nodeId: 'advisor' }),
     ]);
   });
 
@@ -361,7 +354,7 @@ describe('rule 11: advise links', () => {
         ? { ...n, inputBindings: [...n.inputBindings, { kind: 'question_answer', name: 'reply' }] }
         : n,
     );
-    const result = compileDefinition(definition, { advisors: 'plan' });
+    const result = compileDefinition(definition);
     expect(result.ok).toBe(false);
     expect(result.diagnostics).toContainEqual(
       expect.objectContaining({ code: 'BINDING_SOURCE', nodeId: 'writer' }),
@@ -444,7 +437,7 @@ describe('rule 11: tools', () => {
         ? advisorRole({ allowedWorkTools: ['read_file'], allowedCollaborationTools: ['advise'] })
         : r,
     );
-    expect(codes(diagnosticsOf(definition))).toEqual(['ADVISOR_NOT_SUPPORTED']);
+    expect(compileDefinition(definition).ok).toBe(true);
   });
 
   it.each(['scheduled', 'callable'])('refuses the advise tool on a %s agent', (invocation) => {
@@ -587,9 +580,9 @@ describe('a referenced Team with an advisor', () => {
   });
 });
 
-describe('the plan of advisors, with the door open', () => {
+describe('the plan of advisors', () => {
   const plan = (definition: unknown) => {
-    const result = compileDefinition(definition, { advisors: 'plan' });
+    const result = compileDefinition(definition);
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
     return result.plan;
   };
@@ -615,13 +608,6 @@ describe('the plan of advisors, with the door open', () => {
     );
     return definition;
   }
-
-  it('the default still refuses a definition that keeps every rule', () => {
-    expect(codes(diagnosticsOf(researchWithAdvisors()))).toEqual([
-      'ADVISOR_NOT_SUPPORTED',
-      'ADVISOR_NOT_SUPPORTED',
-    ]);
-  });
 
   it('lists the advisors and leaves every other part of the plan as it is without them', () => {
     const definition = researchWithAdvisors();
@@ -678,8 +664,7 @@ describe('the plan of advisors, with the door open', () => {
     });
     const teams: Record<string, unknown> = { saved, middle };
     const top = around('top', 'middle');
-    expect(planRun(top, { resolveTeam: (id) => teams[id] })).toMatchObject({ ok: false });
-    const run = planRun(top, { resolveTeam: (id) => teams[id], advisors: 'plan' });
+    const run = planRun(top, { resolveTeam: (id) => teams[id] });
     if (!run.ok) throw new Error(JSON.stringify(run.issues));
     expect(run.plan.advisors).toEqual({
       'team.advisor': {
@@ -711,7 +696,6 @@ describe('advisor diagnostics in the editor', () => {
     'ADVISOR_TOOLS',
     'ADVISE_TOOL_ADVISOR_ONLY',
     'ADVISOR_NOT_A_STEP',
-    'ADVISOR_NOT_SUPPORTED',
   ];
   it.each([
     ['en', en],
