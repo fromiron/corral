@@ -1,6 +1,7 @@
-import type { RunEvent } from '@corral/contracts';
+import type { ExecutionStatus, RunEvent } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
 import type { RunFlowLoop } from '../run/flow.ts';
+import { executionWatching } from '../run/presence.ts';
 
 // Words for run facts (roadmap UX-A4). Event types and reason codes stay visible where they are
 // precise (Timeline detail, filters); everywhere a person reads, they read a sentence.
@@ -11,15 +12,20 @@ type Described = { key: string; values: Values } | null;
 const str = (value: unknown) => (typeof value === 'string' ? value : '');
 const num = (value: unknown) => (typeof value === 'number' ? value : 0);
 
-/** Who made a directive: the person or an advisor's advice. */
-export type DirectiveOriginOf = (directiveId: string) => 'user' | 'advice' | undefined;
+/** What the record knows beyond the event: who made a directive, which executions advise. */
+export interface EventContext {
+  /** The person or an advisor's advice. */
+  directiveOrigin?: (directiveId: string) => 'user' | 'advice' | undefined;
+  /** Whether an execution is an advisor's. */
+  advisor?: (executionId: string) => boolean;
+}
 
 /** Message key and values for an event, or null when there is no sentence for it. */
 export function describeEvent(
   event: RunEvent,
   labelOf: (executionId: string | undefined) => string,
   nodeLabel: (nodeId: string) => string,
-  directiveOrigin: DirectiveOriginOf = () => undefined,
+  { directiveOrigin = () => undefined, advisor = () => false }: EventContext = {},
 ): Described {
   const p = event.payload as Record<string, unknown>;
   const actor = labelOf(str(p.executionId) || event.executionId);
@@ -37,8 +43,15 @@ export function describeEvent(
       return of('runInterrupted');
     case 'execution.created':
       return of('executionCreated', { node: nodeLabel(str(p.nodeId)) });
-    case 'execution.state_changed':
-      return of('executionState', { node: actor, to: str(p.to) });
+    case 'execution.state_changed': {
+      // An advisor resting between reviews watches (presence), not waits for an answer.
+      const executionId = str(p.executionId) || (event.executionId ?? '');
+      const watching = executionWatching({
+        status: p.to as ExecutionStatus,
+        advisor: advisor(executionId),
+      });
+      return of('executionState', { node: actor, to: watching ? 'watching' : str(p.to) });
+    }
     case 'execution.settled':
       return of('executionSettled', { node: actor, outcome: str(p.outcome) });
     case 'task.created':
@@ -163,15 +176,15 @@ export function EventText({
   event,
   labelOf,
   nodeLabel,
-  directiveOrigin,
+  context,
 }: {
   event: RunEvent;
   labelOf: (executionId: string | undefined) => string;
   nodeLabel: (nodeId: string) => string;
-  directiveOrigin?: DirectiveOriginOf;
+  context?: EventContext;
 }) {
   const t = useTranslations('Events');
-  const described = describeEvent(event, labelOf, nodeLabel, directiveOrigin);
+  const described = describeEvent(event, labelOf, nodeLabel, context);
   return <>{described ? t(described.key, described.values) : event.type}</>;
 }
 

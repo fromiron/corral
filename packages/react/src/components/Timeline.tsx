@@ -60,7 +60,10 @@ export function Timeline({
   const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
   const iterations = useRunDisplay(session, (s) => s.projection?.iterations);
   const directives = useRunDisplay(session, (s) => s.projection?.directives);
-  const directiveOrigin = (directiveId: string) => directives?.[directiveId]?.origin;
+  const context = {
+    directiveOrigin: (directiveId: string) => directives?.[directiveId]?.origin,
+    advisor: (executionId: string) => executionViews?.[executionId]?.advisor === true,
+  };
   const definition = useStore(session, (s) => s.definition);
   const nodeLabel = (nodeId: string) =>
     definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
@@ -283,7 +286,7 @@ export function Timeline({
                             event={event}
                             labelOf={labelOf}
                             nodeLabel={nodeLabel}
-                            directiveOrigin={directiveOrigin}
+                            context={context}
                           />
                         </span>
                         <span className="ml-auto shrink-0 font-mono text-muted-foreground">
@@ -312,7 +315,7 @@ export function Timeline({
                   event={selected}
                   labelOf={labelOf}
                   nodeLabel={nodeLabel}
-                  directiveOrigin={directiveOrigin}
+                  context={context}
                 />
               </p>
               <p className="text-caption text-muted-foreground tabular-nums">
@@ -343,7 +346,7 @@ export function Timeline({
                             event={cause}
                             labelOf={labelOf}
                             nodeLabel={nodeLabel}
-                            directiveOrigin={directiveOrigin}
+                            context={context}
                           />
                         </span>
                       </KitButton>

@@ -4,6 +4,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
+import { executionWatching } from './presence.ts';
 import { currentAttempts, type NodeRunSummary, nodeRunSummary } from './selectors.ts';
 
 export interface RunAgentGraphNode {
@@ -12,6 +13,8 @@ export interface RunAgentGraphNode {
   executionIds: string[];
   summary: NodeRunSummary;
   lead: boolean;
+  /** An advisor resting between reviews (presence `watching`), not waiting for an answer. */
+  watching?: true;
 }
 
 export interface RunAgentGraphRelation {
@@ -60,6 +63,7 @@ export function buildRunAgentGraph(
         label: node.label,
         executionIds: instances.map((execution) => execution.executionId),
         summary: nodeRunSummary(projection, id),
+        ...(executionWatching(instances.at(-1)) ? { watching: true as const } : {}),
         lead: instances.some(
           (execution) =>
             !execution.parentExecutionId && !responders.has(execution.taskId) && !execution.advisor,

@@ -6,6 +6,7 @@ import { IntlProvider } from 'use-intl';
 import { describe, expect, it } from 'vitest';
 import { ExecutionSteering } from '../src/components/ExecutionSteering.tsx';
 import { useRequestOwner } from '../src/components/RequestCard.tsx';
+import { RunCanvas } from '../src/components/RunCanvas.tsx';
 import { RunFlowView } from '../src/components/RunFlowView.tsx';
 import { EventText } from '../src/components/RunText.tsx';
 import { ExecutionTree } from '../src/components/RunView.tsx';
@@ -45,7 +46,10 @@ function sentence(event: RunEvent, locale: 'en' | 'ko' = 'en') {
         event={event}
         labelOf={labelOf}
         nodeLabel={nodeLabel}
-        directiveOrigin={(id) => projection.directives[id]?.origin}
+        context={{
+          directiveOrigin: (id) => projection.directives[id]?.origin,
+          advisor: (id) => projection.executions[id]?.advisor === true,
+        }}
       />,
       locale,
     ),
@@ -240,5 +244,107 @@ describe('counts and usage', () => {
       );
       expect(JSON.stringify(entries)).not.toContain('duplicate');
     }
+  });
+});
+
+describe('the advisor’s rest across the run record', () => {
+  it('says in the timeline that a resting advisor watches, and a worker still waits for an answer', () => {
+    const rest = advisorRunEvents().at(-1) as RunEvent;
+    expect(rest.type).toBe('execution.state_changed');
+    expect(sentence(rest)).toBe('Reviewer: watching');
+    expect(sentence(rest, 'ko')).toBe('Reviewer: 지켜보는 중');
+    const worker = {
+      ...rest,
+      executionId: 'impl_1',
+      payload: { ...rest.payload, executionId: 'impl_1' },
+    } as RunEvent;
+    expect(sentence(worker)).toBe('Implementer: waiting for an answer');
+  });
+
+  it('reads the resting advisor as watching on the work flow card and the relation graph', () => {
+    const session = advisorRunSession();
+    const flow = render(
+      wrap(
+        <RunFlowView
+          session={session}
+          definition={definition}
+          onSelectExecution={() => {}}
+          onOpenArtifact={() => {}}
+        />,
+      ),
+    );
+    const board = flow.getByTestId('run-flow');
+    expect(board.textContent).toContain('Watching');
+    expect(board.textContent).not.toContain('Waiting for a reply');
+    flow.unmount();
+    const graph = render(
+      wrap(
+        <RunCanvas
+          session={session}
+          definition={definition}
+          display="list"
+          selectedNodeId={null}
+          onSelectNode={() => {}}
+        />,
+      ),
+    );
+    expect(graph.container.textContent).toContain('Watching');
+    expect(graph.container.textContent).not.toContain('Waiting for a reply');
+  });
+});
+
+describe('relation cards', () => {
+  it('writes a lone advice once, and counts several above their own lines', () => {
+    const session = advisorRunSession();
+    const view = () =>
+      render(
+        wrap(
+          <RunFlowView
+            session={session}
+            definition={definition}
+            onSelectExecution={() => {}}
+            onOpenArtifact={() => {}}
+          />,
+        ),
+      );
+    const one = view();
+    expect(one.getAllByText('Concern · Next request · Queued')).toHaveLength(1);
+    one.unmount();
+    const projection = session.getState().projection;
+    if (!projection) throw new Error('fixture');
+    session.setState({
+      projection: {
+        ...projection,
+        advice: {
+          ...projection.advice,
+          advice_2: {
+            adviceId: 'advice_2',
+            observerExecutionId: 'advisor_1',
+            targetExecutionId: 'impl_1',
+            severity: 'blocker',
+            delivery: 'preserve',
+            directiveId: null,
+            note: 'Stop before the migration.',
+            acceptedSeq: 99,
+          },
+        },
+      },
+    });
+    const two = view();
+    expect(two.getAllByText('2 records')).toHaveLength(1);
+    expect(two.getAllByText('Concern · Next request · Queued')).toHaveLength(1);
+    expect(two.getAllByText('Blocker · Kept on record')).toHaveLength(1);
+  });
+});
+
+describe('the execution tree’s counts', () => {
+  it('counts the advisor as an execution but never as running', () => {
+    const { container } = render(
+      wrap(<ExecutionTree session={advisorRunSession()} onSteer={() => {}} />),
+    );
+    const bar = container.querySelector('header');
+    expect(bar?.textContent).toContain('2 executions');
+    expect(bar?.textContent).toContain('1 running');
+    expect(bar?.textContent).not.toContain('2 running');
   });
 });

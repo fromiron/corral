@@ -1259,7 +1259,7 @@
     "runState": "Run is now {to, select, running {running} pausing {pausing} paused {paused} awaiting_user {waiting for you} cancelling {cancelling} succeeded {succeeded} failed {failed} cancelled {cancelled} interrupted {interrupted} validating {validating} other {{to}}}",
     "runInterrupted": "Run interrupted by a backend restart",
     "executionCreated": "{node} started",
-    "executionState": "{node}: {to, select, active {working} waiting_children {waiting for its helpers} waiting_message {waiting for an answer} waiting_approval {waiting for approval} paused {paused} cancelling {cancelling} ready {ready} queued {queued} other {{to}}}",
+    "executionState": "{node}: {to, select, active {working} waiting_children {waiting for its helpers} waiting_message {waiting for an answer} waiting_approval {waiting for approval} paused {paused} cancelling {cancelling} ready {ready} queued {queued} watching {watching} other {{to}}}",
     "executionSettled": "{node} {outcome, select, succeeded {finished} failed {failed} cancelled {was cancelled} other {ended ({outcome})}}",
     "taskCreated": "Task for {node} created",
     "taskAssigned": "{node} took its task",
@@ -5746,7 +5746,8 @@
       "fail": "Fail",
       "inconclusive": "Inconclusive",
       "not_evaluated": "Not evaluated"
-    }
+    },
+    "itemCount": "{count, plural, one {# record} other {# records}}"
   },
   "RunLoop": {
     "title": "{name} Loop",

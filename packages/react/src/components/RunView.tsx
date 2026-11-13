@@ -25,7 +25,7 @@ import {
 } from '../run/flow.ts';
 import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
-import { executionPresence } from '../run/presence.ts';
+import { executionWatching } from '../run/presence.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { requestOpen } from '../run/transcript.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
@@ -542,15 +542,13 @@ export function ExecutionTree({
     const children = (childrenOf.get(id) ?? []).flatMap((child) => node(child) ?? []);
     // An advisor stands outside the flow: it says so once, by its name, and rests between
     // reviews watching, not waiting for an answer (features/advisor.md).
-    const presence = executionPresence({
-      status: execution.status,
-      observer: execution.advisor === true,
-    });
-    const watching = presence.detail === 'watching';
+    const watching = executionWatching(execution);
     return {
       id,
       name: labelOf(execution.nodeId),
-      ...(execution.advisor ? { tag: <KitBadge>{adviceText('advisor')}</KitBadge> } : {}),
+      ...(execution.advisor
+        ? { tag: <KitBadge>{adviceText('advisor')}</KitBadge>, outsideFlow: true }
+        : {}),
       model: model?.modelId ?? execution.modelProfile,
       ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
       status: executionAgentStatus(execution.status),

@@ -118,6 +118,17 @@ export function executionPresence(execution: {
   );
 }
 
+/** An advisor resting between reviews: it watches, and waits for nobody's answer. */
+export function executionWatching(
+  execution: { status: ExecutionStatus; advisor?: boolean } | undefined,
+): boolean {
+  return (
+    !!execution &&
+    executionPresence({ status: execution.status, observer: execution.advisor === true }).detail ===
+      'watching'
+  );
+}
+
 /**
  * The Run's own status decides. Its executions and open requests only find out whether it waits
  * for the person, and an ended Run never does: a failed or cancelled execution shows on its own

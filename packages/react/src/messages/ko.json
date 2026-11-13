@@ -1259,7 +1259,7 @@
     "runState": "실행 상태: {to, select, running {진행 중} pausing {일시정지 중} paused {일시정지됨} awaiting_user {응답 대기} cancelling {취소 중} succeeded {성공} failed {실패} cancelled {취소됨} interrupted {중단됨} validating {확인 중} other {{to}}}",
     "runInterrupted": "백엔드 재시작으로 실행 중단",
     "executionCreated": "{node} 시작",
-    "executionState": "{node}: {to, select, active {작업 중} waiting_children {보조의 결과를 기다리는 중} waiting_message {답을 기다리는 중} waiting_approval {승인을 기다리는 중} paused {일시정지} cancelling {취소 중} ready {준비} queued {대기열} other {{to}}}",
+    "executionState": "{node}: {to, select, active {작업 중} waiting_children {보조의 결과를 기다리는 중} waiting_message {답을 기다리는 중} waiting_approval {승인을 기다리는 중} paused {일시정지} cancelling {취소 중} ready {준비} queued {대기열} watching {지켜보는 중} other {{to}}}",
     "executionSettled": "{node} {outcome, select, succeeded {완료} failed {실패} cancelled {취소됨} other {종료({outcome})}}",
     "taskCreated": "{node}의 작업 생성",
     "taskAssigned": "{node}이(가) 작업을 맡음",
@@ -5746,7 +5746,8 @@
       "fail": "실패",
       "inconclusive": "판단 보류",
       "not_evaluated": "평가 전"
-    }
+    },
+    "itemCount": "기록 {count}건"
   },
   "RunLoop": {
     "title": "루프 · {name}",

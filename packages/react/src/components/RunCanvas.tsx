@@ -234,6 +234,7 @@ export function RunCanvas({
 }) {
   const t = useTranslations('RunCanvas');
   const statusText = useTranslations('Canvas.nodeStatus');
+  const presenceText = useTranslations('Presence');
   const reduce = useReducedMotion() ?? false;
   const shape = useShape();
   const hasPreview = renderNodePreview !== undefined;
@@ -381,10 +382,12 @@ export function RunCanvas({
             ? t('unsettled')
             : summary.status === 'waiting_approval'
               ? statusText(waitingWords[awaiting[node.id] ?? 'you'])
-              : statusText(summary.status),
+              : node.watching
+                ? presenceText('detail.watching')
+                : statusText(summary.status),
       };
     },
-    [models, ended, awaiting, t, statusText],
+    [models, ended, awaiting, t, statusText, presenceText],
   );
   const triggerFor = useCallback(
     (nodeId: string, button: ReactElement) => (
@@ -410,7 +413,13 @@ export function RunCanvas({
             : []),
           ...(Object.keys(summary.counts).length > 1
             ? Object.entries(summary.counts).map(([state, count]) =>
-                statusText('stateCount', { status: statusText(state), count: count ?? 0 }),
+                statusText('stateCount', {
+                  status:
+                    node.watching && state === 'waiting_message'
+                      ? presenceText('detail.watching')
+                      : statusText(state),
+                  count: count ?? 0,
+                }),
               )
             : []),
           ...(summary.previousFailures
@@ -466,6 +475,7 @@ export function RunCanvas({
       adjacent,
       onSelectNode,
       statusText,
+      presenceText,
       triggerFor,
       hasPreview,
       reduce,

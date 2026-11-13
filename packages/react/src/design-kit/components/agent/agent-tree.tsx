@@ -84,6 +84,8 @@ interface AgentTreeNode {
   selectable?: boolean;
   /** Organizational cards do not count as agents or appear in status lists. */
   summaryExcluded?: boolean;
+  /** An agent that watches from outside the flow: it counts as an agent, never as running. */
+  outsideFlow?: boolean;
 }
 
 /** Words the tree shows; every default is the kit's English text. */
@@ -769,7 +771,7 @@ function SummaryBar({
   const popId = useId();
   const [open, setOpen] = useState<'waiting' | 'failed' | null>(null);
   const included = all.filter((node) => !node.summaryExcluded);
-  const running = included.filter((a) => a.status === 'running').length;
+  const running = included.filter((a) => a.status === 'running' && !a.outsideFlow).length;
   const waiting = included.filter((a) => a.status === 'waiting').length;
   const failed = included.filter((a) => a.status === 'failed').length;
   const list = open ? included.filter((a) => a.status === open) : [];
