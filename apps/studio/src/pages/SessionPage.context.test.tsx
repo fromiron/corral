@@ -257,26 +257,36 @@ async function mount(
     autoRoute: null,
   }));
   // The live run's projection the composer reads its targets from (composer-flow.md "계약"):
-  // the run's one execution, working.
+  // the writer writing the answer, and a reviewer working beside it.
   const runSessions = new Map<string, StoreApi<Record<string, unknown>>>();
   const runFor = vi.fn((runId: string) => {
     const existing = runSessions.get(runId);
     if (existing) return existing;
     const projection = emptyProjection(runId);
     projection.status = 'running';
-    projection.executionOrder = ['execution'];
+    projection.executionOrder = ['execution', 'reviewer'];
     projection.executions.execution = {
       executionId: 'execution',
       nodeId: 'writer',
       status: fixture.executionStatus,
       waitingOn: null,
     } as never;
+    projection.executions.reviewer = {
+      executionId: 'reviewer',
+      nodeId: 'review',
+      status: fixture.executionStatus,
+      waitingOn: null,
+    } as never;
+    const team = linearCorral(['writer', 'review']);
     const created = createStore<Record<string, unknown>>(() => ({
       runId,
       projection,
       definition: {
-        ...linearCorral(['writer']),
-        nodes: linearCorral(['writer']).nodes.map((node) => ({ ...node, label: 'Writer' })),
+        ...team,
+        nodes: team.nodes.map((node) => ({
+          ...node,
+          label: node.id === 'writer' ? 'Writer' : node.id === 'review' ? 'Review' : node.label,
+        })),
       },
       streamError: null,
       missingRunId: null,

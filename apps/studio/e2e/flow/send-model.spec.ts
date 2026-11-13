@@ -188,4 +188,71 @@ test.describe('sending while a run goes', () => {
     expect(requests[3]).toContain('Then write the summary');
     expect(corral.errors).toEqual([]);
   });
+
+  // The key line shows whole or not at all, and the tool line keeps one line: where room runs
+  // short the folder notice gives way first, so all three keys fit at both widths.
+  test('the three keys show whole on one tool line at 1280 and 760, in English and Korean', async ({
+    page,
+    corral,
+  }) => {
+    const held = hold();
+    corral.fake?.setResponses([
+      async () => {
+        held.reach();
+        await held.opened;
+        return fauxAssistantMessage('Done.');
+      },
+    ]);
+    try {
+      await corral.open('/projects/default');
+      await newConversation(page);
+      await requestBox(page).fill('Find why login is slow');
+      await requestBox(page).press('Enter');
+      await held.reached;
+      for (const [locale, interrupt] of [
+        ['en', 'Interrupt'],
+        ['ko', '끼어들기'],
+      ] as const) {
+        if (locale === 'ko') {
+          await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
+          await page.reload();
+        }
+        for (const width of [1280, 760]) {
+          await page.setViewportSize({ width, height: 800 });
+          await expect(page.locator('[data-slot="composer-keys"]')).toContainText(interrupt);
+          await waitForStill(page);
+          const line = await page.evaluate(() => {
+            const keys = document.querySelector('[data-slot="composer-keys"]');
+            const row = keys?.parentElement?.parentElement;
+            if (!keys || !row) return null;
+            const box = keys.getBoundingClientRect();
+            const items = [...keys.querySelectorAll('[data-slot="composer-key"]')].map((node) =>
+              node.getBoundingClientRect(),
+            );
+            const tallest = Math.max(
+              ...[...row.querySelectorAll('button')].map(
+                (node) => node.getBoundingClientRect().height,
+              ),
+            );
+            return {
+              items: items.length,
+              whole: items.filter(
+                (item) =>
+                  item.width > 0 &&
+                  item.left >= box.left - 0.5 &&
+                  item.right <= box.right + 0.5 &&
+                  item.top >= box.top - 0.5 &&
+                  item.bottom <= box.bottom + 0.5,
+              ).length,
+              oneLine: row.getBoundingClientRect().height <= tallest + 1,
+            };
+          });
+          expect(line, `${locale} ${width}`).toEqual({ items: 3, whole: 3, oneLine: true });
+        }
+      }
+    } finally {
+      held.open();
+    }
+    expect(corral.errors).toEqual([]);
+  });
 });

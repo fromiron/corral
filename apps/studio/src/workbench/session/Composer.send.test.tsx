@@ -392,6 +392,22 @@ describe('sending while a run goes', () => {
 });
 
 describe('the target', () => {
+  it('is a fixed badge while it is the only one, and opens the list when there is a choice', async () => {
+    const one = await mount();
+    const fixed = one.container.querySelector('[data-slot="composer-target"]');
+    expect(fixed?.textContent).toContain('Writer');
+    expect(fixed?.tagName).toBe('SPAN');
+    expect(fixed?.querySelector('button, [tabindex]')).toBeNull();
+    const several = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+    const trigger = several.container.querySelectorAll('[data-slot="composer-target"]')[0];
+    expect(trigger?.tagName).toBe('BUTTON');
+    expect(trigger?.getAttribute('aria-label')).toBe(
+      messages.Composer.targetLabel.replace('{name}', 'Writer'),
+    );
+    // The opening mark, as the tool line's other choices have.
+    expect(trigger?.querySelectorAll('svg')).toHaveLength(2);
+  });
+
   it('is fixed once a chosen target has text; when it ends, sending is blocked, never moved', async () => {
     const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
     await act(async () => f.targetButton()?.click());

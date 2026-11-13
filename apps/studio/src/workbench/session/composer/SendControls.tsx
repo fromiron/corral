@@ -10,7 +10,7 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from '@corral/react/design-kit';
-import { ChevronDown } from '@corral/react/icons';
+import { ArrowRight, ChevronDown } from '@corral/react/icons';
 import { useTranslations } from 'use-intl';
 import { sendKeyLabels } from '../../../shortcuts.ts';
 import type {
@@ -32,8 +32,9 @@ const ROLES: readonly SendKeyRole[] = ['send', 'interrupt', 'queue'];
  * The keys usable now and what each sends, on one line whose height never changes: Send alone
  * while nothing runs, the three keys while a run goes. A key that sends the same as one before
  * it is left out (an execution that cannot be cut joins with the interrupt key too). It closes
- * the tool line's left side, next to Send, and gives way first where the line runs short: a key
- * that no longer fits drops whole (the send menu lists the same keys).
+ * the tool line's left side, next to Send. It shows whole or not at all: where the line runs
+ * short the folder notice gives way first, and only then does the hint drop (the send menu
+ * lists the same keys).
  */
 export function KeyHint({
   keys,
@@ -52,19 +53,21 @@ export function KeyHint({
       data-slot="composer-keys"
       className="m-0 ml-auto flex h-5 min-w-0 shrink flex-wrap content-start items-center justify-end overflow-hidden whitespace-nowrap text-caption text-muted-foreground"
     >
-      {/* Holds the first line, so a key that does not fit moves to the hidden next one whole. */}
+      {/* Holds the first line, so a hint that does not fit moves to the hidden next one whole. */}
       <span aria-hidden="true" className="h-5 w-0" />
-      {shown.map((role, index) => (
-        <span key={role} className="inline-flex h-5 items-center gap-1 pl-1.5">
-          {index > 0 ? (
-            <span aria-hidden="true" className="pr-0.5">
-              ·
-            </span>
-          ) : null}
-          <Kbd className="text-foreground">{labels[role]}</Kbd>
-          {tc(`keyHint.${keys[role]}`)}
-        </span>
-      ))}
+      <span data-slot="composer-keys-hint" className="inline-flex h-5 items-center gap-1.5 pl-1.5">
+        {shown.map((role, index) => (
+          <span key={role} data-slot="composer-key" className="inline-flex items-center gap-1">
+            {index > 0 ? (
+              <span aria-hidden="true" className="pr-0.5">
+                ·
+              </span>
+            ) : null}
+            <Kbd className="text-foreground">{labels[role]}</Kbd>
+            {tc(`keyHint.${keys[role]}`)}
+          </span>
+        ))}
+      </span>
     </p>
   );
 }
@@ -157,28 +160,43 @@ export function TargetChip({
   const tc = useTranslations('Composer');
   if (situation === 'idle') return null;
   if (situation === 'noTarget' || !target)
+    // The reason keeps the room before the folder notice does, and gives way before the keys.
     return (
-      <span className="min-w-0 truncate px-1 text-caption text-muted-foreground">
+      <span
+        title={tc('targetNone')}
+        className="min-w-0 truncate px-1 text-caption text-muted-foreground sm:min-w-12 sm:max-w-max sm:grow-[100] sm:basis-0"
+      >
         {tc('targetNone')}
       </span>
     );
   const shown = situation === 'awaiting' ? tc('targetAwaiting', { name }) : name;
+  // A target with nothing else to choose is a fixed badge; with a choice it opens the list.
+  const choosable = targets.some((item) => item.id !== target);
+  const badge = (
+    // A fixed target that can no longer take its instruction reads as a warning.
+    <KitBadge color={situation === 'blocked' ? 'amber' : 'gray'}>
+      <span className="inline-flex max-w-56 items-center gap-1.5">
+        <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
+        <span className="min-w-0 truncate">{shown}</span>
+        {choosable ? <ChevronDown aria-hidden="true" className="size-3 shrink-0" /> : null}
+      </span>
+    </KitBadge>
+  );
+  if (!choosable)
+    return (
+      <span data-slot="composer-target" className="flex shrink-0">
+        {badge}
+      </span>
+    );
   return (
     <Menu>
       <MenuTrigger
         data-slot="composer-target"
         disabled={disabled}
         aria-label={tc('targetLabel', { name })}
-        className="flex min-w-0 shrink rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {/* A fixed target that can no longer take its instruction reads as a warning. */}
-        <KitBadge
-          color={situation === 'blocked' ? 'amber' : 'gray'}
-          className="min-w-0 max-w-56 gap-1.5"
-        >
-          <span aria-hidden="true">→</span>
-          <span className="min-w-0 truncate">{shown}</span>
-        </KitBadge>
+        {badge}
       </MenuTrigger>
       <MenuPopup align="start" side="top">
         <MenuRadioGroup value={target} onValueChange={(value) => onChoose(String(value))}>
