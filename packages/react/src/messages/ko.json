@@ -273,6 +273,10 @@
       "INVALID_PORT": "노드에 없는 포트를 쓰는 연결입니다.",
       "JOIN_SINGLE_INPUT": "Join은 분기 둘 이상을 기다립니다.",
       "LOOP_DEAD_END": "이 경로가 Loop 안에서 멈춥니다. 종료, 반복 또는 Output으로 이으세요.",
+      "LOOP_MAX_ITERATIONS": "Loop의 최대 회차를 정하거나 제한 없이 돌게 하세요.",
+      "LOOP_LIMIT_RECIPE": "검토 레시피가 있는 Loop는 레시피의 시도 수에서 끝나므로 끝내기만 고를 수 있습니다.",
+      "LOOP_REASONING_OFF": "올릴 추론 수준을 끔보다 높게 고르세요.",
+      "LOOP_UPPER_MODEL": "Loop가 바꿀 모델이 설정되어 있지 않습니다.",
       "LOOP_NO_BODY": "본문을 Loop 안의 첫 단계에 연결하세요.",
       "LOOP_NO_EXIT": "Loop 안의 갈래 하나를 종료에 연결하세요.",
       "LOOP_NO_REPEAT": "Loop 안의 판단 하나를 반복에 연결하세요.",
@@ -670,6 +674,7 @@
     "working": "진행 중: {labels}",
     "idle": "진행 중인 작업 없음",
     "loopRound": "{label}: {max}회 중 {round}회차",
+    "loopRoundUnlimited": "{label}: {round}회차",
     "requests": "진행 중인 모델 요청 {count, plural, one {#개} other {#개}}",
     "executions": "실행",
     "nodeExecutions": "{label} 실행 목록",
@@ -854,18 +859,14 @@
     "heading": "응답 대기",
     "kind": {
       "final_output": "최종 출력",
-      "loop_cap": "추가 검토 여부",
       "user_action": "사용자 결정",
-      "loop_stalled": "Loop 결과가 그대로임",
       "route": "갈 길 고르기",
       "check": "검사 판정 없음",
       "breakpoint": "{step} 시작 전 멈춤"
     },
     "explain": {
       "final_output": "승인하면 바로 이 버전이 출력이 됩니다. 더 새 버전은 따로 승인해야 합니다.",
-      "loop_cap": "Loop가 반복 한도에 닿았습니다. 승인하면 한 번 더 돌고, 반려하면 실행을 멈춥니다.",
       "user_action": "승인하면 이 버전들로 계속하고, 반려하면 멈춥니다.",
-      "loop_stalled": "이번 회차가 지난 회차와 같은 결과를 냈습니다. 승인하면 그래도 한 번 더 돌고, 반려하면 실행을 멈춥니다.",
       "route": "라우터가 다음 길을 고르지 못했습니다. 길을 하나 골라 계속하거나 실행을 멈추세요.",
       "check": "검사가 통과도 실패도 하지 않았습니다. 오류, 시간 초과, 중단, 또는 실행 중 작업 사본이 바뀌었습니다. 승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춥니다.",
       "breakpoint": "이 단계는 아직 시작하지 않았습니다. 계속하면 지금 설정으로 시작합니다."
@@ -885,8 +886,6 @@
     "then": {
       "user_action": "승인하면 이 버전으로 실행을 계속하고, 반려하면 실행을 멈춥니다.",
       "final_output": "승인하면 이 버전이 실행의 최종 결과가 됩니다. 반려하면 최종 결과 없이 끝납니다.",
-      "loop_cap": "승인하면 검토를 한 번 더 하고, 반려하면 실행을 멈춥니다.",
-      "loop_stalled": "승인하면 한 회차를 더 돌고, 반려하면 실행을 멈춥니다.",
       "route": "이 길로 실행을 이어 갑니다.",
       "check": "승인하면 검사를 다시 실행하고, 반려하면 실행을 멈춥니다.",
       "breakpoint": "지금 설정으로 이 단계를 시작합니다. 중단하면 실행을 취소합니다."
@@ -894,8 +893,6 @@
     "approveAs": {
       "user_action": "이 버전으로 계속",
       "final_output": "최종 결과로 확정",
-      "loop_cap": "한 번 더 검토",
-      "loop_stalled": "한 번 더 해 보기",
       "route": "이 길로 계속",
       "check": "검사 다시 실행",
       "breakpoint": "계속"
@@ -903,8 +900,6 @@
     "rejectAs": {
       "user_action": "반려하고 멈춤",
       "final_output": "확정하지 않음",
-      "loop_cap": "여기서 멈춤",
-      "loop_stalled": "여기서 멈춤",
       "route": "여기서 멈춤",
       "check": "여기서 멈춤",
       "breakpoint": "실행 중단"
@@ -1233,7 +1228,8 @@
     "reviewStale": "검토 하나가 오래된 것이 됨",
     "roundStarted": "{loop}: {no}회차 시작",
     "roundFinished": "{loop}: 회차 끝({outcome})",
-    "approvalRequested": "{kind, select, user_action {사용자 결정} final_output {최종 출력 승인} check {검사 결정} route {갈 길 결정} loop_cap {추가 회차 결정} other {사용자 결정}}을 기다리는 중",
+    "loopEscalated": "{loop}: {policy, select, raise_reasoning {추론 수준을 올려 더 돎} upper_model {{model}(으)로 바꿔 더 돎} other {바꿔 더 돎}}",
+    "approvalRequested": "{kind, select, user_action {사용자 결정} final_output {최종 출력 승인} check {검사 결정} route {갈 길 결정} other {사용자 결정}}을 기다리는 중",
     "approvalResolved": "{decision, select, approve {승인함} reject {반려함} other {결정함}}",
     "directiveAccepted": "{node}에 대한 지시 접수",
     "directiveAttached": "지시가 요청에 첨부됨",
@@ -1265,7 +1261,7 @@
     "run_requested": "실행 시작을 요청함",
     "validation_passed": "Corral 확인을 통과함",
     "output_finalized": "최종 출력이 만들어짐",
-    "approval_requested": "{detail, select, final_output {최종 출력 승인을 기다리는 중} check {검사 결정을 기다리는 중} route {갈 길 선택을 기다리는 중} loop_cap {추가 회차 결정을 기다리는 중} other {사용자 결정을 기다리는 중}}",
+    "approval_requested": "{detail, select, final_output {최종 출력 승인을 기다리는 중} check {검사 결정을 기다리는 중} route {갈 길 선택을 기다리는 중} other {사용자 결정을 기다리는 중}}",
     "pause_requested": "일시정지를 요청함",
     "safe_boundary_reached": "안전한 지점에서 일시정지함",
     "resumed": "실행을 재개함",
@@ -1281,7 +1277,7 @@
     "internal_error": "내부 오류로 실행이 멈춤",
     "needs_user": "{node}에 사용자 결정이 필요함",
     "runner_finished_without_output": "그래프가 출력 없이 끝남",
-    "loop_cap_declined": "{node}의 추가 회차를 거절함",
+    "loop_exhausted": "{node}의 회차가 다함: {reason, select, cap_reached {회차 상한에 닿음} stalled {같은 결과를 반복함} other {멈춤}}",
     "rejected": "{node}을(를) 반려함",
     "final_output_rejected": "최종 출력을 반려함",
     "user_input_requested": "응답 대기"
@@ -5659,6 +5655,7 @@
   "RunLoop": {
     "title": "루프 · {name}",
     "summary": "반복 {count}회 · 최대 {max}회",
+    "summaryUnlimited": "반복 {count}회 · 회차 제한 없음",
     "iterationLabel": "{name} 회차",
     "current": "현재: {no}회차 · {outcome}",
     "latest": "최신 회차 따라가기",
@@ -5705,6 +5702,7 @@
       "output": "최종 버전을 받습니다"
     },
     "rounds": "최대 {count}회",
+    "roundsUnlimited": "회차 제한 없음",
     "inline": "이 팀 안에서 정의",
     "reference": "참조 · v{revision}",
     "joinAll": "모두 기다림",

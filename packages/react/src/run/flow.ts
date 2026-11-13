@@ -60,7 +60,8 @@ export interface RunFlowIteration {
 export interface RunFlowLoop {
   nodeId: string;
   label: string;
-  maxIterations: number;
+  /** The round cap in force; null for a Loop without one. */
+  maxIterations: number | null;
   iterations: RunFlowIteration[];
   selectedIterationId: string | null;
   latestIterationId: string | null;
@@ -147,7 +148,7 @@ export function selectRunFlowIterations(
     const selected = Object.hasOwn(selectedIterations, node.id)
       ? iterations.find((iteration) => iteration.iterationId === selectedIterations[node.id])
       : latest;
-    let maxIterations = node.maxIterations;
+    let maxIterations = node.maxIterations ?? null;
     let revision = -1;
     for (const patch of Object.values(projection?.patches ?? {})) {
       if (

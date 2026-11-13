@@ -13,7 +13,7 @@ export interface IterationRef {
 
 export type StepOutcome = { ok: true } | { ok: false; reason: string };
 
-/** Why a round that asked to repeat stops instead: its round cap or a stall. */
+/** Why a round that asked to repeat may end its Loop: its round cap or a stall. */
 export type LoopStop = 'cap_reached' | 'stalled';
 
 /** How a Loop round ended: through `repeat` (revise), `exit` (pass), or why it stopped. */
@@ -30,15 +30,11 @@ export interface RunnerCallbacks {
   finalize(outputNodeId: string): Promise<void>;
   loopEntered(loopId: string, no: number): Promise<void>;
   /**
-   * A round below its cap asks to repeat: whether it stalled.
-   * The round cap itself is the plan's `maxIterations`, which the runner checks.
+   * A round asks to repeat. The Coordinator checks the Loop's round cap and stall detection and,
+   * when one is reached, applies the Loop's limit policy: null opens another round, a reason
+   * means the Loop is exhausted (docs/specs/features/team-graph.md, "루프 실행").
    */
   loopCheck(loopId: string, round: number): Promise<LoopStop | null>;
-  /**
-   * A Loop must stop and has no `exhausted` path: `continue` runs one more round, `stop` ends
-   * the walk with `cap_reached`. The Coordinator asks the person, giving the reason.
-   */
-  loopCapReached(loopId: string, rounds: number, reason: LoopStop): Promise<'continue' | 'stop'>;
   loopLeft(loopId: string, no: number, outcome: RoundOutcome): Promise<void>;
   /**
    * A Join lets one path continue. For `any`, `stopped` names the step each other branch was on
@@ -63,8 +59,8 @@ export type RunnerResult =
   | { kind: 'finished'; outputNodeId: string }
   | { kind: 'failed'; nodeId: string; reason: string }
   | { kind: 'rejected'; nodeId: string }
-  /** A Loop had to stop, had no `exhausted` path, and the person declined another round. */
-  | { kind: 'cap_reached'; loopId: string; iterations: number; reason: LoopStop }
+  /** A Loop was exhausted and has no `exhausted` path: the run fails. */
+  | { kind: 'exhausted'; loopId: string; reason: LoopStop }
   /** A Decision took a branch that has no edge, such as review `inconclusive`. */
   | { kind: 'needs_user'; nodeId: string; branch: string }
   | { kind: 'stopped' };
@@ -169,17 +165,11 @@ export async function executeStep(
       await closeInner(loopId);
       const done = rounds[loopId] ?? 1;
       if (port === 'repeat') {
-        const stop =
-          done >= step.maxIterations ? 'cap_reached' : await callbacks.loopCheck(loopId, done);
+        const stop = await callbacks.loopCheck(loopId, done);
         if (stop) {
-          if (step.exhausted.length) {
-            await leave(loopId, stop);
-            return goTo(step.exhausted, 'exhausted');
-          }
-          if ((await callbacks.loopCapReached(loopId, done, stop)) === 'stop') {
-            await leave(loopId, stop);
-            return { end: { kind: 'cap_reached', loopId, iterations: done, reason: stop } };
-          }
+          await leave(loopId, stop);
+          if (step.exhausted.length) return goTo(step.exhausted, 'exhausted');
+          return { end: { kind: 'exhausted', loopId, reason: stop } };
         }
         await callbacks.loopLeft(loopId, done, 'revise');
         rounds[loopId] = done + 1;

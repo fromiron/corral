@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import { type CompiledPlan, compileDefinition } from '../compiler/index.ts';
 import { forkPlan, reachableFrom } from '../fork.ts';
-import type { GraphRunner, IterationRef, RunnerCallbacks } from '../runner.ts';
+import type { GraphRunner, IterationRef, LoopStop, RunnerCallbacks } from '../runner.ts';
 
 /**
  * Behaviour every GraphRunner must share (runner parity, v0.2 supplement §5). The reference
@@ -16,11 +16,14 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
     return result.plan;
   };
 
-  /** Records every callback and answers decisions from a script, in order. */
+  /**
+   * Records every callback and answers decisions from a script, in order. `stops` is what the
+   * Coordinator's Loop check answers per `loop#round` (its cap, stall and limit policy).
+   */
   function recorder(
     decisions: Record<string, string[]> = {},
     failAt?: string,
-    capAnswers: ('continue' | 'stop')[] = [],
+    stops: Record<string, LoopStop> = {},
   ) {
     const log: string[] = [];
     const tag = (nodeId: string, iteration: IterationRef | null) =>
@@ -46,13 +49,10 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       async loopLeft(loopId, no, outcome) {
         log.push(`leave ${loopId}#${no} ${outcome}`);
       },
-      async loopCheck() {
-        return null;
-      },
-      async loopCapReached(loopId, rounds) {
-        const answer = capAnswers.shift() ?? 'stop';
-        log.push(`cap ${loopId}#${rounds} ${answer}`);
-        return answer;
+      async loopCheck(loopId, round) {
+        const stop = stops[`${loopId}#${round}`] ?? null;
+        log.push(`check ${loopId}#${round} ${stop ?? 'repeat'}`);
+        return stop;
       },
       async joined(joinId, iteration, stopped) {
         log.push(
@@ -198,6 +198,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         'activate write#1',
         'activate review#1',
         'decide review_decision#1 → revise',
+        'check review_loop#1 repeat',
         'leave review_loop#1 revise',
         'enter review_loop#2',
         'activate write#2',
@@ -233,8 +234,12 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
     });
 
-    it('stops at the Loop cap instead of starting another round', async () => {
-      const { log, callbacks } = recorder({ review_decision: ['revise', 'revise', 'revise'] });
+    it('ends an exhausted Loop without an exhausted path, naming the Loop and why', async () => {
+      const { log, callbacks } = recorder(
+        { review_decision: ['revise', 'revise', 'revise'] },
+        undefined,
+        { 'review_loop#2': 'cap_reached' },
+      );
       const result = await makeRunner().run(planOf(researchTeam), callbacks);
       expect(log.filter((line) => line.startsWith('activate write'))).toEqual([
         'activate write#1',
@@ -244,27 +249,63 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         'leave review_loop#1 revise',
         'leave review_loop#2 cap_reached',
       ]);
-      expect(result).toEqual({
-        kind: 'cap_reached',
-        loopId: 'review_loop',
-        iterations: 2,
-        reason: 'cap_reached',
-      });
+      expect(result).toEqual({ kind: 'exhausted', loopId: 'review_loop', reason: 'cap_reached' });
     });
 
-    it('runs one more round past the cap only when told to continue', async () => {
-      const { log, callbacks } = recorder(
-        { review_decision: ['revise', 'revise', 'pass'], approval: ['approve'] },
-        undefined,
-        ['continue'],
-      );
+    it('opens another round whenever the Loop check lets the Loop go on', async () => {
+      // The Coordinator answers null past the cap when the Loop's limit policy raised its Agents.
+      const { log, callbacks } = recorder({
+        review_decision: ['revise', 'revise', 'pass'],
+        approval: ['approve'],
+      });
       const result = await makeRunner().run(planOf(researchTeam), callbacks);
       expect(log.filter((line) => line.startsWith('activate write'))).toEqual([
         'activate write#1',
         'activate write#2',
         'activate write#3',
       ]);
-      expect(log).toContain('cap review_loop#2 continue');
+      expect(log.filter((line) => line.startsWith('check'))).toEqual([
+        'check review_loop#1 repeat',
+        'check review_loop#2 repeat',
+      ]);
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+    });
+
+    it('leaves a stalled Loop through its exhausted path', async () => {
+      const definition = JSON.parse(JSON.stringify(researchTeam)) as typeof researchTeam;
+      definition.nodes.push({
+        id: 'fallback',
+        type: 'agent',
+        label: 'fallback',
+        roleId: 'writer',
+        invocation: 'scheduled',
+        inputBindings: [{ kind: 'run_input', name: 'brief' }],
+        outputName: 'draft',
+      } as (typeof researchTeam.nodes)[number]);
+      definition.controlEdges.push(
+        {
+          id: 'e_exhausted',
+          source: 'review_loop',
+          sourcePort: 'exhausted',
+          target: 'fallback',
+          targetPort: 'in',
+        },
+        {
+          id: 'e_fallback',
+          source: 'fallback',
+          sourcePort: 'out',
+          target: 'approval',
+          targetPort: 'in',
+        },
+      );
+      const { log, callbacks } = recorder(
+        { review_decision: ['revise'], approval: ['approve'] },
+        undefined,
+        { 'review_loop#1': 'stalled' },
+      );
+      const result = await makeRunner().run(planOf(definition), callbacks);
+      expect(log).toContain('leave review_loop#1 stalled');
+      expect(log).toContain('activate fallback');
       expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
     });
 
@@ -385,6 +426,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         'enter l#1',
         'activate a#1',
         'decide d#1 → again',
+        'check l#1 repeat',
         'leave l#1 revise',
         'enter l#2',
         'activate a#2',

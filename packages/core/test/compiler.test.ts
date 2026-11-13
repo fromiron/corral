@@ -60,6 +60,8 @@ describe('compileDefinition: valid definition', () => {
       nodeId: 'review_loop',
       parentId: null,
       maxIterations: 2,
+      limitPolicy: { kind: 'exhaust' },
+      agents: ['write', 'review'],
       stallDetection: false,
       body: [{ nodeId: 'write', port: 'in' }],
       members: ['write', 'review', 'review_decision'],

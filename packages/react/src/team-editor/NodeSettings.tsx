@@ -323,14 +323,15 @@ export function NodeSettings({
         </label>
       ) : null}
 
-      {node.type === 'loop' ? (
+      {/* A Loop without a round cap has no count to set here. */}
+      {node.type === 'loop' && node.limitPolicy?.kind !== 'unlimited' ? (
         <KitInputGroup className="w-full" {...session}>
           <KitInputField
             index={0}
             label={t('maxIterations')}
             type="number"
             min={1}
-            value={String(node.maxIterations)}
+            value={String(node.maxIterations ?? '')}
             onChange={(input) => {
               const value = Number(input);
               if (Number.isInteger(value) && value >= 1) update(node.id, { maxIterations: value });

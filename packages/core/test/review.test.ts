@@ -289,17 +289,17 @@ describe('review loop and approvals', () => {
     }
   });
 
-  it('at the Loop cap no third round starts without the person, who is told why', async () => {
+  it('at the Loop cap no third round starts and nobody is asked: the run fails', async () => {
     const alwaysRevise = { review: () => 'revise' as const };
     const transport = runtime(alwaysRevise);
     const { runId } = await start(transport);
-    const atCap = await waitForProjection(transport, runId, (p) => pending(p) !== null);
-    expect(pending(atCap)).toMatchObject({ kind: 'loop_cap', loopStop: 'cap_reached' });
-    expect(executionsOf(atCap, 'write')).toHaveLength(2);
+    const final = await waitForProjection(transport, runId, done);
+    expect(final.status).toBe('failed');
+    expect(final.statusReason).toBe('loop_exhausted: review_loop cap_reached');
+    expect(Object.keys(final.approvals)).toEqual([]);
+    expect(executionsOf(final, 'write')).toHaveLength(2);
     await drain();
     expect(executionsOf((await transport.getSnapshot(runId)).projection, 'write')).toHaveLength(2);
-    await resolve(transport, runId, 'approve');
-    await waitForProjection(transport, runId, (p) => executionsOf(p, 'write').length === 3);
   });
 
   it('an approval applies once and refuses a stale subject', async () => {

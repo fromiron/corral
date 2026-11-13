@@ -67,6 +67,12 @@ export function describeEvent(
       return of('roundStarted', { no: num(p.no), loop: nodeLabel(str(p.loopNodeId)) });
     case 'loop.iteration_finished':
       return of('roundFinished', { outcome: str(p.outcome), loop: nodeLabel(str(p.loopNodeId)) });
+    case 'loop.escalated':
+      return of('loopEscalated', {
+        loop: nodeLabel(str(p.loopNodeId)),
+        policy: str(p.policy),
+        model: str(p.modelProfile),
+      });
     case 'approval.requested':
       return of('approvalRequested', { kind: str(p.kind) });
     case 'approval.resolved':
@@ -159,7 +165,7 @@ const REASONS = new Set([
   'internal_error',
   'needs_user',
   'runner_finished_without_output',
-  'loop_cap_declined',
+  'loop_exhausted',
   'rejected',
   'final_output_rejected',
 ]);
@@ -181,6 +187,7 @@ export function RunReason({
   const head = at < 0 ? code : code.slice(0, at);
   const rest = at < 0 ? '' : code.slice(at + 2);
   if (!REASONS.has(head)) return <>{code}</>;
-  const [first = ''] = rest.split(' ');
-  return <>{t(head, { detail: rest, node: nodeLabel(first) })}</>;
+  // `{node} {why}`: an exhausted Loop also names why it ran out (`cap_reached`, `stalled`).
+  const [first = '', second = ''] = rest.split(' ');
+  return <>{t(head, { detail: rest, node: nodeLabel(first), reason: second })}</>;
 }

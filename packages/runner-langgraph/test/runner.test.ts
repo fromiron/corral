@@ -24,8 +24,12 @@ function planOf(definition: unknown): CompiledPlan {
   return result.plan;
 }
 
-/** Records every callback; decisions and failures come from a generated script. */
-function scripted(decisions: string[], failing: Set<string>) {
+/**
+ * Records every callback; decisions and failures come from a generated script. The Loop check
+ * stands in for the Coordinator's: it stops at `cap` rounds, except that the script lets the Loop
+ * go on past it once in a while, as a limit policy does.
+ */
+function scripted(decisions: string[], failing: Set<string>, cap = Number.POSITIVE_INFINITY) {
   const log: string[] = [];
   let next = 0;
   const callbacks: RunnerCallbacks = {
@@ -49,44 +53,39 @@ function scripted(decisions: string[], failing: Set<string>) {
     loopLeft: async (loopId, no, outcome) => {
       log.push(`leave ${loopId}#${no} ${outcome}`);
     },
-    loopCheck: async () => null,
-    joined: async () => {},
-    loopCapReached: async (loopId, rounds) => {
-      // Continue past the cap once in a while, driven by the same script.
-      const answer =
-        decisions[next % decisions.length] === 'revise' && rounds < 4 ? 'continue' : 'stop';
-      log.push(`cap ${loopId}#${rounds} ${answer}`);
-      return answer;
+    loopCheck: async (loopId, round) => {
+      const goOn = decisions[next % decisions.length] === 'revise' && round < 4;
+      const stop = round >= cap && !goOn ? 'cap_reached' : null;
+      log.push(`check ${loopId}#${round} ${stop ?? 'repeat'}`);
+      return stop;
     },
+    joined: async () => {},
   };
   return { log, callbacks };
 }
 
 describe('LangGraph runner parity with the reference runner', () => {
-  it.each(['patch', 'approval'] as const)(
-    'a runtime Loop %s can use all ten permitted rounds',
+  it.each(['patch', 'limit policy'] as const)(
+    'a Loop whose %s gives it more rounds can use all ten',
     async (extension) => {
       const run = async (runner: GraphRunner) => {
         const plan = planOf(researchTeam);
         const rounds: number[] = [];
         const { callbacks } = scripted(['revise'], new Set());
-        callbacks.loopEntered = async (id, no) => {
+        callbacks.loopEntered = async (_id, no) => {
           rounds.push(no);
-          if (no === 1 && extension === 'patch') {
-            const loop = plan.loops[id];
-            const step = plan.steps[id];
-            if (!loop || step?.kind !== 'loop') throw new Error('loop expected');
-            loop.maxIterations = 10;
-            step.maxIterations = 10;
-          }
         };
+        // A loop_limit patch to 10 rounds, or a policy that raised at round 5 and counts again.
+        callbacks.loopCheck = async (_id, round) =>
+          (extension === 'patch' ? round >= 10 : round !== 5 && round - 5 >= 5)
+            ? 'cap_reached'
+            : null;
         callbacks.decide = async (nodeId, iteration) =>
           nodeId === 'review_decision'
             ? (iteration?.no ?? 0) < 10
               ? 'revise'
               : 'pass'
             : 'approve';
-        callbacks.loopCapReached = async () => 'continue';
         return { result: await runner.run(plan, callbacks), rounds };
       };
       const expected = await run(new SequentialPlanRunner());
@@ -105,11 +104,9 @@ describe('LangGraph runner parity with the reference runner', () => {
         fc.uniqueArray(failure, { maxLength: 1 }),
         fc.integer({ min: 1, max: 4 }),
         async (decisions, failures, cap) => {
-          const loop = definition.nodes.find((n) => n.type === 'loop');
-          if (loop?.type === 'loop') loop.maxIterations = cap;
           const plan = planOf(definition);
-          const reference = scripted(decisions, new Set(failures));
-          const graph = scripted(decisions, new Set(failures));
+          const reference = scripted(decisions, new Set(failures), cap);
+          const graph = scripted(decisions, new Set(failures), cap);
           const expected = await new SequentialPlanRunner().run(plan, reference.callbacks);
           const actual = await new LangGraphRunner().run(plan, graph.callbacks);
           expect(actual).toEqual(expected);

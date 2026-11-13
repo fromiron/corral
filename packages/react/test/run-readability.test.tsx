@@ -110,6 +110,15 @@ describe('run status reasons (UX-A4)', () => {
     expect(reason('final_output_rejected')).toBe('You rejected the final output');
   });
 
+  it('names the Loop and why it ran out when an exhausted Loop failed the run', () => {
+    expect(reason('loop_exhausted: write cap_reached')).toBe(
+      'Writer ran out of rounds: it reached its round limit',
+    );
+    expect(reason('loop_exhausted: write stalled')).toBe(
+      'Writer ran out of rounds: it kept producing the same result',
+    );
+  });
+
   it('names why a review recipe stopped the run', () => {
     expect(reason('review_recipe:attempt_limit')).toBe('Generation attempt limit reached');
     expect(reason('review_recipe:repeated_output')).toBe('Candidate repeated without change');
