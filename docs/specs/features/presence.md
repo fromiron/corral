@@ -22,7 +22,7 @@
 | `succeeded` | `succeeded` | 완료 / Completed | success | done |
 | `cancelled` | `cancelled` | 취소됨 / Cancelled | neutral | stopped |
 | `ready` | 세션에 실행이 없고 요청·목적·회의 중 하나가 있다 | 실행 전 / No run yet | neutral | 없음 |
-| `empty` | 세션에 실행도 요청·목적·회의도 없다 | 빈 세션 / Empty conversation | neutral | 없음 |
+| `empty` | 세션에 실행도 요청·목적·회의도 없다 | 빈 대화 / Empty conversation | neutral | 없음 |
 
 Run의 표시 상태는 Run의 상태가 정한다. 그 Run의 실행 단위와 열린 요청은 응답 대기를 찾는 데만 쓴다. 끝나지 않은 Run 안에서 실패했거나 취소된 실행 단위는 Run을 실패나 취소됨으로 보이게 하지 않는다. 그 사실은 그 실행 단위의 행이 보인다. 실행 단위의 표시 상태는 그 실행 단위의 상태가 정한다.
 
@@ -62,7 +62,7 @@ Run의 세부는 대화의 실행 행과 실행 기록의 머리가 상태 이�
 | 완료 | `succeeded` |
 | 취소됨 | `cancelled` |
 | 실행 전 | `ready` |
-| 빈 세션 | `empty` |
+| 빈 대화 | `empty` |
 
 검토 묶음은 인박스 항목이 정하며 표시 상태와 무관하다.
 
