@@ -549,6 +549,46 @@ export function effectAttention(projection: RunProjection | null) {
   };
 }
 
+/**
+ * The projection without what its advisors did: their requests, those requests' effects and
+ * their own failures are said on their rows, never as the conversation's attention
+ * (features/composer-flow.md "활동 바", features/advisor.md). Everything else is kept as it is.
+ */
+function withoutAdvisors(projection: RunProjection): RunProjection {
+  const advisors = new Set(
+    Object.values(projection.executions).flatMap((execution) =>
+      execution.advisor ? [execution.executionId] : [],
+    ),
+  );
+  if (!advisors.size) return projection;
+  const keep = <T>(record: Record<string, T>, own: (item: T) => boolean) =>
+    Object.fromEntries(Object.entries(record).filter(([, item]) => !own(item)));
+  return {
+    ...projection,
+    effects: keep(projection.effects, (effect) => advisors.has(effect.scope)),
+    modelCalls: keep(projection.modelCalls, (call) => advisors.has(call.executionId)),
+    executions: keep(projection.executions, (execution) => advisors.has(execution.executionId)),
+  };
+}
+
+/**
+ * What the conversation asks of the person about a run: its waiting approvals and questions,
+ * its results whose outcome nobody knows, and its failure. An advisor's own trouble is not one;
+ * a role's beside it still is.
+ */
+export function conversationAction(input: {
+  projection: RunProjection | null;
+  approvals: number;
+  questions: number;
+}) {
+  return actionRequired({
+    pendingApprovals: input.approvals,
+    pendingQuestions: input.questions,
+    ...effectAttention(input.projection ? withoutAdvisors(input.projection) : null),
+    runStatus: input.projection?.status,
+  });
+}
+
 /** One current attempt per task; retry history stays in the execution view. */
 export function currentAgentExecutions(projection: RunProjection | null) {
   if (!projection) return [];

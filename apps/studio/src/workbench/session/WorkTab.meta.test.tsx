@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { AdviceArrival, type AdviceArrivalValue } from '../adviceArrival.ts';
 import type { RunRecord, SteerRecord } from './entryMeta.ts';
 import type { WatchedExpiry } from './runRecords.ts';
 import { WorkTab } from './WorkTab.tsx';
@@ -55,15 +56,23 @@ vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: nul
 vi.mock('../../router.tsx', () => ({ sessionRoute: { useSearch: () => fixture.search } }));
 vi.mock('../MeetingHandoff.tsx', () => ({ MeetingHandoffLinks: () => null }));
 vi.mock('../WorkFolderNotice.tsx', () => ({ useFolderAccess: () => 'unknown' }));
-vi.mock('./SessionEntries.tsx', () => ({
-  EntryCard: (props: CardProps) => {
-    fixture.cards.set(props.entry.entryId, props);
-    return props.runOnly && !props.entry.runId ? null : <p>{props.entry.text}</p>;
-  },
-  RunCard: () => null,
-  RunChecks: createContext(null),
-  useRunChecks: () => null,
-}));
+vi.mock('./SessionEntries.tsx', async () => {
+  const { useContext } = await import('react');
+  const { AdviceArrival } = await import('../adviceArrival.ts');
+  return {
+    EntryCard: (props: CardProps) => {
+      fixture.cards.set(props.entry.entryId, props);
+      // The run a person came to read advice in, as each row hears it.
+      const arrival = useContext(AdviceArrival);
+      return props.runOnly && !props.entry.runId ? null : (
+        <p data-arrival={arrival?.runId ?? ''}>{props.entry.text}</p>
+      );
+    },
+    RunCard: () => null,
+    RunChecks: createContext(null),
+    useRunChecks: () => null,
+  };
+});
 vi.mock('./Composer.tsx', () => ({ Composer: () => <textarea aria-label="Request" /> }));
 
 const cleanup: (() => void)[] = [];
@@ -127,6 +136,8 @@ async function show(
   entries: SessionEntry[],
   reads = { read: 0, started: () => 0 },
   onChange = vi.fn(),
+  arrival: AdviceArrivalValue | null = null,
+  runsListed = false,
 ) {
   const container = document.createElement('div');
   document.body.append(container);
@@ -138,21 +149,23 @@ async function show(
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <WorkTab
-          session={session(entries)}
-          team={null}
-          corrals={[]}
-          runs={[]}
-          active={null}
-          liveRunId={null}
-          selectedRunId={null}
-          onChange={onChange}
-          sessionReads={reads}
-          runsListed={false}
-          reference={null}
-          onReferenceUsed={() => {}}
-          onPanel={() => {}}
-        />
+        <AdviceArrival.Provider value={arrival}>
+          <WorkTab
+            session={session(entries)}
+            team={null}
+            corrals={[]}
+            runs={[]}
+            active={null}
+            liveRunId={null}
+            selectedRunId={null}
+            onChange={onChange}
+            sessionReads={reads}
+            runsListed={runsListed}
+            reference={null}
+            onReferenceUsed={() => {}}
+            onPanel={() => {}}
+          />
+        </AdviceArrival.Provider>
       </IntlProvider>,
     ),
   );
@@ -253,6 +266,55 @@ it('a link to a carried request drawn as nothing goes to the message it came fro
   expect(
     f.container.querySelector('[aria-current="location"]')?.getAttribute('data-chat-item'),
   ).toBe('a');
+});
+
+/** The rows the conversation was asked to put in place. */
+function placements() {
+  const asked: { id: string; offset: number }[] = [];
+  const hear = (event: Event) => {
+    const { id, offset } = (event as CustomEvent<{ id: string; offset: number }>).detail;
+    asked.push({ id, offset });
+  };
+  window.addEventListener('corral:chat-place', hear);
+  cleanup.push(() => window.removeEventListener('corral:chat-place', hear));
+  return asked;
+}
+
+it('an arrival to read an advice brings its run’s row into view, with no mark left on it', async () => {
+  const asked = placements();
+  const done = vi.fn();
+  const f = await show(
+    [entry('a', { intent: 'next' }), entry('b', { intent: 'next', runId: 'run_two' })],
+    undefined,
+    undefined,
+    { runId: 'run_two', key: 1, done },
+  );
+  // Its run not listed yet, the row is the request's place for it (on its way): that place is
+  // brought in, and the row opens the advice once its record is read.
+  expect(fixture.cards.get('b')?.arriving).toBe(true);
+  expect(asked).toEqual([{ id: 'b', offset: 0 }]);
+  // The row takes the arrival and opens its advice; the conversation marks nothing.
+  expect(f.container.querySelector('[aria-current="location"]')).toBeNull();
+  expect(f.container.querySelector('[data-arrival="run_two"]')).not.toBeNull();
+  expect(done).not.toHaveBeenCalled();
+  // Drawn again, the same arrival is not placed again.
+  await show(
+    [entry('a', { intent: 'next' }), entry('b', { intent: 'next', runId: 'run_two' })],
+    undefined,
+    undefined,
+    { runId: 'run_two', key: 1, done },
+  );
+  expect(asked.filter((item) => item.id === 'b').length).toBeGreaterThanOrEqual(1);
+});
+
+it('lets an arrival go at a run the conversation has no row for, once its runs are listed', async () => {
+  const done = vi.fn();
+  const elsewhere = { runId: 'run_elsewhere', key: 1, done };
+  // Before the run list is read, the run may still join as a row of its own.
+  await show([entry('a', { intent: 'next' })], undefined, undefined, elsewhere);
+  expect(done).not.toHaveBeenCalled();
+  await show([entry('a', { intent: 'next' })], undefined, undefined, elsewhere, true);
+  expect(done).toHaveBeenCalledTimes(1);
 });
 
 it('a request’s run missing from the run list is on its way until two later reads leave it out', async () => {

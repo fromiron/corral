@@ -26,6 +26,7 @@ import {
   createAutoStarter,
   type HarnessResolver,
   InMemoryRunStore,
+  isSessionAdvisor,
   SESSION_ADVISOR_NAME,
   SESSION_ADVISOR_PROMPT,
   withSessionAdvisor,
@@ -698,4 +699,37 @@ describe('a conversation with the session advisor on a Coordinator', () => {
     expect(results).toEqual(['CAPABILITY_DENIED', 'ok']);
     expect(executed).toEqual(['notes/a.txt']);
   });
+});
+
+it('tells the advisor a session added from a team advisor by its id, not its name', () => {
+  const added = withSessionAdvisor(linearCorral(['writer']), choice);
+  const again = withSessionAdvisor(added, choice);
+  const ids = again.nodes.flatMap((node) =>
+    node.type === 'agent' && node.invocation === 'observer' ? [node.id] : [],
+  );
+  expect(ids).toEqual(['session_advisor', 'session_advisor_2']);
+  for (const id of ids) expect(isSessionAdvisor(again, id)).toBe(true);
+  // A team advisor named like it, and a working agent with its id, are not it.
+  const team = linearCorral(['writer']);
+  team.nodes.push({
+    id: 'reviewer',
+    type: 'agent',
+    label: SESSION_ADVISOR_NAME,
+    roleId: 'writer_role',
+    invocation: 'observer',
+    outputName: 'notes',
+  });
+  expect(isSessionAdvisor(team, 'reviewer')).toBe(false);
+  // A team's own observer that happens to use the id keeps its role, and so its name.
+  team.nodes.push({
+    id: 'session_advisor',
+    type: 'agent',
+    label: 'Fact checker',
+    roleId: 'writer_role',
+    invocation: 'observer',
+    outputName: 'checks',
+  });
+  expect(isSessionAdvisor(team, 'session_advisor')).toBe(false);
+  expect(isSessionAdvisor(linearCorral(['session_advisor']), 'session_advisor')).toBe(false);
+  expect(isSessionAdvisor(team, 'missing')).toBe(false);
 });

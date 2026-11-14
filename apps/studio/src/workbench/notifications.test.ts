@@ -75,3 +75,29 @@ it('opens only the exact still-uncertain terminal and keeps two terminal identit
   source.inbox.mockResolvedValue([]);
   expect(await notificationDestination(terminal, source)).toBeNull();
 });
+
+it('an advice target names its execution row, and only an advice carries one', async () => {
+  const advice: InboxItemView = {
+    kind: 'advice',
+    sessionId: 'session_a',
+    sessionTitle: 'Private title',
+    runId: 'run_a',
+    executionId: 'exec_a',
+    severity: 'concern',
+    detail: 'Private advice',
+  };
+  const other = { ...advice, executionId: 'exec_b' };
+  const targets = inboxNotificationTargets([advice, other, { ...decision, executionId: 'exec_a' }]);
+  expect(targets).toEqual([
+    { kind: 'advice', sessionId: 'session_a', runId: 'run_a', executionId: 'exec_a' },
+    { kind: 'advice', sessionId: 'session_a', runId: 'run_a', executionId: 'exec_b' },
+    { kind: 'decision', sessionId: 'session_a', runId: 'run_a' },
+  ]);
+  const [first, second] = targets;
+  if (!first || !second) throw new Error('targets');
+  const source = { getSession: vi.fn(async () => session), inbox: vi.fn(async () => [advice]) };
+  // The conversation's row of its run, with that row's advice open (features/inbox.md).
+  expect(await notificationDestination(first, source)).toBe('/sessions/session_a?advice=run_a');
+  // That row's advice is no longer listed: the notification leads nowhere.
+  expect(await notificationDestination(second, source)).toBeNull();
+});

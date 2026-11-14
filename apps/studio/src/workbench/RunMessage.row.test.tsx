@@ -998,7 +998,6 @@ it('a failed run says nothing of the loop that ran out', async () => {
 it.each([
   ['waiting_children', false, detail.waiting_agents],
   ['waiting_message', false, detail.waiting_reply],
-  ['waiting_message', true, detail.watching],
 ] as const)(
   'a role that is %s (advisor: %s) says so beside its state',
   async (status, advisor, said) => {
@@ -1016,6 +1015,20 @@ it.each([
     );
   },
 );
+
+// An advisor watching is no role of the turn (features/advisor.md 보이는 곳): its row, with
+// "Watching" beside its state, is the activity bar's (ComposerActivity.test.tsx).
+it('a watching advisor has no role row in the run row', async () => {
+  const projection = running();
+  projection.executions.helper = execution('helper', {
+    status: 'waiting_message',
+    advisor: true as const,
+  });
+  projection.executionOrder = ['lead', 'helper'];
+  const f = await show(projection);
+  expect(part(f.container, 'role:helper')).toBeNull();
+  expect(f.container.querySelector('[data-presence-label="execution:helper"]')).toBeNull();
+});
 
 it.each([
   ['failed', (p: RunProjection) => failed(p), 'text-danger'],

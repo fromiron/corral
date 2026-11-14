@@ -411,11 +411,14 @@ describe('sending while a run goes', () => {
     });
   });
 
-  it('queues with every key while nothing can take an instruction, and says why', async () => {
+  it('queues with every key while nothing can take an instruction, and says why on Send', async () => {
     const f = await mount({ executions: { exec_writer: 'succeeded' } });
     expect(f.targetButton()).toBeNull();
-    expect(f.container.textContent).toContain(messages.Composer.targetNone);
+    // The tool line holds no words for it (the keys already say Next); Send says why.
+    expect(f.container.textContent).not.toContain(messages.Composer.targetNone);
     await f.type('Next thing');
+    expect(sendWhy(f.container)).toContain(messages.Composer.targetNone);
+    expect(f.container.textContent).not.toContain(messages.Composer.targetNone);
     await f.press();
     expect(f.sendCommand).not.toHaveBeenCalled();
     expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
@@ -646,6 +649,13 @@ const saved: SessionEntry = {
   },
 };
 
+/** What Send says it does now, read with its name. */
+function sendWhy(container: HTMLElement) {
+  return (
+    container.querySelector('button[aria-label="Send"]')?.getAttribute('aria-description') ?? ''
+  );
+}
+
 const lastEntry = (repository: { addSessionEntry: ReturnType<typeof vi.fn> }) =>
   repository.addSessionEntry.mock.calls.at(-1)?.[1] as Record<string, unknown> | undefined;
 
@@ -760,8 +770,9 @@ describe('while the run’s record is read', () => {
 
   it('a record that cannot be read takes a next request with the send key', async () => {
     const f = await mount({ runState: { projection: null, streamError: 'lost' } });
-    expect(f.container.textContent).toContain(messages.Composer.targetNone);
+    expect(f.container.textContent).not.toContain(messages.Composer.targetNone);
     await f.type('After this run');
+    expect(sendWhy(f.container)).toContain(messages.Composer.targetNone);
     await f.press();
     expect(f.sendCommand).not.toHaveBeenCalled();
     expect(lastEntry(f.repository)).toMatchObject({ intent: 'queue', text: 'After this run' });

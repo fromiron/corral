@@ -234,6 +234,7 @@ export function RunCanvas({
 }) {
   const t = useTranslations('RunCanvas');
   const statusText = useTranslations('Canvas.nodeStatus');
+  const presenceText = useTranslations('Presence');
   const reduce = useReducedMotion() ?? false;
   const shape = useShape();
   const hasPreview = renderNodePreview !== undefined;
@@ -267,10 +268,16 @@ export function RunCanvas({
     };
   }, [definition]);
   const signature = useRunDisplay(session, readGraph);
-  const { graph, models, ended, awaiting } = useMemo(
-    () => JSON.parse(signature) as GraphSnapshot,
-    [signature],
-  );
+  const adviceText = useTranslations('Advice');
+  const advisorWord = adviceText('advisor');
+  const { graph, models, ended, awaiting } = useMemo(() => {
+    const snapshot = JSON.parse(signature) as GraphSnapshot;
+    // A conversation's advisor has no name of its own: the screen calls it "advisor".
+    snapshot.graph.nodes = snapshot.graph.nodes.map((node) =>
+      node.sessionAdvisor ? { ...node, label: advisorWord } : node,
+    );
+    return snapshot;
+  }, [signature, advisorWord]);
   const readingInitialHistory = useStore(session, (state) => state.initialLoadSeq !== undefined);
   const placed = useRef(new Map<string, AgentGraphPosition>());
   const positions = useMemo(() => {
@@ -381,10 +388,12 @@ export function RunCanvas({
             ? t('unsettled')
             : summary.status === 'waiting_approval'
               ? statusText(waitingWords[awaiting[node.id] ?? 'you'])
-              : statusText(summary.status),
+              : node.watching
+                ? presenceText('detail.watching')
+                : statusText(summary.status),
       };
     },
-    [models, ended, awaiting, t, statusText],
+    [models, ended, awaiting, t, statusText, presenceText],
   );
   const triggerFor = useCallback(
     (nodeId: string, button: ReactElement) => (
@@ -410,7 +419,13 @@ export function RunCanvas({
             : []),
           ...(Object.keys(summary.counts).length > 1
             ? Object.entries(summary.counts).map(([state, count]) =>
-                statusText('stateCount', { status: statusText(state), count: count ?? 0 }),
+                statusText('stateCount', {
+                  status:
+                    node.watching && state === 'waiting_message'
+                      ? presenceText('detail.watching')
+                      : statusText(state),
+                  count: count ?? 0,
+                }),
               )
             : []),
           ...(summary.previousFailures
@@ -466,6 +481,7 @@ export function RunCanvas({
       adjacent,
       onSelectNode,
       statusText,
+      presenceText,
       triggerFor,
       hasPreview,
       reduce,

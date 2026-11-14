@@ -1000,20 +1000,23 @@
       "lsp_proposal": "Language server proposals",
       "integration": "Applying did not finish cleanly",
       "queued": "Queued request",
-      "recipe_stopped": "Review stopped: {reason}"
+      "recipe_stopped": "Review stopped: {reason}",
+      "advice": "Advice"
     },
     "open": {
       "run": "Open run",
       "review": "Open changes",
       "checks": "Open checks",
       "session": "Open conversation",
-      "terminal": "Open terminal"
+      "terminal": "Open terminal",
+      "advice": "Open advice"
     },
     "summary": {
       "check_failed": "Check failed: {name}",
       "uncertain_write": "{count, plural, one {# file write with an unknown outcome} other {# file writes with unknown outcomes}}",
       "unreviewed": "{count, plural, one {# unreviewed file write} other {# unreviewed file writes}}",
-      "lsp_proposal": "{count, plural, one {# language server proposal} other {# language server proposals}}"
+      "lsp_proposal": "{count, plural, one {# language server proposal} other {# language server proposals}}",
+      "advice": "{severity} · <line>{detail}</line>"
     },
     "close": "Close",
     "backToList": "Back to list",
@@ -1155,7 +1158,8 @@
       "question": "Question",
       "answer": "Answer",
       "read": "Read",
-      "input": "Model input"
+      "input": "Model input",
+      "advice": "Advice"
     },
     "observedRelation": "{kind} · {count} observed · {active} in progress",
     "zoomIn": "Zoom in",
@@ -1188,6 +1192,7 @@
     },
     "request": "Request {no}",
     "withInstructions": "{count, plural, one {with your instruction} other {with # instructions}}",
+    "withAdvice": "{count, plural, one {with advice} other {with # pieces of advice}}",
     "effort": "Effort {level} · {provider}",
     "waiting": "Waiting for the model…",
     "emptyReply": "Response complete · no text",
@@ -1243,7 +1248,7 @@
     "runState": "Run is now {to, select, running {working} pausing {pausing} paused {paused} awaiting_user {waiting for you} cancelling {stopping} succeeded {completed} failed {failed} cancelled {cancelled} interrupted {interrupted} validating {starting} other {{to}}}",
     "runInterrupted": "Run interrupted by a backend restart",
     "executionCreated": "{node} started",
-    "executionState": "{node}: {to, select, active {working} waiting_children {waiting for its helpers} waiting_message {waiting for an answer} waiting_approval {waiting for approval} paused {paused} cancelling {cancelling} ready {ready} queued {queued} other {{to}}}",
+    "executionState": "{node}: {to, select, active {working} waiting_children {waiting for agents} waiting_message {waiting for a reply} waiting_approval {waiting for approval} paused {paused} cancelling {stopping} ready {starting} queued {starting} watching {watching} other {{to}}}",
     "executionSettled": "{node} {outcome, select, succeeded {finished} failed {failed} cancelled {was cancelled} other {ended ({outcome})}}",
     "taskCreated": "Task for {node} created",
     "taskAssigned": "{node} took its task",
@@ -1287,7 +1292,13 @@
     "cancelRequested": "Cancellation requested",
     "cancelConfirmed": "Cancellation confirmed",
     "observationLate": "A late {what} was ignored",
-    "outputFinalized": "Final output ready"
+    "outputFinalized": "Final output ready",
+    "adviceAdmitted": "<isolate>{advisor}</isolate> advised <isolate>{node}</isolate> ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}), {delivery, select, next_request {for its next request} interrupt {interrupting its response} preserve {kept on record} other {{delivery}}}",
+    "adviceSuppressed": "Advice from <isolate>{advisor}</isolate> dropped ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}): {reason, select, noise {nothing to act on} duplicate {already given} over_budget {too many in one review} target_terminal {the target had finished} other {{reason}}}",
+    "adviceDirectiveAccepted": "Advice for {node} was accepted",
+    "adviceDirectiveAttached": "Advice was attached to a request",
+    "adviceDirectiveDispatched": "Advice was sent",
+    "adviceDirectiveUndelivered": "Advice was not delivered ({status})"
   },
   "RunReasons": {
     "run_requested": "The run was requested",
@@ -6247,6 +6258,17 @@
       "rounds_stalled": "Rounds stalled"
     }
   },
+  "Advice": {
+    "advisor": "Advisor",
+    "severity": {
+      "nit": "Note",
+      "concern": "Concern",
+      "blocker": "Blocker"
+    },
+    "from": "<isolate>{advisor}</isolate> · {severity}",
+    "count": "{count, plural, one {# piece of advice} other {# pieces of advice}}",
+    "advisors": "{count, plural, one {# advisor} other {# advisors}}"
+  },
   "Activity": {
     "details": "Activity details",
     "bar": "Activity",
@@ -6266,6 +6288,9 @@
     "recordLost": "Run record unavailable",
     "retry": "Retry",
     "controls": "Run controls",
-    "commandUnconfirmed": "Not confirmed: press again to check"
+    "commandUnconfirmed": "Not confirmed: press again to check",
+    "reviewing": "Reviewing",
+    "adviceDelivered": "{count, plural, one {# piece of advice delivered} other {# pieces of advice delivered}}",
+    "finalReview": "{name}: final review"
   }
 }
