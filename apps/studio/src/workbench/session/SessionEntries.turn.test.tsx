@@ -157,7 +157,7 @@ const runs: RunSummary[] = [
   },
 ];
 
-async function show(value: SessionEntry) {
+async function show(value: SessionEntry, props: Partial<Parameters<typeof EntryCard>[0]> = {}) {
   const onPanel = vi.fn();
   const container = document.createElement('div');
   document.body.append(container);
@@ -180,6 +180,7 @@ async function show(value: SessionEntry) {
           runs={runs}
           artifactMetadataVersion="run_turn"
           onPanel={onPanel}
+          {...props}
         />
       </IntlProvider>,
     ),
@@ -387,4 +388,23 @@ it('a sent message shows its reply quotes as chips alone, and what each chip fou
   await act(async () => chip(first)?.click());
   expect(chip(first)?.getAttribute('aria-describedby')).toBeTruthy();
   expect(chip(second)?.getAttribute('aria-describedby')).toBeNull();
+});
+
+// The request's session entry can come before the run list lists its run: the row's place is
+// drawn from the entry while the run is on its way, so the activity bar does not say the state of
+// a row about to come in view (features/presence.md).
+it('a request whose run is on its way to the run list keeps the run row’s place', async () => {
+  const value = entry({ entryId: 'entry_new', runId: 'run_new' });
+  const coming = await show(value, { arriving: true });
+  const place = coming.container.querySelector('[data-presence-label="run:run_new"]');
+  expect(place).not.toBeNull();
+  expect(place?.closest('[data-chat-part="head"]')).not.toBeNull();
+  // A run not on its way (the reads after it came still leave it out) has no row.
+  const gone = await show(value, { arriving: false });
+  expect(gone.container.querySelector('[data-presence-label="run:run_new"]')).toBeNull();
+  // An instruction names the run it went to: it is no run row of its own.
+  const steer = await show(entry({ entryId: 'entry_steer', runId: 'run_new', intent: 'steer' }), {
+    arriving: true,
+  });
+  expect(steer.container.querySelector('[data-presence-label="run:run_new"]')).toBeNull();
 });

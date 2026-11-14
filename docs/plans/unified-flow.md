@@ -447,14 +447,14 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | U4 | "지금 필요한 것" 자리, 질문 인라인 | U3, K1 | `ChatView.tsx`, `WorkTab.tsx`, `RunResponseArea.tsx` | 완료 |
 | U5 | 전송 모델 | U1, B3, B6 | `composerIntent.ts`, 컴포저 전송 모듈 | 완료 |
 | U6 | 사용자 메시지 메타 줄 | U5, B5 | `session/SessionEntries.tsx` | 완료 |
-| U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 완료(병합). 후속 U7c(화면 안에 새로 뜬 행을 닫힌 줄이 몇 프레임 가리키는 깜박임) 진행 중(`flow/u7c-label-arrival`) |
+| U7 | 활동 바 | B1, U5 | `packages/react/src/components/ActivityBar.tsx`, 배선 | 완료(병합. 후속 U7c: 화면 안에 새로 뜬 행을 닫힌 줄이 가리키지 않는다, 병합) |
 | U8 | 상태 적용 A: 사이드바·목록·유예 | B1 | `Sidebar.tsx`, `sessionList.ts`, `RunList.tsx`, `Breadcrumbs.tsx` | 완료 |
 | U9 | 상태 적용 B: 대화·위젯 | B1, U7 | `widgets/*`, `agentSummary.ts`, `StatusBadge.tsx`, `agentStatus.ts` | 완료(병합) |
 | U10 | 인용 A: 계약·브리지·칩 | B3 | `contracts/attachments.ts`, `workbench/context/*` | 완료 |
 | U11 | 인용 B: 선택 툴바·원문 복귀 | U10, U3 | `RunMessage.tsx`, 새 `ReplySelection.tsx` | 완료(후속 수정 셋은 같은 브랜치에서: Tab으로 나간 포커스, 상자 안의 End, 인용 글 끝의 줄바꿈) |
 | U12 | 확인 필요: 같은 응답 영역, 계속 여부 카드 | U4 | `pages/InboxPage.tsx` | 완료 |
-| U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | 대기 |
-| U14 | 영문 문구 정리 | U9 | `messages/en.json` | 대기 |
+| U13 | 중복·사문 제거 | U7 | `Composer`, `RunStatusCards.tsx`, 클라이언트 | U13a(A8과 겹치지 않는 몫) 진행 중(`flow/u13-remove-dead`). U13b(거절 중복, `firstLine`, 대상 줄의 세부 되풀이, Workflow 탭의 상태 중복)는 A8 병합 뒤 |
+| U14 | 영문 문구 정리 | U9 | `messages/en.json` | 진행 중(`flow/u14-english-copy`) |
 | M1 | 회의 점수·정책 분리, 선택 기록, 무응답 | S0 | `core/meeting.ts`, `local-intelligence/.../selector.ts`, `contracts/meeting.ts` | 완료 |
 | M2 | 회의 연쇄 확인 | M1 | `core/meeting.ts` | 완료 |
 | M3 | 회의 화면을 공용 타임라인·컴포저로 | U5, M1 | `pages/MeetingPage.tsx` | 완료 |
@@ -466,9 +466,9 @@ notes: <브리프와 다르게 한 것, 발견한 문제. 없으면 none>
 | A5 | 감독 실행 단위와 조언 처리 | A2, A3, A4 | `coordinator.ts`, `apps/server/src/app.ts` | 완료 |
 | A6 | `advise` 도구와 검토 요청 전달 | A5 | `adapter-pi/worker-tools.ts`, `worker.ts` | 완료(후속 수정은 같은 브랜치에서: 마지막 요청이 오류로 끝난 검토) |
 | A7 | 팀 편집기의 감독 노드 | A2 | `packages/react/src/team-editor` | 완료 |
-| A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | A8a(실행 기록·확인 필요 쪽) 디자인 검수 통과, 코드 리뷰의 수정 끝. A8b 1단계(대화의 조언 줄, 꼬리 줄, 조언이 보일 때의 `opened`, 확인 필요·알림의 도착지) 끝, 2단계(활동 바의 감독 행, 펼친 조언의 중복) 진행 중(`flow/a8-advice-display`, U7 브랜치를 받음). 둘을 묶어 리뷰·병합한다 |
+| A8 | 조언 표시 | A6, U7, U6 | `RunMessage.tsx`, `ActivityBar`, 확인 필요 | 전체 리뷰의 수정 중(`flow/a8-advice-display`: 긴 답에서의 도착, 이미 떠 있는 행으로의 도착, 감독 실패가 가리는 주의, 마지막 검토 줄의 조건). 마지막 검토 중 중지의 코어 변경(A8c, `flow/a8c-stop-final-review`)은 리뷰의 수정 중 |
 | A9 | 대화의 감독 설정 | A5 | 세션 설정, 대화 정의 생성부 | 완료(A9a 계약·코어·서버, A9b 도구 줄의 켜고 끄기 병합) |
-| V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 대기 |
+| V2 | 최종 장면 | 전부 | `apps/studio/e2e/flow` | 장면 작성 중(`flow/v2-final-scenes`). U13·U14·A8 병합 뒤 전체를 다시 돌리고 디자인 검수 |
 
 백본 신뢰 게이트: B2가 통과하기 전에는 U5·U6·A5를 병합하지 않는다. 지금 테스트가 하나도 없는 경로(실행이 돌지 않을 때 버려지는 지시, 승인·질문 대기 중의 지시, 대기열 자동 시작, 관찰자 연결, 조각이 나온 뒤 끊긴 스트림) 위에 화면을 얹지 않기 위해서다.
 

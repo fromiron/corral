@@ -24,6 +24,7 @@ type CardProps = {
   heldAs?: DirectiveView['status'];
   sourceShown?: boolean;
   runsListed?: boolean;
+  arriving?: boolean;
 };
 const fixture = vi.hoisted(() => ({
   cards: new Map<string, CardProps>(),
@@ -252,4 +253,58 @@ it('a link to a carried request drawn as nothing goes to the message it came fro
   expect(
     f.container.querySelector('[aria-current="location"]')?.getAttribute('data-chat-item'),
   ).toBe('a');
+});
+
+it('a request’s run missing from the run list is on its way until two later reads leave it out', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  const request = entry('request', { intent: 'next', runId: 'run_new', commandId: null });
+  let asked = 3;
+  const draw = (read: number, runs: RunSummary[] = []) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <WorkTab
+            session={session([request])}
+            team={null}
+            corrals={[]}
+            runs={runs}
+            active={null}
+            liveRunId={null}
+            selectedRunId={null}
+            onChange={() => {}}
+            sessionReads={{ read, started: () => asked }}
+            reference={null}
+            onReferenceUsed={() => {}}
+            onPanel={() => {}}
+          />
+        </IntlProvider>,
+      ),
+    );
+  // First drawn with three reads asked and back: the run is on its way.
+  await draw(3);
+  expect(fixture.cards.get('request')?.arriving).toBe(true);
+  asked = 5;
+  await draw(4);
+  expect(fixture.cards.get('request')?.arriving).toBe(true);
+  // Two reads asked after it was first drawn came back without it: it is not coming.
+  await draw(5);
+  expect(fixture.cards.get('request')?.arriving).toBe(false);
+  // Listed, its run row is the card's own.
+  await draw(6, [
+    {
+      runId: 'run_new',
+      status: 'succeeded',
+      corralId: null,
+      projectId: 'project',
+      sessionId: 'session_meta',
+      startedAt: '2026-11-09T00:00:00Z',
+    } as unknown as RunSummary,
+  ]);
+  expect(fixture.cards.get('request')?.arriving).toBe(false);
 });
