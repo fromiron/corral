@@ -167,9 +167,12 @@ export function createRunSession(
       let replayFailed = false;
       const flush = () => {
         scheduled = false;
-        const batch = pending;
-        pending = [];
-        if (generation !== version) return;
+        // The output and the run's success are one commit, but a read can end between them:
+        // the output waits for its success, so no state shows one without the other.
+        const whole = pending.at(-1)?.type === 'output.finalized' ? pending.length - 1 : undefined;
+        const batch = pending.slice(0, whole);
+        pending = pending.slice(batch.length);
+        if (generation !== version || !batch.length) return;
         let projection = get().projection ?? emptyProjection(runId);
         for (const event of batch) projection = applyEvent(projection, event);
         const artifactTexts = Object.fromEntries(
