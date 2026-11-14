@@ -106,3 +106,36 @@ it('has the same Terms keys in both languages, each term with a name and a meani
   for (const [id, value] of Object.entries(en.Terms))
     if (id !== 'about') expect(Object.keys(value).sort(), id).toEqual(['meaning', 'name']);
 });
+
+it('keeps the state a control said on the name line and in its description', async () => {
+  const user = userEvent.setup();
+  render(
+    <IntlProvider locale="en" messages={en} timeZone="UTC">
+      <TermTooltip term="advisor" state="On · Model B">
+        <Button variant="ghost" aria-label="Advisor">
+          A
+        </Button>
+      </TermTooltip>
+    </IntlProvider>,
+  );
+  const control = screen.getByRole('button', { name: 'Advisor' });
+  expect(control).toHaveAccessibleDescription(`On · Model B ${en.Terms.advisor.meaning}`);
+  await user.hover(control);
+  const tip = await screen.findByRole('tooltip');
+  expect(tip.querySelector('[data-term-name]')?.textContent).toBe('Advisor · On · Model B');
+  expect(tip.querySelector('[data-term-meaning]')?.textContent).toBe(en.Terms.advisor.meaning);
+});
+
+it('stays closed while the control says so, as while its own menu is open', async () => {
+  const user = userEvent.setup();
+  render(
+    <IntlProvider locale="en" messages={en} timeZone="UTC">
+      <TermTooltip term="corral" closed>
+        <Button variant="ghost">Team</Button>
+      </TermTooltip>
+    </IntlProvider>,
+  );
+  await user.hover(screen.getByRole('button', { name: 'Team' }));
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(screen.queryByRole('tooltip')).toBeNull();
+});

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { IntlProvider } from 'use-intl';
-import { Button } from '../design-kit/index.ts';
+import { Button, Tooltip } from '../design-kit/index.ts';
 import messages from '../messages/en.json' with { type: 'json' };
 import koMessages from '../messages/ko.json' with { type: 'json' };
 import { TermHint, TermTooltip } from './TermHint.tsx';
@@ -142,5 +142,98 @@ export const InTooltip: Story = {
     await expect(meaning?.bottom).toBeLessThanOrEqual(tip?.bottom ?? 0);
     // The kit's fade ends before the accessibility check reads the colors.
     await new Promise((resolve) => setTimeout(resolve, 500));
+  },
+};
+
+/** What a surface looks like: the parts both forms must share. */
+const surface = (element: Element | null) => {
+  if (!element) return null;
+  const style = getComputedStyle(element);
+  return {
+    background: style.backgroundColor,
+    color: style.color,
+    radius: style.borderTopLeftRadius,
+    padding: `${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}`,
+    shadow: style.boxShadow,
+    font: `${style.fontSize}/${style.lineHeight}`,
+  };
+};
+
+/** The icon's explanation and a control's tooltip stand on one surface. */
+export const SameSurface: Story = {
+  render: () => (
+    <div className="flex items-center gap-8 pt-24">
+      <h2 className="m-0 flex items-center gap-1 text-subtitle font-semibold">
+        {messages.Terms.corral.name}
+        <TermHint term="corral" />
+      </h2>
+      <TermTooltip term="advisor">
+        <Button variant="ghost" size="compact" aria-label={messages.Terms.advisor.name}>
+          {messages.Terms.advisor.name}
+        </Button>
+      </TermTooltip>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'About Corral' }));
+    const popup = () => document.querySelector('[data-term-popup]');
+    await waitFor(() => expect(popup()).toBeVisible());
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const icon = surface(popup());
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(popup()).toBeNull());
+    await userEvent.hover(canvas.getByRole('button', { name: messages.Terms.advisor.name }));
+    const meaning = () => document.querySelector('[role="tooltip"] [data-term-meaning]');
+    await waitFor(() => expect(meaning()).toBeVisible());
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    // The kit tooltip draws its surface on the element its words sit in.
+    const tip = surface(meaning()?.parentElement?.parentElement ?? null);
+    await expect(icon).not.toBeNull();
+    await expect(icon).toEqual(tip);
+  },
+};
+
+/** A tooltip of words alone keeps every line inside it; one line stays one line high. */
+export const KitTooltipLines: Story = {
+  render: () => (
+    <div className="flex items-center gap-8 pt-24">
+      <Tooltip content="Archive">
+        <Button variant="ghost" size="compact">
+          One
+        </Button>
+      </Tooltip>
+      <Tooltip
+        content="Folders this project may read and write; anything else needs your approval."
+        className="max-w-xs"
+      >
+        <Button variant="ghost" size="compact">
+          Two
+        </Button>
+      </Tooltip>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const open = async (name: string) => {
+      await userEvent.hover(canvas.getByRole('button', { name }));
+      await waitFor(() => expect(document.querySelector('[role="tooltip"]')).toBeVisible());
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const tip = document.querySelector('[role="tooltip"]') as HTMLElement;
+      const inner = tip.firstElementChild as HTMLElement;
+      const range = document.createRange();
+      range.selectNodeContents(inner);
+      const words = [...range.getClientRects()];
+      const result = { box: inner.getBoundingClientRect(), words };
+      await userEvent.unhover(canvas.getByRole('button', { name }));
+      await waitFor(() => expect(document.querySelector('[role="tooltip"]')).toBeNull());
+      return result;
+    };
+    const one = await open('One');
+    // One line, at the kit's ~24px.
+    await expect(Math.round(one.box.height)).toBeLessThanOrEqual(25);
+    const two = await open('Two');
+    await expect(two.box.height).toBeGreaterThan(one.box.height + 8);
+    for (const line of two.words) await expect(line.bottom).toBeLessThanOrEqual(two.box.bottom);
   },
 };

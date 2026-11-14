@@ -40,6 +40,17 @@ function TooltipPortalContainer({
 
 const DEFAULT_DELAY = 200;
 
+/**
+ * The tooltip's surface: inverse colors, caption type and its padding. Text is trimmed to its
+ * letters where the browser can (its first line's cap height, its last line's baseline), with the
+ * extra padding only there, so a one-line tooltip is ~24px in every browser. Other popups that
+ * should read as a tooltip take the same surface from here, with the shape's background radius.
+ */
+const TOOLTIP_SURFACE = cn(
+  'bg-foreground text-background text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] px-2 py-1',
+  '[text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both]:py-2',
+);
+
 // Whether a <TooltipProvider> is above. A per-instance Provider is only added
 // without one, since it would defeat cross-tooltip skip-delay grouping.
 const TooltipGroupContext = createContext(false);
@@ -239,14 +250,7 @@ function Tooltip({
                   }}
                 >
                   <motion.div
-                    className={cn(
-                      // Extra padding only where text-box trim applies, so the
-                      // height matches untrimmed browsers (~24px).
-                      'bg-foreground text-background text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] px-2 py-1',
-                      '[text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both]:py-2',
-                      shape.bg,
-                      className,
-                    )}
+                    className={cn(TOOLTIP_SURFACE, shape.bg, className)}
                     style={{ fontVariationSettings: fontWeights.normal }}
                     initial={{ opacity: 0, ...slideOffset }}
                     // Both targets name x and y, or a separate instant
@@ -283,4 +287,4 @@ function Tooltip({
 }
 
 export type { TooltipProps, TooltipProviderProps, TooltipSide };
-export { Tooltip, TooltipPortalContainer, TooltipProvider };
+export { TOOLTIP_SURFACE, Tooltip, TooltipPortalContainer, TooltipProvider };

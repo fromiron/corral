@@ -139,6 +139,8 @@ interface AgentTreeProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title' | 
   root: AgentTreeNode;
   /** Bar title and the tree's accessible name. */
   title?: string;
+  /** Drawn right after the bar's title, on its line (an explanation of the title's term). */
+  titleAction?: ReactNode;
   /** Clock for running durations (epoch ms). Omitted, ticks every second while anything runs. */
   now?: number;
   /** Ids of folded branches (controlled). */
@@ -250,6 +252,7 @@ const AgentTree = forwardRef<HTMLDivElement, AgentTreeProps>(
     {
       root,
       title = 'Agents',
+      titleAction,
       now,
       collapsed,
       defaultCollapsed,
@@ -448,7 +451,13 @@ const AgentTree = forwardRef<HTMLDivElement, AgentTreeProps>(
       <SizeScope size={size}>
         <Ctx.Provider value={ctx}>
           <div ref={ref} className={cn('grid min-w-0 gap-4', className)} {...props}>
-            <SummaryBar root={root} all={all} title={title} onResolve={onResolve} />
+            <SummaryBar
+              root={root}
+              all={all}
+              title={title}
+              titleAction={titleAction}
+              onResolve={onResolve}
+            />
             <div
               ref={treeRef}
               role="tree"
@@ -768,11 +777,13 @@ function SummaryBar({
   root,
   all,
   title,
+  titleAction,
   onResolve,
 }: {
   root: AgentTreeNode;
   all: AgentTreeNode[];
   title: string;
+  titleAction?: ReactNode;
   onResolve?: (agent: AgentTreeNode, action: AgentTreeAction) => void;
 }) {
   const { labels, showCost } = useTree();
@@ -851,6 +862,7 @@ function SummaryBar({
       >
         {title}
       </span>
+      {titleAction}
       <span
         aria-live="polite"
         className={cn(

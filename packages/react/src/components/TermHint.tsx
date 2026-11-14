@@ -14,27 +14,33 @@ import {
 export type TermId = 'corral' | 'execution' | 'workStyle' | 'advisor';
 
 /**
- * What a term means, as both forms show it: its name, then one sentence under it, at a width
- * that reads (features/term-hints.md). It takes the colors of the surface it is in.
+ * What a term means, as both forms show it on the kit tooltip's surface: its name (and, where
+ * the control said one, its state), then one sentence under it, at a width that reads
+ * (features/term-hints.md). Plain blocks, so the surface trims its first and last line alike.
  */
-export function TermContent({ term }: { term: TermId }) {
+export function TermContent({ term, state }: { term: TermId; state?: string }) {
   const t = useTranslations('Terms');
   return (
-    <span className="flex max-w-64 flex-col gap-0.5 text-left">
-      <span data-term-name="" style={{ fontVariationSettings: fontWeights.semibold }}>
-        {t(`${term}.name`)}
+    <span className="block max-w-64 text-left">
+      <span
+        data-term-name=""
+        className="block"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
+        {state ? `${t(`${term}.name`)} · ${state}` : t(`${term}.name`)}
       </span>
-      <span data-term-meaning="">{t(`${term}.meaning`)}</span>
+      <span data-term-meaning="" className="mt-1 block">
+        {t(`${term}.meaning`)}
+      </span>
     </span>
   );
 }
 
-/** The meaning as a description, read while the explanation is closed; never drawn. */
-function Meaning({ id, term }: { id: string; term: TermId }) {
-  const t = useTranslations('Terms');
+/** Words read as a description while the explanation is closed; never drawn. */
+function Described({ id, children }: { id: string; children: string }) {
   return (
     <span id={id} hidden>
-      {t(`${term}.meaning`)}
+      {children}
     </span>
   );
 }
@@ -46,7 +52,8 @@ function Meaning({ id, term }: { id: string; term: TermId }) {
  *
  * Base UI's tooltip opens on a mouse only (`mouseOnly` in TooltipTrigger.js) and never on a
  * press, so a touch could not reach it: this is the kit's popover, opened on a press, on hover
- * (`openOnHover`, which keeps it open while the pointer moves onto it) and here on keyboard focus.
+ * (`openOnHover`, which keeps it open while the pointer moves onto it) and here on keyboard focus,
+ * drawn on the tooltip's surface so both forms look alike.
  */
 export function TermHint({ term, className }: { term: TermId; className?: string }) {
   const t = useTranslations('Terms');
@@ -94,9 +101,9 @@ export function TermHint({ term, className }: { term: TermId; className?: string
           <Info aria-hidden="true" />
         </PopoverTrigger>
         <PopoverPopup
+          surface="tooltip"
           side="bottom"
           align="start"
-          padding="compact"
           // The explanation is read, not worked in: the focus stays on the icon.
           initialFocus={false}
           // Nor does it hand the focus back when it closes: a focus returned to the icon would open
@@ -104,45 +111,55 @@ export function TermHint({ term, className }: { term: TermId; className?: string
           finalFocus={false}
           data-term-popup={meaningId}
           aria-label={t(`${term}.name`)}
-          className="text-caption"
         >
-          <span className="block px-1">
-            <TermContent term={term} />
-          </span>
+          <TermContent term={term} />
         </PopoverPopup>
       </Popover>
-      <Meaning id={meaningId} term={term} />
+      <Described id={meaningId}>{t(`${term}.meaning`)}</Described>
     </>
   );
 }
 
 /**
- * A control whose tooltip already says its name: the tooltip says the term's name and its one
- * sentence, and the sentence becomes the control's description. Its own name stays.
+ * A control named by the term (a tool line button or selector, a view tab): its tooltip says the
+ * term's name, with the state the control said beside it, and the one sentence under it. The
+ * state and the sentence are the control's description; its own name stays. Props other than
+ * these go to the control (a tab list's index, for one).
  */
 export function TermTooltip({
   term,
-  children,
+  state,
+  closed,
   side,
+  children,
+  ...control
 }: {
   term: TermId;
-  children: ReactElement<{ 'aria-describedby'?: string }>;
+  /** The state the control's tooltip said, kept on the name line and in the description. */
+  state?: string;
+  /** Kept closed, as while the control's own menu is open. */
+  closed?: boolean;
   side?: 'top' | 'bottom' | 'left' | 'right';
+  children: ReactElement<{ 'aria-describedby'?: string }>;
+  [prop: string]: unknown;
 }) {
+  const t = useTranslations('Terms');
   const meaningId = useId();
-  const described = [children.props['aria-describedby'], meaningId].filter(Boolean).join(' ');
+  const stateId = useId();
+  const described = [children.props['aria-describedby'], state ? stateId : null, meaningId]
+    .filter(Boolean)
+    .join(' ');
   return (
     <>
       <Tooltip
-        content={<TermContent term={term} />}
-        // The kit trims a one-line tooltip to its letters; two lines keep their whole box, or the
-        // second line would hang below the tooltip's edge.
-        className="[text-box:normal]"
+        content={<TermContent term={term} {...(state ? { state } : {})} />}
+        {...(closed ? { forceOpen: false } : {})}
         {...(side ? { side } : {})}
       >
-        {cloneElement(children, { 'aria-describedby': described })}
+        {cloneElement(children, { ...control, 'aria-describedby': described })}
       </Tooltip>
-      <Meaning id={meaningId} term={term} />
+      {state ? <Described id={stateId}>{state}</Described> : null}
+      <Described id={meaningId}>{t(`${term}.meaning`)}</Described>
     </>
   );
 }
