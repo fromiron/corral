@@ -34,8 +34,8 @@ describe('the hints of the coined names', () => {
     [
       'paddock',
       'Paddock',
-      'A copy of the project kept for this conversation, fenced off so runs can work without touching the source folder.',
-      '프로젝트 원본 폴더를 건드리지 않고 실행이 일하도록 이 대화에 따로 둔, 울타리 안의 사본입니다.',
+      'A copy of the project kept for one conversation, fenced off so its runs can work without touching the source folder.',
+      '프로젝트 원본 폴더를 건드리지 않고 실행이 일하도록 대화마다 따로 두는, 울타리 안의 사본입니다.',
     ],
   ])('%s has its name and meaning in both languages', (id, name, enMeaning, koMeaning) => {
     const enTerms = en.Terms as unknown as Record<string, { name: string; meaning: string }>;
@@ -73,15 +73,72 @@ const RETIRED: [string, RegExp][] = [
   ['작업 사본', /작업 사본/],
 ];
 
+/**
+ * The words of an ICU message a person reads: its text and the text of every select and plural
+ * branch. An argument's name ({advisor}), its type and a branch's selector are code, not text.
+ */
+function screenText(message: string): string {
+  let i = 0;
+  let out = '';
+  const text = (): void => {
+    while (i < message.length && message[i] !== '}') {
+      if (message[i] === '{') argument();
+      else out += message[i++];
+    }
+    out += ' ';
+  };
+  const skipTo = (stop: string) => {
+    while (i < message.length && !stop.includes(message[i] as string)) i++;
+  };
+  const argument = (): void => {
+    i++; // {
+    skipTo(',}'); // the argument's name
+    if (message[i] === '}') {
+      i++;
+      return;
+    }
+    i++; // ,
+    const type = /^\s*(\w+)\s*/.exec(message.slice(i));
+    i += type?.[0].length ?? 0;
+    if (!type || !['plural', 'select', 'selectordinal'].includes(type[1] as string)) {
+      skipTo('}'); // number, date and time styles
+      i++;
+      return;
+    }
+    if (message[i] === ',') i++;
+    while (i < message.length && message[i] !== '}') {
+      skipTo('{}'); // a selector such as one, =0, other or offset:1
+      if (message[i] === '{') {
+        i++;
+        text();
+        i++; // }
+      }
+    }
+    i++;
+  };
+  while (i < message.length) {
+    text();
+    if (message[i] === '}') out += message[i++];
+  }
+  return out;
+}
+
 describe('the retired screen names', () => {
+  it('reads the words of every select and plural branch, but no argument name', () => {
+    const says = (message: string) => RETIRED.some(([, pattern]) => pattern.test(screenText(message)));
+    expect(says('{count, plural, one {Advisor} other {Advisors}}')).toBe(true);
+    expect(says('{x, select, a {working copy} other {ok}}')).toBe(true);
+    expect(says('{n, plural, offset:1 =0 {none} other {# 작업 사본}}')).toBe(true);
+    expect(says('<isolate>{advisor}</isolate> advised {node}')).toBe(false);
+    expect(says('{advisor, select, other {Outrider}}')).toBe(false);
+  });
+
   it.each(RETIRED)('no screen text says "%s"', (_word, pattern) => {
     const found: string[] = [];
     for (const catalog of [en, ko]) {
       for (const [key, value] of leaves(catalog as unknown as Tree)) {
         if (MODEL_FACING.has(key)) continue;
-        // An argument's name ({advisor}) is code, not text.
-        const text = value.replace(/\{\s*[A-Za-z_]\w*/g, '{');
-        if (pattern.test(text)) found.push(`${key}: ${value}`);
+        if (pattern.test(screenText(value))) found.push(`${key}: ${value}`);
       }
     }
     expect(found).toEqual([]);

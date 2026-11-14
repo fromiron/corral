@@ -255,7 +255,7 @@
     "removeCall": "{target}로의 링크 제거",
     "noCallableAgents": "에이전트를 추가하고 '호출될 때만'으로 바꾸세요.",
     "fileTools": "파일을 바꿀 수 있음",
-    "fileToolsHint": "Corral 파일 도구로 이 대화의 Paddock 안에서만 파일을 읽고 씁니다. Paddock이 없으면 도구는 거절됩니다.",
+    "fileToolsHint": "Corral 파일 도구로 대화의 Paddock 안에서만 파일을 읽고 씁니다. Paddock이 없으면 도구는 거절됩니다.",
     "teamDefaults": "이 Corral의 모든 실행에 쓰는 기본값",
     "advanced": "고급",
     "profileSignIn": "로그인 필요",
@@ -2050,7 +2050,7 @@
     "openFolderSettings": "폴더 및 도구 열기",
     "create": "{head}에서 Paddock 만들기",
     "createHint": "폴더의 커밋하지 않은 변경 {changed, plural, other {#개}}는 들어가지 않습니다.",
-    "ready": "커밋 {commit}에서 만든 Paddock",
+    "ready": "커밋 {commit}에서 만듦",
     "review": "변경 검토",
     "remove": "Paddock 지우기",
     "removeConfirm": "Paddock의 파일이 지워집니다. 원본 폴더와 기록된 변경은 남습니다. 대화 보관은 Paddock을 지우지 않습니다.",
@@ -6285,7 +6285,7 @@
     },
     "paddock": {
       "name": "Paddock",
-      "meaning": "프로젝트 원본 폴더를 건드리지 않고 실행이 일하도록 이 대화에 따로 둔, 울타리 안의 사본입니다."
+      "meaning": "프로젝트 원본 폴더를 건드리지 않고 실행이 일하도록 대화마다 따로 두는, 울타리 안의 사본입니다."
     },
     "outrider": {
       "name": "Outrider",
