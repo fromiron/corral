@@ -753,7 +753,6 @@ function SessionComposer({
       <ComposerStatus
         runs={runs}
         // The demo's model chip already reads Simulated; a server without live models says it here.
-        simulated={runMode === 'mock' && services.mode !== 'browser'}
         noResult={intent === 'explain' && !latest}
         liveUnavailable={liveUnavailable}
         reasoningBlocked={reasoningBlocked}
