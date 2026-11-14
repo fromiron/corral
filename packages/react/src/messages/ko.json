@@ -365,7 +365,7 @@
     "waiting": {
       "children": "{count, plural, one {위임한 작업 #개} other {위임한 작업 #개}}를 기다리는 중",
       "message": "답 대기",
-      "approval": "승인을 기다리는 중",
+      "approval": "승인 대기",
       "user": "응답 대기"
     },
     "streamGap": "(일부 텍스트를 놓쳤습니다. 제출되면 전체 출력이 보입니다)",

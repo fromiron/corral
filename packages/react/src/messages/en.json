@@ -138,7 +138,7 @@
       "advise": "advises"
     },
     "nodeStatus": {
-      "idle": "Not run",
+      "idle": "No run yet",
       "active": "Working",
       "done": "Completed",
       "failed": "Failed",
@@ -5440,7 +5440,7 @@
     "serverRequired": "Work handoff is available when connected to the Corral server.",
     "scopeHint": "This request uses the adopted decision and its selected evidence. The target conversation’s default Corral stays the same.",
     "target": "Target conversation",
-    "newSession": "New work conversation",
+    "newSession": "New conversation",
     "title": "New conversation name",
     "execution": "Execution setup",
     "auto": "Auto",
