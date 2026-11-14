@@ -287,10 +287,10 @@
   },
   "Validation": {
     "codes": {
-      "ADVISOR_OUTSIDE_FLOW": "감독은 흐름 밖에 둡니다. 연결, 루프·팀 안, 위임·질문 연결을 가질 수 없습니다.",
+      "ADVISOR_OUTSIDE_FLOW": "감독은 흐름 밖에 둡니다. 연결, Loop·팀 안, 위임·질문 연결을 가질 수 없습니다.",
       "ADVISOR_UNWATCHED": "{node}: 지켜보는 에이전트가 없습니다. 조언할 에이전트에 연결하세요.",
       "ADVISOR_ADVISE_SOURCE": "에이전트를 지켜보는 것은 감독뿐입니다. 이 조언 연결은 감독에서 시작해야 합니다.",
-      "ADVISOR_ADVISE_TARGET": "감독은 흐름 안이나 호출되는 에이전트를 지켜봅니다. 다른 감독, 결정, 상자, Join, Output은 지켜볼 수 없습니다.",
+      "ADVISOR_ADVISE_TARGET": "감독은 흐름 안이나 호출되는 에이전트를 지켜봅니다. 다른 감독, 결정, 상자, 합류, 출력은 지켜볼 수 없습니다.",
       "ADVISOR_ADVISE_QUESTIONS": "조언 연결에는 부모 질문을 둘 수 없습니다.",
       "ADVISOR_TOOLS": "감독은 읽기만 합니다. 검색, 문서·파일 목록·파일 읽기와 버전 읽기, 조언만 쓸 수 있습니다.",
       "ADVISE_TOOL_ADVISOR_ONLY": "조언은 감독만 할 수 있습니다. 이 에이전트의 역할에서 조언을 빼세요.",
@@ -308,10 +308,10 @@
       "DECISION_RULE": "이 판단의 규칙이 판단 기준과 맞지 않습니다.",
       "DEPTH_EXCEEDED": "이 에이전트는 위임 깊이 한도를 넘어야만 닿습니다.",
       "DUPLICATE_ID": "두 항목의 ID가 같습니다.",
-      "ENTRY_INVALID": "흐름은 상자 밖의 예약 에이전트, Loop 또는 Team에서 시작해야 합니다.",
+      "ENTRY_INVALID": "흐름은 상자 밖의 예약 에이전트, Loop 또는 팀에서 시작해야 합니다.",
       "INVALID_PORT": "노드에 없는 포트를 쓰는 연결입니다.",
-      "JOIN_SINGLE_INPUT": "Join은 분기 둘 이상을 기다립니다.",
-      "LOOP_DEAD_END": "이 경로가 Loop 안에서 멈춥니다. 종료, 반복 또는 Output으로 이으세요.",
+      "JOIN_SINGLE_INPUT": "합류는 분기 둘 이상을 기다립니다.",
+      "LOOP_DEAD_END": "이 경로가 Loop 안에서 멈춥니다. 종료, 반복 또는 출력으로 이으세요.",
       "LOOP_MAX_ITERATIONS": "Loop의 최대 회차를 정하거나 제한 없이 돌게 하세요.",
       "LOOP_LIMIT_RECIPE": "검토 레시피가 있는 Loop는 레시피의 시도 수에서 끝나므로 끝내기만 고를 수 있습니다.",
       "LOOP_REASONING_OFF": "올릴 추론 수준을 끔보다 높게 고르세요.",
@@ -320,7 +320,7 @@
       "LOOP_NO_EXIT": "Loop 안의 갈래 하나를 종료에 연결하세요.",
       "LOOP_NO_REPEAT": "Loop 안의 판단 하나를 반복에 연결하세요.",
       "NO_OUTPUT": "흐름이 출력에 닿지 않습니다.",
-      "PARALLEL_MERGE_NEEDS_JOIN": "병렬 분기가 여기서 만납니다. Join으로 합치세요.",
+      "PARALLEL_MERGE_NEEDS_JOIN": "병렬 분기가 여기서 만납니다. 합류로 합치세요.",
       "PARALLEL_WRITERS": "병렬 분기들이 같은 작업 사본의 파일을 바꿉니다.",
       "REPEAT_NEEDS_DECISION": "작업을 다시 돌리는 것은 판단만 할 수 있습니다.",
       "REVIEW_CONTRACT": "검토 판단은 검토자의 출력을 읽어야 합니다.",
@@ -328,12 +328,12 @@
       "ROUTER_ROUTES": "라우터에는 id가 서로 다른 갈래가 둘 이상 있어야 합니다.",
       "SPAWNS_CAPPED": "하위 실행 단위 한도가 실행에서 허용하는 값보다 큽니다. 실행에는 설치 한도가 적용됩니다.",
       "SCHEMA_INVALID": "{message}",
-      "TEAM_INPUTS_INLINE": "이 Team 안의 단계가 앞 단계를 이름으로 읽습니다. Team은 입력을 받지 않습니다.",
-      "TEAM_NO_BODY": "본문을 Team 안의 첫 단계에 연결하세요.",
-      "TEAM_NO_EXIT": "Team 안의 단계 하나를 종료에 연결하세요.",
-      "TEAM_NO_MEMBERS": "Team 안에 단계를 하나 이상 넣으세요.",
+      "TEAM_INPUTS_INLINE": "이 팀 안의 단계가 앞 단계를 이름으로 읽습니다. 팀은 입력을 받지 않습니다.",
+      "TEAM_NO_BODY": "본문을 팀 안의 첫 단계에 연결하세요.",
+      "TEAM_NO_EXIT": "팀 안의 단계 하나를 종료에 연결하세요.",
+      "TEAM_NO_MEMBERS": "팀 안에 단계를 하나 이상 넣으세요.",
       "TEAM_REFERENCE_MEMBERS": "참조한 팀은 구성원을 원본에서 가져옵니다. 이 노드를 밖으로 옮기세요.",
-      "TEAM_REF_CYCLE": "Team 참조가 이미 펼치는 중인 Corral로 되돌아갑니다.",
+      "TEAM_REF_CYCLE": "팀 참조가 이미 펼치는 중인 Corral로 되돌아갑니다.",
       "TEAM_REF_INVALID": "참조한 Corral revision 자체에 문제가 있습니다.",
       "TEAM_REF_NOT_FOUND": "참조한 Corral revision을 찾을 수 없습니다.",
       "UNKNOWN_MODEL_PROFILE": "설정되지 않은 모델 프로필을 쓰는 역할이 있습니다.",
@@ -1481,7 +1481,7 @@
         "sources": "주요 주장마다 근거 출처를 밝힌다."
       },
       "labels": {
-        "loop": "검토 루프",
+        "loop": "검토 Loop",
         "decision": "검토 판정",
         "output": "출력"
       },
@@ -1546,7 +1546,7 @@
       }
     },
     "labels": {
-      "loop": "검토 루프",
+      "loop": "검토 Loop",
       "decision": "검토 판정",
       "join": "합류",
       "output": "출력"
@@ -1596,7 +1596,7 @@
           "research": "조사",
           "helper": "조사 보조",
           "respond": "출처 응답자",
-          "review_loop": "검토 루프",
+          "review_loop": "검토 Loop",
           "write": "작성자",
           "review": "검토자",
           "review_decision": "검토 판정",
@@ -1714,7 +1714,7 @@
     "noCurrentResult": "현재 열 수 있는 최종 결과가 없습니다.",
     "label": "결과",
     "kind": {
-      "partial": "실행이 Output에 닿기 전에 끝났습니다. 멈추기 전까지 만든 부분 결과입니다.",
+      "partial": "실행이 출력에 닿기 전에 끝났습니다. 멈추기 전까지 만든 부분 결과입니다.",
       "none": "결과 없이 끝남",
       "pending": "아직 결과 없음"
     },
@@ -3642,7 +3642,7 @@
   },
   "RuntimeRecovery": {
     "title": "실행 복구",
-    "scope": "중단된 단일 에이전트 실행을 새 실행에서 이어갑니다. 네이티브 확장·팀·루프는 지원하지 않으며 원본 실행은 보존합니다.",
+    "scope": "중단된 단일 에이전트 실행을 새 실행에서 이어갑니다. 네이티브 확장과, 에이전트 하나와 출력만 있는 구성을 넘는 Corral은 지원하지 않으며 원본 실행은 보존합니다.",
     "empty": "검증된 실행 체크포인트가 없습니다. 기존 결과를 바탕으로 새 요청을 보내세요.",
     "unavailable": "실행을 복구할 수 없습니다.",
     "tree": "파일: {tree}",
@@ -5781,7 +5781,7 @@
     }
   },
   "RunLoop": {
-    "title": "루프 · {name}",
+    "title": "Loop · {name}",
     "summary": "반복 {count}회 · 최대 {max}회",
     "summaryUnlimited": "반복 {count}회 · 회차 제한 없음",
     "iterationLabel": "{name} 회차",
@@ -5943,8 +5943,8 @@
     "saved": "저장됨",
     "unsaved": "저장하지 않은 변경",
     "patterns": {
-      "reviewLoop": "검토 루프로 감싸기",
-      "checkLoop": "검사 루프로 감싸기",
+      "reviewLoop": "검토 Loop로 감싸기",
+      "checkLoop": "검사 Loop로 감싸기",
       "parallel": "병렬로 나누기"
     },
     "patternDescriptions": {

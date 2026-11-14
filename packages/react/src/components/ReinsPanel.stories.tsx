@@ -120,7 +120,7 @@ export const UnlimitedLoopRounds: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Change settings' }));
     await userEvent.click(canvas.getByRole('combobox', { name: 'Change scope' }));
     const body = within(canvasElement.ownerDocument.body);
-    await userEvent.click(await body.findByRole('option', { name: 'Future loop rounds' }));
+    await userEvent.click(await body.findByRole('option', { name: 'Future Loop rounds' }));
     await expect(await canvas.findByText('No round limit')).toBeVisible();
     // The list has closed before the accessibility check reads the page.
     await waitFor(() =>

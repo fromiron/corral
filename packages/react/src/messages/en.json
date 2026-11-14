@@ -1068,7 +1068,7 @@
     "kind": {
       "run_limits": "Run limits",
       "node_future": "Future executions of one node",
-      "loop_limit": "Future loop rounds",
+      "loop_limit": "Future Loop rounds",
       "criteria": "Review criteria"
     },
     "node": "Target node",
@@ -1076,7 +1076,7 @@
     "field": {
       "prompt": "Role prompt",
       "modelProfile": "Model profile",
-      "maxIterations": "Automatic loop rounds",
+      "maxIterations": "Automatic Loop rounds",
       "criteria": "Review criteria (one per line)",
       "maxSpawns": "Child execution limit",
       "reasoning": "Model and reasoning"
@@ -1091,11 +1091,11 @@
     "boundary": {
       "run_limits": "Applies to child executions started from now on. Existing child executions are kept.",
       "node_future": "Applies when this node creates a future execution. Existing executions and other nodes using the same role stay unchanged.",
-      "loop_limit": "Applies at the next round boundary of this loop.",
+      "loop_limit": "Applies at the next round boundary of this Loop.",
       "criteria": "Creates a new criteria version. Earlier reviews retain their original criteria and are marked stale."
     },
     "futureNodes": "Future target nodes: {count, number}",
-    "dynamicCount": "The number of future executions depends on remaining branches, loop rounds and dynamic calls.",
+    "dynamicCount": "The number of future executions depends on remaining branches, Loop rounds and dynamic calls.",
     "unchanged": "Current executions unaffected: {count, number}",
     "spent": "{spent, number} output tokens already used",
     "stale": "The run changed after this preview. Preview again before confirming.",
@@ -3642,7 +3642,7 @@
   },
   "RuntimeRecovery": {
     "title": "Runtime recovery",
-    "scope": "Continues a stopped single-agent Run in a new Run. Native extensions, teams and loops are not supported. The source Run is kept.",
+    "scope": "Continues a stopped single-agent Run in a new Run. Native extensions and any Corral beyond one agent and its Output are not supported. The source Run is kept.",
     "empty": "No verified runtime checkpoint. Send a new request to continue from the existing results.",
     "unavailable": "Runtime recovery is unavailable.",
     "tree": "Files: {tree}",
@@ -5943,8 +5943,8 @@
     "saved": "Saved",
     "unsaved": "Unsaved changes",
     "patterns": {
-      "reviewLoop": "Wrap in a review loop",
-      "checkLoop": "Wrap in a check loop",
+      "reviewLoop": "Wrap in a review Loop",
+      "checkLoop": "Wrap in a check Loop",
       "parallel": "Split in parallel"
     },
     "patternDescriptions": {
