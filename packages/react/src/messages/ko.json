@@ -6265,5 +6265,24 @@
     "reviewing": "검토 중",
     "adviceDelivered": "{count, plural, other {조언 #건 전달}}",
     "finalReview": "{name}: 마지막 검토"
+  },
+  "Terms": {
+    "about": "{term} 설명",
+    "corral": {
+      "name": "Corral",
+      "meaning": "저장해 두고 다시 쓰는 팀입니다. 역할과 일이 넘어가는 순서를 담습니다."
+    },
+    "execution": {
+      "name": "실행 단위",
+      "meaning": "실행 안에서 역할 하나가 맡은 처리입니다."
+    },
+    "workStyle": {
+      "name": "작업 방식",
+      "meaning": "역할이 쓰는 스킬·확장·도구를 한 묶음으로 저장한 것입니다."
+    },
+    "advisor": {
+      "name": "감독",
+      "meaning": "다른 역할의 일을 지켜보다가 조언하는 역할입니다. 일을 직접 하지는 않습니다."
+    }
   }
 }
