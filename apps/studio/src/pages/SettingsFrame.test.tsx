@@ -174,3 +174,34 @@ it.each([
   );
   expect(main.textContent).not.toContain('Select an item');
 });
+
+// glossary.md, "설명이 붙는 용어": the work-style section's title explains the term by one icon
+// right after it, hidden with the title on narrow screens; no other section draws one.
+it.each(Object.keys(LABELS))(
+  'explains a term after the %s title only where it names one',
+  async (section) => {
+    fixture.services = browserDemo;
+    const container = await render(<SettingsContent section={section as SettingsSection} />);
+    const hints = [...container.querySelectorAll<HTMLElement>('[data-term-hint]')];
+    if (section !== 'harness') {
+      expect(hints).toHaveLength(0);
+      return;
+    }
+    expect(hints).toHaveLength(1);
+    const hint = hints[0] as HTMLElement;
+    expect(hint.dataset.termHint).toBe('workStyle');
+    expect(hint.getAttribute('aria-label')).toBe(
+      messages.Terms.about.replace('{term}', messages.Terms.workStyle.name),
+    );
+    expect(document.getElementById(hint.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+      messages.Terms.workStyle.meaning,
+    );
+    const title = container.querySelector('[data-settings-header] h2') as HTMLElement;
+    // After the title, outside the heading, so the heading still reads as the section's name.
+    expect(title.contains(hint)).toBe(false);
+    expect(title.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Below sm the title is only read; its icon goes with it.
+    expect(title.className).toContain('max-sm:sr-only');
+    expect(hint.closest('.max-sm\\:hidden')).toBeTruthy();
+  },
+);

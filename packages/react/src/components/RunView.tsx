@@ -38,6 +38,7 @@ import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
 import { LoopEscalationText, RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
+import { TermHint } from './TermHint.tsx';
 import { UsageInspector } from './UsageInspector.tsx';
 
 /** Run status, executions and output, from committed events only. Needs no editor. */
@@ -627,6 +628,9 @@ export function ExecutionTree({
       ref={treeRef}
       root={root}
       title={tree('title')}
+      // The tree's title is where Execution explains itself (glossary.md); a tab named for the
+      // tree hides the title, and the explanation with it.
+      {...(titled ? { titleAction: <TermHint term="execution" /> } : {})}
       selectedId={selectedExecutionId}
       onSelect={(agent) => onSteer(agent.id)}
       labels={labels}

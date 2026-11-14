@@ -764,3 +764,53 @@ it('never shows local paths or tokens in resource rows', async () => {
   expect(text).toContain('Remote search');
   expect(text).not.toMatch(/\/home\/|\/usr\/|token|abc123|npm:/);
 });
+
+/** Hovers `element` long enough for a tooltip to open. */
+async function hover(element: Element) {
+  await act(async () => {
+    element.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mouseenter'));
+    element.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+}
+
+/** What an element's aria-describedby reads, in order. */
+const described = (element: Element | null | undefined) =>
+  (element?.getAttribute('aria-describedby') ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ');
+
+// glossary.md, "설명이 붙는 용어": the Corral tab's tooltip explains the term; its name, its
+// selection and the other tabs stay as they were, and the screen has no Corral icon.
+it.each(['en', 'ko'] as const)(
+  'explains Corral in the tooltip of the Corral tab only (%s)',
+  async (locale) => {
+    const text = locale === 'ko' ? ko : messages;
+    await team(repository, 'Alpha writers', 'project_1');
+    const { container, router } = await render(
+      '/library/templates?project=project_1',
+      undefined,
+      locale,
+    );
+    const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
+    const [corral, ...others] = tabs;
+    if (!corral) throw new Error('missing tab');
+    const name = corral.textContent;
+    expect(described(corral)).toBe(text.Terms.corral.meaning);
+    for (const tab of others) expect(described(tab)).toBe('');
+    await hover(corral);
+    const tip = document.querySelector('[role="tooltip"]');
+    expect(tip?.querySelector('[data-term-name]')?.textContent).toBe(text.Terms.corral.name);
+    expect(tip?.querySelector('[data-term-meaning]')?.textContent).toBe(text.Terms.corral.meaning);
+    // Still the tab it was: its name and what pressing it does.
+    expect(corral.textContent).toBe(name);
+    await act(async () => corral.click());
+    await settle();
+    expect(router.state.location.pathname).toBe('/library/teams');
+    expect(container.querySelectorAll('[data-term-hint]')).toHaveLength(0);
+  },
+);

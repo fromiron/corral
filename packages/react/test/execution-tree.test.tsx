@@ -239,8 +239,33 @@ describe('execution card tree', () => {
     expect(screen.getByRole('button', { name: /1 needs you/ })).toBeInTheDocument();
   });
 
+  // glossary.md, "설명이 붙는 용어": the tree's title is where Execution explains itself.
+  it('puts the execution term’s icon right after its title, and none when untitled', async () => {
+    const user = userEvent.setup();
+    renderTree();
+    const header = document.querySelector('header') as HTMLElement;
+    const hint = within(header).getByRole('button', {
+      name: `About ${messages.Terms.execution.name}`,
+    });
+    expect(hint).toHaveAccessibleDescription(messages.Terms.execution.meaning);
+    // Right after the title: the spark mark, the title, then the icon.
+    const title = header.children[1];
+    expect(title?.textContent).toBe(messages.Run.tree.title);
+    expect(title?.nextElementSibling?.contains(hint) || title?.nextElementSibling === hint).toBe(
+      true,
+    );
+    await user.click(hint);
+    await waitFor(() =>
+      expect(document.querySelector('[data-term-popup] [data-term-meaning]')).toHaveTextContent(
+        messages.Terms.execution.meaning,
+      ),
+    );
+    await user.keyboard('{Escape}');
+  });
+
   it('inside a tab named for it, drops its title and keeps the count and the tree name', () => {
     renderTree(null, false);
+    expect(document.querySelector('[data-term-hint]')).toBeNull();
     const header = document.querySelector('header');
     // The bar's spark mark and title are its first two parts; the counts follow and stay.
     expect(header?.parentElement?.className).toContain('[&>header>span:nth-child(-n+2)]:hidden');

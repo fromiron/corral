@@ -1,6 +1,6 @@
 import type { HarnessPreview } from '@corral/client';
 import type { AgentRole, HarnessProfileView } from '@corral/contracts';
-import { useStudioStores } from '@corral/react';
+import { TermHint, useStudioStores } from '@corral/react';
 import { Button, fontWeights, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -64,7 +64,11 @@ export function HarnessRoleSettings({
         className="flex flex-col gap-1 text-caption"
         style={{ fontVariationSettings: fontWeights.semibold }}
       >
-        <span>{t('heading')}</span>
+        {/* The editor's one place for the work-style term (glossary.md): after its label. */}
+        <span className="flex items-center gap-1">
+          <span>{t('heading')}</span>
+          <TermHint term="workStyle" />
+        </span>
         <Select
           label={t('heading')}
           value={selection}

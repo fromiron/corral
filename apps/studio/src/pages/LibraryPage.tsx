@@ -1,4 +1,5 @@
 import type { CorralSummary, ProjectSummary } from '@corral/core';
+import { TermTooltip } from '@corral/react';
 import { Button, Page, Select, TabItem, TabPanel, Tabs, TabsList } from '@corral/react/design-kit';
 import { ArrowLeft } from '@corral/react/icons';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
@@ -143,9 +144,17 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <TabsList aria-label={t('views')}>
-              {LIBRARY_VIEWS.map((value) => (
-                <TabItem key={value} value={value} label={viewLabel(value)} />
-              ))}
+              {/* The Corral tab explains the term in its tooltip (glossary.md); the list's index
+                  reaches the tab through it. */}
+              {LIBRARY_VIEWS.map((value) =>
+                value === 'teams' ? (
+                  <TermTooltip key={value} term="corral">
+                    <TabItem value={value} label={viewLabel(value)} />
+                  </TermTooltip>
+                ) : (
+                  <TabItem key={value} value={value} label={viewLabel(value)} />
+                ),
+              )}
             </TabsList>
             <div className="flex flex-wrap items-center gap-2">
               {/* An archived project gets no new teams. */}
