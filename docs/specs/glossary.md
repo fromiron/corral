@@ -13,7 +13,7 @@
 | 역할이 쓰는 스킬·확장·도구 선택 묶음 | Work style / 작업 방식 | `harness`, `HarnessProfile` | Harness, 작업 스타일 |
 | 모든 프로젝트의 기본 작업 방식 | Personal default work style / 개인 기본 작업 방식 | `defaults`, scope `personal` | Default work style(한정사 없이) |
 | 한 프로젝트의 기본 작업 방식 | Project default work style / 프로젝트 기본 작업 방식 | `project-defaults`, scope `project` | Default work style(한정사 없이) |
-| 작업 방식이 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → 팀 역할 → 이번 실행 | `ScopeLadder` | 3단 설명 |
+| 작업 방식이 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → Corral 역할 → 이번 실행 | `ScopeLadder` | 3단 설명, 팀 역할 |
 | 실행 결과물 | Results / 결과 | 패널 `artifacts`, 슬래시 `/results` | Artifacts |
 | 실행이 쓰는 격리 사본 | Conversation working copy / 대화 작업 사본 | `worktree`, scope `session` | 세션 작업 사본, 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
@@ -44,11 +44,12 @@
 | task·미리보기를 다루는 창 | Tasks & preview / 작업·미리보기 | 패널 `tools`, 슬래시 `/preview` | Running commands & preview, 도구 |
 | 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
-| 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 지시(대화 화면에서), Instruction, Steer |
+| 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 대화 화면의 지시·Instruction(실행 화면의 지시 영역은 [Reins](features/reins.md)의 낱말 Instruction / 지시를 쓴다), Steer |
 | 흐르는 응답을 끊고 바로 실리는 전송 | Interrupt / 끼어들기 | 지시 `delivery: interrupt` | 중단(실행을 끝내는 것과 구분), 강제 전달 |
 | 진행 중인 실행이 끝난 뒤 시작할 전송 | Next request / 다음 요청 | intent `queue`, 항목 state `queued` | 큐, 예약 |
 | 합류·끼어들기가 향하는 실행 단위 | Target / 대상 | `targetExecutionId` | 수신자(회의의 수신자와 구분) |
 | 그 메시지를 실은 요청이 시작됨 | Read / 읽힘 | 지시 상태 `delivered` | 전달됨(대화 화면에서), 반영됨, 적용됨 |
+| 읽히지 못하고 끝난 메시지나 조언 | Not delivered / 전달되지 않음 | 지시 상태 `expired`·`not_delivered` | 전달 안 됨 |
 | 읽히지 못한 합류 메시지를 서버가 대기 요청으로 바꾸는 일 | Carried over / 넘겨받음 | `carriedFrom` | 재전송(사람이 누르는 다시 보내기와 구분) |
 | 타임라인 끝의 응답 자리 | Needed now / 지금 필요한 것 | `PendingTray` | 대응 필요 알림, 응답 영역(실행 기록에서) |
 | 실행·실행 단위·대화가 화면에 보이는 상태 | — (낱말은 [표시 상태](features/presence.md)의 표) | `presence`, 메시지 `Presence` | — |
@@ -83,4 +84,12 @@ Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 �
 
 - "Corral"은 제품의 이름이면서 저장한 역할 구성의 이름이다. 제품을 가리킬 때는 문장의 주어나 장소로만 쓰고("Corral은 녹음을 저장하지 않습니다"), 저장한 구성을 가리킬 때는 고르고 만들고 지우는 대상으로 쓴다.
 - "Join / 합류"는 편집기의 단계 종류이면서 컴포저의 전송 방식이다. 두 이름은 다른 화면에서만 나온다.
+- 아래는 한 개념에 이름이 여럿이거나 한 이름에 뜻이 여럿인 채로 남아 있다. 이름을 정하면 이 표에 행을 더하고 여기서 지운다.
+  - 실행에 주는 요청 글(Brief): 국문이 지시문·브리프·요청·요청서로 갈린다.
+  - Decision: 국문이 판정·판단·결정으로 갈린다(그래프의 판단 노드, 검토의 판단, 승인의 결정이 섞인다).
+  - 하위 실행 단위: child execution·helpers·sub-tasks·delegated tasks, 하위 실행·보조 실행·하위 작업·위임한 작업.
+  - 기다리는 요청: Queued·queue, 대기열·대기 중·대기 요청. "Next request / 다음 요청"과의 경계가 정해지지 않았다.
+  - Output / 출력: 출력 노드, 실행의 Output 탭, 출력 계약, 검사·프로세스·터미널의 출력.
+  - Instructions: 역할의 프롬프트, 실행 단위에 보내는 지시, 프로젝트 지침.
+  - `Docking.conversation`과 `Docking.chat`은 같은 값을 가진 두 키다.
 - 실행 상태의 낱말은 [표시 상태](features/presence.md)의 것 하나로 쓰지만, 문구 키는 `Presence`·`RunStatus`·`Status`·`RunPage`·`RunReasons`·`Events` 네임스페이스에 나뉘어 있다. 낱말을 바꿀 때는 이 여러 곳을 함께 고친다.
