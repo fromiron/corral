@@ -11,6 +11,7 @@ import { DevelopmentMode } from '../../DevelopmentMode.tsx';
 import { ImageAttachmentPicker } from '../../ImageAttachments.tsx';
 import { useSettingsNavigation } from '../../navigation.ts';
 import { RefusalHelp } from '../../RefusalHelp.tsx';
+import { refusalKind } from '../../refusal.ts';
 import { TerminalWriterNotice } from '../../TerminalWriterNotice.tsx';
 import { TextAttachmentPicker } from '../../TextAttachments.tsx';
 import type { RoleModel } from '../../useModels.ts';
@@ -104,6 +105,7 @@ export function ComposerNotices({
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
+  const tr = useTranslations('Refusal');
   const { attachmentEpoch, images, attachments, attachmentsBusy } = draft;
   const overLimit = startItemsOver(intent, draft);
   return (
@@ -157,7 +159,12 @@ export function ComposerNotices({
           {t('selectedTeamMissing')}
         </p>
       ) : null}
-      {refusal ? (
+      {refusal?.recorded ? (
+        // Said once, on the refused message's meta line; told here to assistive tech alone.
+        <p role="alert" data-testid="refusal-said" className="sr-only">
+          {tr(refusalKind(refusal))}
+        </p>
+      ) : refusal ? (
         <RefusalHelp
           sessionId={sessionId}
           message={refusal.message}
