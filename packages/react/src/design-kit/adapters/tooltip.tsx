@@ -14,10 +14,17 @@ export function Tooltip({
   return (
     <KitTooltip
       content={
-        <span className="inline-flex items-center gap-2">
-          {content}
-          {shortcut ? <Kbd tone="inverse">{shortcut}</Kbd> : null}
-        </span>
+        // Only a shortcut needs a row beside the words. Words alone stay in the tooltip's own
+        // flow: inside an inline box, the trim to the first line's letters cut every line after
+        // it off the tooltip.
+        shortcut ? (
+          <span className="inline-flex items-center gap-2">
+            {content}
+            <Kbd tone="inverse">{shortcut}</Kbd>
+          </span>
+        ) : (
+          content
+        )
       }
       {...props}
     />

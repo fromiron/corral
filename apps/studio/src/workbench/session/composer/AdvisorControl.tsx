@@ -1,4 +1,5 @@
 import type { SessionAdvisor } from '@corral/core';
+import { TermTooltip } from '@corral/react';
 import {
   Button,
   LiveDot,
@@ -6,7 +7,6 @@ import {
   PopoverPopup,
   PopoverTrigger,
   Switch,
-  Tooltip,
 } from '@corral/react/design-kit';
 import { Eye } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
@@ -17,7 +17,8 @@ import type { ProfileInfo } from '../../useModels.ts';
 // The conversation's advisor on the tool line (features/advisor.md "두는 곳" 대화, "보이는 곳"):
 // a small control beside the team menu that is quiet while off and plainly on once on, and a
 // small popover to turn it on or off and choose its model from the conversation's model list.
-// The setting has no name of its own: the screen calls it Advisor once, in the popover.
+// Its tooltip names it Advisor with its state and says what an advisor is (features/term-hints.md);
+// the popover's switch is named Advisor too.
 
 export const OPEN_ADVISOR = 'corral:open-advisor';
 
@@ -84,7 +85,7 @@ export function AdvisorControl({
       : tc('advisor.off');
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip content={unknown ? `${name} · ${state}` : on && model ? `${name} · ${model}` : name}>
+      <TermTooltip term="advisor" state={state}>
         <PopoverTrigger
           render={
             <Button
@@ -93,7 +94,6 @@ export function AdvisorControl({
               data-slot="composer-advisor"
               data-state={unknown ? 'unknown' : on ? 'on' : 'off'}
               aria-label={name}
-              aria-description={state}
               disabled={disabled}
               // On, it reads at a glance; off, it only holds its place. Its size never changes.
               className={on ? 'relative text-emphasis' : 'relative text-muted-foreground'}
@@ -109,7 +109,7 @@ export function AdvisorControl({
             </span>
           ) : null}
         </PopoverTrigger>
-      </Tooltip>
+      </TermTooltip>
       <PopoverPopup side="top" align="start" padding="compact" aria-label={name}>
         <div data-slot="advisor-popover" className="flex min-w-0 flex-col gap-1">
           {unknown ? (

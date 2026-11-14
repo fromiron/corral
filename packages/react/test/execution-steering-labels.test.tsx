@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { emptyProjection } from '@corral/core';
 import { render } from '@testing-library/react';
+import ts from 'typescript';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
@@ -47,11 +48,25 @@ const kitSource = readFileSync(
   resolve(__dirname, '../src/design-kit/components/agent/agent-steering.tsx'),
   'utf8',
 );
-const KEYS = [
-  ...(/export interface AgentSteeringLabels \{([^}]*)\}/s.exec(kitSource)?.[1] ?? '').matchAll(
-    /^\s*(\w+):/gm,
-  ),
-].map((match) => match[1] as keyof AgentSteeringLabels);
+// Read by the TypeScript parser, so optional labels and labels after a comment that holds a brace
+// count as well.
+const labelsInterface = ts
+  .createSourceFile(
+    'agent-steering.tsx',
+    kitSource,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  )
+  .statements.find(
+    (statement): statement is ts.InterfaceDeclaration =>
+      ts.isInterfaceDeclaration(statement) && statement.name.text === 'AgentSteeringLabels',
+  );
+const KEYS = (labelsInterface?.members ?? []).flatMap((member) =>
+  member.name && (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name))
+    ? [member.name.text as keyof AgentSteeringLabels]
+    : [],
+);
 
 function strings(labels: Partial<AgentSteeringLabels>): string[] {
   return KEYS.map((key) => {

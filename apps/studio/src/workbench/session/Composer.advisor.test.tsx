@@ -276,6 +276,25 @@ async function mount({
   };
 }
 
+/** What an element's aria-describedby reads, in order. */
+const described = (element: Element | null | undefined) =>
+  (element?.getAttribute('aria-describedby') ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ');
+
+/** Hovers `element` long enough for a tooltip to open. */
+async function hover(element: Element) {
+  await act(async () => {
+    element.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mouseenter'));
+    element.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+}
+
 const advisorSaves = (repository: { updateSession: ReturnType<typeof vi.fn> }) =>
   repository.updateSession.mock.calls
     .map((call) => call[1] as Record<string, unknown>)
@@ -297,7 +316,7 @@ describe('the advisor control on the tool line', () => {
     expect(control?.textContent?.trim()).toBe('');
     await f.render({ ...baseSession, advisor: { modelProfile: 'model-b' }, revision: 4 });
     expect(f.control()?.dataset.state).toBe('on');
-    expect(f.control()?.getAttribute('aria-description')).toContain('Model B');
+    expect(described(f.control())).toContain('Model B');
   });
 
   it('is off in a new conversation', async () => {
@@ -415,8 +434,8 @@ describe('the advisor control on the tool line', () => {
     expect(f.control()?.dataset.state).toBe('on');
     // Named as unavailable, never by the profile id: on the control, in its tooltip and popover.
     const unavailable = messages.Composer.advisor.unavailable;
-    expect(f.control()?.getAttribute('aria-description')).toContain(unavailable);
-    expect(f.control()?.getAttribute('aria-description')).not.toContain('model-gone');
+    expect(described(f.control())).toContain(unavailable);
+    expect(described(f.control())).not.toContain('model-gone');
     await f.open();
     expect(f.toggle()?.getAttribute('aria-checked')).toBe('true');
     const popover = document.querySelector('[data-slot="advisor-popover"]')?.textContent ?? '';
@@ -514,7 +533,9 @@ describe('when the setting is not known', () => {
   };
   const unknownShown = (f: Awaited<ReturnType<typeof mount>>) => {
     expect(f.control()?.dataset.state).toBe('unknown');
-    expect(f.control()?.getAttribute('aria-description')).toBe(messages.Composer.advisor.unknown);
+    expect(described(f.control())).toBe(
+      `${messages.Composer.advisor.unknown} ${messages.Terms.advisor.meaning}`,
+    );
     // Neither on nor off: no switch to read a value from, and no sentence about the value.
     expect(f.toggle()).toBeNull();
     expect(f.said()).toBe(messages.Composer.advisor.unconfirmed);
@@ -602,7 +623,62 @@ describe('when the setting is not known', () => {
     // The page's loader reads the session again (a router revalidation).
     await f.render({ ...baseSession, advisor: { modelProfile: 'model-b' }, revision: 4 });
     expect(f.control()?.dataset.state).toBe('on');
-    expect(f.control()?.getAttribute('aria-description')).toContain('Model B');
+    expect(described(f.control())).toContain('Model B');
+  });
+});
+
+// glossary.md, "설명이 붙는 용어": the tool line's Corral choice and Advisor button explain their
+// terms in their tooltips, keep their names, and the composer has no term icon.
+describe('the terms on the tool line', () => {
+  const chip = (f: Awaited<ReturnType<typeof mount>>) =>
+    [...f.container.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes(messages.Composer.teamNone),
+    );
+
+  it('explains Corral in the team choice’s tooltip, not while its menu is open', async () => {
+    const f = await mount();
+    const team = chip(f);
+    if (!team) throw new Error('missing team choice');
+    expect(team.getAttribute('aria-label')).toBe(messages.Composer.teamLabel);
+    expect(described(team)).toBe(messages.Terms.corral.meaning);
+    await hover(team);
+    const tip = document.querySelector('[role="tooltip"]');
+    expect(tip?.querySelector('[data-term-name]')?.textContent).toBe(messages.Terms.corral.name);
+    expect(tip?.querySelector('[data-term-meaning]')?.textContent).toBe(
+      messages.Terms.corral.meaning,
+    );
+    // Its menu open, the choices speak for themselves: no tooltip over them.
+    await act(async () => {
+      team.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      team.click();
+    });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(team.getAttribute('aria-expanded')).toBe('true');
+    await hover(team);
+    expect(document.querySelector('[role="tooltip"] [data-term-meaning]')).toBeNull();
+    expect(f.container.querySelectorAll('[data-term-hint]')).toHaveLength(0);
+  });
+
+  it('explains Advisor in its tooltip with its state on the name line and in its description', async () => {
+    const f = await mount({ session: { ...baseSession, advisor: { modelProfile: 'model-b' } } });
+    const control = f.control();
+    if (!control) throw new Error('missing advisor control');
+    expect(control.getAttribute('aria-label')).toBe(messages.Composer.advisor.name);
+    const state = messages.Composer.advisor.on.replace('{model}', 'Model B');
+    expect(described(control)).toBe(`${state} ${messages.Terms.advisor.meaning}`);
+    await hover(control);
+    const tip = document.querySelector('[role="tooltip"]');
+    expect(tip?.querySelector('[data-term-name]')?.textContent).toBe(
+      `${messages.Terms.advisor.name} · ${state}`,
+    );
+    expect(tip?.querySelector('[data-term-meaning]')?.textContent).toBe(
+      messages.Terms.advisor.meaning,
+    );
+    // Off, the state still says so.
+    await f.render({ ...baseSession, advisor: null, revision: 5 });
+    expect(described(f.control())).toBe(
+      `${messages.Composer.advisor.off} ${messages.Terms.advisor.meaning}`,
+    );
   });
 });
 

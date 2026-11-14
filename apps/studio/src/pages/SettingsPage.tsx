@@ -1,3 +1,4 @@
+import { TermHint } from '@corral/react';
 import { Button, fontWeights, KitSwitch, Select } from '@corral/react/design-kit';
 import { type ReactNode, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -48,12 +49,22 @@ export function SettingsLayout({
         data-settings-header
         className="flex shrink-0 flex-col gap-1 px-6 pt-5 pr-12 pb-4 max-sm:pt-0"
       >
-        <h2
-          className="text-title text-foreground max-sm:sr-only"
-          style={{ fontVariationSettings: fontWeights.normal }}
-        >
-          {label(active)}
-        </h2>
+        {/* Below sm the row itself steps aside, so the header keeps its old spacing. */}
+        <div className="flex min-w-0 items-center gap-1 max-sm:contents">
+          <h2
+            className="text-title text-foreground max-sm:sr-only"
+            style={{ fontVariationSettings: fontWeights.normal }}
+          >
+            {label(active)}
+          </h2>
+          {/* The work-style title explains its term (glossary.md); below sm the title is only
+              read, and its icon goes with it. */}
+          {active === 'harness' ? (
+            <span className="inline-flex max-sm:hidden">
+              <TermHint term="workStyle" />
+            </span>
+          ) : null}
+        </div>
         {needsProject ? (
           <p className="text-body text-muted-foreground">{n('projectRequired')}</p>
         ) : description ? (

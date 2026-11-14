@@ -1,6 +1,7 @@
 import type { VoiceTranscript, VoiceTranscriptReceipt } from '@corral/client';
 import type { AutoModelChoice, PermissionMode } from '@corral/contracts';
 import type { CorralSummary, SessionIntent } from '@corral/core';
+import { TermTooltip } from '@corral/react';
 import {
   Button,
   Menu,
@@ -182,6 +183,12 @@ export function TeamChoice({
       disabled={disabled}
       open={open}
       onOpenChange={onOpenChange}
+      // The choice explains Corral in its tooltip (glossary.md); its open menu speaks for itself.
+      trigger={(control) => (
+        <TermTooltip term="corral" closed={open}>
+          {control}
+        </TermTooltip>
+      )}
       onValueChange={(value) => {
         const choice = String(value);
         if (choice === 'manage')

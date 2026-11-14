@@ -459,9 +459,12 @@ function SessionTerminals({
               createDisabled ? (
                 t(createHeldBy)
               ) : (
-                <span className="flex flex-col">
-                  <span>{shellLabel ? `${t('create')} · ${shellLabel}` : t('create')}</span>
-                  <span>{t('scopeHint')}</span>
+                // Blocks, as the tooltip's other lines: its trim reaches the first and the last.
+                <span className="block">
+                  <span className="block">
+                    {shellLabel ? `${t('create')} · ${shellLabel}` : t('create')}
+                  </span>
+                  <span className="block">{t('scopeHint')}</span>
                 </span>
               )
             }

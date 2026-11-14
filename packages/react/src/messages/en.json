@@ -387,6 +387,7 @@
     "tree": {
       "title": "Executions",
       "count": "{count, plural, =0 {no executions} one {# execution} other {# executions}}",
+      "countOnly": "{count, number} total",
       "running": "{count} working",
       "needsYou": "{count} needs you",
       "failed": "{count} failed",
@@ -6265,5 +6266,24 @@
     "reviewing": "Reviewing",
     "adviceDelivered": "{count, plural, one {# piece of advice delivered} other {# pieces of advice delivered}}",
     "finalReview": "{name}: final review"
+  },
+  "Terms": {
+    "about": "About {term}",
+    "corral": {
+      "name": "Corral",
+      "meaning": "A saved team you can reuse: its roles and the order work passes between them."
+    },
+    "execution": {
+      "name": "Execution",
+      "meaning": "One role's share of a run."
+    },
+    "workStyle": {
+      "name": "Work style",
+      "meaning": "The skills, extensions and tools a role works with, saved as one set."
+    },
+    "advisor": {
+      "name": "Advisor",
+      "meaning": "A role that watches another role's work and advises it. It does not do the work itself."
+    }
   }
 }

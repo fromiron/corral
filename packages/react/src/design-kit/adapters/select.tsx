@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactElement, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   Select as KitSelect,
@@ -36,6 +36,7 @@ export function Select<T extends string>({
   align = 'start',
   open,
   onOpenChange,
+  trigger = (control) => control,
 }: {
   id?: string;
   value: T | null;
@@ -53,6 +54,8 @@ export function Select<T extends string>({
   align?: 'start' | 'center' | 'end';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Wraps the trigger, as a tooltip that explains it does; the trigger keeps its name. */
+  trigger?: (control: ReactElement<{ 'aria-describedby'?: string }>) => ReactNode;
 }) {
   const t = useTranslations('Select');
   const hasHints = options.some((option) => option.hint);
@@ -93,16 +96,18 @@ export function Select<T extends string>({
       open={open}
       onOpenChange={onOpenChange}
     >
-      <SelectTrigger
-        id={id}
-        aria-label={label}
-        aria-describedby={describedBy}
-        placeholder={placeholder ?? t('placeholder')}
-        leadingContent={icon}
-        variant={variant === 'outline' ? 'bordered' : 'borderless'}
-        className={cn(variant !== 'outline' && 'min-w-0 max-w-full', className)}
-        data-slot="select-trigger"
-      />
+      {trigger(
+        <SelectTrigger
+          id={id}
+          aria-label={label}
+          aria-describedby={describedBy}
+          placeholder={placeholder ?? t('placeholder')}
+          leadingContent={icon}
+          variant={variant === 'outline' ? 'bordered' : 'borderless'}
+          className={cn(variant !== 'outline' && 'min-w-0 max-w-full', className)}
+          data-slot="select-trigger"
+        />,
+      )}
       <SelectContent
         align={align}
         className={hasHints ? 'max-w-[min(24rem,calc(100vw-2rem))]' : undefined}

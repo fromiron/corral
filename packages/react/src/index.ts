@@ -72,6 +72,12 @@ export { SafeMarkdown } from './components/SafeMarkdown.tsx';
 export { SettingsPatchPanel } from './components/SettingsPatchPanel.tsx';
 export { StatusBadge, StatusDot, statusTone } from './components/StatusBadge.tsx';
 export { TaskBoard } from './components/TaskBoard.tsx';
+export {
+  TermContent,
+  TermHint,
+  type TermId,
+  TermTooltip,
+} from './components/TermHint.tsx';
 export { Timeline } from './components/Timeline.tsx';
 export { UsageInspector } from './components/UsageInspector.tsx';
 export { primaryWorkPlan, useRunWorkPlan, WorkPlanPanel } from './components/WorkPlanPanel.tsx';

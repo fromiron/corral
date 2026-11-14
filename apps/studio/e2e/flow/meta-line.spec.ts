@@ -332,7 +332,7 @@ test('the meta line says what became of each message and moves nothing', async (
   await shot(page, 'refusal-hover');
   await page.mouse.move(4, 4);
   await message('Write the release notes')
-    .getByRole('button', { name: /model profile that is not set up/ })
+    .getByRole('button', { name: /model profile this request uses is not set up/ })
     .click();
   await expect(page.getByTestId('refusal-raw')).toContainText('TARGET_NOT_FOUND');
   await shot(page, 'refusal-raw');
@@ -342,7 +342,7 @@ test('the meta line says what became of each message and moves nothing', async (
   await expect(page.getByTestId('refusal-raw')).toBeHidden();
   await expect(
     message('Write the release notes').getByRole('button', {
-      name: /model profile that is not set up/,
+      name: /model profile this request uses is not set up/,
     }),
   ).toBeFocused();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
