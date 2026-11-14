@@ -43,14 +43,21 @@ describe('the execution tree that picks whom to instruct', () => {
     'keeps the Outrider’s card readable but no control; the watched role’s card picks (%s)',
     (locale) => {
       const onSteer = vi.fn();
-      render(<ExecutionTree session={advisorRunSession()} onSteer={onSteer} steers />, {
-        wrapper: wrap(locale),
-      });
+      // The conversation's own Outrider, called by the one word.
+      render(
+        <ExecutionTree session={advisorRunSession({ session: true })} onSteer={onSteer} steers />,
+        { wrapper: wrap(locale) },
+      );
       const advisor = screen.getByTestId('execution-advisor_1');
+      // Static content like the run's root card: no control and not in the tab order.
       expect(within(advisor).queryByRole('button')).toBeNull();
-      expect(within(advisor).getByText('Reviewer')).toBeTruthy();
-      // Reachable from the keyboard so its state and work still read.
-      expect(advisor.tabIndex).toBe(0);
+      expect(advisor.hasAttribute('tabindex')).toBe(false);
+      // Its tree item carries its name and state.
+      const status = advisor.querySelector('[data-presence-label="execution:advisor_1"]');
+      expect(status?.textContent).toBeTruthy();
+      expect(
+        screen.getByRole('treeitem', { name: `Outrider: ${status?.textContent}` }),
+      ).toContainElement(advisor);
       const worker = screen.getByTestId('execution-impl_1');
       const pick = within(worker).getAllByRole('button')[0];
       if (!pick) throw new Error('the watched role’s card has no control');

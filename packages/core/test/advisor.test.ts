@@ -1357,6 +1357,18 @@ describe('a person’s instruction', () => {
     s.hold.open();
     await s.ended();
   });
+
+  it('after the run ended, a steer to its advisor is still refused as an advisor’s', async () => {
+    const s = await held();
+    const advisor = s.advisorExecution()?.executionId ?? '';
+    s.hold.open();
+    await s.ended();
+    expect(s.steer('steer_after', advisor)).toMatchObject({
+      status: 'rejected',
+      error: { code: 'CAPABILITY_DENIED' },
+    });
+    expect(s.directiveEvents()).toEqual([]);
+  });
 });
 
 describe('advice and the session queue', () => {

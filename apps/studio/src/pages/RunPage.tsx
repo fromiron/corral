@@ -523,8 +523,7 @@ function RunWorkspace({
     });
   };
   const openSteering = (id: string, origin = activeElement()) => {
-    // An Outrider takes no person's instruction (features/advisor.md): no Reins for it.
-    if (!takesInstruction(projection?.executions[id])) return;
+    if (!projection?.executions[id]) return;
     steeringTrigger.current = origin;
     setSteeringId(id);
     setSteeringTargets((previous) => new Set(previous).add(id));
