@@ -8,15 +8,16 @@ import type { Page } from '@playwright/test';
 //   (`[data-session-row]`) and parts inside items (`[data-chat-part]`) present at start(). They
 //   are followed by identifying value (a part by its item's value + its own), so a new node with
 //   the same value continues the track; values missing at the end are listed in `lost`. Elements
-//   sharing a value are told apart by document-order ordinal (`…#2`) and counted in
-//   `samples.duplicateIds`.
+//   sharing a value are told apart by document-order ordinal (`…#2`); every value shared in any
+//   frame of the interval is listed in `duplicated` and counted in `samples.duplicateIds`.
 //   Per element, vertical (Y, top) and horizontal (X, left) shifts on two bases:
 //   container — rect - container rect + scroll offset (§9 "기존 항목 이동", pass ≤ 1px);
 //   viewport — rect on screen (§9 "따라가기" while scrolled up, pass ≤ 1px).
 //   maxContainerShiftPx / maxViewportShiftPx: the largest of both axes over all tracked
 //   elements; null when nothing was tracked.
 // - maxTailGapChangePx: max − min of (composer top − bottom of the current last item, looked up
-//   again every frame) (§9 "따라가기" at the end, pass ≤ 1px).
+//   again every frame) (§9 "따라가기" at the end, pass ≤ 1px). `tailSelector` may name the
+//   timeline's other blocks that can end it (a needed-now tray after the last item).
 // - maxInputBottomChangePx: max − min of the input box's bottom edge on screen (§9 "입력 줄",
 //   pass 0px).
 //   Both are null with fewer than two samples. `samples` gives frame, tail, input and per-kind
@@ -42,6 +43,8 @@ export interface ProbeOptions {
   partSelector?: string;
   /** The composer, whose top edge the tail gap is measured to. */
   composerSelector?: string;
+  /** What can end the timeline; the gap is measured from the last match. Default: the items. */
+  tailSelector?: string;
   /** The input box, whose bottom edge must not move. */
   inputSelector?: string;
   /**
@@ -66,6 +69,8 @@ export interface ItemShift {
   maxViewportShiftXPx: number;
   /** Frames in which an element with this value was on the page. */
   frames: number;
+  /** Of those, the frames in which it stood more than 1px from its first place in its container. */
+  framesMoved: number;
 }
 
 export interface ShiftResult {
@@ -80,11 +85,13 @@ export interface ShiftResult {
     tail: number;
     input: number;
     tracked: Record<TrackedKind, number>;
-    /** Identifying values more than one element carried at start(); each is tracked as `…#n`. */
+    /** Identifying values more than one element carried in any frame (`duplicated.length`). */
     duplicateIds: number;
   };
   /** Tracked values no element carried at the end of the interval. */
   lost: string[];
+  /** Identifying values (`kind id`) more than one element carried in some frame of the interval. */
+  duplicated: string[];
   items: ItemShift[];
 }
 
@@ -102,6 +109,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
     rowSelector: options.rowSelector ?? '[data-session-row]',
     partSelector: options.partSelector ?? '[data-chat-part]',
     composerSelector: options.composerSelector ?? DEFAULT_COMPOSER,
+    tailSelector: options.tailSelector ?? options.itemSelector ?? '[data-chat-item]',
     inputSelector: options.inputSelector ?? DEFAULT_INPUT,
     containerSelector: options.containerSelector ?? '',
   };
@@ -123,6 +131,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
           first: Place;
           max: Place;
           frames: number;
+          framesMoved: number;
           present: boolean;
         }
         const holder = window as unknown as Record<string, unknown>;
@@ -151,14 +160,14 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
          */
         const find = () => {
           const found = new Map<string, Element>();
-          let duplicated = 0;
+          const duplicated: string[] = [];
           for (const kind of ['item', 'row', 'part'] as const) {
             const seen = new Map<string, number>();
             document.querySelectorAll(selectors[kind]).forEach((element, index) => {
               const key = `${kind} ${keyOf(kind, element, index)}`;
               const ordinal = (seen.get(key) ?? 0) + 1;
               seen.set(key, ordinal);
-              if (ordinal === 2) duplicated += 1;
+              if (ordinal === 2) duplicated.push(key);
               found.set(ordinal === 1 ? key : `${key}#${ordinal}`, element);
             });
           }
@@ -209,13 +218,15 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
             first: at,
             max: { cy: 0, cx: 0, vy: 0, vx: 0 },
             frames: 0,
+            framesMoved: 0,
             present: true,
           });
         }
         const state = {
           tracks: [...tracks.values()],
           frames: 0,
-          duplicated: initial.duplicated,
+          /** Every value shared by two or more elements in some frame. */
+          duplicated: new Set(initial.duplicated),
           startedAt: performance.now(),
           raf: 0,
           tail: range(),
@@ -224,7 +235,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
         };
         /** Tail gap and input edge; read now (the first sample) and on every frame. */
         const sampleEdges = () => {
-          const items = document.querySelectorAll(config.itemSelector);
+          const items = document.querySelectorAll(config.tailSelector);
           const last = items[items.length - 1];
           const composer = document.querySelector(config.composerSelector);
           if (last && composer)
@@ -238,13 +249,16 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
         state.sample = () => {
           state.frames += 1;
           sampleEdges();
-          const { found } = find();
+          const { found, duplicated } = find();
+          for (const key of duplicated) state.duplicated.add(key);
           for (const [key, track] of tracks) {
             const element = found.get(key);
             track.present = Boolean(element);
             if (!element) continue;
             const at = place(element);
             track.frames += 1;
+            if (Math.abs(at.cy - track.first.cy) > 1 || Math.abs(at.cx - track.first.cx) > 1)
+              track.framesMoved += 1;
             for (const axis of ['cy', 'cx', 'vy', 'vx'] as const)
               track.max[axis] = Math.max(track.max[axis], Math.abs(at[axis] - track.first[axis]));
           }
@@ -272,10 +286,11 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
                 id: string;
                 max: { cy: number; cx: number; vy: number; vx: number };
                 frames: number;
+                framesMoved: number;
                 present: boolean;
               }[];
               frames: number;
-              duplicated: number;
+              duplicated: Set<string>;
               startedAt: number;
               raf: number;
               tail: { min: number; max: number; n: number };
@@ -294,7 +309,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
         return {
           durationMs: performance.now() - state.startedAt,
           frames: state.frames,
-          duplicated: state.duplicated,
+          duplicated: [...state.duplicated],
           tail: spread(state.tail),
           tailSamples: state.tail.n,
           input: spread(state.input),
@@ -311,6 +326,7 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
         maxViewportShiftYPx: round(track.max.vy),
         maxViewportShiftXPx: round(track.max.vx),
         frames: track.frames,
+        framesMoved: track.framesMoved,
       }));
       const largest = (values: number[]) => (values.length ? Math.max(...values) : null);
       const count = (kind: TrackedKind) => items.filter((item) => item.kind === kind).length;
@@ -330,11 +346,12 @@ export function createProbe(page: Page, options: ProbeOptions = {}): Probe {
           tail: measured.tailSamples,
           input: measured.inputSamples,
           tracked: { item: count('item'), row: count('row'), part: count('part') },
-          duplicateIds: measured.duplicated,
+          duplicateIds: measured.duplicated.length,
         },
         lost: measured.tracks
           .filter((track) => !track.present)
           .map((track) => `${track.kind} ${track.id}`),
+        duplicated: measured.duplicated,
         items,
       };
     },

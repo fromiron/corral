@@ -3,6 +3,15 @@ import { fauxAssistantMessage } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { expect, test } from '../server/harness.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
+import {
+  checkChrome,
+  checkLabels,
+  hold,
+  measure as measureScene,
+  msg,
+  note,
+  shot,
+} from './scene.ts';
 
 // Scene ⑦ (docs/plans/unified-flow.md §4.4; features/composer-flow.md "화면 틀", the send
 // table's meeting row; workbench.md "회의"): a meeting is read in the conversation's frame with
@@ -949,6 +958,198 @@ test.describe('a meeting stopped', () => {
       expect(corral.errors).toEqual([]);
     } finally {
       open();
+    }
+  });
+});
+
+// V2, the meeting scene (docs/plans/unified-flow.md §9): the final scene with every pass mark of
+// §9 "측정" (scene.ts), by the keyboard. Three participants; a person's message goes to whoever
+// the meeting picks and the pick answers; a message for no one is posted with nobody asked; then
+// participants who keep mentioning each other are held after eight mention rounds on a continue
+// card at the end, and Continue lets them go on. The meeting is read in the conversation's frame
+// with the conversation's composer. Recorded in test-results/flow/report.json.
+test.describe('V2 a meeting', () => {
+  test.use({
+    live: true,
+    codexLogin: true,
+    streamTokensPerSecond: 60,
+    // The meeting's pick is scripted: the second participant fits every message best.
+    meetingScores: [0.1, 0.9, 0.1],
+  });
+  const SCENE = 'meeting';
+
+  test('a picked answer, a message for no one, and a mention chain held on a continue card', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(300_000);
+    let id = '';
+    let mention = '';
+    let phase: 'answer' | 'chain' | 'continued' = 'answer';
+    const late = hold();
+    let gated = false;
+    // An answer to the asked message; then answers that mention everyone until the meeting
+    // holds, the next one waiting meanwhile; after Continue, answers that mention no one.
+    corral.fake?.setResponses(
+      Array.from({ length: 120 }, () => async () => {
+        if (phase === 'answer') return fauxAssistantMessage(ANSWER);
+        if (phase === 'continued') return fauxAssistantMessage('Agreed, Tuesday it is.');
+        if ((await meeting(page, id)).hold) {
+          gated = true;
+          await late.opened;
+          return fauxAssistantMessage('Agreed.');
+        }
+        return fauxAssistantMessage(`${mention} what do you think?`);
+      }),
+    );
+    try {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await corral.open('/projects/default');
+      await page.getByRole('button', { name: msg('Meetings.new'), exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: msg('Meetings.newTitle') });
+      await dialog.getByLabel(msg('Meetings.title'), { exact: true }).fill('Launch day');
+      await dialog.getByRole('button', { name: msg('Meetings.create'), exact: true }).click();
+      await expect(page).toHaveURL(/\/sessions\/session_/);
+      id = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+      const { config } = await meeting(page, id);
+      expect(config.participants).toHaveLength(3);
+      const picked = must(config.participants[1], 'the second participant');
+      mention = config.participants.map((person) => `@${person.participantId}`).join(' ');
+
+      const composer = page.getByTestId('chat-composer');
+      const box = composer.getByRole('textbox', { name: msg('Meetings.message'), exact: true });
+      const recipients = composer.locator('[data-slot="composer-target"]');
+      const timeline = page.getByTestId('chat-timeline');
+      const tray = page.locator('[data-pending-tray]');
+      // The conversation's composer: its shell, its activity bar, the recipients as the target.
+      await expect(composer.locator('[data-slot="composer-shell"]')).toBeVisible();
+      await expect
+        .soft(composer.getByTestId('activity-bar'), `${SCENE}: activity bar`)
+        .toHaveCount(1);
+      await expect(recipients).toHaveAccessibleName(
+        msg('Meetings.recipients.label', { name: msg('Meetings.recipients.auto') }),
+      );
+      /** Chooses No one from the recipients menu by the keyboard. */
+      const forNoOne = async () => {
+        await recipients.focus();
+        await page.keyboard.press('Enter');
+        const none = page.getByRole('menuitemradio', {
+          name: msg('Meetings.recipients.none'),
+          exact: true,
+        });
+        await expect(none).toBeVisible();
+        await none.focus();
+        await page.keyboard.press('Enter');
+        await expect(recipients).toHaveAccessibleName(
+          msg('Meetings.recipients.label', { name: msg('Meetings.recipients.none') }),
+        );
+        await expect(box).toBeFocused();
+      };
+
+      // The first message takes the empty room's centred composer to the bottom (workbench.md
+      // "새 대화"): posted for no one, and not measured.
+      await forNoOne();
+      await page.keyboard.type('The launch is next week');
+      await page.keyboard.press('Enter');
+      await expect(timeline.getByText('The launch is next week', { exact: true })).toBeVisible();
+      await waitForStill(page);
+      await checkLabels(page, SCENE, 'posted');
+
+      // A message for whoever the meeting picks: the pick answers as it streams, and only it.
+      await box.focus();
+      await page.keyboard.type('Which day should we launch?');
+      await waitForStill(page);
+      await measureScene(page, SCENE, 'auto-answer', async () => {
+        await page.keyboard.press('Enter');
+        await expect(box).toHaveValue('');
+        const answer = timeline.getByRole('article', { name: picked.name });
+        await expect(answer).toContainText('That is my pick.', { timeout: 60_000 });
+        await expect
+          .poll(async () => (await meeting(page, id)).rounds[1]?.answers[0]?.status, {
+            timeout: 60_000,
+          })
+          .toBe('answered');
+      });
+      const asked = must((await meeting(page, id)).rounds[1], 'the answered round');
+      expect(asked.participantIds).toEqual([picked.participantId]);
+      expect(asked.selection).toMatchObject({ strategy: 'selector', reason: 'top_score' });
+      await checkLabels(page, SCENE, 'answered');
+      await checkChrome(page, SCENE, 'after the answer');
+
+      // A message for no one: posted, and nobody is asked to reply.
+      await forNoOne();
+      await page.keyboard.type('Noting the launch date for the release notes');
+      await waitForStill(page);
+      await measureScene(page, SCENE, 'for-no-one', async () => {
+        await page.keyboard.press('Enter');
+        await expect(box).toHaveValue('');
+        await expect(
+          timeline.getByText('Noting the launch date for the release notes', { exact: true }),
+        ).toBeVisible();
+        await expect(recipients).toHaveAccessibleName(
+          msg('Meetings.recipients.label', { name: msg('Meetings.recipients.auto') }),
+        );
+      });
+      const noted = must((await meeting(page, id)).rounds[2], 'the posted round');
+      expect(noted.participantIds).toEqual([]);
+      expect(noted.answers).toEqual([]);
+
+      // A mention chain: held after eight mention rounds, on a continue card at the end, while
+      // an answer still runs beside it.
+      phase = 'chain';
+      await box.focus();
+      await page.keyboard.type('Who should run the launch?');
+      await waitForStill(page);
+      const card = tray.locator('[data-meeting-hold]');
+      await measureScene(page, SCENE, 'chain-held', async () => {
+        await page.keyboard.press('Enter');
+        await expect(box).toHaveValue('');
+        await expect(card).toBeVisible({ timeout: 120_000 });
+        await expect.poll(() => gated, { timeout: 60_000 }).toBe(true);
+      });
+      const held = await meeting(page, id);
+      expect(held.hold).toMatchObject({ kind: 'chain' });
+      const after = held.rounds.slice(3);
+      note(SCENE, 'chain', {
+        rounds: after.length,
+        mentionRounds: after.filter((round) => round.selection?.strategy !== 'selector').length,
+      });
+      await expect(tray).toHaveCount(1);
+      await checkLabels(page, SCENE, 'held');
+
+      // Continue, by the keyboard: the card folds and leaves, the focus goes to the box.
+      const press = card.getByRole('button', { name: msg('Meetings.hold.continue'), exact: true });
+      await expect(press).toBeEnabled();
+      await press.focus();
+      await measureScene(page, SCENE, 'continue', async () => {
+        phase = 'continued';
+        await page.keyboard.press('Enter');
+        await expect(tray).toHaveCount(0, { timeout: 30_000 });
+        await expect(box).toBeFocused();
+      });
+      late.open();
+      await expect
+        .poll(
+          async () => {
+            const view = await meeting(page, id);
+            return (
+              view.rounds.some((round) => round.continued) &&
+              view.rounds.every((round) =>
+                round.answers.every((item) => item.status === 'answered'),
+              )
+            );
+          },
+          { timeout: 120_000 },
+        )
+        .toBe(true);
+      expect((await meeting(page, id)).hold).toBeUndefined();
+      await waitForStill(page);
+      await checkLabels(page, SCENE, 'end');
+      await checkChrome(page, SCENE, 'end');
+      await shot(page, SCENE, 'end');
+      expect(corral.errors).toEqual([]);
+    } finally {
+      late.open();
     }
   });
 });

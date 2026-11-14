@@ -21,6 +21,14 @@ import {
   sentChip,
   wordPoints,
 } from './replies.ts';
+import {
+  checkChrome,
+  checkLabels,
+  measure as measureScene,
+  msg,
+  nothingWaiting,
+  shot,
+} from './scene.ts';
 
 // Scene ⑤, quoting a reply (docs/specs/features/reply-citation.md): a passage chosen by keys
 // alone in one reply, quoted with Alt+Q, sent, and led back to from the sent chip once its row
@@ -867,4 +875,146 @@ test('the quote key bound in settings goes out in an export and comes back, and 
   }, shortcuts);
   expect(back).toEqual({ shortcuts, status: 'committed' });
   expect(corral.errors).toEqual([]);
+});
+
+// V2, scene ⑤ (docs/plans/unified-flow.md §9): the final scene with every pass mark of §9
+// "측정" (scene.ts), by the keyboard alone. The conversation is taller than its view; Home on the
+// timeline reaches the reply, a passage is chosen by keys, Alt+Q quotes it twice (the input box's
+// bottom edge holds as the chips join), Enter sends, and the sent chip, reached by the keyboard,
+// leads back to the passage, chosen and marked. Recorded in test-results/flow/report.json.
+test.describe('V2 quoting a reply', () => {
+  const SCENE = 'citation';
+
+  test('⑤ chosen by keys, quoted with Alt+Q twice, sent, and led back to from its chip', async ({
+    page,
+    corral,
+  }) => {
+    test.setTimeout(180_000);
+    const runs = () => [...corral.server.coordinator.listRuns()].reverse();
+    const status = (index: number) => {
+      const run = runs()[index];
+      return run ? corral.server.coordinator.getSnapshot(run.runId).projection.status : null;
+    };
+    corral.fake?.setResponses([
+      fauxAssistantMessage(`${FIRST}\n\n${SECOND}`),
+      fauxAssistantMessage('Noted.'),
+    ]);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await corral.open('/projects/default');
+    await newConversation(page);
+    const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
+    const box = requestBox(page);
+    await box.fill('Tell me about the fox');
+    await box.press('Enter');
+    await expect.poll(() => status(0), { timeout: 30_000 }).toBe('succeeded');
+    await expect(page.locator('[data-reply-body]')).toContainText(FIRST);
+    // Later requests that never ran: the conversation is taller than its view.
+    await requests(page, sessionId, 12);
+    await page.reload();
+    await expect(page.locator('[data-chat-item]').last()).toContainText('Later request 12.');
+    await waitForStill(page);
+
+    // Home on the timeline reaches the reply.
+    await page.getByTestId('chat-timeline').focus();
+    await page.keyboard.press('Home');
+    const reply = page.locator('[data-reply-body]').filter({ hasText: FIRST });
+    await expect(reply).toBeInViewport();
+    await waitForStill(page);
+    await checkLabels(page, SCENE, 'reading the reply');
+
+    const toolbar = page.getByTestId('reply-selection');
+    const chips = page
+      .getByTestId('chat-composer')
+      .getByRole('list', { name: msg('Composer.quotes'), exact: true })
+      .getByRole('listitem');
+
+    // A passage chosen by keys brings the toolbar; nothing on screen moves.
+    await chooseFrom(page, 'quick');
+    await measureScene(
+      page,
+      SCENE,
+      'toolbar-shows',
+      async () => {
+        await extend(page, 'quick brown'.length);
+        await expect(toolbar).toBeVisible();
+      },
+      { at: 'above', noShots: true },
+    );
+    expect(await selected(page)).toBe('quick brown');
+    await shot(page, SCENE, 'toolbar');
+    // The screenshots in both themes leave the passage chosen and the toolbar up.
+    await expect(toolbar).toBeVisible();
+    expect(await selected(page)).toBe('quick brown');
+
+    // Alt+Q makes the chip; the caret goes to the request box, whose bottom edge holds.
+    await measureScene(
+      page,
+      SCENE,
+      'chip-1',
+      async () => {
+        await page.keyboard.press('Alt+KeyQ');
+        await expect(chips).toHaveCount(1);
+      },
+      { at: 'above', noShots: true },
+    );
+    await expect(box).toBeFocused();
+    await expect(chips.first()).toContainText('quick brown');
+    await chooseFrom(page, 'another');
+    await extend(page, 'another passage'.length);
+    await expect(toolbar).toBeVisible();
+    await measureScene(
+      page,
+      SCENE,
+      'chip-2',
+      async () => {
+        await page.keyboard.press('Alt+KeyQ');
+        await expect(chips).toHaveCount(2);
+      },
+      { at: 'above', noShots: true },
+    );
+    await shot(page, SCENE, 'two-chips');
+
+    // Sent by Enter: the request shows its quotes as chips leading back, and its run ends.
+    await page.keyboard.type('What do these mean?');
+    await waitForStill(page);
+    await measureScene(
+      page,
+      SCENE,
+      'send',
+      async () => {
+        await page.keyboard.press('Enter');
+        await expect.poll(() => status(1), { timeout: 30_000 }).toBe('succeeded');
+        await expect(page.getByTestId('live-text')).toHaveCount(0);
+      },
+      { at: 'jump' },
+    );
+    const sent = page
+      .locator('[data-chat-item]')
+      .filter({ hasText: 'What do these mean?' })
+      .getByRole('button', { name: new RegExp(`^${msg('Composer.goToQuote', { text: '' })}`) });
+    await expect(sent).toHaveCount(2);
+    await expect(reply).not.toBeInViewport();
+
+    // The sent chip, by the keyboard, leads back: the passage is chosen and marked.
+    await sent.first().focus();
+    await measureScene(
+      page,
+      SCENE,
+      'led-back',
+      async () => {
+        await page.keyboard.press('Enter');
+        await expect(reply).toBeFocused();
+        expect(await selected(page)).toBe('quick brown');
+        expect(await page.evaluate(() => CSS.highlights?.has('corral-quote') ?? false)).toBe(true);
+      },
+      { at: 'jump', noShots: true },
+    );
+    await expect(reply).toBeInViewport();
+    await shot(page, SCENE, 'led-back');
+    await checkLabels(page, SCENE, 'led back');
+    await page.keyboard.press('Escape');
+    await checkChrome(page, SCENE, 'end');
+    nothingWaiting(corral.server.coordinator, SCENE);
+    expect(corral.errors).toEqual([]);
+  });
 });
