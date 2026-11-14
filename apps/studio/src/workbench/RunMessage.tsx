@@ -198,7 +198,10 @@ export function RunMessage({
   if (expanded && !logShown) setLogShown(true);
   // Whether this view saw the turn working: only a turn finishing here hands its reply over.
   const [watched, setWatched] = useState(false);
-  const [bodyReadFailed, setResultError] = useState(false);
+  // The body read that failed: which answers, read from which store. It counts only while the row
+  // still asks for those answers from that store, so the render that stops asking (the turn's
+  // record brought the answer, say) never says a failure the next read has not made.
+  const [failedRead, setFailedRead] = useState<{ ids: string; store: unknown } | null>(null);
   const [retry, setRetry] = useState(0);
   const groupLabel = useId();
   const {
@@ -215,10 +218,6 @@ export function RunMessage({
   // waits for the conversation turn's record, live or reading it.
   const answersRead = useRef(new Map<string, string>());
   const waitingForTurn = Boolean(sessionId) && (live || !settled);
-  // In a conversation the turn's record keeps the answer before any body of it is released, so a
-  // body read that fails (a later run's success released it first, say) waits for that record:
-  // only a record read without the answer leaves the failure to say.
-  const resultError = bodyReadFailed && !waitingForTurn;
   // A conversation row the timeline mounts again keeps the height it left with until its record
   // and bodies are read again; what the read then changes is a real change.
   const [returning] = useState(() => Boolean(sessionId) && rowHeight(runId) !== null);
@@ -314,7 +313,7 @@ export function RunMessage({
   useEffect(() => {
     void retry;
     let current = true;
-    setResultError(false);
+    setFailedRead(null);
     void Promise.all(
       ids
         .split(',')
@@ -324,12 +323,16 @@ export function RunMessage({
           if (!(id in store.getState().artifactTexts)) throw new Error('unavailable');
         }),
     ).catch(() => {
-      if (current) setResultError(true);
+      if (current) setFailedRead({ ids, store });
     });
     return () => {
       current = false;
     };
   }, [ids, store, retry]);
+  // In a conversation the turn's record keeps the answer before any body of it is released, so a
+  // body read that fails (a later run's success released it first, say) waits for that record:
+  // only a record read without the answer leaves the failure to say.
+  const resultError = failedRead?.ids === ids && failedRead.store === store && !waitingForTurn;
   const bodiesPending =
     !resultError &&
     ids

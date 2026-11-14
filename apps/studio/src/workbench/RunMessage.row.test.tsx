@@ -156,7 +156,11 @@ function failed(projection: RunProjection): RunProjection {
   };
 }
 
-async function show(projection: RunProjection | null, endActions?: ReactNode) {
+async function show(
+  projection: RunProjection | null,
+  endActions?: ReactNode,
+  sessionId: string | null = 'session_row',
+) {
   fixture.store = sessionStore({
     runId: RUN,
     definition: linearCorral(['writer']),
@@ -176,7 +180,7 @@ async function show(projection: RunProjection | null, endActions?: ReactNode) {
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
           <RunMessage
             runId={RUN}
-            sessionId="session_row"
+            sessionId={sessionId}
             live={live}
             onOpenArtifact={vi.fn()}
             endActions={endActions}
@@ -1108,6 +1112,73 @@ describe('an answer body read that fails while the turn’s record is read', () 
     await f.draw(false);
     expect(alert(f.container)).not.toBeNull();
   });
+
+  const retry = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLButtonElement>('[role="alert"] button')].find(
+      (button) => button.textContent === messages.Desktop.retryResult,
+    );
+
+  it('trying again reads the body again: a failure again is said, a body read takes its place', async () => {
+    const f = await failedWhileReading();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+    const failing = vi.fn(async () => {});
+    await act(async () => fixture.store?.setState({ loadArtifact: failing }));
+    await act(async () => retry(f.container)?.click());
+    expect(failing).toHaveBeenCalledWith('answer');
+    expect(alert(f.container)?.textContent).toContain(messages.Desktop.resultUnavailable);
+    const reading = vi.fn(async (id: string) => {
+      fixture.store?.setState({ artifactTexts: { [id]: 'The answer body' } });
+    });
+    await act(async () => fixture.store?.setState({ loadArtifact: reading }));
+    await act(async () => retry(f.container)?.click());
+    expect(reading).toHaveBeenCalledWith('answer');
+    expect(alert(f.container)).toBeNull();
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  it('a read of another answer that fails is said, after the first failure went with its answer', async () => {
+    const f = await failedWhileReading();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+    const ended = answered(running());
+    const first = ended.artifacts.answer as RunProjection['artifacts'][string];
+    const next: RunProjection = {
+      ...ended,
+      artifacts: {
+        ...ended.artifacts,
+        second: { ...first, artifactVersionId: 'second', version: 2, parentVersionId: 'answer' },
+      },
+      output: { nodeId: 'output', artifactVersionIds: ['second'] },
+    };
+    const failing = vi.fn(async () => {});
+    await act(async () =>
+      fixture.store?.setState({ projection: next, artifactTexts: {}, loadArtifact: failing }),
+    );
+    expect(failing).toHaveBeenCalledWith('second');
+    expect(alert(f.container)?.textContent).toContain(messages.Desktop.resultUnavailable);
+  });
+});
+
+// Outside a conversation there is no turn's record to wait for: a body read that fails says so
+// as soon as it ends.
+it('outside a conversation a body read that fails is said at once', async () => {
+  const f = await show(running(), undefined, null);
+  const failing = vi.fn(async () => {});
+  // The run ends; its answer's body read ends with no text.
+  await act(async () =>
+    fixture.store?.setState({
+      projection: answered(running()),
+      artifactTexts: {},
+      loadArtifact: failing,
+    }),
+  );
+  expect(failing).toHaveBeenCalledWith('answer');
+  expect(f.container.querySelector('[role="alert"]')?.textContent).toContain(
+    messages.Desktop.resultUnavailable,
+  );
 });
 
 it.each([
