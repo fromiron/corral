@@ -143,12 +143,18 @@ for (const locale of ['en', 'ko']) {
         .grantPermissions(['clipboard-read', 'clipboard-write'], { origin: corral.server.url });
       const minutes = (await state(page, id)).minutes[0];
       const time = page.locator(`time[datetime="${minutes.createdAt}"]`);
+      // The expected text comes from the browser's own ICU: Node's may carry other locale data
+      // (its Korean short time reads "AM" where Chromium's reads "오전").
       await expect(time).toHaveText(
-        new Intl.DateTimeFormat(locale, {
-          dateStyle: 'short',
-          timeStyle: 'medium',
-          timeZone: 'Asia/Tokyo',
-        }).format(new Date(minutes.createdAt)),
+        await page.evaluate(
+          ([at, tag]) =>
+            new Intl.DateTimeFormat(tag, {
+              dateStyle: 'short',
+              timeStyle: 'medium',
+              timeZone: 'Asia/Tokyo',
+            }).format(new Date(at)),
+          [minutes.createdAt, locale] as const,
+        ),
       );
       await page
         .getByRole('button', { name: m.MeetingsDecisions.editCandidate, exact: true })

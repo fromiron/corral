@@ -446,7 +446,12 @@ test('handoffs preserve existing input and start work only when requested', asyn
   };
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
   await page.getByRole('combobox', { name: 'Target conversation', exact: true }).click();
-  await page.getByRole('option', { name: targetTitle, exact: true }).click();
+  // An untitled conversation is named "New conversation", like the choice that makes a new one,
+  // so the option is the one whose value is the target session.
+  await page
+    .getByRole('option', { name: targetTitle, exact: true })
+    .and(page.locator(`[data-value="${targetId}"]`))
+    .click();
   await page.getByRole('button', { name: 'Hand off and start', exact: true }).click();
   await expect.poll(async () => (await handoffs())[0]?.state).toBe('drafted');
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);

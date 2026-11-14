@@ -158,7 +158,7 @@ test.describe('viewed and active execution', () => {
       );
       // While Run #2 goes the send key joins it, never the run being viewed.
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
-      await expect(page.getByTestId('composer-destination')).toContainText('instruction');
+      await expect(page.getByTestId('composer-destination')).toContainText('· Join');
       // `/next` picks a next request once; it waits behind the active run.
       await slash(page, 'next');
       await box.fill('Keep this next request');
