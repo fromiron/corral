@@ -904,17 +904,3 @@ export function viewedRun(input: {
     total: input.runIds.length,
   };
 }
-
-/**
- * Whether the composer's one-line status shows the run's state. A live run's state and controls
- * belong to the top bar's pill, even while it needs the person (the attention notice links to
- * it), so the line shows it only for an ended run and when the state cannot be read.
- */
-export function composerShowsRunStatus(input: {
-  runStatus: string | null;
-  readState: 'empty' | 'loading' | 'ready' | 'error';
-}): boolean {
-  if (input.readState === 'error') return true;
-  const kind = runKind(input.runStatus);
-  return kind !== null && ENDED_KINDS.has(kind);
-}

@@ -1,5 +1,4 @@
 import { Select, TabItem, TabsList } from '@corral/react/design-kit';
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { PANE_CATALOG } from '../panels/registry.ts';
 import { TopbarViews, useTopbarHostsViews, useTopbarLayout } from '../TopbarSlot.tsx';
@@ -17,8 +16,8 @@ export function primaryViewFor(view: DockContextView): PrimaryView {
 const groupLabel = { develop: 'groupDevelop', verify: 'groupVerify', run: 'groupRun' } as const;
 
 /**
- * The session's view tabs (in the page top bar when one hosts them), the one pane switcher of a
- * narrow host, and the run controls. Rendered inside the session's Tabs. A top bar too narrow
+ * The session's view tabs (in the page top bar when one hosts them) and the one pane switcher
+ * of a narrow host; the run's controls are the activity bar's. Rendered inside the session's Tabs. A top bar too narrow
  * for the tabs shows them as one menu; the tabs stay in the document, hidden, so each panel
  * keeps its name.
  */
@@ -27,7 +26,6 @@ export function DockTopBar({
   fileWork,
   compact,
   panels,
-  controls,
   changeCount = 0,
   openContext,
   onSelectView,
@@ -41,7 +39,6 @@ export function DockTopBar({
   /** The active pane's id. Its own tab names it, so the narrow switcher does not show it. */
   active: string;
   panels: { id: string; title: string }[];
-  controls?: ReactNode;
   /** Files this session changed: a quiet count on the Changes view. */
   changeCount?: number;
   openContext: (view: DockContextView, notify?: boolean) => void;
@@ -147,7 +144,6 @@ export function DockTopBar({
           />
         </div>
       ) : null}
-      {controls ? <div className="corral-dock-controls">{controls}</div> : null}
     </>
   );
 }

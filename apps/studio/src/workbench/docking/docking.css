@@ -145,10 +145,6 @@
   gap: 0.125rem;
   color: var(--color-muted-foreground);
 }
-.corral-dock-controls {
-  flex-shrink: 0;
-  padding: 0.25rem 0.5rem;
-}
 @media (max-width: 600px) {
   .corral-dock-toolbar [role="combobox"] {
     max-width: 10rem;
