@@ -65,7 +65,7 @@ accepted → queued → attached_to_request → delivered
 | 출처 | 만든 쪽 |
 |---|---|
 | `user` | 사람이 보낸 합류·끼어들기 |
-| `advice` | [감독](advisor.md)의 조언 가운데 접수된 것 |
+| `advice` | [Outrider](advisor.md)의 조언 가운데 접수된 것 |
 
 출처와 무관하게 같은 전달 경로와 상태를 쓴다. `advice` 지시는 승인·취소·패치·권한을 바꾸지 못하고, 모델에 실릴 때 출처가 드러나게 감싼다.
 

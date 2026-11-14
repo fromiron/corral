@@ -76,17 +76,17 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
     await expect(page.getByText(/Connection checked at/)).toBeVisible();
     expect(fixture.mcpCalls).toBe(0);
     await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
-    await page.getByLabel('Work style name', { exact: true }).fill('MCP writer');
+    await page.getByLabel('Harness name', { exact: true }).fill('MCP writer');
     await page.getByRole('combobox', { name: 'Policy', exact: true }).click();
     await page.getByRole('option', { name: 'Trusted native extensions', exact: true }).click();
-    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Harness', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
     await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);
     await page.getByRole('button', { name: /^Local docs/ }).click();
-    await page.getByRole('link', { name: 'Connect a work style', exact: true }).click();
+    await page.getByRole('link', { name: 'Connect a Harness', exact: true }).click();
     await page.getByRole('button', { name: 'MCP writer · r1', exact: true }).click();
     await page
-      .getByRole('combobox', { name: 'Select MCP servers for this style', exact: true })
+      .getByRole('combobox', { name: 'Select MCP servers for this Harness', exact: true })
       .click();
     await page.getByRole('option', { name: 'Choose below', exact: true }).click();
     await page.getByLabel('Use MCP server Local docs', { exact: true }).check();
@@ -99,7 +99,7 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
         async () => (await (await fetch('/api/v1/harness/profiles')).json())[0].revision,
       ),
     ).toBe(1);
-    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Harness', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 2');
     const toolName = await page.evaluate(async () => {
       const config = await (await fetch('/api/v1/harness/projects/default/tools')).json();

@@ -111,7 +111,7 @@ describe('Markdown agent import', () => {
       'ask',
       'reply',
     ];
-    expect(() => build()).toThrow(/verified local work style/);
+    expect(() => build()).toThrow(/verified local Harness/);
     expect(() => build({ binding, policy: 'strict', allowedTools: ['run_command'] })).toThrow(
       /trusted-native/,
     );

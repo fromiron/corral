@@ -189,12 +189,12 @@ it.each(Object.keys(LABELS))(
     }
     expect(hints).toHaveLength(1);
     const hint = hints[0] as HTMLElement;
-    expect(hint.dataset.termHint).toBe('workStyle');
+    expect(hint.dataset.termHint).toBe('harness');
     expect(hint.getAttribute('aria-label')).toBe(
-      messages.Terms.about.replace('{term}', messages.Terms.workStyle.name),
+      messages.Terms.about.replace('{term}', messages.Terms.harness.name),
     );
     expect(document.getElementById(hint.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
-      messages.Terms.workStyle.meaning,
+      messages.Terms.harness.meaning,
     );
     const title = container.querySelector('[data-settings-header] h2') as HTMLElement;
     // After the title, outside the heading, so the heading still reads as the section's name.

@@ -589,7 +589,7 @@ it('the advisor a conversation adds is named once, by the one word, on its line'
   store.setState({ projection, definition: advisorDefinition({ session: true }) });
   render(wrap(<ExecutionTranscript session={store} executionId="impl_1" />, 'ko'));
   const unread = document.querySelector('[data-advice="unread"] [data-advice-line]');
-  expect(unread?.textContent).toBe('감독·중단 권고·Late blocker.');
+  expect(unread?.textContent).toBe('Outrider·중단 권고·Late blocker.');
 });
 
 it('calls only an observer the conversation added “Advisor”; a step that merely shares its id keeps its name', () => {

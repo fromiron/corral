@@ -252,7 +252,7 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
       !harness.allowedTools.includes('run_command')
     )
       throw new Error(
-        'Shell import requires the parent’s verified local work style to allow run_command under trusted-native policy.',
+        'Shell import requires the parent’s verified local Harness to allow run_command under trusted-native policy.',
       );
   }
   if (parentRole.harness) {
@@ -262,7 +262,7 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
       harness.binding.profileId !== parentRole.harness.profileId ||
       harness.binding.revision !== parentRole.harness.revision
     )
-      throw new Error('Import requires the parent’s verified local work style revision.');
+      throw new Error('Import requires the parent’s verified local Harness revision.');
     const required = [
       'write_artifact',
       'submit_result',

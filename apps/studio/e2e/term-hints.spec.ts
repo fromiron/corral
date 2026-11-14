@@ -148,10 +148,10 @@ test.describe('on a touch screen', () => {
   test('a press opens a term’s explanation and a press outside closes it', async ({ page }) => {
     await page.goto('/');
     const dialog = await openSettings(page, en.Harness.heading);
-    const icon = dialog.getByRole('button', { name: about('workStyle'), exact: true });
+    const icon = dialog.getByRole('button', { name: about('harness'), exact: true });
     await icon.tap();
     await expect(popup(page)).toBeVisible();
-    await expect(popup(page).locator('[data-term-meaning]')).toHaveText(en.Terms.workStyle.meaning);
+    await expect(popup(page).locator('[data-term-meaning]')).toHaveText(en.Terms.harness.meaning);
     const title = dialog.getByRole('heading', { level: 2, name: en.Harness.heading });
     await title.tap();
     await expect(popup(page)).toHaveCount(0);
@@ -165,7 +165,7 @@ test.describe('on a touch screen', () => {
   }) => {
     await page.goto('/');
     const dialog = await openSettings(page, en.Harness.heading);
-    const icon = dialog.locator('[data-term-hint="workStyle"]');
+    const icon = dialog.locator('[data-term-hint="harness"]');
     expect((await icon.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     const header = dialog.locator('[data-settings-header]');
     const settings = await lineWithAndWithout(
@@ -191,7 +191,7 @@ test.describe('on a touch screen', () => {
 test('around an explanation opened by focus, the keyboard goes straight on', async ({ page }) => {
   await page.goto('/');
   const dialog = await openSettings(page, en.Harness.heading);
-  const settingsIcon = dialog.locator('[data-term-hint="workStyle"]');
+  const settingsIcon = dialog.locator('[data-term-hint="harness"]');
   const settingsStops = await keyboardAround(page, settingsIcon, dialog);
   await tabWithPointerOnIcon(page, settingsIcon, settingsStops);
   await pressOutlastsPointer(page, settingsIcon, settingsStops);
@@ -221,7 +221,7 @@ test('no screen explains one term in two places', async ({ page }) => {
   expect(await icons(page)).toEqual({});
 
   await openSettings(page, en.Harness.heading);
-  expect(await icons(page)).toEqual({ workStyle: 1 });
+  expect(await icons(page)).toEqual({ harness: 1 });
 });
 
 /**

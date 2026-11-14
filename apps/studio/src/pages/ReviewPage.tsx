@@ -11,7 +11,7 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import type { RunSummary, SessionEntryStart, WorkSession } from '@corral/core';
-import { EmptyView } from '@corral/react';
+import { EmptyView, TermHint } from '@corral/react';
 import {
   Badge,
   Button,
@@ -508,9 +508,14 @@ export function ReviewContent({
               data-testid="review-empty"
               className="mx-auto flex max-w-lg flex-col items-start gap-3 p-8"
             >
-              <h3 className="text-subtitle" style={semibold}>
-                {t('noCopyTitle')}
-              </h3>
+              {/* The page's one place for the Paddock term (glossary.md); in the Changes pane its
+                  setup view above is the place. */}
+              <div className="flex items-center gap-1">
+                <h3 className="text-subtitle" style={semibold}>
+                  {t('noCopyTitle')}
+                </h3>
+                {!embedded ? <TermHint term="paddock" /> : null}
+              </div>
               <p className="m-0 text-body text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
                 <Button

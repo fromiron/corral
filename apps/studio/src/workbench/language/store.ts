@@ -500,7 +500,7 @@ export function languageStore(
           if (languageCopyKey(result.target) !== key) {
             patch(key, {
               state: null,
-              error: 'This working copy has changed. Reopen the document.',
+              error: 'This Paddock has changed. Reopen the document.',
             });
             copy.sent.clear();
             updateProviders();

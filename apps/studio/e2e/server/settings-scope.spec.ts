@@ -5,7 +5,7 @@ test('project settings share an explicit empty state and keep their target on na
   corral,
 }) => {
   await corral.open('/settings?section=workspace');
-  for (const name of ['Folders & tools', 'MCP servers', 'Project default work style']) {
+  for (const name of ['Folders & tools', 'MCP servers', 'Project default Harness']) {
     await page.getByTestId('settings-sidebar').getByRole('link', { name, exact: true }).click();
     const body = page.locator('.settings-layout');
     await expect(body.getByRole('heading', { name, exact: true })).toHaveCount(1);
@@ -56,7 +56,7 @@ test('defaults have independent routes and save only their explicit scope', asyn
     `${corral.server.url}/settings/harness?projectId=default&returnTo=%2Fprojects%2Fdefault#project-defaults`,
   );
   await expect(page).toHaveURL(/\/projects\/default\?(?:.*&)?settings=project-defaults/);
-  await expect(page.getByLabel('Work style name', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Harness name', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('settings-sidebar').locator('[aria-current="page"]')).toHaveCount(
     1,
   );
@@ -82,7 +82,7 @@ test('defaults have independent routes and save only their explicit scope', asyn
   const saved = await read();
   expect(saved[0].binding).toEqual({ profileId: 'settings-test', revision: 1 });
   expect(saved[1].binding).toBeNull();
-  await page.getByRole('link', { name: 'Personal default work style', exact: true }).click();
+  await page.getByRole('link', { name: 'Personal default Harness', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Personal default', exact: true })).toContainText(
     'None',
   );

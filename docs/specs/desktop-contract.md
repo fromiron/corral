@@ -9,7 +9,7 @@
 | ABS-01 | 워크트리 명령 실행 | effect intent, 승인, 파일 snapshot, Reins | 임의 명령 계약, OS 셸, process lease, 출력 조회 |
 | ABS-02 | Ask / Accept edits / Auto | tool-policy, PermissionPolicyEditor, 승인 UI | 컴포저 프리셋과 Run snapshot |
 | ABS-03 | Hashline 편집 | read 근거, broker, 원자 쓰기, diff | 태그/ops 엔진과 별도 편집 방식 |
-| ABS-04 | 파일·HTML·로컬 앱 미리보기 | FilePanel, diff, 기존 브라우저 MCP | preview lease, 분리된 렌더링, 실제 작업 사본 origin |
+| ABS-04 | 파일·HTML·로컬 앱 미리보기 | FilePanel, diff, 기존 브라우저 MCP | preview lease, 분리된 렌더링, 실제 Paddock origin |
 | ABS-05 | 모델 카탈로그·설정 가져오기·사고 강도 | ModelRegistry, credentials, reasoning | 카탈로그 cache, import preview/commit, capability 대조 |
 | ABS-06 | 동시 세션·Run | Coordinator live Map, Run별 events/사용량 | 다중 실행 admission, host 용량, 사본 경합, UI 구독 |
 | ABS-07 | Windows/macOS 패키지·트레이·업데이트·절전 방지·단축키 | Electron shell, Linux 패키지, commandRegistry | OS별 runtime packaging, update lifecycle, 사용자 바인딩 |
@@ -57,9 +57,9 @@ flowchart LR
 
 ## 5. 기능별 구현
 
-### ABS-01 — 실제 작업 사본에서 명령 실행
+### ABS-01 — 실제 Paddock에서 명령 실행
 
-**사용 흐름:** 세션 작업 사본 연결 → 에이전트가 명령 제안 → 정책에 따른 승인 → 진행 출력/중단 → 파일 변경과 종료 결과 확인 → 등록 검사 실행.
+**사용 흐름:** Paddock 연결 → 에이전트가 명령 제안 → 정책에 따른 승인 → 진행 출력/중단 → 파일 변경과 종료 결과 확인 → 등록 검사 실행.
 
 1. 제안 도구명은 `run_command`. 입력은 `{ command, shellId?, cwd?: relativePath, timeoutMs? }`. 서버가 허용된 shell registry에서 실행 파일·인자를 만들고 고정한다. 사용자 선택값을 임의 실행 파일 경로로 사용하지 않는다.
 2. 임의 프로그램 실행은 필요 기능이다. `run_check`의 등록 ID 목록을 유일한 진입점으로 유지하거나 명령 몇 개만 fixture로 지원하지 않는다. 반대로 `run_check`를 임의 문자열 셸로 바꾸지도 않는다.
@@ -112,7 +112,7 @@ flowchart LR
 - 현재 Linux fixture browser의 제약을 origin 문자열 한 줄만 바꿔 제거하지 않는다. launcher, MCP tool policy, proxy/요청 검증, 다운로드·업로드·새 창 정책을 같이 확장한다.
 - 사람이 보는 미리보기와 모델의 browser 도구는 같은 대상 lease를 참조한다. screenshot·검증 결과는 불변 evidence로 저장하며 화면 생성 성공과 실제 동작 성공을 구분한다.
 
-**완료:** 실제 작업 사본의 HTML 및 로컬 앱을 패널에서 열고, 파일 수정 후 갱신하며, 에이전트가 같은 대상을 관찰·조작·assert할 수 있다. 다른 세션/포트/파일로의 탈출과 종료 후 재사용은 거절한다.
+**완료:** 실제 Paddock의 HTML 및 로컬 앱을 패널에서 열고, 파일 수정 후 갱신하며, 에이전트가 같은 대상을 관찰·조작·assert할 수 있다. 다른 세션/포트/파일로의 탈출과 종료 후 재사용은 거절한다.
 
 ### ABS-05 — 모델 카탈로그·설정 import·사고 강도
 

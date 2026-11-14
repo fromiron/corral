@@ -265,15 +265,7 @@ const summaries: [string, Record<string, unknown>][] = [
 // The labels each summary shows, in both catalogs, word for word.
 const summaryLabels = {
   en: [
-    [
-      'Run command',
-      'Shell',
-      'Working directory',
-      'Conversation working-copy root',
-      'Mode',
-      'Foreground',
-      'Timeout',
-    ],
+    ['Run command', 'Shell', 'Working directory', 'Paddock root', 'Mode', 'Foreground', 'Timeout'],
     ['Run command', 'Mode', 'Service'],
     ['Proposed file content'],
     ['Requested replacements', 'Before', 'After'],
@@ -284,7 +276,7 @@ const summaryLabels = {
       '명령 실행',
       '셸',
       '작업 디렉터리',
-      '대화 작업 사본의 루트',
+      'Paddock의 루트',
       '실행 방식',
       '완료까지 실행',
       '시간 제한',

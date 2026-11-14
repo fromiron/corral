@@ -11,6 +11,7 @@ import {
   type RunSummary,
   type WorkSession,
 } from '@corral/core';
+import { TermHint } from '@corral/react';
 import {
   Banner,
   BannerActions,
@@ -929,7 +930,11 @@ function EnvironmentPanel({
         </div>
       </section>
       <section aria-label={t('copies')} className="flex flex-col gap-3">
-        <SectionLabel {...(copies ? { count: rows.length } : {})}>{t('copies')}</SectionLabel>
+        {/* The tab's one place for the Paddock term (glossary.md): after the list's label. */}
+        <div className="flex items-center gap-1">
+          <SectionLabel {...(copies ? { count: rows.length } : {})}>{t('copies')}</SectionLabel>
+          <TermHint term="paddock" />
+        </div>
         {copies === null ? (
           <p role="status" className="text-body text-muted-foreground">
             {t('loading')}

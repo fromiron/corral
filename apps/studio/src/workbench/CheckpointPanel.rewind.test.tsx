@@ -86,7 +86,7 @@ it('lists checkpoints on the kit lane; rewinding opens the restore preview and r
     expect(restore).not.toHaveBeenCalled();
 
     const confirm = [...(preview?.querySelectorAll('button') ?? [])].find(
-      (button) => button.textContent === 'Restore working copy',
+      (button) => button.textContent === 'Restore Paddock',
     );
     await act(async () => confirm?.click());
     expect(restore).toHaveBeenCalledTimes(1);

@@ -412,6 +412,31 @@ it('shows the source folder and each working copy, saying where nothing is known
   expect(panel.textContent).not.toContain(messages.Workspace.folder.ready);
 });
 
+// glossary.md, "설명이 붙는 용어": the Paddock list's section label explains the term by one
+// icon right after it, outside the heading.
+it('explains the Paddock once, after the label of the Paddock list', async () => {
+  const { container } = await render();
+  const environment = tabs(container).find((tab) => tabName(tab) === 'Environment');
+  await act(async () => environment?.click());
+  await settle();
+  const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  const hints = [...panel.querySelectorAll<HTMLElement>('[data-term-hint]')];
+  expect(hints).toHaveLength(1);
+  const hint = hints[0] as HTMLElement;
+  expect(hint.dataset.termHint).toBe('paddock');
+  const terms = messages.Terms as Record<string, string | { name: string; meaning: string }>;
+  expect(hint.getAttribute('aria-label')).toBe(messages.Terms.about.replace('{term}', 'Paddock'));
+  expect(document.getElementById(hint.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+    (terms.paddock as { meaning: string } | undefined)?.meaning,
+  );
+  const label = [...panel.querySelectorAll('h2')].find((h2) =>
+    h2.textContent?.startsWith(messages.Workspace.environment.copies),
+  );
+  expect(label).toBeDefined();
+  expect(label?.contains(hint)).toBe(false);
+  expect(label?.nextElementSibling).toBe(hint);
+});
+
 it('stops reading working copies once the Environment tab is left', async () => {
   const ids = Array.from({ length: 8 }, (_, index) => `session_${index + 1}`);
   fixture.data = { ...fixture.data, sessions: ids.map((id) => session(id, `Session ${id}`)) };

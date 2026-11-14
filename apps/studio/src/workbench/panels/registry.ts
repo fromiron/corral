@@ -55,7 +55,16 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
     view: 'changes',
     group: 'develop',
     slash: 'changes',
-    aliases: ['changes', 'diff', 'working copy', 'checkpoint', '변경', '사본', '체크포인트'],
+    aliases: [
+      'changes',
+      'diff',
+      'working copy',
+      'paddock',
+      'checkpoint',
+      '변경',
+      '사본',
+      '체크포인트',
+    ],
   },
   {
     view: 'git',

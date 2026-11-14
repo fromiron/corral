@@ -64,7 +64,7 @@ export function MarkdownAgentImport({
     void harnesses.preview(binding, projectId).then(
       (value) => active && setHarness({ key: harnessKey, snapshot: value.snapshot }),
       () =>
-        active && setHarness({ key: harnessKey, error: 'Could not verify the parent work style.' }),
+        active && setHarness({ key: harnessKey, error: 'Could not verify the parent Harness.' }),
     );
     return () => {
       active = false;
@@ -218,7 +218,7 @@ export function MarkdownAgentImport({
             ) : null}
             {role?.harness ? (
               <p className="text-caption text-muted-foreground">
-                {text('Inherited work style', '상속할 작업 방식')}: {role.harness.profileId} · r
+                {text('Inherited Harness', '상속할 Harness')}: {role.harness.profileId} · r
                 {role.harness.revision}
                 {currentHarness?.snapshot
                   ? ` · ${currentHarness.snapshot.policy}`
@@ -227,8 +227,8 @@ export function MarkdownAgentImport({
             ) : (
               <p className="text-caption text-muted-foreground">
                 {text(
-                  'No explicit parent work style. Shell tools require a verified trusted-native work style selected on the parent.',
-                  '부모에 명시적으로 선택된 작업 방식이 없습니다. 셸 도구는 부모에게 선택된 trusted-native 작업 방식의 검증이 필요합니다.',
+                  'No explicit parent Harness. Shell tools require a verified trusted-native Harness selected on the parent.',
+                  '부모에 명시적으로 선택된 Harness가 없습니다. 셸 도구는 부모에게 선택된 trusted-native Harness의 검증이 필요합니다.',
                 )}
               </p>
             )}

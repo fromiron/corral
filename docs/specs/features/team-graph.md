@@ -6,7 +6,7 @@
 
 ## 사용자 관측 동작
 
-1. **여섯 종류의 노드.** 팀은 Agent, Decision, Loop, Team, Join, Output으로 만든다. Agent는 `scheduled`, `callable`, `observer` 중 하나다. `observer`는 실행 순서에 들지 않고 다른 Agent를 지켜보는 [감독](advisor.md)이다. Decision은 `review`, `approval`, `rule`, `check`, `router` 중 하나이며 모드마다 나가는 포트가 다르다.
+1. **여섯 종류의 노드.** 팀은 Agent, Decision, Loop, Team, Join, Output으로 만든다. Agent는 `scheduled`, `callable`, `observer` 중 하나다. `observer`는 실행 순서에 들지 않고 다른 Agent를 지켜보는 [Outrider](advisor.md)다. Decision은 `review`, `approval`, `rule`, `check`, `router` 중 하나이며 모드마다 나가는 포트가 다르다.
 2. **상자.** Loop와 Team은 다른 노드를 담는 상자다. 상자 안에 상자를 담을 수 있다. 루프를 몇 개 두든, 팀을 루프로 감싸든, 루프 안에 팀을 두든 정의할 수 있다.
 3. **루프.** 몸체는 노드 하나 이상이다. 다시 도는 길(`repeat`)은 결정 노드에서만 들어오고, 끝나는 길(`exit`)이 있어야 한다. 반복 상한은 1 이상의 정수이며 시스템 상한은 없다. 상한을 두지 않을 수도 있다. 상한이나 정체 감지에 걸렸을 때 할 일은 팀을 만들 때 Loop마다 정한다: 끝내기, 안쪽 에이전트의 추론 수준을 올려 더 돌기, 정해 둔 상위 모델로 바꿔 더 돌기. 끝낼 때는 `exhausted`로 나가고, 연결이 없으면 Run이 실패한다. 어느 경우에도 사용자에게 묻지 않는다.
 4. **병렬과 합류.** 한 출력 포트에 연결을 여러 개 두면 그 대상들이 동시에 실행되는 분기가 된다. 동시에 살아 있을 수 있는 분기가 다시 만나는 곳은 Join이어야 한다. Join은 모든 분기(`all`) 또는 첫 분기(`any`)를 기다린다. 결정의 서로 다른 분기처럼 동시에 살아 있을 수 없는 경로는 Join 없이 한 노드로 모일 수 있다.
@@ -32,7 +32,7 @@
 | Output | `inputBindings`(1개 이상), `requireApproval` |
 
 - `controlEdges`는 `{ id, source, sourcePort, target, targetPort }`다. `sourcePort`는 아래 포트 표의 이름이거나 router의 route id다.
-- `capabilityLinks`(`delegate`, `question`, `advise`)는 허용 관계이며 순서가 아니다. `delegate`와 `question`의 의미는 [제품 계약](../product-contract.md) §7을, `advise`의 의미는 [감독](advisor.md)을 따른다.
+- `capabilityLinks`(`delegate`, `question`, `advise`)는 허용 관계이며 순서가 아니다. `delegate`와 `question`의 의미는 [제품 계약](../product-contract.md) §7을, `advise`의 의미는 [Outrider](advisor.md)를 따른다.
 - `limitPolicy`는 `{ kind: 'exhaust' }`, `{ kind: 'raise_reasoning', level }`, `{ kind: 'upper_model', modelProfile }`, `{ kind: 'unlimited' }` 중 하나다. `level`은 추론 수준, `modelProfile`은 모델 profile id다. 의미는 [루프 실행](#루프-실행)을 따른다.
 - `limits.maxDelegationDepth`는 1 이상의 정수다(기본 2). `limits.maxSpawns`는 1 이상의 정수다.
 - `entryNodeId`는 최상위의 유일한 시작 노드다. 시작 노드는 scheduled Agent, Loop, Team 중 하나다.
@@ -93,14 +93,14 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
    - Join으로 들어오는 연결이 하나뿐이면 경고다.
    - 분기는 다시 모인 뒤에만 끝날 수 있다. 아직 Join으로 모이지 않은 분기에서 Output으로 가거나, 그 분기를 낳은 출력 포트가 든 상자의 `exit`·`repeat`로 가는 연결은 오류다.
    - Join 하나는 출력 포트 하나의 분기를 모은다. 들어오는 연결은 그 포트의 서로 다른 분기에서 오고 모든 분기가 들어와야 하며, 그 밖의 바깥 분기 처지는 서로 같아야 한다. 어기면 오류다. 들어오는 연결이 모두 같은 분기에서 오면 Join은 들어온 길을 그대로 잇는다. 모든 분기가 Join으로 모인 포트는 닫혀서, 그 뒤의 바깥 Join에서는 분기로 세지 않는다.
-8. **같은 작업 사본에 쓰는 병렬 분기.** 파일을 쓰는 도구를 가진 Agent가 동시에 살아 있을 수 있는 분기에 둘 이상 있으면 경고한다. 분기들은 같은 세션 작업 사본을 쓰며 파일 효과는 분기마다 격리되지 않는다.
+8. **같은 Paddock에 쓰는 병렬 분기.** 파일을 쓰는 도구를 가진 Agent가 동시에 살아 있을 수 있는 분기에 둘 이상 있으면 경고한다. 분기들은 같은 Paddock을 쓰며 파일 효과는 분기마다 격리되지 않는다.
 9. **연결되지 않은 출구.**
    - Decision과 router의 출구, Loop의 `exhausted`, Agent의 `error`가 연결되지 않아도 정의는 유효하다.
    - 연결 안 된 Decision 출구는 경고한다.
    - 실행 중 연결 안 된 출구가 선택되면 Run은 그 노드에서 `needs_user`로 실패한다. 이유에 노드와 출구가 남는다. 연결 안 된 `reject`가 선택되면 Run은 취소된다. Loop의 `exhausted`는 [루프 실행](#루프-실행)의 소진을 따른다.
    - router는 route가 둘 미만이면 오류다.
 10. **시작점과 도달.** 최상위에 들어오는 control edge가 없는 시작 노드가 정확히 하나 있고 `entryNodeId`와 같아야 한다. 모든 scheduled 노드는 시작 노드에서 도달할 수 있어야 한다. callable Agent는 유효한 capability 경로가 있으면 고립으로 보지 않는다. observer Agent는 도달 검사의 대상이 아니다(`advise` 연결이 없는 observer는 규칙 11이 거절한다).
-11. **감독.**
+11. **Outrider.**
     - observer Agent는 control edge를 갖지 않고 어느 상자에도 속하지 않는다. `delegate`·`question` 연결의 출발이나 대상이 될 수 없다.
     - observer Agent는 `advise` 연결을 하나 이상 갖는다. `advise` 연결의 출발은 observer Agent, 대상은 scheduled 또는 callable Agent다. 다른 observer, Decision, 상자, Join, Output을 대상으로 할 수 없다. `advise` 연결은 `parentQuestions`를 갖지 않는다.
     - observer 역할의 작업 도구는 `search`, `read_document`, `list_files`, `read_file` 가운데에서만 고르고, 협업 도구는 `read_artifact`와 `advise`로 고정한다. 다른 도구를 가진 역할을 observer 노드에 쓰면 오류다.
@@ -152,8 +152,8 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 ### check 실행
 
-- **시작 조건.** check Decision이 있는 Run은 작업 세션에서 시작해야 한다. Run 시작은 그 세션 프로젝트의 등록 검사 설정을 고정하고(`RunSnapshot.checks`: 프로젝트, 설정 revision·hash, 모든 check Decision의 `checkIds`), 그 Run이 신뢰된 작업 사본을 쓰게 한다. 세션이 없거나, 세션에 작업 사본이 없거나, 검사가 등록돼 있지 않거나, 검사 실행기를 쓸 수 없으면 `CAPABILITY_DENIED`로 거절하고 Run을 만들지 않는다. 작업 사본은 사람이 세션에서 만든다. Run 시작이 대신 만들지 않는다.
-- **검사 실행.** check에 닿으면 check 노드의 새 Task로 내장 검사 실행 하나를 시작한다. 모델을 부르지 않고, 노드의 `checkIds`를 순서대로 고정한 설정의 `run_check`로 작업 사본에서 실행한 뒤 결과 요약을 제출한다. 신뢰하지 않은 fingerprint는 지금처럼 검사 실행 승인을 받는다([하네스 계약](../harness-contract.md) H5). Loop 안이면 그 회차의 실행이다.
+- **시작 조건.** check Decision이 있는 Run은 작업 세션에서 시작해야 한다. Run 시작은 그 세션 프로젝트의 등록 검사 설정을 고정하고(`RunSnapshot.checks`: 프로젝트, 설정 revision·hash, 모든 check Decision의 `checkIds`), 그 Run이 신뢰된 Paddock을 쓰게 한다. 세션이 없거나, 세션에 Paddock이 없거나, 검사가 등록돼 있지 않거나, 검사 실행기를 쓸 수 없으면 `CAPABILITY_DENIED`로 거절하고 Run을 만들지 않는다. Paddock은 사람이 세션에서 만든다. Run 시작이 대신 만들지 않는다.
+- **검사 실행.** check에 닿으면 check 노드의 새 Task로 내장 검사 실행 하나를 시작한다. 모델을 부르지 않고, 노드의 `checkIds`를 순서대로 고정한 설정의 `run_check`로 Paddock에서 실행한 뒤 결과 요약을 제출한다. 신뢰하지 않은 fingerprint는 지금처럼 검사 실행 승인을 받는다([하네스 계약](../harness-contract.md) H5). Loop 안이면 그 회차의 실행이다.
 - **판정.**
   - 바뀌지 않은 tree에서 끝까지 돌아 `fail`이 나온 검사가 하나라도 있으면 `fail`로 간다.
   - 모든 검사가 바뀌지 않은 tree에서 끝까지 돌아 `pass`이면 `pass`로 간다.
@@ -165,7 +165,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 - **갈라지기.** 한 출력 포트에 연결이 둘 이상이면 그 대상들을 동시에 시작한다. 분기마다 따로 진행하며, Join 말고는 서로를 기다리지 않는다. Loop 안에서 갈라지면 같은 회차에 속하고, 회차마다 새로 갈라진다.
 - **`all` Join.** 그 포트의 모든 분기가 도착하면 `out`으로 한 길이 이어진다.
-- **`any` Join.** 첫 분기가 도착하면 `out`으로 이어지고, 같은 포트의 나머지 분기를 멈춘다. 실행의 성공은 멈춘 분기가 실제로 끝난 뒤에 확정하므로 작업 사본은 종료 확인과 함께 돌려준다. 멈춘 분기의 종료를 확인하지 못하면 실행은 성공이 아니라 실패다.
+- **`any` Join.** 첫 분기가 도착하면 `out`으로 이어지고, 같은 포트의 나머지 분기를 멈춘다. 실행의 성공은 멈춘 분기가 실제로 끝난 뒤에 확정하므로 Paddock은 종료 확인과 함께 돌려준다. 멈춘 분기의 종료를 확인하지 못하면 실행은 성공이 아니라 실패다.
   - 실행 중인 실행(execution)은 취소된다. 사람에게 다시 시작을 묻지 않는다.
   - 그 분기의 단계가 기다리던 승인은 거둬진다(`approval.resolved`, `reason: cancelled`).
   - 그 분기 안에서 열린 Loop 회차는 `cancelled`로 끝난다.
@@ -173,7 +173,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 - **기록.** Join이 이어질 때 `workflow.joined`(Join, 회차, 정책, 멈춘 분기의 단계)를 남긴다.
 - **사람을 기다리기.** 한 단계가 승인·선택·다시 확인을 기다리면 그 단계만 멈춘다. 다른 분기와 실행은 계속 진행한다. Run 전체에 걸린 한도(무진전)는 Run 단위 개입이므로 하나만 열리고, 거기 닿은 실행은 모두 그 하나를 기다린다.
 - **끝나기.** 한 분기가 Run을 끝내면(실패 경로 없는 실패, `needs_user`, 거절, 회차 상한에서 멈춤) 다른 분기도 함께 멈춘다.
-- **작업 사본.** 분기들은 같은 세션 작업 사본을 쓰며 파일 작업은 하나씩 차례로 적용된다. 분기마다 사본을 나누지 않는다.
+- **Paddock.** 분기들은 같은 Paddock을 쓰며 파일 작업은 하나씩 차례로 적용된다. 분기마다 사본을 나누지 않는다.
 
 ### 팀 실행
 
@@ -405,7 +405,7 @@ Scenario: 판정이 없으면 다시 돌릴지 묻는다
   Then 그 Run은 취소된다
 
 Scenario: 검사를 실행할 수 없으면 시작하지 않는다
-  Given 세션 없이 시작하거나, 작업 사본이 없는 세션에서 시작하거나, 세션 프로젝트에 등록되지 않은 검사를 고른 check Decision
+  Given 세션 없이 시작하거나, Paddock이 없는 세션에서 시작하거나, 세션 프로젝트에 등록되지 않은 검사를 고른 check Decision
   When 실행을 시작한다
   Then CAPABILITY_DENIED로 거절되고 Run이 만들어지지 않는다
 
@@ -484,7 +484,7 @@ Scenario: 분기 안의 루프
   When 실행한다
   Then L의 회차가 A 안에서 돌고 끝난 뒤 A가 Join에 도착한다
 
-Scenario: 같은 작업 사본에 쓰는 병렬 분기는 경고한다
+Scenario: 같은 Paddock에 쓰는 병렬 분기는 경고한다
   Given 파일 쓰기 도구를 가진 Agent 둘이 서로 다른 병렬 분기에 있다
   When 정의를 컴파일한다
   Then 두 Agent에 경고가 있고 정의는 유효하다

@@ -9,7 +9,7 @@ Feature: 팀 편집기 — 사용자가 정의를 만든다
 
   Scenario: check Decision이 있는 팀은 시험 실행으로 시작하지 않는다
     Given check Decision이 있는 팀의 시험 실행 패널이 열려 있다
-    Then 실행이 비활성이고 세션의 작업 사본에서만 돈다는 이유가 보인다
+    Then 실행이 비활성이고 세션의 Paddock에서만 돈다는 이유가 보인다
 
   Scenario: 좁은 화면에서는 시험 실행이 편집기 자리를 대신한다
     Given 768px 폭에서 단계 하나를 선택한 편집기가 열려 있다
@@ -96,23 +96,23 @@ Feature: 팀 편집기 — 사용자가 정의를 만든다
     When 되돌리기를 한 번 누른다
     Then A는 가져오기 전의 역할로 돌아간다
 
-  Scenario: 가져온 역할의 모델과 작업 방식을 조용히 바꾸지 않는다
+  Scenario: 가져온 역할의 모델과 Harness를 조용히 바꾸지 않는다
     Given 로컬 서버에서 역할 프리셋 "구현"을 고르고 설치된 모델 프로필 목록에 그 프로필이 없다
     When 선택 없이 역할 가져오기를 한다
     Then 놓을 자리에 "구현" 에이전트가 생기고 모델은 문제로 표시된다
     And 다른 모델 프로필로 바뀌지 않는다
-    Given 가져올 역할의 작업 방식 참조를 이 설치에서 풀 수 없다
+    Given 가져올 역할의 Harness 참조를 이 설치에서 풀 수 없다
     When 그 역할을 가져온다
-    Then 작업 방식 참조 없이 복사되고 뺐다는 알림이 에이전트 설정 시트에 보인다
+    Then Harness 참조 없이 복사되고 뺐다는 알림이 에이전트 설정 시트에 보인다
     When 다른 곳을 편집한다
     Then 알림은 사라진다
 
-  Scenario: 감독은 흐름 밖에서 에이전트를 지켜본다
+  Scenario: Outrider는 흐름 밖에서 에이전트를 지켜본다
     Given 에이전트 A에서 B로 이어진 팀에서 A를 선택했다
-    When 팔레트에서 감독을 추가한다
-    Then 감독이 흐름 위에 놓이고 A로 가는 감독 연결이 생긴다
-    And 감독에는 제어 포트가 없고 실행 순서는 바뀌지 않는다
-    When 감독의 설정 시트에서 지켜볼 에이전트에 B를 더한다
-    Then B로 가는 감독 연결이 하나 더 생긴다
-    When A와 감독을 함께 골라 Loop로 감싼다
-    Then A만 Loop 안에 들어가고 감독은 밖에 남는다
+    When 팔레트에서 Outrider를 추가한다
+    Then Outrider가 흐름 위에 놓이고 A로 가는 Outrider 연결이 생긴다
+    And Outrider에는 제어 포트가 없고 실행 순서는 바뀌지 않는다
+    When Outrider의 설정 시트에서 지켜볼 에이전트에 B를 더한다
+    Then B로 가는 Outrider 연결이 하나 더 생긴다
+    When A와 Outrider를 함께 골라 Loop로 감싼다
+    Then A만 Loop 안에 들어가고 Outrider는 밖에 남는다

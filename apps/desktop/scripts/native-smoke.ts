@@ -239,9 +239,9 @@ try {
   await startSession(page, 'Native package validation');
   await panelTab(page, 'Files');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-  const workingCopy = page.getByRole('region', { name: 'Working copy' });
+  const workingCopy = page.getByRole('region', { name: 'Paddock' });
   await expect(workingCopy).toBeVisible({ timeout: 30000 });
-  const createCopy = workingCopy.getByRole('button', { name: /Make a working copy from/ });
+  const createCopy = workingCopy.getByRole('button', { name: /Make a Paddock from/ });
   if (await createCopy.isVisible()) {
     await createCopy.click();
     await expect(

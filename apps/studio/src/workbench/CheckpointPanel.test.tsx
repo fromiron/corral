@@ -104,7 +104,7 @@ it('does not execute a restore whose preview has no changed files', async () => 
         ?.click(),
     );
     const button = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Restore working copy',
+      (button) => button.textContent === 'Restore Paddock',
     );
     expect(button?.disabled).toBe(true);
     await act(async () => button?.click());

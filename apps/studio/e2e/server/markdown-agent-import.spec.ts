@@ -264,7 +264,7 @@ test('Bash import inherits a verified local parent work style without trusting s
   await page.getByRole('button', { name: 'New Corral', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Run shell commands/ }).check();
-  await page.getByRole('combobox', { name: 'Work styles', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Harnesses', exact: true }).click();
   await page.getByRole('option', { name: 'Local shell style · r1', exact: true }).click();
   await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import a callable agent' });
@@ -278,7 +278,7 @@ Use only the command requested by the parent.`);
   await chooseModel(page, 'Connected model profile', 'llama3.2, model-a');
   await choose(page, 'Bash mapping', 'run_command');
   await expect(
-    dialog.getByText(/Inherited work style: local-shell-style · r1 · trusted-native/),
+    dialog.getByText(/Inherited Harness: local-shell-style · r1 · trusted-native/),
   ).toBeVisible();
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: 'Add to Corral', exact: true }).click();
