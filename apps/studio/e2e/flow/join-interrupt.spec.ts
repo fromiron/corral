@@ -12,6 +12,7 @@ import {
   note,
   nothingWaiting,
   outputApart,
+  releasedBeforeTurn,
   shot,
   slowedAsAsked,
 } from './scene.ts';
@@ -28,6 +29,9 @@ import {
 // The scene runs once more with each run's output and its success reaching the page two painted
 // frames apart, as they can under load: the page applies the output only with its success, so the
 // run row never shows the words and the answer together.
+// It runs a third time with the carried run's success releasing the first run's answer body after
+// that answer is drawn and before the first run's conversation turn is read: the row keeps the
+// answer it drew until the turn's record takes its place.
 
 const SCENE_NAME = 'join-interrupt';
 
@@ -55,14 +59,28 @@ function cutPlace(page: Page) {
 
 test.use({ live: true, codexLogin: true, streamTokensPerSecond: 30 });
 
-for (const apart of [0, 2] as const)
-  test(`③ join, interrupt and a join carried to a new request, by the keyboard alone${apart ? ', each output read apart from its success' : ''}`, async ({
+const VARIANTS = [
+  { name: '', scene: SCENE_NAME, arrange: async (_page: Page) => {} },
+  {
+    name: ', each output read apart from its success',
+    scene: `${SCENE_NAME}-output-apart`,
+    arrange: (page: Page) => outputApart(page, 2),
+  },
+  {
+    name: ', the answer released before its turn is read',
+    scene: `${SCENE_NAME}-released-before-turn`,
+    arrange: (page: Page) => releasedBeforeTurn(page, 10),
+  },
+];
+
+for (const variant of VARIANTS)
+  test(`③ join, interrupt and a join carried to a new request, by the keyboard alone${variant.name}`, async ({
     page,
     corral,
   }) => {
     test.setTimeout(240_000);
-    const SCENE = apart ? `${SCENE_NAME}-output-apart` : SCENE_NAME;
-    if (apart) await outputApart(page, apart);
+    const SCENE = variant.scene;
+    await variant.arrange(page);
     const first = hold();
     const second = hold();
     const third = hold();

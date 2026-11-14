@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import type { RunEvent } from '@corral/contracts';
-import { type ExecutionView, emptyProjection, type RunProjection } from '@corral/core';
+import {
+  type ExecutionView,
+  emptyProjection,
+  type RunProjection,
+  type StoredConversationTurn,
+} from '@corral/core';
 import type { RunSessionStore } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
@@ -17,13 +22,19 @@ import { RunMessage } from './RunMessage.tsx';
 // (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 3): a head line, a body that only
 // grows, and a tail line. A state change changes words inside those lines, never the lines.
 
-const fixture = vi.hoisted(() => ({ store: null as RunSessionStore | null }));
+const fixture = vi.hoisted(() => ({
+  store: null as RunSessionStore | null,
+  // The conversation turn's record, read once the row is no longer live.
+  turn: null as StoredConversationTurn | null,
+  settled: true,
+}));
 vi.mock('./useCorralChat.ts', () => ({
   useCorralRun: () => ({
     store: fixture.store,
     state: useStore(fixture.store as RunSessionStore),
-    conversationTurn: null,
+    conversationTurn: fixture.turn,
     bodyMetadataCurrent: true,
+    settled: fixture.settled,
   }),
 }));
 vi.mock('../pages/Workbench.tsx', () => ({
@@ -60,6 +71,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
+  fixture.turn = null;
+  fixture.settled = true;
   preferences.setState(parsePreferences(null));
   vi.unstubAllGlobals();
 });
@@ -157,23 +170,25 @@ async function show(projection: RunProjection | null, endActions?: ReactNode) {
     root.unmount();
     container.remove();
   });
-  await act(async () =>
-    root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <RunMessage
-          runId={RUN}
-          sessionId="session_row"
-          live
-          onOpenArtifact={vi.fn()}
-          endActions={endActions}
-          runLine={<button type="button">Run #1</button>}
-        />
-      </IntlProvider>,
-    ),
-  );
+  const draw = (live: boolean) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <RunMessage
+            runId={RUN}
+            sessionId="session_row"
+            live={live}
+            onOpenArtifact={vi.fn()}
+            endActions={endActions}
+            runLine={<button type="button">Run #1</button>}
+          />
+        </IntlProvider>,
+      ),
+    );
+  await draw(true);
   const set = (next: RunProjection) =>
     act(async () => fixture.store?.setState({ projection: next }));
-  return { container, set };
+  return { container, set, draw };
 }
 
 /** The row's own parts, in document order; a team role's row is a part inside the process. */
@@ -912,6 +927,159 @@ it('keeps the last words of a finishing run until its answer is read, even once 
   await act(async () => fixture.store?.setState({ artifactTexts: { answer: 'The answer body' } }));
   expect(live()).toBeNull();
   expect(answer()?.textContent).toContain('The answer body');
+});
+
+// A later run of the conversation succeeding releases this run's answer body (superseded) while
+// the row still waits for the turn's record, which keeps the answer: the row never draws less
+// than it drew while it waits.
+describe('an answer drawn and then released before the turn’s record is read', () => {
+  const answer = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="chat-result"]');
+  /** The run ends with its answer drawn, then a later run's success releases the answer's body. */
+  async function drawnThenReleased() {
+    const ended = answered(running());
+    const f = await show(running());
+    await f.set(ended);
+    const drawn = answer(f.container);
+    expect(drawn?.textContent).toContain('The answer body');
+    const released: RunProjection = {
+      ...ended,
+      artifacts: {
+        answer: {
+          ...(ended.artifacts.answer as RunProjection['artifacts'][string]),
+          bodyAvailable: false,
+        },
+      },
+    };
+    // The store drops a body it can no longer read.
+    await act(async () => fixture.store?.setState({ projection: released, artifactTexts: {} }));
+    return { ...f, drawn, released };
+  }
+
+  it('keeps the answer it drew, the same text in the same place, until the record’s answer takes it', async () => {
+    const f = await drawnThenReleased();
+    expect(answer(f.container)).toBe(f.drawn);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+    // No longer live: the turn's record is being read.
+    fixture.settled = false;
+    await f.draw(false);
+    expect(answer(f.container)).toBe(f.drawn);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+    expect(f.container.textContent).not.toContain(messages.Artifact.loading);
+    // Read: the record's answer takes the same place.
+    fixture.settled = true;
+    fixture.turn = {
+      runId: RUN,
+      answer: 'The answer body',
+      status: 'succeeded',
+      artifactVersionId: 'answer',
+    } as StoredConversationTurn;
+    await f.draw(false);
+    expect(answer(f.container)).toBe(f.drawn);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  it('a record read that fails says so, and the row is not left blank', async () => {
+    const f = await drawnThenReleased();
+    fixture.settled = false;
+    await f.draw(false);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+    fixture.settled = true;
+    await act(async () =>
+      fixture.store?.setState({ projection: null, streamError: 'The record could not be read' }),
+    );
+    await f.draw(false);
+    expect(f.container.querySelector('[role="alert"]')?.textContent).toBe(
+      'The record could not be read',
+    );
+  });
+
+  it('with the record read and no answer kept for it, the released body says it was let go', async () => {
+    const f = await drawnThenReleased();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(answer(f.container)?.textContent).toBe(messages.Artifact.retired);
+  });
+});
+
+// The answer's body read can fail while the row reads the turn's record (the store it read with
+// went with the row's live view, say); the record keeps the answer.
+describe('an answer body read that fails while the turn’s record is read', () => {
+  const live = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="live-text"]');
+  const answer = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="chat-result"]');
+  const alert = (container: HTMLElement) => container.querySelector('[role="alert"]');
+  async function failedWhileReading(whileLive = false) {
+    const first = running();
+    first.modelCalls.next = {
+      modelCallId: 'next',
+      executionId: 'lead',
+      finished: false,
+      responseRef: null,
+    } as unknown as RunProjection['modelCalls'][string];
+    const f = await show(first);
+    await act(async () =>
+      fixture.store?.setState({
+        artifactTexts: {},
+        streams: { next: { text: 'The answer body', next: 1, broken: false, completed: true } },
+      }),
+    );
+    const reading = async () => {
+      // No longer live: the turn's record is being read.
+      fixture.settled = false;
+      await f.draw(false);
+    };
+    if (!whileLive) await reading();
+    // The run ends; its answer's body read ends with no text.
+    await act(async () =>
+      fixture.store?.setState({
+        projection: answered(first),
+        streams: {},
+        loadArtifact: async () => {},
+      }),
+    );
+    if (whileLive) {
+      expect(alert(f.container)).toBeNull();
+      expect(live(f.container)?.textContent).toContain('The answer body');
+      await reading();
+    }
+    return f;
+  }
+
+  it('failed while the row was live, the words stay through the record read', async () => {
+    const f = await failedWhileReading(true);
+    expect(alert(f.container)).toBeNull();
+    expect(live(f.container)?.textContent).toContain('The answer body');
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+  });
+
+  it('keeps the words in their place with no failure said, until the record’s answer takes it', async () => {
+    const f = await failedWhileReading();
+    expect(alert(f.container)).toBeNull();
+    expect(live(f.container)?.textContent).toContain('The answer body');
+    fixture.settled = true;
+    fixture.turn = {
+      runId: RUN,
+      answer: 'The answer body',
+      status: 'succeeded',
+      artifactVersionId: 'answer',
+    } as StoredConversationTurn;
+    await f.draw(false);
+    expect(alert(f.container)).toBeNull();
+    expect(live(f.container)).toBeNull();
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  it('says the failure once the record is read without the answer', async () => {
+    const f = await failedWhileReading();
+    expect(alert(f.container)).toBeNull();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+  });
 });
 
 it.each([

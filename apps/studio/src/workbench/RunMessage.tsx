@@ -198,7 +198,7 @@ export function RunMessage({
   if (expanded && !logShown) setLogShown(true);
   // Whether this view saw the turn working: only a turn finishing here hands its reply over.
   const [watched, setWatched] = useState(false);
-  const [resultError, setResultError] = useState(false);
+  const [bodyReadFailed, setResultError] = useState(false);
   const [retry, setRetry] = useState(0);
   const groupLabel = useId();
   const {
@@ -211,6 +211,14 @@ export function RunMessage({
   } = useCorralRun(runId, live, expanded, artifactMetadataVersion);
   // The last words a finishing conversation turn showed, kept while its answer is still on the way.
   const heldWords = useRef<[string, (typeof state.streams)[string]] | null>(null);
+  // The answers' texts this row has read, by result version: what it drew does not go while it
+  // waits for the conversation turn's record, live or reading it.
+  const answersRead = useRef(new Map<string, string>());
+  const waitingForTurn = Boolean(sessionId) && (live || !settled);
+  // In a conversation the turn's record keeps the answer before any body of it is released, so a
+  // body read that fails (a later run's success released it first, say) waits for that record:
+  // only a record read without the answer leaves the failure to say.
+  const resultError = bodyReadFailed && !waitingForTurn;
   // A conversation row the timeline mounts again keeps the height it left with until its record
   // and bodies are read again; what the read then changes is a real change.
   const [returning] = useState(() => Boolean(sessionId) && rowHeight(runId) !== null);
@@ -419,12 +427,18 @@ export function RunMessage({
       effect: call.effectId ? projection.effects[call.effectId]?.outcome : null,
     })),
   ).filter((row) => row.tone !== 'ok' && row.tone !== 'running');
-  const textOf = (result: ResultItem) =>
-    result.artifactVersionId === preservedTurn?.artifactVersionId
-      ? (preservedTurn.answer ?? undefined)
-      : bodyMetadataCurrent && canReadArtifactBody(projection, result.artifactVersionId)
-        ? state.artifactTexts[result.artifactVersionId]
-        : undefined;
+  const textOf = (result: ResultItem) => {
+    const text =
+      result.artifactVersionId === preservedTurn?.artifactVersionId
+        ? (preservedTurn.answer ?? undefined)
+        : bodyMetadataCurrent && canReadArtifactBody(projection, result.artifactVersionId)
+          ? state.artifactTexts[result.artifactVersionId]
+          : undefined;
+    if (text !== undefined) answersRead.current.set(result.artifactVersionId, text);
+    // A later run's success can release a body this row read while the row still waits for its
+    // turn's record, which keeps the answer: the text read stays until that record is read.
+    return text ?? (waitingForTurn ? answersRead.current.get(result.artifactVersionId) : undefined);
+  };
   // What a model is writing right now, shown in the conversation; never a fact.
   // A turn finishing here hands its last reply (if any) over to the result once the result's
   // text is read, so the answer never flashes "Loading…" in between. A failed read ends it.

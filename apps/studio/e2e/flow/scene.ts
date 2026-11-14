@@ -122,6 +122,86 @@ export function outputApart(page: Page, frames: number) {
   }, frames);
 }
 
+/**
+ * Makes a later run's success release a run's bodies after the run's answer is drawn and before
+ * its conversation turn's record is read, as they can under load: each run's
+ * `artifact.content_released` reaches the page `frames` painted frames after it is read, and the
+ * run's conversation-turn read answers only `frames` painted frames after that. A turn read with no
+ * release on its way answers after two seconds. Set before the page opens.
+ */
+export function releasedBeforeTurn(page: Page, frames: number) {
+  return page.addInitScript((wait) => {
+    const painted = (count: number): Promise<void> =>
+      count <= 0
+        ? Promise.resolve()
+        : new Promise((done) => requestAnimationFrame(() => done(painted(count - 1))));
+    const released = new Map<string, { at: Promise<void>; done(): void }>();
+    const releaseOf = (runId: string) => {
+      let entry = released.get(runId);
+      if (!entry) {
+        let done = () => {};
+        const at = new Promise<void>((resolve) => {
+          done = resolve;
+        });
+        entry = { at, done };
+        released.set(runId, entry);
+      }
+      return entry;
+    };
+    const original = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const turn = /\/runs\/([^/?]+)\/conversation-turn/.exec(url);
+      if (turn?.[1]) {
+        const response = await original(input, init);
+        await Promise.race([
+          releaseOf(turn[1]).at.then(() => painted(wait)),
+          new Promise((done) => setTimeout(done, 2_000)),
+        ]);
+        return response;
+      }
+      const response = await original(input, init);
+      const events = /\/runs\/([^/?]+)\/events/.exec(url);
+      if (!events?.[1] || !response.body) return response;
+      const runId = events[1];
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const body = response.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          async transform(chunk, controller) {
+            buffer += decoder.decode(chunk, { stream: true });
+            // Whole frames only; a frame cut by the read waits for the next one.
+            const end = buffer.lastIndexOf('\n\n');
+            if (end < 0) return;
+            const ready = buffer.slice(0, end + 2);
+            buffer = buffer.slice(end + 2);
+            const release = ready.indexOf('"type":"artifact.content_released"');
+            if (release < 0) {
+              controller.enqueue(encoder.encode(ready));
+              return;
+            }
+            const before = ready.lastIndexOf('\n\n', release);
+            const start = before < 0 ? 0 : before + 2;
+            if (start > 0) controller.enqueue(encoder.encode(ready.slice(0, start)));
+            await painted(wait);
+            controller.enqueue(encoder.encode(ready.slice(start)));
+            releaseOf(runId).done();
+          },
+          flush(controller) {
+            if (buffer) controller.enqueue(encoder.encode(buffer));
+          },
+        }),
+      );
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    };
+  }, frames);
+}
+
 export const probeOptions = {
   itemSelector: '[data-chat-item]',
   rowSelector: '[data-session-row]',
