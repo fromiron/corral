@@ -309,7 +309,7 @@ async function populateGraph(run: RunSessionStore, executions: ExecutionView[]) 
 it('workspace opens the graph first and keeps the empty inspector closed even on wide screens', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container } = await mount('inline_team', null, {});
-  const selected = container.querySelector('[aria-label="Execution views"] [aria-selected="true"]');
+  const selected = container.querySelector('[aria-label="Run views"] [aria-selected="true"]');
   expect(selected?.textContent).toContain('Graph');
   expect(container.querySelector('[data-testid="layout"]')?.closest('[hidden]')).toBeNull();
   expect(container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(true);
@@ -957,7 +957,7 @@ it('workspace preserves the mounted graph and the selected view while opening an
   expect(container.querySelector('[data-testid="layout"]')).toBe(graph);
   expect(graph?.closest('[hidden]')).toBeNull();
   expect(
-    container.querySelector('[aria-label="Execution views"] [aria-selected="true"]')?.textContent,
+    container.querySelector('[aria-label="Run views"] [aria-selected="true"]')?.textContent,
   ).toContain('Graph');
 });
 
@@ -1412,7 +1412,7 @@ it('a completed run opens its central graph with the header outside the scrollab
   expect(column?.querySelector('[data-testid="run-header"]')).toBeNull();
   expect(container.querySelector('[data-testid="run-header"]')).not.toBeNull();
   expect(
-    column?.querySelector('[aria-label="Execution views"] [aria-selected="true"]')?.textContent,
+    column?.querySelector('[aria-label="Run views"] [aria-selected="true"]')?.textContent,
   ).toContain('Graph');
   expect(container.querySelector('[role="tree"]')).toBeNull();
   expect(container.querySelector('[data-testid="run-side"]')?.hasAttribute('hidden')).toBe(true);
@@ -1448,7 +1448,7 @@ it('shows the selected inspector beside the workspace only when the container fi
 it('primary views retain the graph when switching and keep the active view on a repeat press', async () => {
   const { container } = await mount('inline_team', null);
   const tabs = () => [
-    ...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]'),
+    ...container.querySelectorAll<HTMLElement>('[aria-label="Run views"] [role="tab"]'),
   ];
   const tab = async (name: string) => {
     const button = tabs().find((el) => el.textContent?.includes(name));
@@ -1504,7 +1504,7 @@ it('keeps the timeline view selection across primary workspace switches', async 
 it('event count updates keep the current tab and mounted filter controls', async () => {
   const { container, run } = await mount('inline_team', null);
   const tab = [
-    ...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]'),
+    ...container.querySelectorAll<HTMLElement>('[aria-label="Run views"] [role="tab"]'),
   ].find((el) => el.textContent?.startsWith('Events'));
   await act(async () => tab?.click());
   const panel = container.querySelector('[data-run-workspace-view="events"]');
@@ -2201,8 +2201,8 @@ it('a response area opened by hand stays closed once closed, even after Run info
 });
 
 const viewTab = (container: HTMLElement, name: string) =>
-  [...container.querySelectorAll<HTMLElement>('[aria-label="Execution views"] [role="tab"]')].find(
-    (el) => el.textContent?.startsWith(name),
+  [...container.querySelectorAll<HTMLElement>('[aria-label="Run views"] [role="tab"]')].find((el) =>
+    el.textContent?.startsWith(name),
   );
 
 const chooseDisplay = async (container: HTMLElement, name: string) => {

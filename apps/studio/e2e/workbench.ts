@@ -408,7 +408,7 @@ export async function chooseRun(page: Page, number: number) {
 export async function showResults(page: Page) {
   await page
     .getByTestId('run-column')
-    .getByRole('tablist', { name: 'Execution views' })
+    .getByRole('tablist', { name: 'Run views' })
     .getByRole('tab', { name: 'Results', exact: true })
     .click();
   const view = page.getByTestId('run-column').locator('[data-run-workspace-view="results"]');

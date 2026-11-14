@@ -247,7 +247,7 @@ test('switching workspace views and reading a result preserves selection, scroll
   await page.setViewportSize({ width: 1600, height: 500 });
   await finishedRun(page, corral);
   const monitor = page.getByTestId('run-monitor');
-  const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
+  const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
   await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   const flow = monitor.locator('[data-run-workspace-view="flow"]');
   await expect(flow.getByRole('tree')).toBeVisible();
@@ -485,7 +485,7 @@ test('a long multiline request keeps graph, events and run information reachable
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
   await expect(page.getByTestId('run-status')).toContainText('Completed');
   const monitor = page.getByTestId('run-monitor');
-  const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
+  const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
   const graphTab = views.getByRole('tab', { name: 'Graph', exact: true });
   const eventsTab = views.getByRole('tab', { name: /^Events \d+$/ });
   const info = monitor.getByRole('button', { name: 'Run info', exact: true });

@@ -47,7 +47,7 @@ test('another team never inherits the previous run', async ({ page, corral }) =>
   await expect(page.getByTestId('run-status')).toContainText('Completed');
   await importTeam(page, 'team-b');
   await expect(page.getByTestId('run-status')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Open execution page' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open run page' })).toHaveCount(0);
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
 });
 
