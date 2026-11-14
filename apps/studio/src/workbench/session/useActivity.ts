@@ -38,6 +38,8 @@ export interface ActivityRole {
   id: string;
   /** Its step's name; beside another open one of that name, its place too, as the send menu says. */
   name: string;
+  /** The end of `name` that is its place (" · #2"), when another open one has its name. */
+  place?: string;
   presence: Presence;
   /** What it does now, named as the work log names it; null when no exact step is known. */
   activity: string | null;
@@ -329,11 +331,13 @@ function rolesOf(
       : running && target
         ? `${toolName(running.name)} · ${target}`
         : null;
+    const place = shared
+      ? ` · #${projection.executionOrder.indexOf(execution.executionId) + 1}`
+      : null;
     return {
       id: execution.executionId,
-      name: shared
-        ? `${name} · #${projection.executionOrder.indexOf(execution.executionId) + 1}`
-        : name,
+      name: place ? `${name}${place}` : name,
+      ...(place ? { place } : {}),
       presence,
       activity,
       startedAt: times.get(execution.executionId)?.first ?? null,

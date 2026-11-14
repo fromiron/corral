@@ -83,7 +83,7 @@ async function openLongRecords(
   });
   await page.setViewportSize(size);
   await page.goto(`${corral.server.url}/sessions/${id}`);
-  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, decisions and handoff', exact: true }).click();
 }
 
 // Records widen only beside the conversation on a wide screen (workbench.md, 회의 화면).
@@ -115,7 +115,7 @@ test('meeting records open as a drawer on a narrow screen and leave the send but
   corral,
 }) => {
   await openLongRecords(page, corral, { width: 390, height: 844 });
-  const drawer = page.getByRole('dialog', { name: 'Minutes, plan and handoff', exact: true });
+  const drawer = page.getByRole('dialog', { name: 'Minutes, decisions and handoff', exact: true });
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole('button', { name: 'Expand records', exact: true })).toHaveCount(0);
   const last = drawer.getByText(

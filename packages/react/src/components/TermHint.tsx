@@ -55,7 +55,20 @@ function Described({ id, children }: { id: string; children: string }) {
  * (`openOnHover`, which keeps it open while the pointer moves onto it) and here on keyboard focus,
  * drawn on the tooltip's surface so both forms look alike.
  */
-export function TermHint({ term, className }: { term: TermId; className?: string }) {
+export function TermHint({
+  term,
+  className,
+  firstLine = false,
+}: {
+  term: TermId;
+  className?: string;
+  /**
+   * After a title that may wrap (features/term-hints.md): the icon centres on one line from the
+   * row's top, so it stands on the first line. The row aligns to its start and carries the
+   * title's line height; on one line the icon stands where it stands centred.
+   */
+  firstLine?: boolean;
+}) {
   const t = useTranslations('Terms');
   const meaningId = useId();
   const [open, setOpen] = useState(false);
@@ -104,7 +117,7 @@ export function TermHint({ term, className }: { term: TermId; className?: string
               size="icon-compact"
               // 24px to press, with the glyph at the name's size; the negative margins keep the
               // line as tall as the name alone.
-              className={`-my-1 size-6 shrink-0 align-middle [&_svg]:size-3.5 ${className ?? ''}`}
+              className={`${firstLine ? 'my-[calc((1lh-1.5rem)/2)]' : '-my-1'} size-6 shrink-0 align-middle [&_svg]:size-3.5 ${className ?? ''}`}
             />
           }
           aria-label={t('about', { term: t(`${term}.name`) })}

@@ -326,7 +326,7 @@ export function WorkingCopyPanel({
         {/* The pane's one place for the Paddock term (glossary.md): after the empty title. */}
         <EmptyView
           title={t('noCopyTitle')}
-          titleAction={<TermHint term="paddock" />}
+          titleAction={<TermHint term="paddock" firstLine />}
           text={next.text}
           action={next.action}
         />

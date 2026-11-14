@@ -510,11 +510,11 @@ export function ReviewContent({
             >
               {/* The page's one place for the Paddock term (glossary.md); in the Changes pane its
                   setup view above is the place. */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-start gap-1 text-subtitle">
                 <h3 className="text-subtitle" style={semibold}>
                   {t('noCopyTitle')}
                 </h3>
-                {!embedded ? <TermHint term="paddock" /> : null}
+                {!embedded ? <TermHint term="paddock" firstLine /> : null}
               </div>
               <p className="m-0 text-body text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
