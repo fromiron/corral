@@ -18,7 +18,11 @@ vi.mock('./navigation.ts', () => ({
 }));
 vi.mock('../pages/HarnessSettingsPage.tsx', () => ({ HarnessPreviewView: () => null }));
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children?: unknown }) => <a href="/">{children as string}</a>,
+  Link: ({ children, 'aria-label': label }: { children?: unknown; 'aria-label'?: string }) => (
+    <a href="/" aria-label={label}>
+      {children as string}
+    </a>
+  ),
 }));
 
 const cleanups: (() => void)[] = [];
@@ -59,4 +63,10 @@ it('puts the work style icon right after the Inspector label', async () => {
   const label = hint.previousElementSibling;
   expect(label?.textContent).toBe(messages.Harness.heading);
   expect(hint.closest('button[role="combobox"], [data-slot="select-trigger"]')).toBeNull();
+  // Under the field already named Harness, its link says only what it does; its accessible name
+  // keeps the whole "Manage Harnesses". The name is on screen once, in the label.
+  const link = container.querySelector('a');
+  expect(link?.textContent).toBe(messages.Harness.manageShort);
+  expect(link?.getAttribute('aria-label')).toBe(messages.Harness.manage);
+  expect(messages.Harness.manageShort).not.toContain(messages.Terms.harness.name);
 });

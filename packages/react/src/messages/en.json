@@ -2750,6 +2750,7 @@
     "defaultSaved": "Default saved.",
     "basic": "Basic · no skills or extensions",
     "manage": "Manage Harnesses",
+    "manageShort": "Manage",
     "pinned": "Pinned revision {revision}; changes apply to the next run.",
     "busy": "Working…",
     "loadFailed": "Could not load Harnesses.",

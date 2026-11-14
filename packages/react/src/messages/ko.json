@@ -2750,6 +2750,7 @@
     "defaultSaved": "기본값을 저장했습니다.",
     "basic": "기본 · 스킬·확장 없음",
     "manage": "Harness 관리",
+    "manageShort": "관리",
     "pinned": "고정 revision {revision} · 변경은 다음 실행에 적용됩니다.",
     "busy": "처리 중…",
     "loadFailed": "Harness를 불러오지 못했습니다.",

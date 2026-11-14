@@ -109,8 +109,10 @@ export function HarnessRoleSettings({
       <Link
         {...navigation.link('harness', projectId)}
         className="text-caption text-primary underline"
+        // Under the Harness label the link says what it does; its name keeps the whole.
+        aria-label={t('manage')}
       >
-        {t('manage')}
+        {t('manageShort')}
       </Link>
       {role.harness ? (
         <>
