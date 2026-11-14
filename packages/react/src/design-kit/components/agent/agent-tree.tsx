@@ -97,7 +97,8 @@ interface AgentTreeNode {
 
 /** Words the tree shows; every default is the kit's English text. */
 interface AgentTreeLabels {
-  agents: (count: number) => string;
+  /** The summary bar's count; a host may draw it as more than words (one part only read). */
+  agents: (count: number) => ReactNode;
   running: (count: number) => string;
   needsYou: (count: number) => string;
   failed: (count: number) => string;

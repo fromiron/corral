@@ -387,6 +387,7 @@
     "tree": {
       "title": "실행 단위",
       "count": "실행 단위 {count}개",
+      "countOnly": "{count, number}개",
       "running": "작업 중 {count}",
       "needsYou": "확인 필요 {count}",
       "failed": "실패 {count}",

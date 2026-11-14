@@ -354,7 +354,17 @@ export function ExecutionTree({
   );
   const labels = useMemo<Partial<AgentTreeLabels>>(
     () => ({
-      agents: (count) => tree('count', { count }),
+      // Under its title the bar names the executions once: the eye gets the number alone, a
+      // screen reader and the live count the whole count, as one sentence.
+      agents: (count) =>
+        titled ? (
+          <>
+            <span className="sr-only">{tree('count', { count })}</span>
+            <span aria-hidden="true">{tree('countOnly', { count })}</span>
+          </>
+        ) : (
+          tree('count', { count })
+        ),
       running: (count) => tree('running', { count }),
       needsYou: (count) => tree('needsYou', { count }),
       failed: (count) => tree('failed', { count }),
@@ -364,7 +374,7 @@ export function ExecutionTree({
       foldBranch: (name) => tree('foldBranch', { name }),
       duration: formatClock,
     }),
-    [tree],
+    [tree, titled],
   );
   if (!projection) return null;
   const loops = definition
