@@ -18,7 +18,6 @@ import {
   activityPlanShown,
   ChangesChip,
   ComposerPlan,
-  planCount,
   RunLink,
   unansweredAttention,
   viewedLabel,
@@ -142,15 +141,21 @@ export function ComposerActivity({
         ) : null}
         {counted ? (
           <span className="flex min-w-0 items-center gap-1.5">
+            {/* The plan by its name and count, the same at rest and live: the run row and the
+                spinner say whether the run goes on (composer-flow.md, the activity bar, rule 4). */}
             <span data-testid="activity-plan" className="shrink-0 whitespace-nowrap tabular-nums">
-              {planCount(counted, tw)}
+              {tw('planClosed', { done: counted.completed, total: counted.total })}
             </span>
             {step ? (
-              <span
-                data-testid="activity-step"
-                className="min-w-0 max-w-64 truncate @max-xl/composer-surface:hidden"
-              >
-                {step}
+              // The step leaves with the dot before it.
+              <span className="flex min-w-0 items-center gap-1.5 @max-xl/composer-surface:hidden">
+                <MetaDot />
+                <span
+                  data-testid="activity-step"
+                  className="min-w-0 max-w-64 truncate @max-xl/composer-surface:hidden"
+                >
+                  {step}
+                </span>
               </span>
             ) : null}
           </span>

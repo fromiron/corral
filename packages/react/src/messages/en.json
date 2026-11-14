@@ -3914,6 +3914,7 @@
     "planHeading": "Work plan",
     "planCount": "{done}/{total} done",
     "planRunning": "{done}/{total} · run still going",
+    "planClosed": "Plan {done}/{total}",
     "planAll": "Show all {total}",
     "planLoading": "Loading plan",
     "planError": "Plan unavailable",

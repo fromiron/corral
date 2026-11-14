@@ -198,7 +198,7 @@ it('keeps the last known done count once the run ends and its plan body is relea
   await settle(() => seen?.readState === 'ready');
   await settle(() => false);
   expect(seen?.readState).toBe('ready');
-  expect(planCount()?.textContent).toContain('1/2 done');
+  expect(planCount()?.textContent).toBe('Plan 1/2');
   expect(view.container.textContent).not.toContain(messages.Widgets.planError);
 });
 

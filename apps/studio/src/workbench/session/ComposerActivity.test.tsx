@@ -351,7 +351,7 @@ it("says an ended run's state, place, plan count, step and changes on one line, 
   const text = visibleText(line);
   expect(text).toContain(messages.Presence.state.succeeded);
   expect(text).toContain(messages.Widgets.lastRun);
-  expect(text).toContain('1/7 done');
+  expect(text).toContain('Plan 1/7');
   // Collapsed, the line names the step in progress.
   expect(text).toContain('Plan item 2');
   expect(text).toContain('2 changes');
@@ -411,6 +411,86 @@ it('keeps the plan count and change count whole; the step gives way first, then 
   expect(leavesBelow(step)).toBeGreaterThan(leavesBelow(lines));
   // At 390 px the line is about 24rem wide: the step and the line count are gone by then.
   expect(leavesBelow(lines)).toBeGreaterThan(24);
+});
+
+// composer-flow.md, the activity bar, rule 4: the closed line's plan part is the plan's count
+// under its name, the same in every case, never words that read as the run's own state.
+it('says the plan on the closed line as Plan done/total, resting, live with a step and live with the plan complete', async () => {
+  const status = (
+    completed: number,
+    inProgress: boolean,
+    runFinished: boolean,
+  ): ChatWidgetModel['plan']['status'] => {
+    const plan = WorkPlan.parse({
+      scope: 'execution',
+      executionId: 'exec_plan',
+      attemptNo: 1,
+      revision: 1,
+      criteriaVersionId: 'criteria_plan',
+      items: [
+        {
+          id: 'item_1',
+          title: 'Look at the session store',
+          status: completed ? 'completed' : inProgress ? 'in_progress' : 'pending',
+        },
+      ],
+    });
+    return {
+      state: 'ready',
+      plan,
+      total: 1,
+      completed,
+      planFinished: completed === 1,
+      runFinished,
+    };
+  };
+  const old = [messages.Widgets.planCount, messages.Widgets.planRunning].map(
+    (words) => words.split('{total}')[1]?.trim() ?? '',
+  );
+  const sayNoOldWords = (text: string) => {
+    for (const words of old) expect(words && text.includes(words)).toBe(false);
+  };
+
+  // Resting: the ended run's place, then the plan by its name.
+  const resting = await mount(
+    model({ viewed: { latest: true, number: 1, total: 1 } }, { status: status(1, false, true) }),
+  );
+  const restingCount = resting.line()?.querySelector('[data-testid="activity-plan"]');
+  expect(restingCount?.textContent).toBe('Plan 1/1');
+  expect(visibleText(resting.line())).toContain(`${messages.Widgets.lastRun}·Plan 1/1`);
+  sayNoOldWords(visibleText(resting.line()));
+
+  // Live with a step in progress: the count, the line's dot, then the step.
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const working = await mount(
+    model({ live: true }, { runStatus: 'running', status: status(0, true, false) }),
+    { ownActive: ownRun, rowShown: true },
+  );
+  const count = working.line()?.querySelector('[data-testid="activity-plan"]');
+  const step = working.line()?.querySelector('[data-testid="activity-step"]');
+  expect(count?.textContent).toBe('Plan 0/1');
+  expect(step?.textContent).toBe('Look at the session store');
+  const between = [...(working.line()?.querySelectorAll('span') ?? [])].filter(
+    (span) =>
+      span.textContent === '·' &&
+      span.getAttribute('aria-hidden') !== null &&
+      count &&
+      step &&
+      count.compareDocumentPosition(span) & Node.DOCUMENT_POSITION_FOLLOWING &&
+      span.compareDocumentPosition(step) & Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(between).toHaveLength(1);
+  sayNoOldWords(visibleText(working.line()));
+
+  // Live with the plan complete: the count alone; the run row and spinner say the run goes on.
+  const finished = await mount(
+    model({ live: true }, { runStatus: 'running', status: status(1, false, false) }),
+    { ownActive: ownRun, rowShown: true },
+  );
+  const done = finished.line()?.querySelector('[data-testid="activity-plan"]');
+  expect(done?.textContent).toBe('Plan 1/1');
+  expect(finished.line()?.querySelector('[data-testid="activity-step"]')).toBeNull();
+  sayNoOldWords(visibleText(finished.line()));
 });
 
 it('reads the plan Todo only in the open panel, once, above the line and outside the input', async () => {
@@ -527,7 +607,7 @@ it('tells a lost connection on the bar alone, with Retry, before anything else',
   const text = visibleText(view.line());
   expect(text).toContain(messages.Activity.connectionLost);
   // What follows may be stale: no plan count or state beside it.
-  expect(text).not.toContain('1/7 done');
+  expect(text).not.toContain('Plan 1/7');
   // Said at once to assistive tech, from the composer, after the timeline and before the input.
   const alerts = view.container.querySelectorAll('[role="alert"]');
   expect(alerts).toHaveLength(1);
@@ -595,7 +675,10 @@ it('says nothing of a bare tool name, or of a call whose approval card tells it'
     rowShown: true,
   });
   expect(visibleText(view.line())).not.toContain(messages.Turn.tool.read_file);
-  expect(view.line()?.textContent).not.toContain('·');
+  // The plan's count and its step keep their own dot; no other dot stands in the line.
+  const words = view.line()?.textContent ?? '';
+  expect(words).toContain('Plan 1/7·Plan item 2');
+  expect(words.replace('Plan 1/7·Plan item 2', '')).not.toContain('·');
   // A call waiting on its approval: its card says it.
   const projection = runningProjection();
   projection.approvals.approval_1 = {

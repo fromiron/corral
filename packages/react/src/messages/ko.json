@@ -3914,6 +3914,7 @@
     "planHeading": "작업 계획",
     "planCount": "{done}/{total} 완료",
     "planRunning": "{done}/{total} · 실행 중",
+    "planClosed": "계획 {done}/{total}",
     "planAll": "전체 {total}개 보기",
     "planLoading": "계획을 불러오는 중",
     "planError": "계획을 불러오지 못했습니다",
