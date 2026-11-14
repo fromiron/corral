@@ -271,7 +271,7 @@ describe('execution card tree', () => {
   // One name per screen: under its title the count shows only the number, and is still read as
   // the whole count; untitled, the count keeps the name.
   it.each([
-    ['en', messages, '4 executions', '4'],
+    ['en', messages, '4 executions', '4 total'],
     ['ko', ko, '실행 단위 4개', '4개'],
   ] as const)('names the executions once on a titled bar (%s)', (locale, text, whole, number) => {
     renderTree(null, true, locale);

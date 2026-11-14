@@ -346,3 +346,52 @@ export const PressOutsideStaysClosed: Story = {
     await expect(samples.join('')).toBe('000000');
   },
 };
+
+/** A press dragged off the icon makes no click; it leaves nothing behind either. */
+export const DragOffThenTabBack: Story = {
+  render: () => <Between />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const icon = canvas.getByRole('button', { name: 'About Corral' });
+    const below = canvas.getByText('Release review · 3 roles');
+    await userEvent.pointer([
+      { keys: '[MouseLeft>]', target: icon },
+      { target: below },
+      { keys: '[/MouseLeft]', target: below },
+    ]);
+    await expect(icon).toHaveFocus();
+    await pause(300);
+    await userEvent.tab();
+    await expect(canvas.getByRole('button', { name: 'After' })).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    await expect(icon).toHaveFocus();
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    await userEvent.keyboard('{Escape}');
+  },
+};
+
+/** Opened by focus, the focus going nowhere (a script's blur) closes it. */
+export const FocusLeavesForNowhere: Story = {
+  render: () => <Between />,
+  play: async ({ canvasElement }) => {
+    const icon = within(canvasElement).getByRole('button', { name: 'About Corral' });
+    icon.focus();
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    icon.blur();
+    await waitFor(() => expect(hintPopup()).toBeNull());
+  },
+};
+
+/** Opened by focus, the focus moving into the explanation keeps it open. */
+export const FocusIntoExplanation: Story = {
+  render: () => <Between />,
+  play: async ({ canvasElement }) => {
+    const icon = within(canvasElement).getByRole('button', { name: 'About Corral' });
+    icon.focus();
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    (hintPopup() as HTMLElement).focus();
+    await pause(400);
+    await expect(hintPopup()).not.toBeNull();
+    await userEvent.keyboard('{Escape}');
+  },
+};

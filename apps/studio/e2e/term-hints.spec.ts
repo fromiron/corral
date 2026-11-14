@@ -20,24 +20,53 @@ const focused = (page: Page) =>
 
 /**
  * Opened by focus, one Tab and one Shift+Tab each go straight on to a control beside the icon,
- * never through the page itself, and the explanation closes; coming back opens it again.
+ * never through the page itself, and the explanation closes. A pointer that passed over the icon
+ * and away meanwhile leaves it open and changes nothing about where the keys go.
  */
 async function keyboardAround(page: Page, icon: Locator, within: Locator) {
   const name = await icon.getAttribute('aria-label');
+  const stops: Record<string, string> = {};
+  for (const pointerPassed of [false, true]) {
+    for (const key of ['Tab', 'Shift+Tab']) {
+      const step = `${key}${pointerPassed ? ' after a pointer passed' : ''}`;
+      await icon.focus();
+      await expect(popup(page)).toBeVisible();
+      if (pointerPassed) {
+        await icon.hover();
+        await page.waitForTimeout(400);
+        await page.mouse.move(2, 2);
+        await page.waitForTimeout(400);
+        // The focus stayed, so the explanation did too.
+        await expect(popup(page), step).toBeVisible();
+      }
+      await page.keyboard.press(key);
+      const now = await focused(page);
+      expect(now.startsWith('BODY'), `${step} from the open explanation`).toBe(false);
+      expect(now, step).not.toBe(`BUTTON|${name}`);
+      expect(await within.evaluate((node) => node.contains(document.activeElement)), step).toBe(
+        true,
+      );
+      if (pointerPassed) expect(now, step).toBe(stops[key]);
+      else stops[key] = now;
+      await expect(popup(page), step).toHaveCount(0);
+    }
+  }
+}
+
+/**
+ * Opened by focus with the pointer resting on the icon, a Tab moves the focus on but the pointer
+ * is still there: it stays open until the pointer leaves too.
+ */
+async function pointerOutlastsFocus(page: Page, icon: Locator) {
   await icon.focus();
   await expect(popup(page)).toBeVisible();
-  for (const key of ['Tab', 'Shift+Tab']) {
-    await page.keyboard.press(key);
-    const now = await focused(page);
-    expect(now.startsWith('BODY'), `${key} from the open explanation`).toBe(false);
-    expect(now, key).not.toBe(`BUTTON|${name}`);
-    expect(await within.evaluate((node) => node.contains(document.activeElement)), key).toBe(true);
-    await expect(popup(page)).toHaveCount(0);
-    await page.keyboard.press(key === 'Tab' ? 'Shift+Tab' : 'Tab');
-    await expect(icon).toBeFocused();
-    await expect(popup(page)).toBeVisible();
-  }
-  await page.keyboard.press('Escape');
+  await icon.hover();
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Tab');
+  await expect(icon).not.toBeFocused();
+  await page.waitForTimeout(400);
+  await expect(popup(page)).toBeVisible();
+  await page.mouse.move(2, 2);
   await expect(popup(page)).toHaveCount(0);
 }
 
@@ -119,11 +148,13 @@ test('around an explanation opened by focus, the keyboard goes straight on', asy
   await page.goto('/');
   const dialog = await openSettings(page, en.Harness.heading);
   await keyboardAround(page, dialog.locator('[data-term-hint="workStyle"]'), dialog);
+  await pointerOutlastsFocus(page, dialog.locator('[data-term-hint="workStyle"]'));
   await page.keyboard.press('Escape');
 
   await importTeam(page, linearCorral(['writer']));
   const panel = await startTestRun(page);
   await keyboardAround(page, page.locator('[data-term-hint="execution"]'), panel);
+  await pointerOutlastsFocus(page, page.locator('[data-term-hint="execution"]'));
 });
 
 test('no screen explains one term in two places', async ({ page }) => {

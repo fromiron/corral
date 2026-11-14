@@ -75,6 +75,10 @@ export function TermHint({ term, className }: { term: TermId; className?: string
     const popup = document.querySelector(`[data-term-popup="${meaningId}"]`);
     return !!active && (active === trigger.current || !!popup?.contains(active));
   };
+  /** The pointer rests on the icon or on its explanation. */
+  const pointerHere = () =>
+    !!trigger.current?.matches(':hover') ||
+    !!document.querySelector(`[data-term-popup="${meaningId}"]`)?.matches(':hover');
   return (
     <>
       <Popover
@@ -82,10 +86,21 @@ export function TermHint({ term, className }: { term: TermId; className?: string
         onOpenChange={(next, details) => {
           const reason = details?.reason ?? null;
           if (openedBy.current === 'focus') {
-            // Opened by focus, a pointer coming and going neither takes it over nor closes it
-            // while the focus stays (the pointer and the focus must both leave).
-            if (next) return;
-            if (reason === 'trigger-hover' && focusHere()) return;
+            // Opened by focus, a pointer leaving does not close it while the focus stays (the
+            // pointer and the focus must both leave). Cancelled, not only ignored: Base UI would
+            // otherwise take the pointer for its opener and stop managing the focus, and the next
+            // Tab would go through the page. (While it is open, Base UI reports no hover opening.)
+            if (!next && reason === 'trigger-hover' && focusHere()) {
+              details?.cancel();
+              return;
+            }
+          }
+          // The focus left while the pointer rests on it: the explanation is the pointer's now,
+          // and closes when the pointer leaves.
+          if (!next && reason === 'focus-out' && pointerHere()) {
+            openedBy.current = 'trigger-hover';
+            details?.cancel();
+            return;
           }
           change(next, reason);
         }}
@@ -128,7 +143,9 @@ export function TermHint({ term, className }: { term: TermId; className?: string
             // control: judge where it went once it has landed, so a Tab goes straight on.
             if (openedBy.current !== 'focus') return;
             setTimeout(() => {
-              if (openedBy.current === 'focus' && !focusHere()) change(false, null);
+              if (openedBy.current !== 'focus' || focusHere()) return;
+              if (pointerHere()) openedBy.current = 'trigger-hover';
+              else change(false, null);
             }, 0);
           }}
         >
