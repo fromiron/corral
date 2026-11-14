@@ -58,7 +58,7 @@ const SCREEN_NAMES: Record<PresenceKind, [string, string]> = {
   succeeded: ['완료', 'Completed'],
   cancelled: ['취소됨', 'Cancelled'],
   ready: ['실행 전', 'No run yet'],
-  empty: ['빈 세션', 'Empty conversation'],
+  empty: ['빈 대화', 'Empty conversation'],
 };
 
 function lookup(catalog: unknown, key: string): unknown {

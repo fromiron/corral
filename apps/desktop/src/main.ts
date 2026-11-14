@@ -623,7 +623,7 @@ function buildMenu() {
         label: say('File', '파일'),
         submenu: [
           {
-            label: say('New session', '새 세션'),
+            label: say('New conversation', '새 대화'),
             accelerator: accelerator('session.new', 'CommandOrControl+N'),
             click: command('session.new'),
           },
