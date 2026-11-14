@@ -1,15 +1,14 @@
-import { TERMINAL_EXECUTION_STATUSES, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { type ReactNode, useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { AgentSteering, type SteerStep } from '../design-kit/components/agent/agent-steering.tsx';
 import { executionIntervals } from '../run/history.ts';
+import { type Presence, type PresenceKind, runPresence } from '../run/presence.ts';
+import { executionViewPresence } from '../run/projectionPresence.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript } from '../run/transcript.ts';
 import { useWorkPlanSnapshot } from '../run/work-plan-snapshot.ts';
-import { executionAgentStatus } from './agentStatus.ts';
 import { ExecutionToolGroup } from './ExecutionTranscript.tsx';
-import { usePresenceWord } from './PresenceBadge.tsx';
 import type { SteerTarget } from './ReinsPanel.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
 
@@ -28,6 +27,8 @@ export interface ExecutionSteeringProps {
   className?: string;
 }
 
+const ENDED = new Set<PresenceKind>(['succeeded', 'failed', 'interrupted', 'cancelled']);
+
 /** Kit steering presentation for one explicit execution, without introducing another controller. */
 export function ExecutionSteering({
   session,
@@ -40,7 +41,12 @@ export function ExecutionSteering({
   className,
 }: ExecutionSteeringProps) {
   const t = useTranslations('Reins');
-  const statusText = usePresenceWord();
+  const tp = useTranslations('Presence');
+  // A detail is said beside the state, never instead of it.
+  const words = (presence: Presence) =>
+    presence.detailKey
+      ? `${tp(presence.labelKey)} · ${tp(presence.detailKey)}`
+      : tp(presence.labelKey);
   const planText = useTranslations('WorkPlan');
   const activityText = useTranslations('RunPage.tabs');
   const runId = useStore(session, (s) => s.runId);
@@ -105,29 +111,26 @@ export function ExecutionSteering({
   const model = execution
     ? (projection?.modelProfiles?.[execution.modelProfile]?.modelId ?? execution.modelProfile)
     : undefined;
-  const status = execution
-    ? execution.status === 'paused'
-      ? 'paused'
-      : executionAgentStatus(execution.status)
-    : undefined;
+  // What the screen says comes from the presence rule (features/presence.md), never the bare
+  // status: the execution's state is its own, and its Run's own state (not what the Run waits on
+  // elsewhere) stands for its unfinished calls while the Run is not working.
+  const own = execution ? executionViewPresence(execution) : null;
+  const run = projection ? runPresence(projection, [], []) : null;
+  const status = own ? (own.kind === 'paused' ? 'paused' : (own.glyph ?? 'queued')) : undefined;
   const timing = interval
-    ? status === 'running' && !interval.finished
+    ? own?.kind === 'working' && !interval.finished
       ? { startedAt: Date.parse(interval.startedAt) }
       : { elapsedMs: Date.parse(interval.endedAt) - Date.parse(interval.startedAt) }
     : {};
-  const ownerStatus =
-    projection?.status === 'running'
-      ? execution?.status
-      : (projection?.status ?? execution?.status);
+  const owner = run?.kind === 'working' ? own : (run ?? own);
   const toolActivityState =
-    ownerStatus && !(projection?.status === 'running' && execution?.status === 'active')
+    owner && !(run?.kind === 'working' && owner.kind === 'working' && !owner.detail)
       ? {
           status:
-            TERMINAL_RUN_STATUSES.has(projection?.status ?? 'created') ||
-            TERMINAL_EXECUTION_STATUSES.has(execution?.status ?? 'queued')
+            (run && ENDED.has(run.kind)) || (own && ENDED.has(own.kind))
               ? ('stopped' as const)
               : ('waiting' as const),
-          label: statusText(ownerStatus),
+          label: words(owner),
         }
       : undefined;
 
@@ -142,7 +145,7 @@ export function ExecutionSteering({
         </span>
       }
       status={status}
-      statusLabel={execution ? statusText(execution.status) : undefined}
+      statusLabel={own ? words(own) : undefined}
       steps={steps}
       planSlot={planSlot}
       {...timing}

@@ -259,7 +259,10 @@ function RunWorkspace({
   const rounds = useRoundInspection(projection, execution ?? null);
   // Why the selected execution failed, as recorded; the detail leads its failure with it.
   const selectedExecution = execution ? projection?.executions[execution] : undefined;
-  const failedError = selectedExecution?.status === 'failed' ? selectedExecution.error : null;
+  const failedError =
+    selectedExecution && executionViewPresence(selectedExecution).kind === 'failed'
+      ? selectedExecution.error
+      : null;
   const failedTools = execution
     ? Object.values(projection?.toolCalls ?? {}).filter(
         (call) =>
