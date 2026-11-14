@@ -10,6 +10,7 @@ import { useRequestOwner } from '../src/components/RequestCard.tsx';
 import { RunCanvas } from '../src/components/RunCanvas.tsx';
 import { EventText } from '../src/components/RunText.tsx';
 import { ExecutionTree } from '../src/components/RunView.tsx';
+import { TaskBoard } from '../src/components/TaskBoard.tsx';
 import { Timeline } from '../src/components/Timeline.tsx';
 import { UsageInspector } from '../src/components/UsageInspector.tsx';
 import en from '../src/messages/en.json' with { type: 'json' };
@@ -20,6 +21,7 @@ import { buildTranscript } from '../src/run/transcript.ts';
 import {
   ADVISOR_RUN,
   advisorDefinition,
+  advisorNodeId,
   advisorRunEvents,
   advisorRunProjection,
   advisorRunSession,
@@ -306,14 +308,14 @@ describe('the execution tree', () => {
   it('says once, beside its name, that the advisor is one, and reads its rest as watching', () => {
     render(wrap(<ExecutionTree session={advisorRunSession()} onSteer={() => {}} />));
     const advisor = screen.getByTestId('execution-advisor_1');
-    expect(within(advisor).getAllByText('Advisor')).toHaveLength(1);
+    expect(within(advisor).getAllByText('Outrider')).toHaveLength(1);
     expect(within(advisor).getByText('Watching')).toBeTruthy();
     expect(advisor.textContent).not.toContain('Waiting for a reply');
     expect(within(advisor).queryByTestId('waiting-on')).toBeNull();
     // The name keeps its own direction: a model-written override cannot turn the card around.
     expect(within(advisor).getByText('Reviewer').closest('[dir]')).not.toBeNull();
     const worker = screen.getByTestId('execution-impl_1');
-    expect(within(worker).queryByText('Advisor')).toBeNull();
+    expect(within(worker).queryByText('Outrider')).toBeNull();
   });
 
   it('keeps a working execution’s message wait as waiting for an answer', () => {
@@ -355,15 +357,15 @@ describe('the advisor a conversation adds', () => {
 
   it('is called “advisor” once in the tree, in the reader’s language, with no badge over it', () => {
     for (const [locale, word] of [
-      ['en', 'Advisor'],
-      ['ko', '감독'],
+      ['en', 'Outrider'],
+      ['ko', 'Outrider'],
     ] as const) {
       const { unmount } = render(
         wrap(<ExecutionTree session={session()} onSteer={() => {}} />, locale),
       );
       const advisor = screen.getByTestId('execution-advisor_1');
       expect(within(advisor).getAllByText(word)).toHaveLength(1);
-      expect(advisor.textContent).not.toContain(word === '감독' ? 'Advisor' : '감독');
+      expect(advisor.textContent).not.toContain('Advisor');
       unmount();
     }
   });
@@ -372,7 +374,7 @@ describe('the advisor a conversation adds', () => {
     const restore = sized();
     try {
       const { unmount } = render(wrap(<Timeline session={session()} />, 'ko'));
-      const line = '감독의 조언(우려) → Implementer · 다음 요청으로 전달';
+      const line = 'Outrider의 조언(우려) → Implementer · 다음 요청으로 전달';
       // The names sit in their own isolates, so the line is matched whole.
       expect(document.body.textContent).toContain(line);
       unmount();
@@ -390,7 +392,54 @@ describe('the advisor a conversation adds', () => {
         'ko',
       ),
     );
-    expect(document.querySelector('[data-directive-advice]')?.textContent).toBe('감독 · 우려');
+    expect(document.querySelector('[data-directive-advice]')?.textContent).toBe('Outrider · 우려');
+  });
+
+  it.each(['en', 'ko'] as const)(
+    'is called “Outrider” in the usage by agent, never by its stored name (%s)',
+    (locale) => {
+      const { container } = render(wrap(<UsageInspector session={session()} />, locale));
+      const row = container.querySelector(
+        `[data-usage-agent="${advisorNodeId({ session: true })}"]`,
+      );
+      expect(row?.textContent).toContain('Outrider');
+      expect(container.textContent).toContain('Outrider');
+      expect(container.textContent).not.toContain('Advisor');
+    },
+  );
+
+  it('is called “Outrider” on the task board, never by its stored name', () => {
+    // The Outrider has a task of its own (features/advisor.md, 계약).
+    const nodeId = advisorNodeId({ session: true });
+    const node = advisorDefinition({ session: true }).nodes.find((item) => item.id === nodeId);
+    const recorded = advisorRunEvents({ session: true });
+    const events = [
+      ...recorded,
+      RunEvent.parse({
+        schemaVersion: '0.1',
+        eventId: 'event_task_advisor',
+        runId: ADVISOR_RUN,
+        runSeq: recorded.length + 1,
+        recordedAt: '2026-11-07T00:00:00.000Z',
+        actor: { kind: 'runtime', id: 'runtime' },
+        causedByEventIds: [],
+        type: 'task.created',
+        payload: {
+          taskId: 'task_advisor',
+          nodeId,
+          roleId: node && 'roleId' in node ? node.roleId : 'role',
+          contract: 'text',
+          dependsOnTaskIds: [],
+        },
+      }),
+    ];
+    const board = session();
+    board.setState({ events, projection: advisorRunProjection(events) });
+    const { container } = render(
+      wrap(<TaskBoard session={board} onOpenArtifact={() => {}} />, 'ko'),
+    );
+    expect(container.textContent).toContain('Outrider');
+    expect(container.textContent).not.toContain('Advisor');
   });
 
   it('is called “advisor” on the relation graph', () => {
@@ -406,7 +455,7 @@ describe('the advisor a conversation adds', () => {
         'ko',
       ),
     );
-    expect(container.textContent).toContain('감독');
+    expect(container.textContent).toContain('Outrider');
     expect(container.textContent).not.toContain('Advisor');
   });
 });

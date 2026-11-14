@@ -203,6 +203,31 @@ it.each([true, false])(
   },
 );
 
+// glossary.md, "설명이 붙는 용어": on the Changes page without a Paddock, the empty state's
+// title explains the term by one icon right after it. In the Changes pane the pane's own setup
+// view is the place (FilesViews), so the embedded review draws none.
+it.each([
+  [false, 1],
+  [true, 0],
+])('without a Paddock (embedded: %s), draws %i Paddock icon', async (embedded, count) => {
+  const view = await mount({ embedded, noCopy: true });
+  const hints = [...view.container.querySelectorAll<HTMLElement>('[data-term-hint]')];
+  expect(hints).toHaveLength(count);
+  if (!count) return;
+  const hint = hints[0] as HTMLElement;
+  expect(hint.dataset.termHint).toBe('paddock');
+  // The translator here returns its key.
+  expect(hint.getAttribute('aria-label')).toBe('Terms.about');
+  expect(document.getElementById(hint.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+    'Terms.paddock.meaning',
+  );
+  const title = [...view.container.querySelectorAll('h3')].find(
+    (h3) => h3.textContent === 'Files.noCopyTitle',
+  );
+  expect(title?.contains(hint)).toBe(false);
+  expect(title?.nextElementSibling).toBe(hint);
+});
+
 it('prepares a missing copy through Changes and refreshes the retained review after creation', async () => {
   const view = await mount({ noCopy: true });
   const prepare = [...view.container.querySelectorAll('button')].find(

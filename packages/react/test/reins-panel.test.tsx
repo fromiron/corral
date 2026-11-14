@@ -78,8 +78,8 @@ describe('ReinsPanel', () => {
         />
       </IntlProvider>,
     );
-    const heading = screen.getByRole('heading', { name: 'Give instruction · Writer' });
-    const row = heading.parentElement as HTMLElement;
+    const heading = screen.getByRole('heading', { name: 'Reins · Writer' });
+    const row = heading.parentElement?.parentElement as HTMLElement;
     const chips = [...row.querySelectorAll('[data-reins-chip]')];
     expect(chips.map((chip) => chip.textContent)).toEqual([
       'Delivery: next model request',
@@ -125,7 +125,10 @@ describe('ReinsPanel', () => {
       </IntlProvider>,
     );
     expect(screen.queryByLabelText('Instruction')).not.toBeInTheDocument();
-    expect(container.querySelector('button')).toBeNull();
+    // The only button is the title's explanation icon: no settings stand in for a target.
+    expect(
+      [...container.querySelectorAll('button')].map((button) => button.dataset.termHint),
+    ).toEqual(['reins']);
   });
   it('compact instruction entry keeps its target and input without empty activity explanations', () => {
     render(
@@ -250,8 +253,9 @@ describe('ReinsPanel', () => {
     expect(steer).not.toHaveBeenCalled();
   });
 
-  // docs/specs/product-contract.md: screens name the action and its target, never "Reins".
-  it.each([false, true])('titles the panel by its action and target (compact %s)', (compact) => {
+  // features/execution-monitor.md: the area is titled by its name, Reins, and its target, with
+  // the name's explanation icon (features/term-hints.md) right after the title, outside it.
+  it.each([false, true])('titles the area Reins and its target (compact %s)', (compact) => {
     const { container } = render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <ReinsPanel
@@ -261,18 +265,66 @@ describe('ReinsPanel', () => {
         />
       </IntlProvider>,
     );
-    expect(screen.getByRole('region', { name: 'Give instruction · Writer' })).toBeInTheDocument();
-    expect(container.textContent).not.toContain('Reins');
+    expect(screen.getByRole('region', { name: 'Reins · Writer' })).toBeInTheDocument();
+    const heading = screen.getByRole('heading', { level: 2 });
+    expect(heading).toHaveAccessibleName('Reins · Writer');
+    expect(heading.querySelector('[data-term-hint]')).toBeNull();
+    const icon = screen.getByRole('button', { name: 'About Reins' });
+    expect(icon).toHaveAccessibleDescription(messages.Terms.reins.meaning);
+    expect(icon).toHaveAttribute('data-term-hint', 'reins');
+    // Directly after the title, on a line of their own that does not wrap.
+    expect(heading.nextElementSibling).toBe(icon);
+    expect(heading.parentElement).toHaveClass('flex-nowrap');
+    // The name is said once; the verbs keep their plain words.
+    expect(container.textContent?.match(/Reins/g)).toHaveLength(1);
+    expect(screen.getByLabelText(messages.Reins.instruction)).toBeInTheDocument();
   });
 
-  it('titles the panel by its action when nothing is chosen yet', () => {
+  it('puts the delivery and scope chips after the icon in the compact form', () => {
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel
+          session={fakeSession()}
+          target={{ executionId: 'exec_writer', nodeLabel: 'Writer', finished: false }}
+          compact
+        />
+      </IntlProvider>,
+    );
+    const icon = screen.getByRole('button', { name: 'About Reins' });
+    const chips = [...document.querySelectorAll('[data-reins-chip]')];
+    expect(chips).toHaveLength(2);
+    for (const chip of chips)
+      expect(icon.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('titles the area Reins alone when nothing is chosen yet, with its icon', () => {
     const { container } = render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
         <ReinsPanel session={fakeSession()} target={null} />
       </IntlProvider>,
     );
-    expect(screen.getByRole('region', { name: 'Give instruction' })).toBeInTheDocument();
-    expect(container.textContent).not.toContain('Reins');
+    expect(screen.getByRole('region', { name: 'Reins' })).toBeInTheDocument();
+    const heading = screen.getByRole('heading', { level: 2 });
+    expect(heading).toHaveAccessibleName('Reins');
+    expect(heading.nextElementSibling).toBe(screen.getByRole('button', { name: 'About Reins' }));
+    expect(container.textContent?.match(/Reins/g)).toHaveLength(1);
+  });
+
+  it('keeps the instruction field the control the run page focuses on opening the area', () => {
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ReinsPanel
+          session={fakeSession()}
+          target={{ executionId: 'exec_writer', nodeLabel: 'Writer', finished: false }}
+          compact
+        />
+      </IntlProvider>,
+    );
+    // RunPage focuses the area's first enabled field: the instruction, never the icon.
+    const pane = screen.getByRole('region', { name: 'Reins · Writer' });
+    expect(pane.querySelector('textarea:not([disabled])')).toBe(
+      screen.getByLabelText(messages.Reins.instruction),
+    );
   });
 
   it('explains what to do when there is nothing to steer', () => {

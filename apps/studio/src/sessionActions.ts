@@ -6,6 +6,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
 } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
+import { agentName } from '@corral/react';
 import type { StudioServices } from './services.tsx';
 import { sessionRunMode } from './workbench/autoChoice.ts';
 
@@ -42,6 +43,8 @@ export function conversationRequest(
 export async function steerTargets(
   services: Pick<StudioServices, 'transport'>,
   runId: string,
+  /** The one word a conversation's own Outrider is called by. */
+  advisorWord: string,
 ): Promise<{ id: string; label: string }[]> {
   const [{ projection }, definition] = await Promise.all([
     services.transport.getSnapshot(runId),
@@ -50,7 +53,7 @@ export async function steerTargets(
   return projection.executionOrder.flatMap((id) => {
     const e = projection.executions[id];
     if (!e || TERMINAL_EXECUTION_STATUSES.has(e.status)) return [];
-    const label = definition?.nodes.find((n) => n.id === e.nodeId)?.label ?? e.nodeId;
+    const label = agentName(definition, e.nodeId, advisorWord);
     return [{ id, label: `${label} · ${id}` }];
   });
 }

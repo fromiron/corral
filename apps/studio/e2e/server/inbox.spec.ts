@@ -107,7 +107,7 @@ test('answers a waiting run in Needs you and moves focus to the next item after 
     .click();
   await expect(row(nextTitle)).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 1, name: 'Needs you' })).toBeFocused();
-  await expect(page.getByText('Nothing needs you', { exact: true })).toBeVisible();
+  await expect(page.getByText('All quiet in the Corral', { exact: true })).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
 

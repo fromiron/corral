@@ -662,7 +662,7 @@ it("says a live run's tool as the work log names it, and its state only off scre
   expect(text).not.toContain(messages.Presence.state.working);
   // The open panel has its run controls.
   await act(async () => view.toggle()?.click());
-  const controls = view.panel()?.querySelector('[aria-label="Run controls"]');
+  const controls = reinsRow(view.panel());
   expect(controls?.textContent).toContain(messages.Activity.pause);
   expect(controls?.textContent).toContain(messages.Activity.stop);
 });
@@ -1128,12 +1128,20 @@ it('opens the run record only for a role the conversation has no row for', async
   expect(onViewRun).toHaveBeenCalledExactlyOnceWith('run_plan');
 });
 
+/** The panel's run controls: the row named Reins by its visible name. */
+function reinsRow(panel: HTMLElement | null | undefined) {
+  return [...(panel?.querySelectorAll<HTMLElement>('section[aria-labelledby]') ?? [])].find(
+    (section) =>
+      document.getElementById(section.getAttribute('aria-labelledby') ?? '')?.textContent ===
+      messages.Terms.reins.name,
+  );
+}
+
 /** The panel's run controls, by their words. */
 const control = (view: { panel: () => HTMLElement | null | undefined }, words: string) =>
-  [
-    ...(view.panel()?.querySelectorAll<HTMLButtonElement>('[aria-label="Run controls"] button') ??
-      []),
-  ].find((button) => button.textContent === words);
+  [...(reinsRow(view.panel())?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent === words,
+  );
 
 it.each([
   ['running', { pause: true, resume: null, stop: true }],

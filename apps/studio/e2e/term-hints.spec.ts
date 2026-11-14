@@ -1,7 +1,18 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { importTeam, newConversationFromSidebar, openSettings, startTestRun } from './workbench.ts';
+import {
+  importTeam,
+  newConversationFromSidebar,
+  openActivity,
+  openSettings,
+  requestBox,
+  runControls,
+  runGoing,
+  startSession,
+  startTestRun,
+  teamFromTemplate,
+} from './workbench.ts';
 
 // Coined terms explain themselves where they stand as names (docs/specs/features/term-hints.md).
 // Only what needs a real browser: a touch press on the icon and the line it stands on, the real
@@ -137,10 +148,10 @@ test.describe('on a touch screen', () => {
   test('a press opens a term’s explanation and a press outside closes it', async ({ page }) => {
     await page.goto('/');
     const dialog = await openSettings(page, en.Harness.heading);
-    const icon = dialog.getByRole('button', { name: about('workStyle'), exact: true });
+    const icon = dialog.getByRole('button', { name: about('harness'), exact: true });
     await icon.tap();
     await expect(popup(page)).toBeVisible();
-    await expect(popup(page).locator('[data-term-meaning]')).toHaveText(en.Terms.workStyle.meaning);
+    await expect(popup(page).locator('[data-term-meaning]')).toHaveText(en.Terms.harness.meaning);
     const title = dialog.getByRole('heading', { level: 2, name: en.Harness.heading });
     await title.tap();
     await expect(popup(page)).toHaveCount(0);
@@ -154,7 +165,7 @@ test.describe('on a touch screen', () => {
   }) => {
     await page.goto('/');
     const dialog = await openSettings(page, en.Harness.heading);
-    const icon = dialog.locator('[data-term-hint="workStyle"]');
+    const icon = dialog.locator('[data-term-hint="harness"]');
     expect((await icon.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     const header = dialog.locator('[data-settings-header]');
     const settings = await lineWithAndWithout(
@@ -180,7 +191,7 @@ test.describe('on a touch screen', () => {
 test('around an explanation opened by focus, the keyboard goes straight on', async ({ page }) => {
   await page.goto('/');
   const dialog = await openSettings(page, en.Harness.heading);
-  const settingsIcon = dialog.locator('[data-term-hint="workStyle"]');
+  const settingsIcon = dialog.locator('[data-term-hint="harness"]');
   const settingsStops = await keyboardAround(page, settingsIcon, dialog);
   await tabWithPointerOnIcon(page, settingsIcon, settingsStops);
   await pressOutlastsPointer(page, settingsIcon, settingsStops);
@@ -198,7 +209,8 @@ test('no screen explains one term in two places', async ({ page }) => {
   await importTeam(page, linearCorral(['writer']));
   await startTestRun(page);
   await expect(page.getByRole('button', { name: about('execution'), exact: true })).toBeVisible();
-  expect(await icons(page)).toEqual({ execution: 1 });
+  // The test run panel's Reins area has its title's icon (glossary.md).
+  expect(await icons(page)).toEqual({ execution: 1, reins: 1 });
 
   await page.goto('/library/teams');
   await expect(page.getByRole('tab').first()).toBeVisible();
@@ -209,5 +221,103 @@ test('no screen explains one term in two places', async ({ page }) => {
   expect(await icons(page)).toEqual({});
 
   await openSettings(page, en.Harness.heading);
-  expect(await icons(page)).toEqual({ workStyle: 1 });
+  expect(await icons(page)).toEqual({ harness: 1 });
+});
+
+/**
+ * The control row's box and the Pause and Stop buttons' boxes: nothing in the row moves when its
+ * explanation opens or closes (features/term-hints.md).
+ */
+async function rowBoxes(row: Locator) {
+  const box = async (locator: Locator) => {
+    const b = await locator.boundingBox();
+    return b ? { x: b.x, y: b.y, width: b.width, height: b.height } : null;
+  };
+  return {
+    row: await box(row),
+    pause: await box(row.getByRole('button', { name: en.Activity.pause, exact: true })),
+    stop: await box(row.getByRole('button', { name: en.Activity.stop, exact: true })),
+  };
+}
+
+test('the open activity panel names its control row Reins, explained once', async ({ page }) => {
+  test.setTimeout(60_000);
+  // Slow simulated replies keep the conversation's run going while it is looked at.
+  await page.goto('/?delay=15000');
+  await teamFromTemplate(page);
+  await startSession(page, 'Reins in the activity panel');
+  await requestBox(page).fill('Write a short note.');
+  await requestBox(page).press('Control+Enter');
+  await expect(runGoing(page)).toBeVisible({ timeout: 20_000 });
+  await openActivity(page);
+  const row = runControls(page);
+  await expect(row).toBeVisible();
+  await expect(row.getByText(en.Terms.reins.name, { exact: true })).toBeVisible();
+  const icon = row.getByRole('button', { name: about('reins'), exact: true });
+  await expect(icon).toBeVisible();
+  expect((await icons(page)).reins).toBe(1);
+
+  await page.mouse.move(2, 2);
+  // The panel has finished folding out: the row stands still before it is measured.
+  let closed = await rowBoxes(row);
+  await expect
+    .poll(async () => {
+      const previous = closed;
+      closed = await rowBoxes(row);
+      return JSON.stringify(closed) === JSON.stringify(previous);
+    })
+    .toBe(true);
+  expect(closed.pause && closed.stop).toBeTruthy();
+  await icon.hover();
+  await expect(popup(page)).toBeVisible();
+  await expect(popup(page).locator('[data-term-meaning]')).toHaveText(en.Terms.reins.meaning);
+  expect(await rowBoxes(row), 'open').toEqual(closed);
+  await page.mouse.move(2, 2);
+  await expect(popup(page)).toHaveCount(0);
+  expect(await rowBoxes(row), 'closed again').toEqual(closed);
+  // The icon leaves the row as tall as the name and the buttons make it, where it stood.
+  const line = await lineWithAndWithout(row.locator('[data-term-hint="reins"]'), row, row);
+  expect(line.withIcon).toEqual(line.without);
+});
+
+test('the run record’s Reins area is titled Reins and its role, explained once', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  // Slow simulated replies keep an execution working while its Reins area is open.
+  await page.goto('/demo?delay=8000');
+  await startTestRun(page);
+  await page.getByRole('link', { name: 'Open run page' }).click();
+  await expect(page).toHaveURL(/\/runs\/run_/);
+  const monitor = page.getByTestId('run-monitor');
+  await monitor
+    .getByRole('group', { name: 'Run graph', exact: true })
+    .locator('[data-agent-id]')
+    .filter({ has: page.locator('[data-run-status="model"], [data-run-status="active"]') })
+    .first()
+    .getByRole('button')
+    .first()
+    .click();
+  await page
+    .locator('[data-slot="popover-popup"] li[data-execution-id]')
+    .getByRole('button', { name: en.Run.steerThis, exact: true })
+    .first()
+    .click();
+  const reins = monitor.getByTestId('run-instructions');
+  await expect(reins).toBeVisible();
+  // Opening the area still asks to type: the focus is in the instruction field.
+  await expect(reins.getByLabel(en.Reins.instruction, { exact: true })).toBeFocused();
+  const heading = reins.getByRole('heading', { level: 2, name: /^Reins · \S/ });
+  await expect(heading).toBeVisible();
+  const icon = reins.getByRole('button', { name: about('reins'), exact: true });
+  await expect(icon).toBeVisible();
+  // On the title's line, right after it.
+  const title = await heading.boundingBox();
+  const mark = await icon.boundingBox();
+  if (!title || !mark) throw new Error('The title or its icon is not drawn');
+  expect(mark.x).toBeGreaterThanOrEqual(title.x + title.width - 1);
+  expect(Math.abs(mark.y + mark.height / 2 - (title.y + title.height / 2))).toBeLessThan(4);
+  await icon.hover();
+  await expect(popup(page).locator('[data-term-meaning]')).toHaveText(en.Terms.reins.meaning);
+  expect((await icons(page)).reins).toBe(1);
 });

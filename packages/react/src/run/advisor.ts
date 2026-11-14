@@ -19,6 +19,19 @@ export function agentName(
   return definition?.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
 }
 
+/**
+ * A role's name: its name, or, for the role of the advisor a conversation's session setting
+ * added (its role shares the node's id), the one word the screen calls that advisor by.
+ */
+export function roleName(
+  definition: Pick<CorralDefinition, 'nodes' | 'roles'> | null | undefined,
+  roleId: string,
+  advisorWord: string,
+): string {
+  if (definition && isSessionAdvisor(definition as CorralDefinition, roleId)) return advisorWord;
+  return definition?.roles.find((role) => role.id === roleId)?.name ?? roleId;
+}
+
 /** `agentName` in the reader's language. */
 export function useAgentName(
   definition: CorralDefinition | Pick<CorralDefinition, 'nodes'> | null | undefined,

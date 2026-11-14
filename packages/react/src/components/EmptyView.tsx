@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactElement, Ref } from 'react';
+import type { HTMLAttributes, ReactElement, ReactNode, Ref } from 'react';
 import { Button, cn, EmptyState } from '../design-kit/index.ts';
 
 /** The one next step an empty view offers. */
@@ -19,12 +19,15 @@ export interface EmptyViewAction {
  */
 export function EmptyView({
   title,
+  titleAction,
   text,
   action,
   className,
   ...props
 }: {
   title: string;
+  /** Drawn right after the title, on its line (a term's info icon). */
+  titleAction?: ReactNode;
   text?: string | undefined;
   action?: EmptyViewAction | undefined;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'title'>) {
@@ -32,6 +35,7 @@ export function EmptyView({
     <div data-slot="empty-view" className={cn('grid', className)} {...props}>
       <EmptyState
         title={title}
+        titleAction={titleAction}
         text={text}
         action={
           action ? (

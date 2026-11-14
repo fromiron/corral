@@ -89,8 +89,8 @@ async function startSession(page: Page, team?: string) {
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
   await panelTab(page, 'Changes');
-  const copy = page.getByRole('region', { name: 'Working copy' });
-  await copy.getByRole('button', { name: /Make a working copy from/ }).click();
+  const copy = page.getByRole('region', { name: 'Paddock' });
+  await copy.getByRole('button', { name: /Make a Paddock from/ }).click();
   await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
   return { sessionId, url: page.url().split('?')[0] as string };
 }

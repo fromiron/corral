@@ -37,10 +37,10 @@ const advisor = (page: Page) => page.locator('[data-slot="composer-advisor"]');
 
 async function turn(page: Page, state: 'on' | 'off') {
   await advisor(page).click();
-  await page.getByRole('switch', { name: 'Advisor' }).click();
+  await page.getByRole('switch', { name: 'Outrider' }).click();
   await expect(advisor(page)).toHaveAttribute('data-state', state);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('switch', { name: 'Advisor' })).toHaveCount(0);
+  await expect(page.getByRole('switch', { name: 'Outrider' })).toHaveCount(0);
 }
 
 test.describe("the conversation's advisor", () => {
@@ -126,9 +126,9 @@ test.describe("the conversation's advisor", () => {
       await page.emulateMedia({ colorScheme: 'light' });
     }
     await action.click();
-    await expect(page.getByRole('switch', { name: 'Advisor' })).toBeChecked();
+    await expect(page.getByRole('switch', { name: 'Outrider' })).toBeChecked();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('switch', { name: 'Advisor' })).toHaveCount(0);
+    await expect(page.getByRole('switch', { name: 'Outrider' })).toHaveCount(0);
     // The refused start's own 422, which the browser logs, and nothing else.
     expect(corral.errors).toEqual([
       'Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)',

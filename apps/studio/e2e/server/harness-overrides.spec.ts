@@ -48,8 +48,8 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
   corral.fake?.answerWith('Run override applied.');
   await page.goto(`${corral.server.url}/corrals/${corralId}/edit`);
   await openTestRun(page);
-  await page.getByText('Work styles for this run', { exact: true }).click();
-  const select = page.getByRole('combobox', { name: 'Run work style for writer', exact: true });
+  await page.getByText('Harnesses for this run', { exact: true }).click();
+  const select = page.getByRole('combobox', { name: 'Run Harness for writer', exact: true });
   await select.click();
   await page.getByRole('option', { name: 'One-time style · r1', exact: true }).click();
   await expect(select).toHaveAttribute('aria-expanded', 'false');
@@ -66,7 +66,9 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
     { times: 1 },
   );
   const requested = page.waitForRequest('**/api/v1/harness/preview');
-  await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Preview the run Harness for writer', exact: true })
+    .click();
   await requested;
   await select.click();
   await page.getByRole('option', { name: 'Keep role settings', exact: true }).click();
@@ -78,7 +80,9 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
   await select.click();
   await page.getByRole('option', { name: 'One-time style · r1', exact: true }).click();
   await expect(select).toHaveAttribute('aria-expanded', 'false');
-  await page.getByRole('button', { name: 'Preview run style for writer', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Preview the run Harness for writer', exact: true })
+    .click();
   await expect(page.getByTestId('run-harness-preview')).toContainText('limited');
   await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
   await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();

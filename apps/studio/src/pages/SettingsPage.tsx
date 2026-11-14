@@ -57,11 +57,11 @@ export function SettingsLayout({
           >
             {label(active)}
           </h2>
-          {/* The work-style title explains its term (glossary.md); below sm the title is only
+          {/* The Harness title explains its term (glossary.md); below sm the title is only
               read, and its icon goes with it. */}
           {active === 'harness' ? (
             <span className="inline-flex max-sm:hidden">
-              <TermHint term="workStyle" />
+              <TermHint term="harness" />
             </span>
           ) : null}
         </div>

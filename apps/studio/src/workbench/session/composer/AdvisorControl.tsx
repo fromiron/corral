@@ -85,7 +85,7 @@ export function AdvisorControl({
       : tc('advisor.off');
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <TermTooltip term="advisor" state={state}>
+      <TermTooltip term="outrider" state={state}>
         <PopoverTrigger
           render={
             <Button

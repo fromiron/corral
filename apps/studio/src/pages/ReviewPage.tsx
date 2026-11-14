@@ -11,7 +11,7 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import type { RunSummary, SessionEntryStart, WorkSession } from '@corral/core';
-import { EmptyView } from '@corral/react';
+import { EmptyView, TermHint } from '@corral/react';
 import {
   Badge,
   Button,
@@ -508,9 +508,14 @@ export function ReviewContent({
               data-testid="review-empty"
               className="mx-auto flex max-w-lg flex-col items-start gap-3 p-8"
             >
-              <h3 className="text-subtitle" style={semibold}>
-                {t('noCopyTitle')}
-              </h3>
+              {/* The page's one place for the Paddock term (glossary.md); in the Changes pane its
+                  setup view above is the place. */}
+              <div className="flex items-center gap-1">
+                <h3 className="text-subtitle" style={semibold}>
+                  {t('noCopyTitle')}
+                </h3>
+                {!embedded ? <TermHint term="paddock" /> : null}
+              </div>
               <p className="m-0 text-body text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -1272,6 +1277,7 @@ export function CommentsPanel({
   const active = runs.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
   const activeRunId = active?.runId;
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
+  const advisorWord = useTranslations('Advice')('advisor');
   const [target, setTarget] = useState('next');
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1282,7 +1288,7 @@ export function CommentsPanel({
     let revision = 0;
     const reload = () => {
       const read = ++revision;
-      void steerTargets(services, activeRunId).then(
+      void steerTargets(services, activeRunId, advisorWord).then(
         (targets) => live && read === revision && setTargets(targets),
         () => live && read === revision && setTargets([]),
       );
@@ -1293,7 +1299,7 @@ export function CommentsPanel({
       live = false;
       clearInterval(timer);
     };
-  }, [services, activeRunId]);
+  }, [services, activeRunId, advisorWord]);
   const drafts = comments.filter((c) => c.state === 'draft');
   const sentComments = comments.filter((c) => c.state !== 'draft');
   const earlier = sentComments.filter(

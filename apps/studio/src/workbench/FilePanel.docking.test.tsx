@@ -325,7 +325,7 @@ it.each([false, true])(
         });
         if (hasCopy) {
           const select = [...container.querySelectorAll('button')].find(
-            (button) => button.textContent === 'Select working copy',
+            (button) => button.textContent === 'Select a Paddock',
           );
           expect(select).toBeDefined();
           await act(async () => select?.click());

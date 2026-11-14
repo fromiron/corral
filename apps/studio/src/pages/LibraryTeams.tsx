@@ -243,7 +243,7 @@ export function LibraryTeams({
       {teams.length === 0 ? (
         <div className="grid justify-items-center gap-4">
           <div className="w-full">
-            <EmptyState title={t('empty')} />
+            <EmptyState title={t('empty')} text={t('emptyHint')} />
           </div>
           {archived ? null : (
             <div className="flex flex-wrap justify-center gap-2">

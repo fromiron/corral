@@ -1,5 +1,5 @@
 import type { VerifyCommand, WorkspaceBindingView, WorktreeView } from '@corral/client';
-import { EmptyView, type EmptyViewAction } from '@corral/react';
+import { EmptyView, type EmptyViewAction, TermHint } from '@corral/react';
 import { Button, fontWeights, Input, Switch, Textarea } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
@@ -323,7 +323,13 @@ export function WorkingCopyPanel({
           };
     return (
       <section aria-label={t('copyHeading')} className="flex flex-col gap-2">
-        <EmptyView title={t('noCopyTitle')} text={next.text} action={next.action} />
+        {/* The pane's one place for the Paddock term (glossary.md): after the empty title. */}
+        <EmptyView
+          title={t('noCopyTitle')}
+          titleAction={<TermHint term="paddock" />}
+          text={next.text}
+          action={next.action}
+        />
         {error ? (
           <p role="alert" className="m-0 text-center text-caption text-destructive">
             {error}
@@ -337,13 +343,17 @@ export function WorkingCopyPanel({
       aria-labelledby="copy-heading"
       className="flex flex-col gap-2 rounded-md fill-group p-3 text-body"
     >
-      <h3
-        id="copy-heading"
-        className="text-subtitle"
-        style={{ fontVariationSettings: fontWeights.semibold }}
-      >
-        {t('copyHeading')}
-      </h3>
+      {/* The pane's one place for the Paddock term (glossary.md): after its title. */}
+      <div className="flex items-center gap-1">
+        <h3
+          id="copy-heading"
+          className="text-subtitle"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {t('copyHeading')}
+        </h3>
+        <TermHint term="paddock" />
+      </div>
       {worktree?.missing ? (
         <p role="alert" className="text-caption text-danger">
           {t('copyMissing')}

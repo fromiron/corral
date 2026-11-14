@@ -192,7 +192,7 @@ test('the guide can pause at round 2 so a visitor has time to steer at normal sp
   // The guide pauses through the normal run command, and points Reins at the round 2 Writer.
   await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 20_000 });
   await expect(arm).toHaveCount(0);
-  const reins = page.getByRole('region', { name: /^Give instruction/ });
+  const reins = page.getByRole('region', { name: /^Reins · / });
   const writers = cardsOf(page, 'Writer');
   const round2 = await writers.filter({ hasText: 'Round 2' }).getAttribute('data-execution-id');
   await expect(reins).toContainText(`execution ${round2}`);

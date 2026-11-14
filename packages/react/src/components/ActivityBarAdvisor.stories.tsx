@@ -62,7 +62,7 @@ const lead = (name: string, activity: string, working = 'Working'): ActivityBarR
 
 const advisor = (change: Partial<ActivityBarRole>): ActivityBarRole => ({
   id: 'exec_advisor',
-  name: 'Advisor',
+  name: 'Outrider',
   glyph: 'running',
   tone: 'active',
   stateShown: true,
@@ -129,14 +129,14 @@ export const Failed: Story = {
   },
 };
 
-/** 한국어: 역할이 모두 끝나고 감독의 마지막 검토만 남은 닫힌 줄. */
+/** 한국어: 역할이 모두 끝나고 Outrider의 마지막 검토만 남은 닫힌 줄. */
 export const FinalReviewKo: Story = {
   args: {
     locale: 'ko',
-    line: { glyph: 'running', tone: 'active', text: '감독: 마지막 검토' },
+    line: { glyph: 'running', tone: 'active', text: 'Outrider: 마지막 검토' },
     roles: [
       advisor({
-        name: '감독',
+        name: 'Outrider',
         state: { text: '검토 중', target: 'execution:exec_advisor' },
         activity: '조언 1건 전달',
       }),
@@ -146,12 +146,12 @@ export const FinalReviewKo: Story = {
   play: async ({ canvasElement }) => {
     // The closed line names the advisor once; its row is in the folded panel.
     const line = canvasElement.querySelector('[data-activity-bar] > div');
-    await expect(line?.textContent?.split('감독').length).toBe(2);
+    await expect(line?.textContent?.split('Outrider').length).toBe(2);
     await settled(canvasElement);
   },
 };
 
-/** 한국어: 펼친 곳. 역할 뒤에 감독이 검토 중, 전달된 조언 2건. */
+/** 한국어: 펼친 곳. 역할 뒤에 Outrider가 검토 중, 전달된 조언 2건. */
 export const ReviewingKo: Story = {
   args: {
     locale: 'ko',
@@ -160,7 +160,7 @@ export const ReviewingKo: Story = {
     roles: [
       lead('구현자', '파일 편집 · src/session.ts', '작업 중'),
       advisor({
-        name: '감독',
+        name: 'Outrider',
         state: { text: '검토 중', target: 'execution:exec_advisor' },
         activity: '조언 2건 전달',
       }),

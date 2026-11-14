@@ -78,12 +78,12 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
     await panelTab(page, 'Files');
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
     await page
-      .getByRole('region', { name: 'Working copy' })
-      .getByRole('button', { name: /Make a working copy from/ })
+      .getByRole('region', { name: 'Paddock' })
+      .getByRole('button', { name: /Make a Paddock from/ })
       .click();
     await page.getByRole('tab', { name: 'Files', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'File source', exact: true })).toContainText(
-      'Conversation working copy',
+      'Paddock',
     );
     await page.getByRole('treeitem', { name: 'index.html', exact: true }).click();
     await page.getByRole('button', { name: 'Open preview', exact: true }).click();
@@ -227,8 +227,8 @@ test.describe('run-owned previews', () => {
       await panelTab(page, 'Files');
       await page.getByRole('tab', { name: 'Changes', exact: true }).click();
       await page
-        .getByRole('region', { name: 'Working copy' })
-        .getByRole('button', { name: /Make a working copy from/ })
+        .getByRole('region', { name: 'Paddock' })
+        .getByRole('button', { name: /Make a Paddock from/ })
         .click();
       await panelTab(page, 'Conversation');
       await page

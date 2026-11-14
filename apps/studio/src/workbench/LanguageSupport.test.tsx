@@ -232,7 +232,7 @@ it('links an untrusted copy to its own project settings without granting permiss
     }),
   );
   const link = view.element.querySelector('a');
-  expect(link?.textContent).toContain('Trust this working copy');
+  expect(link?.textContent).toContain('Trust this Paddock');
   expect(link?.getAttribute('href')).toBe('/settings');
   expect(link?.getAttribute('data-section')).toBe('workspace');
   expect(link?.getAttribute('data-project')).toBe('project');

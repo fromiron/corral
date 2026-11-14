@@ -201,16 +201,14 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
       return (await response.json()).project.projectId as string;
     });
     await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
-    await page.getByLabel('Work style name', { exact: true }).fill('Evidence writer');
+    await page.getByLabel('Harness name', { exact: true }).fill('Evidence writer');
     await page.getByLabel('Use skill writing', { exact: true }).check();
     await page.getByRole('combobox', { name: 'Skill mode writing', exact: true }).click();
     await page.getByRole('option', { name: 'Mandatory · every turn', exact: true }).click();
     await page.getByRole('combobox', { name: 'Settings for', exact: true }).click();
     await page.getByRole('option', { name: 'Other project', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`settings=harness&settingsProject=${projectId}`));
-    await expect(page.getByLabel('Work style name', { exact: true })).toHaveValue(
-      'Evidence writer',
-    );
+    await expect(page.getByLabel('Harness name', { exact: true })).toHaveValue('Evidence writer');
     expect(dialogs).toEqual([]);
     let failListOnce = true;
     await page.route('**/api/v1/harness/profile-management', async (route) => {
@@ -225,9 +223,9 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
         });
       } else await route.fallback();
     });
-    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Harness', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
-    await expect(page.getByRole('button', { name: 'Save work style', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Save Harness', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Load saved list again', exact: true }).click();
     expect(
       await page.evaluate(
@@ -236,7 +234,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     ).toBe(1);
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('Always cite the source.');
-    await page.getByRole('link', { name: 'Project default work style', exact: true }).click();
+    await page.getByRole('link', { name: 'Project default Harness', exact: true }).click();
     await page.getByRole('combobox', { name: 'Project default', exact: true }).click();
     await page.getByRole('option', { name: 'Evidence writer · r1', exact: true }).click();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -255,7 +253,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     expect(defaults[1].binding?.revision).toBe(1);
     await page.goto(`${corral.server.url}/settings/harness?projectId=${projectId}`);
     await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
-    await page.getByLabel('Work style name', { exact: true }).fill('Unsaved change');
+    await page.getByLabel('Harness name', { exact: true }).fill('Unsaved change');
     await expect(
       page.getByRole('button', { name: 'Preview effective settings', exact: true }),
     ).toBeDisabled();
@@ -275,7 +273,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
-    await page.getByRole('link', { name: 'Connect in Work styles', exact: true }).click();
+    await page.getByRole('link', { name: 'Connect in Harnesses', exact: true }).click();
     await expect(page).toHaveURL(/settings=harness/);
     await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
     const replacement = page.getByRole('checkbox', {
@@ -299,7 +297,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await expect(
       page.getByRole('combobox', { name: 'Skill mode writing', exact: true }),
     ).toContainText('Mandatory · every turn');
-    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Harness', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 2');
     const effective = await page.evaluate(async () => {
       const profile = (await (await fetch('/api/v1/harness/profiles')).json()).find(
@@ -322,7 +320,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.goto(`${corral.server.url}/settings/skills`);
     await page
       .getByRole('button', { name: /^writing/ })
-      .filter({ hasText: 'Referenced by 1 work styles' })
+      .filter({ hasText: 'Referenced by 1 Harnesses' })
       .filter({ hasNotText: 'An edited copy is available.' })
       .click();
     await page.getByRole('button', { name: 'Remove from list', exact: true }).click();
@@ -335,7 +333,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.reload();
     await page
       .getByRole('button', { name: /^writing/ })
-      .filter({ hasText: 'Referenced by 1 work styles' })
+      .filter({ hasText: 'Referenced by 1 Harnesses' })
       .filter({ hasNotText: 'An edited copy is available.' })
       .click();
     await expect(page.getByText('Always cite the revised source.', { exact: false })).toBeVisible();

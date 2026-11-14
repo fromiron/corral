@@ -126,8 +126,8 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     await panelTab(page, 'Files');
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
     await page
-      .getByRole('region', { name: 'Working copy' })
-      .getByRole('button', { name: /Make a working copy from/ })
+      .getByRole('region', { name: 'Paddock' })
+      .getByRole('button', { name: /Make a Paddock from/ })
       .click();
     await panelTab(page, 'Conversation');
     await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();

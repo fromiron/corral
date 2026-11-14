@@ -13,6 +13,7 @@ import {
   KitTableHeader,
   KitTableRow,
 } from '../design-kit/index.ts';
+import { roleName, useAgentName } from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { StatusBadge } from './StatusBadge.tsx';
@@ -29,12 +30,12 @@ export function TaskBoard({
   onOpenArtifact: (artifactVersionId: string) => void;
 }) {
   const t = useTranslations('Tasks');
+  const advisorWord = useTranslations('Advice')('advisor');
   const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
+  const labelOf = useAgentName(definition);
   if (!projection) return null;
-  const labelOf = (nodeId: string) =>
-    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
-  const roleOf = (roleId: string) => definition?.roles.find((r) => r.id === roleId)?.name ?? roleId;
+  const roleOf = (roleId: string) => roleName(definition, roleId, advisorWord);
   const executionOfTask = (taskId: string) =>
     Object.values(projection.executions).find((e) => e.taskId === taskId);
   const tasks = Object.values(projection.tasks);

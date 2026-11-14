@@ -47,9 +47,9 @@ suite는 지시문 목록과 Corral 변형 목록이다. 모든 변형을 모든
 
 suite에 `comparison: "personal_harness"`를 지정하면 정확히 다섯 variant가 필요하다. 각 variant의 `group`은 `baseline`, `mandatory_skill`, `deterministic_check`, `review_repair`, `coding_tool` 중 하나이며 중복할 수 없다. 각 변형은 실제 저장된 하네스 revision을 참조하는 Corral 파일을 준비한다. 그룹 이름은 실험 조건의 선언이며 기능 사용/효과의 증거가 아니다. 보고서의 실제 적용 hash와 도구 기록도 함께 확인한다.
 
-같은 과제·모델·부모 예산으로 비교하고 기준을 조정한 calibration 과제를 holdout으로 재사용하지 않는다. 파일 변경을 비교할 때는 각 실행의 초기 작업 사본도 같아야 한다. 승인·신뢰는 Studio에서 미리 검토하며 headless 실행이 대신 승인하지 않는다.
+같은 과제·모델·부모 예산으로 비교하고 기준을 조정한 calibration 과제를 holdout으로 재사용하지 않는다. 파일 변경을 비교할 때는 각 실행의 초기 Paddock도 같아야 한다. 승인·신뢰는 Studio에서 미리 검토하며 headless 실행이 대신 승인하지 않는다.
 
-파일 도구 비교에서는 suite에 `workspace: { "projectId": "default", "baseCommit": "전체 Git commit hash" }`를 넣는다. 이미 연결하고 신뢰한 프로젝트에서 각 과제 × 변형마다 새 세션/작업 사본을 만든다. 지정 커밋이 로컬에 없으면 실패하며 HEAD로 대체하지 않는다. 결과의 `workspace`에는 세션과 실제 기준 커밋이 남는다. 비교 뒤 작업 사본은 검토를 위해 보존하며 Studio에서 정리할 수 있다. 원본 폴더의 미커밋 변경은 비교 초기 상태에 포함되지 않는다.
+파일 도구 비교에서는 suite에 `workspace: { "projectId": "default", "baseCommit": "전체 Git commit hash" }`를 넣는다. 이미 연결하고 신뢰한 프로젝트에서 각 과제 × 변형마다 새 세션/Paddock을 만든다. 지정 커밋이 로컬에 없으면 실패하며 HEAD로 대체하지 않는다. 결과의 `workspace`에는 세션과 실제 기준 커밋이 남는다. 비교 뒤 Paddock은 검토를 위해 보존하며 Studio에서 정리할 수 있다. 원본 폴더의 미커밋 변경은 비교 초기 상태에 포함되지 않는다.
 
 실제 모델 실행은 비용·사용량이 생긴다. 일반 CI는 시뮬레이션 또는 명시적인 로컬 fake provider만 쓴다(AGENTS 4). 결정적 테스트의 정답률은 계측/기능 검증이며 실제 모델의 품질 개선 수치가 아니다.
 
@@ -57,7 +57,7 @@ suite에 `comparison: "personal_harness"`를 지정하면 정확히 다섯 varia
 
 `comparison: "skill_quality"`는 기존 `personal_harness`와 별개다. `baseline`과 비교할 군을 선택한다. 허용 군은 `baseline`, `prompt_only`, `core_skills`, `design_skills`, `specialist_skills`이며 중복·혼합·baseline 누락을 실행 전에 거절한다. 기존 5군 비교의 의미는 바뀌지 않는다.
 
-`repetitions`는 이 비교 종류에서만 사용할 수 있으며 기본 1, 최대 10이다. brief × variant × repetitions는 최대 500이다. 각 반복은 독립 Run이며 workspace가 지정되면 같은 고정 commit에서 새 세션/작업 사본을 만든다. 취소 후에는 다음 반복을 시작하지 않는다. 개별 Run의 기존 예산도 그대로 적용된다.
+`repetitions`는 이 비교 종류에서만 사용할 수 있으며 기본 1, 최대 10이다. brief × variant × repetitions는 최대 500이다. 각 반복은 독립 Run이며 workspace가 지정되면 같은 고정 commit에서 새 세션/Paddock을 만든다. 취소 후에는 다음 반복을 시작하지 않는다. 개별 Run의 기존 예산도 그대로 적용된다.
 
 ```json
 {

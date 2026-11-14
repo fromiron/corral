@@ -64,37 +64,37 @@ it('opens when the pointer rests on the icon', async () => {
 
 it('says the name and meaning in the screen language', async () => {
   const user = userEvent.setup();
-  show(<TermHint term="advisor" />, 'ko');
-  const icon = screen.getByRole('button', { name: '감독 설명' });
-  expect(icon).toHaveAccessibleDescription(ko.Terms.advisor.meaning);
+  show(<TermHint term="outrider" />, 'ko');
+  const icon = screen.getByRole('button', { name: 'Outrider 설명' });
+  expect(icon).toHaveAccessibleDescription(ko.Terms.outrider.meaning);
   await user.click(icon);
   await waitFor(() =>
     expect(
-      screen.getByText(ko.Terms.advisor.meaning, { selector: '[data-term-meaning]' }),
+      screen.getByText(ko.Terms.outrider.meaning, { selector: '[data-term-meaning]' }),
     ).toBeVisible(),
   );
-  expect(screen.getByText('감독', { selector: '[data-term-name]' })).toBeVisible();
+  expect(screen.getByText('Outrider', { selector: '[data-term-name]' })).toBeVisible();
 });
 
 it('in a control’s tooltip, keeps the control’s name, adds the meaning as its description and no icon', async () => {
   const user = userEvent.setup();
   render(
     <IntlProvider locale="en" messages={en} timeZone="UTC">
-      <TermTooltip term="advisor">
-        <Button variant="ghost" aria-label="Advisor settings">
+      <TermTooltip term="outrider">
+        <Button variant="ghost" aria-label="Outrider settings">
           A
         </Button>
       </TermTooltip>
     </IntlProvider>,
   );
-  const control = screen.getByRole('button', { name: 'Advisor settings' });
-  expect(control).toHaveAccessibleDescription(en.Terms.advisor.meaning);
+  const control = screen.getByRole('button', { name: 'Outrider settings' });
+  expect(control).toHaveAccessibleDescription(en.Terms.outrider.meaning);
   expect(screen.getAllByRole('button')).toHaveLength(1);
   await user.hover(control);
   const tip = await screen.findByRole('tooltip');
-  expect(tip.querySelector('[data-term-name]')?.textContent).toBe(en.Terms.advisor.name);
-  expect(tip.querySelector('[data-term-meaning]')?.textContent).toBe(en.Terms.advisor.meaning);
-  expect(control).toHaveAccessibleName('Advisor settings');
+  expect(tip.querySelector('[data-term-name]')?.textContent).toBe(en.Terms.outrider.name);
+  expect(tip.querySelector('[data-term-meaning]')?.textContent).toBe(en.Terms.outrider.meaning);
+  expect(control).toHaveAccessibleName('Outrider settings');
 });
 
 it('has the same Terms keys in both languages, each term with a name and a meaning', () => {
@@ -111,19 +111,19 @@ it('keeps the state a control said on the name line and in its description', asy
   const user = userEvent.setup();
   render(
     <IntlProvider locale="en" messages={en} timeZone="UTC">
-      <TermTooltip term="advisor" state="On · Model B">
-        <Button variant="ghost" aria-label="Advisor">
+      <TermTooltip term="outrider" state="On · Model B">
+        <Button variant="ghost" aria-label="Outrider">
           A
         </Button>
       </TermTooltip>
     </IntlProvider>,
   );
-  const control = screen.getByRole('button', { name: 'Advisor' });
-  expect(control).toHaveAccessibleDescription(`On · Model B ${en.Terms.advisor.meaning}`);
+  const control = screen.getByRole('button', { name: 'Outrider' });
+  expect(control).toHaveAccessibleDescription(`On · Model B ${en.Terms.outrider.meaning}`);
   await user.hover(control);
   const tip = await screen.findByRole('tooltip');
-  expect(tip.querySelector('[data-term-name]')?.textContent).toBe('Advisor · On · Model B');
-  expect(tip.querySelector('[data-term-meaning]')?.textContent).toBe(en.Terms.advisor.meaning);
+  expect(tip.querySelector('[data-term-name]')?.textContent).toBe('Outrider · On · Model B');
+  expect(tip.querySelector('[data-term-meaning]')?.textContent).toBe(en.Terms.outrider.meaning);
 });
 
 it('stays closed while the control says so, as while its own menu is open', async () => {

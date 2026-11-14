@@ -274,7 +274,7 @@ test('advice lines change only their words, and late advice is written into the 
   // The activity bar's advisor row, after the roles: reviewing, and no Join (features/advisor.md).
   const advisorRow = activityBar(page)
     .locator('[data-activity-role]')
-    .filter({ hasText: 'Advisor' });
+    .filter({ hasText: 'Outrider' });
   const fold = async () => {
     await activityBar(page).locator('[data-activity-toggle]').click();
     await expect(activityBar(page).locator('[data-activity-toggle]')).toHaveAttribute(
@@ -354,16 +354,16 @@ test('advice lines change only their words, and late advice is written into the 
   const lastReview = await watchComposer(page);
   answer.open();
   await expect(activityBar(page)).toHaveAttribute('data-line', 'advisor', { timeout: 30_000 });
-  await expect(activityLine(page)).toContainText('Advisor: final review');
+  await expect(activityLine(page)).toContainText('Outrider: final review');
   await waitForStill(page);
   expectComposerStill('final-review', await lastReview());
-  expect((await activityLine(page).textContent())?.split('Advisor')).toHaveLength(2);
+  expect((await activityLine(page).textContent())?.split('Outrider')).toHaveLength(2);
   await labelsKept(page, 'final-review');
   await shots(page, 'final-review');
   // Open, the advisor's row says it reviews, and the line does not name it again.
   await openActivity(page);
   await expect(advisorRow).toContainText('Reviewing');
-  await expect(activityLine(page)).not.toContainText('Advisor');
+  await expect(activityLine(page)).not.toContainText('Outrider');
   await labelsKept(page, 'final-review-open');
   await shot(page, 'final-review-open-1280');
   await fold();
@@ -376,14 +376,14 @@ test('advice lines change only their words, and late advice is written into the 
   await probe.start('advice-tail');
   finalReview.open();
   await expect(tail.locator('[data-advice-line]')).toHaveText(
-    /^Advisor·Blocker·The answer blames the cache/,
+    /^Outrider·Blocker·The answer blames the cache/,
     { timeout: 30_000 },
   );
   await expect.poll(() => projection()?.status, { timeout: 30_000 }).toBe('succeeded');
   await waitForStill(page);
   expectStill(await probe.stop());
   // The conversation's advisor is named once on the tail.
-  expect((await tail.textContent())?.split('Advisor')).toHaveLength(2);
+  expect((await tail.textContent())?.split('Outrider')).toHaveLength(2);
   await labelsKept(page, 'tail-one');
   await shot(page, 'tail-one-1280');
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -570,7 +570,7 @@ test.describe('advice a role never read', () => {
       'not-delivered: line height',
     ).toBeLessThanOrEqual(1);
     const tail = row.locator('[data-chat-part="tail"] [data-advice-line]');
-    await expect(tail).toHaveText(/^Advisor·Concern·The answer never times the login/);
+    await expect(tail).toHaveText(/^Outrider·Concern·The answer never times the login/);
     await expect(row.locator('[data-chat-part="tail"]')).not.toContainText('Name the cache');
     const runId = projection()?.runId as string;
 
@@ -670,7 +670,7 @@ test.describe('advice a role never read', () => {
     await box.press('Enter');
     await last.reached;
     await expect(activityBar(page)).toHaveAttribute('data-line', 'advisor', { timeout: 30_000 });
-    await expect(activityLine(page)).toContainText('Advisor: final review');
+    await expect(activityLine(page)).toContainText('Outrider: final review');
     // The tool line says nothing of why no role takes an instruction: Send says it.
     await expect(page.getByTestId('chat-composer')).not.toContainText('No role takes instructions');
     await waitForStill(page);

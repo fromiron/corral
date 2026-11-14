@@ -15,7 +15,7 @@ test('an unsent instruction stays bound to its original execution', async ({ pag
     buffer: Buffer.from(JSON.stringify(linearCorral(['writer', 'reviewer']))),
   });
   await startTestRun(page);
-  const panel = page.getByRole('region', { name: /^Give instruction/ });
+  const panel = page.getByRole('region', { name: /^Reins · / });
   const input = page.getByLabel('Instruction', { exact: true });
   await expect(panel.locator('dd').first()).toContainText('writer');
   await input.fill('An instruction originally drafted for writer.');

@@ -10,12 +10,12 @@
 | 저장해 두고 다시 쓰는 역할 구성 | Corral / Corral | `corral`, `/library/teams` | 팀·team(저장한 구성의 이름으로), 워크플로 |
 | 여러 역할이 함께 일하는 구성을 이르는 보통명사, 그래프에서 단계를 묶는 상자 | team·Team / 팀 | 상자 `team` | — |
 | 편집기의 단계 종류 | 팔레트의 이름 그대로. Loop는 두 언어 모두 Loop | `TeamEditor.kinds` | 루프, 국문 문장 속의 Team·Join·Output |
-| 역할이 쓰는 스킬·확장·도구 선택 묶음 | Work style / 작업 방식 | `harness`, `HarnessProfile` | Harness, 작업 스타일 |
-| 모든 프로젝트의 기본 작업 방식 | Personal default work style / 개인 기본 작업 방식 | `defaults`, scope `personal` | Default work style(한정사 없이) |
-| 한 프로젝트의 기본 작업 방식 | Project default work style / 프로젝트 기본 작업 방식 | `project-defaults`, scope `project` | Default work style(한정사 없이) |
-| 작업 방식이 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → Corral 역할 → 이번 실행 | `ScopeLadder` | 3단 설명, 팀 역할 |
+| 역할이 쓰는 스킬·확장·도구 선택 묶음 | Harness / Harness | `harness`, `HarnessProfile` | Work style, 작업 방식, 작업 스타일, 하네스 |
+| 모든 프로젝트의 기본 Harness | Personal default Harness / 개인 기본 Harness | `defaults`, scope `personal` | Default Harness(한정사 없이) |
+| 한 프로젝트의 기본 Harness | Project default Harness / 프로젝트 기본 Harness | `project-defaults`, scope `project` | Default Harness(한정사 없이) |
+| Harness가 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → Corral 역할 → 이번 실행 | `ScopeLadder` | 3단 설명, 팀 역할 |
 | 실행 결과물 | Results / 결과 | 패널 `artifacts`, 슬래시 `/results` | Artifacts |
-| 실행이 쓰는 격리 사본 | Conversation working copy / 대화 작업 사본 | `worktree`, scope `session` | 세션 작업 사본, 세션 복사본, 작업 복사본 |
+| 대화의 실행이 원본 폴더 대신 쓰는 격리 사본 | Paddock / Paddock | `worktree`, scope `session` | Conversation working copy, working copy, 대화 작업 사본, 작업 사본, 세션 작업 사본, 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
 | 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
@@ -28,10 +28,11 @@
 | 프로젝트 대화 탭의 상태별 배치 | Needs attention / 확인 필요, Review / 검토, In progress / 진행 중, No run yet / 실행 전, Completed / 완료, Cancelled / 취소됨, Empty conversation / 빈 대화 | `sessionGroups` | Task status, To do, In review, Done |
 | 대화의 일이 끝났다고 볼 조건 목록 | Completion criteria / 완료 기준 | `WorkSession.criteria`, run input `criteria` | Definition of done, 체크리스트, 기준 충족 |
 | 샘플 데이터로 보이는 미구현 흐름 | Feature preview / 기능 미리보기 | `/preview`, `feature-preview` | 데모(시뮬레이션 실행과 구분) |
-| 프로젝트의 원본 폴더·작업 사본 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
+| 프로젝트의 원본 폴더·Paddock 보기 | Environment / 환경 | 프로젝트 탭 `environment` | 작업 환경 설정 |
 | 경로로 파일 찾아 열기 | Quick open / 빠른 열기 | `quickOpen` | 파일 검색(내용 검색과 구분) |
 | 대화의 검사 명령 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
 | 실행 상태와 일시정지·재개·중지를 한 줄로 보이는 컴포저 위의 줄 | Activity bar / 활동 바 | `ActivityBar` | 실행 조작 알약, 한 줄 상태, 진행 중 실행 제어 |
+| 달리는 실행을 다루는 자리(지시, 일시정지·재개·중지, 실행 단위의 취소·다시 시작) | Reins / Reins | `reins`, 메시지 `Reins`, [Reins 상태 계약](features/reins.md) | Run controls / 실행 조작(이름표로), Give instruction / 지시하기(영역의 제목으로. 그 영역을 여는 동작의 이름으로는 쓴다), Steer |
 | 앱 전체의 색 구성 선택 | Appearance / 화면 테마 | `theme`(밝기), `palette`(이름 있는 테마) | 스킨, 컬러 스킴 |
 | Corral이 함께 싣는 색 구성 | Built-in theme / 내장 테마 | `builtin:<id>` | 프리셋, 기본 테마(시스템·라이트·다크와 구분) |
 | 이 기기에서 만든 색 구성 | Personal theme / 개인 테마 | `custom:<id>` | 커스텀 테마, 사용자 정의 테마, 내 테마 |
@@ -44,7 +45,7 @@
 | task·미리보기를 다루는 창 | Tasks & preview / 작업·미리보기 | 패널 `tools`, 슬래시 `/preview` | Running commands & preview, 도구 |
 | 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
-| 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 대화 화면의 지시·Instruction(실행 화면의 지시 영역은 [Reins](features/reins.md)의 낱말 Instruction / 지시를 쓴다), Steer |
+| 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 대화 화면의 지시·Instruction(실행 기록의 Reins 영역은 Instruction / 지시를 쓴다), Steer |
 | 흐르는 응답을 끊고 바로 실리는 전송 | Interrupt / 끼어들기 | 지시 `delivery: interrupt` | 중단(실행을 끝내는 것과 구분), 강제 전달 |
 | 진행 중인 실행이 끝난 뒤 시작할 전송 | Next request / 다음 요청 | intent `queue`, 항목 state `queued` | 큐, 예약 |
 | 합류·끼어들기가 향하는 실행 단위 | Target / 대상 | `targetExecutionId` | 수신자(회의의 수신자와 구분) |
@@ -53,8 +54,8 @@
 | 읽히지 못한 합류 메시지를 서버가 대기 요청으로 바꾸는 일 | Carried over / 넘겨받음 | `carriedFrom` | 재전송(사람이 누르는 다시 보내기와 구분) |
 | 타임라인 끝의 응답 자리 | Needed now / 지금 필요한 것 | `PendingTray` | 대응 필요 알림, 응답 영역(실행 기록에서) |
 | 실행·실행 단위·대화가 화면에 보이는 상태 | — (낱말은 [표시 상태](features/presence.md)의 표) | `presence`, 메시지 `Presence` | — |
-| 다른 역할을 지켜보다가 조언하는 역할 | Advisor / 감독 | `invocation: observer` | 워치독, 리뷰어(검토 Decision과 구분), 감시자 |
-| 감독이 대상에게 하는 말 | Advice / 조언 | `advice`, 지시 `origin: advice` | 경고, 피드백 |
+| 다른 역할을 지켜보다가 조언하는 역할 | Outrider / Outrider | `invocation: observer`, 메시지·코드의 `advisor` | Advisor, 감독, 워치독, 리뷰어(검토 Decision과 구분), 감시자 |
+| Outrider가 대상에게 하는 말 | Advice / 조언 | `advice`, 지시 `origin: advice` | 경고, 피드백 |
 | 조언의 심각도 | Note / 참고, Concern / 우려, Blocker / 중단 권고 | `nit`, `concern`, `blocker` | — |
 | 답변의 일부를 골라 요청에 싣는 일 | Quote / 인용 | 첨부 출처 `reply`, 단축키 `reply.quote` | 발췌, 스니펫 |
 | 사람이 계속할지 정하는 응답 | Continue? / 계속 여부 | 무진전 승인, 회의 `hold` | 한도 초과(끝난 것처럼 읽힘) |
@@ -66,6 +67,20 @@
 - `pages/McpConnection.tsx`는 MCP 서버 한 개의 연결 위젯이고, `pages/McpSettingsPage.tsx`가 설정 화면이다.
 - `workbench/ProjectMaterials.tsx`는 서버의 지침·메모리 기록을 다루며 작업 폴더 파일과 무관하다.
 
+## 고유한 이름
+
+Corral이 지어 부르는 이름은 Corral, Harness, Reins, Paddock, Outrider 다섯이다. 모두 말과 울타리의 비유 하나에서 나온다. 역할을 울타리(Corral) 안에 모으고, 마구(Harness)를 채우고, 고삐(Reins)로 다루고, 울타리 친 풀밭(Paddock)에서 일하게 하며, 곁에서 함께 달리는 이(Outrider)가 지켜본다.
+
+- 고유한 이름은 제품이 새로 만든 것에만 붙인다. 어느 도구에나 있는 것(대화, 실행, 파일, 결과)은 보통 낱말로 부른다.
+- 두 언어 모두 로마자 그대로 쓰고 첫 글자를 대문자로 쓴다. 영문의 복수형은 Corrals, Harnesses, Paddocks, Outriders이고 Reins는 형태가 바뀌지 않는다.
+- 국문의 조사는 소리에 맞춘다. Corral(코랄)과 Paddock(패덕)은 받침이 있는 말로("Corral이", "Corral로", "Paddock을", "Paddock으로"), Harness(하니스)·Reins(레인스)·Outrider(아웃라이더)는 받침이 없는 말로 다룬다("Harness가", "Reins를", "Outrider는").
+- 한 개념에는 이 이름 하나만 쓴다. 문장 속에서도 풀어 쓴 이름(작업 방식, 작업 사본, 감독)으로 바꿔 부르지 않는다.
+- 동작과 상태의 낱말은 보통 낱말로 둔다(지시하기, 일시정지, 조언, 반영).
+- 모델에게 보내는 글은 화면 이름의 대상이 아니다. 역할의 임무 글(팀 템플릿의 임무 포함)과 도구 설명, 서버가 내는 거절 사유는 모델의 도구 설명이 쓰는 낱말(working copy, 작업 사본)을 그대로 쓴다.
+- 이름의 뜻은 아래 "설명이 붙는 용어"의 자리에서 보인다.
+- 빈 화면의 안내는 이 비유의 말투로 써도 된다. 제품을 장소나 주어로 부르고("Corral이 조용합니다"), 설명 대신 할 일을 한 문장으로 권한다("함께 일할 역할을 모아 보세요").
+- 새 고유 이름은 이 비유 안에서만 더하고, 더할 때 이 절과 위 표를 함께 고친다.
+
 ## 설명이 붙는 용어
 
 제품이 지은 이름이라 낱말만으로 뜻을 알 수 없는 용어다. 화면은 아래 자리에서 뜻을 한 문장으로 보인다. 형태와 동작은 [용어 설명](features/term-hints.md)이 정하고, 이름과 뜻의 문구는 메시지 `Terms`에 있다.
@@ -74,10 +89,12 @@
 |---|---|---|
 | Corral / Corral | `Terms.corral` | 라이브러리의 Corral 탭(툴팁), 컴포저 도구 줄의 Corral 선택(툴팁) |
 | Execution / 실행 단위 | `Terms.execution` | 편집기 실행 창의 실행 단위 목록 제목(아이콘) |
-| Work style / 작업 방식 | `Terms.workStyle` | 설정의 작업 방식 화면 제목(아이콘), 편집기 Inspector의 작업 방식 이름표(아이콘) |
-| Advisor / 감독 | `Terms.advisor` | 컴포저 도구 줄의 감독 버튼(툴팁) |
+| Harness / Harness | `Terms.harness` | 설정의 Harness 화면 제목(아이콘), 편집기 Inspector의 Harness 이름표(아이콘) |
+| Reins / Reins | `Terms.reins` | 활동 바를 펼친 곳의 조작 줄 이름표(아이콘), 실행 기록과 편집기 실행 창의 Reins 영역 제목(아이콘) |
+| Paddock / Paddock | `Terms.paddock` | 변경 창의 Paddock 제목(아이콘. Paddock이 없으면 그 빈 상태의 제목이 자리다), 프로젝트 환경 탭의 Paddock 목록 제목(아이콘) |
+| Outrider / Outrider | `Terms.outrider` | 컴포저 도구 줄의 Outrider 버튼(툴팁) |
 
-Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 보이므로 여기에 넣지 않는다. Reins는 명세와 코드의 이름이고 화면에는 나오지 않는다(실행 화면의 그 영역은 "지시하기"와 "실행 제어"로 부른다).
+Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 보이므로 여기에 넣지 않는다(팔레트의 Outrider도 같다).
 
 ## 남은 불일치
 

@@ -188,8 +188,8 @@ for (const locale of ['en', 'ko'] as const) {
         await expect(
           files.getByText(
             locale === 'en'
-              ? 'Read-only: this conversation has no working copy.'
-              : '작업 사본이 없어 읽기 전용입니다.',
+              ? 'Read-only: this conversation has no Paddock.'
+              : 'Paddock이 없어 읽기 전용입니다.',
           ),
         ).toBeVisible();
         await files.getByRole('treeitem', { name: 'README.md', exact: true }).click();

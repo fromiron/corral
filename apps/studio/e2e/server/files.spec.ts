@@ -129,21 +129,23 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     writeFileSync(join(original, 'README.md'), 'hello\n');
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
 
-    const copy = page.getByRole('region', { name: 'Working copy' });
-    await copy.getByRole('button', { name: /Make a working copy from/ }).click();
+    const copy = page.getByRole('region', { name: 'Paddock' });
+    await copy.getByRole('button', { name: /Make a Paddock from/ }).click();
     await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-    await expect(page.getByTestId('pre-run')).toContainText('can change the working copy');
+    await expect(page.getByTestId('pre-run')).toContainText('can change the Paddock');
 
     await requestBox(page).fill('Write the notes');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    // The turn's run card begins with its state, for screen readers: in a conversation the line
-    // above the composer is where a finished run's status shows. Not an exact text match: the
-    // card's process rows (Writer · Completed) carry the same word, so it finds more than one.
+    // The turn's run card begins with its head line, role · state · elapsed (composer-flow.md
+    // "튐 없는 본문" 3). Not an exact text match: the card's process rows (Writer · Completed)
+    // carry the same word, so it finds more than one. The scripted lead sends two writer tasks to
+    // the same file, so the second one's write is refused until it reads the file: the run still
+    // completes, with failed tool steps.
     const card = page
       .getByTestId('chat-timeline')
       .getByRole('region', { name: 'Run #1', exact: true });
-    await expect(card).toContainText(/^Completed/, { timeout: 20_000 });
+    await expect(card).toContainText(/^Assistant·Completed·/, { timeout: 20_000 });
     await expect(card.getByTestId('run-change-summary')).toContainText(/1 changed file · \+\d+ −0/);
     await expect(card.getByRole('link', { name: /1 changed file/ })).toHaveAttribute(
       'href',
@@ -291,18 +293,15 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await baseline.getByRole('button', { name: 'Preview restore' }).click();
     const preview = checkpoints.getByRole('region', { name: 'Preview restore' });
     await expect(preview).toContainText('notes/team_writer_role.md');
-    await preview.getByRole('button', { name: 'Restore working copy' }).click();
+    await preview.getByRole('button', { name: 'Restore Paddock' }).click();
     await expect(
-      checkpoints
-        .getByTestId('checkpoint-restore')
-        .filter({ hasText: 'Conversation working copy' })
-        .first(),
+      checkpoints.getByTestId('checkpoint-restore').filter({ hasText: 'Paddock' }).first(),
     ).toContainText('Restore: Applied');
     await expect(
       checkpoints
         .getByTestId('checkpoint-row')
         .filter({ hasText: 'Before restore' })
-        .filter({ hasText: 'Conversation working copy' }),
+        .filter({ hasText: 'Paddock' }),
     ).toBeVisible();
     expect(corral.errors).toEqual([]);
   } finally {
