@@ -1273,8 +1273,14 @@ function watchClosedLine(page: Page) {
 const closedLineFrames = (page: Page) =>
   page.evaluate(() => (window as unknown as { lineFrames: LineFrame[] }).lineFrames.slice());
 
-for (const cpu of [1, 4])
-  test(`⑪ following the end, the line never points at a row or card that came in view${cpu > 1 ? `, ${cpu}× slower` : ''}`, async ({
+// The run list answering late (as under load) leaves the request's entry ahead of its run in the
+// conversation: the run row's place comes with the entry, and the line does not say its state.
+for (const [cpu, listLag] of [
+  [1, 0],
+  [4, 0],
+  [1, 2_500],
+] as const)
+  test(`⑪ following the end, the line never points at a row or card that came in view${cpu > 1 ? `, ${cpu}× slower` : ''}${listLag ? ', its run listed late' : ''}`, async ({
     page,
     corral,
   }) => {
@@ -1306,6 +1312,13 @@ for (const cpu of [1, 4])
           : [];
       };
       if (cpu > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpu });
+      if (listLag)
+        await page.route(/\/runs$/, async (route) => {
+          if (route.request().method() !== 'GET') return route.continue();
+          const response = await route.fetch();
+          await new Promise((done) => setTimeout(done, listLag));
+          await route.fulfill({ response });
+        });
       // (a) A request sent at the followed end: its run row and its working role come in view.
       await watchClosedLine(page);
       await requestBox(page).fill('Check the folder.');
@@ -1325,13 +1338,11 @@ for (const cpu of [1, 4])
       await expect(card).toBeInViewport({ timeout: 30_000 });
       await page.waitForTimeout(1_500);
       const carded = await closedLineFrames(page);
-      record(`arrival${cpu > 1 ? `-cpu${cpu}` : ''}`, { arriving, carded });
+      const variant = `${cpu > 1 ? `-cpu${cpu}` : ''}${listLag ? '-listed-late' : ''}`;
+      record(`arrival${variant}`, { arriving, carded });
       // Its own file too: the scenes of other workers write the shared record.
       writeFileSync(
-        join(
-          OUT,
-          `activity-bar-arrival${cpu > 1 ? `-cpu${cpu}` : ''}-${test.info().repeatEachIndex}.json`,
-        ),
+        join(OUT, `activity-bar-arrival${variant}-${test.info().repeatEachIndex}.json`),
         `${JSON.stringify({ arriving, carded }, null, 2)}\n`,
       );
       // Whatever came was in view: never a role named as off screen, never a run or role state

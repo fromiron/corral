@@ -26,6 +26,34 @@ import { EntryCard, RunCard, RunChecks, useRunChecks } from './SessionEntries.ts
 
 const NO_READS = { read: 0, started: () => 0 };
 
+/**
+ * The runs requests name that the run list does not list yet. A request's entry can come before
+ * the list lists its run; the run is on its way until two session reads asked after the request
+ * was first drawn so come back without it (each read lists the runs first), and the conversation
+ * keeps its row's place meanwhile. A run still missing then is not coming.
+ */
+function useArrivingRuns(
+  entries: WorkSession['entries'],
+  runs: RunSummary[],
+  reads: { read: number; started: () => number },
+): ReadonlySet<string> {
+  // The reads asked when each missing run was first drawn. Set once per run, so drawing again
+  // (or twice, as StrictMode does) keeps it.
+  const seen = useRef(new Map<string, number>());
+  const listed = new Set(runs.map((run) => run.runId));
+  const arriving = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.runId || entry.intent === 'steer' || listed.has(entry.runId)) continue;
+    let asked = seen.current.get(entry.runId);
+    if (asked === undefined) {
+      asked = reads.started();
+      seen.current.set(entry.runId, asked);
+    }
+    if (reads.read - asked < 2) arriving.add(entry.runId);
+  }
+  return arriving;
+}
+
 /** The conversation: what was asked, the runs it started, decisions waiting, and the input box. */
 export function WorkTab({
   session,
@@ -82,6 +110,7 @@ export function WorkTab({
   // In the order they start: carried requests first (features/composer-flow.md).
   const queued = queuedEntriesInStartOrder(session);
   const runChecks = useRunChecks(session.sessionId, runs);
+  const arriving = useArrivingRuns(session.entries, runs, sessionReads);
   const artifactMetadataVersion = runs.findLast((run) => run.status === 'succeeded')?.runId ?? '';
   const td = useTranslations('Desktop');
   const size = useSize();
@@ -185,6 +214,7 @@ export function WorkTab({
                   runOnly={placement.runOnly.has(entry.entryId)}
                   sourceShown={placement.sourced.has(entry.entryId)}
                   runsListed={runsListed}
+                  arriving={Boolean(entry.runId && arriving.has(entry.runId))}
                 />
               ),
             })),
