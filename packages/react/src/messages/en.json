@@ -3015,6 +3015,7 @@
     "unsupportedHint": "This model does not support this level. Choose another model or effort level.",
     "runOverrides": "Model and reasoning for this run",
     "model": "Model",
+    "appliedHeading": "Applied reasoning by request",
     "saved": "Role default",
     "unrecorded": "Reasoning not recorded",
     "payload": "Payload verified",

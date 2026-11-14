@@ -3015,6 +3015,7 @@
     "unsupportedHint": "현재 모델은 이 단계를 지원하지 않습니다. 다른 모델이나 추론 단계를 선택하세요.",
     "runOverrides": "이번 실행의 모델·추론 설정",
     "model": "모델",
+    "appliedHeading": "요청별 추론 적용 기록",
     "saved": "역할 기본값",
     "unrecorded": "추론 설정 미기록",
     "payload": "요청 확인",
