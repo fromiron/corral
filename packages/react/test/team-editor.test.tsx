@@ -706,20 +706,20 @@ describe('team editor: importing a role', () => {
     expect(roleOf(editor.getState().draft, 'agent_1')).not.toHaveProperty('harness');
     const notices = screen
       .getAllByRole('status')
-      .filter((s) => s.textContent?.includes('without its work style'));
+      .filter((s) => s.textContent?.includes('without its Harness'));
     expect(notices).toHaveLength(1);
     // The agent's sheet shows it under its heading.
     expect(
       within(screen.getByRole('complementary', { name: 'Settings' })).getAllByText(
-        /without its work style/,
+        /without its Harness/,
       ),
     ).toHaveLength(1);
     // The next edit takes the notice away; it does not come back with redo.
     await act(async () => editor.getState().undo());
-    expect(screen.queryAllByText(/without its work style/)).toEqual([]);
+    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
     await act(async () => editor.getState().redo());
     expect(roleOf(editor.getState().draft, 'agent_1')?.prompt).toBe(releaseCheck.prompt);
-    expect(screen.queryAllByText(/without its work style/)).toEqual([]);
+    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
   });
 
   it('says nothing when the role had no work style', async () => {
@@ -730,6 +730,6 @@ describe('team editor: importing a role', () => {
       fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
     );
     await act(async () => fireEvent.click(screen.getByRole('option', { name: /^Plan/ })));
-    expect(screen.queryAllByText(/without its work style/)).toEqual([]);
+    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
   });
 });

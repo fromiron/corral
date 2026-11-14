@@ -64,10 +64,10 @@ export function HarnessRoleSettings({
         className="flex flex-col gap-1 text-caption"
         style={{ fontVariationSettings: fontWeights.semibold }}
       >
-        {/* The editor's one place for the work-style term (glossary.md): after its label. */}
+        {/* The editor's one place for the Harness term (glossary.md): after its label. */}
         <span className="flex items-center gap-1">
           <span>{t('heading')}</span>
-          <TermHint term="workStyle" />
+          <TermHint term="harness" />
         </span>
         <Select
           label={t('heading')}

@@ -48,12 +48,12 @@ it('puts the work style icon right after the Inspector label', async () => {
   const hints = container.querySelectorAll<HTMLElement>('[data-term-hint]');
   expect(hints).toHaveLength(1);
   const hint = hints[0] as HTMLElement;
-  expect(hint.dataset.termHint).toBe('workStyle');
+  expect(hint.dataset.termHint).toBe('harness');
   expect(hint.getAttribute('aria-label')).toBe(
-    messages.Terms.about.replace('{term}', messages.Terms.workStyle.name),
+    messages.Terms.about.replace('{term}', messages.Terms.harness.name),
   );
   expect(document.getElementById(hint.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
-    messages.Terms.workStyle.meaning,
+    messages.Terms.harness.meaning,
   );
   // Right after the label's words, inside the label's line, not in the selector.
   const label = hint.previousElementSibling;

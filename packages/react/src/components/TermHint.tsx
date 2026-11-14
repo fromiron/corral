@@ -11,7 +11,7 @@ import {
 } from '../design-kit/index.ts';
 
 /** The coined names that explain themselves (glossary.md, "설명이 붙는 용어"). */
-export type TermId = 'corral' | 'execution' | 'workStyle' | 'advisor';
+export type TermId = 'corral' | 'execution' | 'harness' | 'advisor';
 
 /**
  * What a term means, as both forms show it on the kit tooltip's surface: its name (and, where
