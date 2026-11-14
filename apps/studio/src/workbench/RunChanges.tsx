@@ -52,7 +52,10 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
         {changes?.unavailable
           ? tf('noBaseline')
           : changes
-            ? `${tw('changeCount', { count: changes.files.length })} · +${changes.files.reduce((sum, file) => sum + (file.additions ?? 0), 0)} −${changes.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}`
+            ? // The line counts follow only a run that changed a file.
+              changes.files.length
+              ? `${tw('changeCount', { count: changes.files.length })} · +${changes.files.reduce((sum, file) => sum + (file.additions ?? 0), 0)} −${changes.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}`
+              : tw('changeCount', { count: 0 })
             : ts('reviewChanges')}
       </Button>
       {unknown > 0 ? (

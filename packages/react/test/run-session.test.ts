@@ -1097,6 +1097,85 @@ it('repairs a broken stream from a committed completed response on replay', asyn
   store.getState().dispose();
 });
 
+describe('a run’s output and its success, one commit', () => {
+  const event = (runSeq: number, type: string, payload: unknown) =>
+    ({
+      schemaVersion: '0.1',
+      eventId: `event_${runSeq}`,
+      runId: 'run_output',
+      runSeq,
+      recordedAt: '2026-11-14T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    }) as RunEvent;
+  const started = event(1, 'run.state_changed', {
+    from: 'created',
+    to: 'running',
+    reasonCode: 'started',
+  });
+  const output = event(2, 'output.finalized', {
+    nodeId: 'output',
+    artifactVersionIds: ['answer'],
+    approvalId: null,
+  });
+  const succeeded = event(3, 'run.state_changed', {
+    from: 'running',
+    to: 'succeeded',
+    reasonCode: 'output_finalized',
+  });
+  async function following() {
+    let handlers!: TransportHandlers;
+    const store = createRunSession({
+      getRunDefinition: async () => linearCorral(['writer']),
+      getArtifactText: async () => 'The answer',
+      subscribe: (_id: string, _after: number, value: TransportHandlers) => {
+        handlers = value;
+        return () => {};
+      },
+    } as never);
+    await store.getState().open('run_output');
+    // Every state the page could draw, from here on.
+    const seen: RunSessionState[] = [];
+    store.subscribe((state) => {
+      seen.push(state);
+    });
+    const read = async (...events: RunEvent[]) => {
+      for (const next of events) handlers.onEvent(next);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    return { store, seen, read };
+  }
+  const apart = (seen: RunSessionState[]) =>
+    seen.filter((state) => state.projection?.output && state.projection.status !== 'succeeded');
+
+  it('read apart, the output waits for its success and both are applied at once', async () => {
+    const { store, seen, read } = await following();
+    await read(started);
+    await read(output);
+    expect(store.getState().projection?.output).toBeNull();
+    expect(store.getState().projection?.status).toBe('running');
+    await read(succeeded);
+    expect(store.getState().projection).toMatchObject({
+      status: 'succeeded',
+      output: { artifactVersionIds: ['answer'] },
+    });
+    expect(store.getState().events.map((e) => e.runSeq)).toEqual([1, 2, 3]);
+    expect(apart(seen)).toEqual([]);
+    store.getState().dispose();
+  });
+
+  it('read together, they are applied together, with the events before them', async () => {
+    const { store, seen, read } = await following();
+    await read(started, output, succeeded);
+    expect(store.getState().projection?.status).toBe('succeeded');
+    expect(store.getState().events.map((e) => e.runSeq)).toEqual([1, 2, 3]);
+    expect(apart(seen)).toEqual([]);
+    store.getState().dispose();
+  });
+});
+
 it('a failed effective-definition read never disconnects an accepted run', async () => {
   const gate = new Gate();
   const transport = new InProcessTransport(

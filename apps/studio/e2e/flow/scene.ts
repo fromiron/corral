@@ -62,6 +62,66 @@ export function hold() {
   return { open, opened, reach, reached };
 }
 
+/** Slows the page's CPU by `CORRAL_FLOW_CPU` (4 means 4× slower), when it is set. */
+export async function slowedAsAsked(page: Page) {
+  const rate = Number(process.env.CORRAL_FLOW_CPU ?? '1');
+  if (!(rate > 1)) return;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate });
+}
+
+/**
+ * Holds each run's event stream for `frames` painted frames right after the event that finalizes
+ * its output, before the run's success that was committed with it: the two reach the page as they
+ * can under load, in two reads with frames drawn between them. Set before the page opens.
+ */
+export function outputApart(page: Page, frames: number) {
+  return page.addInitScript((wait) => {
+    const painted = (count: number): Promise<void> =>
+      count <= 0
+        ? Promise.resolve()
+        : new Promise((done) => requestAnimationFrame(() => done(painted(count - 1))));
+    const original = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const response = await original(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!/\/runs\/[^/]+\/events/.test(url) || !response.body) return response;
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const body = response.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          async transform(chunk, controller) {
+            buffer += decoder.decode(chunk, { stream: true });
+            // Whole frames only; a frame cut by the read waits for the next one.
+            const end = buffer.lastIndexOf('\n\n');
+            if (end < 0) return;
+            const ready = buffer.slice(0, end + 2);
+            buffer = buffer.slice(end + 2);
+            const output = ready.indexOf('"type":"output.finalized"');
+            if (output < 0) {
+              controller.enqueue(encoder.encode(ready));
+              return;
+            }
+            const cut = ready.indexOf('\n\n', output) + 2;
+            controller.enqueue(encoder.encode(ready.slice(0, cut)));
+            await painted(wait);
+            if (cut < ready.length) controller.enqueue(encoder.encode(ready.slice(cut)));
+          },
+          flush(controller) {
+            if (buffer) controller.enqueue(encoder.encode(buffer));
+          },
+        }),
+      );
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    };
+  }, frames);
+}
+
 export const probeOptions = {
   itemSelector: '[data-chat-item]',
   rowSelector: '[data-session-row]',
