@@ -1,6 +1,6 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import type { DirectiveView, RunSummary, SessionEntry } from '@corral/core';
-import { CopyTextButton, MessageBody, PresenceBadge, runPresence } from '@corral/react';
+import { CopyTextButton, MessageBody, runPresence } from '@corral/react';
 import {
   Button,
   KitChatMessage,
@@ -344,16 +344,14 @@ export function RunCard({
       data-testid={`run-card-${run.runId}`}
       className={`flex min-w-0 flex-col gap-3 ${nested ? '' : 'mb-4'}`}
     >
-      {/* In a conversation the turn speaks through its process line, notice and answer; the
-          line above the composer is where a finished run's status shows. A run no request
-          names (started elsewhere) is a turn like any other. */}
-      <span className="sr-only">
-        <PresenceBadge presence={runPresence(run, [], [])} />
-      </span>
+      {/* In a conversation the turn speaks through its process line, notice and answer: its head
+          line says the run's state, read aloud there. A run no request names (started
+          elsewhere) is a turn like any other. */}
       <RunMessage
         runId={run.runId}
         sessionId={run.sessionId ?? null}
         live={!ended}
+        listedPresence={runPresence(run, [], [])}
         artifactMetadataVersion={artifactMetadataVersion}
         onOpenArtifact={(result) => onPanel('run', { run: run.runId, view: 'results', result })}
         endActions={endActions}

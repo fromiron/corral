@@ -9,6 +9,7 @@ import {
   FailureNotice,
   GeneratedImage,
   MessageBody,
+  type Presence,
   PresenceBadge,
   type PresenceKind,
   presenceTextClass,
@@ -140,6 +141,7 @@ export function RunMessage({
   artifactMetadataVersion,
   runLine,
   endActions,
+  listedPresence,
 }: {
   runId: string;
   sessionId: string | null;
@@ -150,6 +152,11 @@ export function RunMessage({
   runLine?: ReactNode;
   /** What the person can do next when the turn did not finish: retry, restore. */
   endActions?: ReactNode;
+  /**
+   * The run's state as the run list has it: said to assistive tech in the state's place while
+   * the record is read, as the head line says it once it is.
+   */
+  listedPresence?: Presence;
 }) {
   const t = useTranslations('Desktop');
   const trun = useTranslations('Run');
@@ -293,7 +300,11 @@ export function RunMessage({
         {...held}
         head={
           <RunHead trailing={runLine}>
-            <Skeleton data-presence-label={`run:${runId}`} className="h-3 w-40 max-w-full" />
+            <Skeleton data-presence-label={`run:${runId}`} className="h-3 w-40 max-w-full">
+              {listedPresence && tp.has(listedPresence.labelKey) ? (
+                <span className="sr-only">{tp(listedPresence.labelKey)}</span>
+              ) : null}
+            </Skeleton>
           </RunHead>
         }
         tail={<RunTail />}
