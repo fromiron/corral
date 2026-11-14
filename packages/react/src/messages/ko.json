@@ -5329,7 +5329,7 @@
     "evidenceFailed": "결과를 가져오지 못했습니다. 64 KiB 이하 텍스트 결과를 선택하고 다시 시도하세요.",
     "evidenceHint": "선택한 자료만 전달합니다. 링크 내용을 자동으로 읽지 않습니다.",
     "evidenceLoading": "결과 불러오는 중…",
-    "records": "회의록 · 플랜 · 작업 인계",
+    "records": "회의록 · 결정 · 작업 인계",
     "answerNotKept": "이 답변의 본문은 보관되지 않았습니다.",
     "viewMinutes": "회의록과 플랜 검토",
     "expandRecords": "기록 넓게 보기",
