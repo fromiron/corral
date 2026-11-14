@@ -280,6 +280,74 @@ test('the open activity panel names its control row Reins, explained once', asyn
   expect(line.withIcon).toEqual(line.without);
 });
 
+// features/composer-flow.md "활동 바": at a narrow width a role row stays one line; the clock,
+// View and Join here (or the join target's mark) are never cut, and a long name ends in an
+// ellipsis while the actions stay where they were.
+test('the open activity panel keeps each role row’s actions whole at 320px', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/?delay=15000');
+  await teamFromTemplate(page);
+  await startSession(page, 'Role rows at 320px');
+  await requestBox(page).fill('Write a short note.');
+  await requestBox(page).press('Control+Enter');
+  await expect(runGoing(page)).toBeVisible({ timeout: 20_000 });
+  await page.setViewportSize({ width: 320, height: 720 });
+  await openActivity(page);
+  const rows = page.getByTestId('activity-bar').locator('[data-activity-role]');
+  await expect(rows.first()).toBeVisible();
+  await page.mouse.move(2, 2);
+  /** Per row: whether any child passes its right edge, and each action's box and wholeness. */
+  const measure = () =>
+    rows.evaluateAll((items) =>
+      items.map((row) => {
+        const edge = row.getBoundingClientRect().right + 0.5;
+        // View and Join here are buttons; the join target's mark is the join column's span.
+        const actions = [
+          ...row.querySelectorAll<HTMLElement>('button, :scope > span:last-child > span'),
+        ].map((node) => {
+          const box = node.getBoundingClientRect();
+          return {
+            text: node.textContent?.trim(),
+            left: box.left,
+            right: box.right,
+            inside: box.right <= edge,
+            whole: node.scrollWidth <= node.clientWidth + 0.5,
+          };
+        });
+        return {
+          overflows: [...row.querySelectorAll('*')].some(
+            (node) => node.getBoundingClientRect().right > edge,
+          ),
+          actions,
+        };
+      }),
+    );
+  let before = await measure();
+  await expect
+    .poll(async () => {
+      const previous = before;
+      before = await measure();
+      return JSON.stringify(before) === JSON.stringify(previous);
+    })
+    .toBe(true);
+  for (const row of before) {
+    expect(row.overflows).toBe(false);
+    expect(row.actions.length).toBeGreaterThanOrEqual(2);
+    for (const action of row.actions)
+      expect(action, action.text).toMatchObject({ inside: true, whole: true });
+  }
+  // One long name: it ends in an ellipsis, with its whole as the tooltip, and nothing moves.
+  // The name is the row's first titled part; the activity after it is titled too.
+  const name = rows.first().locator(':scope > span[title]').first();
+  await name.evaluate((node) => {
+    node.textContent = 'Implementation reviewer for the release candidate branch';
+  });
+  expect(await name.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+  const after = await measure();
+  expect(after[0]?.overflows).toBe(false);
+  expect(after[0]?.actions).toEqual(before[0]?.actions);
+});
+
 test('the run record’s Reins area is titled Reins and its role, explained once', async ({
   page,
 }) => {
