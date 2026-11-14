@@ -54,7 +54,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 | Agent execution | `ExecutionInstance` | 특정 역할의 실제 실행 시도. 노드와 1:N |
 | Task | `Task` | 목표·담당·완료 기준을 가진 업무. 실행 시도와 구분 |
 | **Reins** | `ReinsPanel` 외 여러 조작 | 실행 중 사람의 개입과 그 상태 표시 전체. 범위는 [헌법](constitution.md)의 Reins, 상태 단어는 [Reins 기능 명세](features/reins.md)가 정한다. `ReinsPanel`은 그 일부를 담은 컴포넌트 이름일 뿐이다 |
-| **Steer** | `SteeringDirective` | 새로운 지시를 앞으로의 모델 요청에 전달하는 조작 |
+| **Steer** | `SteeringDirective` | 새로운 지시를 앞으로의 모델 요청에 전달하는 조작. 화면의 이름은 [용어집](glossary.md)의 Join / 합류와 Give instruction / 지시하기다 |
 | Run settings change | `RunPatch` | 해당 Run의 미래 실행에만 적용되는 설정 변경 |
 | Approval | `ApprovalRequest` | 특정 작업·버전·변경 제안에 대한 사람의 결정 |
 | Task Board | `TaskProjection` | 공유 작업판. `Hitching Post`로 API를 부르지 않음 |
@@ -62,7 +62,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 | Timeline | `RunEvent` | 실행·메시지·개입의 시간순 기록 |
 | Collaboration | `CollaborationMessage` | 질문·답변·제출의 업무상 교환 |
 
-`Wrangle`는 소개 문구의 동사로만 사용한다. UI에는 `Steer`, `Pause`, `Resume`, `Cancel`, `Change settings`, `Approve`, `Reject`처럼 행동이 분명한 라벨을 쓴다. `Reins`도 화면의 제목이나 라벨로 쓰지 않고, 조작과 그 대상을 쓴다. `Reins mode`처럼 별도의 숨은 조작 모드를 만들지 않는다. `Trough`·`Hitching Post`는 문서/DB/API의 정식 이름으로 채택하지 않는다.
+`Wrangle`는 소개 문구의 동사로만 사용한다. UI의 조작에는 `Give instruction`, `Pause`, `Resume`, `Cancel`, `Change settings`, `Approve`, `Reject`처럼 행동이 분명한 라벨을 쓴다. 화면에 쓰는 이름과 Corral이 지은 고유한 이름(Corral, Harness, Reins, Paddock, Outrider)은 [용어집](glossary.md)이 정한다. `Reins`는 달리는 실행을 다루는 자리의 이름으로 서고, 그 안의 조작은 위의 라벨을 쓴다. `Reins mode`처럼 별도의 숨은 조작 모드를 만들지 않는다. `Trough`·`Hitching Post`는 문서/DB/API의 정식 이름으로 채택하지 않는다.
 
 **패키지와 CLI:** 모노레포 내부에서 `@corral/core`, `@corral/react` 등을 사용한다. npm scope, `corral` 실행 파일명, 도메인·상표의 독점 사용 가능 여부는 확인하지 않았다. 내부 패키지는 `private: true`로 시작하며 공개 발행 직전에 충돌을 확인한다. 이 문서는 이름을 확보했다는 의미가 아니다.
 

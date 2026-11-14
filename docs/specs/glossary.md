@@ -90,7 +90,7 @@ Corral이 지어 부르는 이름은 Corral, Harness, Reins, Paddock, Outrider �
 | Corral / Corral | `Terms.corral` | 라이브러리의 Corral 탭(툴팁), 컴포저 도구 줄의 Corral 선택(툴팁) |
 | Execution / 실행 단위 | `Terms.execution` | 편집기 실행 창의 실행 단위 목록 제목(아이콘) |
 | Harness / Harness | `Terms.harness` | 설정의 Harness 화면 제목(아이콘), 편집기 Inspector의 Harness 이름표(아이콘) |
-| Reins / Reins | `Terms.reins` | 활동 바를 펼친 곳의 조작 줄 이름표(아이콘), 실행 기록의 Reins 영역 제목(아이콘) |
+| Reins / Reins | `Terms.reins` | 활동 바를 펼친 곳의 조작 줄 이름표(아이콘), 실행 기록과 편집기 실행 창의 Reins 영역 제목(아이콘) |
 | Paddock / Paddock | `Terms.paddock` | 변경 창과 변경 화면의 Paddock 제목(아이콘. Paddock이 없으면 그 빈 상태의 제목이 자리다), 프로젝트 환경 탭의 Paddock 목록 제목(아이콘) |
 | Outrider / Outrider | `Terms.outrider` | 컴포저 도구 줄의 Outrider 버튼(툴팁) |
 
