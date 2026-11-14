@@ -75,10 +75,6 @@ export function TermHint({ term, className }: { term: TermId; className?: string
     const popup = document.querySelector(`[data-term-popup="${meaningId}"]`);
     return !!active && (active === trigger.current || !!popup?.contains(active));
   };
-  /** The pointer rests on the icon or on its explanation. */
-  const pointerHere = () =>
-    !!trigger.current?.matches(':hover') ||
-    !!document.querySelector(`[data-term-popup="${meaningId}"]`)?.matches(':hover');
   return (
     <>
       <Popover
@@ -94,13 +90,6 @@ export function TermHint({ term, className }: { term: TermId; className?: string
               details?.cancel();
               return;
             }
-          }
-          // The focus left while the pointer rests on it: the explanation is the pointer's now,
-          // and closes when the pointer leaves.
-          if (!next && reason === 'focus-out' && pointerHere()) {
-            openedBy.current = 'trigger-hover';
-            details?.cancel();
-            return;
           }
           change(next, reason);
         }}
@@ -143,9 +132,7 @@ export function TermHint({ term, className }: { term: TermId; className?: string
             // control: judge where it went once it has landed, so a Tab goes straight on.
             if (openedBy.current !== 'focus') return;
             setTimeout(() => {
-              if (openedBy.current !== 'focus' || focusHere()) return;
-              if (pointerHere()) openedBy.current = 'trigger-hover';
-              else change(false, null);
+              if (openedBy.current === 'focus' && !focusHere()) change(false, null);
             }, 0);
           }}
         >

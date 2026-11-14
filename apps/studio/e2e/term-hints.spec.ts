@@ -11,6 +11,16 @@ const about = (term: keyof typeof en.Terms & string) =>
   en.Terms.about.replace('{term}', (en.Terms[term] as { name: string }).name);
 const popup = (page: Page) => page.locator('[data-term-popup]');
 
+// No step may leave an error on the page (a focus guard caught in a loop throws one each time).
+let pageErrors: string[] = [];
+test.beforeEach(({ page }) => {
+  pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+});
+test.afterEach(() => {
+  expect(pageErrors).toEqual([]);
+});
+
 /** What has the focus: its tag and its name. */
 const focused = (page: Page) =>
   page.evaluate(() => {
@@ -51,23 +61,46 @@ async function keyboardAround(page: Page, icon: Locator, within: Locator) {
       await expect(popup(page), step).toHaveCount(0);
     }
   }
+  return stops;
 }
 
 /**
- * Opened by focus with the pointer resting on the icon, a Tab moves the focus on but the pointer
- * is still there: it stays open until the pointer leaves too.
+ * With the pointer resting on the icon, a Tab from an explanation opened by focus, or by a press,
+ * still goes where it goes with the keyboard alone, stays there, and closes the explanation.
  */
-async function pointerOutlastsFocus(page: Page, icon: Locator) {
-  await icon.focus();
-  await expect(popup(page)).toBeVisible();
-  await icon.hover();
-  await page.waitForTimeout(400);
-  await page.keyboard.press('Tab');
-  await expect(icon).not.toBeFocused();
-  await page.waitForTimeout(400);
+async function tabWithPointerOnIcon(page: Page, icon: Locator, stops: Record<string, string>) {
+  for (const how of ['focus', 'press'] as const) {
+    if (how === 'focus') {
+      await icon.focus();
+      await expect(popup(page)).toBeVisible();
+      await icon.hover();
+    } else {
+      await icon.click();
+      await expect(popup(page)).toBeVisible();
+    }
+    await page.waitForTimeout(400);
+    await page.keyboard.press('Tab');
+    await expect(popup(page), `${how}: Tab with the pointer on the icon`).toHaveCount(0);
+    expect(await focused(page), how).toBe(stops.Tab);
+    await page.waitForTimeout(300);
+    expect(await focused(page), `${how}, a moment later`).toBe(stops.Tab);
+    await page.mouse.move(2, 2);
+  }
+}
+
+/**
+ * Opened by a press, it stays while the focus does, though the pointer leaves; the focus leaving
+ * closes it, on to the same control as ever.
+ */
+async function pressOutlastsPointer(page: Page, icon: Locator, stops: Record<string, string>) {
+  await icon.click();
   await expect(popup(page)).toBeVisible();
   await page.mouse.move(2, 2);
-  await expect(popup(page)).toHaveCount(0);
+  await page.waitForTimeout(600);
+  await expect(popup(page), 'pressed open, the pointer gone').toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(popup(page), 'pressed open, the focus gone').toHaveCount(0);
+  expect(await focused(page)).toBe(stops.Tab);
 }
 
 /** A line's box and where the content after it starts, with the icon and with it taken out. */
@@ -147,14 +180,18 @@ test.describe('on a touch screen', () => {
 test('around an explanation opened by focus, the keyboard goes straight on', async ({ page }) => {
   await page.goto('/');
   const dialog = await openSettings(page, en.Harness.heading);
-  await keyboardAround(page, dialog.locator('[data-term-hint="workStyle"]'), dialog);
-  await pointerOutlastsFocus(page, dialog.locator('[data-term-hint="workStyle"]'));
+  const settingsIcon = dialog.locator('[data-term-hint="workStyle"]');
+  const settingsStops = await keyboardAround(page, settingsIcon, dialog);
+  await tabWithPointerOnIcon(page, settingsIcon, settingsStops);
+  await pressOutlastsPointer(page, settingsIcon, settingsStops);
   await page.keyboard.press('Escape');
 
   await importTeam(page, linearCorral(['writer']));
   const panel = await startTestRun(page);
-  await keyboardAround(page, page.locator('[data-term-hint="execution"]'), panel);
-  await pointerOutlastsFocus(page, page.locator('[data-term-hint="execution"]'));
+  const treeIcon = page.locator('[data-term-hint="execution"]');
+  const treeStops = await keyboardAround(page, treeIcon, panel);
+  await tabWithPointerOnIcon(page, treeIcon, treeStops);
+  await pressOutlastsPointer(page, treeIcon, treeStops);
 });
 
 test('no screen explains one term in two places', async ({ page }) => {
