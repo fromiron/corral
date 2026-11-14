@@ -291,7 +291,11 @@ it('names who asks only where it tells something, and keeps the execution id one
   // A lone run's one role on its first attempt: its row already says whose question it is.
   expect(form()).not.toHaveTextContent('writer');
   expect(form()).not.toHaveTextContent('Attempt');
-  expect(form()).not.toHaveTextContent('exec_1');
+  // The execution id is a diagnostic: in the card's folded details, never in its head.
+  expect(form().querySelector('[data-request-head]')).not.toHaveTextContent('exec_1');
+  const details = form().querySelector('details');
+  expect(details?.open).toBe(false);
+  expect(details).toHaveTextContent('exec_1');
   // With several roles the agent is named, and a later attempt says which.
   const projection = session.getState().projection;
   const execution = projection?.executions.exec_1;
@@ -314,9 +318,9 @@ it('names who asks only where it tells something, and keeps the execution id one
   expect(step()).toHaveTextContent('Writer · Attempt 2 · Question 1/3');
   const writeText = vi.fn(async (_text: string) => {});
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-  await act(async () =>
-    fireEvent.click(within(form()).getByRole('button', { name: 'Copy execution ID' })),
-  );
+  const copy = within(form()).getByRole('button', { name: 'Copy execution ID', hidden: true });
+  expect(copy.closest('details')).not.toBeNull();
+  await act(async () => fireEvent.click(copy));
   expect(writeText).toHaveBeenCalledWith('exec_1');
   expect(form()).toHaveTextContent('Execution ID copied');
 });
