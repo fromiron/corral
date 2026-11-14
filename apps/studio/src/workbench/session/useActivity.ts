@@ -149,8 +149,14 @@ export function closedLine(input: ActivityInput): ClosedLine {
     const named = away.find((role) => role.id === input.target) ?? away[0];
     if (named) return { kind: 'role', role: named, others: away.length - 1 };
     const target = input.roles.find((role) => role.id === (input.target ?? run.lead));
-    if (target && (target.activity || !roleSeen(input, target)))
-      return { kind: 'target', role: target, stateShown: !roleSeen(input, target) };
+    const targetSeen = Boolean(target && roleSeen(input, target));
+    // A role's own row on screen says its state's detail beside the state (presence.md): the
+    // line says only work the row does not. The run row says the run's state, not the lead's
+    // detail, so it does not count here.
+    const rowSays = Boolean(target?.presence.detail && input.visible.has(`execution:${target.id}`));
+    const said = target?.activity && !rowSays;
+    if (target && (said || !targetSeen))
+      return { kind: 'target', role: target, stateShown: !targetSeen };
     // Only a review is a last review: a watching advisor waits for work that will not come, and a
     // failed one holds nothing up (its row says it failed).
     const reviewing = input.flowEnded
