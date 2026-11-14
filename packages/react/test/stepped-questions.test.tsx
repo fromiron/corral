@@ -286,16 +286,18 @@ it('a composing Enter neither advances nor sends; a plain Enter in a text answer
   expect(sendCommand).not.toHaveBeenCalled();
 });
 
-it('names who asks only where it tells something, and keeps the execution id one copy away', async () => {
+it('names who asks only where it tells something, and carries no execution id', () => {
   const { session } = setup();
   // A lone run's one role on its first attempt: its row already says whose question it is.
   expect(form()).not.toHaveTextContent('writer');
   expect(form()).not.toHaveTextContent('Attempt');
-  // The execution id is a diagnostic: in the card's folded details, never in its head.
-  expect(form().querySelector('[data-request-head]')).not.toHaveTextContent('exec_1');
-  const details = form().querySelector('details');
-  expect(details?.open).toBe(false);
-  expect(details).toHaveTextContent('exec_1');
+  // The execution id is a debugging value the run record carries: the card shows none, folded or
+  // not, and offers no copy of it.
+  expect(form().textContent).not.toMatch(/exec_/);
+  expect(form().querySelector('details')).toBeNull();
+  expect(
+    within(form()).queryByRole('button', { name: 'Copy execution ID', hidden: true }),
+  ).toBeNull();
   // With several roles the agent is named, and a later attempt says which.
   const projection = session.getState().projection;
   const execution = projection?.executions.exec_1;
@@ -316,13 +318,7 @@ it('names who asks only where it tells something, and keeps the execution id one
     }),
   );
   expect(step()).toHaveTextContent('Writer · Attempt 2 · Question 1/3');
-  const writeText = vi.fn(async (_text: string) => {});
-  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-  const copy = within(form()).getByRole('button', { name: 'Copy execution ID', hidden: true });
-  expect(copy.closest('details')).not.toBeNull();
-  await act(async () => fireEvent.click(copy));
-  expect(writeText).toHaveBeenCalledWith('exec_1');
-  expect(form()).toHaveTextContent('Execution ID copied');
+  expect(form().textContent).not.toMatch(/exec_/);
 });
 
 it('keeps a single question on one screen with no steps', () => {

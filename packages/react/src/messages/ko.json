@@ -2769,8 +2769,6 @@
     "loadingPrompt": "확장 요청 불러오는 중…",
     "attempt": "시도 {attempt}",
     "round": "{round}회차",
-    "copyExecutionId": "실행 ID 복사",
-    "executionIdCopied": "실행 ID를 복사했습니다",
     "expires": "{time}에 만료",
     "chooseOption": "선택하세요",
     "confirmYes": "확인",

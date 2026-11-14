@@ -66,12 +66,18 @@ it('shows a scoped extension prompt, sends its exact attempt and removes it on e
     artifactTexts: { body_1: JSON.stringify(request) },
     sendCommand,
   });
-  render(
+  const { container } = render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
       <InteractionPanel session={session} />
     </IntlProvider>,
   );
   expect(screen.getByText('Choose a style')).toBeVisible();
+  // The card says what is asked and who asks; the execution id stays in the run record.
+  const card = container.querySelector('[data-extension="ui_1"]');
+  expect(card).not.toBeNull();
+  expect(card?.textContent).not.toMatch(/exec_/);
+  expect(card?.querySelector('details')).toBeNull();
+  expect(card?.querySelector('[aria-label="Copy execution ID"]')).toBeNull();
   await userEvent.click(screen.getByRole('combobox', { name: 'Choose a style' }));
   await userEvent.click(await screen.findByRole('option', { name: 'Two' }));
   fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));

@@ -11,7 +11,6 @@ import { pendingInteractions, type RunProjection } from '@corral/core';
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Check, Copy } from '../design-kit/icons.ts';
 import {
   AgentCard,
   AgentStatusIcon,
@@ -21,7 +20,6 @@ import {
   fontWeights,
   Input,
   Select,
-  Tooltip,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow } from './FirstRow.tsx';
@@ -290,51 +288,6 @@ function useAskedBy(session: RunSessionStore, executionId: string, attemptNo: nu
       .join(' · ') || null;
 }
 
-/**
- * The exact execution id for a report, one copy away: a diagnostic, so it stays in the card's
- * folded details (chat-widgets-contract.md), where the id it copies is written beside it.
- */
-function ExecutionDetails({ executionId }: { executionId: string }) {
-  const tf = useTranslations('Failure');
-  return (
-    <details className="text-muted-foreground">
-      <summary className="w-fit cursor-pointer">{tf('diagnostics')}</summary>
-      <span className="mt-1 flex min-w-0 items-center gap-1">
-        <code className="min-w-0 truncate">{executionId}</code>
-        <CopyExecutionId executionId={executionId} />
-      </span>
-    </details>
-  );
-}
-
-function CopyExecutionId({ executionId }: { executionId: string }) {
-  const t = useTranslations('Harness');
-  const [copied, setCopied] = useState(false);
-  return (
-    <>
-      <Tooltip content={copied ? t('executionIdCopied') : t('copyExecutionId')}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t('copyExecutionId')}
-          onClick={() =>
-            void navigator.clipboard?.writeText(executionId).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            )
-          }
-        >
-          {copied ? <Check /> : <Copy />}
-        </Button>
-      </Tooltip>
-      <span role="status" className="sr-only">
-        {copied ? t('executionIdCopied') : ''}
-      </span>
-    </>
-  );
-}
-
 /** A refused or unconfirmed answer, in its card, as a refused decision is. */
 function CardAlert({ message }: { message: string }) {
   return message ? (
@@ -476,7 +429,6 @@ function ExtensionPrompt({
             }),
           })}
         </p>
-        <ExecutionDetails executionId={event.payload.executionId} />
       </div>
       {readOnly ? null : (
         <RequestCardFoot>
@@ -741,7 +693,6 @@ function UserQuestionPrompt({
                 ) : null}
               </div>
             ))}
-            <ExecutionDetails executionId={event.payload.executionId} />
           </div>
         ) : null}
       </AgentCard>
@@ -801,7 +752,6 @@ function UserQuestionPrompt({
           ) : (
             request.questions.map((q) => questionFieldset(q))
           )}
-          <ExecutionDetails executionId={event.payload.executionId} />
         </div>
         {request ? (
           <RequestCardFoot>

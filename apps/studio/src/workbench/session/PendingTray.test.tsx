@@ -1227,10 +1227,10 @@ it('draws a question in the same card as an approval: head, body, answers at the
   // The first attempt goes unsaid; a lone conversation run names nobody.
   expect(visibleText(question)).not.toContain('Attempt');
   expect(question.querySelector('[data-request-owner]')).toBeNull();
-  // The execution id is a diagnostic: its copy is in the card's folded details, not the head.
-  const copy = `[aria-label="${messages.Harness.copyExecutionId}"]`;
-  expect(head(question)?.querySelector(copy)).toBeNull();
-  expect(question.querySelector(`details ${copy}`)).not.toBeNull();
+  // The card says what is asked and who asks; the execution id stays in the run record.
+  expect(question.textContent).not.toMatch(/exec_/);
+  expect(question.querySelector('details')).toBeNull();
+  expect(question.querySelector('[aria-label="Copy execution ID"]')).toBeNull();
   // The same foot row, with the answer as the main action at its end, never full width.
   const foot = (card: Element) => card.querySelector<HTMLElement>('[data-request-foot]');
   expect(foot(question)?.className).toBe(foot(approval)?.className);

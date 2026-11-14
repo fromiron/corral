@@ -2769,8 +2769,6 @@
     "loadingPrompt": "Loading extension prompt…",
     "attempt": "Attempt {attempt}",
     "round": "Round {round}",
-    "copyExecutionId": "Copy execution ID",
-    "executionIdCopied": "Execution ID copied",
     "expires": "Expires at {time}",
     "chooseOption": "Choose an option",
     "confirmYes": "Confirm",

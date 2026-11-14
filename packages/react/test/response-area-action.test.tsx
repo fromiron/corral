@@ -123,15 +123,11 @@ it('puts the close on the question card head row, with its question, not on a la
   expect(form.contains(row)).toBe(true);
   expect(row?.hasAttribute('data-request-head')).toBe(true);
   expect(row?.textContent).toContain(asked.questions[0]?.prompt);
-  // The execution id's copy is in the card's folded details, not on the head row.
+  // The card carries no execution id and no copy of it, on its head row or anywhere else.
   expect(
-    within(row as HTMLElement).queryByRole('button', { name: 'Copy execution ID', hidden: true }),
+    within(form).queryByRole('button', { name: 'Copy execution ID', hidden: true }),
   ).toBeNull();
-  expect(
-    within(form)
-      .getByRole('button', { name: 'Copy execution ID', hidden: true })
-      .closest('details'),
-  ).not.toBeNull();
+  expect(form.textContent).not.toMatch(/exec_/);
   const card = screen.getByRole('article', { name: messages.Approvals.kind.user_action });
   expect(within(card).queryByRole('button', { name: 'Close details' })).toBeNull();
 });
