@@ -63,7 +63,7 @@ flowchart LR
 
 1. 제안 도구명은 `run_command`. 입력은 `{ command, shellId?, cwd?: relativePath, timeoutMs? }`. 서버가 허용된 shell registry에서 실행 파일·인자를 만들고 고정한다. 사용자 선택값을 임의 실행 파일 경로로 사용하지 않는다.
 2. 임의 프로그램 실행은 필요 기능이다. `run_check`의 등록 ID 목록을 유일한 진입점으로 유지하거나 명령 몇 개만 fixture로 지원하지 않는다. 반대로 `run_check`를 임의 문자열 셸로 바꾸지도 않는다.
-3. 명령은 현재 세션의 관리 사본에서 실행한다. 전후 tree·출력·exit code·signal·취소·cleanup 상태를 기록한다. 셸이 만든 변경은 관측한 diff로 표시하고, broker의 파일별 쓰기 근거를 수행한 것처럼 꾸미지 않는다.
+3. 명령은 현재 세션의 Paddock에서 실행한다. 전후 tree·출력·exit code·signal·취소·cleanup 상태를 기록한다. 셸이 만든 변경은 관측한 diff로 표시하고, broker의 파일별 쓰기 근거를 수행한 것처럼 꾸미지 않는다.
 4. Windows는 PowerShell을 기본 제안으로 하고 설치된 pwsh/cmd/Git Bash를 선택 지원한다. Linux/macOS는 설치된 POSIX 셸을 지원한다. `shell:false`로 선택한 셸 executable과 인자를 명시적으로 spawn한다. 인코딩, 공백 경로, stderr, 네이티브 exit code를 실제 OS에서 검사한다.
 5. Windows는 Job Object 등 소유 프로세스 트리의 종료를 증명할 수 있는 adapter를 검증한다. POSIX는 process group 종료 확인을 재사용한다. `taskkill` 호출 성공이나 부모 종료만으로 전체 종료를 확정하지 않는다.
 6. 환경은 선택한 실행 환경과 필요한 값만 전달한다. provider credentials·Corral DB·bootstrap token을 환경/명령 문자열에 섞지 않는다. secret 환경 참조가 필요하면 서버 설정의 별도 승인된 참조만 받는다.
@@ -80,7 +80,7 @@ flowchart LR
 | 프리셋 | 이미 허용된 읽기/관찰 | 파일 편집 | 셸·외부 효과 |
 |---|---|---|---|
 | Ask | 허용 | 호출별 승인 | 호출별 승인 |
-| Accept edits | 허용 | 허용된 관리 사본의 파일 변경만 자동 허용 | 승인 |
+| Accept edits | 허용 | 허용된 Paddock의 파일 변경만 자동 허용 | 승인 |
 | Auto | 허용 | 기존 capability/정책 안에서 허용 | 기존 capability/정책 안에서 허용 |
 
 유효 권한은 역할 capability ∩ harness/strict ∩ 프로젝트 신뢰 ∩ 기존 permissionPolicies ∩ 모드 프리셋이다. 어느 층의 deny도 Auto가 뒤집지 않는다. review-only에는 편집·명령 쓰기·이미지 생성 권한을 붙이지 않는다. “테스트 명령”이라는 이름만으로 셸을 읽기 전용 분류하지 않는다.

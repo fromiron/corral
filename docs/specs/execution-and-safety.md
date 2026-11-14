@@ -16,7 +16,7 @@ ABS-06은 고정 snapshot reader 병행과 Paddock별 단일 writer를 승인한
 
 초기 스펙과 통합 계획의 전역 활성 Run 하나라는 설명은 이 후속 범위의 현재 계약이 아니다.
 
-작업 폴더 연결·신뢰·관리 사본·검토·원본 적용은 별개의 경계다. 파일 diff를 보거나 검토 체크를 했다는 이유만으로 원본 적용을 승인하지 않는다. 대상 tree가 바뀌면 검증·검토의 유효성을 다시 확인한다.
+작업 폴더 연결·신뢰·Paddock·검토·원본 적용은 별개의 경계다. 파일 diff를 보거나 검토 체크를 했다는 이유만으로 원본 적용을 승인하지 않는다. 대상 tree가 바뀌면 검증·검토의 유효성을 다시 확인한다.
 
 연결하고 신뢰한 폴더가 있고 그 세션에 Paddock이 없으면, 그 세션의 에이전트는 그 폴더에서 직접 일한다. 신뢰는 명시적 동의이고, 폴더는 Git 저장소가 아니어도 된다. Paddock이 있는 세션은 그 사본에서만 파일을 읽고 바꾸며 원본 폴더를 직접 바꾸지 않는다.
 
@@ -34,7 +34,7 @@ ABS-06은 고정 snapshot reader 병행과 Paddock별 단일 writer를 승인한
 
 ## 명령·편집·미리보기
 
-일반 명령·service는 실제 관리 사본, Coordinator 승인·effect, 소유 프로세스 lease를 사용한다. `run_check`의 등록 argv·고정 검증 사본과 혼동하지 않는다. Hashline은 버전 있는 명시 선택 방식이며 기존 Pi edit의 자동 대체가 아니다.
+일반 명령·service는 실제 Paddock, Coordinator 승인·effect, 소유 프로세스 lease를 사용한다. `run_check`의 등록 argv·고정 검증 사본과 혼동하지 않는다. Hashline은 버전 있는 명시 선택 방식이며 기존 Pi edit의 자동 대체가 아니다.
 
 산출물 HTML의 script 비활성 격리 preview와 관리 service의 browser preview는 다르다. 후자는 service·process·port/연결 소유권과 취소·폐기 계약을 따른다. 기능 이름이 같다는 이유로 전자의 CSP를 완화하지 않는다.
 
