@@ -66,4 +66,4 @@
 ## 남은 불일치
 
 - EN 화면은 작업 단위를 "conversation"으로만 부른다. "session"은 다른 뜻(로그인 세션, 언어 지원 세션, 터미널 프로세스의 세션)에만 남는다. KO 화면은 같은 개념을 "세션"과 "대화"로 섞어 쓴다. 한쪽으로 맞추는 일괄 변경은 별도 작업이다.
-- 실행 상태 어휘가 `RunStatus`·`Status`·`RunPage`·`RunReasons` 네임스페이스에 나뉘어 있다.
+- 실행 상태의 낱말은 [표시 상태](features/presence.md)의 것 하나로 쓰지만, 문구 키는 `Presence`·`RunStatus`·`Status`·`RunPage`·`RunReasons`·`Events` 네임스페이스에 나뉘어 있다. 낱말을 바꿀 때는 이 여러 곳을 함께 고친다.
