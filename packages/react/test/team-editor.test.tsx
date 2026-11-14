@@ -344,21 +344,21 @@ describe('team editor: advisors', () => {
     // The line carries no name: it is the only link of its kind.
     expect(screen.queryAllByText(messages.TeamEditor.links.advise)).toEqual([]);
     expect(document.querySelector('[data-edge="link_1"] title')?.textContent).toBe(
-      'Advisor watches Agent 2',
+      'Outrider watches Agent 2',
     );
   });
 
   it('shows what is wrong with an advisor on its card, in its sheet and in the outline', async () => {
     const { draft, nodeId } = ok(placeStep(chain(2), 'observer', { kind: 'empty' }));
     renderEditor(draft);
-    const text = messages.Validation.codes.ADVISOR_UNWATCHED.replace('{node}', 'Advisor');
+    const text = messages.Validation.codes.ADVISOR_UNWATCHED.replace('{node}', 'Outrider');
     expect(canvasNode(nodeId).querySelector('[data-problem]')?.getAttribute('title')).toContain(
       text,
     );
     const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });
     expect(
       within(outline)
-        .getByRole('button', { name: /^Advisor/ })
+        .getByRole('button', { name: /^Outrider/ })
         .querySelector('.text-destructive, .text-warning'),
     ).toBeTruthy();
     // Listed, but after the flow: it is not a step of it.
@@ -366,8 +366,8 @@ describe('team editor: advisors', () => {
       .getAllByRole('button', { pressed: false })
       .map((b) => b.textContent);
     expect(
-      rows.filter((r) => r === 'Agent 1' || r === 'Agent 2' || r?.startsWith('Advisor')),
-    ).toEqual(['Agent 1', 'Agent 2', expect.stringMatching(/^Advisor/)]);
+      rows.filter((r) => r === 'Agent 1' || r === 'Agent 2' || r?.startsWith('Outrider')),
+    ).toEqual(['Agent 1', 'Agent 2', expect.stringMatching(/^Outrider/)]);
     await act(async () => fireEvent.click(canvasNode(nodeId)));
     const sheet = screen.getByRole('complementary', { name: messages.TeamEditor.inspector });
     expect(
@@ -521,7 +521,7 @@ describe('team editor: advisors', () => {
     const editor = renderEditor(draft);
     await act(async () => fireEvent.click(canvasNode('agent_3')));
     await act(async () => fireEvent.keyDown(canvasNode('agent_3'), { key: 'k', ctrlKey: true }));
-    const option = screen.getByRole('option', { name: /Add Advisor/ });
+    const option = screen.getByRole('option', { name: /Add Outrider/ });
     expect(option.textContent).toContain('watching Agent 3');
     await act(async () => fireEvent.click(option));
     const advisor = advisorIn(editor.getState().draft);

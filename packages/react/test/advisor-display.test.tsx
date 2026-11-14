@@ -306,14 +306,14 @@ describe('the execution tree', () => {
   it('says once, beside its name, that the advisor is one, and reads its rest as watching', () => {
     render(wrap(<ExecutionTree session={advisorRunSession()} onSteer={() => {}} />));
     const advisor = screen.getByTestId('execution-advisor_1');
-    expect(within(advisor).getAllByText('Advisor')).toHaveLength(1);
+    expect(within(advisor).getAllByText('Outrider')).toHaveLength(1);
     expect(within(advisor).getByText('Watching')).toBeTruthy();
     expect(advisor.textContent).not.toContain('Waiting for a reply');
     expect(within(advisor).queryByTestId('waiting-on')).toBeNull();
     // The name keeps its own direction: a model-written override cannot turn the card around.
     expect(within(advisor).getByText('Reviewer').closest('[dir]')).not.toBeNull();
     const worker = screen.getByTestId('execution-impl_1');
-    expect(within(worker).queryByText('Advisor')).toBeNull();
+    expect(within(worker).queryByText('Outrider')).toBeNull();
   });
 
   it('keeps a working execution’s message wait as waiting for an answer', () => {
@@ -355,15 +355,15 @@ describe('the advisor a conversation adds', () => {
 
   it('is called “advisor” once in the tree, in the reader’s language, with no badge over it', () => {
     for (const [locale, word] of [
-      ['en', 'Advisor'],
-      ['ko', '감독'],
+      ['en', 'Outrider'],
+      ['ko', 'Outrider'],
     ] as const) {
       const { unmount } = render(
         wrap(<ExecutionTree session={session()} onSteer={() => {}} />, locale),
       );
       const advisor = screen.getByTestId('execution-advisor_1');
       expect(within(advisor).getAllByText(word)).toHaveLength(1);
-      expect(advisor.textContent).not.toContain(word === '감독' ? 'Advisor' : '감독');
+      expect(advisor.textContent).not.toContain('Advisor');
       unmount();
     }
   });
@@ -372,7 +372,7 @@ describe('the advisor a conversation adds', () => {
     const restore = sized();
     try {
       const { unmount } = render(wrap(<Timeline session={session()} />, 'ko'));
-      const line = '감독의 조언(우려) → Implementer · 다음 요청으로 전달';
+      const line = 'Outrider의 조언(우려) → Implementer · 다음 요청으로 전달';
       // The names sit in their own isolates, so the line is matched whole.
       expect(document.body.textContent).toContain(line);
       unmount();
@@ -390,7 +390,7 @@ describe('the advisor a conversation adds', () => {
         'ko',
       ),
     );
-    expect(document.querySelector('[data-directive-advice]')?.textContent).toBe('감독 · 우려');
+    expect(document.querySelector('[data-directive-advice]')?.textContent).toBe('Outrider · 우려');
   });
 
   it('is called “advisor” on the relation graph', () => {
@@ -406,7 +406,7 @@ describe('the advisor a conversation adds', () => {
         'ko',
       ),
     );
-    expect(container.textContent).toContain('감독');
+    expect(container.textContent).toContain('Outrider');
     expect(container.textContent).not.toContain('Advisor');
   });
 });

@@ -251,7 +251,7 @@ export function addNode(
 export function addAdvisor(draft: EditorDraft): { draft: EditorDraft; nodeId: string } {
   const { id, counters } = nextId(draft, 'advisor');
   const index = counters.advisor as number;
-  const label = index === 1 ? 'Advisor' : `Advisor ${index}`;
+  const label = index === 1 ? 'Outrider' : `Outrider ${index}`;
   const role: AgentRole = {
     ...newRole(`${id}_role`, label),
     prompt: ADVISOR_PROMPT,

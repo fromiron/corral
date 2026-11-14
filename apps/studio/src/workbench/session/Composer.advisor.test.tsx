@@ -534,7 +534,7 @@ describe('when the setting is not known', () => {
   const unknownShown = (f: Awaited<ReturnType<typeof mount>>) => {
     expect(f.control()?.dataset.state).toBe('unknown');
     expect(described(f.control())).toBe(
-      `${messages.Composer.advisor.unknown} ${messages.Terms.advisor.meaning}`,
+      `${messages.Composer.advisor.unknown} ${messages.Terms.outrider.meaning}`,
     );
     // Neither on nor off: no switch to read a value from, and no sentence about the value.
     expect(f.toggle()).toBeNull();
@@ -665,19 +665,19 @@ describe('the terms on the tool line', () => {
     if (!control) throw new Error('missing advisor control');
     expect(control.getAttribute('aria-label')).toBe(messages.Composer.advisor.name);
     const state = messages.Composer.advisor.on.replace('{model}', 'Model B');
-    expect(described(control)).toBe(`${state} ${messages.Terms.advisor.meaning}`);
+    expect(described(control)).toBe(`${state} ${messages.Terms.outrider.meaning}`);
     await hover(control);
     const tip = document.querySelector('[role="tooltip"]');
     expect(tip?.querySelector('[data-term-name]')?.textContent).toBe(
-      `${messages.Terms.advisor.name} · ${state}`,
+      `${messages.Terms.outrider.name} · ${state}`,
     );
     expect(tip?.querySelector('[data-term-meaning]')?.textContent).toBe(
-      messages.Terms.advisor.meaning,
+      messages.Terms.outrider.meaning,
     );
     // Off, the state still says so.
     await f.render({ ...baseSession, advisor: null, revision: 5 });
     expect(described(f.control())).toBe(
-      `${messages.Composer.advisor.off} ${messages.Terms.advisor.meaning}`,
+      `${messages.Composer.advisor.off} ${messages.Terms.outrider.meaning}`,
     );
   });
 });

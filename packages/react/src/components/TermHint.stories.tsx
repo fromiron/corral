@@ -119,21 +119,21 @@ export const OpenKorean: Story = {
 export const InTooltip: Story = {
   render: () => (
     <div className="flex items-center gap-1 pt-16">
-      <TermTooltip term="advisor">
-        <Button variant="ghost" size="compact" aria-label={messages.Terms.advisor.name}>
-          {messages.Terms.advisor.name}
+      <TermTooltip term="outrider">
+        <Button variant="ghost" size="compact" aria-label={messages.Terms.outrider.name}>
+          {messages.Terms.outrider.name}
         </Button>
       </TermTooltip>
     </div>
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const control = canvas.getByRole('button', { name: messages.Terms.advisor.name });
+    const control = canvas.getByRole('button', { name: messages.Terms.outrider.name });
     await expect(canvas.getAllByRole('button')).toHaveLength(1);
     await userEvent.hover(control);
     await waitFor(() =>
       expect(document.querySelector('[role="tooltip"] [data-term-meaning]')).toHaveTextContent(
-        messages.Terms.advisor.meaning,
+        messages.Terms.outrider.meaning,
       ),
     );
     // Both lines sit inside the tooltip's box.
@@ -167,9 +167,9 @@ export const SameSurface: Story = {
         {messages.Terms.corral.name}
         <TermHint term="corral" />
       </h2>
-      <TermTooltip term="advisor">
-        <Button variant="ghost" size="compact" aria-label={messages.Terms.advisor.name}>
-          {messages.Terms.advisor.name}
+      <TermTooltip term="outrider">
+        <Button variant="ghost" size="compact" aria-label={messages.Terms.outrider.name}>
+          {messages.Terms.outrider.name}
         </Button>
       </TermTooltip>
     </div>
@@ -183,7 +183,7 @@ export const SameSurface: Story = {
     const icon = surface(popup());
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(popup()).toBeNull());
-    await userEvent.hover(canvas.getByRole('button', { name: messages.Terms.advisor.name }));
+    await userEvent.hover(canvas.getByRole('button', { name: messages.Terms.outrider.name }));
     const meaning = () => document.querySelector('[role="tooltip"] [data-term-meaning]');
     await waitFor(() => expect(meaning()).toBeVisible());
     await new Promise((resolve) => setTimeout(resolve, 500));

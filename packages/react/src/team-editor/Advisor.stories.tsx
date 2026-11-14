@@ -172,7 +172,7 @@ export const LinkSelected: Story = {
     hit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const sheet = await openSheet(canvasElement);
     await expect(within(sheet).getByText(messages.TeamEditor.connection)).toBeVisible();
-    await expect(within(sheet).getByText('Advisor')).toBeVisible();
+    await expect(within(sheet).getByText('Outrider')).toBeVisible();
   },
 };
 
@@ -182,9 +182,9 @@ export const WatchingNobody: Story = {
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(advisorCard(canvasElement)).toBeTruthy());
     const mark = advisorCard(canvasElement).querySelector('[data-problem]');
-    await expect(mark?.getAttribute('title')).toContain('Advisor watches no one');
+    await expect(mark?.getAttribute('title')).toContain('Outrider watches no one');
     const sheet = await openSheet(canvasElement);
-    await expect(within(sheet).getByText(/Advisor watches no one/)).toBeInTheDocument();
+    await expect(within(sheet).getByText(/Outrider watches no one/)).toBeInTheDocument();
   },
 };
 

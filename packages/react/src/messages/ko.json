@@ -194,7 +194,7 @@
     "invocation": "실행 방식",
     "scheduled": "흐름 안에서",
     "callable": "호출될 때만",
-    "observer": "감독으로",
+    "observer": "Outrider로",
     "watches": "지켜볼 에이전트",
     "addWatched": "지켜볼 에이전트 추가",
     "removeWatched": "{target} 지켜보지 않기",
@@ -287,14 +287,14 @@
   },
   "Validation": {
     "codes": {
-      "ADVISOR_OUTSIDE_FLOW": "감독은 흐름 밖에 둡니다. 연결, Loop·팀 안, 위임·질문 연결을 가질 수 없습니다.",
+      "ADVISOR_OUTSIDE_FLOW": "Outrider는 흐름 밖에 둡니다. 연결, Loop·팀 안, 위임·질문 연결을 가질 수 없습니다.",
       "ADVISOR_UNWATCHED": "{node}: 지켜보는 에이전트가 없습니다. 조언할 에이전트에 연결하세요.",
-      "ADVISOR_ADVISE_SOURCE": "에이전트를 지켜보는 것은 감독뿐입니다. 이 조언 연결은 감독에서 시작해야 합니다.",
-      "ADVISOR_ADVISE_TARGET": "감독은 흐름 안이나 호출되는 에이전트를 지켜봅니다. 다른 감독, 결정, 상자, 합류, 출력은 지켜볼 수 없습니다.",
+      "ADVISOR_ADVISE_SOURCE": "에이전트를 지켜보는 것은 Outrider뿐입니다. 이 조언 연결은 Outrider에서 시작해야 합니다.",
+      "ADVISOR_ADVISE_TARGET": "Outrider는 흐름 안이나 호출되는 에이전트를 지켜봅니다. 다른 Outrider, 결정, 상자, 합류, 출력은 지켜볼 수 없습니다.",
       "ADVISOR_ADVISE_QUESTIONS": "조언 연결에는 부모 질문을 둘 수 없습니다.",
-      "ADVISOR_TOOLS": "감독은 읽기만 합니다. 검색, 문서·파일 목록·파일 읽기와 버전 읽기, 조언만 쓸 수 있습니다.",
-      "ADVISE_TOOL_ADVISOR_ONLY": "조언은 감독만 할 수 있습니다. 이 에이전트의 역할에서 조언을 빼세요.",
-      "ADVISOR_NOT_A_STEP": "감독은 단계가 아닙니다. 흐름이 감독에서 시작할 수 없고, 어떤 입력도 감독을 읽을 수 없습니다.",
+      "ADVISOR_TOOLS": "Outrider는 읽기만 합니다. 검색, 문서·파일 목록·파일 읽기와 버전 읽기, 조언만 쓸 수 있습니다.",
+      "ADVISE_TOOL_ADVISOR_ONLY": "조언은 Outrider만 할 수 있습니다. 이 에이전트의 역할에서 조언을 빼세요.",
+      "ADVISOR_NOT_A_STEP": "Outrider는 단계가 아닙니다. 흐름이 Outrider에서 시작할 수 없고, 어떤 입력도 Outrider를 읽을 수 없습니다.",
       "BINDING_SOURCE": "입력이 그 값을 줄 수 없는 단계에서 읽습니다: {message}",
       "BOX_BOUNDARY": "이 연결은 포트가 아닌 곳으로 상자 경계를 넘습니다.",
       "BOX_PARENT": "이 노드는 그 상자 안에 둘 수 없습니다.",
@@ -2457,7 +2457,7 @@
   },
   "Composer": {
     "advisor": {
-      "name": "감독",
+      "name": "Outrider",
       "on": "켜짐 · {model}",
       "off": "꺼짐",
       "failed": "저장하지 못했습니다. {message}",
@@ -2466,7 +2466,7 @@
       "unknown": "확인되지 않음",
       "unconfirmed": "저장을 확인하지 못했습니다.",
       "recheck": "다시 확인",
-      "unconfirmedSend": "감독이 켜져 있는지 확인하지 못해 보내지 않았습니다.",
+      "unconfirmedSend": "Outrider가 켜져 있는지 확인하지 못해 보내지 않았습니다.",
       "unavailable": "사용할 수 없는 모델",
       "onOnly": "켜짐"
     },
@@ -2681,7 +2681,7 @@
   "Refusal": {
     "signin": "이 요청이 쓰는 모델이 연결되어 있지 않습니다. 설정 › 모델에서 로그인하거나 시뮬레이션 에이전트로 보내세요.",
     "profile": "이 요청이 쓰는 모델 프로필이 여기에 설정되어 있지 않습니다. 모델 설정이나 Corral 역할을 확인하세요.",
-    "advisor": "감독의 모델을 준비하지 못했습니다.",
+    "advisor": "Outrider의 모델을 준비하지 못했습니다.",
     "busy": "지금 다른 실행이 진행 중입니다. 그 실행이 끝난 뒤 시작하려면 이 요청을 대기열에 넣으세요.",
     "limit": "요청이 이 설치의 한도를 넘습니다(예: 참조한 결과가 너무 큼).",
     "reference": "요청이 참조한 대상이 더 이상 없습니다. 그 참조를 빼고 다시 보내세요.",
@@ -5811,7 +5811,7 @@
     "kinds": {
       "agent": "에이전트",
       "callable": "호출 전용 에이전트",
-      "observer": "감독",
+      "observer": "Outrider",
       "review": "검토",
       "approval": "승인",
       "rule": "규칙",
@@ -5866,10 +5866,10 @@
       "noPredecessor": "앞 단계가 있는 단계만 나눌 수 있습니다.",
       "oneAgentOnly": "흐름 안의 에이전트 하나씩만 나눌 수 있습니다.",
       "roleNeedsAgent": "역할을 복사할 에이전트 하나를 고르세요.",
-      "advisorOutsideBoxes": "감독은 Loop나 팀 밖에 둡니다.",
-      "watchNeedsAdvisor": "에이전트를 지켜보는 것은 감독뿐입니다.",
-      "watchNeedsAgent": "감독은 흐름 안의 에이전트나 호출 전용 에이전트를 지켜봅니다.",
-      "advisorRole": "감독의 역할은 에이전트로 가져오지 않습니다."
+      "advisorOutsideBoxes": "Outrider는 Loop나 팀 밖에 둡니다.",
+      "watchNeedsAdvisor": "에이전트를 지켜보는 것은 Outrider뿐입니다.",
+      "watchNeedsAgent": "Outrider는 흐름 안의 에이전트나 호출 전용 에이전트를 지켜봅니다.",
+      "advisorRole": "Outrider의 역할은 에이전트로 가져오지 않습니다."
     },
     "outline": "Corral 구조",
     "addStep": "단계 추가",
@@ -6233,7 +6233,7 @@
     }
   },
   "Advice": {
-    "advisor": "감독",
+    "advisor": "Outrider",
     "severity": {
       "nit": "참고",
       "concern": "우려",
@@ -6241,7 +6241,7 @@
     },
     "from": "<isolate>{advisor}</isolate> · {severity}",
     "count": "{count, plural, other {조언 #건}}",
-    "advisors": "{count, plural, other {감독 #명}}"
+    "advisors": "{count, plural, other {Outrider #명}}"
   },
   "Activity": {
     "details": "활동 상세",
@@ -6281,9 +6281,9 @@
       "name": "Harness",
       "meaning": "역할에 채우는 마구입니다. 그 역할이 쓰는 스킬·확장·도구를 한 묶음으로 저장한 것입니다."
     },
-    "advisor": {
-      "name": "감독",
-      "meaning": "다른 역할의 일을 지켜보다가 조언하는 역할입니다. 일을 직접 하지는 않습니다."
+    "outrider": {
+      "name": "Outrider",
+      "meaning": "곁에서 함께 달리는 역할입니다. 다른 역할의 일을 지켜보다가 조언하고, 일을 직접 하지는 않습니다."
     }
   }
 }

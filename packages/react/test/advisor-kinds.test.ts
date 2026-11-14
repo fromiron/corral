@@ -24,8 +24,8 @@ describe('advisor names', () => {
   });
 
   it.each([
-    ['en', en, 'Advisor', 'advises'],
-    ['ko', ko, '감독', '조언'],
+    ['en', en, 'Outrider', 'advises'],
+    ['ko', ko, 'Outrider', '조언'],
   ] as const)('names the advisor and the advise link in %s', (_lang, messages, kind, link) => {
     expect(messages.TeamEditor.kinds.observer).toBe(kind);
     expect(messages.TeamEditor.links.advise).toBe(link);

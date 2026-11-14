@@ -204,7 +204,7 @@ it('names the advisor a conversation adds by the one word, once, in its step', a
   const f = await show(start(true), { session: true, locale: 'ko' });
   await openLog(f.container);
   const step = f.container.querySelector('[data-advice-line]')?.closest('.turn-process-row');
-  expect(step?.textContent?.split('감독')).toHaveLength(2);
+  expect(step?.textContent?.split('Outrider')).toHaveLength(2);
   expect(step?.textContent).not.toContain('session_advisor');
 });
 
@@ -396,7 +396,7 @@ it('names advice from several advisors by how many there are, once', async () =>
     ),
   );
   const line = part(f.container, 'tail')?.querySelector('[data-advice-line]');
-  expect(line?.textContent).toBe('2 advisors·Blocker·2 pieces of advice');
+  expect(line?.textContent).toBe('2 Outriders·Blocker·2 pieces of advice');
 });
 
 it('counts no advisor among the activities of a run outside a conversation', async () => {

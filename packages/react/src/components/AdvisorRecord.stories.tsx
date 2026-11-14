@@ -98,14 +98,14 @@ export const ExecutionTreeRow: Story = {
       canvasElement.querySelector<HTMLElement>('[data-testid="execution-advisor_1"]') ??
         canvasElement,
     );
-    await waitFor(() => expect(advisor.getByText('Advisor')).toBeVisible());
+    await waitFor(() => expect(advisor.getByText('Outrider')).toBeVisible());
     expect(advisor.getByText('Watching')).toBeVisible();
   },
 };
 
 const conversationSession = advisorRunSession({ session: true });
 
-/** The advisor a conversation adds has no name of its own: it is called Advisor, once. */
+/** The advisor a conversation adds has no name of its own: it is called Outrider, once. */
 export const ConversationAdvisorRow: Story = {
   render: () => (
     <div className="w-[40rem]">
@@ -117,7 +117,7 @@ export const ConversationAdvisorRow: Story = {
       canvasElement.querySelector<HTMLElement>('[data-testid="execution-advisor_1"]') ??
         canvasElement,
     );
-    await waitFor(() => expect(advisor.getAllByText('Advisor')).toHaveLength(1));
+    await waitFor(() => expect(advisor.getAllByText('Outrider')).toHaveLength(1));
     expect(advisor.getByText('Watching')).toBeVisible();
   },
 };
