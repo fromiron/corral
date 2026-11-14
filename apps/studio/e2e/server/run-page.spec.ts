@@ -425,7 +425,7 @@ test.describe('active graph preview', () => {
 
 test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
-  await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
+  await expect(page.getByText('Layout from the saved Corral')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await page
     .getByTestId('run-work-flow')

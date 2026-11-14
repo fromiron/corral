@@ -193,7 +193,7 @@ test('the workspace and editor have no serious automated accessibility violation
   await buildAgentToOutput(page);
   // The view keeps the selected output clear of the sheet, so the agent is chosen from the list.
   await page
-    .getByRole('complementary', { name: 'Team structure' })
+    .getByRole('complementary', { name: 'Corral structure' })
     .getByRole('button', { name: 'Agent 1', exact: true })
     .click();
   await expect(settings(page).getByRole('heading', { name: 'Agent', exact: true })).toBeVisible();

@@ -36,7 +36,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     await page.getByRole('link', { name: 'Settings vault', exact: true }).click();
     const project = page.getByRole('combobox', { name: 'Choose local project', exact: true });
-    const team = page.getByRole('combobox', { name: 'Choose team for agents', exact: true });
+    const team = page.getByRole('combobox', { name: 'Choose Corral for agents', exact: true });
     const bindings = page.getByRole('button', { name: 'Use these bindings', exact: true });
     await expect(bindings).toBeEnabled();
     for (const control of [project, team, bindings]) {

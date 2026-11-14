@@ -38,7 +38,7 @@ async function savedCorrals(page: Page): Promise<CorralSummary[]> {
 const teamChip = (page: Page) =>
   page
     .getByRole('region', { name: 'Request', exact: true })
-    .getByRole('combobox', { name: 'Team', exact: true });
+    .getByRole('combobox', { name: 'Corral', exact: true });
 
 async function chooseTeam(page: Page, name: string) {
   await teamChip(page).click();
@@ -56,7 +56,7 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   expect((await session(page)).autoTitle).toBe(true);
 
   await expect(page.getByRole('button', { name: 'Request options', exact: true })).toHaveCount(0);
-  await expect(teamChip(page)).toContainText('No team');
+  await expect(teamChip(page)).toContainText('No Corral');
   await expect(page.getByRole('button', { name: 'Attachments', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).not.toContainText(
@@ -143,7 +143,7 @@ test('the auto team survives reload and gives the lead its roster for the next t
   await page.setViewportSize({ width: 390, height: 844 });
   await teamChip(page).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('option', { name: /^No team/ })).toBeInViewport();
+  await expect(page.getByRole('option', { name: /^No Corral/ })).toBeInViewport();
   await page.keyboard.press('Escape');
   await expect(teamChip(page)).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -191,7 +191,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
   await page.reload();
   await expect(teamChip(page)).toContainText(custom.name);
   expect((await session(page)).corralId).toBe(custom.corralId);
-  await chooseTeam(page, 'No team');
+  await chooseTeam(page, 'No Corral');
   await expect.poll(async () => (await session(page)).corralId).toBeNull();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
 

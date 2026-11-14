@@ -729,7 +729,7 @@ describe('while the run’s record is read', () => {
   it('shows no request settings: what a send is is not known yet', async () => {
     const f = await mount({ runState: another });
     const settings = () => [
-      f.container.querySelector('[aria-label="Team"]'),
+      f.container.querySelector('[aria-label="Corral"]'),
       f.container.querySelector(`[aria-label="${messages.Composer.permissionMode.label}"]`),
     ];
     expect(settings()).toEqual([null, null]);
@@ -990,7 +990,7 @@ describe('the tool line', () => {
     ['starting a new request', null, true],
   ] as const)('offers the team only for a request: %s', async (_, active, shown) => {
     const f = await mount({ active });
-    expect(Boolean(f.container.querySelector('[aria-label="Team"]'))).toBe(shown);
+    expect(Boolean(f.container.querySelector('[aria-label="Corral"]'))).toBe(shown);
   });
 });
 

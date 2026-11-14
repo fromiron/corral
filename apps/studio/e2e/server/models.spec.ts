@@ -113,7 +113,7 @@ test.use({ live: true });
 
 async function agentToOutput(page: Page) {
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New team' }).click();
+  await page.getByRole('button', { name: 'New Corral' }).click();
   await addAgentAndOutput(page);
   await openTestRun(page);
 }
@@ -357,7 +357,7 @@ test('asks the signed-in model for a team draft once and opens it after review',
   await page.reload();
   await openLibrary(page, 'Templates');
   await page.getByRole('button', { name: 'Draft from a goal' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
+  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
   await dialog.getByLabel('What should the team do?').fill('Announce the new API');
   // The button itself says what asking costs.
   await expect(dialog.getByRole('button', { name: 'Ask the model' })).toContainText('1 request');
@@ -366,7 +366,7 @@ test('asks the signed-in model for a team draft once and opens it after review',
   );
   await dialog.getByRole('button', { name: 'Ask the model' }).click();
   const draftBody = (await draftRequest).postDataJSON();
-  await expect(dialog.getByLabel('Team name')).toHaveValue('Launch note');
+  await expect(dialog.getByLabel('Corral name')).toHaveValue('Launch note');
   await expect(dialog.getByLabel('Name of role 2')).toHaveValue('Copywriter');
   await dialog.getByRole('button', { name: 'Open in editor' }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);

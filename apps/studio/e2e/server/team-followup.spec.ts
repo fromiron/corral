@@ -98,10 +98,10 @@ for (const locale of ['en', 'ko'] as const) {
       })
       .click();
     const dialog = page.getByRole('dialog', {
-      name: locale === 'en' ? 'Save a team copy' : '팀 사본 저장',
+      name: locale === 'en' ? 'Save a Corral copy' : 'Corral 사본 저장',
     });
     const input = dialog.getByRole('textbox', {
-      name: locale === 'en' ? 'Team name' : '팀 이름',
+      name: locale === 'en' ? 'Corral name' : 'Corral 이름',
       exact: true,
     });
     await expect(input).toHaveValue(name);

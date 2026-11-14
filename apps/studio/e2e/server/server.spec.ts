@@ -11,7 +11,7 @@ import { expect, test } from './harness.ts';
 
 async function agentToOutput(page: Page) {
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New team' }).click();
+  await page.getByRole('button', { name: 'New Corral' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
   await addAgentAndOutput(page);
 }

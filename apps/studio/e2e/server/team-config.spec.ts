@@ -104,8 +104,8 @@ test('a saved-team conversation keeps its team name and revision after later edi
   const facts = page.getByTestId('run-facts');
   await page.getByRole('button', { name: 'Run info', exact: true }).click();
   await expect(facts).toContainText('Saved writing team · r1');
-  await expect(page.getByText('Team composed for this run · not a saved team')).toHaveCount(0);
-  await expect(facts.getByRole('link', { name: 'Edit team', exact: true })).toBeVisible();
+  await expect(page.getByText('Team composed for this run · not a saved Corral')).toHaveCount(0);
+  await expect(facts.getByRole('link', { name: 'Edit Corral', exact: true })).toBeVisible();
   await page.evaluate(
     async ({ record }) => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
@@ -153,7 +153,7 @@ test.describe('saved team roles', () => {
         .getByRole('banner')
         .getByRole('button', { name: 'Actions for Role refresh', exact: true })
         .click();
-      await page.getByRole('menuitem', { name: 'Open team design', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Open Corral design', exact: true }).click();
       await teamNode(page, 'writer').click();
       await editorSettings(page)
         .getByRole('textbox', { name: 'Name', exact: true })

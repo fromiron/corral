@@ -66,7 +66,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
       items.map((item) => item.getAttribute('data-agent-id')).sort(),
     ),
   ).toEqual(['helper', 'research', 'respond', 'review', 'write']);
-  await expect(graph(page).getByText('Layout from the saved team')).toHaveCount(0);
+  await expect(graph(page).getByText('Layout from the saved Corral')).toHaveCount(0);
   const writer = graph(page).locator('[data-agent-id="write"]');
   await expect(writer).toContainText('2 executions');
   await expect(writer.locator('[data-run-status]')).toHaveAttribute('data-run-status', 'done');

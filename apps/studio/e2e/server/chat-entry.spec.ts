@@ -74,7 +74,7 @@ test('an explicit optional Corral choice and draft survive project navigation', 
   await page.goto(`${corral.server.url}/projects/default#corrals`);
   await expect(page).toHaveURL(/\/library\/teams\?project=default$/);
   await expect(
-    page.getByRole('tablist', { name: 'Library views' }).getByRole('tab', { name: 'Teams' }),
+    page.getByRole('tablist', { name: 'Library views' }).getByRole('tab', { name: 'Corrals' }),
   ).toHaveAttribute('aria-selected', 'true');
   await page
     .getByTestId('app-sidebar')
@@ -122,7 +122,7 @@ test('a direct Corral library link still lets the user return to conversations',
   // library.md: the old link replaces itself with the library's teams of that project.
   await expect(page).toHaveURL(/\/library\/teams\?project=default$/);
   await expect(
-    page.getByRole('tablist', { name: 'Library views' }).getByRole('tab', { name: 'Teams' }),
+    page.getByRole('tablist', { name: 'Library views' }).getByRole('tab', { name: 'Corrals' }),
   ).toHaveAttribute('aria-selected', 'true');
   // Back returns to the work screen before it.
   await page.goBack();

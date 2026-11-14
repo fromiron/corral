@@ -31,7 +31,7 @@ export async function openLibrary(page: Page, view: 'Teams' | 'Templates' | 'Res
   const tab = page
     .getByRole('tablist', { name: 'Library views', exact: true })
     // The Teams tab carries the number of saved teams.
-    .getByRole('tab', { name: view === 'Teams' ? /^Teams( \d+)?$/ : view, exact: true });
+    .getByRole('tab', { name: view === 'Teams' ? /^Corrals( \d+)?$/ : view, exact: true });
   if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
@@ -42,7 +42,7 @@ export async function openLibraryTeams(page: Page, projectName?: string) {
   if (!projectName) return;
   // The project filter shows once the library knows there is more than one project.
   const filter = page.getByRole('combobox', { name: 'Project', exact: true });
-  const loaded = page.getByRole('main').getByRole('button', { name: 'New team', exact: true });
+  const loaded = page.getByRole('main').getByRole('button', { name: 'New Corral', exact: true });
   await expect(filter.or(loaded).first()).toBeVisible();
   if (!(await filter.isVisible())) return;
   if ((await filter.innerText()).includes(projectName)) return;
@@ -53,24 +53,24 @@ export async function openLibraryTeams(page: Page, projectName?: string) {
 
 /** In the library's Teams view: makes an empty team and opens it in the editor. */
 export async function newTeam(page: Page) {
-  await page.getByRole('main').getByRole('button', { name: 'New team', exact: true }).click();
+  await page.getByRole('main').getByRole('button', { name: 'New Corral', exact: true }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
 }
 
 /** The library's saved teams of the chosen project: the table's rows, each with its team. */
 export const savedTeams = (page: Page) =>
   page
-    .getByRole('table', { name: 'Saved teams', exact: true })
+    .getByRole('table', { name: 'Saved Corrals', exact: true })
     .getByRole('row')
     .filter({ has: page.getByRole('button') });
 
 /** In the library's Teams view: chooses a saved team, opening its details beside the list. */
 export async function chooseTeam(page: Page, name: string) {
   await page
-    .getByRole('table', { name: 'Saved teams', exact: true })
+    .getByRole('table', { name: 'Saved Corrals', exact: true })
     .getByRole('button', { name, exact: true })
     .click();
-  const detail = page.getByRole('region', { name: 'Team details', exact: true });
+  const detail = page.getByRole('region', { name: 'Corral details', exact: true });
   await expect(detail.getByRole('heading', { name, exact: true })).toBeVisible();
   return detail;
 }
@@ -297,7 +297,7 @@ export async function closeSettings(page: Page) {
  */
 export async function openConversationDetails(page: Page) {
   await page.getByRole('button', { name: 'More ways to start a conversation' }).click();
-  await page.getByRole('menuitem', { name: /^Set name, purpose and team first/ }).click();
+  await page.getByRole('menuitem', { name: /^Set name, purpose and Corral first/ }).click();
   const dialog = page.getByRole('dialog', { name: 'New conversation', exact: true });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -322,7 +322,7 @@ export const requestBox = (page: Page) =>
 export async function selectSessionTeam(page: Page, name: string) {
   const picker = page
     .getByRole('region', { name: 'Request', exact: true })
-    .getByRole('combobox', { name: 'Team', exact: true });
+    .getByRole('combobox', { name: 'Corral', exact: true });
   await picker.click();
   await page.getByRole('option', { name: new RegExp(`^${name}`) }).click();
   await expect(picker).toContainText(name);
