@@ -19,7 +19,8 @@ function retiredOf(session: RunSessionStore) {
     for (const approval of Object.values(projection.approvals))
       if (approval.status !== 'pending') retired.add(approval.approvalId);
     for (const event of events)
-      if (event.type === 'user_input.answered') retired.add(event.payload.requestId);
+      if (event.type === 'user_input.answered' || event.type === 'extension.ui_answered')
+        retired.add(event.payload.requestId);
   };
   retire(session.getState());
   session.subscribe(retire);

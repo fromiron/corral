@@ -74,7 +74,6 @@ export interface StudioServices {
   live: boolean;
   /** A sandboxed address for HTML result previews; the browser runtime has none. */
   previewUrl?: (runId: string, artifactVersionId: string) => string;
-  /** A question about a result, as its own run in a session. */
   /** A request in an auto session: the runtime picks the template and starts it. */
   startAuto: (request: AutoRunStart, signal?: AbortSignal) => Promise<AutoStartResult>;
   /** Server cancellation also reconciles a start whose HTTP response was lost. */
