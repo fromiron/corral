@@ -138,8 +138,8 @@ export function MarkdownAgentImport({
             </div>
             <p className="text-caption text-muted-foreground">
               {text(
-                'Review the prompt, model and tool translations. Import adds a callable node and a delegation link to this team. Save the team to use it on the next run.',
-                '프롬프트·모델·도구 변환을 검토하세요. 현재 팀에 호출형 노드와 위임 연결을 추가합니다. 팀을 저장하면 다음 실행에 적용됩니다.',
+                'Review the prompt, model and tool translations. Import adds a callable node and a delegation link to this Corral. Save the Corral to use it on the next run.',
+                '프롬프트·모델·도구 변환을 검토하세요. 현재 Corral에 호출형 노드와 위임 연결을 추가합니다. Corral을 저장하면 다음 실행에 적용됩니다.',
               )}
             </p>
             <label className="flex flex-col gap-1 text-body">
@@ -348,7 +348,7 @@ export function MarkdownAgentImport({
             <p className="text-caption text-muted-foreground">
               {text(
                 'Returning a result requires write_artifact and submit_result from the parent. Existing delegation depth and spawn limits remain in force.',
-                '결과 반환에는 부모에게 허용된 write_artifact와 submit_result가 필요합니다. 기존 위임 깊이·하위 실행 한도를 따릅니다.',
+                '결과 반환에는 부모에게 허용된 write_artifact와 submit_result가 필요합니다. 기존 위임 깊이·하위 실행 단위 한도를 따릅니다.',
               )}
             </p>
             <p className="text-caption text-muted-foreground">
@@ -385,15 +385,15 @@ export function MarkdownAgentImport({
                 editor.getState().select(`import_${suffix.current}`);
                 setStatus(
                   text(
-                    'Agent added. Save the team to keep this change.',
-                    '에이전트를 추가했습니다. 팀을 저장해 변경을 보관하세요.',
+                    'Agent added. Save the Corral to keep this change.',
+                    '에이전트를 추가했습니다. Corral을 저장해 변경을 보관하세요.',
                   ),
                 );
                 close();
                 updateSource('');
               }}
             >
-              {text('Add to team', '팀에 추가')}
+              {text('Add to Corral', 'Corral에 추가')}
             </Button>
           </div>
         </DialogPopup>

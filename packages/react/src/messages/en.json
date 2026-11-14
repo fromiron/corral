@@ -462,7 +462,23 @@
     "produced": "Produced: {versions}",
     "receiptRun": "Whole-run command",
     "receiptExecution": "Command to one execution",
-    "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run."
+    "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run.",
+    "steering": {
+      "pause": "Pause the run",
+      "resume": "Resume the run",
+      "now": "Interrupt",
+      "remove": "Remove “{text}”",
+      "steps": "Step {current} of {total}",
+      "instruction": "Give instruction",
+      "placeholder": "Give instruction…",
+      "send": "Send instruction",
+      "nextHint": "next request",
+      "interruptHint": "interrupt now",
+      "steered": "Instruction given",
+      "interrupted": "Interrupted",
+      "queuedAnnouncement": "Waiting for the next request: {text}",
+      "interruptAnnouncement": "Interrupting now: {text}"
+    }
   },
   "Schedules": {
     "occurrence": {
