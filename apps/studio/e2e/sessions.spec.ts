@@ -16,11 +16,15 @@ const box = requestBox;
 // The turns themselves: their flag and auto-choice lines carry `entry-…` test ids too.
 const cards = (page: Page) => page.locator('article[data-testid^="entry-"]');
 /**
- * A turn's run, which starts with its own status (read by assistive technology; the turn shows
- * it through its process line). Its steps carry statuses of their own further in.
+ * A turn's run: the state word the run row says about it, read from the element that carries the
+ * run's presence (the row's head starts with the role's name now, and its steps keep statuses
+ * of their own further in).
  */
 const status = (card: Locator, name: string) =>
-  card.getByRole('region', { name: /^Run #\d+$/ }).filter({ hasText: new RegExp(`^${name}`) });
+  card
+    .getByRole('region', { name: /^Run #\d+$/ })
+    .locator('[data-presence-label^="run:"]')
+    .filter({ hasText: new RegExp(`^${name}$`) });
 
 test('a follow-up continues the conversation in a new run; an IME Enter sends nothing', async ({
   page,
@@ -75,7 +79,7 @@ test('while a run works, a request waits in the queue until a person starts it',
   await expect(cards(page)).toHaveCount(1);
   // Busy: Send joins the run (composer-flow.md "전송"); Alt+Enter sends a next request, which
   // waits behind it.
-  await expect(box(page)).toHaveAccessibleDescription(/^Send to: Run #1 · .+ · instruction$/);
+  await expect(box(page)).toHaveAccessibleDescription(/^Send to: Run #1 · .+ · Join$/);
   await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
   await box(page).fill('Then summarise it');
   await box(page).press('Alt+Enter');

@@ -94,7 +94,7 @@ test('a completed run explains failed file steps and opens their reasons', async
   await panelTab(page, 'Runs');
   await page
     .getByTestId('run-monitor')
-    .getByRole('tablist', { name: 'Execution views', exact: true })
+    .getByRole('tablist', { name: 'Run views', exact: true })
     .getByRole('tab', { name: 'Workflow', exact: true })
     .click();
   await page

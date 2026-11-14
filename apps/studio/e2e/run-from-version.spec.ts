@@ -14,7 +14,7 @@ test('a finished result starts the next run, which names its source', async ({ p
   await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
   await expect(banner).toHaveCount(0);
-  await page.getByRole('link', { name: 'Open execution page' }).click();
+  await page.getByRole('link', { name: 'Open run page' }).click();
   // Where the run started from is part of its run information.
   await page.getByRole('button', { name: 'Run info', exact: true }).click();
   const facts = page.getByTestId('run-facts');

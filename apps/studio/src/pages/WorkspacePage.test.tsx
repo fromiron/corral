@@ -230,7 +230,7 @@ it('has Conversations, Runs, Environment and Instructions & memory tabs, and no 
   );
   expect(messages.Projects.tabsLabel).not.toBe(messages.Projects.label);
   expect(
-    [...container.querySelectorAll('button')].some((button) => button.textContent === 'New team'),
+    [...container.querySelectorAll('button')].some((button) => button.textContent === 'New Corral'),
   ).toBe(false);
 });
 

@@ -18,7 +18,7 @@ test('a review loop revises the draft, and two approvals of exact versions finis
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole('link', { name: 'Open execution page' }).click();
+  await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page.getByTestId('run-status')).toContainText('Waiting for you');
   // The decision is about draft@2 and the review that passed it, judged by the run's criteria.
   // What the run waits on opens from the run header.

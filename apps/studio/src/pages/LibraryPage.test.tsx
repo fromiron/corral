@@ -304,10 +304,10 @@ it.each(LIBRARY_VIEWS)('frames the %s view with the library title and its tab', 
   );
   const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
   const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
-  expect(tabs.map(name)).toEqual(['Teams', 'Templates', 'Resources']);
+  expect(tabs.map(name)).toEqual(['Corrals', 'Templates', 'Resources']);
   expect(
     name(tabs.find((tab) => tab.getAttribute('aria-selected') === 'true') as HTMLElement),
-  ).toBe(view[0]?.toUpperCase() + view.slice(1));
+  ).toBe(view === 'teams' ? 'Corrals' : view[0]?.toUpperCase() + view.slice(1));
 });
 
 it("lists the filtered project's teams and makes a new team in it with the existing editor flow", async () => {
@@ -316,7 +316,7 @@ it("lists the filtered project's teams and makes a new team in it with the exist
   const { container, router } = await render('/library/teams?project=project_1');
   expect(container.textContent).toContain('Alpha reviewers');
   expect(container.textContent).not.toContain('Beta writers');
-  const create = byText(container, 'button', 'New team');
+  const create = byText(container, 'button', 'New Corral');
   expect(create).toBeTruthy();
   await act(async () => create?.click());
   await settle();
@@ -342,7 +342,7 @@ it('opens a team detail with a conversation, the editor and a duplicate', async 
   const { container, router } = await render('/library/teams?project=project_1');
   const name = byText(container, 'button', 'Alpha reviewers');
   await act(async () => name?.click());
-  const detail = container.querySelector<HTMLElement>('[aria-label="Team details"]');
+  const detail = container.querySelector<HTMLElement>('[aria-label="Corral details"]');
   expect(detail).toBeTruthy();
   expect(detail?.querySelector(`a[href="/corrals/${id}/edit"]`)?.textContent).toBe('Edit');
   const duplicate = byText(detail as HTMLElement, 'button', 'Duplicate');
@@ -350,11 +350,11 @@ it('opens a team detail with a conversation, the editor and a duplicate', async 
   await settle();
   expect((await repository.list()).map((item) => item.name)).toContain('Alpha reviewers copy');
   // The copy is shown next; the original is one click away.
-  expect(container.querySelector('[aria-label="Team details"] h2')?.textContent).toContain(
+  expect(container.querySelector('[aria-label="Corral details"] h2')?.textContent).toContain(
     'Alpha reviewers copy',
   );
   await act(async () => byText(container, 'button', 'Alpha reviewers')?.click());
-  const start = byText(container, 'button', 'New conversation with this team');
+  const start = byText(container, 'button', 'New conversation with this Corral');
   await act(async () => start?.click());
   await settle();
   expect(router.state.location.pathname).toMatch(/^\/sessions\/session_1$/);
@@ -371,7 +371,7 @@ it('moves a team from its Move to… button and menu of projects, beside Edit an
   Element.prototype.getAnimations ??= () => [];
   const id = await team(repository, 'Alpha reviewers', 'project_1');
   const { container } = await render('/library/teams?project=project_1');
-  const detail = container.querySelector<HTMLElement>('[aria-label="Team details"]');
+  const detail = container.querySelector<HTMLElement>('[aria-label="Corral details"]');
   // A button like Edit and Duplicate, never a select showing its placeholder.
   expect(detail?.querySelector('[data-slot="select-trigger"]')).toBeNull();
   expect(detail?.textContent).not.toContain('Select…');
@@ -537,7 +537,7 @@ it('offers New team and Browse templates when the project has no teams', async (
   expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
   // No pointer to templates "below": they are on their own tab.
   expect(panel.textContent).not.toMatch(/below/i);
-  expect(byText(panel, 'button', 'New team')).toBeTruthy();
+  expect(byText(panel, 'button', 'New Corral')).toBeTruthy();
   // The storage note is not a sentence under the list.
   expect(panel.textContent).not.toContain('saved in this app data folder');
   await act(async () => byText(panel, 'button', 'Browse templates')?.click());
@@ -710,13 +710,13 @@ it("counts the project's teams on the Teams tab and names the list nowhere else"
   const { container } = await render('/library/teams?project=project_1');
   const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
   const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
-  expect(tabs.map(name)).toEqual(['Teams 2', 'Templates', 'Resources']);
+  expect(tabs.map(name)).toEqual(['Corrals 2', 'Templates', 'Resources']);
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
   expect(panel.textContent).not.toContain(messages.Library.teams.list);
   expect(panel.querySelector('h2:not(section h2)')).toBeNull();
   // Where teams are kept stays one click away, in the row of the list's actions.
-  const storage = panel.querySelector('button[aria-label="Where teams are saved"]');
-  const create = byText(panel, 'button', 'New team');
+  const storage = panel.querySelector('button[aria-label="Where Corrals are saved"]');
+  const create = byText(panel, 'button', 'New Corral');
   expect(storage).not.toBeNull();
   expect(storage?.parentElement?.parentElement?.contains(create ?? null)).toBe(true);
 });
@@ -724,7 +724,7 @@ it("counts the project's teams on the Teams tab and names the list nowhere else"
 it("heads the chosen team's detail with its name and leaves the row's details to the row", async () => {
   await team(repository, 'Alpha reviewers', 'project_1');
   const { container } = await render('/library/teams?project=project_1');
-  const detail = container.querySelector<HTMLElement>('section[aria-label="Team details"]');
+  const detail = container.querySelector<HTMLElement>('section[aria-label="Corral details"]');
   expect(detail?.querySelector('h2')?.textContent).toContain('Alpha reviewers');
   const row = container.querySelector('tbody tr');
   expect(row?.textContent).toContain('Version 1');

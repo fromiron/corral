@@ -85,7 +85,7 @@ describe('future settings preview', () => {
     const { sendCommand } = setup(definition);
     fireEvent.click(screen.getByRole('button', { name: 'Change settings' }));
     await user.click(screen.getByRole('combobox', { name: 'Change scope' }));
-    await user.click(await screen.findByRole('option', { name: 'Future loop rounds' }));
+    await user.click(await screen.findByRole('option', { name: 'Future Loop rounds' }));
     expect(screen.getByText('No round limit')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Proposed value'), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));

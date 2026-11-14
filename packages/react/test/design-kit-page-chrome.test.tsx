@@ -24,8 +24,8 @@ it('names the page with one h1 that only the outline reads, and shows no title o
 });
 
 it('an empty state may be its title alone', () => {
-  const { container } = render(<EmptyState title="No teams yet" />);
-  expect(screen.getByText('No teams yet')).toBeVisible();
+  const { container } = render(<EmptyState title="No Corrals yet" />);
+  expect(screen.getByText('No Corrals yet')).toBeVisible();
   expect(container.querySelector('p')).toBeNull();
 });
 

@@ -9,7 +9,7 @@ async function finishedTeamRun(page: Page) {
   await startTestRun(page);
   // The demo team asks for no approval, so its run finishes by itself.
   await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
-  await page.getByRole('link', { name: 'Open execution page' }).click();
+  await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_/);
   await expect(graph(page)).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
@@ -28,7 +28,7 @@ test('the first view of a completed run fits every observed agent above the resu
   // The results are a view of their own beside the graph, not a strip under it.
   await expect(
     page
-      .getByRole('tablist', { name: 'Execution views' })
+      .getByRole('tablist', { name: 'Run views' })
       .getByRole('tab', { name: 'Results', exact: true }),
   ).toBeVisible();
   const stage = graph(page).locator('[data-graph-pane]');
@@ -66,7 +66,7 @@ test('the Run page shows the graph with execution counts, and a node leads to it
       items.map((item) => item.getAttribute('data-agent-id')).sort(),
     ),
   ).toEqual(['helper', 'research', 'respond', 'review', 'write']);
-  await expect(graph(page).getByText('Layout from the saved team')).toHaveCount(0);
+  await expect(graph(page).getByText('Layout from the saved Corral')).toHaveCount(0);
   const writer = graph(page).locator('[data-agent-id="write"]');
   await expect(writer).toContainText('2 executions');
   await expect(writer.locator('[data-run-status]')).toHaveAttribute('data-run-status', 'done');

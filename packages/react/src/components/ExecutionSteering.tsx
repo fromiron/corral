@@ -42,6 +42,7 @@ export function ExecutionSteering({
   className,
 }: ExecutionSteeringProps) {
   const t = useTranslations('Reins');
+  const ts = useTranslations('Reins.steering');
   const tp = useTranslations('Presence');
   // A detail is said beside the state, never instead of it.
   const words = (presence: Presence) =>
@@ -204,6 +205,21 @@ export function ExecutionSteering({
         queued: t('history'),
         plan: planText('heading'),
         activity: activityText('activity'),
+        // Everything the kit would otherwise say in its own English is named here.
+        steps: (current, total) => ts('steps', { current, total }),
+        pause: ts('pause'),
+        resume: ts('resume'),
+        now: ts('now'),
+        remove: (text) => ts('remove', { text }),
+        instruction: ts('instruction'),
+        placeholder: ts('placeholder'),
+        send: ts('send'),
+        nextHint: ts('nextHint'),
+        interruptHint: ts('interruptHint'),
+        steered: ts('steered'),
+        interrupted: ts('interrupted'),
+        queuedAnnouncement: (text) => ts('queuedAnnouncement', { text }),
+        interruptAnnouncement: (text) => ts('interruptAnnouncement', { text }),
       }}
       activityMaxHeight={showToolActivity ? 'min(25dvh, 12rem)' : undefined}
       emptyQueued={<p className="text-caption text-muted-foreground">{t('noHistory')}</p>}

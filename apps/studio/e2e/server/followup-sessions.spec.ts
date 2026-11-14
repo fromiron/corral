@@ -95,7 +95,7 @@ for (const locale of ['en', 'ko'] as const) {
       await page.reload();
       await page
         .getByRole('button', {
-          name: locale === 'en' ? 'Show archived (2)' : '보관한 세션 보기(2)',
+          name: locale === 'en' ? 'Show archived (2)' : '보관한 대화 보기(2)',
         })
         .click();
       // The list is grouped by state, and the empty-session group starts closed.

@@ -11,7 +11,7 @@ import { expect, test } from './harness.ts';
 
 async function agentToOutput(page: Page) {
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New team' }).click();
+  await page.getByRole('button', { name: 'New Corral' }).click();
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
   await addAgentAndOutput(page);
 }
@@ -72,7 +72,7 @@ test('a run on the local server saves first, finishes, and survives a reload', a
   await expectTeamSaved(page);
   await expect(page.getByTestId('run-output')).toContainText('Agent 1 (agent_1) turn 2');
 
-  await page.getByRole('link', { name: 'Open execution page' }).click();
+  await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await page.reload();
@@ -107,7 +107,7 @@ test.describe('slow replies', () => {
     await corral.open('/');
     await agentToOutput(page);
     await startTestRun(page);
-    await page.getByRole('link', { name: 'Open execution page' }).click();
+    await page.getByRole('link', { name: 'Open run page' }).click();
     await expect(page).toHaveURL(/\/runs\/run_[a-f0-9]+/);
     const runPath = new URL(page.url()).pathname;
 

@@ -235,8 +235,8 @@ export class DesktopUpdater {
     if (!(await this.prepare())) {
       await this.notice(
         app.getLocale().startsWith('ko')
-          ? '진행 중인 작업 또는 저장하지 않은 편집 내용을 마친 뒤 다시 시도하세요.'
-          : 'Finish active work and save your edits before restarting.',
+          ? '진행 중인 실행 또는 저장하지 않은 편집 내용을 마친 뒤 다시 시도하세요.'
+          : 'Finish active runs and save your edits before restarting.',
       );
       return;
     }

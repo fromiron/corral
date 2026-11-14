@@ -213,17 +213,15 @@ export function TeamChoice({
           value: 'auto',
           label: tc('teamAuto'),
           hint: tc('teamAutoHint'),
-          group: tc('teamCorralGroup'),
         },
         // Each saved team names its revision, so the selected one says which it runs.
         ...corrals.map((corral) => ({
           value: `corral:${corral.corralId}`,
           label: corral.name,
           hint: `r${corral.definitionRevision} · ${tc('teamCorralHint')}`,
-          group: tc('teamCorralGroup'),
         })),
         // Creating or editing a Corral happens in the library.
-        { value: 'manage', label: tc('manageCorrals'), group: tc('teamCorralGroup') },
+        { value: 'manage', label: tc('manageCorrals') },
       ]}
     />
   );

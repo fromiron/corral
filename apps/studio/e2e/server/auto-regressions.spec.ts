@@ -54,7 +54,7 @@ test('a deleted selected team is unavailable, never silently auto', async ({ pag
   await requestBox(page).press('Enter');
   expect(corral.fake?.seen.hostRequests).toHaveLength(0);
   expect(corral.server.coordinator.listRuns()).toHaveLength(0);
-  await selectSessionTeam(page, 'No team');
+  await selectSessionTeam(page, 'No Corral');
   await expect(page.getByTestId('selected-team-missing')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
 });
@@ -95,7 +95,7 @@ for (const stop of ['cancel', 'navigate'] as const) {
     expect(runId).toBeTruthy();
     try {
       if (stop === 'cancel')
-        await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
+        await page.getByRole('button', { name: 'Cancel Corral selection', exact: true }).click();
       else await openAllProjects(page);
       await expect
         .poll(() =>
@@ -172,7 +172,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     await started;
     const runId = corral.server.coordinator.listRuns()[0]?.runId;
     try {
-      await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
+      await page.getByRole('button', { name: 'Cancel Corral selection', exact: true }).click();
       await expect(page.getByTestId('refusal')).toHaveAttribute('data-kind', 'network');
       await expect(page.getByTestId('refusal')).toContainText('Failed to fetch');
     } finally {
@@ -251,7 +251,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     await started;
     const runId = corral.server.coordinator.listRuns()[0]?.runId;
     try {
-      await page.getByRole('button', { name: 'Cancel team selection', exact: true }).click();
+      await page.getByRole('button', { name: 'Cancel Corral selection', exact: true }).click();
       await expect(page.getByRole('alert').filter({ hasText: 'Failed to fetch' })).toBeVisible();
     } finally {
       releaseWorker();
