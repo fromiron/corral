@@ -333,7 +333,8 @@ describe('the execution tree', () => {
     });
     render(wrap(<ExecutionTree session={session} onSteer={() => {}} />));
     const worker = screen.getByTestId('execution-impl_1');
-    expect(within(worker).getAllByText('Waiting for an answer').length).toBeGreaterThan(0);
+    // In the presence's words: its state, and what it waits for beside it.
+    expect(within(worker).getAllByText('Working · Waiting for a reply').length).toBeGreaterThan(0);
     expect(within(worker).queryByText('Watching')).toBeNull();
   });
 

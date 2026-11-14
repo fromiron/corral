@@ -255,8 +255,16 @@ it('names several such advice together, and opens them all', async () => {
   const words = document.getElementById(line?.getAttribute('aria-controls') ?? '');
   expect(words?.textContent).toContain('First concern.');
   expect(words?.textContent).toContain('Then a blocker.');
-  // A note its target never read is nowhere.
-  expect(f.container.textContent).not.toContain('A late note.');
+  // A note its target never read is not the tail's: it stays on its line in the work alone.
+  expect(part(f.container, 'tail')?.textContent).not.toContain('A late note.');
+  expect(words?.textContent).not.toContain('A late note.');
+  await openLog(f.container);
+  const note = [...f.container.querySelectorAll('.turn-process-row [data-advice-line]')].find(
+    (line) => line.textContent?.includes('A late note.'),
+  );
+  expect(note?.querySelector('[data-advice-state]')?.textContent).toBe(
+    messages.Sessions.meta.notDelivered,
+  );
 });
 
 it('tells the server only once the words are open and on screen, and once', async () => {

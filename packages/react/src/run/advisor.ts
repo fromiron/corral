@@ -52,8 +52,7 @@ export interface AdviceEntry {
 
 /**
  * An advice on its way to its target, delivered, or not delivered: its line in the target's work.
- * `notDelivered` is a concern or a blocker its target ended before reading, whose line stays where
- * it stood.
+ * `notDelivered` is an advice its target ended before reading, whose line stays where it stood.
  */
 export interface DeliveredAdvice extends AdviceEntry {
   state: DeliveryState | 'notDelivered';
@@ -61,10 +60,9 @@ export interface DeliveredAdvice extends AdviceEntry {
 
 /**
  * The advice given to one execution that its work shows, in the order it was accepted: on its
- * way, delivered, or a concern or a blocker its target ended before reading, whose line stays in
- * place saying it was not delivered (it is also on the run row's tail, `unreadAdviceOf`). A note
- * its target never read is dropped; dropped advice is never advice here (it has no line in the
- * conversation).
+ * way, delivered, or ended before its target read it, whose line stays in place saying it was not
+ * delivered (a concern or a blocker is also on the run row's tail, `unreadAdviceOf`; a note only
+ * here). Dropped advice is never advice here (it has no line in the conversation).
  */
 export function deliveredAdvice(
   projection: RunProjection,
@@ -78,7 +76,6 @@ export function deliveredAdvice(
       if (!directive) return [];
       if (directive.status === 'rejected') return [];
       const delivery = deliveryState(projection, directive);
-      if (delivery === 'ended' && item.severity === 'nit') return [];
       const state = delivery === 'ended' ? 'notDelivered' : delivery;
       return [
         {

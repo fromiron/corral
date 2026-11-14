@@ -226,6 +226,7 @@ async function mount(
   const onPause = vi.fn();
   const onResume = vi.fn();
   let conversation: ReactNode = timeline;
+  let active = ownActive;
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -257,7 +258,7 @@ async function mount(
                 >
                   <ComposerActivity
                     sessionId="session_plan"
-                    ownActive={ownActive}
+                    ownActive={active}
                     target={target}
                     targets={targets as never}
                     onJoin={onJoin}
@@ -305,6 +306,12 @@ async function mount(
     update: async (next: ChatWidgetModel, connectionLost = lost) => {
       fixture.model = next;
       await paint(connectionLost);
+    },
+    /** The session's run ends: no run goes, and the widgets present it as `next`. */
+    end: async (next: ChatWidgetModel) => {
+      active = null;
+      fixture.model = next;
+      await paint(lost);
     },
   };
 }
@@ -1664,6 +1671,22 @@ it('says no last review while the flow waits for its next step, a person or a ro
     timeline: <span data-presence-label="execution:exec_editor">editor row</span>,
   });
   expect(role.bar()?.dataset.line).not.toBe('advisor');
+});
+
+it('offers no panel for an ended run with nothing to show in it, so no empty band is left', async () => {
+  // The panel was open while the run went; the run ends with no plan and nothing measured.
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  expect(view.panel()).not.toBeNull();
+  await view.end(
+    model(
+      { live: false },
+      { status: { state: 'hidden' } as ChatWidgetModel['plan']['status'], choices: [] },
+    ),
+  );
+  expect(view.toggle()).toBeNull();
+  expect(view.panel()?.closest('[hidden]') ?? null).not.toBeNull();
 });
 
 it('lists no advisor row for a run that has ended', async () => {

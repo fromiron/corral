@@ -145,10 +145,11 @@ describe('where an advice stands', () => {
   });
 
   it('leaves a line drawn in the work in its place when its target ends first, saying it was not delivered', () => {
-    const late = ['a_late', 'a_stop'];
+    const late = ['a_late', 'a_stop', 'a_note'];
     const waiting = withAdvice(base, [
       { adviceId: 'a_late', severity: 'concern', text: 'Late concern.', status: 'queued' },
       { adviceId: 'a_stop', severity: 'blocker', text: 'Late blocker.', status: 'queued' },
+      { adviceId: 'a_note', severity: 'nit', text: 'Late note.', status: 'queued' },
     ]);
     const { events } = advisorRunSession().getState();
     const rows = (projection: RunProjection) =>
@@ -156,11 +157,12 @@ describe('where an advice stands', () => {
         (row) => `${row.kind}:${row.id}`,
       );
     const before = rows(waiting);
-    expect(before.filter((row) => late.some((id) => row === `advice:${id}`))).toHaveLength(2);
+    expect(before.filter((row) => late.some((id) => row === `advice:${id}`))).toHaveLength(3);
     const ended = endedRun(
       withAdvice(base, [
         { adviceId: 'a_late', severity: 'concern', text: 'Late concern.', status: 'expired' },
         { adviceId: 'a_stop', severity: 'blocker', text: 'Late blocker.', status: 'not_delivered' },
+        { adviceId: 'a_note', severity: 'nit', text: 'Late note.', status: 'expired' },
       ]),
     );
     // The row keeps its lines where they stood: none leaves the work when the target ends.
@@ -172,12 +174,13 @@ describe('where an advice stands', () => {
     ).toEqual([
       ['a_late', 'notDelivered'],
       ['a_stop', 'notDelivered'],
+      ['a_note', 'notDelivered'],
     ]);
-    // The tail says them as before.
-    expect(unreadAdviceOf(ended).map((item) => item.adviceId)).toEqual(late);
+    // The tail says the concern and the blocker as before; a note stays on its line alone.
+    expect(unreadAdviceOf(ended).map((item) => item.adviceId)).toEqual(['a_late', 'a_stop']);
   });
 
-  it('keeps a concern or blocker its target ended before reading for the tail, and drops a note', () => {
+  it('keeps a concern or blocker its target ended before reading for the tail; a note keeps only its line', () => {
     const projection = endedRun(
       withAdvice(base, [
         { adviceId: 'a_late', severity: 'concern', text: 'Late concern.', status: 'expired' },
@@ -191,15 +194,16 @@ describe('where an advice stands', () => {
         },
       ]),
     );
-    // In the work the concern and the blocker stand as not delivered; the note is dropped, and
-    // the kept one never was in it.
+    // In the work all three stand as not delivered; the kept one never was in it.
     const delivered = deliveredAdvice(projection, 'impl_1')
       .filter((item) => item.adviceId !== 'advice_1')
       .map((item) => [item.adviceId, item.state]);
     expect(delivered).toEqual([
       ['a_late', 'notDelivered'],
       ['a_stop', 'notDelivered'],
+      ['a_note', 'notDelivered'],
     ]);
+    // The tail (and Needs you) hold no note.
     expect(unreadAdviceOf(projection).map((item) => [item.adviceId, item.text])).toEqual([
       ['a_late', 'Late concern.'],
       ['a_stop', 'Late blocker.'],

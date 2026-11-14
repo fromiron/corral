@@ -14,6 +14,8 @@ import {
   ActivityAnnouncements,
   ActivityContext,
   actionLabel,
+  activityContextShown,
+  activityPlanShown,
   ChangesChip,
   ComposerPlan,
   planCount,
@@ -396,8 +398,11 @@ export function ComposerActivity({
         }
         end={model?.runId ? <OverviewAccess /> : undefined}
         roles={roles}
-        plan={model?.runId ? <ComposerPlan variant="activity" /> : undefined}
-        context={model?.runId ? <ActivityContext model={model} /> : undefined}
+        // Only sections with something in them: an ended run with none leaves no empty panel.
+        plan={activityPlanShown(model) ? <ComposerPlan variant="activity" /> : undefined}
+        context={
+          model && activityContextShown(model) ? <ActivityContext model={model} /> : undefined
+        }
         controls={
           ownActive && projection
             ? {

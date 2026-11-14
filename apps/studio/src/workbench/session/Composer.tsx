@@ -51,7 +51,7 @@ import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
 import { type MeetingComposerProps, MeetingSend } from './composer/meeting.tsx';
 import { useQueuedRequests } from './composer/queue.ts';
-import { menuSends, SendMenu, TargetChip } from './composer/SendControls.tsx';
+import { menuSends, noTargetReason, SendMenu, TargetChip } from './composer/SendControls.tsx';
 import {
   type AutoRequest,
   type CommandSlot,
@@ -468,7 +468,10 @@ function SessionComposer({
         : tc('destination.steerUnavailable', { name: targetName(steerTarget) })
       : tc(`destination.${intent}`);
   // What Send does now, said where it is pressed (#89); its name stays Send.
-  const sendMeaning = tc(`sendAs.${sendKeys.send}`);
+  // While no role can take an instruction, why is said on Send, not on the tool line.
+  const sendMeaning = noTargetReason({ situation, target: steerTarget || null, loading })
+    ? `${tc(`sendAs.${sendKeys.send}`)} · ${tc('targetNone')}`
+    : tc(`sendAs.${sendKeys.send}`);
   const attachBusy = busy || draft.attachmentsBusy || draft.imagesBusy;
   // Text attachments ride every send; images only a new request.
   const textAttachable = attachments.length < TEXT_ATTACHMENT_MAX_COUNT;

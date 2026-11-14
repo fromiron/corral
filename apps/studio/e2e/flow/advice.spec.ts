@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
+import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { expect, test } from '../server/harness.ts';
 import {
   activityBar,
@@ -12,7 +13,7 @@ import {
   requestBox,
   runControls,
 } from '../workbench.ts';
-import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
+import { countVisibleLabels, createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
 // An advisor's advice in the conversation (features/advisor.md 보이는 곳; composer-flow.md "튐 없는
 // 본문"): a line in its target's work that changes only its words as its delivery goes on, and
@@ -38,6 +39,29 @@ function gate() {
     reach = resolve;
   });
   return { open, opened, reach, reached };
+}
+
+/**
+ * The state names on screen keep presence.md's rule: each said once, and every labelled element
+ * names what it labels (the advisor's row, the closed line and the advice lines with the rest).
+ */
+async function labelsKept(page: Page, where: string) {
+  await waitForStill(page);
+  const { labels, unkeyed } = await countVisibleLabels(page);
+  expect(unkeyed, `${where}: labels without a value`).toBe(0);
+  const twice = Object.entries(labels).filter(([, { count }]) => count > 1);
+  expect(twice, `${where}: a state name on screen twice`).toEqual([]);
+  // A label holds the state's name alone; what it does or waits for stands beside it.
+  const names = new Set(Object.values(en.Presence.state));
+  const said = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('[data-presence-label]')]
+      .filter((element) => element.checkVisibility())
+      .map((element) => element.textContent?.trim() ?? ''),
+  );
+  expect(
+    said.filter((text) => !names.has(text)),
+    `${where}: a label saying more than a state`,
+  ).toEqual([]);
 }
 
 function expectStill(result: ShiftResult) {
@@ -264,6 +288,7 @@ test('advice lines change only their words, and late advice is written into the 
   // Only a review turns its mark.
   await expect(advisorRow.locator('svg').first()).toHaveClass(/animate-spin/);
   await expect(advisorRow.getByRole('button', { name: /^Join/ })).toHaveCount(0);
+  await labelsKept(page, 'advisor-reviewing');
   await shots(page, 'advisor-reviewing');
   await fold();
 
@@ -317,6 +342,7 @@ test('advice lines change only their words, and late advice is written into the 
   expect(counted.roles, 'advice-delivered: role rows').toBe(0);
   expect(counted.box, 'advice-delivered: request box').toBe(0);
   expect(counted.bar, `advice-delivered: bar (plan ${counted.plan.join(', ')})`).toBe(0);
+  await labelsKept(page, 'advisor-watching');
   await shots(page, 'advisor-watching');
   await fold();
   await shot(page, 'line-read-1280');
@@ -332,11 +358,13 @@ test('advice lines change only their words, and late advice is written into the 
   await waitForStill(page);
   expectComposerStill('final-review', await lastReview());
   expect((await activityLine(page).textContent())?.split('Advisor')).toHaveLength(2);
+  await labelsKept(page, 'final-review');
   await shots(page, 'final-review');
   // Open, the advisor's row says it reviews, and the line does not name it again.
   await openActivity(page);
   await expect(advisorRow).toContainText('Reviewing');
   await expect(activityLine(page)).not.toContainText('Advisor');
+  await labelsKept(page, 'final-review-open');
   await shot(page, 'final-review-open-1280');
   await fold();
 
@@ -356,6 +384,7 @@ test('advice lines change only their words, and late advice is written into the 
   expectStill(await probe.stop());
   // The conversation's advisor is named once on the tail.
   expect((await tail.textContent())?.split('Advisor')).toHaveLength(2);
+  await labelsKept(page, 'tail-one');
   await shot(page, 'tail-one-1280');
   await page.emulateMedia({ colorScheme: 'dark' });
   await shot(page, 'tail-one-1280-dark');
@@ -439,7 +468,7 @@ test.describe('advice a role never read', () => {
         if (context.messages.at(-1)?.role === 'toolResult')
           return fauxAssistantMessage('Nothing more.');
         reviews += 1;
-        // The first review gives a concern; any later one has nothing to add.
+        // The first review gives a concern and a note; any later one has nothing to add.
         if (reviews > 1) return fauxAssistantMessage('Nothing to add.');
         reviewed.reach();
         await reviewed.opened;
@@ -448,6 +477,10 @@ test.describe('advice a role never read', () => {
             fauxToolCall('advise', {
               severity: 'concern',
               note: 'The answer never times the login.\nMeasure it before changing the cache.',
+            }),
+            fauxToolCall('advise', {
+              severity: 'nit',
+              note: 'Name the cache the login waits on.',
             }),
           ],
           { stopReason: 'toolUse' },
@@ -489,7 +522,9 @@ test.describe('advice a role never read', () => {
     await box.press('Enter');
     const row = page.locator('[data-chat-item]').last();
     const head = row.locator('[data-chat-part="head"]');
-    const adviceLine = row.locator('.turn-process-row [data-advice-line]');
+    const lines = row.locator('.turn-process-row [data-advice-line]');
+    const adviceLine = lines.filter({ hasText: 'Concern' });
+    const noteLine = lines.filter({ hasText: 'Note' });
     await Promise.all([reviewed.reached, final.reached]);
 
     // The work log open: the concern comes into the role's work, waiting for a request that will
@@ -499,20 +534,35 @@ test.describe('advice a role never read', () => {
     await expect(adviceLine.locator('[data-advice-state]')).toHaveText(/^Waiting to join/, {
       timeout: 30_000,
     });
+    await expect(noteLine.locator('[data-advice-state]')).toHaveText(/^Waiting to join/);
     await waitForStill(page);
     const place = async () => {
       const [line, top] = [await adviceLine.boundingBox(), await head.boundingBox()];
       return { y: (line?.y ?? 0) - (top?.y ?? 0), height: line?.height ?? 0 };
     };
     const before = await place();
+    const noteBefore = await noteLine.boundingBox();
+    const rowBefore = await head.boundingBox();
 
     // The role answers and ends: the line stays where it stood and says it was not delivered;
     // the tail says it too.
     final.open();
     await expect.poll(() => projection()?.status, { timeout: 60_000 }).toBe('succeeded');
-    await expect(adviceLine).toHaveCount(1);
+    await expect(lines).toHaveCount(2);
     await expect(adviceLine.locator('[data-advice-state]')).toHaveText('Not delivered');
+    // The note's line stays as well, saying the same; it is the tail's and Needs you's no more.
+    await expect(noteLine.locator('[data-advice-state]')).toHaveText('Not delivered');
     await waitForStill(page);
+    const [noteAfter, rowAfter] = [await noteLine.boundingBox(), await head.boundingBox()];
+    expect(
+      Math.abs(
+        (noteAfter?.y ?? 0) - (rowAfter?.y ?? 0) - ((noteBefore?.y ?? 0) - (rowBefore?.y ?? 0)),
+      ),
+      'not-delivered: note place',
+    ).toBeLessThanOrEqual(1);
+    // Brought into view for the record of it; nothing is measured after this.
+    await noteLine.scrollIntoViewIfNeeded();
+    await shot(page, 'note-not-delivered-1280');
     const after = await place();
     expect(Math.abs(after.y - before.y), 'not-delivered: line place').toBeLessThanOrEqual(1);
     expect(
@@ -521,6 +571,7 @@ test.describe('advice a role never read', () => {
     ).toBeLessThanOrEqual(1);
     const tail = row.locator('[data-chat-part="tail"] [data-advice-line]');
     await expect(tail).toHaveText(/^Advisor·Concern·The answer never times the login/);
+    await expect(row.locator('[data-chat-part="tail"]')).not.toContainText('Name the cache');
     const runId = projection()?.runId as string;
 
     // From Needs you, its button: the advice opens on the row and its words come into view
@@ -528,6 +579,9 @@ test.describe('advice a role never read', () => {
     await page.getByRole('link', { name: 'Needs you', exact: true }).first().click();
     const item = page.locator('[data-inbox-row]').filter({ hasText: 'Concern' });
     await expect(item).toHaveCount(1, { timeout: 30_000 });
+    await expect(
+      page.locator('[data-inbox-row]').filter({ hasText: 'Name the cache' }),
+    ).toHaveCount(0);
     await item.click();
     await page.getByRole('link', { name: 'Open advice' }).click();
     await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}`));
@@ -617,6 +671,9 @@ test.describe('advice a role never read', () => {
     await last.reached;
     await expect(activityBar(page)).toHaveAttribute('data-line', 'advisor', { timeout: 30_000 });
     await expect(activityLine(page)).toContainText('Advisor: final review');
+    // The tool line says nothing of why no role takes an instruction: Send says it.
+    await expect(page.getByTestId('chat-composer')).not.toContainText('No role takes instructions');
+    await waitForStill(page);
     await shot(page, 'final-review-line-1280');
     // Stop asks nothing: only the review is left to stop.
     await openActivity(page);
@@ -632,6 +689,22 @@ test.describe('advice a role never read', () => {
     await expect(activityLine(page)).not.toContainText(
       /unconfirmed outcome|usage was not reported/,
     );
+    // Settled (past the sidebar's grace for an ended run): the sidebar marks it done, and the
+    // composer holds no empty band where the panel's sections were.
+    const sideMark = page.locator(
+      `[data-session-row="${sessionId}"] [data-session-line="state"] svg`,
+    );
+    await expect
+      .poll(async () => (await sideMark.first().getAttribute('class')) ?? '', { timeout: 10_000 })
+      .not.toMatch(/animate-spin/);
+    await expect(activityBar(page).locator('[data-activity-toggle]')).toHaveCount(0);
+    await waitForStill(page);
+    const band = await page.evaluate(() => {
+      const card = document.querySelector('[data-slot="composer-card"]');
+      const line = document.querySelector('[data-activity-bar] > div');
+      return (line?.getBoundingClientRect().top ?? 0) - (card?.getBoundingClientRect().top ?? 0);
+    });
+    expect(band, 'settled: nothing above the line in the composer').toBeLessThanOrEqual(1);
     await shot(page, 'stopped-review-done-1280');
     expect(corral.errors).toEqual([]);
   });
