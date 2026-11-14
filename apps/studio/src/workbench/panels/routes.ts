@@ -15,6 +15,8 @@ export interface RunDetailSearch {
 export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   review?: true | undefined;
   message?: string | undefined;
+  /** A run whose row's unread advice the conversation opens (features/inbox.md `advice`). */
+  advice?: string | undefined;
   compose?: true | undefined;
   /** Old links only (`tab=run`); read into `panel`. */
   tab?: 'work' | 'team' | 'run' | undefined;
@@ -55,7 +57,7 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
   if (out.panel === 'run' && search.respond === true) out.respond = true;
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
-  for (const key of ['run', 'execution', 'artifact', 'result', 'message'] as const) {
+  for (const key of ['run', 'execution', 'artifact', 'result', 'message', 'advice'] as const) {
     const value = text(search[key]);
     if (value) out[key] = value;
   }
@@ -159,10 +161,17 @@ export function resolveSessionSearch(url: SessionSearch, remembered: unknown): S
   delete saved.compose;
   // A request to respond is answered once; a remembered one would answer a later visit.
   delete saved.respond;
+  delete saved.advice;
   return validateSessionSearch({
     ...(!explicitTarget ? saved : {}),
     ...selection,
   });
+}
+
+/** The view a session comes back to: none of the one-time requests an address can carry. */
+export function rememberedSessionView(search: SessionSearch): SessionSearch {
+  const { compose: _compose, respond: _respond, advice: _advice, ...view } = search;
+  return view;
 }
 
 export function patchSessionSearch(
@@ -171,8 +180,9 @@ export function patchSessionSearch(
 ): SessionSearch {
   return validateSessionSearch({
     ...current,
-    // Only the change that asks to respond carries the request.
+    // Only the change that asks to respond, or to read an advice, carries the request.
     respond: undefined,
+    advice: undefined,
     ...('run' in patch && patch.run !== current.run
       ? {
           execution: undefined,

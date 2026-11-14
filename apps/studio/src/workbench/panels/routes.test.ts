@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import {
   patchSessionSearch,
+  rememberedSessionView,
   resolveSessionSearch,
   reviewSessionSearch,
   runSessionSearch,
@@ -10,6 +11,22 @@ import {
   validateRunSearch,
   validateSessionSearch,
 } from './routes.ts';
+
+it('an advice arrival is read from the address, carried by no other change, and never remembered', () => {
+  // The route keeps the run a person came to read advice in.
+  expect(validateSessionSearch({ advice: 'run_a' })).toEqual({ advice: 'run_a' });
+  expect(validateSessionSearch({ advice: '' })).toEqual({});
+  // Another change of the view does not arrive again.
+  expect(patchSessionSearch({ advice: 'run_a' }, { panel: 'files' })).toEqual({ panel: 'files' });
+  expect(patchSessionSearch({ panel: 'files' }, { advice: 'run_b' })).toEqual({
+    panel: 'files',
+    advice: 'run_b',
+  });
+  // The view remembered for the session keeps none of the one-time requests.
+  expect(
+    rememberedSessionView({ panel: 'files', advice: 'run_a', respond: true, compose: true }),
+  ).toEqual({ panel: 'files' });
+});
 
 it('Git is a separate session pane and keeps its project/session identity', () => {
   expect(validateSessionSearch({ panel: 'git' })).toEqual({ panel: 'git' });

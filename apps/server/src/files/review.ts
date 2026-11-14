@@ -79,6 +79,8 @@ export interface InboxItem {
 
 /** An advice its target never read, or kept because the target had ended (features/inbox.md). */
 export interface UnreadAdviceItem {
+  /** Core `unreadAdvice` gives it; when it was left is read from the run's record by it. */
+  adviceId?: string;
   targetExecutionId: string;
   severity: AdviceSeverity;
   text: string;
@@ -670,21 +672,41 @@ export class ReviewService {
     }));
   }
 
-  /** The person opened an execution row; its advice items leave the inbox. Repeats change nothing. */
+  /**
+   * The person opened an execution row: the advice left at it until now leaves the inbox. Opened
+   * again, the time is written anew (features/inbox.md; api-contract.md).
+   */
   markExecutionOpened(runId: string, executionId: string) {
     this.db
       .prepare(
-        'INSERT INTO execution_views (run_id, execution_id, opened_at) VALUES (?,?,?) ON CONFLICT DO NOTHING',
+        `INSERT INTO execution_views (run_id, execution_id, opened_at) VALUES (?,?,?)
+         ON CONFLICT (run_id, execution_id) DO UPDATE SET opened_at = excluded.opened_at`,
       )
       .run(runId, executionId, now(this.clock));
   }
 
-  private executionOpened(runId: string, executionId: string): boolean {
-    return (
-      this.db
-        .prepare('SELECT 1 AS opened FROM execution_views WHERE run_id = ? AND execution_id = ?')
-        .get(runId, executionId) !== undefined
-    );
+  /** When the person last opened an execution row; null when never. */
+  private executionOpenedAt(runId: string, executionId: string): number | null {
+    const row = this.db
+      .prepare('SELECT opened_at FROM execution_views WHERE run_id = ? AND execution_id = ?')
+      .get(runId, executionId) as { opened_at: string } | undefined;
+    return row ? Date.parse(row.opened_at) : null;
+  }
+
+  /**
+   * When an advice was left: the time its admitted event was recorded in the run's record. Null
+   * when the record does not say, and it is then taken as left before any opening.
+   */
+  private adviceLeftAt(runId: string, adviceId: string): number | null {
+    const row = this.db
+      .prepare(
+        `SELECT json_extract(event_json, '$.recordedAt') AS at FROM run_events
+         WHERE run_id = ? AND type = 'advice.admitted'
+           AND json_extract(event_json, '$.payload.adviceId') = ?`,
+      )
+      .get(runId, adviceId) as { at: string | null } | undefined;
+    const at = row?.at ? Date.parse(row.at) : Number.NaN;
+    return Number.isNaN(at) ? null : at;
   }
 
   /**
@@ -712,7 +734,13 @@ export class ReviewService {
       if (run.sessionId) seenSessions.add(run.sessionId);
       if (run.sessionId && titleOf.has(run.sessionId))
         for (const advice of unreadAdvice(run.runId)) {
-          if (this.executionOpened(run.runId, advice.targetExecutionId)) continue;
+          // Opened, the row's advice leaves; an advice left after that opening is an item again.
+          // One left at the very time it was opened was seen with it.
+          const opened = this.executionOpenedAt(run.runId, advice.targetExecutionId);
+          if (opened !== null) {
+            const left = advice.adviceId ? this.adviceLeftAt(run.runId, advice.adviceId) : null;
+            if (left === null || left <= opened) continue;
+          }
           items.push({
             kind: 'advice',
             sessionId: run.sessionId,
@@ -720,7 +748,13 @@ export class ReviewService {
             runId: run.runId,
             executionId: advice.targetExecutionId,
             severity: advice.severity,
-            detail: (advice.text.split('\n')[0] ?? '').slice(0, 120),
+            // Its first line that has text: a model's reply may open with blank lines.
+            detail:
+              advice.text
+                .split('\n')
+                .map((line) => line.trim())
+                .find((line) => line.length > 0)
+                ?.slice(0, 120) ?? null,
           });
         }
       if (latest && run.status === 'failed' && run.sessionId && titleOf.has(run.sessionId)) {

@@ -122,7 +122,15 @@ describe('Korean messages (UX-A5)', () => {
       onError: (error) => errors.push(error.message),
     });
     for (const [key, message] of koLeaves) {
-      (t as unknown as (k: string, v: Record<string, unknown>) => string)(key, sample(message));
+      // A message that isolates part of itself in a tag is formatted with that tag.
+      const tags = [...message.matchAll(/<([a-z]+)>/g)].map((match) => match[1] as string);
+      if (tags.length > 0)
+        (t.markup as unknown as (k: string, v: Record<string, unknown>) => string)(key, {
+          ...sample(message),
+          ...Object.fromEntries(tags.map((tag) => [tag, (chunks: string) => chunks])),
+        });
+      else
+        (t as unknown as (k: string, v: Record<string, unknown>) => string)(key, sample(message));
     }
     expect(errors).toEqual([]);
     // Text that should be translated: anything with a lowercase English word of 4+ letters
@@ -131,8 +139,13 @@ describe('Korean messages (UX-A5)', () => {
     // `auto` is the team selector's name for Corral's automatic team.
     const allowed =
       /\b(auto|Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter|codex|chmod|auth|models\.dev)\b/g;
+    // A tag (`<isolate>…</isolate>`) is markup, not text.
     const untranslated = [...koLeaves].filter(([, message]) =>
-      /\b[a-z]{4,}\b/.test(parseIcu(message).text.replace(allowed, '')),
+      /\b[a-z]{4,}\b/.test(
+        parseIcu(message)
+          .text.replace(/<\/?[a-z]+>/g, '')
+          .replace(allowed, ''),
+      ),
     );
     expect(untranslated.map(([key]) => key)).toEqual([]);
   });

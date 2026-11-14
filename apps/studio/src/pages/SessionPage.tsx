@@ -13,6 +13,7 @@ import { panelKey, SESSION_PANELS, type SessionPanel } from '../workbench/panels
 
 import {
   patchSessionSearch,
+  rememberedSessionView,
   resolveSessionSearch,
   type SessionSearch,
   sessionPanelDescriptor,
@@ -23,6 +24,7 @@ export { Composer } from '../workbench/session/Composer.tsx';
 
 import { useServices } from '../services.tsx';
 import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
+import { AdviceArrival, useAdviceArrivalRequest } from '../workbench/adviceArrival.ts';
 import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
@@ -93,10 +95,8 @@ function WorkSessionPage() {
   const search = resolveSessionSearch(urlSearch, savedView);
   const viewKey = JSON.stringify(search);
   useEffect(() => {
-    const remembered = JSON.parse(viewKey);
-    delete remembered.compose;
-    delete remembered.respond;
-    rememberView(remembered);
+    // Responding, or arriving to read an advice, is not a view to come back to.
+    rememberView({ ...rememberedSessionView(JSON.parse(viewKey)) });
   }, [viewKey, rememberView]);
   const navigate = useNavigate({ from: '/sessions/$sessionId' });
   const urlViewKey = JSON.stringify(urlSearch);
@@ -137,7 +137,7 @@ function WorkSessionPage() {
     pendingReference?.sessionId === session.sessionId ? pendingReference.value : null;
   const setSearch = (patch: Partial<typeof search>, options?: { replace?: boolean }) => {
     const next = patchSessionSearch(search, patch);
-    rememberView({ ...next, compose: undefined, respond: undefined });
+    rememberView({ ...rememberedSessionView(next) });
     void navigate({ search: () => next, replace: options?.replace });
   };
   const showPanel = (patch: Partial<typeof search>) => {
@@ -168,6 +168,12 @@ function WorkSessionPage() {
     revealPendingTray(tray, session.sessionId);
     setSearch({ panel: undefined, respond: undefined }, { replace: true });
   }, [respondRequested, tray]);
+  // A link to read an advice brings the conversation, where its run's row holds it, to the front;
+  // the address lets the request go, so Back or a reload does not arrive again.
+  const adviceArrival = useAdviceArrivalRequest(search.advice, {
+    open: () => dock.current?.openContext('chat'),
+    consume: () => setSearch({ advice: undefined }, { replace: true }),
+  });
   const currentTarget = useRef({
     hostId: services.workspaceId,
     projectId: session.projectId,
@@ -251,29 +257,38 @@ function WorkSessionPage() {
   const renderContext = (view: DockContextView, requestedView: DockContextView = view) => {
     if (view === 'chat')
       return (
-        <SessionChat
+        <AdviceArrival.Provider
           key={panelKey(services, {
             kind: 'chat',
             projectId: session.projectId,
             sessionId: session.sessionId,
           })}
-          connection={{ lost, retry: refresh }}
-          session={session}
-          team={team}
-          corrals={corrals}
-          runs={runs}
-          active={active}
-          liveRunId={liveRun?.runId ?? null}
-          selectedRunId={presentationRunId}
-          onChange={refresh}
-          sessionReads={sessionReads}
-          runsListed={listed}
-          reference={reference}
-          onReferenceUsed={() => setReference(null)}
-          onPanel={(value, run) => showPanel({ panel: value, ...run })}
-          // The conversation's place only: no history entry, no other view.
-          onPlace={(message) => setSearch({ message }, { replace: true })}
-        />
+          value={adviceArrival}
+        >
+          <SessionChat
+            key={panelKey(services, {
+              kind: 'chat',
+              projectId: session.projectId,
+              sessionId: session.sessionId,
+            })}
+            connection={{ lost, retry: refresh }}
+            session={session}
+            team={team}
+            corrals={corrals}
+            runs={runs}
+            active={active}
+            liveRunId={liveRun?.runId ?? null}
+            selectedRunId={presentationRunId}
+            onChange={refresh}
+            sessionReads={sessionReads}
+            runsListed={listed}
+            reference={reference}
+            onReferenceUsed={() => setReference(null)}
+            onPanel={(value, run) => showPanel({ panel: value, ...run })}
+            // The conversation's place only: no history entry, no other view.
+            onPlace={(message) => setSearch({ message }, { replace: true })}
+          />
+        </AdviceArrival.Provider>
       );
     if (view === 'changes' || view === 'git') {
       // Checks are a sub-view of Changes; Problems still opens beside it.

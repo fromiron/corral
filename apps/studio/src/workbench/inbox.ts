@@ -6,7 +6,10 @@ type Kind = InboxItemView['kind'];
 
 export const INBOX_GROUPS = [
   { id: 'response', kinds: ['decision', 'uncertain_write', 'uncertain_terminal'] },
-  { id: 'review', kinds: ['unreviewed', 'check_failed', 'lsp_proposal', 'integration'] },
+  {
+    id: 'review',
+    kinds: ['unreviewed', 'check_failed', 'lsp_proposal', 'integration', 'advice'],
+  },
   { id: 'waiting', kinds: ['queued', 'recipe_stopped'] },
 ] as const satisfies readonly { id: string; kinds: readonly Kind[] }[];
 
@@ -20,8 +23,9 @@ export interface InboxEntry {
 }
 
 /**
- * Keys carry project, kind, session, run and terminal, so a refresh can never point a selection
- * at another run. Repeats (one per queued request) are told apart by their order.
+ * Keys carry project, kind, session, run, terminal and an advice's execution row, so a refresh
+ * can never point a selection at another run or row. Repeats (one per queued request, or more
+ * than one advice for the same row) are told apart by their order.
  */
 export function inboxEntries(projectId: string, items: readonly InboxItemView[]): InboxEntry[] {
   const seen = new Map<string, number>();
@@ -32,6 +36,7 @@ export function inboxEntries(projectId: string, items: readonly InboxItemView[])
       item.sessionId,
       item.runId,
       item.terminalId ?? null,
+      item.executionId ?? null,
     ]);
     const repeat = seen.get(identity) ?? 0;
     seen.set(identity, repeat + 1);

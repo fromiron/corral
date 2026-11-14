@@ -330,6 +330,24 @@ function advisorModelError(
 /** The advisor name its advice's heading carries. */
 export const SESSION_ADVISOR_NAME = 'Advisor';
 
+/** The node and role id of the advisor a session adds; a taken id gets `_2`, `_3`… */
+export const SESSION_ADVISOR_ID = 'session_advisor';
+
+/**
+ * Whether a definition's node is the advisor a conversation's session setting added
+ * (`withSessionAdvisor`): an observer whose node and role share the session advisor's id. Such
+ * an advisor has no name of its own (features/advisor.md, 보이는 곳).
+ */
+export function isSessionAdvisor(definition: CorralDefinition, nodeId: string): boolean {
+  const node = definition.nodes.find((candidate) => candidate.id === nodeId);
+  return (
+    node?.type === 'agent' &&
+    node.invocation === 'observer' &&
+    node.roleId === node.id &&
+    new RegExp(`^${SESSION_ADVISOR_ID}(_[0-9]+)?$`).test(node.id)
+  );
+}
+
 /** The session's advisor setting: on with a model, or off (null). */
 export interface SessionAdvisorChoice {
   modelProfile: string;
@@ -363,8 +381,8 @@ export function withSessionAdvisor(
       .flatMap((role) => role.allowedWorkTools),
   );
   const reads = ADVISOR_WORK_TOOLS.filter((tool) => held.has(tool));
-  let id = 'session_advisor';
-  for (let n = 2; taken.has(id) || taken.has(`${id}_watch`); n++) id = `session_advisor_${n}`;
+  let id = SESSION_ADVISOR_ID;
+  for (let n = 2; taken.has(id) || taken.has(`${id}_watch`); n++) id = `${SESSION_ADVISOR_ID}_${n}`;
   return {
     ...definition,
     roles: [

@@ -35,13 +35,13 @@ import { useQuestionNotice } from '../questionNotice.ts';
 import { readRunView } from '../readRunView.ts';
 import { contextCalls } from './contextCalls.ts';
 import {
-  actionRequired,
+  type actionRequired,
   activityLine,
   agentActivity,
   type ContextPresentation,
   changesPresentation,
+  conversationAction,
   currentAgentExecutions,
-  effectAttention,
   failedToolExecutionId,
   fileChangeSignals,
   type PlanRef,
@@ -452,11 +452,10 @@ function useChatWidgetState(
     view?.artifactTexts ?? NO_TEXTS,
     loadPlan,
   );
-  const action = actionRequired({
-    pendingApprovals: interactions.filter((item) => item.kind === 'approval').length,
-    pendingQuestions: interactions.filter((item) => item.kind !== 'approval').length,
-    ...effectAttention(projection),
-    runStatus: projection?.status,
+  const action = conversationAction({
+    projection,
+    approvals: interactions.filter((item) => item.kind === 'approval').length,
+    questions: interactions.filter((item) => item.kind !== 'approval').length,
   });
   const activeItem =
     planStatus.state === 'ready' && selectedChoice?.live

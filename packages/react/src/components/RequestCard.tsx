@@ -81,9 +81,17 @@ export function useRequestOwner(session: RunSessionStore) {
   const nodes = useStore(session, (s) => s.definition?.nodes);
   const executions = useStore(session, (s) => s.projection?.executions);
   // The roles the run schedules, or more where its callable ones (a conversation's helper) ran.
+  // An advisor watches from outside the flow and is not one of them.
   const scheduled =
-    nodes?.filter((node) => node.type === 'agent' && node.invocation !== 'callable').length ?? 0;
-  const ran = new Set(Object.values(executions ?? {}).map((execution) => execution.nodeId)).size;
+    nodes?.filter(
+      (node) =>
+        node.type === 'agent' && node.invocation !== 'callable' && node.invocation !== 'observer',
+    ).length ?? 0;
+  const ran = new Set(
+    Object.values(executions ?? {}).flatMap((execution) =>
+      execution.advisor ? [] : [execution.nodeId],
+    ),
+  ).size;
   const roles = Math.max(scheduled, ran);
   return ({ executionId, nodeId }: { executionId?: string | null; nodeId?: string | null }) => {
     const id = nodeId ?? (executionId ? executions?.[executionId]?.nodeId : undefined);

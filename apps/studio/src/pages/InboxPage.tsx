@@ -1,5 +1,5 @@
 import { type ProjectSummary, pendingInteractions, type RunSummary } from '@corral/core';
-import type { RunSessionState } from '@corral/react';
+import { type RunSessionState, useSeverityName } from '@corral/react';
 import {
   Banner,
   BannerActions,
@@ -19,7 +19,15 @@ import {
 } from '@corral/react/design-kit';
 import { ArrowLeft, X } from '@corral/react/icons';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { projectName } from '../projects.ts';
@@ -62,6 +70,7 @@ export function InboxPage() {
   const tw = useTranslations('Workbench');
   const tr = useTranslations('Recipe');
   const tv = useTranslations('Review');
+  const severityName = useSeverityName();
   const { repository, transport, workspaces } = useServices();
   const navigate = useNavigate();
   const returnTo = workHref(
@@ -266,6 +275,14 @@ export function InboxPage() {
    */
   const summaryLine = ({ item }: InboxEntry): string | null => {
     const detail = item.detail;
+    // An advice by its severity's name, never its colour alone, and its first line as text; an
+    // advice whose first line is empty still says how serious it is.
+    if (item.kind === 'advice' && item.severity) {
+      const severity = severityName(item.severity);
+      return detail
+        ? t.markup('summary.advice', { severity, detail, line: (chunks) => chunks })
+        : severity;
+    }
     if (!detail) return null;
     if (item.kind === 'check_failed') return t('summary.check_failed', { name: detail });
     if (
@@ -279,6 +296,27 @@ export function InboxPage() {
     if (item.kind === 'integration' && tv.has(`integrationState.${detail}`))
       return tv(`integrationState.${detail}`);
     return null;
+  };
+  /**
+   * The line as shown: `kindLine`, with an advice's model-written first line isolated so a
+   * direction mark in it cannot turn the rest of the line around. The row's name keeps the text.
+   */
+  const lineView = (entry: InboxEntry): ReactNode => {
+    const { item } = entry;
+    if (item.kind !== 'advice' || !item.severity || !item.detail) return kindLine(entry);
+    const number = runNumber(item.runId);
+    const summary = t.rich('summary.advice', {
+      severity: severityName(item.severity),
+      detail: item.detail,
+      line: (chunks) => <bdi>{chunks}</bdi>,
+    });
+    return number ? (
+      <>
+        {summary} · {tw('runNumber', { number })}
+      </>
+    ) : (
+      summary
+    );
   };
 
   const choose = (entry: InboxEntry) => {
@@ -345,9 +383,16 @@ export function InboxPage() {
         }
       : null;
   // The chosen row's line, for the narrow layout where the row is not on screen.
-  const narrowLine = current
-    ? joined(kindLine(current), manyProjects ? projectLabel(current.projectId) : null)
-    : '';
+  const narrowKind = current ? kindLine(current) : null;
+  const narrowProject = current && manyProjects ? projectLabel(current.projectId) : null;
+  const narrowLine =
+    narrowKind || narrowProject ? (
+      <>
+        {current && narrowKind ? lineView(current) : null}
+        {narrowKind && narrowProject ? ' · ' : null}
+        {narrowProject}
+      </>
+    ) : null;
 
   return (
     <main ref={main} className="flex min-h-0 flex-1 flex-col">
@@ -429,7 +474,7 @@ export function InboxPage() {
                           <KitCardTitle className="[&>span]:overflow-visible">
                             {entry.item.sessionTitle}
                           </KitCardTitle>
-                          {line ? <CardDescription>{line}</CardDescription> : null}
+                          {line ? <CardDescription>{lineView(entry)}</CardDescription> : null}
                         </CardHeader>
                         {project ? (
                           <CardFooter className="max-w-1/3 min-w-0">
@@ -539,6 +584,7 @@ export function InboxPage() {
                 />
               ) : destination ? (
                 // Every other kind: its row says what it is; the detail is the way to it.
+                // An advice's link only goes to it: it is read, and cleared, where it is drawn.
                 <Button className="justify-self-start" render={destinationLink(destination)}>
                   {t(`open.${destinationKind(destination)}`)}
                 </Button>
@@ -562,6 +608,7 @@ function destinationLink(destination: InboxDestination) {
 
 function destinationKind(destination: InboxDestination) {
   if (destination.to === '/sessions/$sessionId/review') return 'review';
+  if (destination.search.advice) return 'advice';
   return destination.search.panel ?? 'session';
 }
 

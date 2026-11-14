@@ -3,7 +3,8 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { isSessionAdvisor, type RunProjection } from '@corral/core';
+import { executionWatching } from './presence.ts';
 import { currentAttempts, type NodeRunSummary, nodeRunSummary } from './selectors.ts';
 
 export interface RunAgentGraphNode {
@@ -12,13 +13,17 @@ export interface RunAgentGraphNode {
   executionIds: string[];
   summary: NodeRunSummary;
   lead: boolean;
+  /** An advisor resting between reviews (presence `watching`), not waiting for an answer. */
+  watching?: true;
+  /** The advisor a conversation's session setting added: the screen calls it "advisor". */
+  sessionAdvisor?: true;
 }
 
 export interface RunAgentGraphRelation {
   id: string;
   source: string;
   target: string;
-  kind: 'delegate' | 'question' | 'answer' | 'read' | 'input';
+  kind: 'delegate' | 'question' | 'answer' | 'read' | 'input' | 'advice';
   count: number;
   activeCount: number;
   /** Delegations whose current attempt failed. */
@@ -60,18 +65,25 @@ export function buildRunAgentGraph(
         label: node.label,
         executionIds: instances.map((execution) => execution.executionId),
         summary: nodeRunSummary(projection, id),
+        ...(executionWatching(instances.at(-1)) ? { watching: true as const } : {}),
+        ...(isSessionAdvisor(definition, id) ? { sessionAdvisor: true as const } : {}),
         lead: instances.some(
-          (execution) => !execution.parentExecutionId && !responders.has(execution.taskId),
+          (execution) =>
+            !execution.parentExecutionId && !responders.has(execution.taskId) && !execution.advisor,
         ),
       });
     }
     return id;
   };
+  // An advisor appears only once it has given an advice (execution-monitor.md).
+  const advice = Object.values(projection.advice ?? {});
+  const advised = new Set(advice.map((value) => value.observerExecutionId));
   const agent = (executionId: string): string | null => {
     const execution = projection.executions[executionId];
-    return execution ? addNode(execution.nodeId) : null;
+    if (!execution || (execution.advisor && !advised.has(executionId))) return null;
+    return addNode(execution.nodeId);
   };
-  for (const execution of executions) addNode(execution.nodeId);
+  for (const execution of executions) agent(execution.executionId);
   const relations = new Map<string, RunAgentGraphRelation>();
   const counted = new Map<string, Set<string>>();
   const active = new Map<string, Set<string>>();
@@ -206,5 +218,15 @@ export function buildRunAgentGraph(
   for (const call of Object.values(projection.modelCalls))
     for (const versionId of call.inputArtifactVersionIds)
       delivery('input', call.executionId, versionId, !call.finished);
+  // An advice has no progress of its own: it was given, and the target decides what to do.
+  for (const value of advice)
+    add(
+      'advice',
+      agent(value.observerExecutionId),
+      agent(value.targetExecutionId),
+      value.adviceId,
+      false,
+      [value.observerExecutionId, value.targetExecutionId],
+    );
   return { nodes: [...nodes.values()], relations: [...relations.values()] };
 }

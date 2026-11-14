@@ -5,12 +5,13 @@ import {
   type WorkSession,
 } from '@corral/core';
 import { cn, fontWeights, useSize } from '@corral/react/design-kit';
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
 import { sessionRoute } from '../../router.tsx';
 import { useServices } from '../../services.tsx';
-import { ChatView } from '../ChatView.tsx';
+import { AdviceArrival } from '../adviceArrival.ts';
+import { ChatView, placeChatRow } from '../ChatView.tsx';
 import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
@@ -152,131 +153,154 @@ export function WorkTab({
   };
   // A carried request drawn as nothing is reached through the message it came from.
   const messageId = (linkedMessage && placement.emptyFor.get(linkedMessage)) ?? linkedMessage;
+  // A person who came to read an advice: its run's row is brought into the window, unmarked, and
+  // opens the advice itself (RunMessage). A run with no row here lets the arrival go once the
+  // session's runs are listed (one started elsewhere joins as its own row).
+  const arrival = useContext(AdviceArrival);
+  const arrivalRow = arrival ? rowOf(arrival.runId) : undefined;
+  const placedArrival = useRef<number | null>(null);
+  useEffect(() => {
+    if (!arrival || placedArrival.current === arrival.key) return;
+    if (!arrivalRow) {
+      if (runsListed) {
+        placedArrival.current = arrival.key;
+        arrival.done();
+      }
+      return;
+    }
+    placedArrival.current = arrival.key;
+    // A run whose row the conversation does not draw has nothing to open.
+    if (!placeChatRow(session.sessionId, arrivalRow, 0)) arrival.done();
+  }, [arrival, arrivalRow, runsListed, session.sessionId]);
   return (
     <RunChecks.Provider value={runChecks}>
-      {/* The conversation's one selection listener; its toolbar floats over the rows. */}
-      {workspaceId ? (
-        <ReplySelection
-          target={{
-            hostId: workspaceId,
-            projectId: session.projectId,
-            sessionId: session.sessionId,
-          }}
-          rowOf={rowOf}
-        />
-      ) : null}
-      <ChatView
-        centerEmpty
-        key={session.sessionId}
-        sessionId={session.sessionId}
-        messageId={messageId}
-        sent={sent}
-        header={
-          <MeetingHandoffLinks
-            key={`handoffs:${session.sessionId}`}
-            sessionId={session.sessionId}
-          />
-        }
-        items={[
-          ...session.entries.filter(inConversation).map((entry) => ({
-            id: entry.entryId,
-            content: (
-              <EntryCard
-                sessionId={session.sessionId}
-                entry={entry}
-                runs={runs}
-                artifactMetadataVersion={artifactMetadataVersion}
-                onPanel={onPanel}
-                {...(entry.intent === 'steer' ? steerProps(entry) : {})}
-                carried={placement.carriedOf.get(entry.entryId)}
-                carriedHere={placement.carriesActions.has(entry.entryId)}
-                runOnly={placement.runOnly.has(entry.entryId)}
-                sourceShown={placement.sourced.has(entry.entryId)}
-                runsListed={runsListed}
-                arriving={Boolean(entry.runId && arriving.has(entry.runId))}
-              />
-            ),
-          })),
-          ...loose.map((run) => ({
-            id: run.runId,
-            content: (
-              <RunCard
-                run={run}
-                number={runs.findIndex((item) => item.runId === run.runId) + 1}
-                artifactMetadataVersion={artifactMetadataVersion}
-                onPanel={onPanel}
-              />
-            ),
-          })),
-        ]}
-        tray={
-          <PendingTray
-            sessionId={session.sessionId}
-            runs={runs}
-            // A decision's subject opens as a document over the run record, as on the run page.
-            onOpenArtifact={(run, artifact) =>
-              onPanel('run', { run, view: 'run', artifact, result: undefined })
-            }
-          />
-        }
-        composer={
-          <Composer
-            key={session.sessionId}
-            // The run view showing the running run asks its own confirmation.
-            runControlsOwnConfirmation={
-              currentSearch.panel === 'run' && selectedRunId === active?.runId
-            }
-            session={session}
-            team={team}
-            corrals={corrals}
-            runs={runs}
-            active={active}
-            selectedRunId={selectedRunId}
-            onViewRun={(run) => onPanel('run', { run })}
-            revealRun={(run) => {
-              if (!onPlace) return false;
-              // The conversation's own place for it: the request that started it, else the run.
-              const item = run
-                ? (session.entries.find((entry) => entry.runId === run)?.entryId ??
-                  loose.find((summary) => summary.runId === run)?.runId)
-                : undefined;
-              if (run && !item) return false;
-              onPlace(item);
-              return true;
+      <AdviceArrival.Provider value={arrival}>
+        {/* The conversation's one selection listener; its toolbar floats over the rows. */}
+        {workspaceId ? (
+          <ReplySelection
+            target={{
+              hostId: workspaceId,
+              projectId: session.projectId,
+              sessionId: session.sessionId,
             }}
-            queued={queued}
-            onChange={onChange}
-            onSent={() => setSent((count) => count + 1)}
-            reference={reference}
-            onReferenceUsed={onReferenceUsed}
-            home={home}
-            folderAccess={folderAccess}
-            {...(folderAction
-              ? { onFolderAction: () => onPanel('changes') }
-              : folderAccess === 'unknown' && home && workspaces && binding === null
-                ? { onWorkFolder: () => onPanel('changes') }
-                : {})}
+            rowOf={rowOf}
           />
-        }
-      >
-        <section aria-label={t('heading')}>
-          {home ? (
-            // The kit home composition: a centered title right above the composer.
-            <div className="flex flex-col items-center gap-2 text-center">
-              <h2
-                className={cn(size.type.display, 'm-0 text-foreground')}
-                style={{ fontVariationSettings: fontWeights.bold }}
-              >
-                {td('homeTitle')}
-              </h2>
-              {/* The purpose given when the session was made, not an explanation. */}
-              {session.objective ? (
-                <p className="m-0 max-w-md text-ui text-muted-foreground">{session.objective}</p>
-              ) : null}
-            </div>
-          ) : null}
-        </section>
-      </ChatView>
+        ) : null}
+        <ChatView
+          centerEmpty
+          key={session.sessionId}
+          sessionId={session.sessionId}
+          messageId={messageId}
+          sent={sent}
+          header={
+            <MeetingHandoffLinks
+              key={`handoffs:${session.sessionId}`}
+              sessionId={session.sessionId}
+            />
+          }
+          items={[
+            ...session.entries.filter(inConversation).map((entry) => ({
+              id: entry.entryId,
+              content: (
+                <EntryCard
+                  sessionId={session.sessionId}
+                  entry={entry}
+                  runs={runs}
+                  artifactMetadataVersion={artifactMetadataVersion}
+                  onPanel={onPanel}
+                  {...(entry.intent === 'steer' ? steerProps(entry) : {})}
+                  carried={placement.carriedOf.get(entry.entryId)}
+                  carriedHere={placement.carriesActions.has(entry.entryId)}
+                  runOnly={placement.runOnly.has(entry.entryId)}
+                  sourceShown={placement.sourced.has(entry.entryId)}
+                  runsListed={runsListed}
+                  arriving={Boolean(entry.runId && arriving.has(entry.runId))}
+                />
+              ),
+            })),
+            ...loose.map((run) => ({
+              id: run.runId,
+              content: (
+                <RunCard
+                  run={run}
+                  number={runs.findIndex((item) => item.runId === run.runId) + 1}
+                  artifactMetadataVersion={artifactMetadataVersion}
+                  onPanel={onPanel}
+                />
+              ),
+            })),
+          ]}
+          tray={
+            <PendingTray
+              sessionId={session.sessionId}
+              runs={runs}
+              // A decision's subject opens as a document over the run record, as on the run page.
+              onOpenArtifact={(run, artifact) =>
+                onPanel('run', { run, view: 'run', artifact, result: undefined })
+              }
+            />
+          }
+          composer={
+            <Composer
+              key={session.sessionId}
+              // The run view showing the running run asks its own confirmation.
+              runControlsOwnConfirmation={
+                currentSearch.panel === 'run' && selectedRunId === active?.runId
+              }
+              session={session}
+              team={team}
+              corrals={corrals}
+              runs={runs}
+              active={active}
+              selectedRunId={selectedRunId}
+              onViewRun={(run, execution) =>
+                onPanel('run', { run, ...(execution ? { execution } : {}) })
+              }
+              revealRun={(run) => {
+                if (!onPlace) return false;
+                // The conversation's own place for it: the request that started it, else the run.
+                const item = run
+                  ? (session.entries.find((entry) => entry.runId === run)?.entryId ??
+                    loose.find((summary) => summary.runId === run)?.runId)
+                  : undefined;
+                if (run && !item) return false;
+                onPlace(item);
+                return true;
+              }}
+              queued={queued}
+              onChange={onChange}
+              onSent={() => setSent((count) => count + 1)}
+              reference={reference}
+              onReferenceUsed={onReferenceUsed}
+              home={home}
+              folderAccess={folderAccess}
+              {...(folderAction
+                ? { onFolderAction: () => onPanel('changes') }
+                : folderAccess === 'unknown' && home && workspaces && binding === null
+                  ? { onWorkFolder: () => onPanel('changes') }
+                  : {})}
+            />
+          }
+        >
+          <section aria-label={t('heading')}>
+            {home ? (
+              // The kit home composition: a centered title right above the composer.
+              <div className="flex flex-col items-center gap-2 text-center">
+                <h2
+                  className={cn(size.type.display, 'm-0 text-foreground')}
+                  style={{ fontVariationSettings: fontWeights.bold }}
+                >
+                  {td('homeTitle')}
+                </h2>
+                {/* The purpose given when the session was made, not an explanation. */}
+                {session.objective ? (
+                  <p className="m-0 max-w-md text-ui text-muted-foreground">{session.objective}</p>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+        </ChatView>
+      </AdviceArrival.Provider>
     </RunChecks.Provider>
   );
 }

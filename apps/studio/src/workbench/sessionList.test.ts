@@ -137,7 +137,14 @@ describe('sessionGroups', () => {
   });
 
   it('reviews a session for every review kind, and leaves waiting kinds to the run state', () => {
-    for (const kind of ['unreviewed', 'check_failed', 'lsp_proposal', 'integration'] as const)
+    // An advice its target never read sends an ended session to review (workbench.md).
+    for (const kind of [
+      'unreviewed',
+      'check_failed',
+      'lsp_proposal',
+      'integration',
+      'advice',
+    ] as const)
       expect(ids(sessionGroups([listed('B')], runs, [item(kind, 'B')]))).toEqual([
         ['review', ['B']],
       ]);

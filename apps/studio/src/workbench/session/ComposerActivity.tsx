@@ -14,6 +14,8 @@ import {
   ActivityAnnouncements,
   ActivityContext,
   actionLabel,
+  activityContextShown,
+  activityPlanShown,
   ChangesChip,
   ComposerPlan,
   planCount,
@@ -24,9 +26,18 @@ import {
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { revealPendingTray, useRespondInConversation, useTrayStore } from './pendingTrayState.ts';
 import { useLineHold } from './settle.ts';
-import { type ActivityRole, roleSeen, useActivity } from './useActivity.ts';
+import { type ActivityAdvisor, type ActivityRole, roleSeen, useActivity } from './useActivity.ts';
 
 const toMs = (value: string | null | undefined) => (value ? Date.parse(value) : undefined);
+
+/**
+ * An advisor's mark (features/advisor.md "보이는 곳"): still while it watches, since watching makes
+ * no model request, a resting dot whose shape is not the spinner's; it turns only while it reviews.
+ */
+const advisorMark = (advisor: ActivityAdvisor) =>
+  advisor.review === 'watching'
+    ? { glyph: 'queued' as const, tone: 'neutral' as const }
+    : { glyph: advisor.presence.glyph, tone: advisor.presence.tone };
 
 /**
  * The composer's activity bar, wired: what the session's run and its roles do, what waits on the
@@ -59,8 +70,11 @@ export function ComposerActivity({
   onStop: () => void;
   onPause: () => void;
   onResume: () => void;
-  /** Opens a run's record, for a role the conversation has no row for. */
-  onViewRun?: (runId: string) => void;
+  /**
+   * Opens a run's record, for a role the conversation has no row for; at an execution, for an
+   * advisor (it has no row in the conversation).
+   */
+  onViewRun?: (runId: string, executionId?: string) => void;
   /**
    * Brings the run's item into the conversation's window when it is outside it; false when the
    * conversation has no item for that run. `null` lets the place go once the row is reached.
@@ -257,8 +271,16 @@ export function ComposerActivity({
         return roleLine(line.role, line.others, true);
       case 'target':
         return roleLine(line.role, 0, line.stateShown);
+      case 'advisor':
+        // Why the next request has not started: the roles are done, the advisor reviews last.
+        return {
+          ...advisorMark(line.advisor),
+          text: t('finalReview', { name: line.advisor.name }),
+          parts,
+        };
       case 'summary': {
         if (!run) return null;
+        // An advisor's own trouble is said on its row; the widgets leave it out of attention.
         const attention = unansweredAttention(model);
         const state = line.stateShown ? stateOf(run.presence, `run:${run.runId}`) : undefined;
         return {
@@ -305,6 +327,38 @@ export function ComposerActivity({
           };
         })
       : [];
+  // After the roles, each advisor: watching or reviewing, and how many advice reached their
+  // targets. It takes no instruction, and its View opens its execution in the run's record.
+  if (run?.live)
+    for (const advisor of input.advisors ?? []) {
+      // Its state by the presence's name, as every row's; watching or reviewing beside it.
+      const state = stateOf(advisor.presence, `execution:${advisor.id}`);
+      const doing =
+        advisor.review === 'watching'
+          ? tp('detail.watching')
+          : advisor.review === 'reviewing'
+            ? t('reviewing')
+            : null;
+      const activity = [
+        doing,
+        advisor.delivered ? t('adviceDelivered', { count: advisor.delivered }) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      roles.push({
+        id: advisor.id,
+        name: advisor.name,
+        ...advisorMark(advisor),
+        ...(state ? { state } : {}),
+        stateShown: true,
+        // What it does is said beside its state, so the state is not written again.
+        working: Boolean(doing),
+        ...(activity ? { activity } : {}),
+        startedAt: toMs(advisor.startedAt),
+        target: false,
+        ...(onViewRun ? { onShow: () => onViewRun(run.runId, advisor.id) } : {}),
+      });
+    }
   // Open, a role row that writes its state says it: the line does not write the same words again.
   const written = open
     ? new Set(
@@ -344,8 +398,11 @@ export function ComposerActivity({
         }
         end={model?.runId ? <OverviewAccess /> : undefined}
         roles={roles}
-        plan={model?.runId ? <ComposerPlan variant="activity" /> : undefined}
-        context={model?.runId ? <ActivityContext model={model} /> : undefined}
+        // Only sections with something in them: an ended run with none leaves no empty panel.
+        plan={activityPlanShown(model) ? <ComposerPlan variant="activity" /> : undefined}
+        context={
+          model && activityContextShown(model) ? <ActivityContext model={model} /> : undefined
+        }
         controls={
           ownActive && projection
             ? {
