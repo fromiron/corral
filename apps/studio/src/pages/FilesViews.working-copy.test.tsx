@@ -95,3 +95,52 @@ it('an open copy card follows creation and removal from another entry point', as
     vi.unstubAllGlobals();
   }
 });
+
+// glossary.md, "설명이 붙는 용어": the Paddock's title explains the term by one icon right after
+// it; without a Paddock, the empty state's title is the place.
+const terms = messages.Terms as Record<string, string | { name: string; meaning: string }>;
+const about = messages.Terms.about.replace('{term}', 'Paddock');
+const described = (hint: Element) =>
+  document.getElementById(hint.getAttribute('aria-describedby') ?? '')?.textContent;
+
+it.each([
+  ['without a Paddock', null, () => messages.Files.noCopyTitle, '[data-slot="empty-state"] *'],
+  [
+    'with a Paddock',
+    { baseCommit: 'a'.repeat(40), missing: false },
+    () => messages.Files.copyHeading,
+    'h3#copy-heading',
+  ],
+])('%s, explains the term once, right after its title', async (_state, copy, title, selector) => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.copy = copy;
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <WorkingCopyPanel sessionId="session" projectId="project" />
+        </IntlProvider>,
+      ),
+    );
+    const hints = [...container.querySelectorAll('[data-term-hint]')];
+    expect(hints).toHaveLength(1);
+    const hint = hints[0] as HTMLElement;
+    expect(hint.dataset.termHint).toBe('paddock');
+    expect(hint.getAttribute('aria-label')).toBe(about);
+    expect(described(hint)).toBe((terms.paddock as { meaning: string } | undefined)?.meaning);
+    const heading = [...container.querySelectorAll(selector)].find(
+      (element) => element.textContent === title(),
+    );
+    // A sibling right after the title, so the title still reads as itself.
+    expect(heading).toBeDefined();
+    expect(heading?.contains(hint)).toBe(false);
+    expect(heading?.nextElementSibling).toBe(hint);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
