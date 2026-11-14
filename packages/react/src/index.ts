@@ -187,7 +187,7 @@ export {
   type SavedRevision,
   type SessionCommand,
 } from './run/session.ts';
-export { useSteerTarget } from './run/steer-target.ts';
+export { takesInstruction, useSteerTarget } from './run/steer-target.ts';
 export {
   buildTranscript,
   executionToolEntries,

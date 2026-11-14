@@ -4059,6 +4059,14 @@ export class Coordinator {
         message: `execution ${executionId} does not exist`,
       });
     }
+    // An advisor (Outrider) takes no person's instruction (features/advisor.md, 보안).
+    const definition = (run?.snapshot ?? this.getRunSnapshot(runId))?.definition;
+    const node = definition?.nodes.find((n) => n.id === execution.nodeId);
+    if (node?.type === 'agent' && node.invocation === 'observer')
+      return refuse({
+        code: 'CAPABILITY_DENIED',
+        message: 'an advisor takes no instruction from a person',
+      });
     if (
       !run ||
       TERMINAL_EXECUTION_STATUSES.has(execution.status) ||

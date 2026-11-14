@@ -446,8 +446,8 @@ test('handoffs preserve existing input and start work only when requested', asyn
   };
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
   await page.getByRole('combobox', { name: 'Target conversation', exact: true }).click();
-  // An untitled conversation is named "New conversation", like the choice that makes a new one,
-  // so the option is the one whose value is the target session.
+  // The target is the only untitled conversation here, so its option is its bare title; the
+  // value pins it to the target session, apart from "Create new conversation" above it.
   await page
     .getByRole('option', { name: targetTitle, exact: true })
     .and(page.locator(`[data-value="${targetId}"]`))

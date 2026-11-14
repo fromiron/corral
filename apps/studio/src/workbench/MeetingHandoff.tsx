@@ -11,7 +11,7 @@ import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@co
 import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { AutoModelMenu } from './AutoModelMenu.tsx';
@@ -48,6 +48,22 @@ function hasUnsentInput(sessionId: string) {
     return true;
   }
 }
+/**
+ * The project's conversations by title; titles that occur more than once (every untitled
+ * conversation is "New conversation") add their last activity's date and time to the minute, so
+ * they read apart.
+ */
+function targetOptions(targets: WorkSession[], lastActive: (iso: string) => string) {
+  const seen = new Map<string, number>();
+  for (const item of targets) seen.set(item.title, (seen.get(item.title) ?? 0) + 1);
+  return targets.map((item) => ({
+    value: item.sessionId,
+    label:
+      (seen.get(item.title) ?? 0) > 1
+        ? `${item.title} · ${lastActive(item.updatedAt)}`
+        : item.title,
+  }));
+}
 const failureText = (failure: unknown) =>
   failure instanceof Error ? failure.message : String(failure);
 
@@ -68,6 +84,9 @@ export function MeetingHandoff({
   const [pending, setPending] = useState(() => loadPending(key));
   const [open, setOpen] = useState(!!pending);
   const [targets, setTargets] = useState<WorkSession[]>([]);
+  const format = useFormatter();
+  const lastActive = (iso: string) =>
+    format.dateTime(new Date(iso), { dateStyle: 'short', timeStyle: 'short' });
   const [corrals, setCorrals] = useState<CorralSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [target, setTarget] = useState(
@@ -246,7 +265,7 @@ export function MeetingHandoff({
                 onValueChange={setTarget}
                 options={[
                   { value: 'new', label: t('newSession') },
-                  ...targets.map((item) => ({ value: item.sessionId, label: item.title })),
+                  ...targetOptions(targets, lastActive),
                 ]}
               />
             </div>

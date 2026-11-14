@@ -252,10 +252,12 @@ describe('the request cap of a review', () => {
     expect(r.toAdvisor()).toContain('review');
   });
 
+  // An Outrider takes no person's instruction (features/advisor.md, 보안): a steer sent while it
+  // prepares a request is refused, never reaches it and takes nothing from its cap.
   for (const cap of [1, 2])
-    it(`a person’s directive while the advisor prepares does not use up a cap of ${cap}`, async () => {
+    it(`a person’s steer while the advisor prepares is refused and never reaches it (cap ${cap})`, async () => {
       let runId = '';
-      let steered = false;
+      let steered: Promise<{ status: string; error?: { code: string } | null }> | null = null;
       const r = runtime(
         [advising('The cheese claim has no source.'), advising('The date is missing.')],
         [
@@ -268,8 +270,7 @@ describe('the request cap of a review', () => {
         (frame, advisorId) => {
           if (steered || frame.type !== 'prepare_request' || frame.executionId !== advisorId)
             return;
-          steered = true;
-          void r.transport.sendCommand({
+          steered = r.transport.sendCommand({
             schemaVersion: '0.1',
             commandId: 'cmd_steer_advisor',
             runId,
@@ -287,12 +288,12 @@ describe('the request cap of a review', () => {
       const final = await waitForProjection(r.transport, runId, settled);
       expect(final.status).toBe('succeeded');
       expect(executionOf(final, 'advisor')?.status).toBe('succeeded');
-      expect(r.fromAdvisor()).toContain('prepare_request:turn');
-      expect(r.toAdvisor()).not.toContain('refused');
-      // The first review made as many requests as its cap allows, the directive's included.
-      expect(turnRequests(final, s.events)).toBeGreaterThanOrEqual(cap);
-      if (cap === 2)
-        expect(r.advisorSeen[1] && said(r.advisorSeen[1])).toContain('Check the dates too.');
+      expect(await steered).toMatchObject({
+        status: 'rejected',
+        error: { code: 'CAPABILITY_DENIED' },
+      });
+      expect(Object.values(final.directives).filter((d) => d.origin === 'user')).toEqual([]);
+      expect(r.advisorSeen.map(said).join('\n')).not.toContain('Check the dates too.');
     });
 
   const fatal = () =>
