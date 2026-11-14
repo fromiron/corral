@@ -1,5 +1,5 @@
 import { Button, cn, focusRing, Tooltip } from '@corral/react/design-kit';
-import { BookOpen, FolderOpen, Pencil } from '@corral/react/icons';
+import { Folder, FolderOpen, FolderPen } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -65,11 +65,12 @@ export function FolderAccessNotice({
   const t = useTranslations('Sessions');
   if (access === 'unknown') return null;
   // A usable folder has no next step: a mark, not a button, still reached by keyboard so its
-  // tooltip can be read. The working copy can be changed; the folder itself is only read.
+  // tooltip can be read.
   if (access === 'copy' || access === 'direct') {
     const sentence = t(access === 'copy' ? 'agentCopy' : 'agentDirect');
-    // Not the eye: the Advisor control beside it on the tool line already is one.
-    const Glyph = access === 'copy' ? Pencil : BookOpen;
+    // One folder family in every state: open with a next step, plain when read, with a pen when
+    // the working copy can be changed.
+    const Glyph = access === 'copy' ? FolderPen : Folder;
     return (
       <Tooltip content={sentence}>
         <span

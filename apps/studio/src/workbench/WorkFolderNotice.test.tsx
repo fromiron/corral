@@ -100,13 +100,17 @@ it('says every folder state with one mark: no visible words, the sentence as its
         expect(container.querySelector('button'), access).toBeNull();
         expect(mark.getAttribute('role'), access).toBe('img');
         expect(mark.tabIndex, access).toBe(0);
-        glyphs.set(access, mark.querySelector('svg')?.innerHTML ?? '');
       } else {
         expect(mark.tagName, access).toBe('BUTTON');
       }
+      glyphs.set(access, mark.querySelector('svg')?.getAttribute('class') ?? '');
     }
-    // The working copy and the folder read directly are told apart by their glyphs.
-    expect(glyphs.get('copy')).not.toBe(glyphs.get('direct'));
+    // One folder family: open where there is a next step, plain when read, with a pen when the
+    // working copy can be changed.
+    expect(glyphs.get('copy')).toMatch(/\blucide-folder-pen\b/);
+    expect(glyphs.get('direct')).toMatch(/\blucide-folder\b(?!-)/);
+    for (const access of ['unlinked', 'untrusted', 'missing'])
+      expect(glyphs.get(access), access).toMatch(/\blucide-folder-open\b/);
   } finally {
     await act(async () => root.unmount());
     container.remove();
