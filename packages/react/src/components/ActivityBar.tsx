@@ -78,7 +78,13 @@ export interface ActivityBarLine {
 
 export interface ActivityBarRole {
   id: string;
+  /** The whole name: the tooltip and the buttons' accessible names. */
   name: string;
+  /**
+   * The end of `name` that tells it from another open execution of the same role (" · #2", as
+   * the send menu says it); the name before it shortens, this never does.
+   */
+  place?: string;
   glyph: AgentStatus | null;
   tone: PresenceTone;
   /** None for a state that has no words: the row says only the name. */
@@ -153,14 +159,25 @@ function Mark({ glyph, tone }: { glyph: AgentStatus | null; tone: PresenceTone }
   );
 }
 
-function Clock({ startedAt, endedAt }: { startedAt?: number; endedAt?: number }) {
+function Clock({
+  startedAt,
+  endedAt,
+  className,
+}: {
+  startedAt?: number;
+  endedAt?: number;
+  className?: string;
+}) {
   const ticking = startedAt !== undefined && endedAt === undefined;
   const now = useNow(500, ticking);
   if (startedAt === undefined) return null;
   return (
     <span
       aria-hidden
-      className="shrink-0 font-mono text-caption tabular-nums text-muted-foreground"
+      className={cn(
+        'shrink-0 font-mono text-caption tabular-nums text-muted-foreground',
+        className,
+      )}
     >
       {formatClock(Math.max(0, (endedAt ?? now) - startedAt))}
     </span>
@@ -498,13 +515,7 @@ export function ActivityBar({
           aria-label={t('details')}
           className="flex max-h-[min(24rem,45dvh)] flex-col gap-3 overflow-y-auto overscroll-contain border-b border-border/60 px-2.5 pt-2.5 pb-3"
         >
-          {roles.length ? (
-            <ul aria-label={t('roles')} className="@container/roles flex flex-col gap-0.5">
-              {roles.map((role) => (
-                <RoleRow key={role.id} role={role} />
-              ))}
-            </ul>
-          ) : null}
+          {roles.length ? <RoleList roles={roles} /> : null}
           {plan}
           {context}
           {controls ? <Controls controls={controls} /> : null}
@@ -515,65 +526,137 @@ export function ActivityBar({
   );
 }
 
-function RoleRow({ role }: { role: ActivityBarRole }) {
+/**
+ * The roles, one row each (features/composer-flow.md "활동 바"). The rows share three columns:
+ * what the role is and does, View, and the join place. Each of the last two is as wide as its
+ * widest cell, so they stand at the same spot in every row, and a list where no row has one keeps
+ * no column for it (a meeting, where nobody is joined). The join place is 7rem wide where there is
+ * room, as wide as what it holds in a narrow panel.
+ */
+function RoleList({ roles }: { roles: ActivityBarRole[] }) {
   const t = useTranslations('Activity');
+  const shows = roles.some((role) => role.onShow);
+  const joins = roles.some((role) => role.target || role.onJoin);
   return (
-    <li data-activity-role={role.id} className="flex min-h-8 min-w-0 items-center gap-2 text-ui">
-      <Mark glyph={role.glyph} tone={role.tone} />
-      {/* After the activity has given way, the name is what shortens; its whole is the tooltip. */}
-      <span
-        className="min-w-0 truncate"
-        style={{ fontVariationSettings: fontWeights.semibold }}
-        title={role.name}
+    <div className="@container/roles">
+      <ul
+        aria-label={t('roles')}
+        className={cn(
+          'grid gap-x-2 gap-y-0.5',
+          shows && joins
+            ? 'grid-cols-[minmax(0,1fr)_auto_minmax(7rem,auto)] @max-sm/roles:grid-cols-[minmax(0,1fr)_auto_auto]'
+            : shows
+              ? 'grid-cols-[minmax(0,1fr)_auto]'
+              : joins
+                ? 'grid-cols-[minmax(0,1fr)_minmax(7rem,auto)] @max-sm/roles:grid-cols-[minmax(0,1fr)_auto]'
+                : 'grid-cols-[minmax(0,1fr)]',
+        )}
       >
-        {role.name}
-      </span>
-      {!role.state ? null : role.stateShown && !role.working ? (
-        <span className="shrink-0 text-muted-foreground">
-          <StateWords state={role.state} />
-        </span>
-      ) : (
-        <span className="sr-only">{role.state.text}</span>
-      )}
-      {role.activity ? (
-        <span className="min-w-0 flex-1 truncate text-muted-foreground" title={role.activity}>
-          {role.activity}
-        </span>
-      ) : (
-        <span className="flex-1" />
-      )}
-      <Clock startedAt={role.startedAt} endedAt={role.endedAt} />
-      {role.onShow ? (
-        <Button
-          size="compact"
-          variant="ghost"
-          aria-label={t('viewRole', { name: role.name })}
-          onClick={role.onShow}
-        >
-          {t('view')}
-        </Button>
-      ) : null}
-      {/*
-        One column for joining, so the rows' clocks and buttons line up. A panel too narrow for it
-        keeps only what the column holds, so the actions never move with the name's length.
-      */}
-      <span className="flex w-28 shrink-0 justify-end @max-sm/roles:w-auto">
-        {role.target ? (
-          <span className="flex h-7 items-center gap-1 px-2 text-caption text-muted-foreground">
-            <Check aria-hidden="true" className="size-3.5" />
-            {t('joinTarget')}
-          </span>
-        ) : role.onJoin ? (
-          <Button
-            size="compact"
-            variant="ghost"
-            aria-label={t('joinRole', { name: role.name })}
-            onClick={role.onJoin}
+        {roles.map((role) => (
+          <RoleRow key={role.id} role={role} shows={shows} joins={joins} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * One role's row: one line at any width. Short of room, the activity leaves first, then (in a
+ * narrow panel) the clock, then the name shortens; the place that tells same-role rows apart,
+ * View and the join place never do.
+ */
+function RoleRow({
+  role,
+  shows,
+  joins,
+}: {
+  role: ActivityBarRole;
+  shows: boolean;
+  joins: boolean;
+}) {
+  const t = useTranslations('Activity');
+  const place = role.place && role.name.endsWith(role.place) ? role.place : null;
+  return (
+    <li
+      data-activity-role={role.id}
+      className="col-span-full grid min-h-8 grid-cols-subgrid items-center text-ui"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <Mark glyph={role.glyph} tone={role.tone} />
+        {/* After the activity has given way, the name is what shortens; its whole is the tooltip. */}
+        {place ? (
+          <span
+            className="flex min-w-0"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+            title={role.name}
           >
-            {t('join')}
-          </Button>
-        ) : null}
+            <span className="min-w-0 truncate">{role.name.slice(0, -place.length)}</span>
+            <span className="shrink-0 whitespace-pre">{place}</span>
+          </span>
+        ) : (
+          <span
+            className="min-w-0 truncate"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+            title={role.name}
+          >
+            {role.name}
+          </span>
+        )}
+        {!role.state ? null : role.stateShown && !role.working ? (
+          <span className="shrink-0 text-muted-foreground">
+            <StateWords state={role.state} />
+          </span>
+        ) : (
+          <span className="sr-only">{role.state.text}</span>
+        )}
+        {role.activity ? (
+          // Shown only with room for a few words (4rem), never as a fragment; it stays for AT.
+          <span className="@container/doing min-w-0 flex-1">
+            <span
+              className="block truncate text-muted-foreground @max-[4rem]/doing:opacity-0"
+              title={role.activity}
+            >
+              {role.activity}
+            </span>
+          </span>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <Clock startedAt={role.startedAt} endedAt={role.endedAt} className="@max-sm/roles:hidden" />
       </span>
+      {shows ? (
+        <span className="flex justify-end">
+          {role.onShow ? (
+            <Button
+              size="compact"
+              variant="ghost"
+              aria-label={t('viewRole', { name: role.name })}
+              onClick={role.onShow}
+            >
+              {t('view')}
+            </Button>
+          ) : null}
+        </span>
+      ) : null}
+      {joins ? (
+        <span data-activity-join="" className="flex justify-end">
+          {role.target ? (
+            <span className="flex h-7 items-center gap-1 px-2 text-caption text-muted-foreground">
+              <Check aria-hidden="true" className="size-3.5" />
+              {t('joinTarget')}
+            </span>
+          ) : role.onJoin ? (
+            <Button
+              size="compact"
+              variant="ghost"
+              aria-label={t('joinRole', { name: role.name })}
+              onClick={role.onJoin}
+            >
+              {t('join')}
+            </Button>
+          ) : null}
+        </span>
+      ) : null}
     </li>
   );
 }

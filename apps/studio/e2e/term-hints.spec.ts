@@ -5,6 +5,7 @@ import {
   importTeam,
   newConversationFromSidebar,
   openActivity,
+  openConversationDetails,
   openSettings,
   requestBox,
   runControls,
@@ -280,30 +281,119 @@ test('the open activity panel names its control row Reins, explained once', asyn
   expect(line.withIcon).toEqual(line.without);
 });
 
-// features/composer-flow.md "활동 바": at a narrow width a role row stays one line; the clock,
-// View and Join here (or the join target's mark) are never cut, and a long name ends in an
-// ellipsis while the actions stay where they were.
+/** A team whose plan branches to three roles at once, so the run has several open rows. */
+const branching = (() => {
+  const branches = ['research', 'build', 'check'];
+  const role = (id: string) => ({
+    id: `${id}_role`,
+    name: id,
+    prompt: `Act as ${id}.`,
+    modelProfile: 'model-a',
+    allowedWorkTools: ['write_artifact'],
+    allowedCollaborationTools: ['submit_result'],
+    outputContract: 'text',
+  });
+  const agent = (id: string, from: string | null) => ({
+    id,
+    type: 'agent',
+    label: id,
+    roleId: `${id}_role`,
+    invocation: 'scheduled',
+    inputBindings: from
+      ? [{ kind: 'task_output', name: 'previous', sourceNodeId: from }]
+      : [{ kind: 'run_input', name: 'brief' }],
+    outputName: 'text',
+  });
+  const edge = (source: string, target: string) => ({
+    id: `${source}_out_${target}_in`,
+    source,
+    sourcePort: 'out',
+    target,
+    targetPort: 'in',
+  });
+  return {
+    schemaVersion: '0.1',
+    id: 'branching',
+    name: 'Branching',
+    entryNodeId: 'plan',
+    input: { brief: 'Find why login is slow.', criteria: ['Say what changed.'] },
+    roles: [role('plan'), ...branches.map(role)],
+    nodes: [
+      agent('plan', null),
+      ...branches.map((id) => agent(id, 'plan')),
+      { id: 'meet', type: 'join', label: 'Meet', policy: 'all' },
+      {
+        id: 'output',
+        type: 'output',
+        label: 'Output',
+        inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'build' }],
+        requireApproval: false,
+      },
+    ],
+    controlEdges: [
+      ...branches.map((id) => edge('plan', id)),
+      ...branches.map((id) => edge(id, 'meet')),
+      edge('meet', 'output'),
+    ],
+    capabilityLinks: [],
+    limits: {
+      maxDelegationDepth: 2,
+      maxModelConcurrency: 6,
+      maxSpawns: 12,
+      maxQuestions: 6,
+      questionTimeoutMs: 120_000,
+    },
+  };
+})();
+
+// features/composer-flow.md "활동 바": at a narrow width a role row stays one line; View, Join here
+// (or the join target's mark) and the place that tells same-role rows apart are never cut, View
+// stands at the same spot in every row, and a long name ends in an ellipsis while the actions stay
+// where they were.
 test('the open activity panel keeps each role row’s actions whole at 320px', async ({ page }) => {
-  test.setTimeout(60_000);
-  await page.goto('/?delay=15000');
-  await teamFromTemplate(page);
-  await startSession(page, 'Role rows at 320px');
-  await requestBox(page).fill('Write a short note.');
+  test.setTimeout(90_000);
+  await importTeam(page, branching);
+  await page.goto('/?delay=10000');
+  await expect(page.getByRole('button', { name: 'New conversation', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await openConversationDetails(page);
+  await page.getByRole('textbox', { name: 'Purpose' }).fill('Role rows at 320px');
+  await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
+  await page.getByRole('option', { name: /Branching/ }).click();
+  await page.getByRole('button', { name: 'Start chat' }).click();
+  await expect(page).toHaveURL(/\/sessions\/session_/);
+  await requestBox(page).fill('Find why login is slow.');
   await requestBox(page).press('Control+Enter');
   await expect(runGoing(page)).toBeVisible({ timeout: 20_000 });
-  await page.setViewportSize({ width: 320, height: 720 });
   await openActivity(page);
   const rows = page.getByTestId('activity-bar').locator('[data-activity-role]');
-  await expect(rows.first()).toBeVisible();
+  // Two open executions of one role are told apart by their place.
+  await expect
+    .poll(
+      () =>
+        rows.evaluateAll(
+          (items) => items.filter((row) => /· #\d/.test(row.textContent ?? '')).length,
+        ),
+      {
+        timeout: 30_000,
+      },
+    )
+    .toBeGreaterThanOrEqual(2);
+  await page.setViewportSize({ width: 320, height: 720 });
   await page.mouse.move(2, 2);
-  /** Per row: whether any child passes its right edge, and each action's box and wholeness. */
+  /** Per row: whether anything drawn passes its right edge, its actions, and its visible name. */
   const measure = () =>
     rows.evaluateAll((items) =>
       items.map((row) => {
         const edge = row.getBoundingClientRect().right + 0.5;
-        // View and Join here are buttons; the join target's mark is the join column's span.
+        const drawn = (node: Element) => {
+          const style = getComputedStyle(node);
+          return style.display !== 'none' && style.opacity !== '0';
+        };
+        // View and Join here are buttons; the join target's mark is the join place's span.
         const actions = [
-          ...row.querySelectorAll<HTMLElement>('button, :scope > span:last-child > span'),
+          ...row.querySelectorAll<HTMLElement>('button, [data-activity-join] > span'),
         ].map((node) => {
           const box = node.getBoundingClientRect();
           return {
@@ -314,11 +404,18 @@ test('the open activity panel keeps each role row’s actions whole at 320px', a
             whole: node.scrollWidth <= node.clientWidth + 0.5,
           };
         });
+        // The name is the row's first titled part; a place, when it has one, is its last part.
+        const name = row.querySelector<HTMLElement>('[title]');
+        const place = name?.children.length ? (name.lastElementChild as HTMLElement) : null;
         return {
           overflows: [...row.querySelectorAll('*')].some(
-            (node) => node.getBoundingClientRect().right > edge,
+            (node) => drawn(node) && node.getBoundingClientRect().right > edge,
           ),
           actions,
+          view: actions.find((action) => action.text === 'View')?.left ?? null,
+          place: place
+            ? { text: place.textContent, whole: place.scrollWidth <= place.clientWidth + 0.5 }
+            : null,
         };
       }),
     );
@@ -332,17 +429,35 @@ test('the open activity panel keeps each role row’s actions whole at 320px', a
     .toBe(true);
   for (const row of before) {
     expect(row.overflows).toBe(false);
-    expect(row.actions.length).toBeGreaterThanOrEqual(2);
+    // Every row has View; a row that takes no instruction now has no Join.
+    expect(row.view).not.toBeNull();
     for (const action of row.actions)
       expect(action, action.text).toMatchObject({ inside: true, whole: true });
   }
+  // The joinable rows and the join target show their join place whole beside View.
+  expect(before.filter((row) => row.actions.length === 2).length).toBeGreaterThanOrEqual(2);
+  // View stands at the same spot in every row.
+  expect(
+    new Set(before.map((row) => row.view)).size,
+    JSON.stringify(before.map((row) => row.view)),
+  ).toBe(1);
+  // Same-role rows read differently: each place is whole, and no two are alike.
+  const places = before.flatMap((row) => (row.place ? [row.place] : []));
+  expect(places.length).toBeGreaterThanOrEqual(2);
+  for (const place of places) expect(place.whole, place.text ?? '').toBe(true);
+  expect(new Set(places.map((place) => place.text)).size).toBe(places.length);
   // One long name: it ends in an ellipsis, with its whole as the tooltip, and nothing moves.
-  // The name is the row's first titled part; the activity after it is titled too.
-  const name = rows.first().locator(':scope > span[title]').first();
+  const name = rows.first().locator('[title]').first();
   await name.evaluate((node) => {
-    node.textContent = 'Implementation reviewer for the release candidate branch';
+    const part = node.children.length ? (node.firstElementChild as HTMLElement) : node;
+    part.textContent = 'Implementation reviewer for the release candidate branch';
   });
-  expect(await name.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+  expect(
+    await name.evaluate((node) => {
+      const part = node.children.length ? (node.firstElementChild as HTMLElement) : node;
+      return part.scrollWidth > part.clientWidth;
+    }),
+  ).toBe(true);
   const after = await measure();
   expect(after[0]?.overflows).toBe(false);
   expect(after[0]?.actions).toEqual(before[0]?.actions);
