@@ -419,7 +419,10 @@ it('on success the live reply stays until the result text is read, without a loa
   );
 });
 
-it('a result that cannot be read ends the hand-off and shows the error', async () => {
+// In a conversation the turn's record keeps the answer: a result that cannot be read waits for
+// that record, which the row reads once it is no longer live; a record read without the answer
+// ends the hand-off and shows the error (RunMessage.row.test.tsx).
+it('a result that cannot be read in a live conversation row keeps the words, the failure waiting for the turn’s record', async () => {
   const f = await render();
   await act(async () =>
     fixture.store?.setState({
@@ -429,8 +432,10 @@ it('a result that cannot be read ends the hand-off and shows the error', async (
       loadArtifact: async () => {},
     }),
   );
-  expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
-  expect(f.container.querySelector('[role="alert"]')).not.toBeNull();
+  expect(f.container.querySelector('[data-testid="live-text"]')?.textContent).toContain(
+    'Draft as written',
+  );
+  expect(f.container.querySelector('[role="alert"]')).toBeNull();
 });
 
 it('the turn process sits above the reply, closed while working and still closed when done', async () => {
